@@ -11,7 +11,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a mapping project against a CSV input, producing a CSV output.
+    /// Run a mapping project against a CSV or XML input (chosen by
+    /// extension), producing a CSV or XML output.
     Run {
         #[arg(long)]
         project: PathBuf,
@@ -19,6 +20,12 @@ enum Command {
         input: PathBuf,
         #[arg(long)]
         output: PathBuf,
+    },
+    /// Import an XSD file's root element as a SchemaNode, printed as JSON --
+    /// a starting point for hand-authoring a project file's schema.
+    ImportXsd {
+        #[arg(long)]
+        xsd: PathBuf,
     },
 }
 
@@ -31,7 +38,11 @@ fn main() -> anyhow::Result<()> {
             output,
         } => {
             let rows = cli::run_project(&project, &input, &output)?;
-            println!("wrote {rows} row(s) to {}", output.display());
+            println!("wrote {rows} record(s) to {}", output.display());
+            Ok(())
+        }
+        Command::ImportXsd { xsd } => {
+            println!("{}", cli::import_xsd(&xsd)?);
             Ok(())
         }
     }
