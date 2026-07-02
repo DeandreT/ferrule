@@ -1,0 +1,43 @@
+{
+  "source": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "name", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "age", "kind": { "kind": "scalar", "ty": "int" } }
+      ]
+    }
+  },
+  "target": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "name", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "category", "kind": { "kind": "scalar", "ty": "string" } }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "path": ["age"] },
+      "1": { "kind": "const", "value": 18 },
+      "2": { "kind": "call", "function": "greater_or_equal", "args": [0, 1] },
+      "3": { "kind": "const", "value": 60 },
+      "4": { "kind": "call", "function": "greater_or_equal", "args": [0, 3] },
+      "5": { "kind": "const", "value": "senior" },
+      "6": { "kind": "const", "value": "adult" },
+      "7": { "kind": "if", "condition": 4, "then": 5, "else": 6 },
+      "8": { "kind": "source_field", "path": ["name"] }
+    }
+  },
+  "root": {
+    "source": [],
+    "filter": 2,
+    "bindings": [
+      { "target_field": "name", "node": 8 },
+      { "target_field": "category", "node": 7 }
+    ]
+  }
+}
