@@ -7,4 +7,5 @@ repository.workspace = true
 description = "Mapping graph IR (nodes/edges/functions/conditions) and project file (de)serialization"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }
+serde = { workspace = true }

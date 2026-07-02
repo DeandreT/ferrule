@@ -1,0 +1,30 @@
+{
+  "source": {
+    "fields": [
+      { "name": "first_name", "ty": "string" },
+      { "name": "last_name", "ty": "string" },
+      { "name": "age", "ty": "int" }
+    ]
+  },
+  "target": {
+    "fields": [
+      { "name": "full_name", "ty": "string" },
+      { "name": "age_next_year", "ty": "int" }
+    ]
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "field": "first_name" },
+      "1": { "kind": "const", "value": " " },
+      "2": { "kind": "source_field", "field": "last_name" },
+      "3": { "kind": "call", "function": "concat", "args": [0, 1, 2] },
+      "4": { "kind": "source_field", "field": "age" },
+      "5": { "kind": "const", "value": 1 },
+      "6": { "kind": "call", "function": "add", "args": [4, 5] }
+    }
+  },
+  "bindings": [
+    { "target_field": "full_name", "node": 3 },
+    { "target_field": "age_next_year", "node": 6 }
+  ]
+}

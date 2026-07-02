@@ -7,4 +7,4 @@ repository.workspace = true
 description = "XSD-lite schema import and XML instance read/write"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }
