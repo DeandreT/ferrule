@@ -1,0 +1,50 @@
+[
+  {
+    "Order_ID": "A-1001",
+    "Cust_Name": "Alice Carter",
+    "Item_ID": "BR-100",
+    "Desc": "PAINT BRUSH",
+    "Price": 4.5,
+    "Quantity": 2
+  },
+  {
+    "Order_ID": "A-1001",
+    "Cust_Name": "Alice Carter",
+    "Item_ID": "GL-220",
+    "Desc": "WOOD GLUE",
+    "Price": 6.25,
+    "Quantity": 1
+  },
+  {
+    "Order_ID": "A-1001",
+    "Cust_Name": "Alice Carter",
+    "Item_ID": "SP-080",
+    "Desc": "SANDPAPER PACK",
+    "Price": 3.75,
+    "Quantity": 3
+  },
+  {
+    "Order_ID": "A-1002",
+    "Cust_Name": "Bo Diaz",
+    "Item_ID": "DB-410",
+    "Desc": "DRILL BIT SET",
+    "Price": 19.5,
+    "Quantity": 1
+  },
+  {
+    "Order_ID": "A-1002",
+    "Cust_Name": "Bo Diaz",
+    "Item_ID": "TM-055",
+    "Desc": "TAPE MEASURE",
+    "Price": 8.0,
+    "Quantity": 1
+  },
+  {
+    "Order_ID": "A-1003",
+    "Cust_Name": "Cy Ellis",
+    "Item_ID": "WG-300",
+    "Desc": "WORK GLOVES",
+    "Price": 12.0,
+    "Quantity": 2
+  }
+]

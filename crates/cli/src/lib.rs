@@ -1,7 +1,7 @@
 //! Headless runner: loads a mapping project and runs it against an input
-//! file (CSV or XML, chosen by extension) to produce an output file. Split
-//! out from `main.rs` so it's testable without shelling out to the built
-//! binary.
+//! file (CSV, XML, or JSON, chosen by extension) to produce an output file.
+//! Split out from `main.rs` so it's testable without shelling out to the
+//! built binary.
 
 use std::path::Path;
 
@@ -29,6 +29,8 @@ pub fn run_project(
         }
         "xml" => format_xml::read(input_path, &project.source)
             .with_context(|| format!("reading input {}", input_path.display()))?,
+        "json" => format_json::read(input_path, &project.source)
+            .with_context(|| format!("reading input {}", input_path.display()))?,
         other => bail!("unsupported input file extension: .{other}"),
     };
 
@@ -48,6 +50,11 @@ pub fn run_project(
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             1
         }
+        "json" => {
+            format_json::write(output_path, &project.target, &target_instance)
+                .with_context(|| format!("writing output {}", output_path.display()))?;
+            target_instance.as_repeated().map_or(1, <[Instance]>::len)
+        }
         other => bail!("unsupported output file extension: .{other}"),
     };
 
@@ -60,6 +67,14 @@ pub fn run_project(
 pub fn import_xsd(xsd_path: &Path) -> anyhow::Result<String> {
     let schema = format_xml::xsd::import(xsd_path)
         .with_context(|| format!("importing xsd {}", xsd_path.display()))?;
+    Ok(serde_json::to_string_pretty(&schema)?)
+}
+
+/// Imports the root of a JSON Schema file as a `SchemaNode`, printed as
+/// pretty JSON -- the JSON counterpart to [`import_xsd`].
+pub fn import_json_schema(schema_path: &Path) -> anyhow::Result<String> {
+    let schema = format_json::json_schema::import(schema_path)
+        .with_context(|| format!("importing json schema {}", schema_path.display()))?;
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
