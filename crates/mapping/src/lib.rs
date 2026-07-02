@@ -26,6 +26,22 @@ pub enum Node {
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.
     Call { function: String, args: Vec<NodeId> },
+    /// Evaluates `condition`; if it's `true` evaluates and returns `then`,
+    /// otherwise `else_`. Unlike `Call`, only the taken branch is evaluated
+    /// -- important once branches can error or have side effects.
+    If {
+        condition: NodeId,
+        then: NodeId,
+        #[serde(rename = "else")]
+        else_: NodeId,
+    },
+    /// Looks `input` up in `table` (first matching entry wins) and returns
+    /// its paired value, falling back to `default` if there's no match.
+    ValueMap {
+        input: NodeId,
+        table: Vec<(Value, Value)>,
+        default: Option<Value>,
+    },
 }
 
 /// The mapping graph for one project: every node that can be wired into a
@@ -52,6 +68,11 @@ pub struct Binding {
 /// "Items", "Item"]`, which flattens nested repetition into a single
 /// target-side repetition). If `source` is `None`, the scope runs exactly
 /// once, producing a single (non-repeating) target group instance.
+///
+/// If `filter` is set, it's evaluated (in the same per-item context as
+/// `bindings`) for each candidate item and must return a `bool`; items for
+/// which it's `false` are dropped, producing fewer target items than source
+/// items. Only meaningful when `source` is set.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
@@ -60,6 +81,8 @@ pub struct Scope {
     pub target_field: String,
     #[serde(default)]
     pub source: Option<Vec<String>>,
+    #[serde(default)]
+    pub filter: Option<NodeId>,
     #[serde(default)]
     pub bindings: Vec<Binding>,
     #[serde(default)]

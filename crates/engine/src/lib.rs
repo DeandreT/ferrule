@@ -15,6 +15,12 @@ pub enum EngineError {
     Cycle(NodeId),
     #[error("no source field found at path `{0}`")]
     MissingSourceField(String),
+    #[error("node {node}: expected a bool, got {found}")]
+    NotABool { node: NodeId, found: &'static str },
+    #[error("node {node}: value-map lookup missed and there's no default")]
+    ValueMapMiss { node: NodeId },
+    #[error("a scope with `filter` but no `source` filtered out its only item")]
+    FilteredNonRepeatingScope,
     #[error(transparent)]
     Function(#[from] functions::FunctionError),
 }
@@ -40,6 +46,20 @@ fn eval_scope(
         let mut next_context = context.to_vec();
         next_context.extend(extension.iter().copied());
 
+        if let Some(filter_node) = scope.filter {
+            let mut in_progress = HashSet::new();
+            match eval_expr(graph, filter_node, &next_context, &mut in_progress)? {
+                Value::Bool(true) => {}
+                Value::Bool(false) => continue,
+                other => {
+                    return Err(EngineError::NotABool {
+                        node: filter_node,
+                        found: other.type_name(),
+                    });
+                }
+            }
+        }
+
         let mut fields = Vec::with_capacity(scope.bindings.len() + scope.children.len());
         for binding in &scope.bindings {
             let mut in_progress = HashSet::new();
@@ -56,10 +76,10 @@ fn eval_scope(
     if scope.source.is_some() {
         Ok(Instance::Repeated(produced))
     } else {
-        Ok(produced
+        produced
             .into_iter()
             .next()
-            .expect("a scope without `source` always yields exactly one item"))
+            .ok_or(EngineError::FilteredNonRepeatingScope)
     }
 }
 
@@ -129,6 +149,31 @@ fn eval_expr(
                 values.push(eval_expr(graph, *arg, context, in_progress)?);
             }
             functions::call(function, &values).map_err(EngineError::from)
+        }
+        Node::If {
+            condition,
+            then,
+            else_,
+        } => match eval_expr(graph, *condition, context, in_progress)? {
+            Value::Bool(true) => eval_expr(graph, *then, context, in_progress),
+            Value::Bool(false) => eval_expr(graph, *else_, context, in_progress),
+            other => Err(EngineError::NotABool {
+                node: *condition,
+                found: other.type_name(),
+            }),
+        },
+        Node::ValueMap {
+            input,
+            table,
+            default,
+        } => {
+            let value = eval_expr(graph, *input, context, in_progress)?;
+            table
+                .iter()
+                .find(|(from, _)| *from == value)
+                .map(|(_, to)| to.clone())
+                .or_else(|| default.clone())
+                .ok_or(EngineError::ValueMapMiss { node: node_id })
         }
     };
 
@@ -210,6 +255,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                filter: None,
                 bindings: vec![Binding {
                     target_field: "full_name".into(),
                     node: 3,
@@ -247,6 +293,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                filter: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 0,
@@ -274,6 +321,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                filter: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 0,
@@ -312,6 +360,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec!["orders".into(), "items".into()]),
+                filter: None,
                 bindings: vec![
                     Binding {
                         target_field: "cust".into(),
@@ -365,5 +414,155 @@ mod tests {
         assert_eq!(item_id(1), Some(Value::String("B".into())));
         assert_eq!(cust(2), Some(Value::String("John".into())));
         assert_eq!(item_id(2), Some(Value::String("C".into())));
+    }
+
+    #[test]
+    fn if_only_evaluates_the_taken_branch() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::Const {
+                    value: Value::Bool(true),
+                },
+            ),
+            (
+                1,
+                Node::Const {
+                    value: Value::String("then".into()),
+                },
+            ),
+            // A self-referential "else" branch would cycle if it were ever
+            // evaluated -- this proves `If` short-circuits.
+            (
+                2,
+                Node::Call {
+                    function: "concat".into(),
+                    args: vec![2],
+                },
+            ),
+            (
+                3,
+                Node::If {
+                    condition: 0,
+                    then: 1,
+                    else_: 2,
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                bindings: vec![Binding {
+                    target_field: "out".into(),
+                    node: 3,
+                }],
+                children: vec![],
+            },
+        };
+        let target = run(&project, &Instance::Group(vec![])).unwrap();
+        assert_eq!(
+            target.field("out").and_then(Instance::as_scalar),
+            Some(&Value::String("then".into()))
+        );
+    }
+
+    #[test]
+    fn value_map_falls_back_to_default_on_miss() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::Const {
+                    value: Value::String("ZZ".into()),
+                },
+            ),
+            (
+                1,
+                Node::ValueMap {
+                    input: 0,
+                    table: vec![(
+                        Value::String("BD".into()),
+                        Value::String("Balance Due".into()),
+                    )],
+                    default: Some(Value::String("Original".into())),
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                bindings: vec![Binding {
+                    target_field: "out".into(),
+                    node: 1,
+                }],
+                children: vec![],
+            },
+        };
+        let target = run(&project, &Instance::Group(vec![])).unwrap();
+        assert_eq!(
+            target.field("out").and_then(Instance::as_scalar),
+            Some(&Value::String("Original".into()))
+        );
+    }
+
+    #[test]
+    fn scope_filter_drops_items_that_fail_the_predicate() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["age".into()],
+                },
+            ),
+            (
+                1,
+                Node::Const {
+                    value: Value::Int(18),
+                },
+            ),
+            (
+                2,
+                Node::Call {
+                    function: "greater_or_equal".into(),
+                    args: vec![0, 1],
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: Some(vec![]),
+                filter: Some(2),
+                bindings: vec![Binding {
+                    target_field: "age".into(),
+                    node: 0,
+                }],
+                children: vec![],
+            },
+        };
+        let person =
+            |age: i64| Instance::Group(vec![("age".into(), Instance::Scalar(Value::Int(age)))]);
+        let source = Instance::Repeated(vec![person(29), person(17), person(41)]);
+
+        let target = run(&project, &source).unwrap();
+        let ages: Vec<_> = target
+            .as_repeated()
+            .unwrap()
+            .iter()
+            .map(|row| row.field("age").and_then(Instance::as_scalar).cloned())
+            .collect();
+        assert_eq!(ages, vec![Some(Value::Int(29)), Some(Value::Int(41))]);
     }
 }
