@@ -1,0 +1,10 @@
+[package]
+name = "format-xml"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "XSD-lite schema import and XML instance read/write"
+
+[dependencies]
+core = { workspace = true }

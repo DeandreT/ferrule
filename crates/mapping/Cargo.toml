@@ -1,0 +1,10 @@
+[package]
+name = "mapping"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Mapping graph IR (nodes/edges/functions/conditions) and project file (de)serialization"
+
+[dependencies]
+core = { workspace = true }

@@ -1,0 +1,16 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Headless runner: executes a ferrule mapping project against input file(s) to produce output file(s)"
+
+[[bin]]
+name = "ferrule"
+path = "src/main.rs"
+
+[dependencies]
+core = { workspace = true }
+mapping = { workspace = true }
+engine = { workspace = true }

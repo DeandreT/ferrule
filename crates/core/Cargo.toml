@@ -1,0 +1,9 @@
+[package]
+name = "core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Schema-agnostic in-memory IR for ferrule: schema trees and data instance trees"
+
+[dependencies]
