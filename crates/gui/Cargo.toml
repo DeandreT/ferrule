@@ -1,0 +1,16 @@
+[package]
+name = "gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Visual mapping editor: schema tree panes and a node-graph canvas for wiring connections"
+
+[[bin]]
+name = "ferrule-gui"
+path = "src/main.rs"
+
+[dependencies]
+core = { workspace = true }
+mapping = { workspace = true }
+engine = { workspace = true }

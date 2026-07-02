@@ -1,0 +1,10 @@
+[package]
+name = "format-csv"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Delimited/fixed-width flat file schema and instance read/write"
+
+[dependencies]
+core = { workspace = true }

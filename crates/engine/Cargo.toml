@@ -1,0 +1,12 @@
+[package]
+name = "engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Interprets a mapping graph against source instance(s) to produce target instance(s)"
+
+[dependencies]
+core = { workspace = true }
+mapping = { workspace = true }
+functions = { workspace = true }
