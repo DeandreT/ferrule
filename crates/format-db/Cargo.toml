@@ -7,4 +7,4 @@ repository.workspace = true
 description = "Database schema introspection and instance read/write"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }

@@ -7,4 +7,6 @@ repository.workspace = true
 description = "Delimited/fixed-width flat file schema and instance read/write"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }
+csv = { workspace = true }
+thiserror = { workspace = true }

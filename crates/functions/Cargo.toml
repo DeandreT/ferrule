@@ -7,4 +7,5 @@ repository.workspace = true
 description = "Built-in function library (string/math/date/aggregate/node-set) plus user-defined function hooks"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }
+thiserror = { workspace = true }

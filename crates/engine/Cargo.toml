@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Interprets a mapping graph against source instance(s) to produce target instance(s)"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }
 mapping = { workspace = true }
 functions = { workspace = true }
+thiserror = { workspace = true }

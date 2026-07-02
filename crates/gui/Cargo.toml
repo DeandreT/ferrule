@@ -11,6 +11,6 @@ name = "ferrule-gui"
 path = "src/main.rs"
 
 [dependencies]
-core = { workspace = true }
+ir = { workspace = true }
 mapping = { workspace = true }
 engine = { workspace = true }
