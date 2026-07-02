@@ -13,4 +13,9 @@ path = "src/main.rs"
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
-engine = { workspace = true }
+cli = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true }
+egui-snarl = { workspace = true }
