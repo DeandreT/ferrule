@@ -1,9 +1,14 @@
 //! Delimited flat file schema and instance read/write, backed by the `csv`
 //! crate for correct quoting/escaping.
+//!
+//! A CSV file's row-schema is a non-repeating [`SchemaNode::Group`] of
+//! scalar fields; the file's row-repetition itself is a format convention,
+//! not something declared in the schema (unlike XML, where `repeating` is a
+//! per-element schema property).
 
 use std::path::Path;
 
-use ir::{FieldSchema, Record, RecordSchema, ScalarType, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -12,6 +17,8 @@ pub enum CsvFormatError {
     Csv(#[from] csv::Error),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("row schema must be a non-repeating group of non-repeating scalar fields")]
+    UnsupportedSchema,
     #[error("row {row}: column `{field}` expected {expected:?}, got `{value}`")]
     Parse {
         row: usize,
@@ -27,39 +34,64 @@ pub enum CsvFormatError {
     },
 }
 
-/// Reads a CSV file (with a header row) into records shaped by `schema`,
-/// parsing each column according to its declared scalar type.
-pub fn read(path: &Path, schema: &RecordSchema) -> Result<Vec<Record>, CsvFormatError> {
+fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatError> {
+    if schema.repeating {
+        return Err(CsvFormatError::UnsupportedSchema);
+    }
+    match &schema.kind {
+        SchemaKind::Group { children } => children
+            .iter()
+            .map(|c| match &c.kind {
+                SchemaKind::Scalar { ty } if !c.repeating => Ok((c.name.as_str(), *ty)),
+                _ => Err(CsvFormatError::UnsupportedSchema),
+            })
+            .collect(),
+        SchemaKind::Scalar { .. } => Err(CsvFormatError::UnsupportedSchema),
+    }
+}
+
+/// Reads a CSV file (with a header row) into one [`Instance::Group`] per
+/// row, parsing each column according to its declared scalar type.
+pub fn read(path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, CsvFormatError> {
+    let fields = row_fields(schema)?;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
         .from_path(path)?;
     let mut out = Vec::new();
     for (row_idx, result) in reader.records().enumerate() {
         let raw = result?;
-        if raw.len() != schema.fields.len() {
+        if raw.len() != fields.len() {
             return Err(CsvFormatError::ColumnCount {
                 row: row_idx,
-                expected: schema.fields.len(),
+                expected: fields.len(),
                 got: raw.len(),
             });
         }
-        let mut record = Record::new();
-        for (field, cell) in schema.fields.iter().zip(raw.iter()) {
-            record.set(field.name.clone(), parse_value(field, cell, row_idx)?);
+        let mut row = Vec::with_capacity(fields.len());
+        for ((name, ty), cell) in fields.iter().zip(raw.iter()) {
+            row.push((
+                name.to_string(),
+                Instance::Scalar(parse_value(name, *ty, cell, row_idx)?),
+            ));
         }
-        out.push(record);
+        out.push(Instance::Group(row));
     }
     Ok(out)
 }
 
-fn parse_value(field: &FieldSchema, cell: &str, row: usize) -> Result<Value, CsvFormatError> {
+fn parse_value(
+    name: &str,
+    ty: ScalarType,
+    cell: &str,
+    row: usize,
+) -> Result<Value, CsvFormatError> {
     let bad = || CsvFormatError::Parse {
         row,
-        field: field.name.clone(),
-        expected: field.ty,
+        field: name.to_string(),
+        expected: ty,
         value: cell.to_string(),
     };
-    Ok(match field.ty {
+    Ok(match ty {
         ScalarType::String => Value::String(cell.to_string()),
         ScalarType::Int => Value::Int(cell.parse().map_err(|_| bad())?),
         ScalarType::Float => Value::Float(cell.parse().map_err(|_| bad())?),
@@ -67,16 +99,17 @@ fn parse_value(field: &FieldSchema, cell: &str, row: usize) -> Result<Value, Csv
     })
 }
 
-/// Writes `records` (shaped by `schema`) to a CSV file with a header row.
-pub fn write(path: &Path, schema: &RecordSchema, records: &[Record]) -> Result<(), CsvFormatError> {
+/// Writes one row per [`Instance::Group`] in `rows` to a CSV file with a
+/// header row.
+pub fn write(path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(), CsvFormatError> {
+    let fields = row_fields(schema)?;
     let mut writer = csv::WriterBuilder::new().from_path(path)?;
-    writer.write_record(schema.fields.iter().map(|f| f.name.as_str()))?;
-    for record in records {
-        let row = schema
-            .fields
+    writer.write_record(fields.iter().map(|(n, _)| *n))?;
+    for row in rows {
+        let cells = fields
             .iter()
-            .map(|f| format_value(record.get(&f.name)));
-        writer.write_record(row)?;
+            .map(|(n, _)| format_value(row.field(n).and_then(Instance::as_scalar)));
+        writer.write_record(cells)?;
     }
     writer.flush()?;
     Ok(())
@@ -96,19 +129,14 @@ fn format_value(value: Option<&Value>) -> String {
 mod tests {
     use super::*;
 
-    fn schema() -> RecordSchema {
-        RecordSchema {
-            fields: vec![
-                FieldSchema {
-                    name: "name".into(),
-                    ty: ScalarType::String,
-                },
-                FieldSchema {
-                    name: "age".into(),
-                    ty: ScalarType::Int,
-                },
+    fn schema() -> SchemaNode {
+        SchemaNode::group(
+            "row",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar("age", ScalarType::Int),
             ],
-        }
+        )
     }
 
     #[test]
@@ -119,15 +147,19 @@ mod tests {
             std::process::id()
         ));
 
-        let mut record = Record::new();
-        record.set("name", Value::String("Jane".into()));
-        record.set("age", Value::Int(29));
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]);
 
-        write(&path, &schema(), std::slice::from_ref(&record)).unwrap();
+        write(&path, &schema(), std::slice::from_ref(&row)).unwrap();
         let read_back = read(&path, &schema()).unwrap();
 
         std::fs::remove_file(&path).unwrap();
-        assert_eq!(read_back, vec![record]);
+        assert_eq!(read_back, vec![row]);
     }
 
     #[test]

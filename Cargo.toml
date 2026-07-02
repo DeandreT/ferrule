@@ -35,3 +35,5 @@ thiserror = "2"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 csv = "1"
+roxmltree = "0.21"
+quick-xml = "0.41"

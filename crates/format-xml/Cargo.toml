@@ -8,3 +8,6 @@ description = "XSD-lite schema import and XML instance read/write"
 
 [dependencies]
 ir = { workspace = true }
+roxmltree = { workspace = true }
+quick-xml = { workspace = true }
+thiserror = { workspace = true }

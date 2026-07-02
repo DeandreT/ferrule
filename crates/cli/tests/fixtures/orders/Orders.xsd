@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" attributeFormDefault="unqualified">
+  <xs:element name="Orders">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Date" type="xs:date"/>
+        <xs:sequence minOccurs="0" maxOccurs="unbounded">
+          <xs:element name="Order">
+            <xs:complexType>
+              <xs:sequence>
+                <xs:element name="Order_ID" type="xs:string"/>
+                <xs:element name="Cust_ID" type="xs:string"/>
+                <xs:element name="Cust_Name" type="xs:string"/>
+                <xs:element name="Cust_Email" type="xs:string"/>
+                <xs:element name="Shipping_Address" type="xs:string"/>
+                <xs:element name="Items">
+                  <xs:complexType>
+                    <xs:sequence maxOccurs="unbounded">
+                      <xs:element name="Item">
+                        <xs:complexType>
+                          <xs:sequence>
+                            <xs:element name="Item_ID" type="xs:string"/>
+                            <xs:element name="Desc" type="xs:string"/>
+                            <xs:element name="Price" type="xs:decimal"/>
+                            <xs:element name="Quantity" type="xs:integer"/>
+                          </xs:sequence>
+                        </xs:complexType>
+                      </xs:element>
+                    </xs:sequence>
+                  </xs:complexType>
+                </xs:element>
+              </xs:sequence>
+            </xs:complexType>
+          </xs:element>
+        </xs:sequence>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

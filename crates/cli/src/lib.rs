@@ -1,14 +1,16 @@
-//! Headless runner: loads a mapping project and runs it against a CSV input
-//! to produce a CSV output. Split out from `main.rs` so it's testable
-//! without shelling out to the built binary.
+//! Headless runner: loads a mapping project and runs it against an input
+//! file (CSV or XML, chosen by extension) to produce an output file. Split
+//! out from `main.rs` so it's testable without shelling out to the built
+//! binary.
 
 use std::path::Path;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
+use ir::Instance;
 
-/// Loads the project at `project_path`, runs it over every row of
-/// `input_path`, and writes the results to `output_path`. Returns the number
-/// of rows written.
+/// Loads the project at `project_path`, runs it against `input_path`, and
+/// writes the result to `output_path`. Returns the number of top-level
+/// records written (rows for a CSV output, 1 for an XML document).
 pub fn run_project(
     project_path: &Path,
     input_path: &Path,
@@ -19,16 +21,50 @@ pub fn run_project(
     let project: mapping::Project = serde_json::from_str(&project_json)
         .with_context(|| format!("parsing project file {}", project_path.display()))?;
 
-    let sources = format_csv::read(input_path, &project.source)
-        .with_context(|| format!("reading input {}", input_path.display()))?;
+    let source_instance = match extension_of(input_path)? {
+        "csv" => {
+            let rows = format_csv::read(input_path, &project.source)
+                .with_context(|| format!("reading input {}", input_path.display()))?;
+            Instance::Repeated(rows)
+        }
+        "xml" => format_xml::read(input_path, &project.source)
+            .with_context(|| format!("reading input {}", input_path.display()))?,
+        other => bail!("unsupported input file extension: .{other}"),
+    };
 
-    let mut targets = Vec::with_capacity(sources.len());
-    for source in &sources {
-        targets.push(engine::run(&project, source)?);
-    }
+    let target_instance = engine::run(&project, &source_instance)?;
 
-    format_csv::write(output_path, &project.target, &targets)
-        .with_context(|| format!("writing output {}", output_path.display()))?;
+    let row_count = match extension_of(output_path)? {
+        "csv" => {
+            let rows = target_instance
+                .as_repeated()
+                .context("mapping did not produce a repeating row set for a CSV output")?;
+            format_csv::write(output_path, &project.target, rows)
+                .with_context(|| format!("writing output {}", output_path.display()))?;
+            rows.len()
+        }
+        "xml" => {
+            format_xml::write(output_path, &project.target, &target_instance)
+                .with_context(|| format!("writing output {}", output_path.display()))?;
+            1
+        }
+        other => bail!("unsupported output file extension: .{other}"),
+    };
 
-    Ok(targets.len())
+    Ok(row_count)
+}
+
+/// Imports the root element of an XSD file as a `SchemaNode`, printed as
+/// pretty JSON -- a starting point for hand-authoring a project file's
+/// `source`/`target` schema.
+pub fn import_xsd(xsd_path: &Path) -> anyhow::Result<String> {
+    let schema = format_xml::xsd::import(xsd_path)
+        .with_context(|| format!("importing xsd {}", xsd_path.display()))?;
+    Ok(serde_json::to_string_pretty(&schema)?)
+}
+
+fn extension_of(path: &Path) -> anyhow::Result<&str> {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .with_context(|| format!("{} has no file extension", path.display()))
 }

@@ -1,0 +1,82 @@
+{
+  "source": {
+    "name": "Orders",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "Date", "kind": { "kind": "scalar", "ty": "string" } },
+        {
+          "name": "Order",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              { "name": "Order_ID", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "Cust_ID", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "Cust_Name", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "Cust_Email", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "Shipping_Address", "kind": { "kind": "scalar", "ty": "string" } },
+              {
+                "name": "Items",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "Item",
+                      "repeating": true,
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          { "name": "Item_ID", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "Desc", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "Price", "kind": { "kind": "scalar", "ty": "float" } },
+                          { "name": "Quantity", "kind": { "kind": "scalar", "ty": "int" } }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "target": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "Order_ID", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Cust_Name", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Item_ID", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Desc", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "Price", "kind": { "kind": "scalar", "ty": "float" } },
+        { "name": "Quantity", "kind": { "kind": "scalar", "ty": "int" } }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "path": ["Order_ID"] },
+      "1": { "kind": "source_field", "path": ["Cust_Name"] },
+      "2": { "kind": "source_field", "path": ["Item_ID"] },
+      "3": { "kind": "source_field", "path": ["Desc"] },
+      "4": { "kind": "call", "function": "upper", "args": [3] },
+      "5": { "kind": "source_field", "path": ["Price"] },
+      "6": { "kind": "source_field", "path": ["Quantity"] }
+    }
+  },
+  "root": {
+    "source": ["Order", "Items", "Item"],
+    "bindings": [
+      { "target_field": "Order_ID", "node": 0 },
+      { "target_field": "Cust_Name", "node": 1 },
+      { "target_field": "Item_ID", "node": 2 },
+      { "target_field": "Desc", "node": 4 },
+      { "target_field": "Price", "node": 5 },
+      { "target_field": "Quantity", "node": 6 }
+    ]
+  }
+}

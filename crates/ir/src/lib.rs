@@ -1,9 +1,11 @@
 //! Schema-agnostic in-memory IR shared by every format adapter: schema trees
 //! (structure of a source/target format) and instance trees (actual data).
 //!
-//! This first cut only models flat records (a fixed, ordered list of scalar
-//! fields) — enough for CSV. Hierarchical/repeating structure (needed for
-//! XML and JSON) is a later milestone.
+//! Both are hierarchical: a node is either a scalar leaf or a named group of
+//! children, and any node can be `repeating` (an XML element with
+//! `maxOccurs > 1`, or -- external to this tree -- a CSV file's rows). This
+//! is what lets the mapping engine implement the visual-mapper convention
+//! that connecting two repeating groups implies a loop.
 
 use serde::{Deserialize, Serialize};
 
@@ -40,54 +42,88 @@ impl Value {
     }
 }
 
-/// The declared shape of one field in a flat record.
+/// The declared shape of one level of a source/target document: either a
+/// scalar leaf or a named group of children.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FieldSchema {
+pub struct SchemaNode {
     pub name: String,
-    pub ty: ScalarType,
+    #[serde(default)]
+    pub repeating: bool,
+    pub kind: SchemaKind,
 }
 
-/// The declared shape of a flat record: an ordered list of fields.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct RecordSchema {
-    pub fields: Vec<FieldSchema>,
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SchemaKind {
+    Scalar { ty: ScalarType },
+    Group { children: Vec<SchemaNode> },
 }
 
-impl RecordSchema {
-    pub fn field(&self, name: &str) -> Option<&FieldSchema> {
-        self.fields.iter().find(|f| f.name == name)
+impl SchemaNode {
+    pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
+        Self {
+            name: name.into(),
+            repeating: false,
+            kind: SchemaKind::Scalar { ty },
+        }
+    }
+
+    pub fn group(name: impl Into<String>, children: Vec<SchemaNode>) -> Self {
+        Self {
+            name: name.into(),
+            repeating: false,
+            kind: SchemaKind::Group { children },
+        }
+    }
+
+    /// Marks this node as repeating (builder-style, for constructing schemas by hand).
+    pub fn repeating(mut self) -> Self {
+        self.repeating = true;
+        self
+    }
+
+    pub fn child(&self, name: &str) -> Option<&SchemaNode> {
+        match &self.kind {
+            SchemaKind::Group { children } => children.iter().find(|c| c.name == name),
+            SchemaKind::Scalar { .. } => None,
+        }
     }
 }
 
-/// A single row of data: an ordered list of (field name, value) pairs.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct Record(pub Vec<(String, Value)>);
+/// An actual value tree, shaped by some [`SchemaNode`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Instance {
+    Scalar(Value),
+    Group(Vec<(String, Instance)>),
+    Repeated(Vec<Instance>),
+}
 
-impl Record {
-    pub fn new() -> Self {
-        Self::default()
+impl Instance {
+    pub fn field(&self, name: &str) -> Option<&Instance> {
+        match self {
+            Instance::Group(fields) => fields.iter().find(|(n, _)| n == name).map(|(_, v)| v),
+            _ => None,
+        }
     }
 
-    pub fn get(&self, name: &str) -> Option<&Value> {
-        self.0.iter().find(|(n, _)| n == name).map(|(_, v)| v)
+    pub fn as_scalar(&self) -> Option<&Value> {
+        match self {
+            Instance::Scalar(v) => Some(v),
+            _ => None,
+        }
     }
 
-    pub fn set(&mut self, name: impl Into<String>, value: Value) {
-        self.0.push((name.into(), value));
+    pub fn as_repeated(&self) -> Option<&[Instance]> {
+        match self {
+            Instance::Repeated(items) => Some(items),
+            _ => None,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn record_get_returns_last_set_value() {
-        let mut record = Record::new();
-        record.set("age", Value::Int(30));
-        assert_eq!(record.get("age"), Some(&Value::Int(30)));
-        assert_eq!(record.get("missing"), None);
-    }
 
     #[test]
     fn value_json_roundtrip_picks_the_right_variant() {
@@ -105,5 +141,60 @@ mod tests {
             Value::String("hi".to_string())
         );
         assert_eq!(serde_json::from_str::<Value>("null").unwrap(), Value::Null);
+    }
+
+    #[test]
+    fn group_field_lookup_and_scalar_extraction() {
+        let instance = Instance::Group(vec![
+            (
+                "name".to_string(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            (
+                "tags".to_string(),
+                Instance::Repeated(vec![
+                    Instance::Scalar(Value::String("a".into())),
+                    Instance::Scalar(Value::String("b".into())),
+                ]),
+            ),
+        ]);
+
+        assert_eq!(
+            instance.field("name").and_then(Instance::as_scalar),
+            Some(&Value::String("Jane".into()))
+        );
+        assert_eq!(
+            instance
+                .field("tags")
+                .and_then(Instance::as_repeated)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(instance.field("missing"), None);
+    }
+
+    #[test]
+    fn schema_node_child_lookup() {
+        let schema = SchemaNode::group(
+            "row",
+            vec![
+                SchemaNode::scalar("id", ScalarType::Int),
+                SchemaNode::group(
+                    "items",
+                    vec![SchemaNode::scalar("item", ScalarType::String).repeating()],
+                ),
+            ],
+        );
+        assert!(schema.child("id").is_some());
+        assert!(
+            schema
+                .child("items")
+                .unwrap()
+                .child("item")
+                .unwrap()
+                .repeating
+        );
+        assert!(schema.child("missing").is_none());
     }
 }

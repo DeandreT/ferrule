@@ -1,11 +1,11 @@
 //! The mapping graph IR: nodes and connections that describe how a source
-//! record is transformed into a target record, plus the project file
-//! (source schema + target schema + graph + target field bindings) that
-//! gets saved/loaded.
+//! instance is transformed into a target instance, plus the project file
+//! (source schema + target schema + graph + scope tree) that gets
+//! saved/loaded.
 
 use std::collections::BTreeMap;
 
-use ir::{RecordSchema, Value};
+use ir::{SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
 pub type NodeId = u32;
@@ -14,8 +14,13 @@ pub type NodeId = u32;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Node {
-    /// Reads a named field out of the source record.
-    SourceField { field: String },
+    /// Reads a scalar field at `path`, resolved against the innermost
+    /// currently-iterating source item, falling back to enclosing items
+    /// (nearest enclosing wins) if not found there. That fallback is what
+    /// lets a leaf from an outer group (e.g. an Order's ID) be "broadcast"
+    /// into a nested target group (e.g. every Item row) with no extra
+    /// plumbing -- see `engine::resolve_scalar`.
+    SourceField { path: Vec<String> },
     /// A literal value.
     Const { value: Value },
     /// Calls a built-in function (see the `functions` crate) with the
@@ -30,19 +35,43 @@ pub struct Graph {
     pub nodes: BTreeMap<NodeId, Node>,
 }
 
-/// Connects a graph node's output to a named field on the target record.
+/// Connects a graph node's output to a named scalar field on the current
+/// scope's target group.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Binding {
     pub target_field: String,
     pub node: NodeId,
 }
 
-/// A complete mapping project: the source/target shapes, the graph, and
-/// which node feeds each target field.
+/// Populates one target group.
+///
+/// If `source` is set, this scope iterates the source data found by
+/// following that path from the parent scope's current item -- crossing a
+/// repeating element branches, producing one target group per source item
+/// (a path may cross several repeating levels at once, e.g. `["Order",
+/// "Items", "Item"]`, which flattens nested repetition into a single
+/// target-side repetition). If `source` is `None`, the scope runs exactly
+/// once, producing a single (non-repeating) target group instance.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Project {
-    pub source: RecordSchema,
-    pub target: RecordSchema,
-    pub graph: Graph,
+pub struct Scope {
+    /// Name of the field this scope populates in its parent scope; ignored
+    /// for a project's root scope.
+    #[serde(default)]
+    pub target_field: String,
+    #[serde(default)]
+    pub source: Option<Vec<String>>,
+    #[serde(default)]
     pub bindings: Vec<Binding>,
+    #[serde(default)]
+    pub children: Vec<Scope>,
+}
+
+/// A complete mapping project: the source/target shapes, the graph, and the
+/// scope tree that maps one into the other.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Project {
+    pub source: SchemaNode,
+    pub target: SchemaNode,
+    pub graph: Graph,
+    pub root: Scope,
 }
