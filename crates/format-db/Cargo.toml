@@ -8,3 +8,5 @@ description = "Database schema introspection and instance read/write"
 
 [dependencies]
 ir = { workspace = true }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }

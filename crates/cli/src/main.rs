@@ -11,8 +11,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a mapping project against a CSV, XML, or JSON input (chosen by
-    /// extension), producing a CSV, XML, or JSON output.
+    /// Run a mapping project against a CSV, XML, JSON, or SQLite input
+    /// (chosen by extension), producing an output in any of those formats.
+    /// For SQLite the table name is the schema root's name.
     Run {
         #[arg(long)]
         project: PathBuf,
@@ -31,6 +32,13 @@ enum Command {
     ImportJsonSchema {
         #[arg(long)]
         schema: PathBuf,
+    },
+    /// Introspect a SQLite table as a SchemaNode, printed as JSON.
+    ImportDb {
+        #[arg(long)]
+        db: PathBuf,
+        #[arg(long)]
+        table: String,
     },
 }
 
@@ -52,6 +60,10 @@ fn main() -> anyhow::Result<()> {
         }
         Command::ImportJsonSchema { schema } => {
             println!("{}", cli::import_json_schema(&schema)?);
+            Ok(())
+        }
+        Command::ImportDb { db, table } => {
+            println!("{}", cli::import_db(&db, &table)?);
             Ok(())
         }
     }
