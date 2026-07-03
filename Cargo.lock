@@ -702,6 +702,7 @@ dependencies = [
  "engine",
  "format-csv",
  "format-db",
+ "format-edi",
  "format-json",
  "format-xml",
  "ir",
@@ -1324,6 +1325,14 @@ version = "0.1.0"
 dependencies = [
  "ir",
  "rusqlite",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "format-edi"
+version = "0.1.0"
+dependencies = [
+ "ir",
  "thiserror 2.0.18",
 ]
 

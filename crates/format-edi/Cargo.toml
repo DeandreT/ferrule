@@ -1,0 +1,11 @@
+[package]
+name = "format-edi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "EDI (ANSI X12) schema-guided instance read/write"
+
+[dependencies]
+ir = { workspace = true }
+thiserror = { workspace = true }

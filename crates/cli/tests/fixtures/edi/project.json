@@ -1,0 +1,121 @@
+{
+  "source": {
+    "name": "X12",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "ISA", "kind": { "kind": "group", "children": [] } },
+        { "name": "GS", "kind": { "kind": "group", "children": [] } },
+        {
+          "name": "ST",
+          "kind": {
+            "kind": "group",
+            "children": [{ "name": "01", "kind": { "kind": "scalar", "ty": "string" } }]
+          }
+        },
+        {
+          "name": "BEG",
+          "kind": {
+            "kind": "group",
+            "children": [
+              { "name": "01", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "02", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "03", "kind": { "kind": "scalar", "ty": "string" } }
+            ]
+          }
+        },
+        {
+          "name": "N1",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              { "name": "01", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "02", "kind": { "kind": "scalar", "ty": "string" } }
+            ]
+          }
+        },
+        {
+          "name": "Item",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "PO1",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    { "name": "01", "kind": { "kind": "scalar", "ty": "int" } },
+                    { "name": "02", "kind": { "kind": "scalar", "ty": "int" } },
+                    { "name": "03", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "04", "kind": { "kind": "scalar", "ty": "float" } }
+                  ]
+                }
+              },
+              {
+                "name": "PID",
+                "repeating": true,
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    { "name": "01", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "02", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "03", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "04", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "05", "kind": { "kind": "scalar", "ty": "string" } }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "CTT",
+          "kind": {
+            "kind": "group",
+            "children": [{ "name": "01", "kind": { "kind": "scalar", "ty": "int" } }]
+          }
+        },
+        { "name": "SE", "kind": { "kind": "group", "children": [] } },
+        { "name": "GE", "kind": { "kind": "group", "children": [] } },
+        { "name": "IEA", "kind": { "kind": "group", "children": [] } }
+      ]
+    }
+  },
+  "target": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "po_number", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "line", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "qty", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "unit_price", "kind": { "kind": "scalar", "ty": "float" } },
+        { "name": "desc", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "line_total", "kind": { "kind": "scalar", "ty": "float" } }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "path": ["BEG", "03"] },
+      "1": { "kind": "source_field", "path": ["PO1", "01"] },
+      "2": { "kind": "source_field", "path": ["PO1", "02"] },
+      "3": { "kind": "source_field", "path": ["PO1", "04"] },
+      "4": { "kind": "source_field", "path": ["05"] },
+      "5": { "kind": "call", "function": "multiply", "args": [2, 3] }
+    }
+  },
+  "root": {
+    "source": ["Item", "PID"],
+    "bindings": [
+      { "target_field": "po_number", "node": 0 },
+      { "target_field": "line", "node": 1 },
+      { "target_field": "qty", "node": 2 },
+      { "target_field": "unit_price", "node": 3 },
+      { "target_field": "desc", "node": 4 },
+      { "target_field": "line_total", "node": 5 }
+    ]
+  }
+}
