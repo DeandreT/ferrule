@@ -1,43 +1,30 @@
-//! ANSI X12 tokenizing and schema-guided reading/writing.
+//! ANSI X12 tokenizing plus schema-guided read/write (the schema
+//! conventions live in [`crate::segments`]).
 //!
-//! Schema conventions (using the ordinary [`SchemaNode`] tree):
-//! - A group whose children are all scalars is a **segment** matcher: its
-//!   `name` is the segment ID (`ISA`, `BEG`, `PO1`, ...) and its scalar
-//!   children map positionally to elements 1..N. A file segment may carry
-//!   more elements than the schema declares (extras are ignored) or fewer
-//!   (missing/empty elements read as `Null`). An empty group matches the
-//!   segment while capturing nothing.
-//! - A group whose children are all groups is a **loop/container**: it
-//!   matches when its first segment descendant (the trigger) matches the
-//!   cursor. `repeating: true` means 0..N occurrences -- which is also the
-//!   v1 spelling for optional segments/loops.
-//! - Matching is strict and in order: every segment in the file must be
-//!   consumed by the schema (envelope segments like `GS`/`GE` included --
-//!   an empty group per segment is enough), and a missing non-repeating
-//!   node is an error. This doubles as structural validation of the file.
-//!
-//! Separators are discovered from the ISA envelope on read (element
-//! separator from byte 3, segment terminator from the character after
-//! ISA16), so nonstandard delimiters just work. Writing uses the standard
-//! `*` and `~` with one segment per line.
+//! Separators are discovered from the ISA envelope on read: element
+//! separator from byte 3, component separator from ISA16, segment
+//! terminator from the character after ISA16 -- so nonstandard delimiters
+//! just work. The 5010 repetition separator (ISA11) is not yet honored:
+//! repeated elements read as one raw string. Writing uses the standard
+//! `*`/`:`/`~` with one segment per line. A schema that writes X12 must
+//! declare all 16 ISA elements, since re-reading depends on them.
 
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{Instance, SchemaNode};
 
 use crate::EdiFormatError;
+use crate::segments::{Segment, WriteOptions, read_segments, write_segments};
 
-const WRITE_ELEMENT_SEPARATOR: char = '*';
-const WRITE_SEGMENT_TERMINATOR: char = '~';
+const WRITE_OPTIONS: WriteOptions = WriteOptions {
+    element: '*',
+    component: ':',
+    terminator: '~',
+    release: None,
+};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Segment {
-    pub id: String,
-    pub elements: Vec<String>,
-}
-
-/// Splits raw X12 text into segments, discovering the separators from the
-/// ISA envelope.
+/// Splits raw X12 text into segments (elements split into components),
+/// discovering the separators from the ISA envelope.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
     let text = text.trim_start();
     if !text.starts_with("ISA") {
@@ -48,9 +35,8 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
         .nth(3)
         .ok_or(EdiFormatError::NotX12("truncated ISA segment"))?;
 
-    // ISA is self-describing: after its 16th element (the component
-    // separator, unused until composite support lands) comes the segment
-    // terminator.
+    // ISA is self-describing: its 16th element is the component separator
+    // and the character after that is the segment terminator.
     let mut separators_seen = 0;
     let mut isa16_start = None;
     for (i, c) in text.char_indices() {
@@ -65,7 +51,7 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
     let isa16_start =
         isa16_start.ok_or(EdiFormatError::NotX12("ISA has fewer than 16 elements"))?;
     let mut rest = text[isa16_start..].chars();
-    let _component_separator = rest
+    let component_separator = rest
         .next()
         .ok_or(EdiFormatError::NotX12("truncated ISA segment"))?;
     let segment_terminator = rest
@@ -73,225 +59,51 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
         .ok_or(EdiFormatError::NotX12("missing segment terminator"))?;
 
     let mut segments = Vec::new();
-    for raw in text.split(segment_terminator) {
+    for (index, raw) in text.split(segment_terminator).enumerate() {
         let raw = raw.trim();
         if raw.is_empty() {
             continue;
         }
         let mut parts = raw.split(element_separator);
         let id = parts.next().unwrap_or_default().to_string();
-        segments.push(Segment {
-            id,
-            elements: parts.map(str::to_string).collect(),
-        });
+        // The ISA segment's own 16th element IS the component separator
+        // character, so splitting it on that separator would corrupt it.
+        let split_components = index > 0;
+        let elements = parts
+            .map(|element| {
+                if split_components {
+                    element
+                        .split(component_separator)
+                        .map(str::to_string)
+                        .collect()
+                } else {
+                    vec![element.to_string()]
+                }
+            })
+            .collect();
+        segments.push(Segment { id, elements });
     }
     Ok(segments)
-}
-
-enum NodeShape<'a> {
-    Segment(&'a [SchemaNode]),
-    Container(&'a [SchemaNode]),
-}
-
-fn shape_of(node: &SchemaNode) -> Result<NodeShape<'_>, EdiFormatError> {
-    let SchemaKind::Group { children } = &node.kind else {
-        return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
-    };
-    let scalars = children
-        .iter()
-        .filter(|c| matches!(c.kind, SchemaKind::Scalar { .. }))
-        .count();
-    if scalars == children.len() {
-        Ok(NodeShape::Segment(children))
-    } else if scalars == 0 {
-        Ok(NodeShape::Container(children))
-    } else {
-        Err(EdiFormatError::UnsupportedSchema(node.name.clone()))
-    }
-}
-
-/// The segment ID that signals the start of `node` (for a container, its
-/// first segment descendant).
-fn trigger_of(node: &SchemaNode) -> Result<&str, EdiFormatError> {
-    match shape_of(node)? {
-        NodeShape::Segment(_) => Ok(&node.name),
-        NodeShape::Container(children) => {
-            let first = children
-                .first()
-                .ok_or_else(|| EdiFormatError::UnsupportedSchema(node.name.clone()))?;
-            trigger_of(first)
-        }
-    }
-}
-
-struct Cursor<'a> {
-    segments: &'a [Segment],
-    pos: usize,
-}
-
-impl Cursor<'_> {
-    fn peek(&self) -> Option<&Segment> {
-        self.segments.get(self.pos)
-    }
 }
 
 /// Reads an X12 file into an [`Instance`] tree shaped by `schema`.
 pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, EdiFormatError> {
     let text = std::fs::read_to_string(path)?;
     let segments = tokenize(&text)?;
-    let mut cursor = Cursor {
-        segments: &segments,
-        pos: 0,
-    };
-    let instance = read_node(schema, &mut cursor)?;
-    if let Some(segment) = cursor.peek() {
-        return Err(EdiFormatError::TrailingSegment {
-            index: cursor.pos,
-            id: segment.id.clone(),
-        });
-    }
-    Ok(instance)
+    read_segments(schema, &segments, ':')
 }
 
-fn read_node(node: &SchemaNode, cursor: &mut Cursor) -> Result<Instance, EdiFormatError> {
-    match shape_of(node)? {
-        NodeShape::Segment(elements) => read_segment(node, elements, cursor),
-        NodeShape::Container(children) => {
-            let mut fields = Vec::with_capacity(children.len());
-            for child in children {
-                let trigger = trigger_of(child)?;
-                if child.repeating {
-                    let mut items = Vec::new();
-                    while cursor.peek().is_some_and(|s| s.id == trigger) {
-                        items.push(read_node(child, cursor)?);
-                    }
-                    fields.push((child.name.clone(), Instance::Repeated(items)));
-                } else if cursor.peek().is_some_and(|s| s.id == trigger) {
-                    fields.push((child.name.clone(), read_node(child, cursor)?));
-                } else {
-                    return Err(EdiFormatError::UnexpectedSegment {
-                        index: cursor.pos,
-                        expected: trigger.to_string(),
-                        found: cursor
-                            .peek()
-                            .map_or_else(|| "end of interchange".to_string(), |s| s.id.clone()),
-                    });
-                }
-            }
-            Ok(Instance::Group(fields))
-        }
-    }
-}
-
-fn read_segment(
-    node: &SchemaNode,
-    element_schemas: &[SchemaNode],
-    cursor: &mut Cursor,
-) -> Result<Instance, EdiFormatError> {
-    let segment = cursor
-        .peek()
-        .expect("caller checked the trigger before consuming");
-    debug_assert_eq!(segment.id, node.name);
-    let mut fields = Vec::with_capacity(element_schemas.len());
-    for (i, element_schema) in element_schemas.iter().enumerate() {
-        let SchemaKind::Scalar { ty } = element_schema.kind else {
-            unreachable!("shape_of only classifies all-scalar groups as segments");
-        };
-        let raw = segment.elements.get(i).map_or("", String::as_str);
-        let value = parse_element(&segment.id, i + 1, ty, raw)?;
-        fields.push((element_schema.name.clone(), Instance::Scalar(value)));
-    }
-    cursor.pos += 1;
-    Ok(Instance::Group(fields))
-}
-
-fn parse_element(
-    segment: &str,
-    element: usize,
-    ty: ScalarType,
-    raw: &str,
-) -> Result<Value, EdiFormatError> {
-    if raw.is_empty() {
-        return Ok(Value::Null);
-    }
-    let bad = || EdiFormatError::ElementParse {
-        segment: segment.to_string(),
-        element,
-        expected: ty,
-        value: raw.to_string(),
-    };
-    Ok(match ty {
-        ScalarType::String => Value::String(raw.to_string()),
-        ScalarType::Int => Value::Int(raw.parse().map_err(|_| bad())?),
-        ScalarType::Float => Value::Float(raw.parse().map_err(|_| bad())?),
-        ScalarType::Bool => Value::Bool(raw.parse().map_err(|_| bad())?),
-    })
-}
-
-/// Writes an [`Instance`] tree shaped by `schema` as X12 with standard
-/// separators, one segment per line. Trailing empty elements are trimmed,
-/// except for `ISA` whose 16 elements are positional by definition.
+/// Writes an [`Instance`] tree shaped by `schema` as X12.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
-    let mut out = String::new();
-    write_node(schema, instance, &mut out)?;
+    let out = write_segments(schema, instance, &WRITE_OPTIONS)?;
     std::fs::write(path, out)?;
     Ok(())
-}
-
-fn write_node(
-    node: &SchemaNode,
-    instance: &Instance,
-    out: &mut String,
-) -> Result<(), EdiFormatError> {
-    if let Instance::Repeated(items) = instance {
-        for item in items {
-            write_node(node, item, out)?;
-        }
-        return Ok(());
-    }
-    match shape_of(node)? {
-        NodeShape::Segment(element_schemas) => {
-            let mut elements: Vec<String> = element_schemas
-                .iter()
-                .map(|e| format_element(instance.field(&e.name).and_then(Instance::as_scalar)))
-                .collect();
-            if node.name != "ISA" {
-                while elements.last().is_some_and(String::is_empty) {
-                    elements.pop();
-                }
-            }
-            out.push_str(&node.name);
-            for element in &elements {
-                out.push(WRITE_ELEMENT_SEPARATOR);
-                out.push_str(element);
-            }
-            out.push(WRITE_SEGMENT_TERMINATOR);
-            out.push('\n');
-        }
-        NodeShape::Container(children) => {
-            for child in children {
-                if let Some(field) = instance.field(&child.name) {
-                    write_node(child, field, out)?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn format_element(value: Option<&Value>) -> String {
-    match value {
-        None | Some(Value::Null) => String::new(),
-        Some(Value::Bool(b)) => b.to_string(),
-        Some(Value::Int(i)) => i.to_string(),
-        Some(Value::Float(f)) => f.to_string(),
-        Some(Value::String(s)) => s.clone(),
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ir::{ScalarType, Value};
 
     fn segment(name: &str, elements: &[(&str, ScalarType)]) -> SchemaNode {
         SchemaNode::group(
@@ -387,12 +199,15 @@ IEA*1*000000001~
     #[test]
     fn tokenize_discovers_separators_from_isa() {
         // Nonstandard separators: `|` for elements, `>` component, `!` terminator.
-        let text = "ISA|00|          |00|          |ZZ|S              |ZZ|R              |260702|1200|U|00401|000000001|0|P|>!ST|850|0001!";
+        let text = "ISA|00|          |00|          |ZZ|S              |ZZ|R              |260702|1200|U|00401|000000001|0|P|>!ST|850|0001!SV3|AD>D4342!";
         let segments = tokenize(text).unwrap();
-        assert_eq!(segments.len(), 2);
+        assert_eq!(segments.len(), 3);
         assert_eq!(segments[0].id, "ISA");
-        assert_eq!(segments[1].id, "ST");
-        assert_eq!(segments[1].elements, vec!["850", "0001"]);
+        // ISA16 must survive as the raw component-separator character.
+        assert_eq!(segments[0].elements[15], vec![">"]);
+        assert_eq!(segments[1].elements, vec![vec!["850"], vec!["0001"]]);
+        // Composite element split on the discovered component separator.
+        assert_eq!(segments[2].elements, vec![vec!["AD", "D4342"]]);
     }
 
     #[test]
@@ -441,6 +256,74 @@ IEA*1*000000001~
 
         // The second item has no PID at all -> empty loop.
         assert_eq!(items[1].field("PID"), Some(&Instance::Repeated(vec![])));
+    }
+
+    /// An 837-style claim line: `SV3*AD:D4342:::::desc*150~` -- element 1
+    /// is a composite (schema group), element 2 a plain scalar, and a
+    /// scalar declaration of a composite element captures its raw text.
+    #[test]
+    fn reads_composite_elements() {
+        let text = "\
+ISA*00*          *00*          *ZZ*S              *ZZ*R              *110530*1549*^*00501*000000001*1*P*:~
+SV3*AD:D4342:::::One quadrant*150~
+SV3*AD:D4341*450~
+";
+        let schema = SchemaNode::group(
+            "X12",
+            vec![
+                segment("ISA", &[]),
+                SchemaNode::group(
+                    "SV3",
+                    vec![
+                        SchemaNode::group(
+                            "01",
+                            vec![
+                                SchemaNode::scalar("qualifier", ScalarType::String),
+                                SchemaNode::scalar("code", ScalarType::String),
+                                SchemaNode::scalar("c3", ScalarType::String),
+                                SchemaNode::scalar("c4", ScalarType::String),
+                                SchemaNode::scalar("c5", ScalarType::String),
+                                SchemaNode::scalar("c6", ScalarType::String),
+                                SchemaNode::scalar("description", ScalarType::String),
+                            ],
+                        ),
+                        SchemaNode::scalar("02", ScalarType::Float),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+
+        let path = write_temp("composite", text);
+        let instance = read(&path, &schema).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        let claims = instance
+            .field("SV3")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        let first = claims[0].field("01").unwrap();
+        assert_eq!(
+            first.field("code").and_then(Instance::as_scalar),
+            Some(&Value::String("D4342".into()))
+        );
+        assert_eq!(
+            first.field("description").and_then(Instance::as_scalar),
+            Some(&Value::String("One quadrant".into()))
+        );
+        assert_eq!(
+            claims[0].field("02").and_then(Instance::as_scalar),
+            Some(&Value::Float(150.0))
+        );
+        // Second SV3's composite only has 2 of 7 components -> rest Null.
+        assert_eq!(
+            claims[1]
+                .field("01")
+                .unwrap()
+                .field("description")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Null)
+        );
     }
 
     #[test]

@@ -4,8 +4,9 @@
 //! without shelling out to the built binary.
 //!
 //! For SQLite (`.db`/`.sqlite`/`.sqlite3`) the table name is the project's
-//! source/target schema root `name`. For EDI (`.edi`/`.x12`) the schema
-//! describes the segment/loop structure -- see `format_edi::x12`.
+//! source/target schema root `name`. For EDI (`.edi`/`.x12`/`.edifact`)
+//! the schema describes the segment/loop structure and picks the dialect
+//! by its first segment (ISA = X12, UNB = EDIFACT) -- see `format_edi`.
 
 use std::path::Path;
 
@@ -25,7 +26,7 @@ pub fn run_project(
     let project: mapping::Project = serde_json::from_str(&project_json)
         .with_context(|| format!("parsing project file {}", project_path.display()))?;
 
-    let source_instance = match extension_of(input_path)? {
+    let source_instance = match extension_of(input_path)?.as_str() {
         "csv" => {
             let rows = format_csv::read(input_path, &project.source)
                 .with_context(|| format!("reading input {}", input_path.display()))?;
@@ -40,14 +41,20 @@ pub fn run_project(
                 .with_context(|| format!("reading input {}", input_path.display()))?;
             Instance::Repeated(rows)
         }
-        "edi" | "x12" => format_edi::x12::read(input_path, &project.source)
-            .with_context(|| format!("reading input {}", input_path.display()))?,
+        "edi" | "x12" | "edifact" => {
+            let read = match format_edi::dialect_of(&project.source)? {
+                format_edi::Dialect::X12 => format_edi::x12::read,
+                format_edi::Dialect::Edifact => format_edi::edifact::read,
+            };
+            read(input_path, &project.source)
+                .with_context(|| format!("reading input {}", input_path.display()))?
+        }
         other => bail!("unsupported input file extension: .{other}"),
     };
 
     let target_instance = engine::run(&project, &source_instance)?;
 
-    let row_count = match extension_of(output_path)? {
+    let row_count = match extension_of(output_path)?.as_str() {
         "csv" => {
             let rows = target_instance
                 .as_repeated()
@@ -74,8 +81,12 @@ pub fn run_project(
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             rows.len()
         }
-        "edi" | "x12" => {
-            format_edi::x12::write(output_path, &project.target, &target_instance)
+        "edi" | "x12" | "edifact" => {
+            let write = match format_edi::dialect_of(&project.target)? {
+                format_edi::Dialect::X12 => format_edi::x12::write,
+                format_edi::Dialect::Edifact => format_edi::edifact::write,
+            };
+            write(output_path, &project.target, &target_instance)
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             1
         }
@@ -110,8 +121,9 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
-fn extension_of(path: &Path) -> anyhow::Result<&str> {
+fn extension_of(path: &Path) -> anyhow::Result<String> {
     path.extension()
         .and_then(|e| e.to_str())
+        .map(str::to_lowercase)
         .with_context(|| format!("{} has no file extension", path.display()))
 }

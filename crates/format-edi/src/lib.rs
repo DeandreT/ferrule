@@ -1,14 +1,16 @@
-//! EDI schema-guided instance read/write. v1 covers ANSI X12; EDIFACT is
-//! planned as a sibling module behind the same error type and conventions.
+//! EDI schema-guided instance read/write, covering ANSI X12 and UN/EDIFACT.
 //!
 //! EDI files are flat segment streams whose hierarchy (loops) exists only
 //! in an implementation guide, so ferrule expresses that hierarchy in the
 //! ordinary [`ir::SchemaNode`] tree and parses by recursive descent over
-//! it -- see the `x12` module for the exact schema conventions.
+//! it -- the exact schema conventions are documented in [`segments`], and
+//! the dialect-specific tokenizing lives in [`x12`] and [`edifact`].
 
+pub mod edifact;
+mod segments;
 pub mod x12;
 
-use ir::ScalarType;
+use ir::{ScalarType, SchemaNode};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -17,6 +19,8 @@ pub enum EdiFormatError {
     Io(#[from] std::io::Error),
     #[error("not an X12 interchange: {0}")]
     NotX12(&'static str),
+    #[error("not an EDIFACT interchange: {0}")]
+    NotEdifact(&'static str),
     #[error("segment {index}: expected `{expected}`, found `{found}`")]
     UnexpectedSegment {
         index: usize,
@@ -33,8 +37,26 @@ pub enum EdiFormatError {
         value: String,
     },
     #[error(
-        "unsupported schema shape at `{0}`: a segment is a group of scalars, \
-         a loop/container is a group of groups -- mixing the two is not supported"
+        "unsupported schema shape at `{0}`: a group named like a segment ID holds \
+         scalars/composites, any other group is a loop/container of groups"
     )]
     UnsupportedSchema(String),
+}
+
+/// The EDI dialect a schema describes, decided by its first trigger
+/// segment: `ISA` means X12, `UNB` means EDIFACT.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dialect {
+    X12,
+    Edifact,
+}
+
+pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
+    match segments::root_trigger(schema)? {
+        "ISA" => Ok(Dialect::X12),
+        "UNB" => Ok(Dialect::Edifact),
+        other => Err(EdiFormatError::UnsupportedSchema(format!(
+            "schema must start with ISA (X12) or UNB (EDIFACT), found `{other}`"
+        ))),
+    }
 }

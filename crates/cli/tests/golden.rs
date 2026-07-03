@@ -234,3 +234,27 @@ fn x12_purchase_order_flattens_into_csv() {
     std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
 }
+
+/// EDI (EDIFACT): an ORDERS-style message flattened into CSV line items,
+/// exercising the dialect dispatch (UNB trigger -> EDIFACT), composite
+/// elements (LIN03 item, IMD03 description, QTY01/PRI01 components), and
+/// the same broadcast-plus-multiply pattern as the X12 golden test.
+#[test]
+fn edifact_orders_flattens_into_csv() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edifact");
+    let project = dir.join("project.json");
+    let input = dir.join("orders.edifact");
+    let expected = std::fs::read_to_string(dir.join("expected_lines.csv")).unwrap();
+
+    let output_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_golden_test_edifact_{}.csv",
+        std::process::id()
+    ));
+
+    let rows = cli::run_project(&project, &input, &output_path).unwrap();
+    assert_eq!(rows, 2);
+
+    let actual = std::fs::read_to_string(&output_path).unwrap();
+    std::fs::remove_file(&output_path).unwrap();
+    assert_eq!(actual, expected);
+}

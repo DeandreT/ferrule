@@ -1,0 +1,151 @@
+{
+  "source": {
+    "name": "EDIFACT",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "UNB", "kind": { "kind": "group", "children": [] } },
+        { "name": "UNH", "kind": { "kind": "group", "children": [] } },
+        {
+          "name": "BGM",
+          "kind": {
+            "kind": "group",
+            "children": [
+              { "name": "01", "kind": { "kind": "scalar", "ty": "string" } },
+              { "name": "02", "kind": { "kind": "scalar", "ty": "string" } }
+            ]
+          }
+        },
+        { "name": "NAD", "repeating": true, "kind": { "kind": "group", "children": [] } },
+        {
+          "name": "Line",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "LIN",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    { "name": "01", "kind": { "kind": "scalar", "ty": "int" } },
+                    { "name": "02", "kind": { "kind": "scalar", "ty": "string" } },
+                    {
+                      "name": "03",
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          { "name": "item", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "qualifier", "kind": { "kind": "scalar", "ty": "string" } }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "IMD",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    { "name": "01", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "02", "kind": { "kind": "scalar", "ty": "string" } },
+                    {
+                      "name": "03",
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          { "name": "c1", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "c2", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "c3", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "description", "kind": { "kind": "scalar", "ty": "string" } }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "QTY",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "01",
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          { "name": "qualifier", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "quantity", "kind": { "kind": "scalar", "ty": "int" } },
+                          { "name": "unit", "kind": { "kind": "scalar", "ty": "string" } }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "PRI",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "01",
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          { "name": "qualifier", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "price", "kind": { "kind": "scalar", "ty": "float" } }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        { "name": "UNT", "kind": { "kind": "group", "children": [] } },
+        { "name": "UNZ", "kind": { "kind": "group", "children": [] } }
+      ]
+    }
+  },
+  "target": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "order", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "line", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "item", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "description", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "qty", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "unit_price", "kind": { "kind": "scalar", "ty": "float" } },
+        { "name": "line_total", "kind": { "kind": "scalar", "ty": "float" } }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "path": ["BGM", "02"] },
+      "1": { "kind": "source_field", "path": ["LIN", "01"] },
+      "2": { "kind": "source_field", "path": ["LIN", "03", "item"] },
+      "3": { "kind": "source_field", "path": ["IMD", "03", "description"] },
+      "4": { "kind": "source_field", "path": ["QTY", "01", "quantity"] },
+      "5": { "kind": "source_field", "path": ["PRI", "01", "price"] },
+      "6": { "kind": "call", "function": "multiply", "args": [4, 5] }
+    }
+  },
+  "root": {
+    "source": ["Line"],
+    "bindings": [
+      { "target_field": "order", "node": 0 },
+      { "target_field": "line", "node": 1 },
+      { "target_field": "item", "node": 2 },
+      { "target_field": "description", "node": 3 },
+      { "target_field": "qty", "node": 4 },
+      { "target_field": "unit_price", "node": 5 },
+      { "target_field": "line_total", "node": 6 }
+    ]
+  }
+}
