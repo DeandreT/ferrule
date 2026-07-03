@@ -1,19 +1,71 @@
 # ferrule
 
-An open-source, Rust-native graphical any-to-any data mapping tool. Wire a source schema
-(XML/XSD, JSON, CSV, database, EDI, ...) to a target schema, apply built-in or custom
-functions along the way, and run the mapping or generate code from it.
+An open-source, Rust-native, any-to-any data mapping tool. Describe a source schema and a
+target schema, wire them together with a mapping graph (functions, conditionals, lookup
+tables, filters, cross-source joins), then run the mapping headlessly from the CLI or
+interactively from the visual editor.
+
+## Supported formats
+
+Every format works as both a mapping source and a mapping target:
+
+- **CSV** — delimited flat files (configurable delimiter), typed columns
+- **XML** — hierarchical documents, with an XSD importer to bootstrap schemas
+- **JSON** — hierarchical documents, with a JSON Schema importer
+- **SQLite** — table introspection, reads, and idempotent full-replace writes
+- **EDI** — ANSI X12 and UN/EDIFACT: separator discovery from the envelope, composite
+  elements, repetition separators, qualifier-driven loops (HIPAA-style `HL`/`NM1`
+  hierarchies), and a lenient mode that skips segments your schema doesn't mention
+
+## How a mapping works
+
+A project file (plain JSON) holds four things:
+
+- a **source schema** and **target schema** — trees of named groups and typed scalar
+  leaves, where any node can be `repeating`
+- a **graph** of value nodes: read a source field, hold a constant, call a built-in
+  function (string/math/comparison/boolean), branch with `if`, translate through a
+  `value_map` table, or join against another source with `lookup`
+- a **scope tree** that drives iteration: connecting a scope to a repeating source path
+  loops over it (a path may cross several repeating levels at once, flattening nested
+  repetition), `filter` drops items, and field references fall back outward through
+  enclosing scopes so parent-level values broadcast into child rows
+- optional **extra sources** — named secondary inputs (reference data) that any scope or
+  lookup can address by name
+
+## Quick start
+
+```sh
+# Run a mapping: formats are chosen by file extension
+cargo run -p cli -- run \
+    --project examples/project.json \
+    --input orders.xml \
+    --output order_lines.csv
+
+# Bootstrap a schema from existing metadata
+cargo run -p cli -- import-xsd --xsd Orders.xsd
+cargo run -p cli -- import-json-schema --schema customers.schema.json
+cargo run -p cli -- import-db --db warehouse.db --table orders
+
+# Launch the visual editor
+cargo run -p gui
+```
+
+The integration tests double as worked examples — each pairs a project file with inputs
+and expected outputs, covering XML-to-CSV flattening with broadcast fields, JSON and
+SQLite round-trips, X12/EDIFACT extraction, and CSV enrichment joined against a JSON
+reference file. See `crates/cli/tests/fixtures/`.
 
 ## Workspace layout
 
 - `crates/ir` — schema-agnostic in-memory IR: schema trees and data instance trees
 - `crates/mapping` — mapping graph IR (nodes/edges/functions/conditions) and project file format
-- `crates/functions` — built-in function library (string/math/date/aggregate/node-set)
+- `crates/functions` — built-in function library (string/math/comparison/boolean)
 - `crates/engine` — interprets a mapping graph against source instance(s) to produce target instance(s)
 - `crates/format-xml` — XSD-lite schema import and XML instance read/write
 - `crates/format-json` — JSON Schema import and JSON instance read/write
-- `crates/format-csv` — delimited/fixed-width flat file schema and read/write
-- `crates/format-db` — database schema introspection and read/write
+- `crates/format-csv` — delimited flat file schema and read/write
+- `crates/format-db` — database schema introspection and read/write (SQLite)
 - `crates/format-edi` — EDI (ANSI X12 and UN/EDIFACT) schema-guided read/write
 - `crates/cli` — headless runner (`ferrule` binary): run a project file against inputs
 - `crates/gui` — visual mapping editor (`ferrule-gui` binary): schema tree panes + node-graph canvas
