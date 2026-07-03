@@ -8,14 +8,16 @@
 //! the schema describes the segment/loop structure and picks the dialect
 //! by its first segment (ISA = X12, UNB = EDIFACT) -- see `format_edi`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
-use ir::Instance;
+use ir::{Instance, SchemaNode};
+use mapping::FormatOptions;
 
-/// Loads the project at `project_path`, runs it against `input_path`, and
-/// writes the result to `output_path`. Returns the number of top-level
-/// records written (rows for a CSV output, 1 for an XML document).
+/// Loads the project at `project_path`, runs it against `input_path` (plus
+/// any extra sources the project declares), and writes the result to
+/// `output_path`. Returns the number of top-level records written (rows
+/// for a CSV output, 1 for an XML document).
 pub fn run_project(
     project_path: &Path,
     input_path: &Path,
@@ -26,41 +28,25 @@ pub fn run_project(
     let project: mapping::Project = serde_json::from_str(&project_json)
         .with_context(|| format!("parsing project file {}", project_path.display()))?;
 
-    let source_instance = match extension_of(input_path)?.as_str() {
-        "csv" => {
-            let rows = format_csv::read(
-                input_path,
-                &project.source,
-                project.source_options.delimiter,
-            )
-            .with_context(|| format!("reading input {}", input_path.display()))?;
-            Instance::Repeated(rows)
-        }
-        "xml" => format_xml::read(input_path, &project.source)
-            .with_context(|| format!("reading input {}", input_path.display()))?,
-        "json" => format_json::read(input_path, &project.source)
-            .with_context(|| format!("reading input {}", input_path.display()))?,
-        "db" | "sqlite" | "sqlite3" => {
-            let rows = format_db::read(input_path, &project.source)
-                .with_context(|| format!("reading input {}", input_path.display()))?;
-            Instance::Repeated(rows)
-        }
-        "edi" | "x12" | "edifact" => {
-            let read = match format_edi::dialect_of(&project.source)? {
-                format_edi::Dialect::X12 => format_edi::x12::read,
-                format_edi::Dialect::Edifact => format_edi::edifact::read,
-            };
-            read(
-                input_path,
-                &project.source,
-                project.source_options.lenient_segments,
-            )
-            .with_context(|| format!("reading input {}", input_path.display()))?
-        }
-        other => bail!("unsupported input file extension: .{other}"),
-    };
+    let source_instance = read_instance(input_path, &project.source, &project.source_options)?;
 
-    let target_instance = engine::run(&project, &source_instance)?;
+    let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
+    let mut extras = Vec::with_capacity(project.extra_sources.len());
+    for extra in &project.extra_sources {
+        let path = PathBuf::from(&extra.path);
+        let path = if path.is_absolute() {
+            path
+        } else {
+            project_dir.join(path)
+        };
+        extras.push((
+            extra.name.clone(),
+            read_instance(&path, &extra.schema, &extra.options)
+                .with_context(|| format!("loading extra source `{}`", extra.name))?,
+        ));
+    }
+
+    let target_instance = engine::run_with_sources(&project, &source_instance, extras)?;
 
     let row_count = match extension_of(output_path)?.as_str() {
         "csv" => {
@@ -132,6 +118,42 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
     let schema = format_db::introspect(db_path, table)
         .with_context(|| format!("introspecting {} in {}", table, db_path.display()))?;
     Ok(serde_json::to_string_pretty(&schema)?)
+}
+
+/// Reads any supported instance file (format picked by extension) into an
+/// [`Instance`], shaped by `schema`. Flat-rows formats (CSV, database)
+/// arrive wrapped in [`Instance::Repeated`].
+fn read_instance(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+) -> anyhow::Result<Instance> {
+    let instance = match extension_of(path)?.as_str() {
+        "csv" => {
+            let rows = format_csv::read(path, schema, options.delimiter)
+                .with_context(|| format!("reading input {}", path.display()))?;
+            Instance::Repeated(rows)
+        }
+        "xml" => format_xml::read(path, schema)
+            .with_context(|| format!("reading input {}", path.display()))?,
+        "json" => format_json::read(path, schema)
+            .with_context(|| format!("reading input {}", path.display()))?,
+        "db" | "sqlite" | "sqlite3" => {
+            let rows = format_db::read(path, schema)
+                .with_context(|| format!("reading input {}", path.display()))?;
+            Instance::Repeated(rows)
+        }
+        "edi" | "x12" | "edifact" => {
+            let read = match format_edi::dialect_of(schema)? {
+                format_edi::Dialect::X12 => format_edi::x12::read,
+                format_edi::Dialect::Edifact => format_edi::edifact::read,
+            };
+            read(path, schema, options.lenient_segments)
+                .with_context(|| format!("reading input {}", path.display()))?
+        }
+        other => bail!("unsupported input file extension: .{other}"),
+    };
+    Ok(instance)
 }
 
 fn extension_of(path: &Path) -> anyhow::Result<String> {

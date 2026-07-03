@@ -4,8 +4,6 @@ An open-source, Rust-native graphical any-to-any data mapping tool. Wire a sourc
 (XML/XSD, JSON, CSV, database, EDI, ...) to a target schema, apply built-in or custom
 functions along the way, and run the mapping or generate code from it.
 
-Status: early scaffolding, not yet usable. See the crate layout below for the current plan.
-
 ## Workspace layout
 
 - `crates/core` — schema-agnostic in-memory IR: schema trees and data instance trees
