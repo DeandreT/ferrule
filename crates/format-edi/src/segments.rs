@@ -30,17 +30,21 @@ use crate::EdiFormatError;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Segment {
     pub id: String,
-    /// One entry per element; each element is one or more components.
-    pub elements: Vec<Vec<String>>,
+    /// One entry per element; each element is one or more repeats (X12
+    /// 5010's repetition separator -- exactly one repeat when the dialect
+    /// or file has no repetition); each repeat is one or more components.
+    pub elements: Vec<Vec<Vec<String>>>,
 }
 
-/// Separators used when serializing; `release` (EDIFACT's `?`) escapes any
-/// of the other three inside component text.
+/// Separators used when serializing; `release` (EDIFACT's `?`) escapes the
+/// other separators inside component text, and `repetition` (X12 5010's
+/// `^`) joins the occurrences of a `repeating` element.
 pub(crate) struct WriteOptions {
     pub element: char,
     pub component: char,
     pub terminator: char,
     pub release: Option<char>,
+    pub repetition: Option<char>,
 }
 
 fn is_segment_id(name: &str) -> bool {
@@ -122,7 +126,8 @@ fn segment_matches(trigger: &SchemaNode, segment: &Segment) -> bool {
         return false;
     };
     children.iter().enumerate().all(|(i, child)| {
-        let components = segment.elements.get(i);
+        // Constraints are checked against the first repeat.
+        let components = segment.elements.get(i).and_then(|repeats| repeats.first());
         match &child.kind {
             SchemaKind::Scalar { .. } => fixed_holds(child, components.and_then(|c| c.first())),
             SchemaKind::Group {
@@ -254,40 +259,69 @@ fn read_segment(
         .peek()
         .expect("caller checked the trigger before consuming");
     debug_assert_eq!(segment.id, node.name);
-    static EMPTY: Vec<String> = Vec::new();
+    static EMPTY_REPEATS: Vec<Vec<String>> = Vec::new();
+    static EMPTY_COMPONENTS: Vec<String> = Vec::new();
     let mut fields = Vec::with_capacity(element_schemas.len());
     for (i, element_schema) in element_schemas.iter().enumerate() {
-        let components = segment.elements.get(i).unwrap_or(&EMPTY);
-        let instance = match &element_schema.kind {
-            SchemaKind::Scalar { ty } => {
-                let raw = if components.len() > 1 {
-                    components.join(&component_join.to_string())
-                } else {
-                    components.first().cloned().unwrap_or_default()
-                };
-                Instance::Scalar(parse_element(&segment.id, i + 1, *ty, &raw)?)
-            }
-            SchemaKind::Group {
-                children: component_schemas,
-            } => {
-                let mut parts = Vec::with_capacity(component_schemas.len());
-                for (j, component_schema) in component_schemas.iter().enumerate() {
-                    let SchemaKind::Scalar { ty } = component_schema.kind else {
-                        unreachable!("shape_of validated composite children are scalars");
-                    };
-                    let raw = components.get(j).map_or("", String::as_str);
-                    parts.push((
-                        component_schema.name.clone(),
-                        Instance::Scalar(parse_element(&segment.id, i + 1, ty, raw)?),
-                    ));
-                }
-                Instance::Group(parts)
-            }
+        let repeats = segment.elements.get(i).unwrap_or(&EMPTY_REPEATS);
+        // An element child marked `repeating` collects every repeat
+        // (X12 5010 repetition); otherwise only the first is read.
+        let instance = if element_schema.repeating {
+            let items = repeats
+                .iter()
+                .map(|components| {
+                    read_one_repeat(element_schema, components, &segment.id, i, component_join)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Instance::Repeated(items)
+        } else {
+            let components = repeats.first().unwrap_or(&EMPTY_COMPONENTS);
+            read_one_repeat(element_schema, components, &segment.id, i, component_join)?
         };
         fields.push((element_schema.name.clone(), instance));
     }
     cursor.pos += 1;
     Ok(Instance::Group(fields))
+}
+
+fn read_one_repeat(
+    element_schema: &SchemaNode,
+    components: &[String],
+    segment_id: &str,
+    element_index: usize,
+    component_join: char,
+) -> Result<Instance, EdiFormatError> {
+    match &element_schema.kind {
+        SchemaKind::Scalar { ty } => {
+            let raw = if components.len() > 1 {
+                components.join(&component_join.to_string())
+            } else {
+                components.first().cloned().unwrap_or_default()
+            };
+            Ok(Instance::Scalar(parse_element(
+                segment_id,
+                element_index + 1,
+                *ty,
+                &raw,
+            )?))
+        }
+        SchemaKind::Group {
+            children: component_schemas,
+        } => {
+            let mut parts = Vec::with_capacity(component_schemas.len());
+            for (j, component_schema) in component_schemas.iter().enumerate() {
+                let SchemaKind::Scalar { ty } = component_schema.kind else {
+                    unreachable!("shape_of validated composite children are scalars");
+                };
+                let raw = components.get(j).map_or("", String::as_str);
+                parts.push((
+                    component_schema.name.clone(),
+                    Instance::Scalar(parse_element(segment_id, element_index + 1, ty, raw)?),
+                ));
+            }
+            Ok(Instance::Group(parts))
+        }
+    }
 }
 
 fn parse_element(
@@ -341,10 +375,10 @@ fn write_node(
     }
     match shape_of(node, is_root)? {
         Shape::Segment(element_schemas) => {
-            let mut elements: Vec<String> = element_schemas
+            let mut elements = element_schemas
                 .iter()
                 .map(|e| write_element(e, instance.field(&e.name), opts))
-                .collect();
+                .collect::<Result<Vec<String>, _>>()?;
             if node.name != "ISA" {
                 while elements.last().is_some_and(String::is_empty) {
                     elements.pop();
@@ -369,7 +403,32 @@ fn write_node(
     Ok(())
 }
 
-fn write_element(schema: &SchemaNode, instance: Option<&Instance>, opts: &WriteOptions) -> String {
+fn write_element(
+    schema: &SchemaNode,
+    instance: Option<&Instance>,
+    opts: &WriteOptions,
+) -> Result<String, EdiFormatError> {
+    if let Some(Instance::Repeated(items)) = instance {
+        let Some(repetition) = opts.repetition else {
+            return Err(EdiFormatError::UnsupportedSchema(format!(
+                "element `{}` repeats, but this dialect has no repetition separator",
+                schema.name
+            )));
+        };
+        let repeats = items
+            .iter()
+            .map(|item| write_one_repeat(schema, Some(item), opts))
+            .collect::<Vec<_>>();
+        return Ok(repeats.join(&repetition.to_string()));
+    }
+    Ok(write_one_repeat(schema, instance, opts))
+}
+
+fn write_one_repeat(
+    schema: &SchemaNode,
+    instance: Option<&Instance>,
+    opts: &WriteOptions,
+) -> String {
     match &schema.kind {
         SchemaKind::Scalar { .. } => escape(
             &scalar_or_fixed(schema, instance.and_then(Instance::as_scalar)),
