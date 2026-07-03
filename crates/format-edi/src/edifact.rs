@@ -15,11 +15,15 @@ use ir::{Instance, SchemaNode};
 use crate::EdiFormatError;
 use crate::segments::{Segment, WriteOptions, read_segments, write_segments};
 
+// No repetition separator: EDIFACT syntax v4 defines `*`, but most traffic
+// is v3 where a bare `*` is ordinary data -- splitting it by default would
+// corrupt those files.
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '+',
     component: ':',
     terminator: '\'',
     release: Some('?'),
+    repetition: None,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -68,8 +72,10 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
         ));
     }
 
+    // Elements always hold exactly one repeat in EDIFACT (see the
+    // WRITE_OPTIONS note about repetition).
     let mut segments = Vec::new();
-    let mut current: Vec<Vec<String>> = vec![vec![String::new()]];
+    let mut current: Vec<Vec<Vec<String>>> = vec![vec![vec![String::new()]]];
     let mut chars = body.chars();
     while let Some(c) = chars.next() {
         if c == separators.release {
@@ -79,14 +85,16 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
         } else if c == separators.terminator {
             finish_segment(
                 &mut segments,
-                std::mem::replace(&mut current, vec![vec![String::new()]]),
+                std::mem::replace(&mut current, vec![vec![vec![String::new()]]]),
             );
         } else if c == separators.element {
-            current.push(vec![String::new()]);
+            current.push(vec![vec![String::new()]]);
         } else if c == separators.component {
             current
                 .last_mut()
                 .expect("current is never empty")
+                .last_mut()
+                .expect("repeats are never empty")
                 .push(String::new());
         } else if c.is_whitespace() && at_segment_start(&current) {
             // Skip formatting whitespace between segments (e.g. newlines).
@@ -99,25 +107,30 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
     Ok(segments)
 }
 
-fn at_segment_start(current: &[Vec<String>]) -> bool {
-    current.len() == 1 && current[0].len() == 1 && current[0][0].is_empty()
+fn at_segment_start(current: &[Vec<Vec<String>>]) -> bool {
+    current.len() == 1
+        && current[0].len() == 1
+        && current[0][0].len() == 1
+        && current[0][0][0].is_empty()
 }
 
-fn finish_segment(segments: &mut Vec<Segment>, mut parts: Vec<Vec<String>>) {
+fn finish_segment(segments: &mut Vec<Segment>, mut parts: Vec<Vec<Vec<String>>>) {
     if at_segment_start(&parts) {
         return;
     }
-    let id = parts.remove(0).join("");
+    let id = parts.remove(0).concat().join("");
     segments.push(Segment {
         id,
         elements: parts,
     });
 }
 
-fn push_char(elements: &mut [Vec<String>], c: char) {
+fn push_char(elements: &mut [Vec<Vec<String>>], c: char) {
     elements
         .last_mut()
         .expect("elements is never empty")
+        .last_mut()
+        .expect("repeats are never empty")
         .last_mut()
         .expect("components is never empty")
         .push(c);
@@ -163,7 +176,10 @@ mod tests {
         let segments = tokenize(text).unwrap();
         assert_eq!(segments[1].id, "FTX");
         // "?+" is a literal plus, "?:" a literal colon.
-        assert_eq!(segments[1].elements[3], vec!["Extra + cheese:", "yes"]);
+        assert_eq!(
+            segments[1].elements[3],
+            vec![vec!["Extra + cheese:", "yes"]]
+        );
     }
 
     #[test]
@@ -173,7 +189,7 @@ mod tests {
         let segments = tokenize(text).unwrap();
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[1].id, "QTY");
-        assert_eq!(segments[1].elements, vec![vec!["21", "5", "H87"]]);
+        assert_eq!(segments[1].elements, vec![vec![vec!["21", "5", "H87"]]]);
     }
 
     #[test]
