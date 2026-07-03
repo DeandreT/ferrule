@@ -28,7 +28,20 @@ pub enum EngineError {
 /// Runs `project`'s scope tree against `source`, producing one target
 /// instance.
 pub fn run(project: &Project, source: &Instance) -> Result<Instance, EngineError> {
-    eval_scope(&project.graph, &project.root, &[source])
+    run_with_sources(project, source, Vec::new())
+}
+
+/// Like [`run`], with named secondary sources. They form the outermost
+/// context frame, so scope source paths and field paths reach them by name
+/// through the usual outward fallback -- while anything the primary source
+/// (or an inner scope item) defines still wins.
+pub fn run_with_sources(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+) -> Result<Instance, EngineError> {
+    let extras_frame = Instance::Group(extras);
+    eval_scope(&project.graph, &project.root, &[&extras_frame, source])
 }
 
 fn eval_scope(
@@ -38,7 +51,21 @@ fn eval_scope(
 ) -> Result<Instance, EngineError> {
     let extensions: Vec<Vec<&Instance>> = match &scope.source {
         None => vec![vec![*context.last().expect("context is never empty")]],
-        Some(path) => walk(context.last().expect("context is never empty"), path, &[]),
+        // The frame to iterate from is the innermost one that has the
+        // path's first field -- so a nested scope can still iterate an
+        // extra source (outermost frame) by name.
+        Some(path) => {
+            let base = context
+                .iter()
+                .rev()
+                .find(|frame| match path.first() {
+                    Some(first) => frame.field(first).is_some(),
+                    None => true,
+                })
+                .copied()
+                .unwrap_or_else(|| *context.last().expect("context is never empty"));
+            walk(base, path, &[])
+        }
     };
 
     let mut produced = Vec::with_capacity(extensions.len());
@@ -175,10 +202,56 @@ fn eval_expr(
                 .or_else(|| default.clone())
                 .ok_or(EngineError::ValueMapMiss { node: node_id })
         }
+        Node::Lookup {
+            collection,
+            key,
+            matches,
+            value,
+        } => {
+            let needle = eval_expr(graph, *matches, context, in_progress)?;
+            let items = resolve_repeated(context, collection)
+                .ok_or_else(|| EngineError::MissingSourceField(collection.join("/")))?;
+            Ok(items
+                .iter()
+                .find(|item| field_scalar(item, key).is_some_and(|k| *k == needle))
+                .and_then(|item| field_scalar(item, value).cloned())
+                .unwrap_or(Value::Null))
+        }
     };
 
     in_progress.remove(&node_id);
     result
+}
+
+/// Resolves `path` to a repeating collection, with the same outward
+/// fallback as [`resolve_scalar`].
+fn resolve_repeated<'a>(context: &[&'a Instance], path: &[String]) -> Option<&'a [Instance]> {
+    for item in context.iter().rev() {
+        let mut current = *item;
+        let mut found = true;
+        for segment in path {
+            match current.field(segment) {
+                Some(next) => current = next,
+                None => {
+                    found = false;
+                    break;
+                }
+            }
+        }
+        if found && let Some(items) = current.as_repeated() {
+            return Some(items);
+        }
+    }
+    None
+}
+
+/// Follows a plain field path inside one instance (no fallback).
+fn field_scalar<'a>(item: &'a Instance, path: &[String]) -> Option<&'a Value> {
+    let mut current = item;
+    for segment in path {
+        current = current.field(segment)?;
+    }
+    current.as_scalar()
 }
 
 /// Resolves `path` against the innermost context item, falling back to
@@ -253,6 +326,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -293,6 +367,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -323,6 +398,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -364,6 +440,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -462,6 +539,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -507,6 +585,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -554,6 +633,7 @@ mod tests {
             target: dummy_schema(),
             source_options: Default::default(),
             target_options: Default::default(),
+            extra_sources: Vec::new(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -578,5 +658,129 @@ mod tests {
             .map(|row| row.field("age").and_then(Instance::as_scalar).cloned())
             .collect();
         assert_eq!(ages, vec![Some(Value::Int(29)), Some(Value::Int(41))]);
+    }
+
+    /// The enrichment pattern: iterate the primary source's rows while a
+    /// `Lookup` node joins each row against a named extra source by key.
+    /// A key with no match resolves to `Null` rather than erroring.
+    #[test]
+    fn lookup_joins_rows_against_an_extra_source() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["customer_id".into()],
+                },
+            ),
+            (
+                1,
+                Node::Lookup {
+                    collection: vec!["customers".into()],
+                    key: vec!["id".into()],
+                    matches: 0,
+                    value: vec!["name".into()],
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: Some(vec![]),
+                filter: None,
+                bindings: vec![
+                    Binding {
+                        target_field: "customer_id".into(),
+                        node: 0,
+                    },
+                    Binding {
+                        target_field: "customer_name".into(),
+                        node: 1,
+                    },
+                ],
+                children: vec![],
+            },
+        };
+
+        let order = |cid: i64| {
+            Instance::Group(vec![(
+                "customer_id".into(),
+                Instance::Scalar(Value::Int(cid)),
+            )])
+        };
+        let customer = |id: i64, name: &str| {
+            Instance::Group(vec![
+                ("id".into(), Instance::Scalar(Value::Int(id))),
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            ])
+        };
+        let source = Instance::Repeated(vec![order(2), order(1), order(99)]);
+        let customers = Instance::Repeated(vec![customer(1, "Jane"), customer(2, "John")]);
+
+        let target =
+            run_with_sources(&project, &source, vec![("customers".into(), customers)]).unwrap();
+        let names: Vec<_> = target
+            .as_repeated()
+            .unwrap()
+            .iter()
+            .map(|row| {
+                row.field("customer_name")
+                    .and_then(Instance::as_scalar)
+                    .cloned()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                Some(Value::String("John".into())),
+                Some(Value::String("Jane".into())),
+                Some(Value::Null),
+            ]
+        );
+    }
+
+    /// A scope can iterate a named extra source directly: its path falls
+    /// back outward past the primary source to the extras frame.
+    #[test]
+    fn scope_source_path_reaches_an_extra_source() {
+        let graph = graph_from(vec![(
+            0,
+            Node::SourceField {
+                path: vec!["name".into()],
+            },
+        )]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: Some(vec!["customers".into()]),
+                filter: None,
+                bindings: vec![Binding {
+                    target_field: "name".into(),
+                    node: 0,
+                }],
+                children: vec![],
+            },
+        };
+
+        let customers = Instance::Repeated(vec![Instance::Group(vec![(
+            "name".into(),
+            Instance::Scalar(Value::String("Jane".into())),
+        )])]);
+        let source = Instance::Group(vec![]);
+
+        let target =
+            run_with_sources(&project, &source, vec![("customers".into(), customers)]).unwrap();
+        assert_eq!(target.as_repeated().map(<[Instance]>::len), Some(1));
     }
 }

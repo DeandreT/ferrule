@@ -1,0 +1,63 @@
+{
+  "source": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "order_id", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "customer_id", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "total", "kind": { "kind": "scalar", "ty": "float" } }
+      ]
+    }
+  },
+  "extra_sources": [
+    {
+      "name": "customers",
+      "path": "customers.json",
+      "schema": {
+        "name": "customer",
+        "repeating": true,
+        "kind": {
+          "kind": "group",
+          "children": [
+            { "name": "id", "kind": { "kind": "scalar", "ty": "int" } },
+            { "name": "name", "kind": { "kind": "scalar", "ty": "string" } }
+          ]
+        }
+      }
+    }
+  ],
+  "target": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "order_id", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "customer_name", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "total", "kind": { "kind": "scalar", "ty": "float" } }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "path": ["order_id"] },
+      "1": { "kind": "source_field", "path": ["customer_id"] },
+      "2": {
+        "kind": "lookup",
+        "collection": ["customers"],
+        "key": ["id"],
+        "matches": 1,
+        "value": ["name"]
+      },
+      "3": { "kind": "source_field", "path": ["total"] }
+    }
+  },
+  "root": {
+    "source": [],
+    "bindings": [
+      { "target_field": "order_id", "node": 0 },
+      { "target_field": "customer_name", "node": 2 },
+      { "target_field": "total", "node": 3 }
+    ]
+  }
+}

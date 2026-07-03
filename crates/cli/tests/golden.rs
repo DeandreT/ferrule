@@ -282,3 +282,27 @@ fn lenient_x12_claim_flattens_into_csv() {
     std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
 }
+
+/// Multi-source: CSV orders enriched against a JSON extra source declared
+/// in the project (`extra_sources`, path relative to the project file),
+/// joined per row by a `lookup` node. An order with no matching customer
+/// gets an empty cell (the lookup resolves to Null).
+#[test]
+fn csv_orders_enriched_from_json_customers() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/enrich");
+    let project = dir.join("project.json");
+    let input = dir.join("orders.csv");
+    let expected = std::fs::read_to_string(dir.join("expected_enriched.csv")).unwrap();
+
+    let output_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_golden_test_enrich_{}.csv",
+        std::process::id()
+    ));
+
+    let rows = cli::run_project(&project, &input, &output_path).unwrap();
+    assert_eq!(rows, 3);
+
+    let actual = std::fs::read_to_string(&output_path).unwrap();
+    std::fs::remove_file(&output_path).unwrap();
+    assert_eq!(actual, expected);
+}

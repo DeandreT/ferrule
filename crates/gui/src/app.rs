@@ -53,6 +53,7 @@ fn blank_project() -> Project {
         target: SchemaNode::group("root", vec![]),
         source_options: Default::default(),
         target_options: Default::default(),
+        extra_sources: Vec::new(),
         graph: Graph::default(),
         root: Scope::default(),
     }
@@ -76,7 +77,7 @@ fn build_snarl(graph: &Graph) -> Snarl<NodeId> {
                 then,
                 else_,
             } => vec![*condition, *then, *else_],
-            Node::ValueMap { input, .. } => vec![*input],
+            Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
         };
         for (input_idx, arg) in inputs.iter().enumerate() {
             if let (Some(&from), Some(&to)) = (snarl_ids.get(arg), snarl_ids.get(&id)) {

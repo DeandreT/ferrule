@@ -42,6 +42,18 @@ pub enum Node {
         table: Vec<(Value, Value)>,
         default: Option<Value>,
     },
+    /// A cross-source join: evaluates `matches`, then scans the repeating
+    /// data at `collection` (resolved with the same outward fallback as
+    /// `SourceField`, so it can name an extra source) for the first item
+    /// whose `key` field equals it, returning that item's `value` field.
+    /// A miss returns `Null` -- pair with `If`/`equal` when a miss should
+    /// mean something else.
+    Lookup {
+        collection: Vec<String>,
+        key: Vec<String>,
+        matches: NodeId,
+        value: Vec<String>,
+    },
 }
 
 /// The mapping graph for one project: every node that can be wired into a
@@ -99,8 +111,25 @@ pub struct Project {
     pub source_options: FormatOptions,
     #[serde(default)]
     pub target_options: FormatOptions,
+    /// Secondary inputs (reference/lookup data) loaded alongside the
+    /// primary source. Each becomes addressable by its `name` from any
+    /// scope or field path via outward fallback.
+    #[serde(default)]
+    pub extra_sources: Vec<NamedSource>,
     pub graph: Graph,
     pub root: Scope,
+}
+
+/// A named secondary input. `path` is the instance file to load (format
+/// picked by extension, exactly like the CLI's `--input`), resolved
+/// relative to the project file's directory when not absolute.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedSource {
+    pub name: String,
+    pub path: String,
+    pub schema: SchemaNode,
+    #[serde(default)]
+    pub options: FormatOptions,
 }
 
 /// Per-side format knobs. This is deliberately one flat bag of optional

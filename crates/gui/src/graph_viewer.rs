@@ -41,7 +41,7 @@ impl GraphViewer<'_> {
             Node::SourceField { .. } | Node::Const { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
-            Node::ValueMap { .. } => 1,
+            Node::ValueMap { .. } | Node::Lookup { .. } => 1,
         }
     }
 }
@@ -56,6 +56,7 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
             Some(Node::Call { function, .. }) => format!("Call: {function}"),
             Some(Node::If { .. }) => "If".to_string(),
             Some(Node::ValueMap { .. }) => "Value Map".to_string(),
+            Some(Node::Lookup { collection, .. }) => format!("Lookup: {}", collection.join("/")),
             None => "<missing>".to_string(),
         }
     }
@@ -76,6 +77,7 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
             Some(Node::Call { .. }) => format!("arg {idx}"),
             Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
             Some(Node::ValueMap { .. }) => "input".to_string(),
+            Some(Node::Lookup { .. }) => "matches".to_string(),
             _ => String::new(),
         };
         ui.label(label);
@@ -114,6 +116,28 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
                     ui.label("condition ? then : else");
                 }
                 Node::ValueMap { table, default, .. } => show_value_map_editor(ui, table, default),
+                Node::Lookup {
+                    collection,
+                    key,
+                    value,
+                    ..
+                } => {
+                    for (label, path) in
+                        [("collection", collection), ("key", key), ("value", value)]
+                    {
+                        ui.horizontal(|ui| {
+                            ui.label(label);
+                            let mut joined = path.join("/");
+                            if ui.text_edit_singleline(&mut joined).changed() {
+                                *path = joined
+                                    .split('/')
+                                    .map(str::to_string)
+                                    .filter(|s| !s.is_empty())
+                                    .collect();
+                            }
+                        });
+                    }
+                }
             }
         }
         if new_arg_needed {
@@ -147,6 +171,7 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
                     _ => {}
                 },
                 Node::ValueMap { input, .. } => *input = from_id,
+                Node::Lookup { matches, .. } => *matches = from_id,
                 _ => {}
             }
         }
@@ -185,6 +210,10 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
                 }
                 Node::ValueMap { input, .. } => {
                     *input = placeholder;
+                    used_placeholder = true;
+                }
+                Node::Lookup { matches, .. } => {
+                    *matches = placeholder;
                     used_placeholder = true;
                 }
                 _ => {}
@@ -247,6 +276,20 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
                     input,
                     table: vec![],
                     default: None,
+                },
+            );
+            ui.close();
+        }
+        if ui.button("Lookup").clicked() {
+            let matches = self.fresh_const();
+            self.insert(
+                snarl,
+                pos,
+                Node::Lookup {
+                    collection: vec![],
+                    key: vec![],
+                    matches,
+                    value: vec![],
                 },
             );
             ui.close();
