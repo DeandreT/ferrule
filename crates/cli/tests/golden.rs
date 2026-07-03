@@ -209,3 +209,28 @@ fn nested_xml_flattens_into_sqlite() {
         }
     }
 }
+
+/// Stretch (EDI): an X12 850 purchase order flattened into CSV line items.
+/// Exercises separator discovery from ISA, schema-guided loop matching
+/// (repeating N1 and PO1/PID loops), typed elements, a two-level scope
+/// source path (`Item/PID`), and three levels of broadcast: PO number from
+/// the transaction header, line fields from PO1, description from PID.
+#[test]
+fn x12_purchase_order_flattens_into_csv() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edi");
+    let project = dir.join("project.json");
+    let input = dir.join("po850.edi");
+    let expected = std::fs::read_to_string(dir.join("expected_po_lines.csv")).unwrap();
+
+    let output_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_golden_test_edi_{}.csv",
+        std::process::id()
+    ));
+
+    let rows = cli::run_project(&project, &input, &output_path).unwrap();
+    assert_eq!(rows, 3);
+
+    let actual = std::fs::read_to_string(&output_path).unwrap();
+    std::fs::remove_file(&output_path).unwrap();
+    assert_eq!(actual, expected);
+}

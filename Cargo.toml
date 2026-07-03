@@ -9,6 +9,7 @@ members = [
     "crates/format-json",
     "crates/format-csv",
     "crates/format-db",
+    "crates/format-edi",
     "crates/cli",
     "crates/gui",
 ]
@@ -28,6 +29,7 @@ format-xml = { path = "crates/format-xml" }
 format-json = { path = "crates/format-json" }
 format-csv = { path = "crates/format-csv" }
 format-db = { path = "crates/format-db" }
+format-edi = { path = "crates/format-edi" }
 cli = { path = "crates/cli" }
 
 serde = { version = "1", features = ["derive"] }

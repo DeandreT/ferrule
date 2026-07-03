@@ -1,0 +1,4 @@
+po_number,line,qty,unit_price,desc,line_total
+PO12345,1,10,7.99,HAMMER,79.9
+PO12345,2,4,3.49,MEN'S SOCKS,13.96
+PO12345,3,1,39.99,256GB SD CARD,39.99
