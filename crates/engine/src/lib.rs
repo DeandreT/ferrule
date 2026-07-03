@@ -251,6 +251,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -289,6 +291,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -317,6 +321,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -356,6 +362,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -452,6 +460,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -495,6 +505,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),
@@ -540,6 +552,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_options: Default::default(),
+            target_options: Default::default(),
             graph,
             root: Scope {
                 target_field: String::new(),

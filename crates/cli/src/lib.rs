@@ -28,8 +28,12 @@ pub fn run_project(
 
     let source_instance = match extension_of(input_path)?.as_str() {
         "csv" => {
-            let rows = format_csv::read(input_path, &project.source)
-                .with_context(|| format!("reading input {}", input_path.display()))?;
+            let rows = format_csv::read(
+                input_path,
+                &project.source,
+                project.source_options.delimiter,
+            )
+            .with_context(|| format!("reading input {}", input_path.display()))?;
             Instance::Repeated(rows)
         }
         "xml" => format_xml::read(input_path, &project.source)
@@ -46,8 +50,12 @@ pub fn run_project(
                 format_edi::Dialect::X12 => format_edi::x12::read,
                 format_edi::Dialect::Edifact => format_edi::edifact::read,
             };
-            read(input_path, &project.source)
-                .with_context(|| format!("reading input {}", input_path.display()))?
+            read(
+                input_path,
+                &project.source,
+                project.source_options.lenient_segments,
+            )
+            .with_context(|| format!("reading input {}", input_path.display()))?
         }
         other => bail!("unsupported input file extension: .{other}"),
     };
@@ -59,8 +67,13 @@ pub fn run_project(
             let rows = target_instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a CSV output")?;
-            format_csv::write(output_path, &project.target, rows)
-                .with_context(|| format!("writing output {}", output_path.display()))?;
+            format_csv::write(
+                output_path,
+                &project.target,
+                rows,
+                project.target_options.delimiter,
+            )
+            .with_context(|| format!("writing output {}", output_path.display()))?;
             rows.len()
         }
         "xml" => {

@@ -51,6 +51,8 @@ fn blank_project() -> Project {
     Project {
         source: SchemaNode::group("root", vec![]),
         target: SchemaNode::group("root", vec![]),
+        source_options: Default::default(),
+        target_options: Default::default(),
         graph: Graph::default(),
         root: Scope::default(),
     }

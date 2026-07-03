@@ -107,11 +107,13 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
     Ok(segments)
 }
 
-/// Reads an X12 file into an [`Instance`] tree shaped by `schema`.
-pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, EdiFormatError> {
+/// Reads an X12 file into an [`Instance`] tree shaped by `schema`. With
+/// `lenient`, segments the schema doesn't mention are skipped (bounded by
+/// the schema's own expectations) instead of erroring.
+pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance, EdiFormatError> {
     let text = std::fs::read_to_string(path)?;
     let segments = tokenize(&text)?;
-    read_segments(schema, &segments, ':')
+    read_segments(schema, &segments, ':', lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as X12.
@@ -271,7 +273,7 @@ IEA*1*000000001~
         );
 
         let path = write_temp("repeats", text);
-        let instance = read(&path, &schema).unwrap();
+        let instance = read(&path, &schema, false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         let codes = instance
@@ -293,7 +295,7 @@ IEA*1*000000001~
             std::process::id()
         ));
         write(&out_path, &schema, &instance).unwrap();
-        let read_back = read(&out_path, &schema).unwrap();
+        let read_back = read(&out_path, &schema, false).unwrap();
         std::fs::remove_file(&out_path).unwrap();
         assert_eq!(read_back, instance);
     }
@@ -301,7 +303,7 @@ IEA*1*000000001~
     #[test]
     fn reads_loops_with_typed_elements_and_empty_optionals() {
         let path = write_temp("read", PO_850);
-        let instance = read(&path, &po_schema()).unwrap();
+        let instance = read(&path, &po_schema(), false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         assert_eq!(
@@ -383,7 +385,7 @@ SV3*AD:D4341*450~
         );
 
         let path = write_temp("composite", text);
-        let instance = read(&path, &schema).unwrap();
+        let instance = read(&path, &schema, false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         let claims = instance
@@ -418,7 +420,7 @@ SV3*AD:D4341*450~
     fn unexpected_segment_is_reported_with_position() {
         let text = PO_850.replace("SE*6*0001~\n", "");
         let path = write_temp("missing_se", &text);
-        let err = read(&path, &po_schema()).unwrap_err();
+        let err = read(&path, &po_schema(), false).unwrap_err();
         std::fs::remove_file(&path).unwrap();
         assert!(
             matches!(err, EdiFormatError::UnexpectedSegment { ref expected, ref found, .. }
@@ -429,7 +431,7 @@ SV3*AD:D4341*450~
     #[test]
     fn write_then_read_roundtrips() {
         let path = write_temp("roundtrip_src", PO_850);
-        let instance = read(&path, &po_schema()).unwrap();
+        let instance = read(&path, &po_schema(), false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         let out_path = std::env::temp_dir().join(format!(
@@ -437,7 +439,7 @@ SV3*AD:D4341*450~
             std::process::id()
         ));
         write(&out_path, &po_schema(), &instance).unwrap();
-        let read_back = read(&out_path, &po_schema()).unwrap();
+        let read_back = read(&out_path, &po_schema(), false).unwrap();
         std::fs::remove_file(&out_path).unwrap();
 
         assert_eq!(read_back, instance);
@@ -498,7 +500,7 @@ IEA*1*000000001~
         );
 
         let path = write_temp("qualifiers", text);
-        let instance = read(&path, &schema).unwrap();
+        let instance = read(&path, &schema, false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         let last_name = |group: &Instance, container: &str| {
@@ -573,11 +575,113 @@ IEA*1*000000001~
             ],
         );
         let path = write_temp("fixed_mismatch", text);
-        let err = read(&path, &schema).unwrap_err();
+        let err = read(&path, &schema, false).unwrap_err();
         std::fs::remove_file(&path).unwrap();
         assert!(
             matches!(err, EdiFormatError::UnexpectedSegment { ref expected, ref found, .. }
                 if expected == "HL(03=20)" && found == "HL")
+        );
+    }
+
+    /// Lenient mode: the schema declares only the segments it cares about;
+    /// everything else (GS, BHT, PER, N3, N4, trailing envelope) is
+    /// skipped -- but only segments matching no current or upcoming
+    /// expectation, so declared loops and their next iterations are never
+    /// swallowed.
+    #[test]
+    fn lenient_mode_skips_unmentioned_segments() {
+        let text = "\
+ISA*00*          *00*          *ZZ*S              *ZZ*R              *110530*1549*^*00501*000000001*1*P*:~
+GS*HC*S*R*20110530*1549*1*X*005010~
+ST*837*0001~
+BHT*0019*00*0123*20110530*1549*CH~
+NM1*41*2*CLEARINGHOUSE~
+PER*IC*JERRY~
+HL*1**20*1~
+NM1*85*1*DOE*MEGAN~
+N3*123 TOOTH DRIVE~
+N4*MIAMI*FL*33411~
+HL*2*1*22*0~
+NM1*IL*1*SMITH*JANE~
+N3*236 N MAIN STREET~
+CLM*SMITH878*1250~
+LX*1~
+SV3*AD:D4342*150~
+LX*2~
+SV3*AD:D4341*450~
+SE*18*0001~
+GE*1*1~
+IEA*1*000000001~
+";
+        // Only ISA, the two qualifier-split NM1s, CLM, and the LX/SV3
+        // service lines are declared.
+        let nm1 = |qualifier: &str| {
+            SchemaNode::group(
+                "NM1",
+                vec![
+                    SchemaNode::scalar("01", ScalarType::String).fixed(qualifier),
+                    SchemaNode::scalar("02", ScalarType::String),
+                    SchemaNode::scalar("03", ScalarType::String),
+                ],
+            )
+        };
+        let schema = SchemaNode::group(
+            "X12",
+            vec![
+                segment("ISA", &[]),
+                SchemaNode::group("Provider", vec![nm1("85")]),
+                SchemaNode::group(
+                    "Subscriber",
+                    vec![
+                        nm1("IL"),
+                        segment("CLM", &[("01", ScalarType::String)]),
+                        SchemaNode::group(
+                            "ServiceLine",
+                            vec![
+                                segment("LX", &[("01", ScalarType::Int)]),
+                                segment(
+                                    "SV3",
+                                    &[("01", ScalarType::String), ("02", ScalarType::Float)],
+                                ),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+
+        let path = write_temp("lenient", text);
+        // Strict mode must reject the same schema/file pair.
+        assert!(read(&path, &schema, false).is_err());
+        let instance = read(&path, &schema, true).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(
+            instance
+                .field("Provider")
+                .and_then(|p| p.field("NM1"))
+                .and_then(|n| n.field("03"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("DOE".into()))
+        );
+        let subscribers = instance
+            .field("Subscriber")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(subscribers.len(), 1);
+        let lines = subscribers[0]
+            .field("ServiceLine")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(
+            lines[1]
+                .field("SV3")
+                .and_then(|s| s.field("02"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::Float(450.0))
         );
     }
 
