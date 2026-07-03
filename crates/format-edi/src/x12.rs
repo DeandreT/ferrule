@@ -354,4 +354,176 @@ SV3*AD:D4341*450~
 
         assert_eq!(read_back, instance);
     }
+
+    /// The HIPAA pattern: sibling loops both triggered by `HL`, told apart
+    /// only by a `fixed` qualifier on `HL03` (20 = billing provider, 22 =
+    /// subscriber), and repeated `NM1` segments told apart by `NM101`.
+    #[test]
+    fn fixed_qualifiers_disambiguate_shared_triggers() {
+        let text = "\
+ISA*00*          *00*          *ZZ*S              *ZZ*R              *110530*1549*^*00501*000000001*1*P*:~
+HL*1**20*1~
+NM1*85*1*MOLAR*SARA~
+HL*2*1*22*0~
+NM1*IL*1*PATIENT*PAT~
+NM1*PR*2*ACME DENTAL~
+HL*3*1*22*0~
+NM1*IL*1*OTHER*OLIVER~
+IEA*1*000000001~
+";
+        let hl = |qualifier: &str| {
+            SchemaNode::group(
+                "HL",
+                vec![
+                    SchemaNode::scalar("01", ScalarType::Int),
+                    SchemaNode::scalar("02", ScalarType::String),
+                    SchemaNode::scalar("03", ScalarType::String).fixed(qualifier),
+                ],
+            )
+        };
+        let nm1 = |qualifier: &str| {
+            SchemaNode::group(
+                "NM1",
+                vec![
+                    SchemaNode::scalar("01", ScalarType::String).fixed(qualifier),
+                    SchemaNode::scalar("02", ScalarType::String),
+                    SchemaNode::scalar("03", ScalarType::String),
+                ],
+            )
+        };
+        let schema = SchemaNode::group(
+            "X12",
+            vec![
+                segment("ISA", &[]),
+                SchemaNode::group("Provider", vec![hl("20"), nm1("85")]),
+                SchemaNode::group(
+                    "Subscriber",
+                    vec![
+                        hl("22"),
+                        SchemaNode::group("Patient", vec![nm1("IL")]),
+                        SchemaNode::group("Payer", vec![nm1("PR")]).repeating(),
+                    ],
+                )
+                .repeating(),
+                segment("IEA", &[]),
+            ],
+        );
+
+        let path = write_temp("qualifiers", text);
+        let instance = read(&path, &schema).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        let last_name = |group: &Instance, container: &str| {
+            group
+                .field(container)
+                .and_then(|c| c.field("NM1"))
+                .and_then(|n| n.field("03"))
+                .and_then(Instance::as_scalar)
+                .cloned()
+        };
+
+        assert_eq!(
+            instance
+                .field("Provider")
+                .and_then(|p| p.field("NM1"))
+                .and_then(|n| n.field("03"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("MOLAR".into()))
+        );
+        let subscribers = instance
+            .field("Subscriber")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(subscribers.len(), 2);
+        assert_eq!(
+            last_name(&subscribers[0], "Patient"),
+            Some(Value::String("PATIENT".into()))
+        );
+        // The first subscriber has a payer NM1, the second doesn't.
+        assert_eq!(
+            subscribers[0]
+                .field("Payer")
+                .and_then(Instance::as_repeated)
+                .map(<[Instance]>::len),
+            Some(1)
+        );
+        assert_eq!(
+            subscribers[1]
+                .field("Payer")
+                .and_then(Instance::as_repeated)
+                .map(<[Instance]>::len),
+            Some(0)
+        );
+        assert_eq!(
+            last_name(&subscribers[1], "Patient"),
+            Some(Value::String("OTHER".into()))
+        );
+    }
+
+    /// A `fixed` mismatch on a required segment is a positioned error that
+    /// names the constraint.
+    #[test]
+    fn fixed_mismatch_is_reported_with_the_constraint() {
+        let text = "\
+ISA*00*          *00*          *ZZ*S              *ZZ*R              *110530*1549*^*00501*000000001*1*P*:~
+HL*1**99*1~
+IEA*1*000000001~
+";
+        let schema = SchemaNode::group(
+            "X12",
+            vec![
+                segment("ISA", &[]),
+                SchemaNode::group(
+                    "HL",
+                    vec![
+                        SchemaNode::scalar("01", ScalarType::Int),
+                        SchemaNode::scalar("02", ScalarType::String),
+                        SchemaNode::scalar("03", ScalarType::String).fixed("20"),
+                    ],
+                ),
+                segment("IEA", &[]),
+            ],
+        );
+        let path = write_temp("fixed_mismatch", text);
+        let err = read(&path, &schema).unwrap_err();
+        std::fs::remove_file(&path).unwrap();
+        assert!(
+            matches!(err, EdiFormatError::UnexpectedSegment { ref expected, ref found, .. }
+                if expected == "HL(03=20)" && found == "HL")
+        );
+    }
+
+    /// Writing emits `fixed` values for elements the instance doesn't
+    /// provide, so qualifier elements need no explicit bindings.
+    #[test]
+    fn write_emits_fixed_values_as_defaults() {
+        let schema = SchemaNode::group(
+            "X12",
+            vec![SchemaNode::group(
+                "BEG",
+                vec![
+                    SchemaNode::scalar("01", ScalarType::String).fixed("00"),
+                    SchemaNode::scalar("02", ScalarType::String).fixed("SA"),
+                    SchemaNode::scalar("03", ScalarType::String),
+                ],
+            )],
+        );
+        let instance = Instance::Group(vec![(
+            "BEG".into(),
+            Instance::Group(vec![(
+                "03".into(),
+                Instance::Scalar(Value::String("PO1".into())),
+            )]),
+        )]);
+
+        let out_path = std::env::temp_dir().join(format!(
+            "ferrule_x12_fixed_write_{}.edi",
+            std::process::id()
+        ));
+        write(&out_path, &schema, &instance).unwrap();
+        let written = std::fs::read_to_string(&out_path).unwrap();
+        std::fs::remove_file(&out_path).unwrap();
+
+        assert_eq!(written, "BEG*00*SA*PO1~\n");
+    }
 }
