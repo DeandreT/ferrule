@@ -49,6 +49,13 @@ pub struct SchemaNode {
     pub name: String,
     #[serde(default)]
     pub repeating: bool,
+    /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
+    /// Schema's `const`), compared against the raw text before parsing.
+    /// Format adapters use it both to validate and to disambiguate --
+    /// notably EDI qualifier elements, where e.g. two loops both starting
+    /// with an `HL` segment are told apart by `HL03` being `20` vs `22`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fixed: Option<String>,
     pub kind: SchemaKind,
 }
 
@@ -64,6 +71,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             repeating: false,
+            fixed: None,
             kind: SchemaKind::Scalar { ty },
         }
     }
@@ -72,6 +80,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             repeating: false,
+            fixed: None,
             kind: SchemaKind::Group { children },
         }
     }
@@ -79,6 +88,12 @@ impl SchemaNode {
     /// Marks this node as repeating (builder-style, for constructing schemas by hand).
     pub fn repeating(mut self) -> Self {
         self.repeating = true;
+        self
+    }
+
+    /// Requires this scalar to hold `value` (builder-style).
+    pub fn fixed(mut self, value: impl Into<String>) -> Self {
+        self.fixed = Some(value.into());
         self
     }
 

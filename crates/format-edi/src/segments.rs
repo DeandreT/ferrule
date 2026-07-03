@@ -82,11 +82,11 @@ fn shape_of(node: &SchemaNode, is_root: bool) -> Result<Shape<'_>, EdiFormatErro
     }
 }
 
-/// The segment ID that signals the start of `node` (for a container, its
-/// first segment descendant).
-fn trigger_of(node: &SchemaNode) -> Result<&str, EdiFormatError> {
+/// The segment schema that signals the start of `node` (for a container,
+/// its first segment descendant).
+fn trigger_of(node: &SchemaNode) -> Result<&SchemaNode, EdiFormatError> {
     match shape_of(node, false)? {
-        Shape::Segment(_) => Ok(&node.name),
+        Shape::Segment(_) => Ok(node),
         Shape::Container(children) => {
             let first = children
                 .first()
@@ -104,9 +104,75 @@ pub(crate) fn root_trigger(schema: &SchemaNode) -> Result<&str, EdiFormatError> 
             let first = children
                 .first()
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(schema.name.clone()))?;
-            trigger_of(first)
+            Ok(&trigger_of(first)?.name)
         }
         Shape::Segment(_) => unreachable!("the root is always classified as a container"),
+    }
+}
+
+/// Whether `segment` satisfies a segment schema: the IDs must agree and
+/// every `fixed` element/component constraint must hold. Fixed values are
+/// what disambiguate qualifier-driven loops (e.g. `HL` with `HL03` fixed
+/// to `20` vs `22`, or repeated `NM1`s told apart by `NM101`).
+fn segment_matches(trigger: &SchemaNode, segment: &Segment) -> bool {
+    if trigger.name != segment.id {
+        return false;
+    }
+    let SchemaKind::Group { children } = &trigger.kind else {
+        return false;
+    };
+    children.iter().enumerate().all(|(i, child)| {
+        let components = segment.elements.get(i);
+        match &child.kind {
+            SchemaKind::Scalar { .. } => fixed_holds(child, components.and_then(|c| c.first())),
+            SchemaKind::Group {
+                children: component_schemas,
+            } => component_schemas
+                .iter()
+                .enumerate()
+                .all(|(j, comp)| fixed_holds(comp, components.and_then(|c| c.get(j)))),
+        }
+    })
+}
+
+fn fixed_holds(schema: &SchemaNode, raw: Option<&String>) -> bool {
+    schema
+        .fixed
+        .as_ref()
+        .is_none_or(|fixed| raw.is_some_and(|raw| raw == fixed))
+}
+
+/// Human-readable description of a trigger for error messages, e.g.
+/// `HL(03=22)`.
+fn describe_trigger(trigger: &SchemaNode) -> String {
+    let SchemaKind::Group { children } = &trigger.kind else {
+        return trigger.name.clone();
+    };
+    let constraints: Vec<String> = children
+        .iter()
+        .flat_map(|child| match &child.kind {
+            SchemaKind::Scalar { .. } => child
+                .fixed
+                .as_ref()
+                .map(|f| format!("{}={f}", child.name))
+                .into_iter()
+                .collect::<Vec<_>>(),
+            SchemaKind::Group {
+                children: component_schemas,
+            } => component_schemas
+                .iter()
+                .filter_map(|comp| {
+                    comp.fixed
+                        .as_ref()
+                        .map(|f| format!("{}.{}={f}", child.name, comp.name))
+                })
+                .collect(),
+        })
+        .collect();
+    if constraints.is_empty() {
+        trigger.name.clone()
+    } else {
+        format!("{}({})", trigger.name, constraints.join(","))
     }
 }
 
@@ -154,11 +220,11 @@ fn read_node(
                 let trigger = trigger_of(child)?;
                 if child.repeating {
                     let mut items = Vec::new();
-                    while cursor.peek().is_some_and(|s| s.id == trigger) {
+                    while cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
                         items.push(read_node(child, cursor, component_join, false)?);
                     }
                     fields.push((child.name.clone(), Instance::Repeated(items)));
-                } else if cursor.peek().is_some_and(|s| s.id == trigger) {
+                } else if cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
                     fields.push((
                         child.name.clone(),
                         read_node(child, cursor, component_join, false)?,
@@ -166,7 +232,7 @@ fn read_node(
                 } else {
                     return Err(EdiFormatError::UnexpectedSegment {
                         index: cursor.pos,
-                        expected: trigger.to_string(),
+                        expected: describe_trigger(trigger),
                         found: cursor
                             .peek()
                             .map_or_else(|| "end of interchange".to_string(), |s| s.id.clone()),
@@ -305,15 +371,17 @@ fn write_node(
 
 fn write_element(schema: &SchemaNode, instance: Option<&Instance>, opts: &WriteOptions) -> String {
     match &schema.kind {
-        SchemaKind::Scalar { .. } => {
-            escape(&format_value(instance.and_then(Instance::as_scalar)), opts)
-        }
+        SchemaKind::Scalar { .. } => escape(
+            &scalar_or_fixed(schema, instance.and_then(Instance::as_scalar)),
+            opts,
+        ),
         SchemaKind::Group { children } => {
             let mut components: Vec<String> = children
                 .iter()
                 .map(|c| {
                     escape(
-                        &format_value(
+                        &scalar_or_fixed(
+                            c,
                             instance
                                 .and_then(|i| i.field(&c.name))
                                 .and_then(Instance::as_scalar),
@@ -328,6 +396,19 @@ fn write_element(schema: &SchemaNode, instance: Option<&Instance>, opts: &WriteO
             components.join(&opts.component.to_string())
         }
     }
+}
+
+/// The serialized text for one element/component: the instance value, or
+/// the schema's `fixed` value when the instance doesn't provide one -- so
+/// qualifier elements need no explicit bindings in a mapping.
+fn scalar_or_fixed(schema: &SchemaNode, value: Option<&Value>) -> String {
+    let text = format_value(value);
+    if text.is_empty()
+        && let Some(fixed) = &schema.fixed
+    {
+        return fixed.clone();
+    }
+    text
 }
 
 fn escape(text: &str, opts: &WriteOptions) -> String {
