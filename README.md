@@ -6,7 +6,7 @@ functions along the way, and run the mapping or generate code from it.
 
 ## Workspace layout
 
-- `crates/core` — schema-agnostic in-memory IR: schema trees and data instance trees
+- `crates/ir` — schema-agnostic in-memory IR: schema trees and data instance trees
 - `crates/mapping` — mapping graph IR (nodes/edges/functions/conditions) and project file format
 - `crates/functions` — built-in function library (string/math/date/aggregate/node-set)
 - `crates/engine` — interprets a mapping graph against source instance(s) to produce target instance(s)
@@ -14,7 +14,7 @@ functions along the way, and run the mapping or generate code from it.
 - `crates/format-json` — JSON Schema import and JSON instance read/write
 - `crates/format-csv` — delimited/fixed-width flat file schema and read/write
 - `crates/format-db` — database schema introspection and read/write
-- `crates/format-edi` — EDI (ANSI X12) schema-guided read/write
+- `crates/format-edi` — EDI (ANSI X12 and UN/EDIFACT) schema-guided read/write
 - `crates/cli` — headless runner (`ferrule` binary): run a project file against inputs
 - `crates/gui` — visual mapping editor (`ferrule-gui` binary): schema tree panes + node-graph canvas
 
