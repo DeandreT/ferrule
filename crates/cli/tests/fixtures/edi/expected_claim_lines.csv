@@ -1,0 +1,3 @@
+claim,patient,provider,line,code,description,charge
+CLAIM001,PATIENT,MOLAR,1,D1110,Adult cleaning,120
+CLAIM001,PATIENT,MOLAR,2,D0274,Bitewing xrays,260

@@ -19,9 +19,11 @@
 //!   names must NOT look like segment IDs -- use descriptive names
 //!   (`Item`, `Party`, `Loop2000A`).
 //! - The schema root is always a container, whatever its name.
-//! - Matching is strict and in order: every segment in the file must be
-//!   consumed by the schema, and a missing non-repeating node is an error.
-//!   This doubles as structural validation of the file.
+//! - Matching is strict and in order by default: every segment in the file
+//!   must be consumed by the schema, and a missing non-repeating node is an
+//!   error. This doubles as structural validation of the file. In lenient
+//!   mode (see [`read_segments`]) unmentioned segments are skipped instead,
+//!   so a schema only needs to declare what it binds.
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 
@@ -195,14 +197,24 @@ impl Cursor<'_> {
 /// Maps tokenized segments onto `schema`. `component_join` is the dialect's
 /// component separator, used only to reconstruct raw text when a composite
 /// element is declared as a plain scalar.
+///
+/// With `lenient`, segments the schema doesn't mention are skipped instead
+/// of erroring -- but only when they match *no* current or upcoming
+/// expectation (the current trigger, any later sibling's trigger at every
+/// ancestor level, or an ancestor loop's next iteration), so declared
+/// segments are never swallowed. Trailing unmentioned segments are ignored
+/// too.
 pub(crate) fn read_segments(
     schema: &SchemaNode,
     segments: &[Segment],
     component_join: char,
+    lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
     let mut cursor = Cursor { segments, pos: 0 };
-    let instance = read_node(schema, &mut cursor, component_join, true)?;
-    if let Some(segment) = cursor.peek() {
+    let instance = read_node(schema, &mut cursor, component_join, true, lenient, &[])?;
+    if let Some(segment) = cursor.peek()
+        && !lenient
+    {
         return Err(EdiFormatError::TrailingSegment {
             index: cursor.pos,
             id: segment.id.clone(),
@@ -211,37 +223,90 @@ pub(crate) fn read_segments(
     Ok(instance)
 }
 
+/// Advances past segments that match none of `expectations`.
+fn skip_unmatched(cursor: &mut Cursor, expectations: &[&SchemaNode]) {
+    while let Some(segment) = cursor.peek() {
+        if expectations.iter().any(|t| segment_matches(t, segment)) {
+            return;
+        }
+        cursor.pos += 1;
+    }
+}
+
 fn read_node(
     node: &SchemaNode,
     cursor: &mut Cursor,
     component_join: char,
     is_root: bool,
+    lenient: bool,
+    follow: &[&SchemaNode],
 ) -> Result<Instance, EdiFormatError> {
     match shape_of(node, is_root)? {
         Shape::Segment(elements) => read_segment(node, elements, cursor, component_join),
         Shape::Container(children) => {
             let mut fields = Vec::with_capacity(children.len());
-            for child in children {
+            for (i, child) in children.iter().enumerate() {
                 let trigger = trigger_of(child)?;
+                // Triggers that may legitimately appear once this child is
+                // done: later siblings here, then everything the ancestors
+                // still expect.
+                let mut child_follow: Vec<&SchemaNode> = children[i + 1..]
+                    .iter()
+                    .map(trigger_of)
+                    .collect::<Result<_, _>>()?;
+                child_follow.extend_from_slice(follow);
+
+                let mut expectations = vec![trigger];
+                expectations.extend_from_slice(&child_follow);
+
                 if child.repeating {
+                    // The loop's own trigger stays expected across nested
+                    // reads, so leniency can't swallow the next iteration.
+                    let mut nested_follow = vec![trigger];
+                    nested_follow.extend_from_slice(&child_follow);
                     let mut items = Vec::new();
-                    while cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
-                        items.push(read_node(child, cursor, component_join, false)?);
+                    loop {
+                        if lenient {
+                            skip_unmatched(cursor, &expectations);
+                        }
+                        if !cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
+                            break;
+                        }
+                        items.push(read_node(
+                            child,
+                            cursor,
+                            component_join,
+                            false,
+                            lenient,
+                            &nested_follow,
+                        )?);
                     }
                     fields.push((child.name.clone(), Instance::Repeated(items)));
-                } else if cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
-                    fields.push((
-                        child.name.clone(),
-                        read_node(child, cursor, component_join, false)?,
-                    ));
                 } else {
-                    return Err(EdiFormatError::UnexpectedSegment {
-                        index: cursor.pos,
-                        expected: describe_trigger(trigger),
-                        found: cursor
-                            .peek()
-                            .map_or_else(|| "end of interchange".to_string(), |s| s.id.clone()),
-                    });
+                    if lenient {
+                        skip_unmatched(cursor, &expectations);
+                    }
+                    if cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
+                        fields.push((
+                            child.name.clone(),
+                            read_node(
+                                child,
+                                cursor,
+                                component_join,
+                                false,
+                                lenient,
+                                &child_follow,
+                            )?,
+                        ));
+                    } else {
+                        return Err(EdiFormatError::UnexpectedSegment {
+                            index: cursor.pos,
+                            expected: describe_trigger(trigger),
+                            found: cursor
+                                .peek()
+                                .map_or_else(|| "end of interchange".to_string(), |s| s.id.clone()),
+                        });
+                    }
                 }
             }
             Ok(Instance::Group(fields))

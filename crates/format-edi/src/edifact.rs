@@ -137,10 +137,12 @@ fn push_char(elements: &mut [Vec<Vec<String>>], c: char) {
 }
 
 /// Reads an EDIFACT file into an [`Instance`] tree shaped by `schema`.
-pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, EdiFormatError> {
+/// With `lenient`, segments the schema doesn't mention are skipped
+/// (bounded by the schema's own expectations) instead of erroring.
+pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance, EdiFormatError> {
     let text = std::fs::read_to_string(path)?;
     let segments = tokenize(&text)?;
-    read_segments(schema, &segments, ':')
+    read_segments(schema, &segments, ':', lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as EDIFACT.
@@ -264,7 +266,7 @@ UNZ+1+1'
     #[test]
     fn reads_loops_and_composites() {
         let path = write_temp("orders", ORDERS);
-        let instance = read(&path, &orders_schema()).unwrap();
+        let instance = read(&path, &orders_schema(), false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         assert_eq!(
@@ -303,7 +305,7 @@ UNZ+1+1'
     #[test]
     fn write_then_read_roundtrips_with_escaping() {
         let path = write_temp("roundtrip_src", ORDERS);
-        let mut instance = read(&path, &orders_schema()).unwrap();
+        let mut instance = read(&path, &orders_schema(), false).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         // Inject a value containing every separator to prove escaping.
@@ -320,7 +322,7 @@ UNZ+1+1'
             std::process::id()
         ));
         write(&out_path, &orders_schema(), &instance).unwrap();
-        let read_back = read(&out_path, &orders_schema()).unwrap();
+        let read_back = read(&out_path, &orders_schema(), false).unwrap();
         std::fs::remove_file(&out_path).unwrap();
 
         assert_eq!(read_back, instance);

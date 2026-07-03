@@ -32,6 +32,16 @@ pub enum CsvFormatError {
         expected: usize,
         got: usize,
     },
+    #[error("`{0}` is not a valid CSV delimiter (must be a single-byte character)")]
+    BadDelimiter(char),
+}
+
+fn delimiter_byte(delimiter: Option<char>) -> Result<u8, CsvFormatError> {
+    match delimiter {
+        None => Ok(b','),
+        Some(c) if c.is_ascii() => Ok(c as u8),
+        Some(c) => Err(CsvFormatError::BadDelimiter(c)),
+    }
 }
 
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatError> {
@@ -52,10 +62,16 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatE
 
 /// Reads a CSV file (with a header row) into one [`Instance::Group`] per
 /// row, parsing each column according to its declared scalar type.
-pub fn read(path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, CsvFormatError> {
+/// `delimiter` defaults to `,`.
+pub fn read(
+    path: &Path,
+    schema: &SchemaNode,
+    delimiter: Option<char>,
+) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
+        .delimiter(delimiter_byte(delimiter)?)
         .from_path(path)?;
     let mut out = Vec::new();
     for (row_idx, result) in reader.records().enumerate() {
@@ -100,10 +116,17 @@ fn parse_value(
 }
 
 /// Writes one row per [`Instance::Group`] in `rows` to a CSV file with a
-/// header row.
-pub fn write(path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(), CsvFormatError> {
+/// header row. `delimiter` defaults to `,`.
+pub fn write(
+    path: &Path,
+    schema: &SchemaNode,
+    rows: &[Instance],
+    delimiter: Option<char>,
+) -> Result<(), CsvFormatError> {
     let fields = row_fields(schema)?;
-    let mut writer = csv::WriterBuilder::new().from_path(path)?;
+    let mut writer = csv::WriterBuilder::new()
+        .delimiter(delimiter_byte(delimiter)?)
+        .from_path(path)?;
     writer.write_record(fields.iter().map(|(n, _)| *n))?;
     for row in rows {
         let cells = fields
@@ -155,8 +178,8 @@ mod tests {
             ("age".into(), Instance::Scalar(Value::Int(29))),
         ]);
 
-        write(&path, &schema(), std::slice::from_ref(&row)).unwrap();
-        let read_back = read(&path, &schema()).unwrap();
+        write(&path, &schema(), std::slice::from_ref(&row), None).unwrap();
+        let read_back = read(&path, &schema(), None).unwrap();
 
         std::fs::remove_file(&path).unwrap();
         assert_eq!(read_back, vec![row]);
@@ -171,7 +194,7 @@ mod tests {
         ));
         std::fs::write(&path, "name,age,extra\nJane,29,x\n").unwrap();
 
-        let err = read(&path, &schema()).unwrap_err();
+        let err = read(&path, &schema(), None).unwrap_err();
         std::fs::remove_file(&path).unwrap();
         assert!(matches!(
             err,
@@ -181,5 +204,31 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn custom_delimiter_roundtrips() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "ferrule_format_csv_test_semi_{}.csv",
+            std::process::id()
+        ));
+
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane;Doe".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]);
+
+        write(&path, &schema(), std::slice::from_ref(&row), Some(';')).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let read_back = read(&path, &schema(), Some(';')).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert!(text.starts_with("name;age"));
+        // The value containing the delimiter must be quoted, not split.
+        assert_eq!(read_back, vec![row]);
     }
 }

@@ -1,0 +1,148 @@
+{
+  "source": {
+    "name": "X12",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "ISA", "kind": { "kind": "group", "children": [] } },
+        {
+          "name": "Provider",
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "NM1",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    { "name": "01", "fixed": "85", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "02", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "03", "kind": { "kind": "scalar", "ty": "string" } }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "name": "Subscriber",
+          "repeating": true,
+          "kind": {
+            "kind": "group",
+            "children": [
+              {
+                "name": "NM1",
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    { "name": "01", "fixed": "IL", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "02", "kind": { "kind": "scalar", "ty": "string" } },
+                    { "name": "03", "kind": { "kind": "scalar", "ty": "string" } }
+                  ]
+                }
+              },
+              {
+                "name": "Claim",
+                "repeating": true,
+                "kind": {
+                  "kind": "group",
+                  "children": [
+                    {
+                      "name": "CLM",
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          { "name": "01", "kind": { "kind": "scalar", "ty": "string" } },
+                          { "name": "02", "kind": { "kind": "scalar", "ty": "float" } }
+                        ]
+                      }
+                    },
+                    {
+                      "name": "ServiceLine",
+                      "repeating": true,
+                      "kind": {
+                        "kind": "group",
+                        "children": [
+                          {
+                            "name": "LX",
+                            "kind": {
+                              "kind": "group",
+                              "children": [{ "name": "01", "kind": { "kind": "scalar", "ty": "int" } }]
+                            }
+                          },
+                          {
+                            "name": "SV3",
+                            "kind": {
+                              "kind": "group",
+                              "children": [
+                                {
+                                  "name": "01",
+                                  "kind": {
+                                    "kind": "group",
+                                    "children": [
+                                      { "name": "qualifier", "kind": { "kind": "scalar", "ty": "string" } },
+                                      { "name": "code", "kind": { "kind": "scalar", "ty": "string" } },
+                                      { "name": "c3", "kind": { "kind": "scalar", "ty": "string" } },
+                                      { "name": "c4", "kind": { "kind": "scalar", "ty": "string" } },
+                                      { "name": "c5", "kind": { "kind": "scalar", "ty": "string" } },
+                                      { "name": "c6", "kind": { "kind": "scalar", "ty": "string" } },
+                                      { "name": "description", "kind": { "kind": "scalar", "ty": "string" } }
+                                    ]
+                                  }
+                                },
+                                { "name": "02", "kind": { "kind": "scalar", "ty": "float" } }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "source_options": { "lenient_segments": true },
+  "target": {
+    "name": "row",
+    "kind": {
+      "kind": "group",
+      "children": [
+        { "name": "claim", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "patient", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "provider", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "line", "kind": { "kind": "scalar", "ty": "int" } },
+        { "name": "code", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "description", "kind": { "kind": "scalar", "ty": "string" } },
+        { "name": "charge", "kind": { "kind": "scalar", "ty": "float" } }
+      ]
+    }
+  },
+  "graph": {
+    "nodes": {
+      "0": { "kind": "source_field", "path": ["CLM", "01"] },
+      "1": { "kind": "source_field", "path": ["NM1", "03"] },
+      "2": { "kind": "source_field", "path": ["Provider", "NM1", "03"] },
+      "3": { "kind": "source_field", "path": ["LX", "01"] },
+      "4": { "kind": "source_field", "path": ["SV3", "01", "code"] },
+      "5": { "kind": "source_field", "path": ["SV3", "01", "description"] },
+      "6": { "kind": "source_field", "path": ["SV3", "02"] }
+    }
+  },
+  "root": {
+    "source": ["Subscriber", "Claim", "ServiceLine"],
+    "bindings": [
+      { "target_field": "claim", "node": 0 },
+      { "target_field": "patient", "node": 1 },
+      { "target_field": "provider", "node": 2 },
+      { "target_field": "line", "node": 3 },
+      { "target_field": "code", "node": 4 },
+      { "target_field": "description", "node": 5 },
+      { "target_field": "charge", "node": 6 }
+    ]
+  }
+}

@@ -95,6 +95,27 @@ pub struct Scope {
 pub struct Project {
     pub source: SchemaNode,
     pub target: SchemaNode,
+    #[serde(default)]
+    pub source_options: FormatOptions,
+    #[serde(default)]
+    pub target_options: FormatOptions,
     pub graph: Graph,
     pub root: Scope,
+}
+
+/// Per-side format knobs. This is deliberately one flat bag of optional
+/// settings rather than per-format sub-structs: each format adapter reads
+/// only the fields that concern it, `mapping` stays free of format-crate
+/// dependencies, and old project files load unchanged (everything
+/// defaults).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FormatOptions {
+    /// EDI: skip segments the schema doesn't mention instead of erroring
+    /// on them. Skipping is bounded by the schema's own expectations, so
+    /// declared segments are never swallowed.
+    #[serde(default)]
+    pub lenient_segments: bool,
+    /// CSV: the field delimiter (default `,`).
+    #[serde(default)]
+    pub delimiter: Option<char>,
 }

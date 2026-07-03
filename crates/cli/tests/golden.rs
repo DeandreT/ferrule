@@ -258,3 +258,27 @@ fn edifact_orders_flattens_into_csv() {
     std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
 }
+
+/// EDI lenient mode via project options: a HIPAA-style 837 claim where the
+/// schema declares only the segments it binds (qualifier-anchored NM1s,
+/// CLM, LX/SV3 service lines) and `source_options.lenient_segments` skips
+/// everything else -- envelope, BHT, PER, addresses, TOO, trailers.
+#[test]
+fn lenient_x12_claim_flattens_into_csv() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/edi");
+    let project = dir.join("project_claim.json");
+    let input = dir.join("claim837.edi");
+    let expected = std::fs::read_to_string(dir.join("expected_claim_lines.csv")).unwrap();
+
+    let output_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_golden_test_claim_{}.csv",
+        std::process::id()
+    ));
+
+    let rows = cli::run_project(&project, &input, &output_path).unwrap();
+    assert_eq!(rows, 2);
+
+    let actual = std::fs::read_to_string(&output_path).unwrap();
+    std::fs::remove_file(&output_path).unwrap();
+    assert_eq!(actual, expected);
+}
