@@ -2095,6 +2095,7 @@ name = "mfd"
 version = "0.1.0"
 dependencies = [
  "engine",
+ "format-json",
  "format-xml",
  "ir",
  "mapping",

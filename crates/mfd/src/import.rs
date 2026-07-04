@@ -17,11 +17,23 @@ pub struct Imported {
     pub warnings: Vec<String>,
 }
 
+/// Which family of MapForce component a schema component came from --
+/// decides how a document-level (empty-path) connection behaves.
+#[derive(Clone, Copy, PartialEq)]
+enum ComponentFormat {
+    Xml,
+    Json,
+    Csv,
+}
+
 /// One schema (source or target) component's extracted facts.
 struct SchemaComponent {
     name: String,
+    format: ComponentFormat,
     schema: SchemaNode,
-    instance_path: Option<String>,
+    input_instance: Option<String>,
+    output_instance: Option<String>,
+    options: FormatOptions,
     is_source: bool,
     /// Port key -> absolute entry path (segments below the schema root).
     ports: BTreeMap<u32, Vec<String>>,
@@ -77,14 +89,56 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     Some(sc) => schema_components.push(sc),
                     None => warnings.push(format!("skipped xml component `{name}`")),
                 },
+                "json" => match read_json_component(&component, path, &mut warnings) {
+                    Some(sc) => schema_components.push(sc),
+                    None => warnings.push(format!("skipped json component `{name}`")),
+                },
+                "text" => {
+                    let text_el = component
+                        .children()
+                        .find(|n| n.is_element() && n.tag_name().name() == "data")
+                        .and_then(|d| {
+                            d.children()
+                                .find(|n| n.is_element() && n.tag_name().name() == "text")
+                        });
+                    let flavor = text_el.and_then(|t| t.attribute("type")).unwrap_or("");
+                    if flavor == "csv" {
+                        match read_csv_component(&component, &mut warnings) {
+                            Some(sc) => schema_components.push(sc),
+                            None => warnings.push(format!("skipped csv component `{name}`")),
+                        }
+                    } else {
+                        let label = if flavor.is_empty() {
+                            "text".to_string()
+                        } else {
+                            format!("text/{flavor}")
+                        };
+                        note_skipped_library(&mut skipped_libraries, &label);
+                        warnings.push(format!(
+                            "skipped component `{name}`: text flavor `{flavor}` is \
+                             not supported yet (only csv text components import)"
+                        ));
+                    }
+                }
+                "db" => {
+                    let connection = component
+                        .descendants()
+                        .find(|n| n.has_tag_name("database_connection"))
+                        .and_then(|c| c.attribute("ConnectionString"))
+                        .map(|c| format!(" ({c})"))
+                        .unwrap_or_default();
+                    note_skipped_library(&mut skipped_libraries, "db");
+                    warnings.push(format!(
+                        "skipped database component `{name}`{connection}: ferrule \
+                         cannot import db components yet"
+                    ));
+                }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
                 other => {
-                    if !skipped_libraries.iter().any(|l| l == other) {
-                        skipped_libraries.push(other.to_string());
-                    }
+                    note_skipped_library(&mut skipped_libraries, other);
                     warnings.push(format!(
                         "skipped component `{name}`: unsupported library `{other}` \
-                         (only xml and core/lang function components import)"
+                         (only xml/json/csv and core/lang function components import)"
                     ));
                 }
             }
@@ -114,11 +168,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         schema_components.iter().filter(|c| !c.is_source).collect();
     let unsupported = |side: &str| {
         MfdError::Unsupported(if skipped_libraries.is_empty() {
-            format!("no XML {side} component found in this design")
+            format!("no importable {side} component (xml/json/csv) found in this design")
         } else {
             format!(
-                "no XML {side} component found; this design uses {} components, \
-                 which ferrule cannot import yet",
+                "no importable {side} component (xml/json/csv) found; this design \
+                 uses {} components, which ferrule cannot import yet",
                 skipped_libraries.join("/")
             )
         })
@@ -141,6 +195,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         sources: &sources,
         fn_components: &fn_components,
         fn_by_output: BTreeMap::new(),
+        framed: std::collections::BTreeSet::new(),
         warnings: Vec::new(),
     };
     for (i, fc) in fn_components.iter().enumerate() {
@@ -148,14 +203,6 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.fn_by_output.insert(out, i);
         }
     }
-    // Materialize every function component up front (filters are handled
-    // at the scope stage instead).
-    for (i, fc) in fn_components.iter().enumerate() {
-        if fc.name != "filter" {
-            builder.fn_node(i);
-        }
-    }
-
     // Scopes and bindings from the target's connected ports.
     let mut scope_builder = ScopeBuilder {
         root: Scope::default(),
@@ -170,7 +217,19 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         let node_kind = schema_node_at(&target.schema, target_path);
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
-                // Iteration connection (or filtered iteration).
+                // Iteration connection (or filtered iteration). An empty
+                // path is a document-level connection: for row/array-shaped
+                // targets (a CSV block, a repeating JSON root) it iterates
+                // the root scope; for document-shaped targets the root runs
+                // exactly once anyway, so it carries no information.
+                if target_path.is_empty() {
+                    let row_shaped = target.format == ComponentFormat::Csv
+                        || (target.format == ComponentFormat::Json && node.repeating);
+                    if row_shaped {
+                        iterations.push((target_path.clone(), from));
+                    }
+                    continue;
+                }
                 if !node.repeating {
                     builder.warnings.push(format!(
                         "connection into non-repeating group `{}` ignored",
@@ -189,6 +248,22 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     }
     // Iterations first (outer before inner), so anchors exist for bindings.
     iterations.sort_by_key(|(path, _)| path.len());
+    // SourceField paths are relative to the enclosing iteration frames, so
+    // the builder must know which repeating levels the scopes will iterate
+    // before any function component materializes a SourceField.
+    for (_, from) in &iterations {
+        let (source_key, _) = builder.resolve_iteration_feed(*from);
+        if let Some(abs) = builder.source_abs_path(source_key) {
+            builder.note_framed_prefixes(&abs);
+        }
+    }
+    // Materialize every function component up front (filters are handled
+    // at the scope stage instead).
+    for (i, fc) in fn_components.iter().enumerate() {
+        if fc.name != "filter" {
+            builder.fn_node(i);
+        }
+    }
     for (target_path, from) in iterations {
         let (source_key, filter_expr) = builder.resolve_iteration_feed(from);
         let Some(source_abs) = builder.source_abs_path(source_key) else {
@@ -221,9 +296,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         ));
         extra_sources.push(NamedSource {
             name: extra.name.clone(),
-            path: extra.instance_path.clone().unwrap_or_default(),
+            path: extra.input_instance.clone().unwrap_or_default(),
             schema: extra.schema.clone(),
-            options: FormatOptions::default(),
+            options: extra.options.clone(),
         });
     }
 
@@ -232,8 +307,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         project: Project {
             source: primary.schema.clone(),
             target: target.schema.clone(),
-            source_options: FormatOptions::default(),
-            target_options: FormatOptions::default(),
+            source_path: primary.input_instance.clone(),
+            target_path: target
+                .output_instance
+                .clone()
+                .or_else(|| target.input_instance.clone()),
+            source_options: primary.options.clone(),
+            target_options: target.options.clone(),
             extra_sources,
             graph: builder.graph,
             root: scope_builder.root,
@@ -280,6 +360,8 @@ fn read_schema_component(
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
     let mut in_count = 0usize;
+    // The root entry's own port is a document-level connection.
+    record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
     collect_entry_ports(
         &entry,
         &mut Vec::new(),
@@ -293,12 +375,18 @@ fn read_schema_component(
     }
     let is_source = out_count >= in_count;
 
-    // Schema: prefer the referenced XSD (types + repeating info).
+    // Schema: prefer the referenced XSD (types + repeating info), picking
+    // the top-level element the design says the document uses -- an XSD
+    // can declare several document roots ("{ns}Local" strips to "Local").
+    let instance_root = document
+        .and_then(|d| d.attribute("instanceroot"))
+        .and_then(|r| r.rsplit('}').next())
+        .filter(|r| !r.is_empty());
     let schema = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
             let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
-            match format_xml::xsd::import(&xsd_path) {
+            match format_xml::xsd::import_root(&xsd_path, instance_root) {
                 Ok(schema) => Some(schema),
                 Err(e) => {
                     warnings.push(format!(
@@ -311,14 +399,359 @@ fn read_schema_component(
         })
         .unwrap_or_else(|| entry_tree_schema(&entry));
 
-    let instance_path = document
-        .and_then(|d| d.attribute("inputinstance"))
-        .map(str::to_string);
+    Some(SchemaComponent {
+        name,
+        format: ComponentFormat::Xml,
+        schema,
+        input_instance: document
+            .and_then(|d| d.attribute("inputinstance"))
+            .map(str::to_string),
+        output_instance: document
+            .and_then(|d| d.attribute("outputinstance"))
+            .map(str::to_string),
+        options: FormatOptions::default(),
+        is_source,
+        ports,
+    })
+}
+
+fn note_skipped_library(skipped: &mut Vec<String>, label: &str) {
+    if !skipped.iter().any(|l| l == label) {
+        skipped.push(label.to_string());
+    }
+}
+
+/// Records an entry's own port keys under `path`.
+fn record_entry_keys(
+    entry: &roxmltree::Node,
+    path: &[String],
+    ports: &mut BTreeMap<u32, Vec<String>>,
+    out_count: &mut usize,
+    in_count: &mut usize,
+) {
+    if let Some(key) = parse_u32(entry.attribute("outkey")) {
+        *out_count += 1;
+        ports.insert(key, path.to_vec());
+    }
+    if let Some(key) = parse_u32(entry.attribute("inpkey")) {
+        *in_count += 1;
+        ports.insert(key, path.to_vec());
+    }
+}
+
+/// Reads a json component: schema from the referenced JSON Schema file
+/// (entry tree as fallback), ports normalized so only `json-property`
+/// entries contribute path segments -- which lines the paths up with the
+/// property/array shapes `json_schema::import` produces.
+fn read_json_component(
+    component: &roxmltree::Node,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    let name = component.attribute("name").unwrap_or_default().to_string();
+    let data = component
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "data")?;
+    let json_el = data
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "json");
+    let root_el = data
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "root")?;
+
+    // Strip the synthetic FileInstance/document levels down to the JSON
+    // document root wrapper (an entry conventionally named `root`).
+    let mut entry = root_el
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
+    while matches!(
+        entry.attribute("name"),
+        Some("FileInstance") | Some("document")
+    ) {
+        entry = entry
+            .children()
+            .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
+    }
+
+    if json_el.is_some_and(|j| j.attribute("jsonlines") == Some("1")) {
+        warnings.push(format!(
+            "component `{name}` uses JSON Lines; ferrule reads/writes it as \
+             regular JSON, so instances need converting"
+        ));
+    }
+
+    let mut ports = BTreeMap::new();
+    let mut out_count = 0usize;
+    let mut in_count = 0usize;
+    record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
+    collect_json_ports(
+        &entry,
+        &mut Vec::new(),
+        &mut ports,
+        &mut out_count,
+        &mut in_count,
+        warnings,
+    );
+    if out_count == 0 && in_count == 0 {
+        warnings.push(format!("component `{name}` has no connected ports"));
+    }
+    let is_source = out_count >= in_count;
+
+    // Schema: prefer the referenced JSON Schema (types + repeating info).
+    let schema = json_el
+        .and_then(|j| j.attribute("schema"))
+        .and_then(|rel| {
+            let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
+            match format_json::json_schema::import(&schema_path) {
+                Ok(schema) => Some(schema),
+                Err(e) => {
+                    warnings.push(format!(
+                        "component `{name}`: could not read schema `{rel}` ({e}); \
+                         falling back to the entry tree"
+                    ));
+                    None
+                }
+            }
+        })
+        .unwrap_or_else(|| {
+            if json_el.and_then(|j| j.attribute("schema")).is_none() {
+                warnings.push(format!(
+                    "component `{name}` has no schema reference; deriving the \
+                     schema from the entry tree"
+                ));
+            }
+            json_entry_value_schema(&name, &entry)
+        });
 
     Some(SchemaComponent {
         name,
+        format: ComponentFormat::Json,
         schema,
-        instance_path,
+        input_instance: json_el
+            .and_then(|j| j.attribute("inputinstance"))
+            .map(str::to_string),
+        output_instance: json_el
+            .and_then(|j| j.attribute("outputinstance"))
+            .map(str::to_string),
+        options: FormatOptions::default(),
+        is_source,
+        ports,
+    })
+}
+
+/// Walks a json component's entry tree. Only `json-property` entries push
+/// a path segment; structural entries (`object`, `array`, `item`, type
+/// leaves) are transparent, so a port lands on the path of the property
+/// that contains it -- matching the [`SchemaNode`] tree, where a repeating
+/// property carries its array's shape directly.
+fn collect_json_ports(
+    entry: &roxmltree::Node,
+    path: &mut Vec<String>,
+    ports: &mut BTreeMap<u32, Vec<String>>,
+    out_count: &mut usize,
+    in_count: &mut usize,
+    warnings: &mut Vec<String>,
+) {
+    for child in entry
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
+    {
+        match child.attribute("type") {
+            Some("json-property") => {
+                path.push(child.attribute("name").unwrap_or_default().to_string());
+                record_entry_keys(&child, path, ports, out_count, in_count);
+                collect_json_ports(&child, path, ports, out_count, in_count, warnings);
+                path.pop();
+            }
+            Some("json-propertyname") | Some("json-subtype") => {
+                if child.attribute("outkey").is_some()
+                    || child.attribute("inpkey").is_some()
+                    || child
+                        .descendants()
+                        .any(|d| d.attribute("outkey").is_some() || d.attribute("inpkey").is_some())
+                {
+                    warnings.push(format!(
+                        "dynamic `{}` entries are not supported; connections \
+                         under `{}` skipped",
+                        child.attribute("type").unwrap_or_default(),
+                        path.join("/")
+                    ));
+                }
+            }
+            _ => {
+                record_entry_keys(&child, path, ports, out_count, in_count);
+                collect_json_ports(&child, path, ports, out_count, in_count, warnings);
+            }
+        }
+    }
+}
+
+/// Fallback JSON schema straight from the entry tree: `json-property`
+/// children become fields, an enclosing `array` marks the property
+/// repeating, type-leaf names give scalar types.
+fn json_entry_value_schema(name: &str, entry: &roxmltree::Node) -> SchemaNode {
+    for child in entry
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
+    {
+        if child.attribute("type").is_some() && child.attribute("type") != Some("json-item") {
+            continue;
+        }
+        match child.attribute("name") {
+            Some("object") => {
+                let children = child
+                    .children()
+                    .filter(|n| {
+                        n.is_element()
+                            && n.tag_name().name() == "entry"
+                            && n.attribute("type") == Some("json-property")
+                    })
+                    .map(|p| json_entry_value_schema(p.attribute("name").unwrap_or_default(), &p))
+                    .collect();
+                return SchemaNode::group(name, children);
+            }
+            Some("array") => {
+                return json_entry_value_schema(name, &child).repeating();
+            }
+            Some("item") => {
+                // An array's item wrapper: its child describes the value.
+                return json_entry_value_schema(name, &child);
+            }
+            Some("number") => return SchemaNode::scalar(name, ir::ScalarType::Float),
+            Some("integer") => return SchemaNode::scalar(name, ir::ScalarType::Int),
+            Some("boolean") => return SchemaNode::scalar(name, ir::ScalarType::Bool),
+            Some("string") | Some("null") => {
+                return SchemaNode::scalar(name, ir::ScalarType::String);
+            }
+            _ => continue,
+        }
+    }
+    SchemaNode::scalar(name, ir::ScalarType::String)
+}
+
+/// Reads a csv text component: flat schema and delimiter/header options
+/// from the inline `<settings>`; the block entry's own port is the row
+/// iteration (path `[]`), field entries map to `[field]`.
+fn read_csv_component(
+    component: &roxmltree::Node,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    let name = component.attribute("name").unwrap_or_default().to_string();
+    let data = component
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "data")?;
+    let text_el = data
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "text")?;
+    let settings = text_el
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "settings");
+    let names_el = settings.and_then(|s| {
+        s.children()
+            .find(|n| n.is_element() && n.tag_name().name() == "names")
+    });
+
+    // The entry tree is FileInstance > document > block(fields).
+    let root_el = data
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "root")?;
+    let mut block = root_el
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
+    while matches!(
+        block.attribute("name"),
+        Some("FileInstance") | Some("document")
+    ) {
+        block = block
+            .children()
+            .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
+    }
+
+    let fields: Vec<SchemaNode> = names_el
+        .map(|names| {
+            names
+                .children()
+                .filter(|n| n.is_element() && n.tag_name().name().starts_with("field"))
+                .map(|f| {
+                    let field_name = f.attribute("name").unwrap_or_default();
+                    let ty = match f.attribute("type") {
+                        Some("number") | Some("decimal") | Some("double") | Some("float") => {
+                            ir::ScalarType::Float
+                        }
+                        Some("integer") | Some("int") => ir::ScalarType::Int,
+                        Some("boolean") => ir::ScalarType::Bool,
+                        _ => ir::ScalarType::String,
+                    };
+                    SchemaNode::scalar(field_name, ty)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if fields.is_empty() {
+        warnings.push(format!(
+            "csv component `{name}` declares no fields; skipped"
+        ));
+        return None;
+    }
+    let root_name = names_el
+        .and_then(|n| n.attribute("root"))
+        .filter(|r| !r.is_empty())
+        .unwrap_or(&name);
+    let schema = SchemaNode::group(root_name, fields);
+
+    let mut options = FormatOptions::default();
+    if let Some(settings) = settings {
+        if let Some(separator) = settings.attribute("separator") {
+            let mut chars = separator.chars();
+            options.delimiter = chars.next();
+            if chars.next().is_some() {
+                warnings.push(format!(
+                    "csv component `{name}`: multi-character separator \
+                     `{separator}` truncated to its first character"
+                ));
+            }
+        }
+        options.has_header_row = Some(settings.attribute("firstrownames") == Some("true"));
+        if let Some(quote) = settings.attribute("quote")
+            && !quote.is_empty()
+            && quote != "\""
+        {
+            warnings.push(format!(
+                "csv component `{name}`: quote character `{quote}` is not \
+                 supported (ferrule always quotes with `\"`)"
+            ));
+        }
+    }
+
+    let mut ports = BTreeMap::new();
+    let mut out_count = 0usize;
+    let mut in_count = 0usize;
+    record_entry_keys(&block, &[], &mut ports, &mut out_count, &mut in_count);
+    for field_entry in block
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
+    {
+        let field_name = field_entry.attribute("name").unwrap_or_default();
+        record_entry_keys(
+            &field_entry,
+            &[field_name.to_string()],
+            &mut ports,
+            &mut out_count,
+            &mut in_count,
+        );
+    }
+    if out_count == 0 && in_count == 0 {
+        warnings.push(format!("component `{name}` has no connected ports"));
+    }
+    let is_source = out_count >= in_count;
+
+    Some(SchemaComponent {
+        name,
+        format: ComponentFormat::Csv,
+        schema,
+        input_instance: text_el.attribute("inputinstance").map(str::to_string),
+        output_instance: text_el.attribute("outputinstance").map(str::to_string),
+        options,
         is_source,
         ports,
     })
@@ -356,16 +789,7 @@ fn collect_entry_ports(
         }
         if let Some(key) = parse_u32(child.attribute("inpkey")) {
             *in_count += 1;
-            if child.attribute("type") == Some("attribute") {
-                warnings.push(format!(
-                    "attribute `{}` is connected but XML attributes are not \
-                     supported yet; its binding will be skipped",
-                    path.join("/")
-                ));
-                ports.remove(&key);
-            } else {
-                ports.insert(key, path.clone());
-            }
+            ports.insert(key, path.clone());
         }
         collect_entry_ports(&child, path, ports, out_count, in_count, warnings);
         path.pop();
@@ -373,9 +797,13 @@ fn collect_entry_ports(
 }
 
 /// Fallback schema straight from the entry tree: groups where there are
-/// children, string scalars at the leaves, no repeating flags.
+/// children, string scalars at the leaves (attribute entries flagged as
+/// such), no repeating flags.
 fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
     let name = entry.attribute("name").unwrap_or("root");
+    if entry.attribute("type") == Some("attribute") {
+        return SchemaNode::scalar(name, ir::ScalarType::String).attribute();
+    }
     let children: Vec<SchemaNode> = entry
         .children()
         .filter(|n| {
@@ -467,24 +895,6 @@ fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sch
     Some(node)
 }
 
-/// Path segments after the innermost repeating ancestor -- what a
-/// `SourceField` must hold so it resolves against the enclosing scopes'
-/// iteration frames (same rule as the GUI's source leaves).
-pub(crate) fn suffix_after_repeating(schema: &SchemaNode, abs: &[String]) -> Vec<String> {
-    let mut node = schema;
-    let mut suffix_start = 0;
-    for (i, segment) in abs.iter().enumerate() {
-        let Some(child) = node.child(segment) else {
-            break;
-        };
-        if child.repeating {
-            suffix_start = i + 1;
-        }
-        node = child;
-    }
-    abs[suffix_start..].to_vec()
-}
-
 struct GraphBuilder<'a> {
     graph: Graph,
     next_id: NodeId,
@@ -494,6 +904,12 @@ struct GraphBuilder<'a> {
     sources: &'a [&'a SchemaComponent],
     fn_components: &'a [FnComponent],
     fn_by_output: BTreeMap<u32, usize>,
+    /// Absolute source paths ending at a repeating node that some scope's
+    /// iteration crosses -- i.e. levels that get their own context frame
+    /// at run time. SourceField paths are cut after the innermost framed
+    /// ancestor; repeating levels no scope iterates stay in the path (the
+    /// engine reads their first item).
+    framed: std::collections::BTreeSet<Vec<String>>,
     warnings: Vec<String>,
 }
 
@@ -509,13 +925,49 @@ impl GraphBuilder<'_> {
         self.alloc(Node::Const { value: Value::Null })
     }
 
+    /// Marks every repeating level along an iterated absolute source path
+    /// as getting a run-time context frame.
+    fn note_framed_prefixes(&mut self, abs: &[String]) {
+        let Some(source) = self.sources.first() else {
+            return;
+        };
+        let mut node = &source.schema;
+        for (i, segment) in abs.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            if child.repeating {
+                self.framed.insert(abs[..=i].to_vec());
+            }
+            node = child;
+        }
+    }
+
+    /// Path segments after the innermost framed (scope-iterated) repeating
+    /// ancestor -- what a `SourceField` must hold so it resolves against
+    /// the enclosing scopes' iteration frames.
+    fn suffix_after_framed(&self, schema: &SchemaNode, abs: &[String]) -> Vec<String> {
+        let mut node = schema;
+        let mut suffix_start = 0;
+        for (i, segment) in abs.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            if child.repeating && self.framed.contains(&abs[..=i]) {
+                suffix_start = i + 1;
+            }
+            node = child;
+        }
+        abs[suffix_start..].to_vec()
+    }
+
     /// The ferrule node producing the value at output-port `key`, creating
     /// SourceField/function nodes on demand. `None` for unsupported feeds.
     fn value_node(&mut self, key: u32) -> Option<NodeId> {
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
             if let Some(abs) = source.ports.get(&key) {
-                let mut path = suffix_after_repeating(&source.schema, abs);
+                let mut path = self.suffix_after_framed(&source.schema, abs);
                 if idx > 0 {
                     // Extra sources are addressed by name from the
                     // outermost context frame.

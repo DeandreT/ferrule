@@ -10,6 +10,7 @@ description = "Imports and exports MapForce .mfd mapping designs (best-effort in
 ir = { workspace = true }
 mapping = { workspace = true }
 format-xml = { workspace = true }
+format-json = { workspace = true }
 roxmltree = { workspace = true }
 thiserror = { workspace = true }
 

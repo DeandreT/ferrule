@@ -58,6 +58,7 @@ pub fn run_project(
                 &project.target,
                 rows,
                 project.target_options.delimiter,
+                project.target_options.has_header_row.unwrap_or(true),
             )
             .with_context(|| format!("writing output {}", output_path.display()))?;
             rows.len()
@@ -152,8 +153,13 @@ fn read_instance(
 ) -> anyhow::Result<Instance> {
     let instance = match extension_of(path)?.as_str() {
         "csv" => {
-            let rows = format_csv::read(path, schema, options.delimiter)
-                .with_context(|| format!("reading input {}", path.display()))?;
+            let rows = format_csv::read(
+                path,
+                schema,
+                options.delimiter,
+                options.has_header_row.unwrap_or(true),
+            )
+            .with_context(|| format!("reading input {}", path.display()))?;
             Instance::Repeated(rows)
         }
         "xml" => format_xml::read(path, schema)

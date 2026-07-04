@@ -18,7 +18,6 @@ mod export;
 mod import;
 
 pub use export::export;
-pub(crate) use import::suffix_after_repeating as import_suffix;
 pub use import::{Imported, import};
 
 use thiserror::Error;

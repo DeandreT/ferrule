@@ -64,6 +64,8 @@ fn blank_project() -> Project {
     Project {
         source: SchemaNode::group("root", vec![]),
         target: SchemaNode::group("root", vec![]),
+        source_path: None,
+        target_path: None,
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
@@ -545,6 +547,8 @@ mod tests {
                     SchemaNode::scalar("age", ScalarType::Int),
                 ],
             ),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),

@@ -107,6 +107,14 @@ pub struct Scope {
 pub struct Project {
     pub source: SchemaNode,
     pub target: SchemaNode,
+    /// Default source/target instance files, resolved relative to the
+    /// project file's directory -- carried over from imported designs and
+    /// used to pick the component format on `.mfd` export. `run` ignores
+    /// them; the CLI takes explicit paths.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_path: Option<String>,
     #[serde(default)]
     pub source_options: FormatOptions,
     #[serde(default)]
@@ -147,4 +155,7 @@ pub struct FormatOptions {
     /// CSV: the field delimiter (default `,`).
     #[serde(default)]
     pub delimiter: Option<char>,
+    /// CSV: whether the file's first row is a header (default true).
+    #[serde(default)]
+    pub has_header_row: Option<bool>,
 }

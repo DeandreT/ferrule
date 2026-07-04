@@ -53,7 +53,20 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
         SchemaKind::Group { children } => {
             let mut fields = Vec::with_capacity(children.len());
             for child in children {
-                if child.repeating {
+                if child.attribute {
+                    // Attributes are commonly optional; absent -> Null
+                    // rather than the hard error missing elements get.
+                    let value = match el.attribute(child.name.as_str()) {
+                        Some(text) => {
+                            let SchemaKind::Scalar { ty } = child.kind else {
+                                return Err(XmlFormatError::MissingElement(child.name.clone()));
+                            };
+                            parse_scalar(&child.name, ty, text.trim())?
+                        }
+                        None => Value::Null,
+                    };
+                    fields.push((child.name.clone(), Instance::Scalar(value)));
+                } else if child.repeating {
                     let mut items = Vec::new();
                     for el_child in el
                         .children()
@@ -122,9 +135,23 @@ fn write_node<W: std::io::Write>(
             Ok(())
         }
         Instance::Group(fields) => {
-            writer.write_event(Event::Start(BytesStart::new(schema.name.clone())))?;
+            let mut start = BytesStart::new(schema.name.clone());
             if let SchemaKind::Group { children } = &schema.kind {
-                for child_schema in children {
+                for child_schema in children.iter().filter(|c| c.attribute) {
+                    if let Some((_, Instance::Scalar(value))) =
+                        fields.iter().find(|(n, _)| n == &child_schema.name)
+                        && !matches!(value, Value::Null)
+                    {
+                        start.push_attribute((
+                            child_schema.name.as_str(),
+                            format_scalar(value).as_str(),
+                        ));
+                    }
+                }
+            }
+            writer.write_event(Event::Start(start))?;
+            if let SchemaKind::Group { children } = &schema.kind {
+                for child_schema in children.iter().filter(|c| !c.attribute) {
                     if let Some((_, child_instance)) =
                         fields.iter().find(|(n, _)| n == &child_schema.name)
                     {
@@ -206,6 +233,57 @@ mod tests {
         let read_back = read(&path, &schema()).unwrap();
         std::fs::remove_file(&path).unwrap();
 
+        assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn attributes_roundtrip_including_missing_optional_ones() {
+        let schema = SchemaNode::group(
+            "Books",
+            vec![
+                SchemaNode::scalar("count", ScalarType::Int).attribute(),
+                SchemaNode::group(
+                    "Book",
+                    vec![
+                        SchemaNode::scalar("isbn", ScalarType::String).attribute(),
+                        SchemaNode::scalar("Title", ScalarType::String),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let instance = Instance::Group(vec![
+            ("count".into(), Instance::Scalar(Value::Int(2))),
+            (
+                "Book".into(),
+                Instance::Repeated(vec![
+                    Instance::Group(vec![
+                        (
+                            "isbn".into(),
+                            Instance::Scalar(Value::String("978-1".into())),
+                        ),
+                        ("Title".into(), Instance::Scalar(Value::String("A".into()))),
+                    ]),
+                    Instance::Group(vec![
+                        // Null attribute: omitted on write, read back as Null.
+                        ("isbn".into(), Instance::Scalar(Value::Null)),
+                        ("Title".into(), Instance::Scalar(Value::String("B".into()))),
+                    ]),
+                ]),
+            ),
+        ]);
+
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_xml_attr_test_{}.xml",
+            std::process::id()
+        ));
+        write(&path, &schema, &instance).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(r#"<Books count="2">"#), "{text}");
+        assert!(text.contains(r#"<Book isbn="978-1">"#), "{text}");
+
+        let read_back = read(&path, &schema).unwrap();
+        std::fs::remove_file(&path).unwrap();
         assert_eq!(read_back, instance);
     }
 
