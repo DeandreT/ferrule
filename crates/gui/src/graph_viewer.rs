@@ -1,20 +1,33 @@
-//! Renders and edits `mapping::Graph` as an egui-snarl node canvas.
+//! Renders and edits a mapping as an egui-snarl canvas of [`CanvasNode`]s:
+//! the Source/Target schema endpoints plus the mapping graph's function
+//! nodes. The snarl's payload carries no node data -- the mapping graph
+//! and scope tree stay the single source of truth, borrowed per frame.
 //!
-//! The snarl's own node payload is just a `mapping::NodeId` -- the real node
-//! data lives in `mapping::Graph`, which this viewer borrows for the
-//! duration of one frame's `show()` call. This avoids keeping two copies of
-//! the graph in sync.
+//! `SourceField` nodes whose path corresponds to a source leaf are not
+//! shown as canvas nodes: a wire leaving the Source endpoint's pin *is*
+//! the source field. Connecting a wire into a Target pin creates or
+//! replaces the `Binding` in the scope owning that leaf (the scope whose
+//! `target_field` chain matches the leaf's group chain -- create the
+//! scope in the side panel first for nested targets).
 
 use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
 use egui_snarl::{InPin, NodeId as SnarlNodeId, OutPin, Snarl};
 use ir::Value;
-use mapping::{Graph, Node, NodeId};
+use mapping::{Binding, Graph, Node, NodeId, Scope};
 
+use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
+    pub root_scope: &'a mut Scope,
+    pub source_leaves: &'a [SourceLeaf],
+    pub target_leaves: &'a [TargetLeaf],
+    /// Set when an interaction can't be completed (e.g. binding into a
+    /// scope that doesn't exist yet); the app surfaces it in the status
+    /// line.
+    pub error: Option<String>,
 }
 
 impl GraphViewer<'_> {
@@ -30,10 +43,95 @@ impl GraphViewer<'_> {
         id
     }
 
-    fn insert(&mut self, snarl: &mut Snarl<NodeId>, pos: egui::Pos2, node: Node) {
+    fn insert(&mut self, snarl: &mut Snarl<CanvasNode>, pos: egui::Pos2, node: Node) {
         let id = self.fresh_id();
         self.graph.nodes.insert(id, node);
-        snarl.insert_node(pos, id);
+        snarl.insert_node(pos, CanvasNode::Graph(id));
+    }
+
+    /// Reuses an existing `SourceField` with this exact path, or creates
+    /// one. These nodes are the hidden backing of Source-pin wires.
+    fn source_field_for(&mut self, path: &[String]) -> NodeId {
+        let existing = self.graph.nodes.iter().find_map(|(id, node)| match node {
+            Node::SourceField { path: p } if p == path => Some(*id),
+            _ => None,
+        });
+        existing.unwrap_or_else(|| {
+            let id = self.fresh_id();
+            self.graph.nodes.insert(
+                id,
+                Node::SourceField {
+                    path: path.to_vec(),
+                },
+            );
+            id
+        })
+    }
+
+    fn set_input(&mut self, node_id: NodeId, idx: usize, from_id: NodeId) {
+        if let Some(node) = self.graph.nodes.get_mut(&node_id) {
+            match node {
+                Node::Call { args, .. } => {
+                    if idx < args.len() {
+                        args[idx] = from_id;
+                    }
+                }
+                Node::If {
+                    condition,
+                    then,
+                    else_,
+                } => match idx {
+                    0 => *condition = from_id,
+                    1 => *then = from_id,
+                    2 => *else_ = from_id,
+                    _ => {}
+                },
+                Node::ValueMap { input, .. } => *input = from_id,
+                Node::Lookup { matches, .. } => *matches = from_id,
+                _ => {}
+            }
+        }
+    }
+
+    fn scope_for_chain<'s>(scope: &'s mut Scope, chain: &[String]) -> Option<&'s mut Scope> {
+        let Some((first, rest)) = chain.split_first() else {
+            return Some(scope);
+        };
+        let child = scope
+            .children
+            .iter_mut()
+            .find(|c| c.target_field == *first)?;
+        Self::scope_for_chain(child, rest)
+    }
+
+    /// Points the binding for `leaf` at `node`, creating it if absent.
+    fn set_binding(&mut self, leaf: &TargetLeaf, node: NodeId) -> bool {
+        let Some(scope) = Self::scope_for_chain(self.root_scope, &leaf.chain) else {
+            self.error = Some(format!(
+                "no scope for `{}` -- create the `{}` scope in the side panel first",
+                leaf.label,
+                leaf.chain.join("/")
+            ));
+            return false;
+        };
+        match scope
+            .bindings
+            .iter_mut()
+            .find(|b| b.target_field == leaf.field)
+        {
+            Some(binding) => binding.node = node,
+            None => scope.bindings.push(Binding {
+                target_field: leaf.field.clone(),
+                node,
+            }),
+        }
+        true
+    }
+
+    fn remove_binding(&mut self, leaf: &TargetLeaf) {
+        if let Some(scope) = Self::scope_for_chain(self.root_scope, &leaf.chain) {
+            scope.bindings.retain(|b| b.target_field != leaf.field);
+        }
     }
 
     fn input_count(node: &Node) -> usize {
@@ -46,47 +144,74 @@ impl GraphViewer<'_> {
     }
 }
 
-impl SnarlViewer<NodeId> for GraphViewer<'_> {
-    fn title(&mut self, node: &NodeId) -> String {
-        match self.graph.nodes.get(node) {
-            Some(Node::SourceField { path }) => format!("Source: {}", path.join("/")),
-            Some(Node::Const { value }) => {
-                format!("Const: {}", crate::value_editor::display_string(value))
-            }
-            Some(Node::Call { function, .. }) => format!("Call: {function}"),
-            Some(Node::If { .. }) => "If".to_string(),
-            Some(Node::ValueMap { .. }) => "Value Map".to_string(),
-            Some(Node::Lookup { collection, .. }) => format!("Lookup: {}", collection.join("/")),
-            None => "<missing>".to_string(),
+impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
+    fn title(&mut self, node: &CanvasNode) -> String {
+        match node {
+            CanvasNode::Source => "Source".to_string(),
+            CanvasNode::Target => "Target".to_string(),
+            CanvasNode::Graph(id) => match self.graph.nodes.get(id) {
+                Some(Node::SourceField { path }) => format!("Source: {}", path.join("/")),
+                Some(Node::Const { value }) => {
+                    format!("Const: {}", crate::value_editor::display_string(value))
+                }
+                Some(Node::Call { function, .. }) => format!("Call: {function}"),
+                Some(Node::If { .. }) => "If".to_string(),
+                Some(Node::ValueMap { .. }) => "Value Map".to_string(),
+                Some(Node::Lookup { collection, .. }) => {
+                    format!("Lookup: {}", collection.join("/"))
+                }
+                None => "<missing>".to_string(),
+            },
         }
     }
 
-    fn inputs(&mut self, node: &NodeId) -> usize {
-        self.graph.nodes.get(node).map_or(0, Self::input_count)
+    fn inputs(&mut self, node: &CanvasNode) -> usize {
+        match node {
+            CanvasNode::Source => 0,
+            CanvasNode::Target => self.target_leaves.len(),
+            CanvasNode::Graph(id) => self.graph.nodes.get(id).map_or(0, Self::input_count),
+        }
     }
 
-    fn outputs(&mut self, _node: &NodeId) -> usize {
-        1
+    fn outputs(&mut self, node: &CanvasNode) -> usize {
+        match node {
+            CanvasNode::Source => self.source_leaves.len(),
+            CanvasNode::Target => 0,
+            CanvasNode::Graph(_) => 1,
+        }
     }
 
     #[allow(refining_impl_trait)]
-    fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<NodeId>) -> PinInfo {
-        let node_id = snarl[pin.id.node];
+    fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let idx = pin.id.input;
-        let label = match self.graph.nodes.get(&node_id) {
-            Some(Node::Call { .. }) => format!("arg {idx}"),
-            Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
-            Some(Node::ValueMap { .. }) => "input".to_string(),
-            Some(Node::Lookup { .. }) => "matches".to_string(),
-            _ => String::new(),
+        let label = match snarl[pin.id.node] {
+            CanvasNode::Target => self
+                .target_leaves
+                .get(idx)
+                .map_or_else(String::new, |l| l.label.clone()),
+            CanvasNode::Source => String::new(),
+            CanvasNode::Graph(id) => match self.graph.nodes.get(&id) {
+                Some(Node::Call { .. }) => format!("arg {idx}"),
+                Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
+                Some(Node::ValueMap { .. }) => "input".to_string(),
+                Some(Node::Lookup { .. }) => "matches".to_string(),
+                _ => String::new(),
+            },
         };
         ui.label(label);
         PinInfo::circle()
     }
 
     #[allow(refining_impl_trait)]
-    fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, snarl: &mut Snarl<NodeId>) -> PinInfo {
-        let node_id = snarl[pin.id.node];
+    fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
+        let CanvasNode::Graph(node_id) = snarl[pin.id.node] else {
+            if let CanvasNode::Source = snarl[pin.id.node]
+                && let Some(leaf) = self.source_leaves.get(pin.id.output)
+            {
+                ui.label(&leaf.label);
+            }
+            return PinInfo::circle();
+        };
         let mut new_arg_needed = false;
         if let Some(node) = self.graph.nodes.get_mut(&node_id) {
             match node {
@@ -149,31 +274,44 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
         PinInfo::circle()
     }
 
-    fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<NodeId>) {
-        let from_id = snarl[from.id.node];
-        let to_id = snarl[to.id.node];
-        let idx = to.id.input;
-        if let Some(node) = self.graph.nodes.get_mut(&to_id) {
-            match node {
-                Node::Call { args, .. } => {
-                    if idx < args.len() {
-                        args[idx] = from_id;
-                    }
-                }
-                Node::If {
-                    condition,
-                    then,
-                    else_,
-                } => match idx {
-                    0 => *condition = from_id,
-                    1 => *then = from_id,
-                    2 => *else_ = from_id,
-                    _ => {}
-                },
-                Node::ValueMap { input, .. } => *input = from_id,
-                Node::Lookup { matches, .. } => *matches = from_id,
-                _ => {}
+    fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
+        let from_node = snarl[from.id.node];
+        let to_node = snarl[to.id.node];
+        let accepted = match (from_node, to_node) {
+            (CanvasNode::Source, CanvasNode::Graph(to_id)) => {
+                let Some(leaf) = self.source_leaves.get(from.id.output) else {
+                    return;
+                };
+                let path = leaf.path.clone();
+                let field = self.source_field_for(&path);
+                self.set_input(to_id, to.id.input, field);
+                true
             }
+            (CanvasNode::Source, CanvasNode::Target) => {
+                let (Some(source_leaf), Some(target_leaf)) = (
+                    self.source_leaves.get(from.id.output),
+                    self.target_leaves.get(to.id.input).cloned(),
+                ) else {
+                    return;
+                };
+                let path = source_leaf.path.clone();
+                let field = self.source_field_for(&path);
+                self.set_binding(&target_leaf, field)
+            }
+            (CanvasNode::Graph(from_id), CanvasNode::Target) => {
+                let Some(target_leaf) = self.target_leaves.get(to.id.input).cloned() else {
+                    return;
+                };
+                self.set_binding(&target_leaf, from_id)
+            }
+            (CanvasNode::Graph(from_id), CanvasNode::Graph(to_id)) => {
+                self.set_input(to_id, to.id.input, from_id);
+                true
+            }
+            _ => false,
+        };
+        if !accepted {
+            return;
         }
         // Every input takes exactly one value, so replace any existing wire.
         for &remote in &to.remotes {
@@ -182,61 +320,28 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
         snarl.connect(from.id, to.id);
     }
 
-    fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<NodeId>) {
-        let to_id = snarl[to.id.node];
-        let idx = to.id.input;
-        let placeholder = self.fresh_id();
-        let mut used_placeholder = false;
-        if let Some(node) = self.graph.nodes.get_mut(&to_id) {
-            match node {
-                Node::Call { args, .. } => {
-                    if idx < args.len() {
-                        args[idx] = placeholder;
-                        used_placeholder = true;
-                    }
+    fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
+        match (snarl[from.id.node], snarl[to.id.node]) {
+            (_, CanvasNode::Target) => {
+                if let Some(leaf) = self.target_leaves.get(to.id.input).cloned() {
+                    self.remove_binding(&leaf);
                 }
-                Node::If {
-                    condition,
-                    then,
-                    else_,
-                } => {
-                    used_placeholder = true;
-                    match idx {
-                        0 => *condition = placeholder,
-                        1 => *then = placeholder,
-                        2 => *else_ = placeholder,
-                        _ => used_placeholder = false,
-                    }
-                }
-                Node::ValueMap { input, .. } => {
-                    *input = placeholder;
-                    used_placeholder = true;
-                }
-                Node::Lookup { matches, .. } => {
-                    *matches = placeholder;
-                    used_placeholder = true;
-                }
-                _ => {}
             }
-        }
-        if used_placeholder {
-            self.graph
-                .nodes
-                .insert(placeholder, Node::Const { value: Value::Null });
+            (_, CanvasNode::Graph(to_id)) => {
+                let placeholder = self.fresh_const();
+                self.set_input(to_id, to.id.input, placeholder);
+            }
+            _ => {}
         }
         snarl.disconnect(from.id, to.id);
     }
 
-    fn has_graph_menu(&mut self, _pos: egui::Pos2, _snarl: &mut Snarl<NodeId>) -> bool {
+    fn has_graph_menu(&mut self, _pos: egui::Pos2, _snarl: &mut Snarl<CanvasNode>) -> bool {
         true
     }
 
-    fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut Ui, snarl: &mut Snarl<NodeId>) {
+    fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) {
         ui.label("Add node");
-        if ui.button("Source field").clicked() {
-            self.insert(snarl, pos, Node::SourceField { path: vec![] });
-            ui.close();
-        }
         if ui.button("Const").clicked() {
             self.insert(snarl, pos, Node::Const { value: Value::Null });
             ui.close();
@@ -294,10 +399,14 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
             );
             ui.close();
         }
+        if ui.button("Source field (manual path)").clicked() {
+            self.insert(snarl, pos, Node::SourceField { path: vec![] });
+            ui.close();
+        }
     }
 
-    fn has_node_menu(&mut self, _node: &NodeId) -> bool {
-        true
+    fn has_node_menu(&mut self, node: &CanvasNode) -> bool {
+        matches!(node, CanvasNode::Graph(_))
     }
 
     fn show_node_menu(
@@ -306,11 +415,12 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
         _inputs: &[InPin],
         _outputs: &[OutPin],
         ui: &mut Ui,
-        snarl: &mut Snarl<NodeId>,
+        snarl: &mut Snarl<CanvasNode>,
     ) {
         if ui.button("Remove").clicked() {
-            let mapping_id = snarl[node];
-            self.graph.nodes.remove(&mapping_id);
+            if let CanvasNode::Graph(mapping_id) = snarl[node] {
+                self.graph.nodes.remove(&mapping_id);
+            }
             snarl.remove_node(node);
             ui.close();
         }
@@ -320,102 +430,195 @@ impl SnarlViewer<NodeId> for GraphViewer<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::canvas::{source_leaves, target_leaves};
     use egui_snarl::{InPinId, OutPinId};
+    use ir::{ScalarType, SchemaNode};
 
-    /// graph: 0 = Const(1), 1 = Const(2), 2 = concat(node 0); snarl mirrors
-    /// it with the 0 -> (2, arg 0) wire already present.
-    fn wired_fixture() -> (Graph, Snarl<NodeId>, [SnarlNodeId; 3]) {
+    struct Fixture {
+        graph: Graph,
+        root_scope: Scope,
+        source_leaves: Vec<SourceLeaf>,
+        target_leaves: Vec<TargetLeaf>,
+        snarl: Snarl<CanvasNode>,
+        source: SnarlNodeId,
+        target: SnarlNodeId,
+        call: SnarlNodeId,
+    }
+
+    /// source: row { name, age }; target: row { out };
+    /// graph: 0 = concat() shown on the canvas.
+    fn fixture() -> Fixture {
+        let source_schema = SchemaNode::group(
+            "row",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar("age", ScalarType::Int),
+            ],
+        );
+        let target_schema =
+            SchemaNode::group("row", vec![SchemaNode::scalar("out", ScalarType::String)]);
         let mut graph = Graph::default();
         graph.nodes.insert(
             0,
-            Node::Const {
-                value: Value::Int(1),
-            },
-        );
-        graph.nodes.insert(
-            1,
-            Node::Const {
-                value: Value::Int(2),
-            },
-        );
-        graph.nodes.insert(
-            2,
             Node::Call {
                 function: "concat".to_string(),
-                args: vec![0],
+                args: vec![],
             },
         );
-
         let mut snarl = Snarl::new();
-        let s0 = snarl.insert_node(egui::pos2(0.0, 0.0), 0);
-        let s1 = snarl.insert_node(egui::pos2(0.0, 100.0), 1);
-        let s2 = snarl.insert_node(egui::pos2(200.0, 0.0), 2);
-        snarl.connect(
-            OutPinId {
-                node: s0,
-                output: 0,
-            },
-            InPinId { node: s2, input: 0 },
-        );
-        (graph, snarl, [s0, s1, s2])
+        let source = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
+        let target = snarl.insert_node(egui::pos2(400.0, 0.0), CanvasNode::Target);
+        let call = snarl.insert_node(egui::pos2(200.0, 0.0), CanvasNode::Graph(0));
+        Fixture {
+            graph,
+            root_scope: Scope::default(),
+            source_leaves: source_leaves(&source_schema),
+            target_leaves: target_leaves(&target_schema),
+            snarl,
+            source,
+            target,
+            call,
+        }
     }
 
-    fn wire_set(snarl: &Snarl<NodeId>) -> Vec<(NodeId, NodeId, usize)> {
-        let mut wires: Vec<_> = snarl
-            .wires()
-            .map(|(from, to)| (snarl[from.node], snarl[to.node], to.input))
-            .collect();
-        wires.sort_unstable();
-        wires
+    impl Fixture {
+        fn viewer(&mut self) -> GraphViewer<'_> {
+            GraphViewer {
+                graph: &mut self.graph,
+                root_scope: &mut self.root_scope,
+                source_leaves: &self.source_leaves,
+                target_leaves: &self.target_leaves,
+                error: None,
+            }
+        }
     }
 
     #[test]
-    fn connect_updates_call_arg_and_replaces_existing_wire() {
-        let (mut graph, mut snarl, [_, s1, s2]) = wired_fixture();
-        let mut viewer = GraphViewer { graph: &mut graph };
-
+    fn source_pin_to_target_pin_creates_a_source_field_and_binding() {
+        let mut fx = fixture();
+        let mut snarl = std::mem::take(&mut fx.snarl);
         let from = snarl.out_pin(OutPinId {
-            node: s1,
-            output: 0,
+            node: fx.source,
+            output: 0, // "name"
         });
-        let to = snarl.in_pin(InPinId { node: s2, input: 0 });
-        viewer.connect(&from, &to, &mut snarl);
+        let to = snarl.in_pin(InPinId {
+            node: fx.target,
+            input: 0, // "out"
+        });
+        let (source, target) = (fx.source, fx.target);
+        fx.viewer().connect(&from, &to, &mut snarl);
 
-        assert!(
-            matches!(&graph.nodes[&2], Node::Call { args, .. } if args == &vec![1]),
-            "call arg should now reference node 1"
-        );
+        let field_id = fx
+            .graph
+            .nodes
+            .iter()
+            .find_map(|(id, n)| {
+                matches!(n, Node::SourceField { path } if path == &["name"]).then_some(*id)
+            })
+            .expect("a SourceField for `name` should exist");
+        assert_eq!(fx.root_scope.bindings.len(), 1);
+        assert_eq!(fx.root_scope.bindings[0].target_field, "out");
+        assert_eq!(fx.root_scope.bindings[0].node, field_id);
+        let wired: Vec<_> = snarl.wires().collect();
         assert_eq!(
-            wire_set(&snarl),
-            vec![(1, 2, 0)],
-            "the old 0 -> (2, 0) wire should be replaced, not accumulated"
+            wired,
+            vec![(
+                OutPinId {
+                    node: source,
+                    output: 0
+                },
+                InPinId {
+                    node: target,
+                    input: 0
+                }
+            )]
         );
     }
 
     #[test]
-    fn disconnect_rewires_input_to_a_fresh_null_const() {
-        let (mut graph, mut snarl, [s0, _, s2]) = wired_fixture();
-        let mut viewer = GraphViewer { graph: &mut graph };
+    fn source_pin_to_call_arg_reuses_one_source_field() {
+        let mut fx = fixture();
+        // Give the call two args to wire into.
+        if let Some(Node::Call { args, .. }) = fx.graph.nodes.get_mut(&0) {
+            args.extend([100, 100]); // dangling placeholders
+        }
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        for input in 0..2 {
+            let from = snarl.out_pin(OutPinId {
+                node: fx.source,
+                output: 1, // "age"
+            });
+            let to = snarl.in_pin(InPinId {
+                node: fx.call,
+                input,
+            });
+            fx.viewer().connect(&from, &to, &mut snarl);
+        }
+        let field_ids: Vec<_> = fx
+            .graph
+            .nodes
+            .iter()
+            .filter(|(_, n)| matches!(n, Node::SourceField { .. }))
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(field_ids.len(), 1, "the same SourceField should be reused");
+        if let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&0) {
+            assert_eq!(args, &vec![field_ids[0], field_ids[0]]);
+        } else {
+            panic!("call node vanished");
+        }
+    }
 
+    #[test]
+    fn disconnecting_a_target_pin_removes_the_binding() {
+        let mut fx = fixture();
+        let mut snarl = std::mem::take(&mut fx.snarl);
         let from = snarl.out_pin(OutPinId {
-            node: s0,
+            node: fx.source,
             output: 0,
         });
-        let to = snarl.in_pin(InPinId { node: s2, input: 0 });
-        viewer.disconnect(&from, &to, &mut snarl);
+        let to = snarl.in_pin(InPinId {
+            node: fx.target,
+            input: 0,
+        });
+        fx.viewer().connect(&from, &to, &mut snarl);
+        assert_eq!(fx.root_scope.bindings.len(), 1);
 
-        assert!(wire_set(&snarl).is_empty(), "the snarl wire should be gone");
-        let Node::Call { args, .. } = &graph.nodes[&2] else {
-            panic!("node 2 should still be a call");
-        };
-        let placeholder = args[0];
-        assert_ne!(placeholder, 0, "arg should no longer reference node 0");
-        assert!(
-            matches!(
-                graph.nodes[&placeholder],
-                Node::Const { value: Value::Null }
-            ),
-            "arg should point at a fresh null const placeholder"
-        );
+        // Re-fetch the pins so `remotes` reflects the wire.
+        let from = snarl.out_pin(OutPinId {
+            node: fx.source,
+            output: 0,
+        });
+        let to = snarl.in_pin(InPinId {
+            node: fx.target,
+            input: 0,
+        });
+        fx.viewer().disconnect(&from, &to, &mut snarl);
+        assert!(fx.root_scope.bindings.is_empty());
+        assert_eq!(snarl.wires().count(), 0);
+    }
+
+    #[test]
+    fn binding_into_a_missing_scope_reports_instead_of_wiring() {
+        let mut fx = fixture();
+        fx.target_leaves = vec![TargetLeaf {
+            label: "Order/b".into(),
+            chain: vec!["Order".into()],
+            field: "b".into(),
+        }];
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let from = snarl.out_pin(OutPinId {
+            node: fx.source,
+            output: 0,
+        });
+        let to = snarl.in_pin(InPinId {
+            node: fx.target,
+            input: 0,
+        });
+        let mut viewer = fx.viewer();
+        viewer.connect(&from, &to, &mut snarl);
+        assert!(viewer.error.is_some());
+        assert_eq!(snarl.wires().count(), 0);
+        assert!(fx.root_scope.bindings.is_empty());
     }
 }

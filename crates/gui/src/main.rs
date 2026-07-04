@@ -1,4 +1,5 @@
 mod app;
+mod canvas;
 mod graph_viewer;
 mod schema_tree;
 mod scope_editor;
