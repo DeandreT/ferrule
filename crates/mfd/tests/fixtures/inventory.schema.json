@@ -1,0 +1,17 @@
+{
+  "title": "Inventory",
+  "type": "object",
+  "properties": {
+    "store": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "count": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

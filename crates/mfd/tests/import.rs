@@ -1,12 +1,37 @@
 use std::path::{Path, PathBuf};
 
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, SchemaKind, Value};
 use mapping::Node;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(name)
+}
+
+/// A scratch dir for export roundtrips, removed on drop.
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("ferrule_mfd_{tag}_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn scalar(instance: &Instance, field: &str) -> Value {
+    instance
+        .field(field)
+        .and_then(Instance::as_scalar)
+        .cloned()
+        .unwrap_or_else(|| panic!("no scalar field `{field}`"))
 }
 
 #[test]
@@ -99,4 +124,238 @@ fn export_then_import_roundtrips_semantically() {
     let out_a = engine::run(a, &source).unwrap();
     let out_b = engine::run(b, &source).unwrap();
     assert_eq!(out_a, out_b);
+}
+
+#[test]
+fn xml_attributes_import_run_and_roundtrip() {
+    let imported = mfd::import(&fixture("books.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    let book = project.source.child("Book").unwrap();
+    assert!(book.repeating);
+    assert!(book.child("isbn").unwrap().attribute);
+    assert!(book.child("pages").unwrap().attribute);
+    assert!(matches!(
+        book.child("pages").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+    assert!(!book.child("Title").unwrap().attribute);
+    assert!(
+        project
+            .target
+            .child("Entry")
+            .unwrap()
+            .child("id")
+            .unwrap()
+            .attribute
+    );
+
+    let source = format_xml::read(&fixture("books.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let entries = target
+        .field("Entry")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(scalar(&entries[0], "id"), Value::String("978-1".into()));
+    assert_eq!(scalar(&entries[0], "Name"), Value::String("Systems".into()));
+    assert_eq!(scalar(&entries[1], "Pages"), Value::Int(180));
+
+    let dir = TempDir::new("books");
+    let out = dir.0.join("books.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(project.source, reimported.project.source);
+    assert_eq!(project.target, reimported.project.target);
+    // Binding order may differ (the exporter keys ports in schema order),
+    // so compare the written documents, whose field order the schema fixes.
+    let out_b = engine::run(&reimported.project, &source).unwrap();
+    let write = |name: &str, instance: &Instance| {
+        let path = dir.0.join(name);
+        format_xml::write(&path, &project.target, instance).unwrap();
+        std::fs::read_to_string(path).unwrap()
+    };
+    assert_eq!(write("a.xml", &target), write("b.xml", &out_b));
+}
+
+#[test]
+fn xml_to_json_with_ref_schema_imports_runs_and_roundtrips() {
+    let imported = mfd::import(&fixture("stock.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    // The JSON Schema resolves through its root-level and nested $refs.
+    assert_eq!(project.target.name, "Stock");
+    assert!(project.target.repeating);
+    let batches = project.target.child("batches").unwrap();
+    assert!(batches.repeating);
+    assert!(batches.child("code").is_some());
+    assert_eq!(project.target_path.as_deref(), Some("stock-out.json"));
+
+    // Row iteration lands on the root scope; batches nest inside it.
+    assert_eq!(project.root.source, Some(vec!["Item".to_string()]));
+    let batches_scope = &project.root.children[0];
+    assert_eq!(batches_scope.target_field, "batches");
+    assert_eq!(batches_scope.source, Some(vec!["Batch".to_string()]));
+
+    let source = format_xml::read(&fixture("stock.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let rows = target.as_repeated().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(scalar(&rows[0], "sku"), Value::String("A1".into()));
+    assert_eq!(scalar(&rows[0], "qty"), Value::Int(4));
+    let batches = rows[0]
+        .field("batches")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(batches.len(), 2);
+    assert_eq!(scalar(&batches[1], "code"), Value::String("B2".into()));
+
+    let dir = TempDir::new("stock");
+    let out = dir.0.join("stock.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(dir.0.join("stock-target.schema.json").exists());
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(project.source, reimported.project.source);
+    assert_eq!(project.target, reimported.project.target);
+    let out_b = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, out_b);
+}
+
+#[test]
+fn json_source_designs_import_and_run() {
+    let imported = mfd::import(&fixture("inventory.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert_eq!(project.source.name, "Inventory");
+    assert_eq!(project.source_path.as_deref(), Some("inventory.json"));
+    assert!(project.source.child("items").unwrap().repeating);
+
+    let line = &project.root.children[0];
+    assert_eq!(line.target_field, "Line");
+    assert_eq!(line.source, Some(vec!["items".to_string()]));
+
+    let source = format_json::read(&fixture("inventory.json"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    assert_eq!(scalar(&target, "Store"), Value::String("Downtown".into()));
+    let lines = target
+        .field("Line")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(scalar(&lines[1], "Product"), Value::String("Gadget".into()));
+    assert_eq!(scalar(&lines[1], "Count"), Value::Int(3));
+}
+
+#[test]
+fn json_components_without_schema_fall_back_to_the_entry_tree() {
+    let imported = mfd::import(&fixture("noschema-json.mfd")).unwrap();
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|w| w.contains("no schema reference")),
+        "{:?}",
+        imported.warnings
+    );
+    let source = &imported.project.source;
+    assert_eq!(source.name, "orders");
+    assert!(matches!(
+        source.child("customer").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::String
+        }
+    ));
+    assert!(matches!(
+        source.child("total").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Float
+        }
+    ));
+}
+
+#[test]
+fn csv_source_designs_import_and_run() {
+    let imported = mfd::import(&fixture("people-csv.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert_eq!(project.source.name, "Staff");
+    assert!(!project.source.repeating);
+    assert!(matches!(
+        project.source.child("Age").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+    assert_eq!(project.source_path.as_deref(), Some("people.csv"));
+    assert_eq!(project.source_options.delimiter, Some(','));
+    assert_eq!(project.source_options.has_header_row, Some(true));
+
+    // The row block feeds the Person iteration; rows arrive as the
+    // enclosing Repeated, so the scope path is empty.
+    let person = &project.root.children[0];
+    assert_eq!(person.target_field, "Person");
+    assert_eq!(person.source, Some(vec![]));
+
+    let rows = format_csv::read(&fixture("people.csv"), &project.source, Some(','), true).unwrap();
+    let target = engine::run(project, &Instance::Repeated(rows)).unwrap();
+    let people = target
+        .field("Person")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(people.len(), 2);
+    assert_eq!(
+        scalar(&people[0], "Name"),
+        Value::String("Alice Carter".into())
+    );
+    assert_eq!(scalar(&people[1], "Age"), Value::Int(41));
+}
+
+#[test]
+fn csv_target_designs_import_run_and_roundtrip() {
+    let imported = mfd::import(&fixture("people-to-csv.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert_eq!(project.target.name, "PeopleRows");
+    assert_eq!(project.target_path.as_deref(), Some("people-out.csv"));
+    assert_eq!(project.target_options.delimiter, Some(';'));
+    assert_eq!(project.target_options.has_header_row, Some(false));
+
+    // Rows iterate on the root scope itself.
+    assert_eq!(project.root.source, Some(vec!["Staff".to_string()]));
+
+    let source = format_xml::read(&fixture("people.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let rows = target.as_repeated().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        scalar(&rows[0], "Name"),
+        Value::String("Alice Carter".into())
+    );
+    assert_eq!(scalar(&rows[1], "Age"), Value::Int(41));
+
+    let dir = TempDir::new("people_to_csv");
+    let out = dir.0.join("people-to-csv.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(project.target, reimported.project.target);
+    assert_eq!(reimported.project.target_options.delimiter, Some(';'));
+    assert_eq!(
+        reimported.project.target_options.has_header_row,
+        Some(false)
+    );
+    let out_b = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, out_b);
 }
