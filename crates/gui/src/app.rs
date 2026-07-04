@@ -188,6 +188,28 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
     snarl
 }
 
+/// Native open dialog; returns the chosen path as a string. `None` when the
+/// user cancels or no dialog backend is available (e.g. headless).
+fn pick_file(description: &str, extensions: &[&str]) -> Option<String> {
+    rfd::FileDialog::new()
+        .add_filter(description, extensions)
+        .pick_file()
+        .map(|p| p.display().to_string())
+}
+
+/// Native save dialog, pre-filled from `current` when it points somewhere.
+fn save_file(description: &str, extensions: &[&str], current: &str) -> Option<String> {
+    let mut dialog = rfd::FileDialog::new().add_filter(description, extensions);
+    let current = std::path::Path::new(current);
+    if let Some(dir) = current.parent().filter(|d| d.is_dir()) {
+        dialog = dialog.set_directory(dir);
+    }
+    if let Some(name) = current.file_name().and_then(|n| n.to_str()) {
+        dialog = dialog.set_file_name(name);
+    }
+    dialog.save_file().map(|p| p.display().to_string())
+}
+
 impl FerruleApp {
     fn load_project(&mut self) {
         match std::fs::read_to_string(&self.project_path).and_then(|text| {
@@ -231,10 +253,25 @@ impl eframe::App for FerruleApp {
             ui.horizontal(|ui| {
                 ui.label("project:");
                 ui.text_edit_singleline(&mut self.project_path);
+                if ui.button("Open\u{2026}").clicked()
+                    && let Some(path) = pick_file("ferrule project", &["json"])
+                {
+                    self.project_path = path;
+                    self.load_project();
+                }
                 if ui.button("Load").clicked() {
                     self.load_project();
                 }
                 if ui.button("Save").clicked() {
+                    match self.save_project() {
+                        Ok(()) => self.status = format!("saved {}", self.project_path),
+                        Err(e) => self.status = format!("failed to save: {e}"),
+                    }
+                }
+                if ui.button("Save As\u{2026}").clicked()
+                    && let Some(path) = save_file("ferrule project", &["json"], &self.project_path)
+                {
+                    self.project_path = path;
                     match self.save_project() {
                         Ok(()) => self.status = format!("saved {}", self.project_path),
                         Err(e) => self.status = format!("failed to save: {e}"),
@@ -249,8 +286,29 @@ impl eframe::App for FerruleApp {
             ui.horizontal(|ui| {
                 ui.label("input:");
                 ui.text_edit_singleline(&mut self.input_path);
+                if ui.button("Browse\u{2026}").clicked()
+                    && let Some(path) = pick_file(
+                        "input data",
+                        &[
+                            "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
+                        ],
+                    )
+                {
+                    self.input_path = path;
+                }
                 ui.label("output:");
                 ui.text_edit_singleline(&mut self.output_path);
+                if ui.button("Browse\u{2026}").clicked()
+                    && let Some(path) = save_file(
+                        "output data",
+                        &[
+                            "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
+                        ],
+                        &self.output_path,
+                    )
+                {
+                    self.output_path = path;
+                }
                 if ui.button("Run").clicked() {
                     self.run();
                 }
