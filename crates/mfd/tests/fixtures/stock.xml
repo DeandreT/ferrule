@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Warehouse>
+  <Name>Main</Name>
+  <Item>
+    <Sku>A1</Sku>
+    <Qty>4</Qty>
+    <Batch><Code>B1</Code></Batch>
+    <Batch><Code>B2</Code></Batch>
+  </Item>
+  <Item>
+    <Sku>A2</Sku>
+    <Qty>7</Qty>
+  </Item>
+</Warehouse>

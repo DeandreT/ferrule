@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Inventory" library="json" uid="2" kind="31">
+					<view rbx="300" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="root" expanded="1">
+										<entry name="object" expanded="1">
+											<entry name="store" type="json-property" expanded="1">
+												<entry name="string" outkey="11"/>
+											</entry>
+											<entry name="items" type="json-property" expanded="1">
+												<entry name="array" expanded="1">
+													<entry name="item" type="json-item" expanded="1">
+														<entry name="object" outkey="12" expanded="1">
+															<entry name="name" type="json-property" expanded="1">
+																<entry name="string" outkey="13"/>
+															</entry>
+															<entry name="count" type="json-property" expanded="1">
+																<entry name="integer" outkey="14"/>
+															</entry>
+														</entry>
+													</entry>
+												</entry>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<json schema="inventory.schema.json" inputinstance="inventory.json"/>
+					</data>
+				</component>
+				<component name="Report" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="700" rbx="1000" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Report" expanded="1">
+										<entry name="Store" inpkey="20"/>
+										<entry name="Line" inpkey="21" expanded="1">
+											<entry name="Product" inpkey="22"/>
+											<entry name="Count" inpkey="23"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="inventory-target.xsd" instanceroot="{}Report"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+					<vertex vertexkey="12"><edges><edge vertexkey="21"/></edges></vertex>
+					<vertex vertexkey="13"><edges><edge vertexkey="22"/></edges></vertex>
+					<vertex vertexkey="14"><edges><edge vertexkey="23"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

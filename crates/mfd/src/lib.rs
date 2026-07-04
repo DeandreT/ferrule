@@ -2,13 +2,16 @@
 //!
 //! `.mfd` files are XML documents describing schema components (entry trees
 //! with integer port keys), function components, and a flat port-to-port
-//! connection graph. [`import`] converts the supported subset -- XML source
-//! and target components with resolvable XSDs, the common core functions,
-//! constants, if-else, value-map, and filter-driven iteration -- into a
-//! ferrule [`mapping::Project`], collecting a warning for every construct
-//! it has to skip rather than failing. [`export`] writes a ferrule project
-//! back out as a `.mfd` (plus generated XSDs next to it) for the same
-//! subset.
+//! connection graph. [`import`] converts the supported subset -- XML
+//! components (resolvable XSDs incl. attributes and element refs), JSON
+//! components (JSON Schema incl. local `$ref`, or the entry tree as
+//! fallback), CSV text components (inline delimiter/header settings), the
+//! common core functions, constants, if-else, value-map, and filter-driven
+//! iteration -- into a ferrule [`mapping::Project`], collecting a warning
+//! for every construct it has to skip rather than failing. [`export`]
+//! writes a ferrule project back out as a `.mfd` (plus generated XSD /
+//! JSON Schema files next to it) for the same subset, picking each side's
+//! component family from the project's instance-path extension.
 //!
 //! The format knowledge comes from reading real `.mfd` files; nothing here
 //! embeds or copies ReferenceSamples content. MapForce is a trademark of ReferenceSamples

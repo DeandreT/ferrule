@@ -1,0 +1,7 @@
+{
+  "store": "Downtown",
+  "items": [
+    { "name": "Widget", "count": 12 },
+    { "name": "Gadget", "count": 3 }
+  ]
+}
