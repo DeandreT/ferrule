@@ -33,6 +33,23 @@ A project file (plain JSON) holds four things:
 - optional **extra sources** — named secondary inputs (reference data) that any scope or
   lookup can address by name
 
+## Migrating from MapForce
+
+ferrule can convert MapForce `.mfd` designs (best-effort): XML source/target
+components with resolvable XSDs, the common core functions, constants, if-else,
+value-map, and filter-driven iteration import directly; everything else is skipped
+with an actionable warning so you can finish the mapping in the editor. Export writes
+the same subset back out as `.mfd` plus generated XSDs. Designs built on namespaces,
+XML attributes, `xsi:type` polymorphism, or non-XML endpoints (database/JSON/text
+components) are not converted yet.
+
+```sh
+cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
+cargo run -p cli -- export-mfd --project project.json --out design.mfd
+```
+
+MapForce is a trademark of its owner; ferrule is an independent project.
+
 ## Quick start
 
 ```sh

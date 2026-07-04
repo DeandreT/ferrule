@@ -1,0 +1,17 @@
+[package]
+name = "mfd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Imports and exports MapForce .mfd mapping designs (best-effort interop)"
+
+[dependencies]
+ir = { workspace = true }
+mapping = { workspace = true }
+format-xml = { workspace = true }
+roxmltree = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+engine = { workspace = true }

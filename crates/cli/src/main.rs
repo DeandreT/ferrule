@@ -40,6 +40,21 @@ enum Command {
         #[arg(long)]
         table: String,
     },
+    /// Convert a MapForce .mfd design into a ferrule project file.
+    ImportMfd {
+        #[arg(long)]
+        mfd: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Convert a ferrule project file into a MapForce .mfd design
+    /// (generated XSDs are written next to it).
+    ExportMfd {
+        #[arg(long)]
+        project: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -64,6 +79,22 @@ fn main() -> anyhow::Result<()> {
         }
         Command::ImportDb { db, table } => {
             println!("{}", cli::import_db(&db, &table)?);
+            Ok(())
+        }
+        Command::ImportMfd { mfd, out } => {
+            let warnings = cli::import_mfd(&mfd, &out)?;
+            for warning in &warnings {
+                eprintln!("warning: {warning}");
+            }
+            println!("wrote {} ({} warning(s))", out.display(), warnings.len());
+            Ok(())
+        }
+        Command::ExportMfd { project, out } => {
+            let warnings = cli::export_mfd(&project, &out)?;
+            for warning in &warnings {
+                eprintln!("warning: {warning}");
+            }
+            println!("wrote {} ({} warning(s))", out.display(), warnings.len());
             Ok(())
         }
     }

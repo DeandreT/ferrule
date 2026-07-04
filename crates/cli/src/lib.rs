@@ -112,6 +112,28 @@ pub fn import_json_schema(schema_path: &Path) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
+/// Converts a MapForce `.mfd` design into a ferrule project file. Returns
+/// the warnings for constructs that could not be converted.
+pub fn import_mfd(mfd_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String>> {
+    let imported =
+        mfd::import(mfd_path).with_context(|| format!("importing {}", mfd_path.display()))?;
+    let json = serde_json::to_string_pretty(&imported.project)?;
+    std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(imported.warnings)
+}
+
+/// Converts a ferrule project file into a MapForce `.mfd` design (plus
+/// generated XSDs next to it). Returns warnings for skipped constructs.
+pub fn export_mfd(project_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String>> {
+    let project_json = std::fs::read_to_string(project_path)
+        .with_context(|| format!("reading project file {}", project_path.display()))?;
+    let project: mapping::Project = serde_json::from_str(&project_json)
+        .with_context(|| format!("parsing project file {}", project_path.display()))?;
+    let warnings = mfd::export(&project, out_path)
+        .with_context(|| format!("writing {}", out_path.display()))?;
+    Ok(warnings)
+}
+
 /// Introspects a SQLite table as a `SchemaNode`, printed as pretty JSON --
 /// the database counterpart to [`import_xsd`].
 pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
