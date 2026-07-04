@@ -92,6 +92,53 @@ fn map_xsd_type(ty: &str) -> ScalarType {
     }
 }
 
+/// Renders a [`SchemaNode`] as XSD text -- the inverse of [`import`],
+/// producing the same `xs:element`/`xs:complexType`/`xs:sequence` subset it
+/// reads (repeating nodes get `maxOccurs="unbounded"`).
+pub fn export(schema: &SchemaNode) -> String {
+    let mut out = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">\n",
+    );
+    write_element(schema, 1, &mut out);
+    out.push_str("</xs:schema>\n");
+    out
+}
+
+fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
+    let pad = "  ".repeat(depth);
+    let occurs = if node.repeating {
+        " minOccurs=\"0\" maxOccurs=\"unbounded\""
+    } else {
+        ""
+    };
+    match &node.kind {
+        ir::SchemaKind::Scalar { ty } => {
+            let xsd_type = match ty {
+                ScalarType::String => "xs:string",
+                ScalarType::Int => "xs:integer",
+                ScalarType::Float => "xs:decimal",
+                ScalarType::Bool => "xs:boolean",
+            };
+            out.push_str(&format!(
+                "{pad}<xs:element name=\"{}\" type=\"{xsd_type}\"{occurs}/>\n",
+                node.name
+            ));
+        }
+        ir::SchemaKind::Group { children } => {
+            out.push_str(&format!(
+                "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:sequence>\n",
+                node.name
+            ));
+            for child in children {
+                write_element(child, depth + 3, out);
+            }
+            out.push_str(&format!(
+                "{pad}    </xs:sequence>\n{pad}  </xs:complexType>\n{pad}</xs:element>\n"
+            ));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +213,33 @@ mod tests {
                 ty: ScalarType::Float
             }
         ));
+    }
+
+    #[test]
+    fn export_then_import_roundtrips() {
+        let schema = SchemaNode::group(
+            "Orders",
+            vec![
+                SchemaNode::scalar("Date", ScalarType::String),
+                SchemaNode::group(
+                    "Order",
+                    vec![
+                        SchemaNode::scalar("Qty", ScalarType::Int),
+                        SchemaNode::scalar("Price", ScalarType::Float),
+                        SchemaNode::scalar("Rush", ScalarType::Bool),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let text = export(&schema);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_export_test_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(&path, text).unwrap();
+        let imported = import(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(imported, schema);
     }
 }

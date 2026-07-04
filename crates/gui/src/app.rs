@@ -282,6 +282,48 @@ impl eframe::App for FerruleApp {
                     self.snarl = build_snarl(&self.project);
                     self.selected_scope.clear();
                 }
+                if ui.button("Import MFD\u{2026}").clicked()
+                    && let Some(path) = pick_file("MapForce design", &["mfd"])
+                {
+                    match mfd::import(std::path::Path::new(&path)) {
+                        Ok(imported) => {
+                            self.snarl = build_snarl(&imported.project);
+                            self.project = imported.project;
+                            self.selected_scope.clear();
+                            self.project_path = std::path::Path::new(&path)
+                                .with_extension("json")
+                                .display()
+                                .to_string();
+                            self.status = if imported.warnings.is_empty() {
+                                format!("imported {path}")
+                            } else {
+                                format!(
+                                    "imported {path} with {} warning(s): {}",
+                                    imported.warnings.len(),
+                                    imported.warnings.join(" | ")
+                                )
+                            };
+                        }
+                        Err(e) => self.status = format!("import failed: {e}"),
+                    }
+                }
+                if ui.button("Export MFD\u{2026}").clicked()
+                    && let Some(path) = save_file("MapForce design", &["mfd"], &self.project_path)
+                {
+                    match mfd::export(&self.project, std::path::Path::new(&path)) {
+                        Ok(warnings) if warnings.is_empty() => {
+                            self.status = format!("exported {path}");
+                        }
+                        Ok(warnings) => {
+                            self.status = format!(
+                                "exported {path} with {} warning(s): {}",
+                                warnings.len(),
+                                warnings.join(" | ")
+                            );
+                        }
+                        Err(e) => self.status = format!("export failed: {e}"),
+                    }
+                }
             });
             ui.horizontal(|ui| {
                 ui.label("input:");
