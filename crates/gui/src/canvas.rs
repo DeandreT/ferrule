@@ -119,10 +119,170 @@ fn collect_target(node: &SchemaNode, chain: &mut Vec<String>, out: &mut Vec<Targ
     }
 }
 
+/// Layered dataflow layout: each shown node's column is one past its
+/// deepest shown input (hidden `SourceField`s count as depth 0, next to
+/// the Source endpoint), and rows within a column follow the first target
+/// pin the node ultimately feeds, so wires flow left to right with
+/// minimal crossing. Returns `(column, row)` per shown node, 0-based.
+pub fn layered_layout(
+    graph: &mapping::Graph,
+    hidden: &std::collections::BTreeSet<NodeId>,
+    binding_order: &[(NodeId, usize)],
+) -> std::collections::BTreeMap<NodeId, (usize, usize)> {
+    use std::collections::BTreeMap;
+
+    fn inputs(node: &mapping::Node) -> Vec<NodeId> {
+        match node {
+            mapping::Node::SourceField { .. } | mapping::Node::Const { .. } => vec![],
+            mapping::Node::Call { args, .. } => args.clone(),
+            mapping::Node::If {
+                condition,
+                then,
+                else_,
+            } => vec![*condition, *then, *else_],
+            mapping::Node::ValueMap { input, .. }
+            | mapping::Node::Lookup { matches: input, .. } => {
+                vec![*input]
+            }
+        }
+    }
+
+    // Column = longest path from a depth-0 feed.
+    fn depth_of(
+        id: NodeId,
+        graph: &mapping::Graph,
+        hidden: &std::collections::BTreeSet<NodeId>,
+        memo: &mut BTreeMap<NodeId, usize>,
+        visiting: &mut std::collections::BTreeSet<NodeId>,
+    ) -> usize {
+        if let Some(&d) = memo.get(&id) {
+            return d;
+        }
+        if hidden.contains(&id) || !visiting.insert(id) {
+            return 0; // hidden feeds sit with the Source endpoint; cycles cap out
+        }
+        let d = graph
+            .nodes
+            .get(&id)
+            .map(|node| {
+                inputs(node)
+                    .iter()
+                    .filter(|arg| graph.nodes.contains_key(arg))
+                    .map(|&arg| depth_of(arg, graph, hidden, memo, visiting) + 1)
+                    .max()
+                    .unwrap_or(1)
+            })
+            .unwrap_or(1)
+            .max(1);
+        visiting.remove(&id);
+        memo.insert(id, d);
+        d
+    }
+
+    // The first (lowest) target pin each node ultimately feeds, propagated
+    // upstream from the bindings.
+    let mut min_leaf: BTreeMap<NodeId, usize> = BTreeMap::new();
+    for &(node, leaf) in binding_order {
+        min_leaf
+            .entry(node)
+            .and_modify(|l| *l = (*l).min(leaf))
+            .or_insert(leaf);
+    }
+    for _ in 0..graph.nodes.len() {
+        let mut changed = false;
+        for (&id, node) in &graph.nodes {
+            let Some(&leaf) = min_leaf.get(&id) else {
+                continue;
+            };
+            for arg in inputs(node) {
+                let entry = min_leaf.entry(arg).or_insert(leaf);
+                if *entry > leaf {
+                    *entry = leaf;
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    let mut memo = BTreeMap::new();
+    let mut visiting = std::collections::BTreeSet::new();
+    let shown: Vec<NodeId> = graph
+        .nodes
+        .keys()
+        .copied()
+        .filter(|id| !hidden.contains(id))
+        .collect();
+    let mut by_column: BTreeMap<usize, Vec<NodeId>> = BTreeMap::new();
+    for &id in &shown {
+        let col = depth_of(id, graph, hidden, &mut memo, &mut visiting) - 1;
+        by_column.entry(col).or_default().push(id);
+    }
+    let mut out = BTreeMap::new();
+    for (col, mut ids) in by_column {
+        ids.sort_by_key(|id| (min_leaf.get(id).copied().unwrap_or(usize::MAX), *id));
+        for (row, id) in ids.into_iter().enumerate() {
+            out.insert(id, (col, row));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use ir::ScalarType;
+
+    #[test]
+    fn layered_layout_orders_by_depth_and_first_fed_pin() {
+        use mapping::{Graph, Node};
+        // hidden 0 -> call 1 -> call 3 (diamond with const 2 also into 3);
+        // call 4 binds to leaf 0, call 3 binds to leaf 1.
+        let mut graph = Graph::default();
+        graph.nodes.insert(
+            0,
+            Node::SourceField {
+                path: vec!["a".into()],
+            },
+        );
+        graph.nodes.insert(
+            1,
+            Node::Call {
+                function: "upper".into(),
+                args: vec![0],
+            },
+        );
+        graph.nodes.insert(
+            2,
+            Node::Const {
+                value: ir::Value::Int(1),
+            },
+        );
+        graph.nodes.insert(
+            3,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![1, 2],
+            },
+        );
+        graph.nodes.insert(
+            4,
+            Node::Call {
+                function: "lower".into(),
+                args: vec![0],
+            },
+        );
+        let hidden = std::collections::BTreeSet::from([0]);
+        let layout = layered_layout(&graph, &hidden, &[(4, 0), (3, 1)]);
+
+        assert_eq!(layout[&1], (0, 1)); // depth 1; feeds leaf 1 -> below node 4
+        assert_eq!(layout[&2], (0, 2)); // no direct source input, depth 1
+        assert_eq!(layout[&4], (0, 0)); // feeds leaf 0 -> first row
+        assert_eq!(layout[&3], (1, 0)); // one past its deepest input
+        assert!(!layout.contains_key(&0), "hidden nodes are not placed");
+    }
 
     #[test]
     fn source_leaf_paths_are_relative_to_the_innermost_repeating_ancestor() {

@@ -13,7 +13,9 @@ use egui_snarl::{InPinId, OutPinId, Snarl};
 use ir::SchemaNode;
 use mapping::{Graph, Node, NodeId, Project, Scope};
 
-use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf, source_leaves, target_leaves};
+use crate::canvas::{
+    CanvasNode, SourceLeaf, TargetLeaf, layered_layout, source_leaves, target_leaves,
+};
 use crate::graph_viewer::GraphViewer;
 use crate::schema_tree::show_schema_tree;
 use crate::scope_editor::{ScopePath, scope_at_mut, show_scope_editor, show_scope_tree};
@@ -26,6 +28,19 @@ pub struct FerruleApp {
     output_path: String,
     selected_scope: ScopePath,
     status: String,
+    /// An in-flight native file dialog, running on its own thread so a
+    /// missing portal backend can never freeze the UI.
+    pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DialogKind {
+    OpenProject,
+    SaveProjectAs,
+    BrowseInput,
+    BrowseOutput,
+    ImportMfd,
+    ExportMfd,
 }
 
 impl Default for FerruleApp {
@@ -40,6 +55,7 @@ impl Default for FerruleApp {
             output_path: String::new(),
             selected_scope: Vec::new(),
             status: String::new(),
+            pending_dialog: None,
         }
     }
 }
@@ -69,6 +85,29 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
     }
 }
 
+/// Collects `(node, target-leaf-index)` for every binding, walking the
+/// scope tree with its target_field chain.
+fn walk_scopes(
+    scope: &Scope,
+    chain: &mut Vec<String>,
+    target_pins: &[TargetLeaf],
+    out: &mut Vec<(NodeId, usize)>,
+) {
+    for binding in &scope.bindings {
+        if let Some(leaf) = target_pins
+            .iter()
+            .position(|l| l.chain == *chain && l.field == binding.target_field)
+        {
+            out.push((binding.node, leaf));
+        }
+    }
+    for child in &scope.children {
+        chain.push(child.target_field.clone());
+        walk_scopes(child, chain, target_pins, out);
+        chain.pop();
+    }
+}
+
 /// Rebuilds the canvas from a project: Source/Target endpoints at the
 /// edges, the graph's nodes in a grid between them, and wires recreated
 /// from node inputs and scope bindings. `SourceField` nodes whose path
@@ -93,26 +132,34 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
         })
         .collect();
 
+    // Binding order drives row placement: nodes sit near the target pins
+    // they feed. Collected up front; also reused for the binding wires.
+    let mut binding_order = Vec::new();
+    walk_scopes(
+        &project.root,
+        &mut Vec::new(),
+        &target_pins,
+        &mut binding_order,
+    );
+    let hidden_set: std::collections::BTreeSet<NodeId> = hidden.keys().copied().collect();
+    let layout = layered_layout(&project.graph, &hidden_set, &binding_order);
+
     let mut snarl_ids = std::collections::BTreeMap::new();
-    let shown: Vec<NodeId> = project
-        .graph
-        .nodes
-        .keys()
-        .copied()
-        .filter(|id| !hidden.contains_key(id))
-        .collect();
-    for (i, &id) in shown.iter().enumerate() {
-        let col = (i % 3) as f32;
-        let row = (i / 3) as f32;
-        let snarl_id =
-            snarl.insert_node(egui::pos2(col * 360.0, row * 160.0), CanvasNode::Graph(id));
+    let mut max_col = 0usize;
+    for (&id, &(col, row)) in &layout {
+        max_col = max_col.max(col);
+        let snarl_id = snarl.insert_node(
+            egui::pos2(340.0 + col as f32 * 420.0, row as f32 * 190.0),
+            CanvasNode::Graph(id),
+        );
         snarl_ids.insert(id, snarl_id);
     }
-    let max_row = shown.len().div_ceil(3);
-    let target_node = snarl.insert_node(
-        egui::pos2(1180.0, (max_row as f32) * 40.0),
-        CanvasNode::Target,
-    );
+    let target_x = if layout.is_empty() {
+        420.0
+    } else {
+        340.0 + (max_col as f32 + 1.0) * 420.0
+    };
+    let target_node = snarl.insert_node(egui::pos2(target_x, 0.0), CanvasNode::Target);
 
     // The producing pin for a mapping node: the Source endpoint's leaf pin
     // for hidden SourceFields, the node's own output otherwise.
@@ -144,36 +191,7 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
         }
     }
 
-    // Binding wires: walk the scope tree with its target_field chain and
-    // match each binding to a target leaf.
-    fn walk_scopes(
-        scope: &Scope,
-        chain: &mut Vec<String>,
-        target_pins: &[TargetLeaf],
-        out: &mut Vec<(NodeId, usize)>,
-    ) {
-        for binding in &scope.bindings {
-            if let Some(leaf) = target_pins
-                .iter()
-                .position(|l| l.chain == *chain && l.field == binding.target_field)
-            {
-                out.push((binding.node, leaf));
-            }
-        }
-        for child in &scope.children {
-            chain.push(child.target_field.clone());
-            walk_scopes(child, chain, target_pins, out);
-            chain.pop();
-        }
-    }
-    let mut binding_wires = Vec::new();
-    walk_scopes(
-        &project.root,
-        &mut Vec::new(),
-        &target_pins,
-        &mut binding_wires,
-    );
-    for (node_id, leaf) in binding_wires {
+    for &(node_id, leaf) in &binding_order {
         if let Some(from) = out_pin_for(node_id) {
             snarl.connect(
                 from,
@@ -188,26 +206,44 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
     snarl
 }
 
-/// Native open dialog; returns the chosen path as a string. `None` when the
-/// user cancels or no dialog backend is available (e.g. headless).
-fn pick_file(description: &str, extensions: &[&str]) -> Option<String> {
-    rfd::FileDialog::new()
-        .add_filter(description, extensions)
-        .pick_file()
-        .map(|p| p.display().to_string())
+/// Runs a native open dialog on its own thread; the result arrives through
+/// the returned channel (never blocking the UI, even with no dialog
+/// backend available).
+fn pick_file(description: &str, extensions: &[&str]) -> std::sync::mpsc::Receiver<Option<String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let description = description.to_string();
+    let extensions: Vec<String> = extensions.iter().map(|e| e.to_string()).collect();
+    std::thread::spawn(move || {
+        let result = rfd::FileDialog::new()
+            .add_filter(description, &extensions)
+            .pick_file()
+            .map(|p| p.display().to_string());
+        let _ = tx.send(result);
+    });
+    rx
 }
 
-/// Native save dialog, pre-filled from `current` when it points somewhere.
-fn save_file(description: &str, extensions: &[&str], current: &str) -> Option<String> {
-    let mut dialog = rfd::FileDialog::new().add_filter(description, extensions);
-    let current = std::path::Path::new(current);
-    if let Some(dir) = current.parent().filter(|d| d.is_dir()) {
-        dialog = dialog.set_directory(dir);
-    }
-    if let Some(name) = current.file_name().and_then(|n| n.to_str()) {
-        dialog = dialog.set_file_name(name);
-    }
-    dialog.save_file().map(|p| p.display().to_string())
+/// Threaded native save dialog, pre-filled from `current`.
+fn save_file(
+    description: &str,
+    extensions: &[&str],
+    current: &str,
+) -> std::sync::mpsc::Receiver<Option<String>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let description = description.to_string();
+    let extensions: Vec<String> = extensions.iter().map(|e| e.to_string()).collect();
+    let current = std::path::PathBuf::from(current);
+    std::thread::spawn(move || {
+        let mut dialog = rfd::FileDialog::new().add_filter(description, &extensions);
+        if let Some(dir) = current.parent().filter(|d| d.is_dir()) {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(name) = current.file_name().and_then(|n| n.to_str()) {
+            dialog = dialog.set_file_name(name);
+        }
+        let _ = tx.send(dialog.save_file().map(|p| p.display().to_string()));
+    });
+    rx
 }
 
 impl FerruleApp {
@@ -231,6 +267,74 @@ impl FerruleApp {
         Ok(())
     }
 
+    /// Applies the result of a finished file dialog, if any.
+    fn poll_dialog(&mut self) {
+        let Some((kind, rx)) = &self.pending_dialog else {
+            return;
+        };
+        let kind = *kind;
+        let result = match rx.try_recv() {
+            Ok(result) => result,
+            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => None,
+        };
+        self.pending_dialog = None;
+        let Some(path) = result else {
+            return; // cancelled or no dialog backend
+        };
+        match kind {
+            DialogKind::OpenProject => {
+                self.project_path = path;
+                self.load_project();
+            }
+            DialogKind::SaveProjectAs => {
+                self.project_path = path;
+                match self.save_project() {
+                    Ok(()) => self.status = format!("saved {}", self.project_path),
+                    Err(e) => self.status = format!("failed to save: {e}"),
+                }
+            }
+            DialogKind::BrowseInput => self.input_path = path,
+            DialogKind::BrowseOutput => self.output_path = path,
+            DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
+                Ok(imported) => {
+                    self.snarl = build_snarl(&imported.project);
+                    self.project = imported.project;
+                    self.selected_scope.clear();
+                    self.project_path = std::path::Path::new(&path)
+                        .with_extension("json")
+                        .display()
+                        .to_string();
+                    self.status = if imported.warnings.is_empty() {
+                        format!("imported {path}")
+                    } else {
+                        format!(
+                            "imported {path} with {} warning(s): {}",
+                            imported.warnings.len(),
+                            imported.warnings.join(" | ")
+                        )
+                    };
+                }
+                Err(e) => self.status = format!("import failed: {e}"),
+            },
+            DialogKind::ExportMfd => {
+                match mfd::export(&self.project, std::path::Path::new(&path)) {
+                    Ok(warnings) if warnings.is_empty() => {
+                        self.status = format!("exported {path}");
+                    }
+                    Ok(warnings) => {
+                        self.status = format!(
+                            "exported {path} with {} warning(s): {}",
+                            warnings.len(),
+                            warnings.join(" | ")
+                        );
+                    }
+                    Err(e) => self.status = format!("export failed: {e}"),
+                }
+            }
+        }
+    }
+
     fn run(&mut self) {
         if let Err(e) = self.save_project() {
             self.status = format!("failed to save before running: {e}");
@@ -249,15 +353,21 @@ impl FerruleApp {
 
 impl eframe::App for FerruleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.poll_dialog();
+        if self.pending_dialog.is_some() {
+            // Keep polling even without input events.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(100));
+        }
         egui::Panel::top("top_panel").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("project:");
                 ui.text_edit_singleline(&mut self.project_path);
-                if ui.button("Open\u{2026}").clicked()
-                    && let Some(path) = pick_file("ferrule project", &["json"])
-                {
-                    self.project_path = path;
-                    self.load_project();
+                if ui.button("Open\u{2026}").clicked() && self.pending_dialog.is_none() {
+                    self.pending_dialog = Some((
+                        DialogKind::OpenProject,
+                        pick_file("ferrule project", &["json"]),
+                    ));
                 }
                 if ui.button("Load").clicked() {
                     self.load_project();
@@ -268,91 +378,64 @@ impl eframe::App for FerruleApp {
                         Err(e) => self.status = format!("failed to save: {e}"),
                     }
                 }
-                if ui.button("Save As\u{2026}").clicked()
-                    && let Some(path) = save_file("ferrule project", &["json"], &self.project_path)
-                {
-                    self.project_path = path;
-                    match self.save_project() {
-                        Ok(()) => self.status = format!("saved {}", self.project_path),
-                        Err(e) => self.status = format!("failed to save: {e}"),
-                    }
+                if ui.button("Save As\u{2026}").clicked() && self.pending_dialog.is_none() {
+                    self.pending_dialog = Some((
+                        DialogKind::SaveProjectAs,
+                        save_file("ferrule project", &["json"], &self.project_path),
+                    ));
                 }
                 if ui.button("New").clicked() {
                     self.project = blank_project();
                     self.snarl = build_snarl(&self.project);
                     self.selected_scope.clear();
                 }
-                if ui.button("Import MFD\u{2026}").clicked()
-                    && let Some(path) = pick_file("MapForce design", &["mfd"])
-                {
-                    match mfd::import(std::path::Path::new(&path)) {
-                        Ok(imported) => {
-                            self.snarl = build_snarl(&imported.project);
-                            self.project = imported.project;
-                            self.selected_scope.clear();
-                            self.project_path = std::path::Path::new(&path)
-                                .with_extension("json")
-                                .display()
-                                .to_string();
-                            self.status = if imported.warnings.is_empty() {
-                                format!("imported {path}")
-                            } else {
-                                format!(
-                                    "imported {path} with {} warning(s): {}",
-                                    imported.warnings.len(),
-                                    imported.warnings.join(" | ")
-                                )
-                            };
-                        }
-                        Err(e) => self.status = format!("import failed: {e}"),
-                    }
+                if ui.button("Import MFD\u{2026}").clicked() && self.pending_dialog.is_none() {
+                    self.pending_dialog = Some((
+                        DialogKind::ImportMfd,
+                        pick_file("MapForce design", &["mfd"]),
+                    ));
                 }
-                if ui.button("Export MFD\u{2026}").clicked()
-                    && let Some(path) = save_file("MapForce design", &["mfd"], &self.project_path)
-                {
-                    match mfd::export(&self.project, std::path::Path::new(&path)) {
-                        Ok(warnings) if warnings.is_empty() => {
-                            self.status = format!("exported {path}");
-                        }
-                        Ok(warnings) => {
-                            self.status = format!(
-                                "exported {path} with {} warning(s): {}",
-                                warnings.len(),
-                                warnings.join(" | ")
-                            );
-                        }
-                        Err(e) => self.status = format!("export failed: {e}"),
-                    }
+                if ui.button("Export MFD\u{2026}").clicked() && self.pending_dialog.is_none() {
+                    self.pending_dialog = Some((
+                        DialogKind::ExportMfd,
+                        save_file("MapForce design", &["mfd"], &self.project_path),
+                    ));
                 }
             });
             ui.horizontal(|ui| {
                 ui.label("input:");
                 ui.text_edit_singleline(&mut self.input_path);
-                if ui.button("Browse\u{2026}").clicked()
-                    && let Some(path) = pick_file(
-                        "input data",
-                        &[
-                            "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
-                        ],
-                    )
-                {
-                    self.input_path = path;
+                if ui.button("Browse\u{2026}").clicked() && self.pending_dialog.is_none() {
+                    self.pending_dialog = Some((
+                        DialogKind::BrowseInput,
+                        pick_file(
+                            "input data",
+                            &[
+                                "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
+                            ],
+                        ),
+                    ));
                 }
                 ui.label("output:");
                 ui.text_edit_singleline(&mut self.output_path);
-                if ui.button("Browse\u{2026}").clicked()
-                    && let Some(path) = save_file(
-                        "output data",
-                        &[
-                            "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
-                        ],
-                        &self.output_path,
-                    )
-                {
-                    self.output_path = path;
+                if ui.button("Browse\u{2026}").clicked() && self.pending_dialog.is_none() {
+                    self.pending_dialog = Some((
+                        DialogKind::BrowseOutput,
+                        save_file(
+                            "output data",
+                            &[
+                                "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
+                            ],
+                            &self.output_path,
+                        ),
+                    ));
                 }
                 if ui.button("Run").clicked() {
                     self.run();
+                }
+                if ui.button("Arrange").clicked() {
+                    self.snarl = build_snarl(&self.project);
+                    self.status = "canvas re-arranged".to_string();
                 }
             });
             if !self.status.is_empty() {
