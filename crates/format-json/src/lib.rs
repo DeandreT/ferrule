@@ -141,7 +141,7 @@ fn write_node(schema: &SchemaNode, instance: &Instance) -> serde_json::Value {
         Instance::Repeated(items) => {
             serde_json::Value::Array(items.iter().map(|item| write_node(schema, item)).collect())
         }
-        Instance::Scalar(value) => write_scalar(value),
+        Instance::Scalar(value) => write_scalar(value, schema),
         Instance::Group(fields) => {
             let mut out = serde_json::Map::with_capacity(fields.len());
             if let SchemaKind::Group { children } = &schema.kind {
@@ -161,7 +161,20 @@ fn write_node(schema: &SchemaNode, instance: &Instance) -> serde_json::Value {
     }
 }
 
-fn write_scalar(value: &Value) -> serde_json::Value {
+fn write_scalar(value: &Value, schema: &SchemaNode) -> serde_json::Value {
+    // A string flowing into a typed leaf (common when the source format is
+    // untyped text/XML) is coerced so the output matches the schema.
+    if let (Value::String(s), SchemaKind::Scalar { ty }) = (value, &schema.kind) {
+        let coerced = match ty {
+            ScalarType::Int => s.trim().parse().map(Value::Int).ok(),
+            ScalarType::Float => s.trim().parse().map(Value::Float).ok(),
+            ScalarType::Bool => s.trim().parse().map(Value::Bool).ok(),
+            ScalarType::String => None,
+        };
+        if let Some(coerced) = coerced {
+            return write_scalar(&coerced, schema);
+        }
+    }
     match value {
         Value::Null => serde_json::Value::Null,
         Value::Bool(b) => serde_json::Value::Bool(*b),

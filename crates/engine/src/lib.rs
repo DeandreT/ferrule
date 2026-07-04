@@ -255,12 +255,23 @@ fn field_scalar<'a>(item: &'a Instance, path: &[String]) -> Option<&'a Value> {
 }
 
 /// Resolves `path` against the innermost context item, falling back to
-/// enclosing items if not found there (nearest enclosing wins).
+/// enclosing items if not found there (nearest enclosing wins). Crossing a
+/// repeating element no scope iterates reads its first item -- the visual-
+/// mapper convention for wiring a repeating source into a singular target.
 fn resolve_scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
     for item in context.iter().rev() {
         let mut current = *item;
         let mut found = true;
         for segment in path {
+            if let Instance::Repeated(items) = current {
+                match items.first() {
+                    Some(first) => current = first,
+                    None => {
+                        found = false;
+                        break;
+                    }
+                }
+            }
             match current.field(segment) {
                 Some(next) => current = next,
                 None => {
@@ -269,7 +280,16 @@ fn resolve_scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
                 }
             }
         }
-        if found && let Some(value) = current.as_scalar() {
+        if !found {
+            continue;
+        }
+        if let Instance::Repeated(items) = current {
+            match items.first() {
+                Some(first) => current = first,
+                None => continue,
+            }
+        }
+        if let Some(value) = current.as_scalar() {
             return Some(value.clone());
         }
     }
@@ -324,6 +344,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -365,6 +387,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -396,6 +420,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -438,6 +464,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -537,6 +565,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -583,6 +613,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -631,6 +663,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -660,6 +694,55 @@ mod tests {
         assert_eq!(ages, vec![Some(Value::Int(29)), Some(Value::Int(41))]);
     }
 
+    /// A field path crossing a repeating element that no scope iterates
+    /// reads the first item (the visual-mapper convention for wiring a
+    /// repeating source into a singular target).
+    #[test]
+    fn uniterated_repeating_elements_resolve_to_their_first_item() {
+        let graph = graph_from(vec![(
+            0,
+            Node::SourceField {
+                path: vec!["Address".into(), "city".into()],
+            },
+        )]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                bindings: vec![Binding {
+                    target_field: "City".into(),
+                    node: 0,
+                }],
+                children: vec![],
+            },
+        };
+        let address = |city: &str| {
+            Instance::Group(vec![(
+                "city".into(),
+                Instance::Scalar(Value::String(city.into())),
+            )])
+        };
+        let source = Instance::Group(vec![(
+            "Address".into(),
+            Instance::Repeated(vec![address("Vienna"), address("Boston")]),
+        )]);
+
+        let target = run(&project, &source).unwrap();
+        assert_eq!(
+            target.field("City").and_then(Instance::as_scalar),
+            Some(&Value::String("Vienna".into()))
+        );
+    }
+
     /// The enrichment pattern: iterate the primary source's rows while a
     /// `Lookup` node joins each row against a named extra source by key.
     /// A key with no match resolves to `Null` rather than erroring.
@@ -685,6 +768,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
@@ -757,6 +842,8 @@ mod tests {
         let project = Project {
             source: dummy_schema(),
             target: dummy_schema(),
+            source_path: None,
+            target_path: None,
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),

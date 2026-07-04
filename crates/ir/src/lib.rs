@@ -49,6 +49,12 @@ pub struct SchemaNode {
     pub name: String,
     #[serde(default)]
     pub repeating: bool,
+    /// This node is an XML attribute of its parent group (always a scalar).
+    /// Non-XML formats ignore it; in [`Instance`] trees an attribute is an
+    /// ordinary named field of the parent group -- which means an attribute
+    /// and a child element sharing a name collide (known limitation).
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub attribute: bool,
     /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
     /// Schema's `const`), compared against the raw text before parsing.
     /// Format adapters use it both to validate and to disambiguate --
@@ -71,6 +77,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             repeating: false,
+            attribute: false,
             fixed: None,
             kind: SchemaKind::Scalar { ty },
         }
@@ -80,6 +87,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             repeating: false,
+            attribute: false,
             fixed: None,
             kind: SchemaKind::Group { children },
         }
@@ -88,6 +96,12 @@ impl SchemaNode {
     /// Marks this node as repeating (builder-style, for constructing schemas by hand).
     pub fn repeating(mut self) -> Self {
         self.repeating = true;
+        self
+    }
+
+    /// Marks this node as an XML attribute of its parent (builder-style).
+    pub fn attribute(mut self) -> Self {
+        self.attribute = true;
         self
     }
 

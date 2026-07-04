@@ -50,18 +50,16 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut uid = 100u32;
     for (&id, node) in &project.graph.nodes {
         match node {
-            Node::SourceField { path } => {
-                match source_ports.key_for_suffix(&project.source, path) {
-                    Some(key) => {
-                        node_out_key.insert(id, key);
-                    }
-                    None => warnings.push(format!(
-                        "source field `{}` matches no source leaf; its connections \
-                         are skipped",
-                        path.join("/")
-                    )),
+            Node::SourceField { path } => match source_ports.key_for_suffix(path) {
+                Some(key) => {
+                    node_out_key.insert(id, key);
                 }
-            }
+                None => warnings.push(format!(
+                    "source field `{}` matches no source leaf; its connections \
+                         are skipped",
+                    path.join("/")
+                )),
+            },
             Node::Lookup { .. } => warnings
                 .push("lookup nodes have no simple MapForce equivalent; skipped".to_string()),
             Node::Const { value } => {
@@ -316,12 +314,14 @@ impl PortTree {
         self.by_abs.get(abs).copied()
     }
 
-    /// Finds the (first) absolute path whose suffix-after-repeating equals
-    /// `suffix`, mirroring the importer's SourceField rule.
-    fn key_for_suffix(&self, schema: &SchemaNode, suffix: &[String]) -> Option<u32> {
+    /// Finds the (first) absolute path ending in `suffix`. SourceField
+    /// paths are absolute paths cut at some enclosing iteration frame, so
+    /// tail matching recovers a plausible port; with several candidates
+    /// this is best-effort (`BTreeMap` order decides).
+    fn key_for_suffix(&self, suffix: &[String]) -> Option<u32> {
         self.by_abs
             .iter()
-            .find(|(abs, _)| super::import_suffix(schema, abs) == suffix)
+            .find(|(abs, _)| abs.ends_with(suffix))
             .map(|(_, &k)| k)
     }
 
