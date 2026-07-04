@@ -19,3 +19,4 @@ anyhow = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }
 egui-snarl = { workspace = true }
+rfd = { workspace = true }
