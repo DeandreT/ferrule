@@ -60,17 +60,19 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatE
     }
 }
 
-/// Reads a CSV file (with a header row) into one [`Instance::Group`] per
-/// row, parsing each column according to its declared scalar type.
-/// `delimiter` defaults to `,`.
+/// Reads a CSV file into one [`Instance::Group`] per row, parsing each
+/// column according to its declared scalar type (columns are positional;
+/// when `has_headers` the first row is skipped). `delimiter` defaults to
+/// `,`.
 pub fn read(
     path: &Path,
     schema: &SchemaNode,
     delimiter: Option<char>,
+    has_headers: bool,
 ) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
     let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
+        .has_headers(has_headers)
         .delimiter(delimiter_byte(delimiter)?)
         .from_path(path)?;
     let mut out = Vec::new();
@@ -115,19 +117,22 @@ fn parse_value(
     })
 }
 
-/// Writes one row per [`Instance::Group`] in `rows` to a CSV file with a
-/// header row. `delimiter` defaults to `,`.
+/// Writes one row per [`Instance::Group`] in `rows` to a CSV file, with a
+/// header row when `has_headers`. `delimiter` defaults to `,`.
 pub fn write(
     path: &Path,
     schema: &SchemaNode,
     rows: &[Instance],
     delimiter: Option<char>,
+    has_headers: bool,
 ) -> Result<(), CsvFormatError> {
     let fields = row_fields(schema)?;
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter_byte(delimiter)?)
         .from_path(path)?;
-    writer.write_record(fields.iter().map(|(n, _)| *n))?;
+    if has_headers {
+        writer.write_record(fields.iter().map(|(n, _)| *n))?;
+    }
     for row in rows {
         let cells = fields
             .iter()
@@ -178,8 +183,8 @@ mod tests {
             ("age".into(), Instance::Scalar(Value::Int(29))),
         ]);
 
-        write(&path, &schema(), std::slice::from_ref(&row), None).unwrap();
-        let read_back = read(&path, &schema(), None).unwrap();
+        write(&path, &schema(), std::slice::from_ref(&row), None, true).unwrap();
+        let read_back = read(&path, &schema(), None, true).unwrap();
 
         std::fs::remove_file(&path).unwrap();
         assert_eq!(read_back, vec![row]);
@@ -194,7 +199,7 @@ mod tests {
         ));
         std::fs::write(&path, "name,age,extra\nJane,29,x\n").unwrap();
 
-        let err = read(&path, &schema(), None).unwrap_err();
+        let err = read(&path, &schema(), None, true).unwrap_err();
         std::fs::remove_file(&path).unwrap();
         assert!(matches!(
             err,
@@ -204,6 +209,31 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn headerless_files_roundtrip() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "ferrule_format_csv_test_nohdr_{}.csv",
+            std::process::id()
+        ));
+
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]);
+
+        write(&path, &schema(), std::slice::from_ref(&row), None, false).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let read_back = read(&path, &schema(), None, false).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(text.trim(), "Jane,29");
+        assert_eq!(read_back, vec![row]);
     }
 
     #[test]
@@ -222,9 +252,16 @@ mod tests {
             ("age".into(), Instance::Scalar(Value::Int(29))),
         ]);
 
-        write(&path, &schema(), std::slice::from_ref(&row), Some(';')).unwrap();
+        write(
+            &path,
+            &schema(),
+            std::slice::from_ref(&row),
+            Some(';'),
+            true,
+        )
+        .unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        let read_back = read(&path, &schema(), Some(';')).unwrap();
+        let read_back = read(&path, &schema(), Some(';'), true).unwrap();
         std::fs::remove_file(&path).unwrap();
 
         assert!(text.starts_with("name;age"));
