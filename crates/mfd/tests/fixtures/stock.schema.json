@@ -1,0 +1,26 @@
+{
+  "$ref": "#/definitions/stock",
+  "definitions": {
+    "stock": {
+      "title": "Stock",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sku": { "type": "string" },
+          "qty": { "type": "integer" },
+          "batches": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/batch" }
+          }
+        }
+      }
+    },
+    "batch": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" }
+      }
+    }
+  }
+}

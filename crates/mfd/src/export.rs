@@ -1,36 +1,46 @@
 //! `mapping::Project` -> `.mfd` conversion for the supported subset, plus
-//! generated XSDs next to the design so MapForce can resolve the schemas.
+//! generated schema files (XSD / JSON Schema) next to the design so
+//! MapForce can resolve them. The component family per side follows the
+//! project's instance-path extension: `.json` becomes a json component,
+//! `.csv`/`.txt` a csv text component, everything else (including no path
+//! at all) an XML component.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use ir::{SchemaKind, SchemaNode, Value};
-use mapping::{Node, NodeId, Project, Scope};
+use ir::{ScalarType, SchemaKind, SchemaNode, Value};
+use mapping::{FormatOptions, Node, NodeId, Project, Scope};
 
 use crate::MfdError;
 
-/// Writes `project` as a MapForce design at `path` (plus
-/// `<stem>-source.xsd` / `<stem>-target.xsd` siblings). Returns warnings
-/// for the parts that have no `.mfd` representation and were skipped.
+/// Which MapForce component family a mapping side exports as.
+#[derive(Clone, Copy, PartialEq)]
+enum SideFormat {
+    Xml,
+    Json,
+    Csv,
+}
+
+fn side_format(instance_path: &Option<String>) -> SideFormat {
+    let ext = instance_path
+        .as_deref()
+        .and_then(|p| Path::new(p).extension())
+        .and_then(|e| e.to_str())
+        .map(str::to_lowercase);
+    match ext.as_deref() {
+        Some("json") => SideFormat::Json,
+        Some("csv") | Some("txt") => SideFormat::Csv,
+        _ => SideFormat::Xml,
+    }
+}
+
+/// Writes `project` as a MapForce design at `path`, plus generated schema
+/// siblings (`<stem>-source.xsd` / `.schema.json`, dito target) where the
+/// component family needs one. Returns warnings for the parts that have no
+/// `.mfd` representation and were skipped.
 pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut warnings = Vec::new();
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mapping")
-        .to_string();
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let source_xsd = format!("{stem}-source.xsd");
-    let target_xsd = format!("{stem}-target.xsd");
-    std::fs::write(
-        dir.join(&source_xsd),
-        format_xml::xsd::export(&project.source),
-    )?;
-    std::fs::write(
-        dir.join(&target_xsd),
-        format_xml::xsd::export(&project.target),
-    )?;
 
     if !project.extra_sources.is_empty() {
         warnings.push(
@@ -38,6 +48,9 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 .to_string(),
         );
     }
+
+    let source_format = side_format(&project.source_path);
+    let target_format = side_format(&project.target_path);
 
     let mut keys = KeyAlloc { next: 1 };
     let source_ports = PortTree::build(&project.source, &mut keys);
@@ -175,6 +188,10 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         }
     }
 
+    // A root-scope iteration is only representable when the target side
+    // has a row/array-shaped document root to connect to.
+    let target_root_iterable = target_format == SideFormat::Csv
+        || (target_format == SideFormat::Json && project.target.repeating);
     let mut filter_components = String::new();
     collect_scope_edges(
         &project.root,
@@ -182,6 +199,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         &mut Vec::new(),
         &source_ports,
         &target_ports,
+        target_root_iterable,
         &node_out_key,
         &mut keys,
         &mut uid,
@@ -191,8 +209,6 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     );
     components.push_str(&filter_components);
 
-    let root_name = &project.source.name;
-    let target_name = &project.target.name;
     let mut out = String::new();
     let _ = write!(
         out,
@@ -202,48 +218,26 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
          \t<component name=\"defaultmap\" uid=\"1\" editable=\"1\">\n\
          \t\t<properties SelectedLanguage=\"builtin\"/>\n\
          \t\t<structure>\n\
-         \t\t\t<children>\n\
-         \t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"2\" kind=\"14\">\n\
-         \t\t\t\t\t<view rbx=\"300\" rby=\"400\"/>\n\
-         \t\t\t\t\t<data>\n\
-         \t\t\t\t\t\t<root>\n\
-         \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
-         \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
-         \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
-         {}\
-         \t\t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<document schema=\"{}\" instanceroot=\"{{}}{}\"/>\n\
-         \t\t\t\t\t</data>\n\
-         \t\t\t\t</component>\n",
-        xml_escape(root_name),
-        source_ports.entries_xml(&project.source, "outkey", 9),
-        xml_escape(&source_xsd),
-        xml_escape(root_name),
+         \t\t\t<children>\n"
     );
-    let _ = write!(
-        out,
-        "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"3\" kind=\"14\">\n\
-         \t\t\t\t\t<properties XSLTDefaultOutput=\"1\"/>\n\
-         \t\t\t\t\t<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>\n\
-         \t\t\t\t\t<data>\n\
-         \t\t\t\t\t\t<root>\n\
-         \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
-         \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
-         \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
-         {}\
-         \t\t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t\t</entry>\n\
-         \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<document schema=\"{}\" instanceroot=\"{{}}{}\"/>\n\
-         \t\t\t\t\t</data>\n\
-         \t\t\t\t</component>\n",
-        xml_escape(target_name),
-        target_ports.entries_xml(&project.target, "inpkey", 9),
-        xml_escape(&target_xsd),
-        xml_escape(target_name),
-    );
+    out.push_str(&schema_component_xml(
+        &project.source,
+        source_format,
+        &source_ports,
+        Side::Source,
+        project.source_path.as_deref(),
+        &project.source_options,
+        path,
+    )?);
+    out.push_str(&schema_component_xml(
+        &project.target,
+        target_format,
+        &target_ports,
+        Side::Target,
+        project.target_path.as_deref(),
+        &project.target_options,
+        path,
+    )?);
     out.push_str(&components);
     out.push_str(
         "\t\t\t</children>\n\t\t\t<graph directed=\"1\">\n\t\t\t\t<edges/>\n\t\t\t\t<vertices>\n",
@@ -270,6 +264,201 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     Ok(warnings)
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Source,
+    Target,
+}
+
+impl Side {
+    fn port_attr(self) -> &'static str {
+        match self {
+            Side::Source => "outkey",
+            Side::Target => "inpkey",
+        }
+    }
+
+    fn instance_attr(self) -> &'static str {
+        match self {
+            Side::Source => "inputinstance",
+            Side::Target => "outputinstance",
+        }
+    }
+}
+
+/// Renders one schema component (and writes its schema sibling file, when
+/// the family has one) for the source or target side of the design.
+fn schema_component_xml(
+    schema: &SchemaNode,
+    format: SideFormat,
+    ports: &PortTree,
+    side: Side,
+    instance_path: Option<&str>,
+    options: &FormatOptions,
+    mfd_path: &Path,
+) -> Result<String, MfdError> {
+    let stem = mfd_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("mapping");
+    let dir = mfd_path.parent().unwrap_or(Path::new("."));
+    let (uid, side_name, header, view) = match side {
+        Side::Source => (2, "source", "", "<view rbx=\"300\" rby=\"400\"/>"),
+        Side::Target => (
+            3,
+            "target",
+            "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
+            "<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>",
+        ),
+    };
+    let attr = side.port_attr();
+    let instance = instance_path
+        .map(|p| format!(" {}=\"{}\"", side.instance_attr(), xml_escape(p)))
+        .unwrap_or_default();
+
+    let mut out = String::new();
+    match format {
+        SideFormat::Xml => {
+            let schema_file = format!("{stem}-{side_name}.xsd");
+            std::fs::write(dir.join(&schema_file), format_xml::xsd::export(schema))?;
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 {}\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<document schema=\"{}\" instanceroot=\"{{}}{}\"{instance}/>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(&schema.name),
+                ports.entries_xml(schema, attr, 9),
+                xml_escape(&schema_file),
+                xml_escape(&schema.name),
+            );
+        }
+        SideFormat::Json => {
+            let schema_file = format!("{stem}-{side_name}.schema.json");
+            std::fs::write(
+                dir.join(&schema_file),
+                format_json::json_schema::export(schema),
+            )?;
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{}\" library=\"json\" uid=\"{uid}\" kind=\"31\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t\t<entry name=\"root\" expanded=\"1\">\n\
+                 {}\
+                 \t\t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<json schema=\"{}\"{instance}/>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(&schema.name),
+                ports.json_entries_xml(schema, attr, 10),
+                xml_escape(&schema_file),
+            );
+        }
+        SideFormat::Csv => {
+            let fields = csv_fields(schema).ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "the {side_name} side maps to a csv file but its schema is \
+                     not a flat group of scalar fields"
+                ))
+            })?;
+            let block_key = ports.key_for_abs(&[]).expect("root port always keyed");
+            let mut field_entries = String::new();
+            let mut field_decls = String::new();
+            for (i, (name, ty)) in fields.iter().enumerate() {
+                let key = ports
+                    .key_for_abs(&[(*name).to_string()])
+                    .expect("field keyed");
+                let _ = writeln!(
+                    field_entries,
+                    "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" {attr}=\"{key}\"/>",
+                    xml_escape(name)
+                );
+                let _ = writeln!(
+                    field_decls,
+                    "\t\t\t\t\t\t\t\t<field{i} name=\"{}\" type=\"{}\"/>",
+                    xml_escape(name),
+                    csv_type_name(*ty)
+                );
+            }
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{}\" library=\"text\" uid=\"{uid}\" kind=\"16\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t\t<entry name=\"Rows\" {attr}=\"{block_key}\" expanded=\"1\">\n\
+                 {field_entries}\
+                 \t\t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<text type=\"csv\"{instance}>\n\
+                 \t\t\t\t\t\t\t<settings separator=\"{}\" quote=\"&quot;\" firstrownames=\"{}\">\n\
+                 \t\t\t\t\t\t\t\t<names root=\"{}\" block=\"Rows\">\n\
+                 {field_decls}\
+                 \t\t\t\t\t\t\t\t</names>\n\
+                 \t\t\t\t\t\t\t</settings>\n\
+                 \t\t\t\t\t\t</text>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(&schema.name),
+                xml_escape(&options.delimiter.unwrap_or(',').to_string()),
+                options.has_header_row.unwrap_or(true),
+                xml_escape(&schema.name),
+            );
+        }
+    }
+    Ok(out)
+}
+
+/// The flat scalar fields a csv component needs, or `None` when the schema
+/// has any other shape.
+fn csv_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
+    if schema.repeating {
+        return None;
+    }
+    match &schema.kind {
+        SchemaKind::Group { children } => children
+            .iter()
+            .map(|c| match &c.kind {
+                SchemaKind::Scalar { ty } if !c.repeating => Some((c.name.as_str(), *ty)),
+                _ => None,
+            })
+            .collect(),
+        SchemaKind::Scalar { .. } => None,
+    }
+}
+
+fn csv_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "number",
+        ScalarType::Bool => "boolean",
+    }
+}
+
 struct KeyAlloc {
     next: u32,
 }
@@ -291,6 +480,9 @@ struct PortTree {
 impl PortTree {
     fn build(schema: &SchemaNode, keys: &mut KeyAlloc) -> Self {
         let mut by_abs = BTreeMap::new();
+        // The document root itself: rendered as a port only by row/array
+        // shaped components (a csv block, a json root object).
+        by_abs.insert(Vec::new(), keys.next());
         fn walk(
             node: &SchemaNode,
             path: &mut Vec<String>,
@@ -342,9 +534,14 @@ impl PortTree {
                     path.push(child.name.clone());
                     let pad = "\t".repeat(indent);
                     let key = by_abs[&*path];
+                    let type_attr = if child.attribute {
+                        " type=\"attribute\""
+                    } else {
+                        ""
+                    };
                     let _ = write!(
                         out,
-                        "{pad}<entry name=\"{}\" {attr}=\"{key}\" expanded=\"1\"",
+                        "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{key}\" expanded=\"1\"",
                         xml_escape(&child.name)
                     );
                     if matches!(child.kind, SchemaKind::Scalar { .. }) {
@@ -376,6 +573,90 @@ impl PortTree {
         let _ = writeln!(out, "{pad}</entry>");
         out
     }
+
+    /// Entry-tree XML for a json component, mirroring MapForce's
+    /// normalized shape (and the importer's inverse): property entries
+    /// carry `type="json-property"`, structural `object`/`array`/`item`
+    /// entries carry the keys -- object/iteration keys on `object`, scalar
+    /// keys on the type leaf.
+    fn json_entries_xml(&self, schema: &SchemaNode, attr: &str, indent: usize) -> String {
+        let mut out = String::new();
+        if schema.repeating {
+            let pad = "\t".repeat(indent);
+            let _ = writeln!(out, "{pad}<entry name=\"array\" expanded=\"1\">");
+            let _ = writeln!(
+                out,
+                "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
+            );
+            self.json_value_xml(schema, &mut Vec::new(), attr, indent + 2, &mut out);
+            let _ = writeln!(out, "{pad}\t</entry>");
+            let _ = writeln!(out, "{pad}</entry>");
+        } else {
+            self.json_value_xml(schema, &mut Vec::new(), attr, indent, &mut out);
+        }
+        out
+    }
+
+    /// Renders the value shape of `node` (its own repetition is the
+    /// caller's concern).
+    fn json_value_xml(
+        &self,
+        node: &SchemaNode,
+        path: &mut Vec<String>,
+        attr: &str,
+        indent: usize,
+        out: &mut String,
+    ) {
+        let pad = "\t".repeat(indent);
+        let key = self.by_abs[&*path];
+        match &node.kind {
+            SchemaKind::Scalar { ty } => {
+                let _ = writeln!(
+                    out,
+                    "{pad}<entry name=\"{}\" {attr}=\"{key}\"/>",
+                    json_type_name(*ty)
+                );
+            }
+            SchemaKind::Group { children } => {
+                let _ = writeln!(
+                    out,
+                    "{pad}<entry name=\"object\" {attr}=\"{key}\" expanded=\"1\">"
+                );
+                for child in children {
+                    let _ = writeln!(
+                        out,
+                        "{pad}\t<entry name=\"{}\" type=\"json-property\" expanded=\"1\">",
+                        xml_escape(&child.name)
+                    );
+                    path.push(child.name.clone());
+                    if child.repeating {
+                        let _ = writeln!(out, "{pad}\t\t<entry name=\"array\" expanded=\"1\">");
+                        let _ = writeln!(
+                            out,
+                            "{pad}\t\t\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
+                        );
+                        self.json_value_xml(child, path, attr, indent + 4, out);
+                        let _ = writeln!(out, "{pad}\t\t\t</entry>");
+                        let _ = writeln!(out, "{pad}\t\t</entry>");
+                    } else {
+                        self.json_value_xml(child, path, attr, indent + 2, out);
+                    }
+                    path.pop();
+                    let _ = writeln!(out, "{pad}\t</entry>");
+                }
+                let _ = writeln!(out, "{pad}</entry>");
+            }
+        }
+    }
+}
+
+fn json_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "number",
+        ScalarType::Bool => "boolean",
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -385,6 +666,7 @@ fn collect_scope_edges(
     anchor: &mut Vec<String>,
     source_ports: &PortTree,
     target_ports: &PortTree,
+    target_root_iterable: bool,
     node_out_key: &BTreeMap<NodeId, u32>,
     keys: &mut KeyAlloc,
     uid: &mut u32,
@@ -393,9 +675,13 @@ fn collect_scope_edges(
     warnings: &mut Vec<String>,
 ) {
     let anchor_len = anchor.len();
-    if let Some(source) = &scope.source
-        && !chain.is_empty()
-    {
+    if scope.source.is_some() && chain.is_empty() && !target_root_iterable {
+        warnings.push(
+            "the root scope iterates rows but the target document is not row/array \
+             shaped in MapForce terms; the iteration wire is skipped"
+                .to_string(),
+        );
+    } else if let Some(source) = &scope.source {
         let mut abs = anchor.clone();
         abs.extend(source.iter().cloned());
         match (
@@ -470,6 +756,7 @@ fn collect_scope_edges(
             anchor,
             source_ports,
             target_ports,
+            target_root_iterable,
             node_out_key,
             keys,
             uid,

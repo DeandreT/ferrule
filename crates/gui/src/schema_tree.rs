@@ -10,9 +10,11 @@ pub fn show_schema_tree(ui: &mut Ui, schema: &SchemaNode) {
 
 fn show_node(ui: &mut Ui, node: &SchemaNode) {
     let suffix = if node.repeating { " []" } else { "" };
+    // XML attributes render with the conventional @ prefix.
+    let prefix = if node.attribute { "@" } else { "" };
     match &node.kind {
         SchemaKind::Scalar { ty } => {
-            ui.label(format!("{}{suffix}: {ty:?}", node.name));
+            ui.label(format!("{prefix}{}{suffix}: {ty:?}", node.name));
         }
         SchemaKind::Group { children } => {
             egui::CollapsingHeader::new(format!("{}{suffix}", node.name))

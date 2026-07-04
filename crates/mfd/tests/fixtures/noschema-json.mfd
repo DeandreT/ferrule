@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="orders" library="json" uid="2" kind="31">
+					<view rbx="300" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="root" expanded="1">
+										<entry name="object" expanded="1">
+											<entry name="customer" type="json-property" expanded="1">
+												<entry name="string" outkey="10"/>
+											</entry>
+											<entry name="total" type="json-property" expanded="1">
+												<entry name="number" outkey="11"/>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+					</data>
+				</component>
+				<component name="People" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="700" rbx="1000" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="People" expanded="1">
+										<entry name="Person" expanded="1">
+											<entry name="Name" inpkey="21"/>
+											<entry name="Age" inpkey="22"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="people-target.xsd" instanceroot="{}People"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="10"><edges><edge vertexkey="21"/></edges></vertex>
+					<vertex vertexkey="11"><edges><edge vertexkey="22"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

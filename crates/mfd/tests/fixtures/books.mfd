@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Catalog" library="xml" uid="2" kind="14">
+					<view rbx="300" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Catalog" expanded="1">
+										<entry name="Book" outkey="10" expanded="1">
+											<entry name="isbn" type="attribute" outkey="11"/>
+											<entry name="pages" type="attribute" outkey="12"/>
+											<entry name="Title" outkey="13"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="books-source.xsd" inputinstance="books.xml" instanceroot="{}Catalog"/>
+					</data>
+				</component>
+				<component name="Library" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="700" rbx="1000" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Library" expanded="1">
+										<entry name="Entry" inpkey="20" expanded="1">
+											<entry name="id" type="attribute" inpkey="21"/>
+											<entry name="Name" inpkey="22"/>
+											<entry name="Pages" inpkey="23"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="books-target.xsd" instanceroot="{}Library"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+					<vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+					<vertex vertexkey="13"><edges><edge vertexkey="22"/></edges></vertex>
+					<vertex vertexkey="12"><edges><edge vertexkey="23"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>
