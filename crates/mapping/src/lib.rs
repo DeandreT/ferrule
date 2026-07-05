@@ -54,6 +54,33 @@ pub enum Node {
         matches: NodeId,
         value: Vec<String>,
     },
+    /// Reduces a repeating collection to one scalar. `collection` is
+    /// resolved with the same outward fallback as `Lookup`; `value` picks
+    /// the scalar inside each item (empty = the item itself, for
+    /// collections of scalars). `arg` supplies the extra scalar parameter
+    /// some operations take: `join`'s separator (default "") and
+    /// `item_at`'s 1-based position.
+    Aggregate {
+        function: AggregateOp,
+        collection: Vec<String>,
+        #[serde(default)]
+        value: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arg: Option<NodeId>,
+    },
+}
+
+/// The reduction an [`Node::Aggregate`] applies over its collection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AggregateOp {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+    Join,
+    ItemAt,
 }
 
 /// The mapping graph for one project: every node that can be wired into a

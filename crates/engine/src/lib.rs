@@ -217,6 +217,31 @@ fn eval_expr(
                 .and_then(|item| field_scalar(item, value).cloned())
                 .unwrap_or(Value::Null))
         }
+        Node::Aggregate {
+            function,
+            collection,
+            value,
+            arg,
+        } => {
+            // An unresolvable collection aggregates as empty rather than
+            // erroring -- absent repeating data is normal instance data.
+            let items = resolve_repeated(context, collection).unwrap_or(&[]);
+            let values: Vec<Value> = items
+                .iter()
+                .map(|item| {
+                    if value.is_empty() {
+                        item.as_scalar().cloned().unwrap_or(Value::Null)
+                    } else {
+                        field_scalar(item, value).cloned().unwrap_or(Value::Null)
+                    }
+                })
+                .collect();
+            let arg_value = match arg {
+                Some(id) => Some(eval_expr(graph, *id, context, in_progress)?),
+                None => None,
+            };
+            Ok(aggregate(*function, items.len(), &values, arg_value))
+        }
     };
 
     in_progress.remove(&node_id);
@@ -225,6 +250,118 @@ fn eval_expr(
 
 /// Resolves `path` to a repeating collection, with the same outward
 /// fallback as [`resolve_scalar`].
+/// Applies one [`AggregateOp`] over the per-item `values` of a collection
+/// (`item_count` counts items, not non-null values).
+fn aggregate(
+    function: mapping::AggregateOp,
+    item_count: usize,
+    values: &[Value],
+    arg: Option<Value>,
+) -> Value {
+    use mapping::AggregateOp;
+    match function {
+        AggregateOp::Count => Value::Int(item_count as i64),
+        AggregateOp::Sum | AggregateOp::Avg => {
+            let numbers: Vec<(f64, bool)> = values.iter().filter_map(numeric_value).collect();
+            if function == AggregateOp::Avg {
+                if numbers.is_empty() {
+                    return Value::Null;
+                }
+                let sum: f64 = numbers.iter().map(|(f, _)| f).sum();
+                return Value::Float(sum / numbers.len() as f64);
+            }
+            let sum: f64 = numbers.iter().map(|(f, _)| f).sum();
+            if numbers.iter().all(|(_, is_int)| *is_int) {
+                Value::Int(sum as i64)
+            } else {
+                Value::Float(sum)
+            }
+        }
+        AggregateOp::Min | AggregateOp::Max => {
+            let want = if function == AggregateOp::Min {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+            let mut best: Option<&Value> = None;
+            for value in values.iter().filter(|v| !matches!(v, Value::Null)) {
+                match best {
+                    None => best = Some(value),
+                    Some(current) => {
+                        if value_ordering(value, current) == Some(want) {
+                            best = Some(value);
+                        }
+                    }
+                }
+            }
+            best.cloned().unwrap_or(Value::Null)
+        }
+        AggregateOp::Join => {
+            let separator = arg.map(|v| value_text(&v)).unwrap_or_default();
+            Value::String(
+                values
+                    .iter()
+                    .filter(|v| !matches!(v, Value::Null))
+                    .map(value_text)
+                    .collect::<Vec<_>>()
+                    .join(&separator),
+            )
+        }
+        AggregateOp::ItemAt => {
+            // 1-based, XPath style; anything out of range is Null.
+            let index = arg.as_ref().and_then(|v| match v {
+                Value::Int(i) => Some(*i),
+                Value::Float(f) => Some(f.round() as i64),
+                Value::String(s) => s.trim().parse().ok(),
+                _ => None,
+            });
+            match index {
+                Some(i) if i >= 1 => values.get(i as usize - 1).cloned().unwrap_or(Value::Null),
+                _ => Value::Null,
+            }
+        }
+    }
+}
+
+/// A value as a number, remembering whether it was integral (strings from
+/// untyped sources parse; everything else doesn't aggregate).
+fn numeric_value(value: &Value) -> Option<(f64, bool)> {
+    match value {
+        Value::Int(i) => Some((*i as f64, true)),
+        Value::Float(f) => Some((*f, false)),
+        Value::String(s) => {
+            let s = s.trim();
+            s.parse::<i64>()
+                .map(|i| (i as f64, true))
+                .ok()
+                .or_else(|| s.parse::<f64>().map(|f| (f, false)).ok())
+        }
+        _ => None,
+    }
+}
+
+fn value_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
+    match (a, b) {
+        (Value::Int(a), Value::Int(b)) => a.partial_cmp(b),
+        (Value::Float(a), Value::Float(b)) => a.partial_cmp(b),
+        (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b),
+        (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)),
+        (Value::String(a), Value::String(b)) => Some(a.cmp(b)),
+        (Value::Bool(a), Value::Bool(b)) => Some(a.cmp(b)),
+        _ => None,
+    }
+}
+
+fn value_text(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::Bool(b) => b.to_string(),
+        Value::Int(i) => i.to_string(),
+        Value::Float(f) => f.to_string(),
+        Value::String(s) => s.clone(),
+    }
+}
+
 fn resolve_repeated<'a>(context: &[&'a Instance], path: &[String]) -> Option<&'a [Instance]> {
     for item in context.iter().rev() {
         let mut current = *item;
@@ -740,6 +877,130 @@ mod tests {
         assert_eq!(
             target.field("City").and_then(Instance::as_scalar),
             Some(&Value::String("Vienna".into()))
+        );
+    }
+
+    /// Aggregates reduce a repeating collection found by outward context
+    /// fallback: count/sum inside an iterating scope see the current
+    /// item's children, and join with a separator works over leaf values.
+    #[test]
+    fn aggregates_reduce_collections_in_context() {
+        use mapping::AggregateOp;
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::Aggregate {
+                    function: AggregateOp::Count,
+                    collection: vec!["Item".into()],
+                    value: vec![],
+                    arg: None,
+                },
+            ),
+            (
+                1,
+                Node::Aggregate {
+                    function: AggregateOp::Sum,
+                    collection: vec!["Item".into()],
+                    value: vec!["Price".into()],
+                    arg: None,
+                },
+            ),
+            (
+                2,
+                Node::Const {
+                    value: Value::String(", ".into()),
+                },
+            ),
+            (
+                3,
+                Node::Aggregate {
+                    function: AggregateOp::Join,
+                    collection: vec!["Order".into()],
+                    value: vec!["Id".into()],
+                    arg: Some(2),
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                bindings: vec![Binding {
+                    target_field: "AllIds".into(),
+                    node: 3,
+                }],
+                children: vec![Scope {
+                    target_field: "Order".into(),
+                    source: Some(vec!["Order".into()]),
+                    filter: None,
+                    bindings: vec![
+                        Binding {
+                            target_field: "ItemCount".into(),
+                            node: 0,
+                        },
+                        Binding {
+                            target_field: "Total".into(),
+                            node: 1,
+                        },
+                    ],
+                    children: vec![],
+                }],
+            },
+        };
+        let item = |price: f64| {
+            Instance::Group(vec![(
+                "Price".into(),
+                Instance::Scalar(Value::Float(price)),
+            )])
+        };
+        let order = |id: &str, items: Vec<Instance>| {
+            Instance::Group(vec![
+                ("Id".into(), Instance::Scalar(Value::String(id.into()))),
+                ("Item".into(), Instance::Repeated(items)),
+            ])
+        };
+        let source = Instance::Group(vec![(
+            "Order".into(),
+            Instance::Repeated(vec![
+                order("A", vec![item(1.5), item(2.5)]),
+                order("B", vec![]),
+            ]),
+        )]);
+
+        let target = run(&project, &source).unwrap();
+        assert_eq!(
+            target.field("AllIds").and_then(Instance::as_scalar),
+            Some(&Value::String("A, B".into()))
+        );
+        let orders = target
+            .field("Order")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(
+            orders[0].field("ItemCount").and_then(Instance::as_scalar),
+            Some(&Value::Int(2))
+        );
+        assert_eq!(
+            orders[0].field("Total").and_then(Instance::as_scalar),
+            Some(&Value::Float(4.0))
+        );
+        // An empty collection counts 0 and sums to 0.
+        assert_eq!(
+            orders[1].field("ItemCount").and_then(Instance::as_scalar),
+            Some(&Value::Int(0))
+        );
+        assert_eq!(
+            orders[1].field("Total").and_then(Instance::as_scalar),
+            Some(&Value::Int(0))
         );
     }
 
