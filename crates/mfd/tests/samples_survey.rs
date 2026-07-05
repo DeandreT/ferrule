@@ -85,7 +85,7 @@ fn survey_samples() {
     }
     println!("\n-- warning categories (imported files) --");
     let mut warnings: Vec<_> = warning_counts.into_iter().collect();
-    warnings.sort_by(|a, b| b.1.cmp(&a.1));
+    warnings.sort_by_key(|a| std::cmp::Reverse(a.1));
     for (cat, n) in warnings {
         println!("{n:4}  {cat}");
     }
