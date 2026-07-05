@@ -4,6 +4,9 @@
 //! `repeating` holds a JSON array of that child's shape (a missing repeating
 //! field reads as empty, matching the XML reader's zero-match behavior);
 //! scalars map per [`ScalarType`], with JSON `null` allowed for any of them.
+//! Absent object properties read as Null scalars / empty groups, and Null
+//! scalars are omitted on write -- optional keys survive a roundtrip as
+//! omissions, the same convention as the XML adapter.
 
 pub mod json_schema;
 
@@ -24,8 +27,6 @@ pub enum JsonFormatError {
         expected: &'static str,
         got: &'static str,
     },
-    #[error("missing required field `{0}`")]
-    MissingField(String),
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -91,7 +92,16 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     None if child.repeating => {
                         out.push((child.name.clone(), Instance::Repeated(Vec::new())));
                     }
-                    None => return Err(JsonFormatError::MissingField(child.name.clone())),
+                    // Absent properties are normal instance data (JSON
+                    // objects routinely omit optional keys), not errors:
+                    // scalars read as Null, objects as empty.
+                    None => {
+                        let value = match child.kind {
+                            SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+                            SchemaKind::Group { .. } => Instance::Group(Vec::new()),
+                        };
+                        out.push((child.name.clone(), value));
+                    }
                 }
             }
             Ok(Instance::Group(out))
@@ -149,6 +159,11 @@ fn write_node(schema: &SchemaNode, instance: &Instance) -> serde_json::Value {
                     if let Some((_, child_instance)) =
                         fields.iter().find(|(n, _)| n == &child_schema.name)
                     {
+                        // A Null scalar is an absent property, not an
+                        // explicit null (mirrors the reader's treatment).
+                        if matches!(child_instance, Instance::Scalar(Value::Null)) {
+                            continue;
+                        }
                         out.insert(
                             child_schema.name.clone(),
                             write_node(child_schema, child_instance),
@@ -251,6 +266,36 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
 
         assert_eq!(instance.field("Tag"), Some(&Instance::Repeated(Vec::new())));
+    }
+
+    #[test]
+    fn absent_properties_read_as_null_and_are_omitted_on_write() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Name", ScalarType::String),
+                SchemaNode::scalar("Nick", ScalarType::String),
+                SchemaNode::group(
+                    "Extra",
+                    vec![SchemaNode::scalar("Note", ScalarType::String)],
+                ),
+            ],
+        );
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_json_test_optional_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, r#"{ "Name": "Jane" }"#).unwrap();
+
+        let instance = read(&path, &schema).unwrap();
+        assert_eq!(instance.field("Nick"), Some(&Instance::Scalar(Value::Null)));
+        assert_eq!(instance.field("Extra"), Some(&Instance::Group(vec![])));
+
+        // Writing the Null back omits the key instead of emitting `null`.
+        write(&path, &schema, &instance).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(!text.contains("Nick"), "{text}");
     }
 
     #[test]

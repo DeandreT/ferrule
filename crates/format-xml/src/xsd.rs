@@ -3,13 +3,15 @@
 //! [`SchemaNode`] tree, including the "wrap a single element in an
 //! `xs:sequence maxOccurs="unbounded"`" idiom real-world schemas use for
 //! repeating groups. `xs:attribute` declarations directly under a
-//! `xs:complexType` become attribute-flagged scalar children, and
-//! `xs:element ref="..."` resolves against same-document top-level
-//! declarations (recursive schemas degrade the inner reference to a string
-//! scalar). It does not support named complex types, choices, unions,
-//! `xs:any`, imports, restrictions, or `xs:simpleContent`
-//! (text-plus-attributes elements import as before, attributes ignored) --
-//! that's the "lite" in the name.
+//! `xs:complexType` (or its `complexContent` extension) become
+//! attribute-flagged scalar children; `xs:element ref="..."`, named
+//! top-level complex/simple types, and `complexContent`/`xs:extension`
+//! resolve within the same document (recursive references degrade to
+//! string scalars); `xs:choice` and `xs:all` import as if they were
+//! sequences (every branch becomes a child -- ferrule has no exclusivity
+//! concept). It does not support unions, `xs:any`, imports, or
+//! `xs:simpleContent` (text-plus-attributes elements import as before,
+//! attributes ignored) -- that's the "lite" in the name.
 
 use ir::{ScalarType, SchemaNode};
 use roxmltree::Node;
@@ -75,22 +77,51 @@ fn parse_element(el: &Node, schema_el: &Node, active_refs: &mut Vec<String>) -> 
         return SchemaNode::scalar(local, ScalarType::String);
     }
     let name = el.attribute("name").unwrap_or_default().to_string();
-    match el
+    if let Some(complex_type) = el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "complexType")
     {
-        Some(complex_type) => SchemaNode::group(
+        return SchemaNode::group(
             name,
             parse_complex_type(&complex_type, schema_el, active_refs),
-        ),
-        None => {
-            let ty = el
-                .attribute("type")
-                .map(map_xsd_type)
-                .unwrap_or(ScalarType::String);
-            SchemaNode::scalar(name, ty)
-        }
+        );
     }
+    if let Some(ty) = el.attribute("type") {
+        let local = ty.rsplit(':').next().unwrap_or(ty);
+        // A named top-level complexType makes this element a group; a
+        // recursive type reference degrades to a string scalar below.
+        let guard = format!("type:{local}");
+        if !active_refs.contains(&guard) {
+            if let Some(complex_type) = top_level(schema_el, "complexType", local) {
+                active_refs.push(guard);
+                let children = parse_complex_type(&complex_type, schema_el, active_refs);
+                active_refs.pop();
+                return SchemaNode::group(name, children);
+            }
+            if let Some(simple_type) = top_level(schema_el, "simpleType", local) {
+                return SchemaNode::scalar(name, simple_type_scalar(&simple_type));
+            }
+        }
+        return SchemaNode::scalar(name, map_xsd_type(ty));
+    }
+    SchemaNode::scalar(name, ScalarType::String)
+}
+
+/// Finds a named top-level declaration (`xs:complexType name=..` etc.).
+fn top_level<'a>(schema_el: &Node<'a, 'a>, tag: &str, name: &str) -> Option<Node<'a, 'a>> {
+    schema_el
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == tag && n.attribute("name") == Some(name))
+}
+
+/// The scalar type of a named simpleType: its restriction's base.
+fn simple_type_scalar(simple_type: &Node) -> ScalarType {
+    simple_type
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "restriction")
+        .and_then(|r| r.attribute("base"))
+        .map(map_xsd_type)
+        .unwrap_or(ScalarType::String)
 }
 
 fn parse_complex_type(
@@ -99,17 +130,40 @@ fn parse_complex_type(
     active_refs: &mut Vec<String>,
 ) -> Vec<SchemaNode> {
     let mut children = Vec::new();
-    if let Some(sequence) = complex_type
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "sequence")
-    {
-        collect_sequence(
-            &sequence,
-            is_repeating(&sequence),
-            schema_el,
-            active_refs,
-            &mut children,
-        );
+    for child in complex_type.children().filter(|n| n.is_element()) {
+        match child.tag_name().name() {
+            "sequence" | "choice" | "all" => {
+                collect_sequence(
+                    &child,
+                    is_repeating(&child),
+                    schema_el,
+                    active_refs,
+                    &mut children,
+                );
+            }
+            // complexContent/extension: the named base type's children
+            // first, then whatever the extension adds.
+            "complexContent" => {
+                if let Some(ext) = child
+                    .children()
+                    .find(|n| n.is_element() && n.tag_name().name() == "extension")
+                {
+                    if let Some(base) = ext.attribute("base") {
+                        let local = base.rsplit(':').next().unwrap_or(base);
+                        let guard = format!("type:{local}");
+                        if !active_refs.contains(&guard)
+                            && let Some(base_type) = top_level(schema_el, "complexType", local)
+                        {
+                            active_refs.push(guard);
+                            children.extend(parse_complex_type(&base_type, schema_el, active_refs));
+                            active_refs.pop();
+                        }
+                    }
+                    children.extend(parse_complex_type(&ext, schema_el, active_refs));
+                }
+            }
+            _ => {}
+        }
     }
     for attr in complex_type
         .children()
@@ -146,7 +200,7 @@ fn collect_sequence(
                 node.repeating = inherited_repeating || is_repeating(&child);
                 out.push(node);
             }
-            "sequence" => {
+            "sequence" | "choice" | "all" => {
                 collect_sequence(
                     &child,
                     inherited_repeating || is_repeating(&child),
@@ -365,6 +419,92 @@ mod tests {
             office.child("Office").unwrap().kind,
             SchemaKind::Scalar {
                 ty: ScalarType::String
+            }
+        ));
+    }
+
+    #[test]
+    fn resolves_named_types_extensions_and_choices() {
+        let dir = std::env::temp_dir();
+        let path = dir.join(format!(
+            "ferrule_xsd_named_types_test_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Item" type="LineType" minOccurs="0" maxOccurs="unbounded"/>
+        <xs:choice>
+          <xs:element name="Pickup" type="xs:string"/>
+          <xs:element name="Delivery" type="AddressType"/>
+        </xs:choice>
+        <xs:element name="Priority" type="PriorityType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="LineType">
+    <xs:complexContent>
+      <xs:extension base="BaseLineType">
+        <xs:sequence>
+          <xs:element name="Qty" type="xs:int"/>
+        </xs:sequence>
+        <xs:attribute name="unit" type="xs:string"/>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="BaseLineType">
+    <xs:sequence>
+      <xs:element name="Sku" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="AddressType">
+    <xs:sequence>
+      <xs:element name="City" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:simpleType name="PriorityType">
+    <xs:restriction base="xs:integer">
+      <xs:maxInclusive value="5"/>
+    </xs:restriction>
+  </xs:simpleType>
+</xs:schema>
+"#,
+        )
+        .unwrap();
+
+        let schema = import(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        // Named type with a complexContent extension: base children first,
+        // then the extension's own element and attribute.
+        let item = schema.child("Item").unwrap();
+        assert!(item.repeating);
+        assert_eq!(
+            item.child("Sku").map(|c| c.attribute),
+            Some(false),
+            "base type child"
+        );
+        assert!(matches!(
+            item.child("Qty").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        assert!(item.child("unit").unwrap().attribute);
+
+        // Both choice branches import as children.
+        assert!(schema.child("Pickup").is_some());
+        assert!(schema.child("Delivery").unwrap().child("City").is_some());
+
+        // Named simpleType resolves to its restriction base.
+        assert!(matches!(
+            schema.child("Priority").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
             }
         ));
     }
