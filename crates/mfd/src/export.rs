@@ -797,6 +797,9 @@ fn unmap_function_name(name: &str) -> String {
         "starts_with" => "starts-with",
         "upper" => "upper-case",
         "lower" => "lower-case",
+        "substring_before" => "substring-before",
+        "substring_after" => "substring-after",
+        "date_from_datetime" => "date-from-datetime",
         other => other,
     }
     .to_string()

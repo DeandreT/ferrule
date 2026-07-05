@@ -1141,6 +1141,12 @@ fn map_function_name(name: &str) -> Option<&'static str> {
         "upper-case" => "upper",
         "lower-case" => "lower",
         "trim" => "trim",
+        "substring" => "substring",
+        "substring-before" => "substring_before",
+        "substring-after" => "substring_after",
+        "exists" => "exists",
+        "round" | "round-precision" => "round",
+        "date-from-datetime" => "date_from_datetime",
         _ => return None,
     })
 }
