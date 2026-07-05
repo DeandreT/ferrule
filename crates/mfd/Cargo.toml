@@ -11,6 +11,7 @@ ir = { workspace = true }
 mapping = { workspace = true }
 format-xml = { workspace = true }
 format-json = { workspace = true }
+format-db = { workspace = true }
 roxmltree = { workspace = true }
 thiserror = { workspace = true }
 

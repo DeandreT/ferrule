@@ -2096,6 +2096,7 @@ version = "0.1.0"
 dependencies = [
  "engine",
  "format-csv",
+ "format-db",
  "format-json",
  "format-xml",
  "ir",

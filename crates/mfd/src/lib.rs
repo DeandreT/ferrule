@@ -5,13 +5,15 @@
 //! connection graph. [`import`] converts the supported subset -- XML
 //! components (resolvable XSDs incl. attributes and element refs), JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
-//! fallback), CSV text components (inline delimiter/header settings), the
-//! common core functions, constants, if-else, value-map, and filter-driven
-//! iteration -- into a ferrule [`mapping::Project`], collecting a warning
-//! for every construct it has to skip rather than failing. [`export`]
-//! writes a ferrule project back out as a `.mfd` (plus generated XSD /
-//! JSON Schema files next to it) for the same subset, picking each side's
-//! component family from the project's instance-path extension.
+//! fallback), CSV text components (inline delimiter/header settings),
+//! single-table SQLite database components (schema introspected from the
+//! referenced database when reachable), the common core functions,
+//! constants, if-else, value-map, and filter-driven iteration -- into a
+//! ferrule [`mapping::Project`], collecting a warning for every construct
+//! it has to skip rather than failing. [`export`] writes a ferrule project
+//! back out as a `.mfd` (plus generated XSD / JSON Schema files next to
+//! it) for the same subset, picking each side's component family from the
+//! project's instance-path extension.
 //!
 //! The format knowledge comes from reading real `.mfd` files; nothing here
 //! embeds or copies ReferenceSamples content. MapForce is a trademark of ReferenceSamples
