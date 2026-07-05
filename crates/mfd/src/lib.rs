@@ -10,7 +10,7 @@
 //! referenced database when reachable), the common core functions,
 //! aggregates (count/sum/avg/min/max/string-join/item-at, converted to
 //! collection-reducing graph nodes), constants, if-else, value-map, and
-//! filter-driven iteration -- into a
+//! filter- and group-by-driven iteration -- into a
 //! ferrule [`mapping::Project`], collecting a warning for every construct
 //! it has to skip rather than failing. [`export`] writes a ferrule project
 //! back out as a `.mfd` (plus generated XSD / JSON Schema files next to
