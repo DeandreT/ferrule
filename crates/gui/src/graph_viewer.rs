@@ -88,6 +88,7 @@ impl GraphViewer<'_> {
                 },
                 Node::ValueMap { input, .. } => *input = from_id,
                 Node::Lookup { matches, .. } => *matches = from_id,
+                Node::Aggregate { arg, .. } => *arg = Some(from_id),
                 _ => {}
             }
         }
@@ -139,7 +140,7 @@ impl GraphViewer<'_> {
             Node::SourceField { .. } | Node::Const { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
-            Node::ValueMap { .. } | Node::Lookup { .. } => 1,
+            Node::ValueMap { .. } | Node::Lookup { .. } | Node::Aggregate { .. } => 1,
         }
     }
 }
@@ -159,6 +160,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::ValueMap { .. }) => "Value Map".to_string(),
                 Some(Node::Lookup { collection, .. }) => {
                     format!("Lookup: {}", collection.join("/"))
+                }
+                Some(Node::Aggregate {
+                    function,
+                    collection,
+                    value,
+                    ..
+                }) => {
+                    let mut path = collection.clone();
+                    path.extend(value.iter().cloned());
+                    let op = format!("{function:?}").to_lowercase();
+                    format!("{op}: {}", path.join("/"))
                 }
                 None => "<missing>".to_string(),
             },
@@ -195,6 +207,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                 Some(Node::ValueMap { .. }) => "input".to_string(),
                 Some(Node::Lookup { .. }) => "matches".to_string(),
+                Some(Node::Aggregate { .. }) => "arg".to_string(),
                 _ => String::new(),
             },
         };
@@ -250,6 +263,23 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     for (label, path) in
                         [("collection", collection), ("key", key), ("value", value)]
                     {
+                        ui.horizontal(|ui| {
+                            ui.label(label);
+                            let mut joined = path.join("/");
+                            if ui.text_edit_singleline(&mut joined).changed() {
+                                *path = joined
+                                    .split('/')
+                                    .map(str::to_string)
+                                    .filter(|s| !s.is_empty())
+                                    .collect();
+                            }
+                        });
+                    }
+                }
+                Node::Aggregate {
+                    collection, value, ..
+                } => {
+                    for (label, path) in [("collection", collection), ("value", value)] {
                         ui.horizontal(|ui| {
                             ui.label(label);
                             let mut joined = path.join("/");

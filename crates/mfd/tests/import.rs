@@ -422,3 +422,68 @@ fn db_target_designs_import_run_and_roundtrip() {
     let out_b = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, out_b);
 }
+
+#[test]
+fn aggregate_designs_import_run_and_roundtrip() {
+    let imported = mfd::import(&fixture("orders.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    // count(Item) and sum(Item/Price) evaluate inside the Order scope;
+    // string-join(Order, Id, ", ") evaluates at the root, so its
+    // collection keeps the Order segment.
+    let order_scope = &project.root.children[0];
+    assert_eq!(order_scope.target_field, "Order");
+    let count_binding = order_scope
+        .bindings
+        .iter()
+        .find(|b| b.target_field == "ItemCount")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&count_binding.node],
+        Node::Aggregate { function: mapping::AggregateOp::Count, collection, value, .. }
+            if collection == &["Item"] && value.is_empty()
+    ));
+    let total_binding = order_scope
+        .bindings
+        .iter()
+        .find(|b| b.target_field == "Total")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&total_binding.node],
+        Node::Aggregate { function: mapping::AggregateOp::Sum, collection, value, .. }
+            if collection == &["Item"] && value == &["Price"]
+    ));
+    let ids_binding = project
+        .root
+        .bindings
+        .iter()
+        .find(|b| b.target_field == "AllIds")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&ids_binding.node],
+        Node::Aggregate { function: mapping::AggregateOp::Join, collection, value, arg: Some(_) }
+            if collection == &["Order"] && value == &["Id"]
+    ));
+
+    let source = format_xml::read(&fixture("orders.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    assert_eq!(scalar(&target, "AllIds"), Value::String("A-1, B-2".into()));
+    let orders = target
+        .field("Order")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(scalar(&orders[0], "ItemCount"), Value::Int(2));
+    assert_eq!(scalar(&orders[0], "Total"), Value::Float(4.0));
+    assert_eq!(scalar(&orders[1], "ItemCount"), Value::Int(1));
+    assert_eq!(scalar(&orders[1], "Total"), Value::Float(10.0));
+
+    let dir = TempDir::new("orders");
+    let out = dir.0.join("orders.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let out_b = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, out_b);
+}

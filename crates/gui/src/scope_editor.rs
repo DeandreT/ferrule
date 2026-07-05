@@ -149,5 +149,6 @@ fn node_kind_label(node: &mapping::Node) -> &'static str {
         mapping::Node::If { .. } => "if",
         mapping::Node::ValueMap { .. } => "value_map",
         mapping::Node::Lookup { .. } => "lookup",
+        mapping::Node::Aggregate { .. } => "aggregate",
     }
 }

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Orders" library="xml" uid="2" kind="14">
+					<view rbx="300" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Orders" expanded="1">
+										<entry name="Order" outkey="10" expanded="1">
+											<entry name="Id" outkey="11"/>
+											<entry name="Item" outkey="12" expanded="1">
+												<entry name="Price" outkey="13"/>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="orders-source.xsd" inputinstance="orders.xml" instanceroot="{}Orders"/>
+					</data>
+				</component>
+				<component name="Summary" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="700" rbx="1000" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Summary" expanded="1">
+										<entry name="AllIds" inpkey="29"/>
+										<entry name="Order" inpkey="20" expanded="1">
+											<entry name="Id" inpkey="21"/>
+											<entry name="ItemCount" inpkey="22"/>
+											<entry name="Total" inpkey="23"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="orders-target.xsd" instanceroot="{}Summary"/>
+					</data>
+				</component>
+				<component name="count" library="core" uid="50" kind="5">
+					<sources>
+						<datapoint/>
+						<datapoint pos="1" key="40"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="41"/>
+					</targets>
+					<view ltx="400" lty="60" rbx="500" rby="100"/>
+				</component>
+				<component name="sum" library="core" uid="51" kind="5">
+					<sources>
+						<datapoint/>
+						<datapoint pos="1" key="42"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="43"/>
+					</targets>
+					<view ltx="400" lty="120" rbx="500" rby="160"/>
+				</component>
+				<component name="string-join" library="core" uid="52" kind="5">
+					<sources>
+						<datapoint pos="0" key="44"/>
+						<datapoint pos="1" key="45"/>
+						<datapoint pos="2" key="46"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="47"/>
+					</targets>
+					<view ltx="400" lty="180" rbx="500" rby="220"/>
+				</component>
+				<component name="constant" library="core" uid="53" kind="2">
+					<targets>
+						<datapoint pos="0" key="48"/>
+					</targets>
+					<view ltx="350" lty="240" rbx="420" rby="270"/>
+					<data>
+						<constant value=", " datatype="string"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="10"><edges><edge vertexkey="20"/><edge vertexkey="44"/></edges></vertex>
+					<vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="45"/></edges></vertex>
+					<vertex vertexkey="12"><edges><edge vertexkey="40"/></edges></vertex>
+					<vertex vertexkey="13"><edges><edge vertexkey="42"/></edges></vertex>
+					<vertex vertexkey="41"><edges><edge vertexkey="22"/></edges></vertex>
+					<vertex vertexkey="43"><edges><edge vertexkey="23"/></edges></vertex>
+					<vertex vertexkey="48"><edges><edge vertexkey="46"/></edges></vertex>
+					<vertex vertexkey="47"><edges><edge vertexkey="29"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>
