@@ -20,6 +20,7 @@ enum SideFormat {
     Xml,
     Json,
     Csv,
+    Db,
 }
 
 fn side_format(instance_path: &Option<String>) -> SideFormat {
@@ -31,8 +32,18 @@ fn side_format(instance_path: &Option<String>) -> SideFormat {
     match ext.as_deref() {
         Some("json") => SideFormat::Json,
         Some("csv") | Some("txt") => SideFormat::Csv,
+        Some("db") | Some("sqlite") | Some("sqlite3") => SideFormat::Db,
         _ => SideFormat::Xml,
     }
+}
+
+/// The datasource name a connection path registers under (its file stem).
+fn db_datasource_name(instance_path: Option<&str>) -> String {
+    instance_path
+        .and_then(|p| Path::new(p).file_stem())
+        .and_then(|s| s.to_str())
+        .unwrap_or("data")
+        .to_string()
 }
 
 /// Writes `project` as a MapForce design at `path`, plus generated schema
@@ -190,7 +201,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     // A root-scope iteration is only representable when the target side
     // has a row/array-shaped document root to connect to.
-    let target_root_iterable = target_format == SideFormat::Csv
+    let target_root_iterable = matches!(target_format, SideFormat::Csv | SideFormat::Db)
         || (target_format == SideFormat::Json && project.target.repeating);
     let mut filter_components = String::new();
     collect_scope_edges(
@@ -209,12 +220,47 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     );
     components.push_str(&filter_components);
 
+    // Database sides register their connection as a mapping-level
+    // datasource, which the components reference by name.
+    let mut datasources: Vec<(String, String)> = Vec::new();
+    for (format, instance) in [
+        (source_format, project.source_path.as_deref()),
+        (target_format, project.target_path.as_deref()),
+    ] {
+        if format == SideFormat::Db
+            && let Some(conn) = instance
+        {
+            let name = db_datasource_name(Some(conn));
+            if !datasources.iter().any(|(n, _)| *n == name) {
+                datasources.push((name, conn.to_string()));
+            }
+        }
+    }
+    let resources = if datasources.is_empty() {
+        "\t<resources/>\n".to_string()
+    } else {
+        let mut r = String::from("\t<resources>\n\t\t<datasources>\n");
+        for (name, conn) in &datasources {
+            let _ = write!(
+                r,
+                "\t\t\t<datasource name=\"{0}\">\n\
+                 \t\t\t\t<properties JDBCDriver=\"org.sqlite.JDBC\" JDBCDatabaseURL=\"jdbc:sqlite:{1}\" DBDataSource=\"{1}\" DBCatalog=\"main\"/>\n\
+                 \t\t\t\t<database_connection database_kind=\"SQLite\" import_kind=\"SQLite\" ConnectionString=\"{1}\" name=\"{0}\" path=\"{0}\"/>\n\
+                 \t\t\t</datasource>\n",
+                xml_escape(name),
+                xml_escape(conn),
+            );
+        }
+        r.push_str("\t\t</datasources>\n\t</resources>\n");
+        r
+    };
+
     let mut out = String::new();
     let _ = write!(
         out,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <mapping version=\"22\">\n\
-         \t<resources/>\n\
+         {resources}\
          \t<component name=\"defaultmap\" uid=\"1\" editable=\"1\">\n\
          \t\t<properties SelectedLanguage=\"builtin\"/>\n\
          \t\t<structure>\n\
@@ -372,6 +418,50 @@ fn schema_component_xml(
                 xml_escape(&schema_file),
             );
         }
+        SideFormat::Db => {
+            // Unlike a csv row schema, a table root is repeating by
+            // format-db convention; only the children's shape matters.
+            let fields = flat_fields(schema).ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "the {side_name} side maps to a database table but its schema \
+                     is not a flat group of scalar fields"
+                ))
+            })?;
+            let datasource = db_datasource_name(instance_path);
+            let table_key = ports.key_for_abs(&[]).expect("root port always keyed");
+            let mut column_entries = String::new();
+            for (column, _) in &fields {
+                let key = ports
+                    .key_for_abs(&[(*column).to_string()])
+                    .expect("column keyed");
+                let _ = writeln!(
+                    column_entries,
+                    "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" {attr}=\"{key}\"/>",
+                    xml_escape(column)
+                );
+            }
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{0}\" library=\"db\" uid=\"{uid}\" kind=\"15\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"{0}\" type=\"table\" {attr}=\"{table_key}\" expanded=\"1\">\n\
+                 {column_entries}\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<database ref=\"{1}\">\n\
+                 \t\t\t\t\t\t\t<data><selections><selection><PathElement Name=\"main\" Kind=\"Database\"/><PathElement Name=\"{0}\" Kind=\"Table\"/></selection></selections></data>\n\
+                 \t\t\t\t\t\t</database>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(&schema.name),
+                xml_escape(&datasource),
+            );
+        }
         SideFormat::Csv => {
             let fields = csv_fields(schema).ok_or_else(|| {
                 MfdError::Unsupported(format!(
@@ -438,11 +528,19 @@ fn csv_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
     if schema.repeating {
         return None;
     }
+    flat_fields(schema)
+}
+
+/// The scalar children of a flat group, ignoring the root's own
+/// repetition (db tables repeat by convention).
+fn flat_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
     match &schema.kind {
         SchemaKind::Group { children } => children
             .iter()
             .map(|c| match &c.kind {
-                SchemaKind::Scalar { ty } if !c.repeating => Some((c.name.as_str(), *ty)),
+                SchemaKind::Scalar { ty } if !c.repeating && !c.attribute => {
+                    Some((c.name.as_str(), *ty))
+                }
                 _ => None,
             })
             .collect(),

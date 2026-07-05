@@ -24,6 +24,7 @@ enum ComponentFormat {
     Xml,
     Json,
     Csv,
+    Db,
 }
 
 /// One schema (source or target) component's extracted facts.
@@ -120,25 +121,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         ));
                     }
                 }
-                "db" => {
-                    let connection = component
-                        .descendants()
-                        .find(|n| n.has_tag_name("database_connection"))
-                        .and_then(|c| c.attribute("ConnectionString"))
-                        .map(|c| format!(" ({c})"))
-                        .unwrap_or_default();
-                    note_skipped_library(&mut skipped_libraries, "db");
-                    warnings.push(format!(
-                        "skipped database component `{name}`{connection}: ferrule \
-                         cannot import db components yet"
-                    ));
-                }
+                "db" => match read_db_component(&component, &mapping_el, path, &mut warnings) {
+                    Some(sc) => schema_components.push(sc),
+                    None => note_skipped_library(&mut skipped_libraries, "db"),
+                },
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
                 other => {
                     note_skipped_library(&mut skipped_libraries, other);
                     warnings.push(format!(
                         "skipped component `{name}`: unsupported library `{other}` \
-                         (only xml/json/csv and core/lang function components import)"
+                         (only xml/json/csv/db and core/lang function components import)"
                     ));
                 }
             }
@@ -168,10 +160,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         schema_components.iter().filter(|c| !c.is_source).collect();
     let unsupported = |side: &str| {
         MfdError::Unsupported(if skipped_libraries.is_empty() {
-            format!("no importable {side} component (xml/json/csv) found in this design")
+            format!("no importable {side} component (xml/json/csv/db) found in this design")
         } else {
             format!(
-                "no importable {side} component (xml/json/csv) found; this design \
+                "no importable {side} component (xml/json/csv/db) found; this design \
                  uses {} components, which ferrule cannot import yet",
                 skipped_libraries.join("/")
             )
@@ -223,8 +215,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 // the root scope; for document-shaped targets the root runs
                 // exactly once anyway, so it carries no information.
                 if target_path.is_empty() {
-                    let row_shaped = target.format == ComponentFormat::Csv
-                        || (target.format == ComponentFormat::Json && node.repeating);
+                    let row_shaped =
+                        matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
+                            || (target.format == ComponentFormat::Json && node.repeating);
                     if row_shaped {
                         iterations.push((target_path.clone(), from));
                     }
@@ -818,6 +811,159 @@ fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
     } else {
         SchemaNode::group(name, children)
     }
+}
+
+/// Reads a single-table database component: the table entry's own port is
+/// the row iteration (path `[]`, like a csv block), column entries map to
+/// `[column]`, and the schema comes from introspecting the referenced
+/// SQLite file when it exists (untyped column names otherwise). Components
+/// with several tables, nested (foreign-key) tables, or SQL statements
+/// are skipped with a warning -- ferrule's db adapter is whole-table.
+fn read_db_component(
+    component: &roxmltree::Node,
+    mapping_el: &roxmltree::Node,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    let name = component.attribute("name").unwrap_or_default().to_string();
+    let data = component
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "data")?;
+    let root_el = data
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "root")?;
+
+    // Descend through the synthetic FileInstance/document levels to the
+    // level whose entries are the tables.
+    let mut container = root_el;
+    loop {
+        let mut entries = container
+            .children()
+            .filter(|n| n.is_element() && n.tag_name().name() == "entry");
+        let (first, second) = (entries.next(), entries.next());
+        match (first, second) {
+            (Some(entry), None)
+                if matches!(
+                    entry.attribute("name"),
+                    Some("FileInstance") | Some("document")
+                ) =>
+            {
+                container = entry;
+            }
+            _ => break,
+        }
+    }
+    let tables: Vec<roxmltree::Node> = container
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
+        .collect();
+    let single_plain_table = tables.len() == 1
+        && tables[0].attribute("type") == Some("table")
+        && !tables[0]
+            .descendants()
+            .skip(1)
+            .any(|n| n.attribute("type") == Some("table"));
+    if !single_plain_table {
+        warnings.push(format!(
+            "skipped database component `{name}`: only single-table components \
+             import (nested tables and SQL statements need manual conversion)"
+        ));
+        return None;
+    }
+    let table = tables[0];
+    let table_name = table.attribute("name").unwrap_or_default().to_string();
+
+    let mut ports = BTreeMap::new();
+    let mut out_count = 0usize;
+    let mut in_count = 0usize;
+    record_entry_keys(&table, &[], &mut ports, &mut out_count, &mut in_count);
+    for column in table
+        .children()
+        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
+    {
+        let column_name = column.attribute("name").unwrap_or_default();
+        record_entry_keys(
+            &column,
+            &[column_name.to_string()],
+            &mut ports,
+            &mut out_count,
+            &mut in_count,
+        );
+    }
+    if out_count == 0 && in_count == 0 {
+        warnings.push(format!("component `{name}` has no connected ports"));
+    }
+    let is_source = out_count >= in_count;
+
+    // The connection string lives in the mapping's datasource registry,
+    // linked from the component by name.
+    let connection = data
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "database")
+        .and_then(|db| db.attribute("ref"))
+        .and_then(|r| {
+            mapping_el
+                .descendants()
+                .find(|n| n.has_tag_name("database_connection") && n.attribute("name") == Some(r))
+        })
+        .and_then(|c| c.attribute("ConnectionString"))
+        .map(str::to_string);
+    if connection.is_none() {
+        warnings.push(format!(
+            "database component `{name}` has no resolvable connection; the \
+             project needs an instance path filled in"
+        ));
+    }
+
+    // Schema: introspect the SQLite file when it is reachable (types),
+    // else fall back to the column entries (untyped).
+    let schema = connection
+        .as_deref()
+        .and_then(|conn| {
+            let db_path = mfd_path.parent().unwrap_or(Path::new(".")).join(conn);
+            if !db_path.exists() {
+                warnings.push(format!(
+                    "component `{name}`: database `{conn}` not found next to the \
+                     design; falling back to untyped columns"
+                ));
+                return None;
+            }
+            match format_db::introspect(&db_path, &table_name) {
+                Ok(schema) => Some(schema),
+                Err(e) => {
+                    warnings.push(format!(
+                        "component `{name}`: could not introspect `{conn}` ({e}); \
+                         falling back to untyped columns"
+                    ));
+                    None
+                }
+            }
+        })
+        .unwrap_or_else(|| {
+            let columns = table
+                .children()
+                .filter(|n| n.is_element() && n.tag_name().name() == "entry")
+                .map(|c| {
+                    SchemaNode::scalar(
+                        c.attribute("name").unwrap_or_default(),
+                        ir::ScalarType::String,
+                    )
+                })
+                .collect();
+            // Tables are repeating groups by format-db convention.
+            SchemaNode::group(&table_name, columns).repeating()
+        });
+
+    Some(SchemaComponent {
+        name,
+        format: ComponentFormat::Db,
+        schema,
+        input_instance: connection.clone(),
+        output_instance: connection,
+        options: FormatOptions::default(),
+        is_source,
+        ports,
+    })
 }
 
 fn read_fn_component(component: &roxmltree::Node) -> FnComponent {

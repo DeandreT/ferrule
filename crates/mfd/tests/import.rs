@@ -359,3 +359,66 @@ fn csv_target_designs_import_run_and_roundtrip() {
     let out_b = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, out_b);
 }
+
+#[test]
+fn db_target_designs_import_run_and_roundtrip() {
+    // Stage the design in a scratch dir with a typed (empty) SQLite table
+    // next to it, so the importer's introspection path is exercised
+    // without a binary fixture in the repo.
+    let dir = TempDir::new("people_to_db");
+    for f in ["people-to-db.mfd", "people-source.xsd", "people.xml"] {
+        std::fs::copy(fixture(f), dir.0.join(f)).unwrap();
+    }
+    let table = ir::SchemaNode::group(
+        "People",
+        vec![
+            ir::SchemaNode::scalar("Name", ScalarType::String),
+            ir::SchemaNode::scalar("Age", ScalarType::Int),
+        ],
+    )
+    .repeating();
+    let db_path = dir.0.join("people-out.sqlite");
+    format_db::write(&db_path, &table, &[]).unwrap();
+
+    let imported = mfd::import(&dir.0.join("people-to-db.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    // Schema came from introspecting the SQLite file (typed).
+    assert_eq!(project.target, table);
+    assert_eq!(project.target_path.as_deref(), Some("people-out.sqlite"));
+    // Rows iterate on the root scope, like the other flat-rows formats.
+    assert_eq!(project.root.source, Some(vec!["Staff".to_string()]));
+
+    let source = format_xml::read(&fixture("people.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let rows = target.as_repeated().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        scalar(&rows[0], "Name"),
+        Value::String("Alice Carter".into())
+    );
+
+    // The rows actually land in (and read back from) the database.
+    format_db::write(&db_path, &project.target, rows).unwrap();
+    let read_back = format_db::read(&db_path, &project.target).unwrap();
+    assert_eq!(read_back.len(), 2);
+    assert_eq!(scalar(&read_back[1], "Age"), Value::Int(41));
+
+    // Export emits a db component + datasource; reimport is faithful.
+    let out = dir.0.join("people-to-db-2.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let text = std::fs::read_to_string(&out).unwrap();
+    assert!(text.contains("library=\"db\""), "{text}");
+    assert!(text.contains("database_connection"), "{text}");
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(project.target, reimported.project.target);
+    assert_eq!(
+        reimported.project.target_path.as_deref(),
+        Some("people-out.sqlite")
+    );
+    let out_b = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, out_b);
+}

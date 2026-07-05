@@ -36,15 +36,17 @@ A project file (plain JSON) holds four things:
 ## Migrating from MapForce
 
 ferrule can convert MapForce `.mfd` designs (best-effort): XML components
-(resolvable XSDs, including attributes and top-level element refs), JSON components
-(JSON Schema with local `$ref` support, or the design's entry tree as a fallback),
-CSV text components (inline delimiter/header settings), the common core functions,
-constants, if-else, value-map, and filter-driven iteration import directly;
-everything else is skipped with an actionable warning so you can finish the mapping
-in the editor. Export writes the same subset back out as `.mfd` plus generated XSD /
-JSON Schema files, picking each side's component kind from the project's instance
-paths. Designs built on namespaces, `xsi:type` polymorphism, or other endpoints
-(database/Excel/FlexText/EDI-config components) are not converted yet.
+(resolvable XSDs, including attributes, top-level element refs, named types, and
+extensions), JSON components (JSON Schema with local `$ref` support, or the design's
+entry tree as a fallback), CSV text components (inline delimiter/header settings),
+single-table SQLite database components (schemas introspected from the referenced
+database when it's reachable), the common core functions, constants, if-else,
+value-map, and filter-driven iteration import directly; everything else is skipped
+with an actionable warning so you can finish the mapping in the editor. Export
+writes the same subset back out as `.mfd` plus generated XSD / JSON Schema files,
+picking each side's component kind from the project's instance paths. Designs built
+on namespaces, `xsi:type` polymorphism, multi-table database wiring, or other
+endpoints (Excel/FlexText/EDI-config components) are not converted yet.
 
 ```sh
 cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
