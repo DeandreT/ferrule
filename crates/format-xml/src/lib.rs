@@ -76,11 +76,20 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
                     }
                     fields.push((child.name.clone(), Instance::Repeated(items)));
                 } else {
-                    let el_child = el
+                    // Absent elements are normal instance data (optional
+                    // elements, unused xs:choice branches), not errors:
+                    // scalars read as Null, groups as empty.
+                    let value = match el
                         .children()
                         .find(|n| n.is_element() && n.tag_name().name() == child.name)
-                        .ok_or_else(|| XmlFormatError::MissingElement(child.name.clone()))?;
-                    fields.push((child.name.clone(), read_node(&el_child, child)?));
+                    {
+                        Some(el_child) => read_node(&el_child, child)?,
+                        None => match child.kind {
+                            SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+                            SchemaKind::Group { .. } => Instance::Group(Vec::new()),
+                        },
+                    };
+                    fields.push((child.name.clone(), value));
                 }
             }
             Ok(Instance::Group(fields))
@@ -155,6 +164,11 @@ fn write_node<W: std::io::Write>(
                     if let Some((_, child_instance)) =
                         fields.iter().find(|(n, _)| n == &child_schema.name)
                     {
+                        // A Null scalar is an absent element, not an empty
+                        // one (mirrors the reader's treatment).
+                        if matches!(child_instance, Instance::Scalar(Value::Null)) {
+                            continue;
+                        }
                         write_node(writer, child_schema, child_instance)?;
                     }
                 }
@@ -285,6 +299,37 @@ mod tests {
         let read_back = read(&path, &schema).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn absent_optional_elements_read_as_null_and_are_not_written() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Name", ScalarType::String),
+                SchemaNode::scalar("Nick", ScalarType::String),
+                SchemaNode::group(
+                    "Extra",
+                    vec![SchemaNode::scalar("Note", ScalarType::String)],
+                ),
+            ],
+        );
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_xml_optional_test_{}.xml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "<Root><Name>Jane</Name></Root>").unwrap();
+
+        let instance = read(&path, &schema).unwrap();
+        assert_eq!(instance.field("Nick"), Some(&Instance::Scalar(Value::Null)));
+        assert_eq!(instance.field("Extra"), Some(&Instance::Group(vec![])));
+
+        // Writing the Null back omits the element instead of emitting an
+        // empty one.
+        write(&path, &schema, &instance).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(!text.contains("Nick"), "{text}");
     }
 
     #[test]
