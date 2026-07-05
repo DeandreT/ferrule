@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Readings>
+  <Row><month>2024-01</month><temp>2.0</temp></Row>
+  <Row><month>2024-07</month><temp>22.0</temp></Row>
+  <Row><month>2025-01</month><temp>4.0</temp></Row>
+</Readings>

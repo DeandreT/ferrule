@@ -827,6 +827,9 @@ fn collect_scope_edges(
             target_ports.key_for_abs(chain),
         ) {
             (Some(from), Some(to)) => {
+                // The iteration wire may pass through a filter and/or a
+                // group-by component on its way to the target.
+                let mut from = from;
                 if let Some(filter) = scope.filter {
                     match node_out_key.get(&filter) {
                         Some(&bool_key_src) => {
@@ -845,7 +848,7 @@ fn collect_scope_edges(
                             );
                             edges.push((from, in_node));
                             edges.push((bool_key_src, in_bool));
-                            edges.push((out_true, to));
+                            from = out_true;
                         }
                         None => {
                             warnings.push(format!(
@@ -853,12 +856,42 @@ fn collect_scope_edges(
                                  filter dropped",
                                 chain.join("/")
                             ));
-                            edges.push((from, to));
                         }
                     }
-                } else {
-                    edges.push((from, to));
                 }
+                if let Some(group_by) = scope.group_by {
+                    match node_out_key.get(&group_by) {
+                        Some(&key_src) => {
+                            // group-by component: nodes+key in, groups out
+                            // (the second, per-group key output stays
+                            // unwired -- reimport reads the key expression
+                            // directly).
+                            let in_nodes = keys.next();
+                            let in_key = keys.next();
+                            let out_groups = keys.next();
+                            *uid += 1;
+                            let _ = write!(
+                                filter_components,
+                                "\t\t\t\t<component name=\"group-by\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
+                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/><datapoint/></targets>\n\
+                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                                 \t\t\t\t</component>\n"
+                            );
+                            edges.push((from, in_nodes));
+                            edges.push((key_src, in_key));
+                            from = out_groups;
+                        }
+                        None => {
+                            warnings.push(format!(
+                                "scope `{}` group-by key references an unexported \
+                                 node; grouping dropped",
+                                chain.join("/")
+                            ));
+                        }
+                    }
+                }
+                edges.push((from, to));
                 *anchor = abs;
             }
             _ => warnings.push(format!(

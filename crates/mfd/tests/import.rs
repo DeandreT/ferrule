@@ -487,3 +487,51 @@ fn aggregate_designs_import_run_and_roundtrip() {
     let out_b = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, out_b);
 }
+
+#[test]
+fn group_by_designs_import_run_and_roundtrip() {
+    let imported = mfd::import(&fixture("temps.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    // The group-by component becomes the scope's grouping key; its key
+    // output feeds the Year binding as the key expression itself.
+    let stats = &project.root.children[0];
+    assert_eq!(stats.target_field, "YearlyStats");
+    assert_eq!(stats.source, Some(vec!["Row".to_string()]));
+    let group_key = stats.group_by.expect("scope should group");
+    assert!(matches!(
+        &project.graph.nodes[&group_key],
+        Node::Call { function, .. } if function == "substring_before"
+    ));
+    let year = stats
+        .bindings
+        .iter()
+        .find(|b| b.target_field == "Year")
+        .unwrap();
+    assert_eq!(year.node, group_key);
+
+    let source = format_xml::read(&fixture("temps.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let years = target
+        .field("YearlyStats")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(years.len(), 2);
+    assert_eq!(scalar(&years[0], "Year"), Value::String("2024".into()));
+    assert_eq!(scalar(&years[0], "MinTemp"), Value::Float(2.0));
+    assert_eq!(scalar(&years[0], "MaxTemp"), Value::Float(22.0));
+    assert_eq!(scalar(&years[0], "AvgTemp"), Value::Float(12.0));
+    assert_eq!(scalar(&years[1], "Year"), Value::String("2025".into()));
+    assert_eq!(scalar(&years[1], "AvgTemp"), Value::Float(4.0));
+
+    let dir = TempDir::new("temps");
+    let out = dir.0.join("temps.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(reimported.project.root.children[0].group_by.is_some());
+    let out_b = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, out_b);
+}

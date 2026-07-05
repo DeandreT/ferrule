@@ -122,6 +122,14 @@ pub struct Scope {
     pub source: Option<Vec<String>>,
     #[serde(default)]
     pub filter: Option<NodeId>,
+    /// Groups the iterated items by this key expression (evaluated once
+    /// per item): the scope then produces one target group per distinct
+    /// key, in first-seen order, and the iteration frame becomes the
+    /// group's members -- so bindings read the first member, aggregates
+    /// reduce the members, and nested scopes iterate them. Only
+    /// meaningful when `source` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_by: Option<NodeId>,
     #[serde(default)]
     pub bindings: Vec<Binding>,
     #[serde(default)]

@@ -69,35 +69,52 @@ fn eval_scope(
     };
 
     let mut produced = Vec::with_capacity(extensions.len());
-    for extension in &extensions {
-        let mut next_context = context.to_vec();
-        next_context.extend(extension.iter().copied());
-
-        if let Some(filter_node) = scope.filter {
+    if let (Some(key_node), Some(path)) = (scope.group_by, &scope.source) {
+        // Partition the iterated items by their key, in first-seen order.
+        let mut groups: Vec<(Value, Vec<Instance>)> = Vec::new();
+        for extension in &extensions {
+            let mut item_context = context.to_vec();
+            item_context.extend(extension.iter().copied());
             let mut in_progress = HashSet::new();
-            match eval_expr(graph, filter_node, &next_context, &mut in_progress)? {
-                Value::Bool(true) => {}
-                Value::Bool(false) => continue,
-                other => {
-                    return Err(EngineError::NotABool {
-                        node: filter_node,
-                        found: other.type_name(),
-                    });
-                }
+            let key = eval_expr(graph, key_node, &item_context, &mut in_progress)?;
+            let member = (*extension.last().expect("extensions are never empty")).clone();
+            match groups.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, members)) => members.push(member),
+                None => groups.push((key, vec![member])),
             }
         }
-
-        let mut fields = Vec::with_capacity(scope.bindings.len() + scope.children.len());
-        for binding in &scope.bindings {
-            let mut in_progress = HashSet::new();
-            let value = eval_expr(graph, binding.node, &next_context, &mut in_progress)?;
-            fields.push((binding.target_field.clone(), Instance::Scalar(value)));
+        // Each group's context: a wrapper naming the members after the
+        // collection's last segment (so collection paths shadow the
+        // ungrouped data) plus the members themselves (bindings read the
+        // first member, aggregates over `[]` reduce the members).
+        let owned: Vec<(Option<Instance>, Instance)> = groups
+            .into_iter()
+            .map(|(_, members)| {
+                let repeated = Instance::Repeated(members);
+                let wrapper = path
+                    .last()
+                    .map(|segment| Instance::Group(vec![(segment.clone(), repeated.clone())]));
+                (wrapper, repeated)
+            })
+            .collect();
+        for (wrapper, members) in &owned {
+            let mut next_context = context.to_vec();
+            if let Some(wrapper) = wrapper {
+                next_context.push(wrapper);
+            }
+            next_context.push(members);
+            if let Some(instance) = produce_item(graph, scope, &next_context)? {
+                produced.push(instance);
+            }
         }
-        for child in &scope.children {
-            let child_instance = eval_scope(graph, child, &next_context)?;
-            fields.push((child.target_field.clone(), child_instance));
+    } else {
+        for extension in &extensions {
+            let mut next_context = context.to_vec();
+            next_context.extend(extension.iter().copied());
+            if let Some(instance) = produce_item(graph, scope, &next_context)? {
+                produced.push(instance);
+            }
         }
-        produced.push(Instance::Group(fields));
     }
 
     if scope.source.is_some() {
@@ -108,6 +125,40 @@ fn eval_scope(
             .next()
             .ok_or(EngineError::FilteredNonRepeatingScope)
     }
+}
+
+/// Evaluates one iteration item: the filter (`None` when it drops the
+/// item), then the scope's bindings and child scopes.
+fn produce_item(
+    graph: &Graph,
+    scope: &Scope,
+    context: &[&Instance],
+) -> Result<Option<Instance>, EngineError> {
+    if let Some(filter_node) = scope.filter {
+        let mut in_progress = HashSet::new();
+        match eval_expr(graph, filter_node, context, &mut in_progress)? {
+            Value::Bool(true) => {}
+            Value::Bool(false) => return Ok(None),
+            other => {
+                return Err(EngineError::NotABool {
+                    node: filter_node,
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+
+    let mut fields = Vec::with_capacity(scope.bindings.len() + scope.children.len());
+    for binding in &scope.bindings {
+        let mut in_progress = HashSet::new();
+        let value = eval_expr(graph, binding.node, context, &mut in_progress)?;
+        fields.push((binding.target_field.clone(), Instance::Scalar(value)));
+    }
+    for child in &scope.children {
+        let child_instance = eval_scope(graph, child, context)?;
+        fields.push((child.target_field.clone(), child_instance));
+    }
+    Ok(Some(Instance::Group(fields)))
 }
 
 /// Walks `path` from `base`, branching (and pushing one context frame) each
@@ -491,6 +542,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "full_name".into(),
                     node: 3,
@@ -534,6 +586,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 0,
@@ -567,6 +620,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 0,
@@ -611,6 +665,7 @@ mod tests {
                 target_field: String::new(),
                 source: Some(vec!["orders".into(), "items".into()]),
                 filter: None,
+                group_by: None,
                 bindings: vec![
                     Binding {
                         target_field: "cust".into(),
@@ -712,6 +767,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 3,
@@ -760,6 +816,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 1,
@@ -810,6 +867,7 @@ mod tests {
                 target_field: String::new(),
                 source: Some(vec![]),
                 filter: Some(2),
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "age".into(),
                     node: 0,
@@ -855,6 +913,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "City".into(),
                     node: 0,
@@ -877,6 +936,136 @@ mod tests {
         assert_eq!(
             target.field("City").and_then(Instance::as_scalar),
             Some(&Value::String("Vienna".into()))
+        );
+    }
+
+    /// A grouped scope produces one target item per distinct key (in
+    /// first-seen order); inside it, bindings read the first member and
+    /// aggregates reduce the group -- whether addressed as `[]` or by the
+    /// collection's own name (the group shadows the ungrouped data).
+    #[test]
+    fn group_by_partitions_iterated_items() {
+        use mapping::AggregateOp;
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::Call {
+                    function: "substring_before".into(),
+                    args: vec![1, 2],
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    path: vec!["month".into()],
+                },
+            ),
+            (
+                2,
+                Node::Const {
+                    value: Value::String("-".into()),
+                },
+            ),
+            (
+                3,
+                Node::Aggregate {
+                    function: AggregateOp::Avg,
+                    collection: vec!["Row".into()],
+                    value: vec!["temp".into()],
+                    arg: None,
+                },
+            ),
+            (
+                4,
+                Node::Aggregate {
+                    function: AggregateOp::Count,
+                    collection: vec![],
+                    value: vec![],
+                    arg: None,
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                group_by: None,
+                bindings: vec![],
+                children: vec![Scope {
+                    target_field: "Year".into(),
+                    source: Some(vec!["Row".into()]),
+                    filter: None,
+                    group_by: Some(0),
+                    bindings: vec![
+                        Binding {
+                            target_field: "Label".into(),
+                            node: 0,
+                        },
+                        Binding {
+                            target_field: "AvgTemp".into(),
+                            node: 3,
+                        },
+                        Binding {
+                            target_field: "Months".into(),
+                            node: 4,
+                        },
+                    ],
+                    children: vec![],
+                }],
+            },
+        };
+        let row = |month: &str, temp: f64| {
+            Instance::Group(vec![
+                (
+                    "month".into(),
+                    Instance::Scalar(Value::String(month.into())),
+                ),
+                ("temp".into(), Instance::Scalar(Value::Float(temp))),
+            ])
+        };
+        let source = Instance::Group(vec![(
+            "Row".into(),
+            Instance::Repeated(vec![
+                row("2024-01", 2.0),
+                row("2024-07", 22.0),
+                row("2025-01", 4.0),
+            ]),
+        )]);
+
+        let target = run(&project, &source).unwrap();
+        let years = target
+            .field("Year")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(years.len(), 2);
+        assert_eq!(
+            years[0].field("Label").and_then(Instance::as_scalar),
+            Some(&Value::String("2024".into()))
+        );
+        assert_eq!(
+            years[0].field("AvgTemp").and_then(Instance::as_scalar),
+            Some(&Value::Float(12.0))
+        );
+        assert_eq!(
+            years[0].field("Months").and_then(Instance::as_scalar),
+            Some(&Value::Int(2))
+        );
+        assert_eq!(
+            years[1].field("Label").and_then(Instance::as_scalar),
+            Some(&Value::String("2025".into()))
+        );
+        assert_eq!(
+            years[1].field("Months").and_then(Instance::as_scalar),
+            Some(&Value::Int(1))
         );
     }
 
@@ -934,6 +1123,7 @@ mod tests {
                 target_field: String::new(),
                 source: None,
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "AllIds".into(),
                     node: 3,
@@ -942,6 +1132,7 @@ mod tests {
                     target_field: "Order".into(),
                     source: Some(vec!["Order".into()]),
                     filter: None,
+                    group_by: None,
                     bindings: vec![
                         Binding {
                             target_field: "ItemCount".into(),
@@ -1039,6 +1230,7 @@ mod tests {
                 target_field: String::new(),
                 source: Some(vec![]),
                 filter: None,
+                group_by: None,
                 bindings: vec![
                     Binding {
                         target_field: "customer_id".into(),
@@ -1113,6 +1305,7 @@ mod tests {
                 target_field: String::new(),
                 source: Some(vec!["customers".into()]),
                 filter: None,
+                group_by: None,
                 bindings: vec![Binding {
                     target_field: "name".into(),
                     node: 0,

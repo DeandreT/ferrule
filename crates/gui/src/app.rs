@@ -558,6 +558,7 @@ mod tests {
                 target_field: String::new(),
                 source: Some(vec![]),
                 filter: None,
+                group_by: None,
                 bindings: vec![
                     Binding {
                         target_field: "loud_name".into(),
