@@ -42,6 +42,18 @@ struct SchemaComponent {
     ports: BTreeMap<u32, Vec<String>>,
 }
 
+/// What an iteration connection resolves to once `filter`/`group-by`
+/// components on the way are unwrapped.
+struct IterationFeed {
+    /// Output key of the underlying source entry (or whatever else feeds
+    /// the chain -- callers check it against the source ports).
+    source_key: u32,
+    /// The filter's boolean expression key, if a filter was crossed.
+    filter_expr: Option<u32>,
+    /// The group-by's key expression key, if a group-by was crossed.
+    group_key: Option<u32>,
+}
+
 /// One function component's extracted facts.
 type ValueMapData = (Vec<(String, String)>, Option<String>);
 
@@ -247,29 +259,30 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // the builder must know which repeating levels the scopes will iterate
     // before any function component materializes a SourceField.
     for (_, from) in &iterations {
-        let (source_key, _) = builder.resolve_iteration_feed(*from);
-        if let Some(abs) = builder.source_abs_path(source_key) {
+        let feed = builder.resolve_iteration_feed(*from);
+        if let Some(abs) = builder.source_abs_path(feed.source_key) {
             builder.note_framed_prefixes(&abs);
         }
     }
-    // Materialize every function component up front (filters are handled
-    // at the scope stage instead).
+    // Materialize every function component up front (filters and group-bys
+    // are handled at the scope stage instead).
     for (i, fc) in fn_components.iter().enumerate() {
-        if fc.name != "filter" {
+        if fc.name != "filter" && fc.name != "group-by" {
             builder.fn_node(i);
         }
     }
     for (target_path, from) in iterations {
-        let (source_key, filter_expr) = builder.resolve_iteration_feed(from);
-        let Some(source_abs) = builder.source_abs_path(source_key) else {
+        let feed = builder.resolve_iteration_feed(from);
+        let Some(source_abs) = builder.source_abs_path(feed.source_key) else {
             builder.warnings.push(format!(
                 "iteration into `{}` comes from an unsupported feed; skipped",
                 target_path.join("/")
             ));
             continue;
         };
-        let filter_node = filter_expr.and_then(|key| builder.value_node(key));
-        scope_builder.add_iteration(&target_path, &source_abs, filter_node);
+        let filter_node = feed.filter_expr.and_then(|key| builder.value_node(key));
+        let group_node = feed.group_key.and_then(|key| builder.value_node(key));
+        scope_builder.add_iteration(&target_path, &source_abs, filter_node, group_node);
     }
     for (target_path, from) in bindings {
         let Some(node) = builder.value_node(from) else {
@@ -1140,19 +1153,28 @@ impl GraphBuilder<'_> {
         }
         // A function output?
         let idx = *self.fn_by_output.get(&key)?;
-        if self.fn_components[idx].name == "filter" {
+        match self.fn_components[idx].name.as_str() {
             // A filter feeding a value position is pass-through of its
             // node input for our purposes; treat the value as whatever
             // feeds the filter's first input.
-            let feed = self.fn_components[idx]
-                .inputs
-                .first()
-                .copied()
-                .flatten()
-                .and_then(|k| self.edge_from.get(&k).copied())?;
-            return self.value_node(feed);
+            "filter" => {
+                let feed = self.input_feed(idx, 0)?;
+                self.value_node(feed)
+            }
+            // A group-by's key output is the key expression itself
+            // (re-evaluated in the group's context it reads the group's
+            // shared key); its groups output passes the nodes through.
+            "group-by" => {
+                let pos = if self.fn_components[idx].outputs.get(1) == Some(&key) {
+                    1
+                } else {
+                    0
+                };
+                let feed = self.input_feed(idx, pos)?;
+                self.value_node(feed)
+            }
+            _ => Some(self.fn_node(idx)),
         }
-        Some(self.fn_node(idx))
     }
 
     /// Materializes function component `idx` as a mapping node.
@@ -1266,8 +1288,8 @@ impl GraphBuilder<'_> {
         let mut source_paths: Vec<Vec<String>> = Vec::new();
         let mut scalar_feeds: Vec<u32> = Vec::new();
         for feed in feeds {
-            match source.ports.get(&feed) {
-                Some(abs) => source_paths.push(abs.clone()),
+            match self.sequence_source_path(feed) {
+                Some(abs) => source_paths.push(abs),
                 None => scalar_feeds.push(feed),
             }
         }
@@ -1303,31 +1325,72 @@ impl GraphBuilder<'_> {
         })
     }
 
-    /// Follows an iteration feed through at most one `filter` component:
-    /// returns the source-entry output key plus the filter's boolean
-    /// expression key, if any.
-    fn resolve_iteration_feed(&self, from: u32) -> (u32, Option<u32>) {
-        if let Some(&idx) = self.fn_by_output.get(&from)
-            && self.fn_components[idx].name == "filter"
-        {
+    /// The feed of pin `pos` on function component `idx`, if connected.
+    fn input_feed(&self, idx: usize, pos: usize) -> Option<u32> {
+        self.fn_components[idx]
+            .inputs
+            .get(pos)
+            .copied()
+            .flatten()
+            .and_then(|k| self.edge_from.get(&k).copied())
+    }
+
+    /// Follows an iteration feed through `filter` and `group-by`
+    /// components back to the underlying source entry, collecting the
+    /// filter's boolean expression and the group-by's key expression on
+    /// the way.
+    fn resolve_iteration_feed(&self, mut from: u32) -> IterationFeed {
+        let mut filter_expr = None;
+        let mut group_key = None;
+        // Chains are short; the bound only guards against odd cycles.
+        for _ in 0..8 {
+            let Some(&idx) = self.fn_by_output.get(&from) else {
+                break;
+            };
             let fc = &self.fn_components[idx];
-            let node_feed = fc
-                .inputs
-                .first()
-                .copied()
-                .flatten()
-                .and_then(|k| self.edge_from.get(&k).copied());
-            let bool_feed = fc
-                .inputs
-                .get(1)
-                .copied()
-                .flatten()
-                .and_then(|k| self.edge_from.get(&k).copied());
-            if let Some(node_feed) = node_feed {
-                return (node_feed, bool_feed);
+            match fc.name.as_str() {
+                "filter" => {
+                    let Some(node_feed) = self.input_feed(idx, 0) else {
+                        break;
+                    };
+                    filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
+                    from = node_feed;
+                }
+                "group-by" if fc.outputs.first() == Some(&from) => {
+                    let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                        break;
+                    };
+                    group_key = group_key.or_else(|| self.input_feed(idx, 1));
+                    from = nodes_feed;
+                }
+                _ => break,
             }
         }
-        (from, None)
+        IterationFeed {
+            source_key: from,
+            filter_expr,
+            group_key,
+        }
+    }
+
+    /// Follows filter/group-by pass-throughs to the primary-source entry a
+    /// sequence connection ultimately reads, for aggregates.
+    fn sequence_source_path(&self, mut feed: u32) -> Option<Vec<String>> {
+        for _ in 0..8 {
+            if let Some(abs) = self.sources.first()?.ports.get(&feed) {
+                return Some(abs.clone());
+            }
+            let &idx = self.fn_by_output.get(&feed)?;
+            let fc = &self.fn_components[idx];
+            match fc.name.as_str() {
+                "filter" => feed = self.input_feed(idx, 0)?,
+                "group-by" if fc.outputs.first() == Some(&feed) => {
+                    feed = self.input_feed(idx, 0)?;
+                }
+                _ => return None,
+            }
+        }
+        None
     }
 
     /// The absolute source path behind output-port `key` on the primary
@@ -1460,6 +1523,7 @@ impl ScopeBuilder {
         target_path: &[String],
         source_abs: &[String],
         filter: Option<NodeId>,
+        group_by: Option<NodeId>,
     ) {
         let anchor = self.enclosing_anchor(target_path);
         let relative: Vec<String> = if source_abs.starts_with(&anchor) {
@@ -1472,6 +1536,7 @@ impl ScopeBuilder {
         let scope = self.ensure_scope(target_path);
         scope.source = Some(relative);
         scope.filter = filter;
+        scope.group_by = group_by;
     }
 
     fn add_binding(&mut self, target_path: &[String], node: NodeId) {

@@ -42,7 +42,7 @@ entry tree as a fallback), CSV text components (inline delimiter/header settings
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
-filter-driven iteration import directly; everything else is skipped
+filter- and group-by-driven iteration import directly; everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
 writes the same subset back out as `.mfd` plus generated XSD / JSON Schema files,
 picking each side's component kind from the project's instance paths. Designs built

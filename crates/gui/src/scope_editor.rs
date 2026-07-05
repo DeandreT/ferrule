@@ -95,6 +95,17 @@ pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
                 node_picker(ui, "filter_node", filter, graph);
             }
         });
+
+        ui.horizontal(|ui| {
+            ui.label("  group-by key:");
+            let mut has_group = scope.group_by.is_some();
+            if ui.checkbox(&mut has_group, "grouped").changed() {
+                scope.group_by = has_group.then_some(0);
+            }
+            if let Some(group_by) = &mut scope.group_by {
+                node_picker(ui, "group_by_node", group_by, graph);
+            }
+        });
     }
 
     ui.separator();
