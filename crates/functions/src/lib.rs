@@ -4,7 +4,9 @@
 //! Covers the string/math/comparison/boolean core plus the scalar helpers
 //! MapForce designs lean on (substring family, exists, round, ISO
 //! date-from-datetime); more built-ins land alongside the formats/semantics
-//! that need them (aggregates and node-set functions are still open).
+//! that need them. Aggregates (count/sum/...) are not here: they reduce
+//! collections in scope context, so they live in the engine as
+//! `mapping::Node::Aggregate`.
 
 use ir::Value;
 use thiserror::Error;

@@ -71,6 +71,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
     let mut components = String::new();
+    let mut edges: Vec<(u32, u32)> = Vec::new();
     let mut uid = 100u32;
     for (&id, node) in &project.graph.nodes {
         match node {
@@ -86,6 +87,45 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
             },
             Node::Lookup { .. } => warnings
                 .push("lookup nodes have no simple MapForce equivalent; skipped".to_string()),
+            Node::Aggregate {
+                function,
+                collection,
+                value,
+                arg,
+            } => {
+                // The sequence pin wires straight to the source entry the
+                // collection/value path names.
+                let mut sequence = collection.clone();
+                sequence.extend(value.iter().cloned());
+                let Some(sequence_key) = source_ports.key_for_suffix(&sequence) else {
+                    warnings.push(format!(
+                        "aggregate over `{}` matches no source entry; its \
+                         connections are skipped",
+                        sequence.join("/")
+                    ));
+                    continue;
+                };
+                let in_sequence = keys.next();
+                let out = keys.next();
+                node_out_key.insert(id, out);
+                edges.push((sequence_key, in_sequence));
+                let mut pins = format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>");
+                if arg.is_some() {
+                    let in_arg = keys.next();
+                    fn_inputs.insert(id, vec![in_arg]);
+                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                }
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"{}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources>{pins}</sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n",
+                    aggregate_component_name(*function)
+                );
+            }
             Node::Const { value } => {
                 let out = keys.next();
                 node_out_key.insert(id, out);
@@ -177,7 +217,6 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     }
 
     // Edges: function inputs, then scope iterations + filters, then bindings.
-    let mut edges: Vec<(u32, u32)> = Vec::new();
     for (&id, node) in &project.graph.nodes {
         let Some(ins) = fn_inputs.get(&id) else {
             continue;
@@ -190,6 +229,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 else_,
             } => vec![*condition, *then, *else_],
             Node::ValueMap { input, .. } => vec![*input],
+            Node::Aggregate { arg: Some(arg), .. } => vec![*arg],
             _ => continue,
         };
         for (i, arg) in args.iter().enumerate() {
@@ -865,6 +905,19 @@ fn collect_scope_edges(
         chain.pop();
     }
     anchor.truncate(anchor_len);
+}
+
+fn aggregate_component_name(op: mapping::AggregateOp) -> &'static str {
+    use mapping::AggregateOp;
+    match op {
+        AggregateOp::Count => "count",
+        AggregateOp::Sum => "sum",
+        AggregateOp::Avg => "avg",
+        AggregateOp::Min => "min",
+        AggregateOp::Max => "max",
+        AggregateOp::Join => "string-join",
+        AggregateOp::ItemAt => "item-at",
+    }
 }
 
 fn constant_parts(value: &Value) -> (String, &'static str) {

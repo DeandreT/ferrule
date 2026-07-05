@@ -8,7 +8,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use ir::{SchemaKind, SchemaNode, Value};
-use mapping::{Binding, FormatOptions, Graph, NamedSource, Node, NodeId, Project, Scope};
+use mapping::{
+    AggregateOp, Binding, FormatOptions, Graph, NamedSource, Node, NodeId, Project, Scope,
+};
 
 use crate::MfdError;
 
@@ -1162,6 +1164,31 @@ impl GraphBuilder<'_> {
         let id = self.next_id;
         self.next_id += 1;
         self.fn_nodes.insert(idx, id);
+
+        // Aggregates take a sequence connection, not scalar arguments, so
+        // they must not materialize their feeds as SourceFields.
+        let name = self.fn_components[idx].name.clone();
+        if let Some(op) = aggregate_op(&name) {
+            let node = match self.aggregate_node(op, idx) {
+                Some(node) => node,
+                None => {
+                    self.warnings.push(format!(
+                        "aggregate `{name}` has an unresolvable sequence input; \
+                         imported as a plain call and will fail at run time until \
+                         replaced"
+                    ));
+                    let args = (0..self.fn_components[idx].inputs.len().max(1))
+                        .map(|_| self.const_null())
+                        .collect();
+                    Node::Call {
+                        function: name,
+                        args,
+                    }
+                }
+            };
+            self.graph.nodes.insert(id, node);
+            return id;
+        }
         let fc = &self.fn_components[idx];
 
         let mut input_ids = Vec::with_capacity(fc.inputs.len());
@@ -1222,6 +1249,60 @@ impl GraphBuilder<'_> {
         id
     }
 
+    /// Converts an aggregate function component into a [`Node::Aggregate`].
+    /// The connected inputs split into source-entry feeds (sequence and,
+    /// optionally, an explicit parent-context before it) and scalar feeds
+    /// (join's separator, item-at's position). `None` when no input
+    /// resolves to a source entry.
+    fn aggregate_node(&mut self, op: AggregateOp, idx: usize) -> Option<Node> {
+        let fc = &self.fn_components[idx];
+        let feeds: Vec<u32> = fc
+            .inputs
+            .iter()
+            .flatten()
+            .filter_map(|k| self.edge_from.get(k).copied())
+            .collect();
+        let source = *self.sources.first()?;
+        let mut source_paths: Vec<Vec<String>> = Vec::new();
+        let mut scalar_feeds: Vec<u32> = Vec::new();
+        for feed in feeds {
+            match source.ports.get(&feed) {
+                Some(abs) => source_paths.push(abs.clone()),
+                None => scalar_feeds.push(feed),
+            }
+        }
+        let (collection_abs, value) = match source_paths.as_slice() {
+            [] => return None,
+            [path] => split_at_innermost_repeating(&source.schema, path),
+            // An explicit parent-context pin followed by the values pin.
+            [ctx, val, ..] if val.starts_with(ctx) => (ctx.clone(), val[ctx.len()..].to_vec()),
+            [_, val, ..] => split_at_innermost_repeating(&source.schema, val),
+        };
+        // Strip enclosing iteration frames from the path *above* the
+        // collection, but never the collection node itself -- the
+        // aggregate needs the whole repetition even when some scope also
+        // iterates it (the engine's outward fallback finds the right
+        // frame either way).
+        let collection = match collection_abs.split_last() {
+            Some((last, prefix)) => {
+                let mut relative = self.suffix_after_framed(&source.schema, prefix);
+                relative.push(last.clone());
+                relative
+            }
+            None => Vec::new(),
+        };
+        let arg = scalar_feeds
+            .last()
+            .copied()
+            .and_then(|feed| self.value_node(feed));
+        Some(Node::Aggregate {
+            function: op,
+            collection,
+            value,
+            arg,
+        })
+    }
+
     /// Follows an iteration feed through at most one `filter` component:
     /// returns the source-entry output key plus the filter's boolean
     /// expression key, if any.
@@ -1262,6 +1343,41 @@ fn parse_constant(value: &str, datatype: &str) -> Value {
         "decimal" | "double" | "float" => value.parse().map(Value::Float).unwrap_or(Value::Null),
         "boolean" => value.parse().map(Value::Bool).unwrap_or(Value::Null),
         _ => Value::String(value.to_string()),
+    }
+}
+
+fn aggregate_op(name: &str) -> Option<AggregateOp> {
+    Some(match name {
+        "count" => AggregateOp::Count,
+        "sum" => AggregateOp::Sum,
+        "avg" => AggregateOp::Avg,
+        "min" => AggregateOp::Min,
+        "max" => AggregateOp::Max,
+        "string-join" => AggregateOp::Join,
+        "item-at" => AggregateOp::ItemAt,
+        _ => return None,
+    })
+}
+
+/// Splits an absolute source path at its innermost repeating node: the
+/// collection is everything up to and including it, the value the rest.
+/// With no repeating node the collection is empty -- flat-rows sources
+/// (csv/db) hold their repetition outside the schema.
+fn split_at_innermost_repeating(schema: &SchemaNode, abs: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut node = schema;
+    let mut cut = None;
+    for (i, segment) in abs.iter().enumerate() {
+        let Some(child) = node.child(segment) else {
+            break;
+        };
+        if child.repeating {
+            cut = Some(i);
+        }
+        node = child;
+    }
+    match cut {
+        Some(i) => (abs[..=i].to_vec(), abs[i + 1..].to_vec()),
+        None => (Vec::new(), abs.to_vec()),
     }
 }
 
