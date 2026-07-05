@@ -560,8 +560,8 @@ mod tests {
         );
         assert_eq!(call("round", &[Value::Int(7)]).unwrap(), Value::Int(7));
         assert_eq!(
-            call("round", &[Value::Float(3.14159), Value::Int(2)]).unwrap(),
-            Value::Float(3.14)
+            call("round", &[Value::Float(1.23456), Value::Int(2)]).unwrap(),
+            Value::Float(1.23)
         );
     }
 
