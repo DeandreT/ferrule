@@ -298,10 +298,17 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     continue;
                 }
                 if !node.repeating {
-                    builder.warnings.push(format!(
-                        "connection into non-repeating group `{}` ignored",
-                        target_path.join("/")
-                    ));
+                    let descendants_are_connected = target.ports.iter().any(|(key, path)| {
+                        path.len() > target_path.len()
+                            && path.starts_with(target_path)
+                            && edge_from.contains_key(key)
+                    });
+                    if !descendants_are_connected {
+                        builder.warnings.push(format!(
+                            "connection into non-repeating group `{}` ignored",
+                            target_path.join("/")
+                        ));
+                    }
                     continue;
                 }
                 iterations.push((target_path.clone(), from));
@@ -1022,7 +1029,8 @@ fn collect_entry_ports(
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
     {
-        let name = child.attribute("name").unwrap_or_default();
+        let raw_name = child.attribute("name").unwrap_or_default();
+        let (name, _) = normalize_xml_entry_name(raw_name);
         if name == "element()" || child.attribute("type") == Some("xml-type") {
             if name == "element()" {
                 warnings.push(
@@ -1053,8 +1061,9 @@ fn collect_entry_ports(
 /// children, string scalars at the leaves (attribute entries flagged as
 /// such), no repeating flags.
 fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
-    let name = entry.attribute("name").unwrap_or("root");
-    if entry.attribute("type") == Some("attribute") {
+    let raw_name = entry.attribute("name").unwrap_or("root");
+    let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
+    if legacy_attribute || entry.attribute("type") == Some("attribute") {
         return SchemaNode::scalar(name, ir::ScalarType::String).attribute();
     }
     let children: Vec<SchemaNode> = entry
@@ -1070,6 +1079,25 @@ fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
         SchemaNode::scalar(name, ir::ScalarType::String)
     } else {
         SchemaNode::group(name, children)
+    }
+}
+
+/// Older `.mfd` entry trees prefix XML names with a decimal namespace-slot
+/// index and encode attributes with a leading `@` (`0:Person`, `12:@type`).
+/// Real QName prefixes are left intact because only all-decimal prefixes are
+/// an entry-tree index.
+fn normalize_xml_entry_name(name: &str) -> (&str, bool) {
+    let name = match name.split_once(':') {
+        Some((prefix, local))
+            if !prefix.is_empty() && prefix.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
+            local
+        }
+        _ => name,
+    };
+    match name.strip_prefix('@') {
+        Some(attribute) => (attribute, true),
+        None => (name, false),
     }
 }
 
@@ -2135,7 +2163,7 @@ impl ScopeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::instance_root_segments;
+    use super::{instance_root_segments, normalize_xml_entry_name};
 
     #[test]
     fn instance_root_paths_do_not_split_namespace_uris() {
@@ -2149,5 +2177,13 @@ mod tests {
             instance_root_segments("{}People/{}Person"),
             ["People", "Person"]
         );
+    }
+
+    #[test]
+    fn indexed_xml_entry_names_are_normalized_without_touching_qnames() {
+        assert_eq!(normalize_xml_entry_name("0:Person"), ("Person", false));
+        assert_eq!(normalize_xml_entry_name("12:@type"), ("type", true));
+        assert_eq!(normalize_xml_entry_name("Person"), ("Person", false));
+        assert_eq!(normalize_xml_entry_name("ns:Person"), ("ns:Person", false));
     }
 }

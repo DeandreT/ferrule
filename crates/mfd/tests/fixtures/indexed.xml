@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Expenses>
+  <Person><Name>Ada</Name></Person>
+  <expense-item status="approved"><amount>100</amount></expense-item>
+  <expense-item status="over-limit"><amount>250</amount></expense-item>
+  <expense-item status="cash"><amount>50</amount></expense-item>
+</Expenses>

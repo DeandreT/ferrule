@@ -855,3 +855,63 @@ fn constructed_variables_preserve_nested_source_frames() {
     let rerun = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, rerun);
 }
+
+#[test]
+fn indexed_xml_entry_names_import_run_and_roundtrip() {
+    let imported = mfd::import(&fixture("indexed.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert!(
+        project
+            .graph
+            .nodes
+            .values()
+            .filter_map(|node| match node {
+                Node::SourceField { path, .. } => Some(path),
+                _ => None,
+            })
+            .flatten()
+            .all(|segment| !segment.contains(':') && !segment.starts_with('@'))
+    );
+    let expense_scope = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "expense-item")
+        .unwrap();
+    assert_eq!(expense_scope.source, Some(vec!["expense-item".into()]));
+    let filter = expense_scope
+        .filter
+        .expect("expense scope should be filtered");
+    assert!(matches!(
+        &project.graph.nodes[&filter],
+        Node::Call { function, .. } if function == "less_than"
+    ));
+
+    let source = format_xml::read(&fixture("indexed.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let person = target.field("Person").unwrap();
+    assert_eq!(scalar(person, "Name"), Value::String("Ada".into()));
+    let expenses = target
+        .field("expense-item")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(expenses.len(), 2);
+    assert_eq!(scalar(&expenses[0], "amount"), Value::Float(100.0));
+    assert_eq!(
+        scalar(&expenses[0], "status"),
+        Value::String("approved".into())
+    );
+    assert_eq!(scalar(&expenses[1], "amount"), Value::Float(50.0));
+    assert_eq!(scalar(&expenses[1], "status"), Value::String("cash".into()));
+
+    let dir = TempDir::new("indexed");
+    let out = dir.0.join("indexed.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, rerun);
+}
