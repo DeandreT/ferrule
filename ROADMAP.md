@@ -19,13 +19,13 @@ clean-room interoperability, and extensible adapters.
 
 - Formats, both directions: XML, JSON, CSV, SQLite, X12, and EDIFACT.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
-  stable distinct-value iteration, generated tokenizer sequences, stable sorting,
-  item limits, conditionals, value maps, lookups, positions, seven aggregates,
-  computed aggregate expressions, and 30 scalar built-ins.
+  stable distinct-value iteration, generated tokenizer and integer-range sequences,
+  stable sorting, item limits, conditionals, value maps, lookups, positions, seven
+  aggregates, computed aggregate expressions, and 32 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 73/120 local MapForce 2026 samples import; 26 import without
+- `.mfd` survey: 73/120 local MapForce 2026 samples import; 27 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -57,10 +57,11 @@ clean-room interoperability, and extensible adapters.
 
 Build breadth only where imported mappings can execute equivalently.
 
-Progress: legacy indexed XML names, stable `distinct-values` pipelines, and
-first-class `tokenize`/`tokenize-by-length` generated sequences are implemented.
-Non-representable sequence operator order produces an actionable warning instead
-of silently claiming exact conversion.
+Progress: legacy indexed XML names, stable `distinct-values` pipelines, first-class
+`tokenize`/`tokenize-by-length` sequences, and inclusive `generate-sequence` ranges
+are implemented. Generated scopes export sort/filter/group/take controls and
+stage-correct positions. Non-representable operator order produces an actionable
+warning instead of silently claiming exact conversion.
 
 - Normalize legacy and namespace-indexed XML entry encodings.
 - Add first-class generated sequences: `distinct-values`, `tokenize`,
@@ -109,8 +110,9 @@ Exit criteria:
 This precedes larger GUI features.
 
 Progress: serialized-project dirty tracking, destructive-action guards,
-bounded/coalesced project undo/redo, and versioned layout sidecars are
-implemented. The remaining graph/canvas divergence work is next.
+bounded/coalesced project undo/redo, versioned layout sidecars, and visible,
+lossless input placeholders are implemented. Layout fingerprints prevent stale
+sidecars from reclassifying project nodes.
 
 - One mutation/session layer for `Project` plus canvas state.
 - Dirty tracking and unsaved-change guards.
@@ -229,8 +231,9 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 151 (150 executable plus the ignored local-sample survey).
-- `.mfd` survey: 73/120 import, 26 warning-free.
+- Workspace tests: 171 (170 executable plus the ignored local-sample survey).
+- `.mfd` survey: 73/120 import, 27 warning-free.
+- Unsupported-function warnings: 16, down from 19 in the previous increment.
 - Target-path mismatch warnings: 14, down from 36.
 - Non-repeating structural-group warnings: 11, down from 28.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
