@@ -54,10 +54,27 @@ pub fn run_with_sources(
 struct PositionFrame {
     collection: Vec<String>,
     index: usize,
+    /// The matching context instance has a synthetic named collection
+    /// wrapper immediately before it.
+    grouped: bool,
 }
 
 struct WalkExtension<'a> {
     instances: Vec<&'a Instance>,
+    positions: Vec<PositionFrame>,
+}
+
+struct GroupBucket {
+    key: Value,
+    members: Vec<Instance>,
+    intermediate_frames: Vec<Instance>,
+    positions: Vec<PositionFrame>,
+}
+
+struct OwnedGroup {
+    wrapper: Option<Instance>,
+    intermediate_frames: Vec<Instance>,
+    members: Instance,
     positions: Vec<PositionFrame>,
 }
 
@@ -133,12 +150,15 @@ fn eval_scope(
     let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
     if let (Some(key_node), Some(path)) = (scope.group_by, &scope.source) {
         // Partition the iterated items by their key, in first-seen order.
-        let mut groups: Vec<(Value, Vec<Instance>, Vec<PositionFrame>)> = Vec::new();
+        let mut groups: Vec<GroupBucket> = Vec::new();
         for extension in &extensions {
             let mut item_context = context.to_vec();
             item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
             item_positions.extend(extension.positions.iter().cloned());
+            if !passes_filter(graph, scope.filter, &item_context, &item_positions)? {
+                continue;
+            }
             let mut in_progress = HashSet::new();
             let key = eval_expr(
                 graph,
@@ -152,44 +172,66 @@ fn eval_scope(
                 .last()
                 .expect("extensions are never empty"))
             .clone();
-            match groups.iter_mut().find(|(k, _, _)| *k == key) {
-                Some((_, members, _)) => members.push(member),
-                None => groups.push((key, vec![member], item_positions)),
+            match groups.iter_mut().find(|group| group.key == key) {
+                Some(group) => group.members.push(member),
+                None => groups.push(GroupBucket {
+                    key,
+                    members: vec![member],
+                    intermediate_frames: extension.instances[..extension.instances.len() - 1]
+                        .iter()
+                        .map(|instance| (**instance).clone())
+                        .collect(),
+                    positions: item_positions,
+                }),
             }
         }
-        // Each group's context: a wrapper naming the members after the
-        // collection's last segment (so collection paths shadow the
-        // ungrouped data) plus the members themselves (bindings read the
-        // first member, aggregates over `[]` reduce the members).
-        let owned: Vec<(Option<Instance>, Instance, Vec<PositionFrame>)> = groups
+        // Position frames stay in order, with the named collection wrapper
+        // immediately before the grouped members. Reverse collection lookup
+        // therefore finds this group before same-named outer collections;
+        // frame-pinned lookup accounts for wrappers via PositionFrame::grouped.
+        let owned: Vec<OwnedGroup> = groups
             .into_iter()
-            .map(|(_, members, positions)| {
-                let repeated = Instance::Repeated(members);
+            .map(|group| {
+                let members = Instance::Repeated(group.members);
                 let wrapper = path
                     .last()
-                    .map(|segment| Instance::Group(vec![(segment.clone(), repeated.clone())]));
-                (wrapper, repeated, positions)
+                    .map(|segment| Instance::Group(vec![(segment.clone(), members.clone())]));
+                OwnedGroup {
+                    wrapper,
+                    intermediate_frames: group.intermediate_frames,
+                    members,
+                    positions: group.positions,
+                }
             })
             .collect();
-        for (wrapper, members, candidate_positions) in &owned {
+        for group in &owned {
             if take.is_some_and(|limit| produced.len() >= limit) {
                 break;
             }
-            let mut next_context = context.to_vec();
-            if let Some(wrapper) = wrapper {
+            let parent_wrappers = positions.iter().filter(|position| position.grouped).count();
+            let parent_frame_start = context
+                .len()
+                .checked_sub(positions.len() + parent_wrappers)
+                .expect("iteration positions have matching context frames");
+            let mut next_context = context[..parent_frame_start].to_vec();
+            next_context.extend_from_slice(&context[parent_frame_start..]);
+            next_context.extend(group.intermediate_frames.iter());
+            if let Some(wrapper) = &group.wrapper {
                 next_context.push(wrapper);
             }
-            next_context.push(members);
-            let mut output_positions = candidate_positions.clone();
+            next_context.push(&group.members);
+            let mut output_positions = group.positions.clone();
             if let Some(position) = output_positions.last_mut() {
                 position.index = produced.len() + 1;
+                position.grouped = group.wrapper.is_some();
             }
             if let Some(instance) = produce_item(
                 graph,
                 scope,
                 &next_context,
-                candidate_positions,
+                &group.positions,
                 &output_positions,
+                false,
             )? {
                 produced.push(instance);
             }
@@ -224,6 +266,7 @@ fn eval_scope(
                 &next_context,
                 &candidate_positions,
                 &output_positions,
+                true,
             )? {
                 if !extension.positions.is_empty() {
                     compact_positions.insert(parent_key, next_position);
@@ -273,25 +316,10 @@ fn produce_item(
     context: &[&Instance],
     filter_positions: &[PositionFrame],
     output_positions: &[PositionFrame],
+    apply_filter: bool,
 ) -> Result<Option<Instance>, EngineError> {
-    if let Some(filter_node) = scope.filter {
-        let mut in_progress = HashSet::new();
-        match eval_expr(
-            graph,
-            filter_node,
-            context,
-            filter_positions,
-            &mut in_progress,
-        )? {
-            Value::Bool(true) => {}
-            Value::Bool(false) => return Ok(None),
-            other => {
-                return Err(EngineError::NotABool {
-                    node: filter_node,
-                    found: other.type_name(),
-                });
-            }
-        }
+    if apply_filter && !passes_filter(graph, scope.filter, context, filter_positions)? {
+        return Ok(None);
     }
 
     let mut fields = Vec::with_capacity(scope.bindings.len() + scope.children.len());
@@ -311,6 +339,25 @@ fn produce_item(
         fields.push((child.target_field.clone(), child_instance));
     }
     Ok(Some(Instance::Group(fields)))
+}
+
+fn passes_filter(
+    graph: &Graph,
+    filter: Option<NodeId>,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<bool, EngineError> {
+    let Some(filter_node) = filter else {
+        return Ok(true);
+    };
+    let mut in_progress = HashSet::new();
+    match eval_expr(graph, filter_node, context, positions, &mut in_progress)? {
+        Value::Bool(value) => Ok(value),
+        other => Err(EngineError::NotABool {
+            node: filter_node,
+            found: other.type_name(),
+        }),
+    }
 }
 
 /// Walks `path` from `base`, branching (and pushing one context frame) each
@@ -338,6 +385,7 @@ fn walk<'a>(
                     next_positions.push(PositionFrame {
                         collection: prefix.to_vec(),
                         index: index + 1,
+                        grouped: false,
                     });
                     WalkExtension {
                         instances: next_instances,
@@ -369,6 +417,7 @@ fn walk<'a>(
                         next_positions.push(PositionFrame {
                             collection: collection_path.clone(),
                             index: index + 1,
+                            grouped: false,
                         });
                         if rest.is_empty() {
                             vec![WalkExtension {
@@ -488,6 +537,7 @@ fn eval_expr(
                     item_positions.push(PositionFrame {
                         collection: collection.clone(),
                         index: item_index + 1,
+                        grouped: false,
                     });
                     eval_expr(
                         graph,
@@ -724,8 +774,13 @@ fn resolve_scalar_in_frame(
         position.collection == frame
             || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
     })?;
-    let context_offset = context.len().checked_sub(positions.len())?;
-    let instance = *context.get(context_offset + position_index)?;
+    let wrapper_count = positions.iter().filter(|position| position.grouped).count();
+    let context_offset = context.len().checked_sub(positions.len() + wrapper_count)?;
+    let preceding_wrappers = positions[..=position_index]
+        .iter()
+        .filter(|position| position.grouped)
+        .count();
+    let instance = *context.get(context_offset + position_index + preceding_wrappers)?;
     resolve_scalar(&[instance], path)
 }
 
@@ -1503,6 +1558,300 @@ mod tests {
         );
         assert_eq!(
             years[1].field("Months").and_then(Instance::as_scalar),
+            Some(&Value::Int(1))
+        );
+    }
+
+    #[test]
+    fn filter_removes_candidates_before_grouping() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    frame: None,
+                    path: vec!["category".into()],
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    frame: None,
+                    path: vec!["label".into()],
+                },
+            ),
+            (
+                2,
+                Node::Const {
+                    value: Value::String("skip".into()),
+                },
+            ),
+            (
+                3,
+                Node::Call {
+                    function: "not_equal".into(),
+                    args: vec![1, 2],
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
+                bindings: vec![],
+                children: vec![Scope {
+                    target_field: "Row".into(),
+                    source: Some(vec!["Item".into()]),
+                    filter: Some(3),
+                    group_by: Some(0),
+                    sort_by: None,
+                    sort_descending: false,
+                    take: None,
+                    bindings: vec![
+                        Binding {
+                            target_field: "Category".into(),
+                            node: 0,
+                        },
+                        Binding {
+                            target_field: "FirstLabel".into(),
+                            node: 1,
+                        },
+                    ],
+                    children: vec![],
+                }],
+            },
+        };
+        let item = |category: &str, label: &str| {
+            Instance::Group(vec![
+                (
+                    "category".into(),
+                    Instance::Scalar(Value::String(category.into())),
+                ),
+                (
+                    "label".into(),
+                    Instance::Scalar(Value::String(label.into())),
+                ),
+            ])
+        };
+        let source = Instance::Group(vec![(
+            "Item".into(),
+            Instance::Repeated(vec![
+                item("A", "skip"),
+                item("B", "second"),
+                item("A", "first"),
+                item("B", "fourth"),
+            ]),
+        )]);
+
+        let target = run(&project, &source).unwrap();
+        let rows = target.field("Row").and_then(Instance::as_repeated).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].field("Category").and_then(Instance::as_scalar),
+            Some(&Value::String("B".into()))
+        );
+        assert_eq!(
+            rows[0].field("FirstLabel").and_then(Instance::as_scalar),
+            Some(&Value::String("second".into()))
+        );
+        assert_eq!(
+            rows[1].field("Category").and_then(Instance::as_scalar),
+            Some(&Value::String("A".into()))
+        );
+        assert_eq!(
+            rows[1].field("FirstLabel").and_then(Instance::as_scalar),
+            Some(&Value::String("first".into()))
+        );
+    }
+
+    #[test]
+    fn grouped_nested_items_preserve_outer_iteration_frames() {
+        use mapping::AggregateOp;
+
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    frame: Some(vec!["Order".into(), "Items".into(), "Item".into()]),
+                    path: vec!["Category".into()],
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    frame: Some(vec!["Order".into()]),
+                    path: vec!["Id".into()],
+                },
+            ),
+            (
+                2,
+                Node::Aggregate {
+                    function: AggregateOp::Count,
+                    collection: vec![],
+                    value: vec![],
+                    expression: None,
+                    arg: None,
+                },
+            ),
+            (
+                3,
+                Node::Aggregate {
+                    function: AggregateOp::Count,
+                    collection: vec!["Item".into()],
+                    value: vec![],
+                    expression: None,
+                    arg: None,
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                target_field: String::new(),
+                source: None,
+                filter: None,
+                group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
+                bindings: vec![],
+                children: vec![Scope {
+                    target_field: "OrderOut".into(),
+                    source: Some(vec!["Order".into()]),
+                    filter: None,
+                    group_by: None,
+                    sort_by: None,
+                    sort_descending: false,
+                    take: None,
+                    bindings: vec![],
+                    children: vec![Scope {
+                        target_field: "CategoryOut".into(),
+                        source: Some(vec!["Items".into(), "Item".into()]),
+                        filter: None,
+                        group_by: Some(0),
+                        sort_by: None,
+                        sort_descending: false,
+                        take: None,
+                        bindings: vec![
+                            Binding {
+                                target_field: "Category".into(),
+                                node: 0,
+                            },
+                            Binding {
+                                target_field: "OrderId".into(),
+                                node: 1,
+                            },
+                            Binding {
+                                target_field: "Members".into(),
+                                node: 2,
+                            },
+                            Binding {
+                                target_field: "NamedMembers".into(),
+                                node: 3,
+                            },
+                        ],
+                        children: vec![],
+                    }],
+                }],
+            },
+        };
+        let item = |category: &str| {
+            Instance::Group(vec![(
+                "Category".into(),
+                Instance::Scalar(Value::String(category.into())),
+            )])
+        };
+        let order = |id: &str, categories: &[&str]| {
+            Instance::Group(vec![
+                ("Id".into(), Instance::Scalar(Value::String(id.into()))),
+                (
+                    "Item".into(),
+                    Instance::Repeated((0..5).map(|_| item("outer")).collect()),
+                ),
+                (
+                    "Items".into(),
+                    Instance::Group(vec![(
+                        "Item".into(),
+                        Instance::Repeated(categories.iter().map(|value| item(value)).collect()),
+                    )]),
+                ),
+            ])
+        };
+        let source = Instance::Group(vec![(
+            "Order".into(),
+            Instance::Repeated(vec![
+                order("O-1", &["A", "A", "B"]),
+                order("O-2", &["A", "C"]),
+            ]),
+        )]);
+
+        let target = run(&project, &source).unwrap();
+        let orders = target
+            .field("OrderOut")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(orders.len(), 2);
+        fn categories(order: &Instance) -> &[Instance] {
+            order
+                .field("CategoryOut")
+                .and_then(Instance::as_repeated)
+                .unwrap()
+        }
+        let first = categories(&orders[0]);
+        assert_eq!(first.len(), 2);
+        assert_eq!(
+            first[0].field("Category").and_then(Instance::as_scalar),
+            Some(&Value::String("A".into()))
+        );
+        assert_eq!(
+            first[0].field("OrderId").and_then(Instance::as_scalar),
+            Some(&Value::String("O-1".into()))
+        );
+        assert_eq!(
+            first[0].field("Members").and_then(Instance::as_scalar),
+            Some(&Value::Int(2))
+        );
+        assert_eq!(
+            first[0].field("NamedMembers").and_then(Instance::as_scalar),
+            Some(&Value::Int(2))
+        );
+        let second = categories(&orders[1]);
+        assert_eq!(second.len(), 2);
+        assert_eq!(
+            second[0].field("OrderId").and_then(Instance::as_scalar),
+            Some(&Value::String("O-2".into()))
+        );
+        assert_eq!(
+            second[1].field("Category").and_then(Instance::as_scalar),
+            Some(&Value::String("C".into()))
+        );
+        assert_eq!(
+            second[1].field("Members").and_then(Instance::as_scalar),
+            Some(&Value::Int(1))
+        );
+        assert_eq!(
+            second[1]
+                .field("NamedMembers")
+                .and_then(Instance::as_scalar),
             Some(&Value::Int(1))
         );
     }
