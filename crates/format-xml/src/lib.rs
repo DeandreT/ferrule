@@ -33,7 +33,14 @@ pub enum XmlFormatError {
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
 pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
     let text = std::fs::read_to_string(path)?;
-    let doc = roxmltree::Document::parse(&text)?;
+    from_str(&text, schema)
+}
+
+/// Reads XML text into an [`Instance`] tree shaped by `schema` -- the
+/// in-memory form of [`read`] (useful where there is no filesystem, e.g.
+/// wasm).
+pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+    let doc = roxmltree::Document::parse(text)?;
     let root = doc.root_element();
     if root.tag_name().name() != schema.name {
         return Err(XmlFormatError::UnexpectedRoot {
@@ -120,6 +127,13 @@ fn parse_scalar(name: &str, ty: ScalarType, text: &str) -> Result<Value, XmlForm
 
 /// Writes an [`Instance`] tree shaped by `schema` to an XML file.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), XmlFormatError> {
+    std::fs::write(path, to_string(schema, instance)?)?;
+    Ok(())
+}
+
+/// Renders an [`Instance`] tree shaped by `schema` as XML text -- the
+/// in-memory form of [`write`].
+pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, XmlFormatError> {
     let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
     writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new(
         "1.0",
@@ -128,8 +142,7 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     )))?;
     write_node(&mut writer, schema, instance)?;
     let bytes = writer.into_inner().into_inner();
-    std::fs::write(path, bytes)?;
-    Ok(())
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn write_node<W: std::io::Write>(

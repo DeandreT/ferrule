@@ -1,0 +1,20 @@
+[package]
+name = "web-demo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Browser playground for ferrule: the real mapping engine compiled to WebAssembly"
+
+[dependencies]
+ir = { workspace = true }
+mapping = { workspace = true }
+engine = { workspace = true }
+format-xml = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true }
+egui-snarl = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement"] }
