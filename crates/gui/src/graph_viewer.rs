@@ -12,9 +12,9 @@
 
 use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
-use egui_snarl::{InPin, NodeId as SnarlNodeId, OutPin, Snarl};
+use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, Snarl};
 use ir::Value;
-use mapping::{Binding, Graph, Node, NodeId, Scope};
+use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Scope};
 
 use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
 use crate::value_editor::{show_value_editor, show_value_map_editor};
@@ -31,6 +31,16 @@ pub struct GraphViewer<'a> {
 }
 
 impl GraphViewer<'_> {
+    const AGGREGATE_OPS: [(AggregateOp, &'static str); 7] = [
+        (AggregateOp::Count, "Count"),
+        (AggregateOp::Sum, "Sum"),
+        (AggregateOp::Avg, "Average"),
+        (AggregateOp::Min, "Minimum"),
+        (AggregateOp::Max, "Maximum"),
+        (AggregateOp::Join, "String join"),
+        (AggregateOp::ItemAt, "Item at"),
+    ];
+
     fn fresh_id(&self) -> NodeId {
         self.graph.nodes.keys().next_back().map_or(0, |max| max + 1)
     }
@@ -41,6 +51,19 @@ impl GraphViewer<'_> {
             .nodes
             .insert(id, Node::Const { value: Value::Null });
         id
+    }
+
+    fn aggregate_needs_arg(function: AggregateOp) -> bool {
+        matches!(function, AggregateOp::Join | AggregateOp::ItemAt)
+    }
+
+    fn aggregate_node(&mut self, function: AggregateOp) -> Node {
+        Node::Aggregate {
+            function,
+            collection: Vec::new(),
+            value: Vec::new(),
+            arg: Self::aggregate_needs_arg(function).then(|| self.fresh_const()),
+        }
     }
 
     fn insert(&mut self, snarl: &mut Snarl<CanvasNode>, pos: egui::Pos2, node: Node) {
@@ -135,12 +158,68 @@ impl GraphViewer<'_> {
         }
     }
 
+    fn references_to(&self, needle: NodeId) -> Vec<String> {
+        fn graph_inputs(node: &Node) -> Vec<NodeId> {
+            match node {
+                Node::SourceField { .. } | Node::Const { .. } => Vec::new(),
+                Node::Call { args, .. } => args.clone(),
+                Node::If {
+                    condition,
+                    then,
+                    else_,
+                } => vec![*condition, *then, *else_],
+                Node::ValueMap { input, .. } => vec![*input],
+                Node::Lookup { matches, .. } => vec![*matches],
+                Node::Aggregate { arg, .. } => arg.iter().copied().collect(),
+            }
+        }
+
+        fn scope_references(
+            scope: &Scope,
+            path: &mut Vec<String>,
+            needle: NodeId,
+            found: &mut std::collections::BTreeSet<String>,
+        ) {
+            let label = if path.is_empty() {
+                "root scope".to_string()
+            } else {
+                format!("scope {}", path.join("/"))
+            };
+            if scope.filter == Some(needle) {
+                found.insert(format!("{label} filter"));
+            }
+            if scope.group_by == Some(needle) {
+                found.insert(format!("{label} group-by key"));
+            }
+            for binding in &scope.bindings {
+                if binding.node == needle {
+                    found.insert(format!("{label} binding {}", binding.target_field));
+                }
+            }
+            for child in &scope.children {
+                path.push(child.target_field.clone());
+                scope_references(child, path, needle, found);
+                path.pop();
+            }
+        }
+
+        let mut found = std::collections::BTreeSet::new();
+        for (&owner, node) in &self.graph.nodes {
+            if owner != needle && graph_inputs(node).contains(&needle) {
+                found.insert(format!("graph node {owner}"));
+            }
+        }
+        scope_references(self.root_scope, &mut Vec::new(), needle, &mut found);
+        found.into_iter().collect()
+    }
+
     fn input_count(node: &Node) -> usize {
         match node {
             Node::SourceField { .. } | Node::Const { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
-            Node::ValueMap { .. } | Node::Lookup { .. } | Node::Aggregate { .. } => 1,
+            Node::ValueMap { .. } | Node::Lookup { .. } => 1,
+            Node::Aggregate { arg, .. } => usize::from(arg.is_some()),
         }
     }
 }
@@ -225,7 +304,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
             return PinInfo::circle();
         };
-        let mut new_arg_needed = false;
+        let mut new_call_arg_needed = false;
+        let mut remove_call_wire = None;
+        let mut new_aggregate_arg_needed = false;
+        let mut remove_aggregate_wire = false;
         if let Some(node) = self.graph.nodes.get_mut(&node_id) {
             match node {
                 Node::SourceField { path } => {
@@ -240,12 +322,19 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Node::Const { value } => show_value_editor(ui, value),
                 Node::Call { function, args } => {
-                    ui.text_edit_singleline(function);
+                    egui::ComboBox::from_id_salt(ui.id().with("builtin"))
+                        .selected_text(function.as_str())
+                        .show_ui(ui, |ui| {
+                            for builtin in functions::BUILTIN_NAMES {
+                                ui.selectable_value(function, (*builtin).to_string(), *builtin);
+                            }
+                        });
                     ui.horizontal(|ui| {
                         if ui.small_button("+arg").clicked() {
-                            new_arg_needed = true;
+                            new_call_arg_needed = true;
                         }
                         if !args.is_empty() && ui.small_button("-arg").clicked() {
+                            remove_call_wire = Some(args.len() - 1);
                             args.pop();
                         }
                     });
@@ -277,8 +366,31 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                 }
                 Node::Aggregate {
-                    collection, value, ..
+                    function,
+                    collection,
+                    value,
+                    arg,
                 } => {
+                    let previous = *function;
+                    egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
+                        .selected_text(
+                            Self::AGGREGATE_OPS
+                                .iter()
+                                .find(|(op, _)| op == function)
+                                .map_or("Aggregate", |(_, label)| *label),
+                        )
+                        .show_ui(ui, |ui| {
+                            for (op, label) in Self::AGGREGATE_OPS {
+                                ui.selectable_value(function, op, label);
+                            }
+                        });
+                    if previous != *function {
+                        if Self::aggregate_needs_arg(*function) && arg.is_none() {
+                            new_aggregate_arg_needed = true;
+                        } else if !Self::aggregate_needs_arg(*function) && arg.take().is_some() {
+                            remove_aggregate_wire = true;
+                        }
+                    }
                     for (label, path) in [("collection", collection), ("value", value)] {
                         ui.horizontal(|ui| {
                             ui.label(label);
@@ -295,10 +407,36 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
             }
         }
-        if new_arg_needed {
+        if new_call_arg_needed {
             let new_id = self.fresh_const();
             if let Some(Node::Call { args, .. }) = self.graph.nodes.get_mut(&node_id) {
                 args.push(new_id);
+            }
+        }
+        if let Some(input_index) = remove_call_wire {
+            let input = InPinId {
+                node: pin.id.node,
+                input: input_index,
+            };
+            let remotes = snarl.in_pin(input).remotes;
+            for remote in remotes {
+                snarl.disconnect(remote, input);
+            }
+        }
+        if new_aggregate_arg_needed {
+            let new_id = self.fresh_const();
+            if let Some(Node::Aggregate { arg, .. }) = self.graph.nodes.get_mut(&node_id) {
+                *arg = Some(new_id);
+            }
+        }
+        if remove_aggregate_wire {
+            let input = InPinId {
+                node: pin.id.node,
+                input: 0,
+            };
+            let remotes = snarl.in_pin(input).remotes;
+            for remote in remotes {
+                snarl.disconnect(remote, input);
             }
         }
         PinInfo::circle()
@@ -429,6 +567,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             );
             ui.close();
         }
+        ui.menu_button("Aggregate", |ui| {
+            for (function, label) in Self::AGGREGATE_OPS {
+                if ui.button(label).clicked() {
+                    let node = self.aggregate_node(function);
+                    self.insert(snarl, pos, node);
+                    ui.close();
+                }
+            }
+        });
         if ui.button("Source field (manual path)").clicked() {
             self.insert(snarl, pos, Node::SourceField { path: vec![] });
             ui.close();
@@ -447,10 +594,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         ui: &mut Ui,
         snarl: &mut Snarl<CanvasNode>,
     ) {
-        if ui.button("Remove").clicked() {
-            if let CanvasNode::Graph(mapping_id) = snarl[node] {
-                self.graph.nodes.remove(&mapping_id);
-            }
+        let CanvasNode::Graph(mapping_id) = snarl[node] else {
+            return;
+        };
+        let references = self.references_to(mapping_id);
+        let remove = ui
+            .add_enabled(references.is_empty(), egui::Button::new("Remove"))
+            .on_disabled_hover_text(format!("Disconnect first: {}", references.join(", ")));
+        if remove.clicked() {
+            self.graph.nodes.remove(&mapping_id);
             snarl.remove_node(node);
             ui.close();
         }
@@ -650,5 +802,38 @@ mod tests {
         assert!(viewer.error.is_some());
         assert_eq!(snarl.wires().count(), 0);
         assert!(fx.root_scope.bindings.is_empty());
+    }
+
+    #[test]
+    fn aggregate_argument_pins_match_the_operation() {
+        let mut fx = fixture();
+        let count = fx.viewer().aggregate_node(AggregateOp::Count);
+        assert_eq!(GraphViewer::input_count(&count), 0);
+
+        let join = fx.viewer().aggregate_node(AggregateOp::Join);
+        assert_eq!(GraphViewer::input_count(&join), 1);
+        let Node::Aggregate { arg: Some(arg), .. } = join else {
+            panic!("join should get a separator placeholder");
+        };
+        assert!(matches!(fx.graph.nodes[&arg], Node::Const { .. }));
+    }
+
+    #[test]
+    fn referenced_nodes_report_graph_and_scope_consumers() {
+        let mut fx = fixture();
+        fx.graph.nodes.insert(1, Node::Const { value: Value::Null });
+        let Node::Call { args, .. } = fx.graph.nodes.get_mut(&0).unwrap() else {
+            panic!("fixture node should be a call");
+        };
+        args.push(1);
+        fx.root_scope.bindings.push(Binding {
+            target_field: "out".into(),
+            node: 1,
+        });
+
+        assert_eq!(
+            fx.viewer().references_to(1),
+            vec!["graph node 0", "root scope binding out"]
+        );
     }
 }

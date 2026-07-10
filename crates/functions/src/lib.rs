@@ -30,37 +30,39 @@ pub enum FunctionError {
     DivideByZero,
 }
 
+/// Scalar builtin names accepted by [`call`], in editor display order.
+pub const BUILTIN_NAMES: &[&str] = &[
+    "concat",
+    "upper",
+    "lower",
+    "trim",
+    "length",
+    "starts_with",
+    "contains",
+    "add",
+    "subtract",
+    "multiply",
+    "divide",
+    "equal",
+    "not_equal",
+    "less_than",
+    "greater_than",
+    "less_or_equal",
+    "greater_or_equal",
+    "and",
+    "or",
+    "not",
+    "substring",
+    "substring_before",
+    "substring_after",
+    "exists",
+    "round",
+    "date_from_datetime",
+];
+
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
 pub fn is_known(name: &str) -> bool {
-    matches!(
-        name,
-        "concat"
-            | "upper"
-            | "lower"
-            | "trim"
-            | "length"
-            | "starts_with"
-            | "contains"
-            | "add"
-            | "subtract"
-            | "multiply"
-            | "divide"
-            | "equal"
-            | "not_equal"
-            | "less_than"
-            | "greater_than"
-            | "less_or_equal"
-            | "greater_or_equal"
-            | "and"
-            | "or"
-            | "not"
-            | "substring"
-            | "substring_before"
-            | "substring_after"
-            | "exists"
-            | "round"
-            | "date_from_datetime"
-    )
+    BUILTIN_NAMES.contains(&name)
 }
 
 /// Dispatches a built-in function call by name.
@@ -476,6 +478,12 @@ mod tests {
         );
         assert!(!is_known("nope"));
         assert!(is_known("concat"));
+        for name in BUILTIN_NAMES {
+            assert!(
+                !matches!(call(name, &[]), Err(FunctionError::UnknownFunction(_))),
+                "catalog entry `{name}` is not dispatched"
+            );
+        }
     }
 
     #[test]

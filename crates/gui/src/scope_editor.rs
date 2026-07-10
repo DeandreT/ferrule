@@ -9,6 +9,10 @@ use mapping::{Binding, Graph, NodeId, Scope};
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
 
+fn first_node_id(graph: &Graph) -> Option<NodeId> {
+    graph.nodes.keys().next().copied()
+}
+
 pub fn scope_at_mut<'a>(root: &'a mut Scope, path: &[usize]) -> &'a mut Scope {
     let mut scope = root;
     for &i in path {
@@ -59,6 +63,7 @@ fn show_scope_node(
 
 /// Edits `scope`'s `source` path, `filter` node, and `bindings`.
 pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
+    let first_node = first_node_id(graph);
     ui.strong(if scope.target_field.is_empty() {
         "root scope".to_string()
     } else {
@@ -88,8 +93,15 @@ pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
         ui.horizontal(|ui| {
             ui.label("  filter node:");
             let mut has_filter = scope.filter.is_some();
-            if ui.checkbox(&mut has_filter, "filtered").changed() {
-                scope.filter = has_filter.then_some(0);
+            if ui
+                .add_enabled(
+                    scope.filter.is_some() || first_node.is_some(),
+                    egui::Checkbox::new(&mut has_filter, "filtered"),
+                )
+                .on_disabled_hover_text("Add a graph node before enabling a filter")
+                .changed()
+            {
+                scope.filter = if has_filter { first_node } else { None };
             }
             if let Some(filter) = &mut scope.filter {
                 node_picker(ui, "filter_node", filter, graph);
@@ -99,8 +111,15 @@ pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
         ui.horizontal(|ui| {
             ui.label("  group-by key:");
             let mut has_group = scope.group_by.is_some();
-            if ui.checkbox(&mut has_group, "grouped").changed() {
-                scope.group_by = has_group.then_some(0);
+            if ui
+                .add_enabled(
+                    scope.group_by.is_some() || first_node.is_some(),
+                    egui::Checkbox::new(&mut has_group, "grouped"),
+                )
+                .on_disabled_hover_text("Add a graph node before enabling grouping")
+                .changed()
+            {
+                scope.group_by = if has_group { first_node } else { None };
             }
             if let Some(group_by) = &mut scope.group_by {
                 node_picker(ui, "group_by_node", group_by, graph);
@@ -124,10 +143,14 @@ pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
     if let Some(i) = remove_idx {
         scope.bindings.remove(i);
     }
-    if ui.small_button("+ binding").clicked() {
+    if ui
+        .add_enabled(first_node.is_some(), egui::Button::new("+ binding").small())
+        .on_disabled_hover_text("Add a graph node before creating a binding")
+        .clicked()
+    {
         scope.bindings.push(Binding {
             target_field: String::new(),
-            node: graph.nodes.keys().next().copied().unwrap_or(0),
+            node: first_node.expect("button is disabled without a graph node"),
         });
     }
 }
@@ -161,5 +184,21 @@ fn node_kind_label(node: &mapping::Node) -> &'static str {
         mapping::Node::ValueMap { .. } => "value_map",
         mapping::Node::Lookup { .. } => "lookup",
         mapping::Node::Aggregate { .. } => "aggregate",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ir::Value;
+
+    #[test]
+    fn scope_references_default_to_an_existing_node_only() {
+        let mut graph = Graph::default();
+        assert_eq!(first_node_id(&graph), None);
+        graph
+            .nodes
+            .insert(7, mapping::Node::Const { value: Value::Null });
+        assert_eq!(first_node_id(&graph), Some(7));
     }
 }
