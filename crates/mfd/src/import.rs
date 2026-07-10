@@ -1256,6 +1256,11 @@ impl GraphBuilder<'_> {
             self.graph.nodes.insert(id, node);
             return id;
         }
+        if name == "position" && self.fn_components[idx].kind == 5 {
+            let collection = self.position_collection(idx);
+            self.graph.nodes.insert(id, Node::Position { collection });
+            return id;
+        }
         let fc = &self.fn_components[idx];
 
         let mut input_ids = Vec::with_capacity(fc.inputs.len());
@@ -1410,6 +1415,27 @@ impl GraphBuilder<'_> {
             &mut paths,
         );
         paths
+    }
+
+    fn position_collection(&self, idx: usize) -> Vec<String> {
+        let Some(source) = self.sources.first() else {
+            return Vec::new();
+        };
+        let Some(path) = self
+            .input_feed(idx, 0)
+            .and_then(|feed| self.sequence_source_path(feed))
+        else {
+            return Vec::new();
+        };
+        let collection_abs = split_at_innermost_repeating(&source.schema, &path).0;
+        match collection_abs.split_last() {
+            Some((last, prefix)) => {
+                let mut relative = self.suffix_after_framed(&source.schema, prefix);
+                relative.push(last.clone());
+                relative
+            }
+            None => Vec::new(),
+        }
     }
 
     /// The feed of pin `pos` on function component `idx`, if connected.

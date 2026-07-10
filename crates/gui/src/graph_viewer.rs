@@ -172,7 +172,7 @@ impl GraphViewer<'_> {
     fn references_to(&self, needle: NodeId) -> Vec<String> {
         fn graph_inputs(node: &Node) -> Vec<NodeId> {
             match node {
-                Node::SourceField { .. } | Node::Const { .. } => Vec::new(),
+                Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
                 Node::Call { args, .. } => args.clone(),
                 Node::If {
                     condition,
@@ -228,7 +228,7 @@ impl GraphViewer<'_> {
 
     fn input_count(node: &Node) -> usize {
         match node {
-            Node::SourceField { .. } | Node::Const { .. } => 0,
+            Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } => 1,
@@ -246,6 +246,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Target => "Target".to_string(),
             CanvasNode::Graph(id) => match self.graph.nodes.get(id) {
                 Some(Node::SourceField { path }) => format!("Source: {}", path.join("/")),
+                Some(Node::Position { collection }) if collection.is_empty() => {
+                    "Position".to_string()
+                }
+                Some(Node::Position { collection }) => {
+                    format!("Position: {}", collection.join("/"))
+                }
                 Some(Node::Const { value }) => {
                     format!("Const: {}", crate::value_editor::display_string(value))
                 }
@@ -341,6 +347,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .filter(|s| !s.is_empty())
                             .collect();
                     }
+                }
+                Node::Position { collection } => {
+                    self.source_paths.show_collection_picker(
+                        ui,
+                        ui.id().with("position_collection"),
+                        collection,
+                    );
                 }
                 Node::Const { value } => show_value_editor(ui, value),
                 Node::Call { function, args } => {
@@ -575,6 +588,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         ui.label("Add node");
         if ui.button("Const").clicked() {
             self.insert(snarl, pos, Node::Const { value: Value::Null });
+            ui.close();
+        }
+        if ui.button("Position").clicked() {
+            self.insert(
+                snarl,
+                pos,
+                Node::Position {
+                    collection: Vec::new(),
+                },
+            );
             ui.close();
         }
         if ui.button("Call").clicked() {
