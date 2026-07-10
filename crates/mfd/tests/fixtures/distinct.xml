@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Catalog>
+  <Item><Category>A</Category><Label>skip</Label></Item>
+  <Item><Category>B</Category><Label>second</Label></Item>
+  <Item><Label>missing category</Label></Item>
+  <Item><Category>A</Category><Label>first</Label></Item>
+  <Item><Category>B</Category><Label>fourth</Label></Item>
+</Catalog>

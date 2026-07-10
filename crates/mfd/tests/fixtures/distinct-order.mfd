@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <structure>
+      <children>
+        <component name="Catalog" library="xml" uid="2" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Catalog">
+              <entry name="Item" outkey="10">
+                <entry name="Category" outkey="11"/>
+                <entry name="Label" outkey="12"/>
+              </entry>
+            </entry></entry></entry></root>
+            <document schema="distinct-source.xsd" inputinstance="distinct.xml" instanceroot="{}Catalog"/>
+          </data>
+        </component>
+        <component name="Categories" library="xml" uid="3" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Categories">
+              <entry name="Row" inpkey="20">
+                <entry name="Category" inpkey="21"/>
+                <entry name="FirstLabel" inpkey="22"/>
+              </entry>
+            </entry></entry></entry></root>
+            <document schema="distinct-target.xsd" instanceroot="{}Categories"/>
+          </data>
+        </component>
+        <component name="distinct-values" library="core" uid="4" kind="5">
+          <sources><datapoint pos="0" key="30"/></sources>
+          <targets><datapoint pos="0" key="31"/></targets>
+        </component>
+        <component name="filter" library="core" uid="5" kind="3">
+          <sources><datapoint pos="0" key="32"/><datapoint pos="1" key="33"/></sources>
+          <targets><datapoint pos="0" key="34"/></targets>
+        </component>
+        <component name="constant" library="core" uid="6" kind="2">
+          <targets><datapoint pos="0" key="35"/></targets>
+          <data><constant value="skip" datatype="string"/></data>
+        </component>
+        <component name="not-equal" library="core" uid="7" kind="5">
+          <sources><datapoint pos="0" key="36"/><datapoint pos="1" key="37"/></sources>
+          <targets><datapoint pos="0" key="38"/></targets>
+        </component>
+        <component name="first-items" library="core" uid="8" kind="5">
+          <sources><datapoint pos="0" key="39"/><datapoint pos="1" key="40"/></sources>
+          <targets><datapoint pos="0" key="41"/></targets>
+        </component>
+        <component name="constant" library="core" uid="9" kind="2">
+          <targets><datapoint pos="0" key="42"/></targets>
+          <data><constant value="2" datatype="integer"/></data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="11" to="32"/>
+      <edge from="38" to="33"/>
+      <edge from="12" to="36"/>
+      <edge from="35" to="37"/>
+      <edge from="34" to="39"/>
+      <edge from="42" to="40"/>
+      <edge from="41" to="30"/>
+      <edge from="31" to="20"/>
+      <edge from="11" to="21"/>
+      <edge from="12" to="22"/>
+    </connections>
+  </component>
+</mapping>

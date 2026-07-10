@@ -788,6 +788,83 @@ fn sorted_first_items_import_run_and_roundtrip() {
 }
 
 #[test]
+fn distinct_values_imports_as_stable_sequence_and_roundtrips() {
+    let imported = mfd::import(&fixture("distinct.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+    let rows = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Row")
+        .unwrap();
+    assert_eq!(rows.source, Some(vec!["Item".into()]));
+    let Node::Call { function, args } = &project.graph.nodes[&rows.filter.unwrap()] else {
+        panic!("distinct filter should combine the design predicate with exists");
+    };
+    assert_eq!(function, "and");
+    assert!(args.iter().any(|node| matches!(
+        &project.graph.nodes[node],
+        Node::Call { function, .. } if function == "not_equal"
+    )));
+    assert!(args.iter().any(|node| matches!(
+        &project.graph.nodes[node],
+        Node::Call { function, .. } if function == "exists"
+    )));
+    assert!(matches!(
+        &project.graph.nodes[&rows.group_by.unwrap()],
+        Node::SourceField { path, .. } if path == &["Category"]
+    ));
+    assert!(matches!(
+        &project.graph.nodes[&rows.take.unwrap()],
+        Node::Const {
+            value: Value::Int(2)
+        }
+    ));
+
+    let source = format_xml::read(&fixture("distinct.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let output = target.field("Row").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(output.len(), 2);
+    assert_eq!(scalar(&output[0], "Category"), Value::String("B".into()));
+    assert_eq!(
+        scalar(&output[0], "FirstLabel"),
+        Value::String("second".into())
+    );
+    assert_eq!(scalar(&output[1], "Category"), Value::String("A".into()));
+    assert_eq!(
+        scalar(&output[1], "FirstLabel"),
+        Value::String("first".into())
+    );
+
+    let dir = TempDir::new("distinct");
+    let out = dir.0.join("distinct.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert!(exported.contains("name=\"group-by\""));
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, rerun);
+}
+
+#[test]
+fn unsupported_sequence_order_imports_with_one_actionable_warning() {
+    let imported = mfd::import(&fixture("distinct-order.mfd")).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(imported.warnings[0].contains("sequence into `Row`"));
+    assert!(
+        imported.warnings[0].contains("applies first-items before distinct-values"),
+        "{:?}",
+        imported.warnings
+    );
+    let rows = &imported.project.root.children[0];
+    assert!(rows.group_by.is_some());
+    assert!(rows.take.is_some());
+}
+
+#[test]
 fn constructed_variables_preserve_nested_source_frames() {
     let imported = mfd::import(&fixture("framed.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

@@ -47,7 +47,7 @@ struct SchemaComponent {
     output_keys: BTreeSet<u32>,
 }
 
-/// What an iteration connection resolves to once `filter`/`group-by`
+/// What an iteration connection resolves to once sequence-control
 /// components on the way are unwrapped.
 struct IterationFeed {
     /// Output key of the underlying source entry (or whatever else feeds
@@ -60,6 +60,12 @@ struct IterationFeed {
     filter_expr: Option<u32>,
     /// The group-by's key expression key, if a group-by was crossed.
     group_key: Option<u32>,
+    /// Scalar sequence feeding a distinct-values component. It becomes the
+    /// grouping key while iteration retains the owning source item.
+    distinct_key: Option<u32>,
+    /// First unsupported operator ordering found while unwrapping the
+    /// sequence. The scope still imports using ferrule's canonical order.
+    order_issue: Option<&'static str>,
     /// A sort key expression and direction crossed by the sequence.
     sort_expr: Option<u32>,
     sort_descending: bool,
@@ -347,6 +353,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             || is_input_component(fc)
             || is_sort_component(fc)
             || is_first_items_component(fc)
+            || is_distinct_values_component(fc)
             || fc.name == "group-by"
             || fc.kind == 5 && aggregate_op(&fc.name).is_some())
         {
@@ -357,6 +364,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         bindings.iter().map(|(path, _)| path.clone()).collect();
     for (target_path, from) in iterations {
         let feed = builder.resolve_iteration_feed(from);
+        if let Some(issue) = feed.order_issue {
+            builder.warnings.push(format!(
+                "sequence into `{}` {issue}; imported using ferrule's sequence order",
+                target_path.join("/")
+            ));
+        }
         let Some(source_abs) = builder.iteration_source_path(&feed) else {
             builder.warnings.push(format!(
                 "iteration into `{}` comes from an unsupported feed; skipped",
@@ -364,8 +377,25 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             ));
             continue;
         };
-        let filter_node = feed.filter_expr.and_then(|key| builder.value_node(key));
-        let group_node = feed.group_key.and_then(|key| builder.value_node(key));
+        let mut filter_node = feed.filter_expr.and_then(|key| builder.value_node(key));
+        let distinct_node = feed.distinct_key.and_then(|key| builder.value_node(key));
+        let group_node = feed
+            .group_key
+            .and_then(|key| builder.value_node(key))
+            .or(distinct_node);
+        if let Some(distinct_node) = distinct_node {
+            let exists = builder.alloc(Node::Call {
+                function: "exists".into(),
+                args: vec![distinct_node],
+            });
+            filter_node = Some(match filter_node {
+                Some(filter) => builder.alloc(Node::Call {
+                    function: "and".into(),
+                    args: vec![filter, exists],
+                }),
+                None => exists,
+            });
+        }
         let sort_node = feed.sort_expr.and_then(|key| builder.value_node(key));
         let take_node = feed
             .take_expr
@@ -1387,6 +1417,10 @@ fn is_first_items_component(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "first-items"
 }
 
+fn is_distinct_values_component(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 5 && component.name == "distinct-values"
+}
+
 struct GraphBuilder<'a> {
     graph: Graph,
     next_id: NodeId,
@@ -1578,6 +1612,16 @@ impl GraphBuilder<'_> {
                 Some(feed) => self.value_node(feed),
                 None => Some(self.const_null()),
             };
+        }
+        if is_distinct_values_component(&self.fn_components[idx]) {
+            return self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.value_node(feed));
+        }
+        if is_first_items_component(&self.fn_components[idx]) {
+            return self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.value_node(feed));
         }
         match self.fn_components[idx].name.as_str() {
             // A group-by's key output is the key expression itself
@@ -1771,7 +1815,9 @@ impl GraphBuilder<'_> {
                 return;
             };
             let component = &builder.fn_components[idx];
-            if aggregate_op(&component.name).is_some() && component.kind == 5 {
+            if aggregate_op(&component.name).is_some() && component.kind == 5
+                || is_distinct_values_component(component)
+            {
                 return;
             }
             for key in component.inputs.iter().flatten() {
@@ -1844,6 +1890,8 @@ impl GraphBuilder<'_> {
     fn resolve_iteration_feed_inner(&self, mut from: u32, depth: usize) -> IterationFeed {
         let mut filter_expr = None;
         let mut group_key = None;
+        let mut distinct_key = None;
+        let mut order_issue = None;
         let mut sort_expr = None;
         let mut sort_descending = false;
         let mut take_expr = None;
@@ -1862,6 +1910,8 @@ impl GraphBuilder<'_> {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
                     filter_expr = filter_expr.or(control.filter_expr);
                     group_key = group_key.or(control.group_key);
+                    distinct_key = distinct_key.or(control.distinct_key);
+                    order_issue = order_issue.or(control.order_issue);
                     if sort_expr.is_none() && control.sort_expr.is_some() {
                         sort_expr = control.sort_expr;
                         sort_descending = control.sort_descending;
@@ -1898,6 +1948,11 @@ impl GraphBuilder<'_> {
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
+                if distinct_key.is_some() {
+                    order_issue.get_or_insert(
+                        "applies first-items before distinct-values, which cannot be represented exactly",
+                    );
+                }
                 // A variable driven by group-by uses first-items to select
                 // the first member inside each group. Grouped scope frames
                 // already expose that member to scalar bindings, so an
@@ -1907,12 +1962,42 @@ impl GraphBuilder<'_> {
                     take_default_one = take_expr.is_none();
                 }
                 from = nodes_feed;
+            } else if is_distinct_values_component(fc) {
+                let Some(values_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                let unsupported_downstream = if sort_expr.is_some() {
+                    Some("sort")
+                } else if filter_expr.is_some() {
+                    Some("filter")
+                } else if group_key.is_some() {
+                    Some("group-by")
+                } else if distinct_key.is_some() {
+                    Some("another distinct-values")
+                } else {
+                    None
+                };
+                if let Some(downstream) = unsupported_downstream {
+                    order_issue.get_or_insert(match downstream {
+                        "sort" => "applies distinct-values before sort, which cannot be represented exactly",
+                        "filter" => "applies distinct-values before filter, which cannot be represented exactly",
+                        "group-by" => "applies distinct-values before group-by, which cannot be represented exactly",
+                        _ => "chains multiple distinct-values components, which cannot be represented exactly",
+                    });
+                }
+                distinct_key.get_or_insert(values_feed);
+                from = values_feed;
             } else {
                 match fc.name.as_str() {
                     "group-by" if fc.outputs.first() == Some(&from) => {
                         let Some(nodes_feed) = self.input_feed(idx, 0) else {
                             break;
                         };
+                        if distinct_key.is_some() {
+                            order_issue.get_or_insert(
+                                "applies group-by before distinct-values, which cannot be represented exactly",
+                            );
+                        }
                         group_key = group_key.or_else(|| self.input_feed(idx, 1));
                         from = nodes_feed;
                     }
@@ -1925,6 +2010,8 @@ impl GraphBuilder<'_> {
             source_suffix,
             filter_expr,
             group_key,
+            distinct_key,
+            order_issue,
             sort_expr,
             sort_descending,
             take_expr,
@@ -1934,8 +2021,8 @@ impl GraphBuilder<'_> {
         }
     }
 
-    /// Follows filter/group-by pass-throughs to the primary-source entry a
-    /// sequence connection ultimately reads, for aggregates.
+    /// Follows supported sequence pass-throughs to the primary-source entry
+    /// a sequence connection ultimately reads, for aggregates.
     fn sequence_source_path(&self, mut feed: u32) -> Option<Vec<String>> {
         let mut suffix = Vec::new();
         for _ in 0..12 {
@@ -1970,7 +2057,12 @@ impl GraphBuilder<'_> {
     fn iteration_source_path(&self, feed: &IterationFeed) -> Option<Vec<String>> {
         let mut path = self.source_abs_path(feed.source_key)?;
         path.extend(feed.source_suffix.iter().cloned());
-        Some(path)
+        if feed.distinct_key.is_some() {
+            let schema = &self.sources.first()?.schema;
+            Some(split_at_innermost_repeating(schema, &path).0)
+        } else {
+            Some(path)
+        }
     }
 
     /// The absolute source path behind output-port `key` on the primary
