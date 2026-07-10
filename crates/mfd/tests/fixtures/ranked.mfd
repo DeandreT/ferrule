@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Scores" library="xml" uid="2" kind="14">
+					<view rbx="300" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Scores" expanded="1">
+										<entry name="Score" outkey="10" expanded="1">
+											<entry name="Name" outkey="11"/>
+											<entry name="Points" outkey="12"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="ranked-source.xsd" inputinstance="ranked.xml" instanceroot="{}Scores"/>
+					</data>
+				</component>
+				<component name="Ranking" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="800" rbx="1100" rby="400"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Ranking" expanded="1">
+										<entry name="Top" inpkey="20" expanded="1">
+											<entry name="Name" inpkey="21"/>
+											<entry name="Points" inpkey="22"/>
+											<entry name="Position" inpkey="23"/>
+										</entry>
+										<entry name="Best" inpkey="24" expanded="1">
+											<entry name="Name" inpkey="25"/>
+											<entry name="Points" inpkey="26"/>
+										</entry>
+										<entry name="Distinct" inpkey="27" expanded="1">
+											<entry name="Name" inpkey="28"/>
+											<entry name="Points" inpkey="29"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="ranked-target.xsd" instanceroot="{}Ranking"/>
+					</data>
+				</component>
+				<component name="sort" library="core" uid="30" kind="30">
+					<sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+					<targets><datapoint pos="0" key="32"/></targets>
+					<data><sort><collation/><key direction="descending"/></sort></data>
+				</component>
+				<component name="constant" library="core" uid="31" kind="2">
+					<targets><datapoint pos="0" key="33"/></targets>
+					<data><constant value="2" datatype="integer"/></data>
+				</component>
+				<component name="count" library="core" uid="32" kind="6">
+					<sources><datapoint pos="0" key="34"/></sources>
+					<targets><datapoint pos="0" key="35"/></targets>
+					<data><parameter usageKind="input"/></data>
+				</component>
+				<component name="first-items" library="core" uid="33" kind="5">
+					<sources><datapoint pos="0" key="36"/><datapoint pos="1" key="37"/></sources>
+					<targets><datapoint pos="0" key="38"/></targets>
+				</component>
+				<component name="first-items" library="core" uid="34" kind="5">
+					<sources><datapoint pos="0" key="39"/><datapoint pos="1"/></sources>
+					<targets><datapoint pos="0" key="40"/></targets>
+				</component>
+				<component name="position" library="core" uid="35" kind="5">
+					<sources><datapoint pos="0" key="41"/></sources>
+					<targets><datapoint pos="0" key="42"/></targets>
+				</component>
+				<component name="group-by" library="core" uid="36" kind="5">
+					<sources><datapoint pos="0" key="43"/><datapoint pos="1" key="44"/></sources>
+					<targets><datapoint pos="0" key="45"/><datapoint pos="1" key="46"/></targets>
+				</component>
+				<component name="ScoresVariable" library="xml" uid="37" kind="14">
+					<data>
+						<parameter usageKind="variable"/>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="compute-when" inpkey="47"/>
+							<entry name="document" expanded="1">
+								<entry name="Scores" expanded="1">
+									<entry name="Score" inpkey="48" outkey="49" expanded="1">
+										<entry name="Name" outkey="50"/>
+										<entry name="Points" outkey="51"/>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="ranked-source.xsd" instanceroot="{}Scores"/>
+					</data>
+				</component>
+				<component name="first-items" library="core" uid="38" kind="5">
+					<sources><datapoint pos="0" key="52"/><datapoint pos="1"/></sources>
+					<targets><datapoint pos="0" key="53"/></targets>
+				</component>
+			</children>
+		</structure>
+		<connections>
+			<edge from="10" to="30"/>
+			<edge from="12" to="31"/>
+			<edge from="33" to="34"/>
+			<edge from="35" to="37"/>
+			<edge from="32" to="36"/>
+			<edge from="38" to="20"/>
+			<edge from="32" to="39"/>
+			<edge from="40" to="24"/>
+			<edge from="11" to="21"/>
+			<edge from="12" to="22"/>
+			<edge from="38" to="41"/>
+			<edge from="42" to="23"/>
+			<edge from="11" to="25"/>
+			<edge from="12" to="26"/>
+			<edge from="10" to="43"/>
+			<edge from="12" to="44"/>
+			<edge from="45" to="47"/>
+			<edge from="10" to="52"/>
+			<edge from="53" to="48"/>
+			<edge from="49" to="27"/>
+		</connections>
+	</component>
+</mapping>

@@ -204,6 +204,12 @@ impl GraphViewer<'_> {
             if scope.group_by == Some(needle) {
                 found.insert(format!("{label} group-by key"));
             }
+            if scope.sort_by == Some(needle) {
+                found.insert(format!("{label} sort key"));
+            }
+            if scope.take == Some(needle) {
+                found.insert(format!("{label} take count"));
+            }
             for binding in &scope.bindings {
                 if binding.node == needle {
                     found.insert(format!("{label} binding {}", binding.target_field));
@@ -937,10 +943,17 @@ mod tests {
             target_field: "out".into(),
             node: 1,
         });
+        fx.root_scope.sort_by = Some(1);
+        fx.root_scope.take = Some(1);
 
         assert_eq!(
             fx.viewer().references_to(1),
-            vec!["graph node 0", "root scope binding out"]
+            vec![
+                "graph node 0",
+                "root scope binding out",
+                "root scope sort key",
+                "root scope take count",
+            ]
         );
     }
 }

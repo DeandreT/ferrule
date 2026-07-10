@@ -256,7 +256,12 @@ fn validate_scope(
             format!("source path `{}` does not exist", display_path(source)),
         ));
     }
-    for (label, node) in [("filter", scope.filter), ("group-by key", scope.group_by)] {
+    for (label, node) in [
+        ("filter", scope.filter),
+        ("group-by key", scope.group_by),
+        ("sort key", scope.sort_by),
+        ("take count", scope.take),
+    ] {
         if let Some(node) = node
             && !project.graph.nodes.contains_key(&node)
         {
@@ -276,6 +281,18 @@ fn validate_scope(
         issues.push(ValidationIssue::new(
             &location,
             "group-by key has no iterated source",
+        ));
+    }
+    if scope.source.is_none() && scope.sort_by.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "sort key has no iterated source",
+        ));
+    }
+    if scope.source.is_none() && scope.take.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "take count has no iterated source",
         ));
     }
 
@@ -487,6 +504,8 @@ mod tests {
         project.root.source = None;
         project.root.filter = Some(88);
         project.root.group_by = Some(89);
+        project.root.sort_by = Some(90);
+        project.root.take = Some(91);
         project.root.bindings.push(Binding {
             target_field: "missing".into(),
             node: 77,
@@ -507,7 +526,11 @@ mod tests {
             "source field `missing` matches no scalar",
             "filter references missing node 88",
             "group-by key references missing node 89",
+            "sort key references missing node 90",
+            "take count references missing node 91",
             "filter has no iterated source",
+            "sort key has no iterated source",
+            "take count has no iterated source",
             "binding target `missing` does not exist",
             "binding for `missing` references missing node 77",
             "target scope does not exist",

@@ -695,3 +695,94 @@ fn group_by_designs_import_run_and_roundtrip() {
     let out_b = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, out_b);
 }
+
+#[test]
+fn sorted_first_items_import_run_and_roundtrip() {
+    let imported = mfd::import(&fixture("ranked.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    let top = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Top")
+        .unwrap();
+    assert_eq!(top.source, Some(vec!["Score".into()]));
+    assert!(top.sort_descending);
+    assert!(matches!(
+        &project.graph.nodes[&top.sort_by.unwrap()],
+        Node::SourceField { path } if path == &["Points"]
+    ));
+    assert!(matches!(
+        &project.graph.nodes[&top.take.unwrap()],
+        Node::Const {
+            value: Value::Int(2)
+        }
+    ));
+    let best = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Best")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&best.take.unwrap()],
+        Node::Const {
+            value: Value::Int(1)
+        }
+    ));
+    let distinct = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Distinct")
+        .unwrap();
+    assert!(distinct.group_by.is_some());
+    assert!(distinct.take.is_none());
+    assert_eq!(distinct.bindings.len(), 2);
+
+    let source = format_xml::read(&fixture("ranked.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let top_rows = target.field("Top").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(top_rows.len(), 2);
+    assert_eq!(scalar(&top_rows[0], "Name"), Value::String("First".into()));
+    assert_eq!(scalar(&top_rows[0], "Position"), Value::Int(1));
+    assert_eq!(scalar(&top_rows[1], "Name"), Value::String("Second".into()));
+    assert_eq!(scalar(&top_rows[1], "Position"), Value::Int(2));
+    let best_rows = target
+        .field("Best")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(best_rows.len(), 1);
+    assert_eq!(scalar(&best_rows[0], "Name"), Value::String("First".into()));
+    let distinct_rows = target
+        .field("Distinct")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    let distinct_names: Vec<_> = distinct_rows
+        .iter()
+        .map(|row| scalar(row, "Name"))
+        .collect();
+    assert_eq!(
+        distinct_names,
+        vec![
+            Value::String("Low".into()),
+            Value::String("First".into()),
+            Value::String("Second".into()),
+            Value::String("Third".into()),
+        ]
+    );
+
+    let dir = TempDir::new("ranked");
+    let out = dir.0.join("ranked.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert!(exported.contains("<key direction=\"descending\"/>"));
+    assert_eq!(exported.matches("name=\"first-items\"").count(), 2);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, rerun);
+}
