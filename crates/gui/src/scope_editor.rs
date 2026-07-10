@@ -19,6 +19,7 @@ fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     match sequence {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        mapping::SequenceExpr::Generate { .. } => "generate-sequence",
     }
 }
 
@@ -288,6 +289,16 @@ mod tests {
         assert_eq!(
             generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
             "tokenize-by-length"
+        );
+
+        scope.sequence = Some(mapping::SequenceExpr::Generate {
+            from: Some(1),
+            to: 2,
+            item: 3,
+        });
+        assert_eq!(
+            generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
+            "generate-sequence"
         );
 
         scope.sequence = None;

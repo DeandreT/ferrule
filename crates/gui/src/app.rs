@@ -29,6 +29,8 @@ const LAYOUT_VERSION: u32 = 1;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct CanvasLayout {
     version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project_fingerprint: Option<String>,
     nodes: Vec<CanvasNodeLayout>,
 }
 
@@ -45,6 +47,7 @@ enum PersistedCanvasNode {
     Source,
     Target,
     Graph { id: NodeId },
+    Placeholder { id: NodeId },
 }
 
 impl From<CanvasNode> for PersistedCanvasNode {
@@ -53,6 +56,7 @@ impl From<CanvasNode> for PersistedCanvasNode {
             CanvasNode::Source => Self::Source,
             CanvasNode::Target => Self::Target,
             CanvasNode::Graph(id) => Self::Graph { id },
+            CanvasNode::Placeholder(id) => Self::Placeholder { id },
         }
     }
 }
@@ -143,13 +147,13 @@ impl Default for FerruleApp {
 fn editor_snapshot(project: &Project, snarl: &Snarl<CanvasNode>) -> String {
     serde_json::to_string(&EditorSnapshotRef {
         project,
-        layout: CanvasLayout::capture(snarl),
+        layout: CanvasLayout::capture(project, snarl),
     })
     .expect("Editor state serialization cannot fail")
 }
 
 impl CanvasLayout {
-    fn capture(snarl: &Snarl<CanvasNode>) -> Self {
+    fn capture(project: &Project, snarl: &Snarl<CanvasNode>) -> Self {
         let mut nodes: Vec<_> = snarl
             .nodes_pos()
             .map(|(pos, &node)| CanvasNodeLayout {
@@ -161,6 +165,7 @@ impl CanvasLayout {
         nodes.sort_by_key(|entry| entry.node);
         Self {
             version: LAYOUT_VERSION,
+            project_fingerprint: Some(project_fingerprint(project)),
             nodes,
         }
     }
@@ -189,6 +194,14 @@ impl CanvasLayout {
     }
 }
 
+fn project_fingerprint(project: &Project) -> String {
+    let json = serde_json::to_vec(project).expect("Project serialization cannot fail");
+    let hash = json.into_iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
+    });
+    format!("{hash:016x}")
+}
+
 fn layout_path(project_path: &str) -> PathBuf {
     let mut path = PathBuf::from(project_path);
     path.set_extension("layout.json");
@@ -211,8 +224,12 @@ fn read_layout(project_path: &str) -> anyhow::Result<Option<CanvasLayout>> {
     Ok(Some(layout))
 }
 
-fn write_layout(project_path: &str, snarl: &Snarl<CanvasNode>) -> anyhow::Result<()> {
-    let json = serde_json::to_string_pretty(&CanvasLayout::capture(snarl))?;
+fn write_layout(
+    project_path: &str,
+    project: &Project,
+    snarl: &Snarl<CanvasNode>,
+) -> anyhow::Result<()> {
+    let json = serde_json::to_string_pretty(&CanvasLayout::capture(project, snarl))?;
     std::fs::write(layout_path(project_path), json)?;
     Ok(())
 }
@@ -279,6 +296,25 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
     build_snarl_with_layout(project, None)
 }
 
+fn arrange_snarl(project: &Project, current: &Snarl<CanvasNode>) -> Snarl<CanvasNode> {
+    let placeholders: std::collections::BTreeSet<_> = current
+        .nodes()
+        .filter_map(|node| match node {
+            CanvasNode::Placeholder(id) => Some(*id),
+            _ => None,
+        })
+        .collect();
+    let mut arranged = build_snarl(project);
+    for node in arranged.nodes_mut() {
+        if let CanvasNode::Graph(id) = *node
+            && placeholders.contains(&id)
+        {
+            *node = CanvasNode::Placeholder(id);
+        }
+    }
+    arranged
+}
+
 fn build_snarl_with_layout(
     project: &Project,
     saved_layout: Option<&CanvasLayout>,
@@ -312,6 +348,25 @@ fn build_snarl_with_layout(
     );
     let hidden_set: std::collections::BTreeSet<NodeId> = hidden.keys().copied().collect();
     let layout = layered_layout(&project.graph, &hidden_set, &binding_order);
+    let fingerprint = project_fingerprint(project);
+    let placeholders: std::collections::BTreeSet<NodeId> = saved_layout
+        .filter(|layout| layout.project_fingerprint.as_deref() == Some(fingerprint.as_str()))
+        .into_iter()
+        .flat_map(|layout| &layout.nodes)
+        .filter_map(|entry| match entry.node {
+            PersistedCanvasNode::Placeholder { id }
+                if matches!(
+                    project.graph.nodes.get(&id),
+                    Some(Node::Const {
+                        value: ir::Value::Null
+                    })
+                ) =>
+            {
+                Some(id)
+            }
+            _ => None,
+        })
+        .collect();
     let graph_start = source_pins
         .iter()
         .map(|leaf| leaf.label.chars().count())
@@ -324,7 +379,11 @@ fn build_snarl_with_layout(
         max_col = max_col.max(col);
         let snarl_id = snarl.insert_node(
             egui::pos2(graph_start + col as f32 * 420.0, row as f32 * 190.0),
-            CanvasNode::Graph(id),
+            if placeholders.contains(&id) {
+                CanvasNode::Placeholder(id)
+            } else {
+                CanvasNode::Graph(id)
+            },
         );
         snarl_ids.insert(id, snarl_id);
     }
@@ -658,7 +717,7 @@ impl FerruleApp {
     fn save_project(&mut self) -> anyhow::Result<Vec<String>> {
         let json = serde_json::to_string_pretty(&self.project)?;
         std::fs::write(&self.project_path, json)?;
-        write_layout(&self.project_path, &self.snarl)?;
+        write_layout(&self.project_path, &self.project, &self.snarl)?;
         self.mark_clean();
         Ok(cli::validate(&self.project)
             .into_iter()
@@ -942,7 +1001,7 @@ impl eframe::App for FerruleApp {
                         self.run();
                     }
                     if ui.button("Arrange").clicked() {
-                        self.snarl = build_snarl(&self.project);
+                        self.snarl = arrange_snarl(&self.project, &self.snarl);
                         self.status = "canvas re-arranged".to_string();
                     }
                 });
@@ -1111,6 +1170,118 @@ mod tests {
     }
 
     #[test]
+    fn layout_sidecar_restores_placeholder_identity_and_wiring() {
+        let project_path = temporary_project_path("placeholder-roundtrip");
+        let mut app = FerruleApp::default();
+        app.project.graph.nodes.insert(
+            0,
+            Node::Const {
+                value: ir::Value::Null,
+            },
+        );
+        app.project.graph.nodes.insert(
+            1,
+            Node::Call {
+                function: "upper".into(),
+                args: vec![0],
+            },
+        );
+        let mut snarl = Snarl::new();
+        snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
+        let placeholder = snarl.insert_node(egui::pos2(180.0, 210.0), CanvasNode::Placeholder(0));
+        let call = snarl.insert_node(egui::pos2(480.0, 210.0), CanvasNode::Graph(1));
+        snarl.insert_node(egui::pos2(780.0, 0.0), CanvasNode::Target);
+        snarl.connect(
+            OutPinId {
+                node: placeholder,
+                output: 0,
+            },
+            InPinId {
+                node: call,
+                input: 0,
+            },
+        );
+        app.snarl = snarl;
+        app.project_path = project_path.display().to_string();
+        app.save_project().expect("project and layout save");
+
+        let mut loaded = FerruleApp {
+            project_path: app.project_path.clone(),
+            ..Default::default()
+        };
+        loaded.load_project();
+        assert_eq!(
+            canvas_position(&loaded.snarl, CanvasNode::Placeholder(0)),
+            egui::pos2(180.0, 210.0)
+        );
+        let wires: Vec<_> = loaded
+            .snarl
+            .wires()
+            .map(|(from, to)| (loaded.snarl[from.node], loaded.snarl[to.node]))
+            .collect();
+        assert_eq!(
+            wires,
+            vec![(CanvasNode::Placeholder(0), CanvasNode::Graph(1))]
+        );
+
+        std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+            .expect("temporary test directory is removed");
+    }
+
+    #[test]
+    fn stale_layout_cannot_reclassify_a_project_node_as_a_placeholder() {
+        let project_path = temporary_project_path("stale-placeholder-layout");
+        let mut app = FerruleApp::default();
+        app.project.graph.nodes.insert(
+            0,
+            Node::Const {
+                value: ir::Value::Null,
+            },
+        );
+        app.snarl = build_snarl(&app.project);
+        for node in app.snarl.nodes_mut() {
+            if *node == CanvasNode::Graph(0) {
+                *node = CanvasNode::Placeholder(0);
+            }
+        }
+        app.project_path = project_path.display().to_string();
+        app.save_project().expect("project and layout save");
+
+        app.project.graph.nodes.insert(
+            0,
+            Node::Const {
+                value: ir::Value::String("intentional null replacement".into()),
+            },
+        );
+        std::fs::write(
+            &project_path,
+            serde_json::to_string_pretty(&app.project).expect("project serializes"),
+        )
+        .expect("replacement project is written without touching its layout");
+
+        let mut loaded = FerruleApp {
+            project_path: app.project_path.clone(),
+            ..Default::default()
+        };
+        loaded.load_project();
+        assert!(
+            loaded
+                .snarl
+                .nodes()
+                .any(|node| *node == CanvasNode::Graph(0))
+        );
+        assert!(
+            !loaded
+                .snarl
+                .nodes()
+                .any(|node| *node == CanvasNode::Placeholder(0))
+        );
+
+        std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+            .expect("temporary test directory is removed");
+    }
+
+    #[test]
     fn project_without_layout_sidecar_uses_default_layout() {
         let project_path = temporary_project_path("legacy-project");
         let project = blank_project();
@@ -1145,7 +1316,7 @@ mod tests {
         app.mark_clean();
         app.rebase_history();
 
-        app.snarl = build_snarl(&app.project);
+        app.snarl = arrange_snarl(&app.project, &app.snarl);
         app.observe_editor_history(std::time::Instant::now(), false);
         assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
         assert!(app.is_dirty());
@@ -1156,6 +1327,44 @@ mod tests {
         app.redo_project();
         assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
         assert!(app.is_dirty());
+    }
+
+    #[test]
+    fn arrange_preserves_placeholder_identity_and_wiring() {
+        let mut project = blank_project();
+        project.graph.nodes.insert(
+            0,
+            Node::Const {
+                value: ir::Value::Null,
+            },
+        );
+        project.graph.nodes.insert(
+            1,
+            Node::Call {
+                function: "upper".into(),
+                args: vec![0],
+            },
+        );
+        let mut current = build_snarl(&project);
+        for node in current.nodes_mut() {
+            if *node == CanvasNode::Graph(0) {
+                *node = CanvasNode::Placeholder(0);
+            }
+        }
+
+        let arranged = arrange_snarl(&project, &current);
+        assert!(
+            arranged
+                .nodes()
+                .any(|node| *node == CanvasNode::Placeholder(0))
+        );
+        assert_eq!(
+            arranged
+                .wires()
+                .map(|(from, to)| (arranged[from.node], arranged[to.node]))
+                .collect::<Vec<_>>(),
+            vec![(CanvasNode::Placeholder(0), CanvasNode::Graph(1))]
+        );
     }
 
     #[test]
