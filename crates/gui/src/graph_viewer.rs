@@ -79,7 +79,10 @@ impl GraphViewer<'_> {
     /// one. These nodes are the hidden backing of Source-pin wires.
     fn source_field_for(&mut self, path: &[String]) -> NodeId {
         let existing = self.graph.nodes.iter().find_map(|(id, node)| match node {
-            Node::SourceField { path: p } if p == path => Some(*id),
+            Node::SourceField {
+                path: p,
+                frame: None,
+            } if p == path => Some(*id),
             _ => None,
         });
         existing.unwrap_or_else(|| {
@@ -88,6 +91,7 @@ impl GraphViewer<'_> {
                 id,
                 Node::SourceField {
                     path: path.to_vec(),
+                    frame: None,
                 },
             );
             id
@@ -251,7 +255,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Source => "Source".to_string(),
             CanvasNode::Target => "Target".to_string(),
             CanvasNode::Graph(id) => match self.graph.nodes.get(id) {
-                Some(Node::SourceField { path }) => format!("Source: {}", path.join("/")),
+                Some(Node::SourceField { path, frame }) => {
+                    let owner = frame
+                        .as_ref()
+                        .and_then(|frame| frame.last())
+                        .map(|owner| format!("{owner}/"))
+                        .unwrap_or_default();
+                    format!("Source: {owner}{}", path.join("/"))
+                }
                 Some(Node::Position { collection }) if collection.is_empty() => {
                     "Position".to_string()
                 }
@@ -344,7 +355,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let mut remove_aggregate_wire = false;
         if let Some(node) = self.graph.nodes.get_mut(&node_id) {
             match node {
-                Node::SourceField { path } => {
+                Node::SourceField { path, frame } => {
+                    if let Some(frame) = frame {
+                        ui.label(format!(
+                            "@{}",
+                            frame.last().map(String::as_str).unwrap_or("frame")
+                        ))
+                        .on_hover_text(format!("source frame: {}", frame.join("/")));
+                    }
                     let mut joined = path.join("/");
                     if ui.text_edit_singleline(&mut joined).changed() {
                         *path = joined
@@ -669,7 +687,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
         });
         if ui.button("Source field (manual path)").clicked() {
-            self.insert(snarl, pos, Node::SourceField { path: vec![] });
+            self.insert(
+                snarl,
+                pos,
+                Node::SourceField {
+                    path: vec![],
+                    frame: None,
+                },
+            );
             ui.close();
         }
     }
@@ -791,7 +816,7 @@ mod tests {
             .nodes
             .iter()
             .find_map(|(id, n)| {
-                matches!(n, Node::SourceField { path } if path == &["name"]).then_some(*id)
+                matches!(n, Node::SourceField { path, .. } if path == &["name"]).then_some(*id)
             })
             .expect("a SourceField for `name` should exist");
         assert_eq!(fx.root_scope.bindings.len(), 1);

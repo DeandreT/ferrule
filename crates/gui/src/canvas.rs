@@ -250,6 +250,7 @@ mod tests {
             0,
             Node::SourceField {
                 path: vec!["a".into()],
+                frame: None,
             },
         );
         graph.nodes.insert(

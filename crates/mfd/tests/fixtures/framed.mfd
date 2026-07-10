@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Directory" library="xml" uid="2" kind="14">
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance"><entry name="document"><entry name="Directory">
+								<entry name="Office">
+									<entry name="Name" outkey="10"/>
+									<entry name="Department">
+										<entry name="Name" outkey="11"/>
+										<entry name="Person" outkey="12">
+											<entry name="First" outkey="13"/>
+											<entry name="Last" outkey="14"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry></entry></entry>
+						</root>
+						<document schema="framed-source.xsd" inputinstance="framed.xml" instanceroot="{}Directory"/>
+					</data>
+				</component>
+				<component name="PersonVariable" library="xml" uid="3" kind="14">
+					<data>
+						<parameter usageKind="variable"/>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="document"><entry name="Person" inpkey="20" outkey="21">
+								<entry name="First" inpkey="22"/>
+								<entry name="Last" inpkey="23" outkey="24"/>
+								<entry name="Details" inpkey="25"/>
+							</entry></entry>
+						</root>
+						<document schema="framed-target.xsd" instanceroot="{}People/{}Person"/>
+					</data>
+				</component>
+				<component name="sort" library="core" uid="4" kind="30">
+					<sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+					<targets><datapoint pos="0" key="32"/></targets>
+					<data><sort><collation/><key direction="ascending"/></sort></data>
+				</component>
+				<component name="People" library="xml" uid="5" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance"><entry name="document"><entry name="People">
+								<entry name="Person" inpkey="40">
+									<entry name="First"/><entry name="Last"/><entry name="Details"/>
+								</entry>
+							</entry></entry></entry>
+						</root>
+						<document schema="framed-target.xsd" instanceroot="{}People"/>
+					</data>
+				</component>
+				<component name="constant" library="core" uid="6" kind="2">
+					<targets><datapoint pos="0" key="50"/></targets>
+					<data><constant value=" (" datatype="string"/></data>
+				</component>
+				<component name="constant" library="core" uid="7" kind="2">
+					<targets><datapoint pos="0" key="51"/></targets>
+					<data><constant value=")" datatype="string"/></data>
+				</component>
+				<component name="concat" library="core" uid="8" kind="5" growable="1">
+					<sources>
+						<datapoint pos="0" key="52"/><datapoint pos="1" key="53"/>
+						<datapoint pos="2" key="54"/><datapoint pos="3" key="55"/>
+					</sources>
+					<targets><datapoint pos="0" key="56"/></targets>
+				</component>
+			</children>
+		</structure>
+		<connections>
+			<edge from="12" to="20"/><edge from="13" to="22"/><edge from="14" to="23"/>
+			<edge from="11" to="52"/><edge from="50" to="53"/>
+			<edge from="10" to="54"/><edge from="51" to="55"/><edge from="56" to="25"/>
+			<edge from="21" to="30"/><edge from="24" to="31"/><edge from="32" to="40"/>
+		</connections>
+	</component>
+</mapping>

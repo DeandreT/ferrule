@@ -409,8 +409,17 @@ fn eval_expr(
         .ok_or(EngineError::MissingNode(node_id))?;
 
     let result = match node {
-        Node::SourceField { path } => resolve_scalar(context, path)
-            .ok_or_else(|| EngineError::MissingSourceField(path.join("/"))),
+        Node::SourceField { path, frame } => {
+            let value = match frame {
+                Some(frame) => resolve_scalar_in_frame(context, positions, frame, path),
+                None => resolve_scalar(context, path),
+            };
+            value.ok_or_else(|| {
+                let mut display = frame.clone().unwrap_or_default();
+                display.extend(path.iter().cloned());
+                EngineError::MissingSourceField(display.join("/"))
+            })
+        }
         Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
         Node::Const { value } => Ok(value.clone()),
         Node::Call { function, args } => {
@@ -705,6 +714,21 @@ fn resolve_scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
     None
 }
 
+fn resolve_scalar_in_frame(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    frame: &[String],
+    path: &[String],
+) -> Option<Value> {
+    let position_index = positions.iter().rposition(|position| {
+        position.collection == frame
+            || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
+    })?;
+    let context_offset = context.len().checked_sub(positions.len())?;
+    let instance = *context.get(context_offset + position_index)?;
+    resolve_scalar(&[instance], path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -727,6 +751,7 @@ mod tests {
             (
                 0,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["first".into()],
                 },
             ),
@@ -739,6 +764,7 @@ mod tests {
             (
                 2,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["last".into()],
                 },
             ),
@@ -794,6 +820,7 @@ mod tests {
         let graph = graph_from(vec![(
             0,
             Node::SourceField {
+                frame: None,
                 path: vec!["missing".into()],
             },
         )]);
@@ -872,12 +899,14 @@ mod tests {
             (
                 0,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["cust".into()],
                 },
             ),
             (
                 1,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["item_id".into()],
                 },
             ),
@@ -896,6 +925,7 @@ mod tests {
             (
                 4,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["keep".into()],
                 },
             ),
@@ -1113,6 +1143,7 @@ mod tests {
             (
                 0,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["age".into()],
                 },
             ),
@@ -1193,12 +1224,14 @@ mod tests {
             (
                 0,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["score".into()],
                 },
             ),
             (
                 1,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["name".into()],
                 },
             ),
@@ -1289,6 +1322,7 @@ mod tests {
         let graph = graph_from(vec![(
             0,
             Node::SourceField {
+                frame: None,
                 path: vec!["Address".into(), "city".into()],
             },
         )]);
@@ -1352,6 +1386,7 @@ mod tests {
             (
                 1,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["month".into()],
                 },
             ),
@@ -1518,6 +1553,7 @@ mod tests {
             (
                 4,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["Price".into()],
                 },
             ),
@@ -1689,6 +1725,7 @@ mod tests {
             (
                 0,
                 Node::SourceField {
+                    frame: None,
                     path: vec!["customer_id".into()],
                 },
             ),
@@ -1777,6 +1814,7 @@ mod tests {
         let graph = graph_from(vec![(
             0,
             Node::SourceField {
+                frame: None,
                 path: vec!["name".into()],
             },
         )]);
