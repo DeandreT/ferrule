@@ -4,7 +4,7 @@
 //! can and records a warning per skipped piece, because a partial import
 //! the user finishes by hand still beats redrawing the mapping.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{SchemaKind, SchemaNode, Value};
@@ -38,8 +38,11 @@ struct SchemaComponent {
     output_instance: Option<String>,
     options: FormatOptions,
     is_source: bool,
+    is_variable: bool,
     /// Port key -> absolute entry path (segments below the schema root).
     ports: BTreeMap<u32, Vec<String>>,
+    input_keys: BTreeSet<u32>,
+    output_keys: BTreeSet<u32>,
 }
 
 /// What an iteration connection resolves to once `filter`/`group-by`
@@ -48,6 +51,9 @@ struct IterationFeed {
     /// Output key of the underlying source entry (or whatever else feeds
     /// the chain -- callers check it against the source ports).
     source_key: u32,
+    /// Path below `source_key` selected by transparent intermediate schema
+    /// components crossed on the way to the target iteration.
+    source_suffix: Vec<String>,
     /// The filter's boolean expression key, if a filter was crossed.
     filter_expr: Option<u32>,
     /// The group-by's key expression key, if a group-by was crossed.
@@ -58,6 +64,7 @@ struct IterationFeed {
 type ValueMapData = (Vec<(String, String)>, Option<String>);
 
 struct FnComponent {
+    library: String,
     name: String,
     kind: u32,
     /// Input pins in `pos` order; `None` for declared-but-keyless pins.
@@ -191,9 +198,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         }
     }
 
-    let sources: Vec<&SchemaComponent> = schema_components.iter().filter(|c| c.is_source).collect();
-    let targets: Vec<&SchemaComponent> =
-        schema_components.iter().filter(|c| !c.is_source).collect();
+    let sources: Vec<&SchemaComponent> = schema_components
+        .iter()
+        .filter(|c| !c.is_variable && c.is_source)
+        .collect();
+    let targets: Vec<&SchemaComponent> = schema_components
+        .iter()
+        .filter(|c| !c.is_variable && !c.is_source)
+        .collect();
+    let intermediates: Vec<&SchemaComponent> =
+        schema_components.iter().filter(|c| c.is_variable).collect();
     let unsupported = |side: &str| {
         MfdError::Unsupported(if skipped_libraries.is_empty() {
             format!("no importable {side} component (xml/json/csv/db) found in this design")
@@ -221,6 +235,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         source_fields: BTreeMap::new(),
         edge_from: &edge_from,
         sources: &sources,
+        intermediates: &intermediates,
         fn_components: &fn_components,
         fn_by_output: BTreeMap::new(),
         framed: std::collections::BTreeSet::new(),
@@ -282,7 +297,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // before any function component materializes a SourceField.
     for (_, from) in &iterations {
         let feed = builder.resolve_iteration_feed(*from);
-        if let Some(abs) = builder.source_abs_path(feed.source_key) {
+        if let Some(abs) = builder.iteration_source_path(&feed) {
             builder.note_framed_prefixes(&abs);
         }
     }
@@ -296,7 +311,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // Materialize every remaining function up front (filters and group-bys
     // are handled at the scope stage instead).
     for (i, fc) in fn_components.iter().enumerate() {
-        if fc.name != "filter"
+        if !is_filter_component(fc)
             && fc.name != "group-by"
             && !(fc.kind == 5 && aggregate_op(&fc.name).is_some())
         {
@@ -305,7 +320,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     }
     for (target_path, from) in iterations {
         let feed = builder.resolve_iteration_feed(from);
-        let Some(source_abs) = builder.source_abs_path(feed.source_key) else {
+        let Some(source_abs) = builder.iteration_source_path(&feed) else {
             builder.warnings.push(format!(
                 "iteration into `{}` comes from an unsupported feed; skipped",
                 target_path.join("/")
@@ -366,6 +381,20 @@ fn parse_u32(attr: Option<&str>) -> Option<u32> {
     attr.and_then(|a| a.parse().ok())
 }
 
+fn entry_key_sets(root: &roxmltree::Node) -> (BTreeSet<u32>, BTreeSet<u32>) {
+    let mut inputs = BTreeSet::new();
+    let mut outputs = BTreeSet::new();
+    for entry in root.descendants().filter(|node| node.has_tag_name("entry")) {
+        if let Some(key) = parse_u32(entry.attribute("inpkey")) {
+            inputs.insert(key);
+        }
+        if let Some(key) = parse_u32(entry.attribute("outkey")) {
+            outputs.insert(key);
+        }
+    }
+    (inputs, outputs)
+}
+
 /// Reads an xml schema component: entry tree, ports, and the schema itself
 /// (from the referenced XSD when it resolves, else derived from entries).
 fn read_schema_component(
@@ -384,10 +413,16 @@ fn read_schema_component(
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "root")?;
 
-    // Strip the synthetic FileInstance/document entry levels.
-    let mut entry = root_el
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
+    // Prefer the payload below the synthetic `document` entry wherever it
+    // appears. Variable components can put compute-when or parent-context
+    // entries before/around it instead of using the ordinary
+    // FileInstance/document wrapper.
+    let document_entry = root_el
+        .descendants()
+        .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("document"));
+    let mut entry = document_entry
+        .and_then(|document| document.children().find(|node| node.has_tag_name("entry")))
+        .or_else(|| root_el.children().find(|node| node.has_tag_name("entry")))?;
     while matches!(
         entry.attribute("name"),
         Some("FileInstance") | Some("document")
@@ -400,6 +435,7 @@ fn read_schema_component(
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
     let mut in_count = 0usize;
+    let (input_keys, output_keys) = entry_key_sets(&root_el);
     // The root entry's own port is a document-level connection.
     record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
     collect_entry_ports(
@@ -452,7 +488,12 @@ fn read_schema_component(
             .map(str::to_string),
         options: FormatOptions::default(),
         is_source,
+        is_variable: data.descendants().any(|node| {
+            node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
+        }),
         ports,
+        input_keys,
+        output_keys,
     })
 }
 
@@ -588,7 +629,10 @@ fn read_json_component(
             .map(str::to_string),
         options: FormatOptions::default(),
         is_source,
+        is_variable: false,
         ports,
+        input_keys: BTreeSet::new(),
+        output_keys: BTreeSet::new(),
     })
 }
 
@@ -806,7 +850,10 @@ fn read_csv_component(
         output_instance: text_el.attribute("outputinstance").map(str::to_string),
         options,
         is_source,
+        is_variable: false,
         ports,
+        input_keys: BTreeSet::new(),
+        output_keys: BTreeSet::new(),
     })
 }
 
@@ -1022,11 +1069,18 @@ fn read_db_component(
         output_instance: connection,
         options: FormatOptions::default(),
         is_source,
+        is_variable: false,
         ports,
+        input_keys: BTreeSet::new(),
+        output_keys: BTreeSet::new(),
     })
 }
 
 fn read_fn_component(component: &roxmltree::Node) -> FnComponent {
+    let library = component
+        .attribute("library")
+        .unwrap_or_default()
+        .to_string();
     let name = component.attribute("name").unwrap_or_default().to_string();
     let kind = parse_u32(component.attribute("kind")).unwrap_or(0);
     let pins = |tag: &str| -> Vec<Option<u32>> {
@@ -1084,6 +1138,7 @@ fn read_fn_component(component: &roxmltree::Node) -> FnComponent {
         });
 
     FnComponent {
+        library,
         name,
         kind,
         inputs,
@@ -1101,6 +1156,10 @@ fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sch
     Some(node)
 }
 
+fn is_filter_component(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 3
+}
+
 struct GraphBuilder<'a> {
     graph: Graph,
     next_id: NodeId,
@@ -1108,6 +1167,7 @@ struct GraphBuilder<'a> {
     source_fields: BTreeMap<Vec<String>, NodeId>,
     edge_from: &'a BTreeMap<u32, u32>,
     sources: &'a [&'a SchemaComponent],
+    intermediates: &'a [&'a SchemaComponent],
     fn_components: &'a [FnComponent],
     fn_by_output: BTreeMap<u32, usize>,
     /// Absolute source paths ending at a repeating node that some scope's
@@ -1129,6 +1189,28 @@ impl GraphBuilder<'_> {
 
     fn const_null(&mut self) -> NodeId {
         self.alloc(Node::Const { value: Value::Null })
+    }
+
+    fn source_field(&mut self, path: Vec<String>) -> NodeId {
+        let id = *self
+            .source_fields
+            .entry(path.clone())
+            .or_insert_with_key(|_| {
+                let id = self.next_id;
+                self.next_id += 1;
+                id
+            });
+        self.graph
+            .nodes
+            .entry(id)
+            .or_insert(Node::SourceField { path });
+        id
+    }
+
+    fn primary_source_field(&mut self, abs: &[String]) -> Option<NodeId> {
+        let schema = &self.sources.first()?.schema;
+        let path = self.suffix_after_framed(schema, abs);
+        Some(self.source_field(path))
     }
 
     /// Marks every repeating level along an iterated absolute source path
@@ -1167,45 +1249,75 @@ impl GraphBuilder<'_> {
         abs[suffix_start..].to_vec()
     }
 
+    /// Resolves one output of a variable schema component to the connected
+    /// input that supplies it plus the output's path below that input. An
+    /// output with connected descendant inputs is being constructed, not
+    /// transparently projected, so it deliberately remains unsupported.
+    fn intermediate_feed(&self, output_key: u32) -> Option<(u32, Vec<String>)> {
+        for component in self.intermediates {
+            if !component.output_keys.contains(&output_key) {
+                continue;
+            }
+            let output_path = component.ports.get(&output_key)?;
+            let is_constructed = component.ports.iter().any(|(key, path)| {
+                component.input_keys.contains(key)
+                    && self.edge_from.contains_key(key)
+                    && path.len() > output_path.len()
+                    && path.starts_with(output_path)
+            });
+            if is_constructed {
+                return None;
+            }
+            let (input_key, input_path) = component
+                .ports
+                .iter()
+                .filter(|(key, path)| {
+                    component.input_keys.contains(key)
+                        && self.edge_from.contains_key(key)
+                        && output_path.starts_with(path)
+                })
+                .max_by_key(|(_, path)| path.len())?;
+            let feed = *self.edge_from.get(input_key)?;
+            return Some((feed, output_path[input_path.len()..].to_vec()));
+        }
+        None
+    }
+
     /// The ferrule node producing the value at output-port `key`, creating
     /// SourceField/function nodes on demand. `None` for unsupported feeds.
     fn value_node(&mut self, key: u32) -> Option<NodeId> {
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
-            if let Some(abs) = source.ports.get(&key) {
-                let mut path = self.suffix_after_framed(&source.schema, abs);
-                if idx > 0 {
-                    // Extra sources are addressed by name from the
-                    // outermost context frame.
-                    let mut prefixed = vec![self.sources[idx].name.clone()];
-                    prefixed.extend(source.ports[&key].iter().cloned());
-                    path = prefixed;
+            if let Some(abs) = source.ports.get(&key).cloned() {
+                if idx == 0 {
+                    return self.primary_source_field(&abs);
                 }
-                let id = *self
-                    .source_fields
-                    .entry(path.clone())
-                    .or_insert_with_key(|_| {
-                        let id = self.next_id;
-                        self.next_id += 1;
-                        id
-                    });
-                self.graph
-                    .nodes
-                    .entry(id)
-                    .or_insert(Node::SourceField { path });
-                return Some(id);
+                // Extra sources are addressed by name from the outermost
+                // context frame.
+                let mut path = vec![self.sources[idx].name.clone()];
+                path.extend(abs);
+                return Some(self.source_field(path));
             }
+        }
+        // A transparent output of a variable schema component?
+        if let Some((feed, suffix)) = self.intermediate_feed(key) {
+            if suffix.is_empty() {
+                return self.value_node(feed);
+            }
+            let mut abs = self.sequence_source_path(feed)?;
+            abs.extend(suffix);
+            return self.primary_source_field(&abs);
         }
         // A function output?
         let idx = *self.fn_by_output.get(&key)?;
-        match self.fn_components[idx].name.as_str() {
+        if is_filter_component(&self.fn_components[idx]) {
             // A filter feeding a value position is pass-through of its
             // node input for our purposes; treat the value as whatever
             // feeds the filter's first input.
-            "filter" => {
-                let feed = self.input_feed(idx, 0)?;
-                self.value_node(feed)
-            }
+            let feed = self.input_feed(idx, 0)?;
+            return self.value_node(feed);
+        }
+        match self.fn_components[idx].name.as_str() {
             // A group-by's key output is the key expression itself
             // (re-evaluated in the group's context it reads the group's
             // shared key); its groups output passes the nodes through.
@@ -1466,32 +1578,41 @@ impl GraphBuilder<'_> {
     fn resolve_iteration_feed(&self, mut from: u32) -> IterationFeed {
         let mut filter_expr = None;
         let mut group_key = None;
+        let mut source_suffix = Vec::new();
         // Chains are short; the bound only guards against odd cycles.
-        for _ in 0..8 {
+        for _ in 0..12 {
+            if let Some((feed, mut suffix)) = self.intermediate_feed(from) {
+                suffix.extend(source_suffix);
+                source_suffix = suffix;
+                from = feed;
+                continue;
+            }
             let Some(&idx) = self.fn_by_output.get(&from) else {
                 break;
             };
             let fc = &self.fn_components[idx];
-            match fc.name.as_str() {
-                "filter" => {
-                    let Some(node_feed) = self.input_feed(idx, 0) else {
-                        break;
-                    };
-                    filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
-                    from = node_feed;
+            if is_filter_component(fc) {
+                let Some(node_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
+                from = node_feed;
+            } else {
+                match fc.name.as_str() {
+                    "group-by" if fc.outputs.first() == Some(&from) => {
+                        let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                            break;
+                        };
+                        group_key = group_key.or_else(|| self.input_feed(idx, 1));
+                        from = nodes_feed;
+                    }
+                    _ => break,
                 }
-                "group-by" if fc.outputs.first() == Some(&from) => {
-                    let Some(nodes_feed) = self.input_feed(idx, 0) else {
-                        break;
-                    };
-                    group_key = group_key.or_else(|| self.input_feed(idx, 1));
-                    from = nodes_feed;
-                }
-                _ => break,
             }
         }
         IterationFeed {
             source_key: from,
+            source_suffix,
             filter_expr,
             group_key,
         }
@@ -1500,21 +1621,39 @@ impl GraphBuilder<'_> {
     /// Follows filter/group-by pass-throughs to the primary-source entry a
     /// sequence connection ultimately reads, for aggregates.
     fn sequence_source_path(&self, mut feed: u32) -> Option<Vec<String>> {
-        for _ in 0..8 {
+        let mut suffix = Vec::new();
+        for _ in 0..12 {
             if let Some(abs) = self.sources.first()?.ports.get(&feed) {
-                return Some(abs.clone());
+                let mut path = abs.clone();
+                path.extend(suffix);
+                return Some(path);
+            }
+            if let Some((upstream, mut intermediate_suffix)) = self.intermediate_feed(feed) {
+                intermediate_suffix.extend(suffix);
+                suffix = intermediate_suffix;
+                feed = upstream;
+                continue;
             }
             let &idx = self.fn_by_output.get(&feed)?;
             let fc = &self.fn_components[idx];
-            match fc.name.as_str() {
-                "filter" => feed = self.input_feed(idx, 0)?,
-                "group-by" if fc.outputs.first() == Some(&feed) => {
-                    feed = self.input_feed(idx, 0)?;
+            if is_filter_component(fc) {
+                feed = self.input_feed(idx, 0)?;
+            } else {
+                match fc.name.as_str() {
+                    "group-by" if fc.outputs.first() == Some(&feed) => {
+                        feed = self.input_feed(idx, 0)?;
+                    }
+                    _ => return None,
                 }
-                _ => return None,
             }
         }
         None
+    }
+
+    fn iteration_source_path(&self, feed: &IterationFeed) -> Option<Vec<String>> {
+        let mut path = self.source_abs_path(feed.source_key)?;
+        path.extend(feed.source_suffix.iter().cloned());
+        Some(path)
     }
 
     /// The absolute source path behind output-port `key` on the primary
