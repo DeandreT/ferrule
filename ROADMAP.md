@@ -19,10 +19,12 @@ clean-room interoperability, and extensible adapters.
 
 - Formats, both directions: XML, JSON, CSV, SQLite, X12, and EDIFACT.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
-  stable sorting, item limits, conditionals, value maps, lookups, positions,
-  seven aggregates, computed aggregate expressions, and 30 scalar built-ins.
-- Interfaces: CLI runner/validator/importers, native graph editor, and a WASM
-  XML playground.
+  stable distinct-value iteration, stable sorting, item limits, conditionals,
+  value maps, lookups, positions, seven aggregates, computed aggregate
+  expressions, and 30 scalar built-ins.
+- Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
+  native graph editor with dirty-state guards and undo/redo, and a WASM XML
+  playground.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
   no project-level reusable functions.
@@ -52,6 +54,10 @@ clean-room interoperability, and extensible adapters.
 #### A1. Executable `.mfd` Common Profile
 
 Build breadth only where imported mappings can execute equivalently.
+
+Progress: legacy indexed XML names and stable `distinct-values` pipelines are
+implemented. Non-representable sequence operator order produces an actionable
+warning instead of silently claiming exact conversion.
 
 - Normalize legacy and namespace-indexed XML entry encodings.
 - Add first-class generated sequences: `distinct-values`, `tokenize`,
@@ -98,6 +104,10 @@ Exit criteria:
 #### B1. Editor Integrity
 
 This precedes larger GUI features.
+
+Progress: serialized-project dirty tracking, destructive-action guards, and
+bounded/coalesced project undo/redo are implemented. Persisted layout and the
+remaining graph/canvas divergence work are next.
 
 - One mutation/session layer for `Project` plus canvas state.
 - Dirty tracking and unsaved-change guards.
