@@ -6,17 +6,52 @@
 //! `xs:complexType` (or its `complexContent` extension) become
 //! attribute-flagged scalar children; `xs:element ref="..."`, named
 //! top-level complex/simple types, and `complexContent`/`xs:extension`
-//! resolve within the same document (recursive references degrade to
-//! string scalars); `xs:choice` and `xs:all` import as if they were
-//! sequences (every branch becomes a child -- ferrule has no exclusivity
-//! concept). It does not support unions, `xs:any`, imports, or
-//! `xs:simpleContent` (text-plus-attributes elements import as before,
-//! attributes ignored) -- that's the "lite" in the name.
+//! resolve across local `xs:include` and `xs:import` schema locations
+//! (recursive references and include cycles degrade safely); `xs:choice`
+//! and `xs:all` import as if they were sequences (every branch becomes a
+//! child -- ferrule has no exclusivity concept). It does not support unions,
+//! `xs:any`, remote schema URLs, or `xs:simpleContent` (text-plus-attributes
+//! elements import as before, attributes ignored) -- that's the "lite" in
+//! the name.
+
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaNode};
 use roxmltree::Node;
 
 use crate::XmlFormatError;
+
+#[derive(Debug, PartialEq, Eq)]
+struct ActiveDeclaration {
+    path: PathBuf,
+    kind: &'static str,
+    name: String,
+}
+
+#[derive(Default)]
+struct ParseState {
+    active: Vec<ActiveDeclaration>,
+}
+
+impl ParseState {
+    fn enter(&mut self, path: &Path, kind: &'static str, name: &str) -> bool {
+        let declaration = ActiveDeclaration {
+            path: normalized_path(path),
+            kind,
+            name: name.to_string(),
+        };
+        if self.active.contains(&declaration) {
+            return false;
+        }
+        self.active.push(declaration);
+        true
+    }
+
+    fn leave(&mut self) {
+        self.active.pop();
+    }
+}
 
 /// Imports the first root element declaration of an XSD file as a
 /// [`SchemaNode`].
@@ -33,44 +68,57 @@ pub fn import_root(
 ) -> Result<SchemaNode, XmlFormatError> {
     let text = std::fs::read_to_string(path)?;
     let doc = roxmltree::Document::parse(&text)?;
-    let root_element = doc
-        .root_element()
-        .children()
-        .find(|n| {
-            n.is_element()
-                && n.tag_name().name() == "element"
-                && root.is_none_or(|r| n.attribute("name") == Some(r))
-        })
-        .ok_or_else(|| {
-            XmlFormatError::MissingElement(match root {
-                Some(r) => format!("root xs:element `{r}`"),
-                None => "root xs:element".to_string(),
-            })
-        })?;
-    Ok(parse_element(
-        &root_element,
-        &doc.root_element(),
-        &mut Vec::new(),
-    ))
+    let schema_el = doc.root_element();
+    let root_element = schema_el.children().find(|n| {
+        n.is_element()
+            && n.tag_name().name() == "element"
+            && root.is_none_or(|r| n.attribute("name") == Some(r))
+    });
+    if let Some(root_element) = root_element {
+        return Ok(parse_element(
+            &root_element,
+            &schema_el,
+            path,
+            &mut ParseState::default(),
+        ));
+    }
+
+    // An included schema contributes its declarations to the including
+    // document. When the caller names the instance root, honor a root that
+    // lives in one of those sibling files too.
+    if let Some(root) = root
+        && let Some(external_path) = find_external_declaration(&schema_el, path, "element", root)
+    {
+        let external_text = std::fs::read_to_string(&external_path)?;
+        let external_doc = roxmltree::Document::parse(&external_text)?;
+        let external_schema = external_doc.root_element();
+        if let Some(root_element) = top_level(&external_schema, "element", root) {
+            return Ok(parse_element(
+                &root_element,
+                &external_schema,
+                &external_path,
+                &mut ParseState::default(),
+            ));
+        }
+    }
+
+    Err(XmlFormatError::MissingElement(match root {
+        Some(r) => format!("root xs:element `{r}`"),
+        None => "root xs:element".to_string(),
+    }))
 }
 
-fn parse_element(el: &Node, schema_el: &Node, active_refs: &mut Vec<String>) -> SchemaNode {
+fn parse_element(
+    el: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> SchemaNode {
     if el.attribute("name").is_none()
         && let Some(r) = el.attribute("ref")
     {
-        // `ref` points at a same-document top-level declaration; a prefix
-        // just qualifies the target namespace, so the local name suffices.
         let local = r.rsplit(':').next().unwrap_or(r);
-        if !active_refs.iter().any(|a| a == local)
-            && let Some(decl) = schema_el.children().find(|n| {
-                n.is_element()
-                    && n.tag_name().name() == "element"
-                    && n.attribute("name") == Some(local)
-            })
-        {
-            active_refs.push(local.to_string());
-            let node = parse_element(&decl, schema_el, active_refs);
-            active_refs.pop();
+        if let Some(node) = resolve_element(r, schema_el, schema_path, state) {
             return node;
         }
         // Unresolvable or recursive reference: degrade to a string scalar.
@@ -83,24 +131,15 @@ fn parse_element(el: &Node, schema_el: &Node, active_refs: &mut Vec<String>) -> 
     {
         return SchemaNode::group(
             name,
-            parse_complex_type(&complex_type, schema_el, active_refs),
+            parse_complex_type(&complex_type, schema_el, schema_path, state),
         );
     }
     if let Some(ty) = el.attribute("type") {
-        let local = ty.rsplit(':').next().unwrap_or(ty);
-        // A named top-level complexType makes this element a group; a
-        // recursive type reference degrades to a string scalar below.
-        let guard = format!("type:{local}");
-        if !active_refs.contains(&guard) {
-            if let Some(complex_type) = top_level(schema_el, "complexType", local) {
-                active_refs.push(guard);
-                let children = parse_complex_type(&complex_type, schema_el, active_refs);
-                active_refs.pop();
-                return SchemaNode::group(name, children);
-            }
-            if let Some(simple_type) = top_level(schema_el, "simpleType", local) {
-                return SchemaNode::scalar(name, simple_type_scalar(&simple_type));
-            }
+        if let Some(children) = resolve_complex_type(ty, schema_el, schema_path, state) {
+            return SchemaNode::group(name, children);
+        }
+        if let Some(ty) = resolve_simple_type(ty, schema_el, schema_path) {
+            return SchemaNode::scalar(name, ty);
         }
         return SchemaNode::scalar(name, map_xsd_type(ty));
     }
@@ -112,6 +151,220 @@ fn top_level<'a>(schema_el: &Node<'a, 'a>, tag: &str, name: &str) -> Option<Node
     schema_el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == tag && n.attribute("name") == Some(name))
+}
+
+fn resolve_element(
+    qname: &str,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> Option<SchemaNode> {
+    let local = local_name(qname);
+    if is_local_qname(schema_el, qname)
+        && let Some(declaration) = top_level(schema_el, "element", local)
+    {
+        return parse_element_declaration(&declaration, schema_el, schema_path, local, state);
+    }
+
+    let path = find_external_declaration(schema_el, schema_path, "element", qname)?;
+    let text = std::fs::read_to_string(&path).ok()?;
+    let doc = roxmltree::Document::parse(&text).ok()?;
+    let external_schema = doc.root_element();
+    let declaration = top_level(&external_schema, "element", local)?;
+    parse_element_declaration(&declaration, &external_schema, &path, local, state)
+}
+
+fn parse_element_declaration(
+    declaration: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    name: &str,
+    state: &mut ParseState,
+) -> Option<SchemaNode> {
+    if !state.enter(schema_path, "element", name) {
+        return None;
+    }
+    let node = parse_element(declaration, schema_el, schema_path, state);
+    state.leave();
+    Some(node)
+}
+
+fn resolve_complex_type(
+    qname: &str,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> Option<Vec<SchemaNode>> {
+    let local = local_name(qname);
+    if is_local_qname(schema_el, qname)
+        && let Some(declaration) = top_level(schema_el, "complexType", local)
+    {
+        return parse_complex_type_declaration(&declaration, schema_el, schema_path, local, state);
+    }
+
+    let path = find_external_declaration(schema_el, schema_path, "complexType", qname)?;
+    let text = std::fs::read_to_string(&path).ok()?;
+    let doc = roxmltree::Document::parse(&text).ok()?;
+    let external_schema = doc.root_element();
+    let declaration = top_level(&external_schema, "complexType", local)?;
+    parse_complex_type_declaration(&declaration, &external_schema, &path, local, state)
+}
+
+fn parse_complex_type_declaration(
+    declaration: &Node,
+    schema_el: &Node,
+    schema_path: &Path,
+    name: &str,
+    state: &mut ParseState,
+) -> Option<Vec<SchemaNode>> {
+    if !state.enter(schema_path, "complexType", name) {
+        return None;
+    }
+    let children = parse_complex_type(declaration, schema_el, schema_path, state);
+    state.leave();
+    Some(children)
+}
+
+fn resolve_simple_type(qname: &str, schema_el: &Node, schema_path: &Path) -> Option<ScalarType> {
+    let local = local_name(qname);
+    if is_local_qname(schema_el, qname)
+        && let Some(declaration) = top_level(schema_el, "simpleType", local)
+    {
+        return Some(simple_type_scalar(&declaration));
+    }
+
+    let path = find_external_declaration(schema_el, schema_path, "simpleType", qname)?;
+    let text = std::fs::read_to_string(path).ok()?;
+    let doc = roxmltree::Document::parse(&text).ok()?;
+    top_level(&doc.root_element(), "simpleType", local)
+        .map(|declaration| simple_type_scalar(&declaration))
+}
+
+fn local_name(qname: &str) -> &str {
+    qname.rsplit(':').next().unwrap_or(qname)
+}
+
+fn is_local_qname(schema_el: &Node, qname: &str) -> bool {
+    let Some((prefix, _)) = qname.split_once(':') else {
+        return true;
+    };
+    schema_el.lookup_namespace_uri(Some(prefix)) == schema_el.attribute("targetNamespace")
+}
+
+/// Finds the local schema file containing a top-level declaration reached
+/// through `xs:include` or a namespace-matching `xs:import`.
+fn find_external_declaration(
+    schema_el: &Node,
+    schema_path: &Path,
+    tag: &str,
+    qname: &str,
+) -> Option<PathBuf> {
+    let wanted_namespace = qname
+        .split_once(':')
+        .and_then(|(prefix, _)| schema_el.lookup_namespace_uri(Some(prefix)))
+        .map(str::to_string);
+    let effective_namespace = schema_el.attribute("targetNamespace").map(str::to_string);
+    let mut visited = BTreeSet::new();
+    visited.insert(normalized_path(schema_path));
+    search_dependencies(
+        schema_el,
+        schema_path,
+        tag,
+        local_name(qname),
+        wanted_namespace.as_deref(),
+        effective_namespace.as_deref(),
+        &mut visited,
+    )
+}
+
+fn search_dependencies(
+    schema_el: &Node,
+    schema_path: &Path,
+    tag: &str,
+    name: &str,
+    wanted_namespace: Option<&str>,
+    effective_namespace: Option<&str>,
+    visited: &mut BTreeSet<PathBuf>,
+) -> Option<PathBuf> {
+    for link in schema_el
+        .children()
+        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
+    {
+        let is_import = link.tag_name().name() == "import";
+        if is_import {
+            let Some(wanted) = wanted_namespace else {
+                continue;
+            };
+            if link
+                .attribute("namespace")
+                .is_some_and(|namespace| namespace != wanted)
+            {
+                continue;
+            }
+        }
+
+        let Some(location) = link.attribute("schemaLocation") else {
+            continue;
+        };
+        if location.contains("://") {
+            continue;
+        }
+        let path = schema_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(location);
+        let inherited_namespace = (!is_import).then_some(effective_namespace).flatten();
+        if let Some(found) = search_schema_file(
+            &path,
+            tag,
+            name,
+            wanted_namespace,
+            inherited_namespace,
+            visited,
+        ) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn search_schema_file(
+    schema_path: &Path,
+    tag: &str,
+    name: &str,
+    wanted_namespace: Option<&str>,
+    inherited_namespace: Option<&str>,
+    visited: &mut BTreeSet<PathBuf>,
+) -> Option<PathBuf> {
+    let path = normalized_path(schema_path);
+    if !visited.insert(path.clone()) {
+        return None;
+    }
+    let text = std::fs::read_to_string(&path).ok()?;
+    let doc = roxmltree::Document::parse(&text).ok()?;
+    let schema_el = doc.root_element();
+    let declared_namespace = schema_el.attribute("targetNamespace");
+    let effective_namespace = declared_namespace.or(inherited_namespace);
+
+    if wanted_namespace.is_none_or(|wanted| effective_namespace == Some(wanted))
+        && top_level(&schema_el, tag, name).is_some()
+    {
+        return Some(path);
+    }
+
+    search_dependencies(
+        &schema_el,
+        &path,
+        tag,
+        name,
+        wanted_namespace,
+        effective_namespace,
+        visited,
+    )
+}
+
+fn normalized_path(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// The scalar type of a named simpleType: its restriction's base.
@@ -127,7 +380,8 @@ fn simple_type_scalar(simple_type: &Node) -> ScalarType {
 fn parse_complex_type(
     complex_type: &Node,
     schema_el: &Node,
-    active_refs: &mut Vec<String>,
+    schema_path: &Path,
+    state: &mut ParseState,
 ) -> Vec<SchemaNode> {
     let mut children = Vec::new();
     for child in complex_type.children().filter(|n| n.is_element()) {
@@ -137,7 +391,8 @@ fn parse_complex_type(
                     &child,
                     is_repeating(&child),
                     schema_el,
-                    active_refs,
+                    schema_path,
+                    state,
                     &mut children,
                 );
             }
@@ -148,18 +403,13 @@ fn parse_complex_type(
                     .children()
                     .find(|n| n.is_element() && n.tag_name().name() == "extension")
                 {
-                    if let Some(base) = ext.attribute("base") {
-                        let local = base.rsplit(':').next().unwrap_or(base);
-                        let guard = format!("type:{local}");
-                        if !active_refs.contains(&guard)
-                            && let Some(base_type) = top_level(schema_el, "complexType", local)
-                        {
-                            active_refs.push(guard);
-                            children.extend(parse_complex_type(&base_type, schema_el, active_refs));
-                            active_refs.pop();
-                        }
+                    if let Some(base) = ext.attribute("base")
+                        && let Some(base_children) =
+                            resolve_complex_type(base, schema_el, schema_path, state)
+                    {
+                        children.extend(base_children);
                     }
-                    children.extend(parse_complex_type(&ext, schema_el, active_refs));
+                    children.extend(parse_complex_type(&ext, schema_el, schema_path, state));
                 }
             }
             _ => {}
@@ -190,13 +440,14 @@ fn collect_sequence(
     sequence: &Node,
     inherited_repeating: bool,
     schema_el: &Node,
-    active_refs: &mut Vec<String>,
+    schema_path: &Path,
+    state: &mut ParseState,
     out: &mut Vec<SchemaNode>,
 ) {
     for child in sequence.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
             "element" => {
-                let mut node = parse_element(&child, schema_el, active_refs);
+                let mut node = parse_element(&child, schema_el, schema_path, state);
                 node.repeating = inherited_repeating || is_repeating(&child);
                 out.push(node);
             }
@@ -205,7 +456,8 @@ fn collect_sequence(
                     &child,
                     inherited_repeating || is_repeating(&child),
                     schema_el,
-                    active_refs,
+                    schema_path,
+                    state,
                     out,
                 );
             }
@@ -507,6 +759,170 @@ mod tests {
                 ty: ScalarType::Int
             }
         ));
+    }
+
+    #[test]
+    fn resolves_declarations_across_includes_with_cycles() {
+        let dir =
+            std::env::temp_dir().join(format!("ferrule_xsd_include_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.xsd");
+        let shared = dir.join("shared.xsd");
+
+        std::fs::write(
+            &shared,
+            r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:include schemaLocation="main.xsd"/>
+  <xs:complexType name="BaseLineType">
+    <xs:sequence>
+      <xs:element name="Sku" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:simpleType name="PriorityType">
+    <xs:restriction base="xs:integer"/>
+  </xs:simpleType>
+  <xs:element name="SharedNote" type="xs:string"/>
+</xs:schema>
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &main,
+            r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:include schemaLocation="shared.xsd"/>
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Item" type="LineType" maxOccurs="unbounded"/>
+        <xs:element ref="SharedNote"/>
+        <xs:element name="Priority" type="PriorityType"/>
+        <xs:element name="Unknown" type="MissingType"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:complexType name="LineType">
+    <xs:complexContent>
+      <xs:extension base="BaseLineType">
+        <xs:sequence>
+          <xs:element name="Qty" type="xs:int"/>
+        </xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+</xs:schema>
+"#,
+        )
+        .unwrap();
+
+        let schema = import(&main).unwrap();
+        let included_root = import_root(&main, Some("SharedNote")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let item = schema.child("Item").unwrap();
+        assert!(item.repeating);
+        assert!(item.child("Sku").is_some());
+        assert!(matches!(
+            item.child("Qty").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        assert!(matches!(
+            schema.child("SharedNote").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        ));
+        assert_eq!(included_root.name, "SharedNote");
+        assert!(matches!(
+            schema.child("Priority").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        // A declaration missing from an include cycle still degrades instead
+        // of recursing forever.
+        assert!(matches!(
+            schema.child("Unknown").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        ));
+    }
+
+    #[test]
+    fn resolves_namespace_qualified_imports() {
+        let dir =
+            std::env::temp_dir().join(format!("ferrule_xsd_import_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("orders.xsd");
+        let shared = dir.join("customers.xsd");
+
+        std::fs::write(
+            &shared,
+            r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:customer="urn:ferrule:test:customers"
+           targetNamespace="urn:ferrule:test:customers">
+  <xs:complexType name="CustomerType">
+    <xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="Number" type="xs:int"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:element name="BillingAddress">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="City" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &main,
+            r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:customer="urn:ferrule:test:customers"
+           targetNamespace="urn:ferrule:test:orders">
+  <xs:import namespace="urn:ferrule:test:customers" schemaLocation="customers.xsd"/>
+  <xs:element name="Order">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Customer" type="customer:CustomerType"/>
+        <xs:element ref="customer:BillingAddress"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+"#,
+        )
+        .unwrap();
+
+        let schema = import_root(&main, Some("Order")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let customer = schema.child("Customer").unwrap();
+        assert!(customer.child("Name").is_some());
+        assert!(matches!(
+            customer.child("Number").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+        assert!(
+            schema
+                .child("BillingAddress")
+                .unwrap()
+                .child("City")
+                .is_some()
+        );
     }
 
     #[test]

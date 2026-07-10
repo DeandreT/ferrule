@@ -97,6 +97,40 @@ fn imported_project_runs() {
 }
 
 #[test]
+fn xsd_includes_supply_component_schemas_and_the_project_runs() {
+    let imported = mfd::import(&fixture("includes.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    let item = project.source.child("Item").unwrap();
+    assert!(item.repeating);
+    assert!(matches!(
+        item.child("Qty").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+    let line = project.target.child("Line").unwrap();
+    assert!(line.repeating);
+    assert!(matches!(
+        line.child("Amount").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+
+    let source = format_xml::read(&fixture("includes.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let lines = target
+        .field("Line")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(lines.len(), 2);
+    assert_eq!(scalar(&lines[0], "Code"), Value::String("A-10".into()));
+    assert_eq!(scalar(&lines[1], "Amount"), Value::Int(7));
+}
+
+#[test]
 fn export_then_import_roundtrips_semantically() {
     let imported = mfd::import(&fixture("people.mfd")).unwrap();
     let dir = std::env::temp_dir().join(format!("ferrule_mfd_roundtrip_{}", std::process::id()));

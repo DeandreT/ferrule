@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Catalog" library="xml" uid="2" kind="14">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Catalog" expanded="1">
+                    <entry name="Item" outkey="10" expanded="1">
+                      <entry name="Sku" outkey="11"/>
+                      <entry name="Qty" outkey="12"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="includes-source.xsd" inputinstance="includes.xml" instanceroot="{}Catalog"/>
+          </data>
+        </component>
+        <component name="Lines" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Lines" expanded="1">
+                    <entry name="Line" inpkey="20" expanded="1">
+                      <entry name="Code" inpkey="21"/>
+                      <entry name="Amount" inpkey="22"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="includes-target.xsd" instanceroot="{}Lines"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

@@ -3,7 +3,8 @@
 //! `.mfd` files are XML documents describing schema components (entry trees
 //! with integer port keys), function components, and a flat port-to-port
 //! connection graph. [`import`] converts the supported subset -- XML
-//! components (resolvable XSDs incl. attributes and element refs), JSON
+//! components (resolvable XSDs incl. local includes/imports, attributes,
+//! and element refs), JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
 //! fallback), CSV text components (inline delimiter/header settings),
 //! single-table SQLite database components (schema introspected from the
