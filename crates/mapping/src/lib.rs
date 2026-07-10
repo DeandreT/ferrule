@@ -118,6 +118,44 @@ pub struct Binding {
     pub node: NodeId,
 }
 
+/// A scalar sequence generated in the enclosing scope context.
+///
+/// Sequence expressions live on a scope instead of in [`Node`] because graph
+/// nodes produce one scalar value. Each generated value becomes the scope's
+/// current scalar iteration frame, and `item` identifies the empty-path
+/// [`Node::SourceField`] used by downstream graph expressions to read it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SequenceExpr {
+    Tokenize {
+        input: NodeId,
+        delimiter: NodeId,
+        item: NodeId,
+    },
+    TokenizeByLength {
+        input: NodeId,
+        length: NodeId,
+        item: NodeId,
+    },
+}
+
+impl SequenceExpr {
+    pub fn inputs(&self) -> [NodeId; 2] {
+        match self {
+            Self::Tokenize {
+                input, delimiter, ..
+            } => [*input, *delimiter],
+            Self::TokenizeByLength { input, length, .. } => [*input, *length],
+        }
+    }
+
+    pub fn item(&self) -> NodeId {
+        match self {
+            Self::Tokenize { item, .. } | Self::TokenizeByLength { item, .. } => *item,
+        }
+    }
+}
+
 /// Populates one target group.
 ///
 /// If `source` is set, this scope iterates the source data found by
@@ -125,15 +163,16 @@ pub struct Binding {
 /// repeating element branches, producing one target group per source item
 /// (a path may cross several repeating levels at once, e.g. `["Order",
 /// "Items", "Item"]`, which flattens nested repetition into a single
-/// target-side repetition). If `source` is `None`, the scope runs exactly
-/// once, producing a single (non-repeating) target group instance.
+/// target-side repetition). A `sequence` instead evaluates a producer in the
+/// parent context and iterates its generated scalar items. When both are
+/// absent, the scope runs exactly once and produces a non-repeating group.
 ///
 /// If `sort_by` is set, candidate items are stably sorted by that expression
 /// before filtering/grouping. If `filter` is set, it's evaluated (in the same per-item context as
 /// `bindings`) for each candidate item and must return a `bool`; items for
 /// which it's `false` are dropped, producing fewer target items than source
 /// items. `take` limits the number of produced items after filtering/grouping.
-/// These sequence controls are only meaningful when `source` is set.
+/// These controls apply to both source-backed and generated iteration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
@@ -142,14 +181,18 @@ pub struct Scope {
     pub target_field: String,
     #[serde(default)]
     pub source: Option<Vec<String>>,
+    /// A generated scalar sequence to iterate instead of a source path.
+    /// Absent in older project files; mutually exclusive with `source`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<SequenceExpr>,
     #[serde(default)]
     pub filter: Option<NodeId>,
     /// Groups the iterated items by this key expression (evaluated once
     /// per item): the scope then produces one target group per distinct
     /// key, in first-seen order, and the iteration frame becomes the
     /// group's members -- so bindings read the first member, aggregates
-    /// reduce the members, and nested scopes iterate them. Only
-    /// meaningful when `source` is set.
+    /// reduce the members, and nested scopes iterate them. Only meaningful
+    /// for a source-backed or generated iteration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_by: Option<NodeId>,
     /// Sort key evaluated once per candidate item. Incomparable values keep
@@ -176,8 +219,8 @@ pub struct Project {
     pub target: SchemaNode,
     /// Default source/target instance files, resolved relative to the
     /// project file's directory -- carried over from imported designs and
-    /// used to pick the component format on `.mfd` export. `run` ignores
-    /// them; the CLI takes explicit paths.
+    /// used to pick the component format on `.mfd` export. The CLI uses them
+    /// as project-relative defaults; explicit input/output flags override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
