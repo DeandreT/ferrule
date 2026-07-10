@@ -70,6 +70,9 @@ struct IterationFeed {
     /// A transparent variable projects the connected source group as a
     /// constructed value, so matching scalar descendants must be copied.
     projects_whole_group: bool,
+    /// Scalar descendant inputs used to construct an intermediate group,
+    /// keyed by their path relative to that group's output.
+    projections: BTreeMap<Vec<String>, u32>,
 }
 
 /// One function component's extracted facts.
@@ -86,6 +89,13 @@ struct FnComponent {
     constant: Option<(String, String)>,
     valuemap: Option<ValueMapData>,
     sort_descending: Option<bool>,
+}
+
+struct IntermediateFeed {
+    feed: u32,
+    suffix: Vec<String>,
+    control: Option<u32>,
+    projections: BTreeMap<Vec<String>, u32>,
 }
 
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
@@ -387,7 +397,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             for relative in relative_paths {
                 let mut target_leaf = target_path.clone();
                 target_leaf.extend(relative.iter().cloned());
-                if connected_bindings.contains(&target_leaf) {
+                if connected_bindings.contains(&target_leaf)
+                    || feed.projections.contains_key(&relative)
+                {
                     continue;
                 }
                 let mut source_leaf = source_abs.clone();
@@ -395,6 +407,31 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 if let Some(node) = builder.primary_source_field(&source_leaf) {
                     scope_builder.add_binding(&target_leaf, node);
                 }
+            }
+        }
+        let mut projection_paths = Vec::new();
+        if let Some(target_group) = schema_node_at(&target.schema, &target_path) {
+            collect_matching_scalar_paths(
+                target_group,
+                target_group,
+                &mut Vec::new(),
+                &mut projection_paths,
+            );
+        }
+        for relative in projection_paths {
+            let Some(value_feed) = feed.projections.get(&relative) else {
+                continue;
+            };
+            let mut target_leaf = target_path.clone();
+            target_leaf.extend(relative.iter().cloned());
+            if connected_bindings.contains(&target_leaf)
+                || !schema_node_at(&target.schema, &target_leaf)
+                    .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+            {
+                continue;
+            }
+            if let Some(node) = builder.value_node(*value_feed) {
+                scope_builder.add_binding(&target_leaf, node);
             }
         }
     }
@@ -521,16 +558,33 @@ fn read_schema_component(
     // Schema: prefer the referenced XSD (types + repeating info), picking
     // the top-level element the design says the document uses -- an XSD
     // can declare several document roots ("{ns}Local" strips to "Local").
-    let instance_root = document
+    let instance_root: Vec<String> = document
         .and_then(|d| d.attribute("instanceroot"))
-        .and_then(|r| r.rsplit('}').next())
-        .filter(|r| !r.is_empty());
+        .map(instance_root_segments)
+        .unwrap_or_default();
     let schema = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
             let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
-            match format_xml::xsd::import_root(&xsd_path, instance_root) {
-                Ok(schema) => Some(schema),
+            match format_xml::xsd::import_root(&xsd_path, instance_root.first().map(String::as_str))
+            {
+                Ok(schema) => {
+                    if instance_root.len() <= 1 {
+                        Some(schema)
+                    } else {
+                        match schema_node_at(&schema, &instance_root[1..]).cloned() {
+                            Some(nested) => Some(nested),
+                            None => {
+                                warnings.push(format!(
+                                    "component `{name}`: instance root `{}` does not exist in \
+                                     schema `{rel}`; falling back to the entry tree",
+                                    instance_root.join("/")
+                                ));
+                                None
+                            }
+                        }
+                    }
+                }
                 Err(e) => {
                     warnings.push(format!(
                         "component `{name}`: could not read schema `{rel}` ({e}); \
@@ -568,6 +622,30 @@ fn read_schema_component(
         input_keys,
         output_keys,
     })
+}
+
+fn instance_root_segments(root: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut start = 0;
+    let mut in_namespace = false;
+    for (index, character) in root.char_indices() {
+        match character {
+            '{' => in_namespace = true,
+            '}' => in_namespace = false,
+            '/' if !in_namespace => {
+                segments.push(&root[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    segments.push(&root[start..]);
+    segments
+        .into_iter()
+        .filter_map(|segment| segment.rsplit('}').next())
+        .filter(|segment| !segment.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// MapForce puts a simple-content value on its parent element's port. The
@@ -1285,7 +1363,7 @@ struct GraphBuilder<'a> {
     graph: Graph,
     next_id: NodeId,
     fn_nodes: BTreeMap<usize, NodeId>,
-    source_fields: BTreeMap<Vec<String>, NodeId>,
+    source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
     edge_from: &'a BTreeMap<u32, u32>,
     sources: &'a [&'a SchemaComponent],
     intermediates: &'a [&'a SchemaComponent],
@@ -1312,26 +1390,25 @@ impl GraphBuilder<'_> {
         self.alloc(Node::Const { value: Value::Null })
     }
 
-    fn source_field(&mut self, path: Vec<String>) -> NodeId {
-        let id = *self
-            .source_fields
-            .entry(path.clone())
-            .or_insert_with_key(|_| {
-                let id = self.next_id;
-                self.next_id += 1;
-                id
-            });
+    fn source_field(&mut self, frame: Option<Vec<String>>, path: Vec<String>) -> NodeId {
+        let key = (frame.clone(), path.clone());
+        let id = *self.source_fields.entry(key).or_insert_with_key(|_| {
+            let id = self.next_id;
+            self.next_id += 1;
+            id
+        });
         self.graph
             .nodes
             .entry(id)
-            .or_insert(Node::SourceField { path });
+            .or_insert(Node::SourceField { path, frame });
         id
     }
 
     fn primary_source_field(&mut self, abs: &[String]) -> Option<NodeId> {
         let schema = &self.sources.first()?.schema;
         let path = self.suffix_after_framed(schema, abs);
-        Some(self.source_field(path))
+        let frame = self.frame_for_field(schema, abs);
+        Some(self.source_field(frame, path))
     }
 
     /// Marks every repeating level along an iterated absolute source path
@@ -1370,25 +1447,31 @@ impl GraphBuilder<'_> {
         abs[suffix_start..].to_vec()
     }
 
+    fn frame_for_field(&self, schema: &SchemaNode, abs: &[String]) -> Option<Vec<String>> {
+        let mut node = schema;
+        let mut frame = None;
+        for (i, segment) in abs.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            if child.repeating && self.framed.contains(&abs[..=i]) {
+                frame = Some(abs[..=i].to_vec());
+            }
+            node = child;
+        }
+        frame
+    }
+
     /// Resolves one output of a variable schema component to the connected
     /// input that supplies it plus the output's path below that input. An
-    /// output with connected descendant inputs is being constructed, not
-    /// transparently projected, so it deliberately remains unsupported.
-    fn intermediate_feed(&self, output_key: u32) -> Option<(u32, Vec<String>, Option<u32>)> {
+    /// Connected descendant inputs are returned as scalar projections so a
+    /// constructed group can become ordinary target bindings.
+    fn intermediate_feed(&self, output_key: u32) -> Option<IntermediateFeed> {
         for component in self.intermediates {
             if !component.output_keys.contains(&output_key) {
                 continue;
             }
             let output_path = component.ports.get(&output_key)?;
-            let is_constructed = component.ports.iter().any(|(key, path)| {
-                component.input_keys.contains(key)
-                    && self.edge_from.contains_key(key)
-                    && path.len() > output_path.len()
-                    && path.starts_with(output_path)
-            });
-            if is_constructed {
-                return None;
-            }
             let (input_key, input_path) = component
                 .ports
                 .iter()
@@ -1402,7 +1485,28 @@ impl GraphBuilder<'_> {
             let control = component
                 .compute_when_key
                 .and_then(|key| self.edge_from.get(&key).copied());
-            return Some((feed, output_path[input_path.len()..].to_vec(), control));
+            let projections = component
+                .ports
+                .iter()
+                .filter_map(|(key, path)| {
+                    if component.input_keys.contains(key)
+                        && path.len() > output_path.len()
+                        && path.starts_with(output_path)
+                    {
+                        self.edge_from
+                            .get(key)
+                            .map(|feed| (path[output_path.len()..].to_vec(), *feed))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            return Some(IntermediateFeed {
+                feed,
+                suffix: output_path[input_path.len()..].to_vec(),
+                control,
+                projections,
+            });
         }
         None
     }
@@ -1420,16 +1524,16 @@ impl GraphBuilder<'_> {
                 // context frame.
                 let mut path = vec![self.sources[idx].name.clone()];
                 path.extend(abs);
-                return Some(self.source_field(path));
+                return Some(self.source_field(None, path));
             }
         }
         // A transparent output of a variable schema component?
-        if let Some((feed, suffix, _)) = self.intermediate_feed(key) {
-            if suffix.is_empty() {
-                return self.value_node(feed);
+        if let Some(intermediate) = self.intermediate_feed(key) {
+            if intermediate.suffix.is_empty() {
+                return self.value_node(intermediate.feed);
             }
-            let mut abs = self.sequence_source_path(feed)?;
-            abs.extend(suffix);
+            let mut abs = self.sequence_source_path(intermediate.feed)?;
+            abs.extend(intermediate.suffix);
             return self.primary_source_field(&abs);
         }
         // A function output?
@@ -1717,12 +1821,14 @@ impl GraphBuilder<'_> {
         let mut take_expr = None;
         let mut take_default_one = false;
         let mut projects_whole_group = false;
+        let mut projections = BTreeMap::new();
         let mut source_suffix = Vec::new();
         // Chains are short; the bound only guards against odd cycles.
         for _ in 0..12 {
-            if let Some((feed, mut suffix, control)) = self.intermediate_feed(from) {
-                projects_whole_group |= suffix.is_empty();
-                if let Some(control) = control
+            if let Some(intermediate) = self.intermediate_feed(from) {
+                projects_whole_group |= intermediate.suffix.is_empty();
+                projections.extend(intermediate.projections);
+                if let Some(control) = intermediate.control
                     && depth < 12
                 {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
@@ -1735,9 +1841,10 @@ impl GraphBuilder<'_> {
                     take_expr = take_expr.or(control.take_expr);
                     take_default_one |= control.take_default_one;
                 }
+                let mut suffix = intermediate.suffix;
                 suffix.extend(source_suffix);
                 source_suffix = suffix;
-                from = feed;
+                from = intermediate.feed;
                 continue;
             }
             let Some(&idx) = self.fn_by_output.get(&from) else {
@@ -1795,6 +1902,7 @@ impl GraphBuilder<'_> {
             take_expr,
             take_default_one,
             projects_whole_group,
+            projections,
         }
     }
 
@@ -1808,10 +1916,11 @@ impl GraphBuilder<'_> {
                 path.extend(suffix);
                 return Some(path);
             }
-            if let Some((upstream, mut intermediate_suffix, _)) = self.intermediate_feed(feed) {
+            if let Some(intermediate) = self.intermediate_feed(feed) {
+                let mut intermediate_suffix = intermediate.suffix;
                 intermediate_suffix.extend(suffix);
                 suffix = intermediate_suffix;
-                feed = upstream;
+                feed = intermediate.feed;
                 continue;
             }
             let &idx = self.fn_by_output.get(&feed)?;
@@ -2021,5 +2130,24 @@ impl ScopeBuilder {
             target_field: field.clone(),
             node,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::instance_root_segments;
+
+    #[test]
+    fn instance_root_paths_do_not_split_namespace_uris() {
+        assert_eq!(
+            instance_root_segments(
+                "{http://example.com/people}People/{http://example.com/people}Person"
+            ),
+            ["People", "Person"]
+        );
+        assert_eq!(
+            instance_root_segments("{}People/{}Person"),
+            ["People", "Person"]
+        );
     }
 }
