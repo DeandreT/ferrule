@@ -36,9 +36,9 @@ A project file (plain JSON) holds four things:
 ## Migrating from MapForce
 
 ferrule can convert MapForce `.mfd` designs (best-effort): XML components
-(resolvable XSDs, including attributes, top-level element refs, named types, and
-extensions), JSON components (JSON Schema with local `$ref` support, or the design's
-entry tree as a fallback), CSV text components (inline delimiter/header settings),
+(resolvable XSDs, including local includes/imports, attributes, top-level element refs,
+named types, and extensions), JSON components (JSON Schema with local `$ref` support,
+or the design's entry tree as a fallback), CSV text components (inline delimiter/header settings),
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
