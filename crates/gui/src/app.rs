@@ -264,10 +264,25 @@ impl FerruleApp {
         }
     }
 
-    fn save_project(&mut self) -> anyhow::Result<()> {
+    fn save_project(&mut self) -> anyhow::Result<Vec<String>> {
         let json = serde_json::to_string_pretty(&self.project)?;
         std::fs::write(&self.project_path, json)?;
-        Ok(())
+        Ok(cli::validate(&self.project)
+            .into_iter()
+            .map(|issue| issue.to_string())
+            .collect())
+    }
+
+    fn saved_status(path: &str, issues: &[String]) -> String {
+        if issues.is_empty() {
+            format!("saved {path}")
+        } else {
+            format!(
+                "saved {path} with {} validation issue(s): {}",
+                issues.len(),
+                issues[0]
+            )
+        }
     }
 
     /// Applies the result of a finished file dialog, if any.
@@ -293,7 +308,9 @@ impl FerruleApp {
             DialogKind::SaveProjectAs => {
                 self.project_path = path;
                 match self.save_project() {
-                    Ok(()) => self.status = format!("saved {}", self.project_path),
+                    Ok(issues) => {
+                        self.status = Self::saved_status(&self.project_path, &issues);
+                    }
                     Err(e) => self.status = format!("failed to save: {e}"),
                 }
             }
@@ -339,9 +356,20 @@ impl FerruleApp {
     }
 
     fn run(&mut self) {
-        if let Err(e) = self.save_project() {
-            self.status = format!("failed to save before running: {e}");
-            return;
+        match self.save_project() {
+            Ok(issues) if issues.is_empty() => {}
+            Ok(issues) => {
+                self.status = format!(
+                    "run blocked by {} validation issue(s): {}",
+                    issues.len(),
+                    issues[0]
+                );
+                return;
+            }
+            Err(e) => {
+                self.status = format!("failed to save before running: {e}");
+                return;
+            }
         }
         match cli::run_project(
             std::path::Path::new(&self.project_path),
@@ -377,7 +405,9 @@ impl eframe::App for FerruleApp {
                 }
                 if ui.button("Save").clicked() {
                     match self.save_project() {
-                        Ok(()) => self.status = format!("saved {}", self.project_path),
+                        Ok(issues) => {
+                            self.status = Self::saved_status(&self.project_path, &issues);
+                        }
                         Err(e) => self.status = format!("failed to save: {e}"),
                     }
                 }
