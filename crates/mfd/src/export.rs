@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, Value};
-use mapping::{FormatOptions, Node, NodeId, Project, Scope};
+use mapping::{FormatOptions, Node, NodeId, Project, Scope, SequenceExpr};
 
 use crate::MfdError;
 
@@ -73,9 +73,37 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut components = String::new();
     let mut edges: Vec<(u32, u32)> = Vec::new();
     let mut uid = 100u32;
+    let mut sequence_inputs = Vec::new();
+    let mut sequences = Vec::new();
+    collect_sequences(&project.root, &mut sequences);
+    for sequence in sequences {
+        let [input, parameter] = sequence.inputs();
+        let input_key = keys.next();
+        let parameter_key = keys.next();
+        let out = keys.next();
+        node_out_key.insert(sequence.item(), out);
+        sequence_inputs.push((input, input_key));
+        sequence_inputs.push((parameter, parameter_key));
+        let name = match sequence {
+            SequenceExpr::Tokenize { .. } => "tokenize",
+            SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        };
+        uid += 1;
+        let _ = write!(
+            components,
+            "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+             \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input_key}\"/><datapoint pos=\"1\" key=\"{parameter_key}\"/></sources>\n\
+             \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+             \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+             \t\t\t\t</component>\n"
+        );
+    }
     for (&id, node) in &project.graph.nodes {
         match node {
             Node::SourceField { path, frame } => {
+                if node_out_key.contains_key(&id) {
+                    continue;
+                }
                 let mut absolute = frame.clone().unwrap_or_default();
                 absolute.extend(path.iter().cloned());
                 match source_ports.key_for_suffix(&absolute) {
@@ -276,6 +304,15 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
             }
         }
     }
+    for (node, input) in sequence_inputs {
+        if let Some(&from) = node_out_key.get(&node) {
+            edges.push((from, input));
+        } else {
+            warnings.push(format!(
+                "sequence input references unexported node {node}; connection skipped"
+            ));
+        }
+    }
 
     // A root-scope iteration is only representable when the target side
     // has a row/array-shaped document root to connect to.
@@ -386,6 +423,15 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     std::fs::write(path, out)?;
     Ok(warnings)
+}
+
+fn collect_sequences<'a>(scope: &'a Scope, sequences: &mut Vec<&'a SequenceExpr>) {
+    if let Some(sequence) = &scope.sequence {
+        sequences.push(sequence);
+    }
+    for child in &scope.children {
+        collect_sequences(child, sequences);
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -862,7 +908,40 @@ fn collect_scope_edges(
     warnings: &mut Vec<String>,
 ) {
     let anchor_len = anchor.len();
-    if scope.source.is_some() && chain.is_empty() && !target_root_iterable {
+    if let Some(sequence) = &scope.sequence {
+        if chain.is_empty() && !target_root_iterable {
+            warnings.push(
+                "the root scope generates rows but the target document is not row/array \
+                 shaped in MapForce terms; the iteration wire is skipped"
+                    .to_string(),
+            );
+        } else {
+            match (
+                node_out_key.get(&sequence.item()),
+                target_ports.key_for_abs(chain),
+            ) {
+                (Some(&from), Some(to)) => edges.push((from, to)),
+                (None, _) => warnings.push(format!(
+                    "scope `{}` sequence item references an unexported node; skipped",
+                    chain.join("/")
+                )),
+                (_, None) => warnings.push(format!(
+                    "scope `{}` has no matching target entry; sequence skipped",
+                    chain.join("/")
+                )),
+            }
+            if scope.filter.is_some()
+                || scope.group_by.is_some()
+                || scope.sort_by.is_some()
+                || scope.take.is_some()
+            {
+                warnings.push(format!(
+                    "scope `{}` sequence controls are not yet exported; controls dropped",
+                    chain.join("/")
+                ));
+            }
+        }
+    } else if scope.source.is_some() && chain.is_empty() && !target_root_iterable {
         warnings.push(
             "the root scope iterates rows but the target document is not row/array \
              shaped in MapForce terms; the iteration wire is skipped"

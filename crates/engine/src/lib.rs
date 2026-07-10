@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{Instance, Value};
-use mapping::{Graph, Node, NodeId, Project, Scope};
+use mapping::{Graph, Node, NodeId, Project, Scope, SequenceExpr};
 use thiserror::Error;
 
 mod validate;
@@ -84,25 +84,37 @@ fn eval_scope(
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<Instance, EngineError> {
-    let mut extensions = match &scope.source {
-        None => vec![WalkExtension {
-            instances: vec![*context.last().expect("context is never empty")],
-            positions: Vec::new(),
-        }],
-        // The frame to iterate from is the innermost one that has the
-        // path's first field -- so a nested scope can still iterate an
-        // extra source (outermost frame) by name.
-        Some(path) => {
-            let base = context
-                .iter()
-                .rev()
-                .find(|frame| match path.first() {
-                    Some(first) => frame.field(first).is_some(),
-                    None => true,
-                })
-                .copied()
-                .unwrap_or_else(|| *context.last().expect("context is never empty"));
-            walk(base, path, &[], &[], &[])
+    let sequence_items = scope
+        .sequence
+        .as_ref()
+        .map(|sequence| eval_sequence(graph, sequence, context, positions))
+        .transpose()?
+        .map(|values| {
+            Instance::Repeated(values.into_iter().map(Instance::Scalar).collect::<Vec<_>>())
+        });
+    let mut extensions = if let Some(items) = &sequence_items {
+        walk(items, &[], &[], &[], &[])
+    } else {
+        match &scope.source {
+            None => vec![WalkExtension {
+                instances: vec![*context.last().expect("context is never empty")],
+                positions: Vec::new(),
+            }],
+            // The frame to iterate from is the innermost one that has the
+            // path's first field -- so a nested scope can still iterate an
+            // extra source (outermost frame) by name.
+            Some(path) => {
+                let base = context
+                    .iter()
+                    .rev()
+                    .find(|frame| match path.first() {
+                        Some(first) => frame.field(first).is_some(),
+                        None => true,
+                    })
+                    .copied()
+                    .unwrap_or_else(|| *context.last().expect("context is never empty"));
+                walk(base, path, &[], &[], &[])
+            }
         }
     };
 
@@ -148,7 +160,7 @@ fn eval_scope(
         .map(|node| eval_item_count(graph, node, context, positions))
         .transpose()?;
     let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
-    if let (Some(key_node), Some(path)) = (scope.group_by, &scope.source) {
+    if let Some(key_node) = scope.group_by {
         // Partition the iterated items by their key, in first-seen order.
         let mut groups: Vec<GroupBucket> = Vec::new();
         for extension in &extensions {
@@ -193,8 +205,10 @@ fn eval_scope(
             .into_iter()
             .map(|group| {
                 let members = Instance::Repeated(group.members);
-                let wrapper = path
-                    .last()
+                let wrapper = scope
+                    .source
+                    .as_ref()
+                    .and_then(|path| path.last())
                     .map(|segment| Instance::Group(vec![(segment.clone(), members.clone())]));
                 OwnedGroup {
                     wrapper,
@@ -276,13 +290,85 @@ fn eval_scope(
         }
     }
 
-    if scope.source.is_some() {
+    if scope.source.is_some() || scope.sequence.is_some() {
         Ok(Instance::Repeated(produced))
     } else {
         produced
             .into_iter()
             .next()
             .ok_or(EngineError::FilteredNonRepeatingScope)
+    }
+}
+
+fn eval_sequence(
+    graph: &Graph,
+    sequence: &SequenceExpr,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<Vec<Value>, EngineError> {
+    let [input, parameter] = sequence.inputs();
+    let mut in_progress = HashSet::new();
+    let input = eval_expr(graph, input, context, positions, &mut in_progress)?;
+    if matches!(input, Value::Null) {
+        return Ok(Vec::new());
+    }
+    let mut in_progress = HashSet::new();
+    let parameter = eval_expr(graph, parameter, context, positions, &mut in_progress)?;
+    if matches!(parameter, Value::Null) {
+        return Ok(Vec::new());
+    }
+
+    match sequence {
+        SequenceExpr::Tokenize { .. } => tokenize(input, parameter),
+        SequenceExpr::TokenizeByLength { .. } => tokenize_by_length(input, parameter),
+    }
+}
+
+fn tokenize(input: Value, delimiter: Value) -> Result<Vec<Value>, EngineError> {
+    let input = sequence_string(input, "tokenize")?;
+    let delimiter = sequence_string(delimiter, "tokenize")?;
+    if delimiter.is_empty() {
+        return Err(functions::FunctionError::InvalidArgument {
+            function: "tokenize",
+            message: "requires a non-empty delimiter",
+        }
+        .into());
+    }
+    Ok(input
+        .split(&delimiter)
+        .map(|value| Value::String(value.to_string()))
+        .collect())
+}
+
+fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Value>, EngineError> {
+    let input = sequence_string(input, "tokenize-by-length")?;
+    let length = match length {
+        Value::Int(value) => Some(value),
+        Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
+        Value::String(value) => value.trim().parse().ok(),
+        _ => None,
+    }
+    .filter(|length| *length > 0)
+    .ok_or(functions::FunctionError::InvalidArgument {
+        function: "tokenize-by-length",
+        message: "requires a positive integer length",
+    })? as usize;
+
+    let chars: Vec<char> = input.chars().collect();
+    Ok(chars
+        .chunks(length)
+        .map(|chunk| Value::String(chunk.iter().collect()))
+        .collect())
+}
+
+fn sequence_string(value: Value, function: &'static str) -> Result<String, EngineError> {
+    match value {
+        Value::String(value) => Ok(value),
+        other => Err(functions::FunctionError::TypeMismatch {
+            function,
+            got: other.type_name(),
+        }
+        .into()),
     }
 }
 
@@ -843,6 +929,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -891,6 +978,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -928,6 +1016,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -997,6 +1086,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec!["orders".into(), "items".into()]),
+                sequence: None,
                 filter: Some(4),
                 group_by: None,
                 sort_by: None,
@@ -1121,6 +1211,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1173,6 +1264,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1234,6 +1326,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec![]),
+                sequence: None,
                 filter: Some(2),
                 group_by: None,
                 sort_by: None,
@@ -1314,6 +1407,7 @@ mod tests {
             graph,
             root: Scope {
                 source: Some(Vec::new()),
+                sequence: None,
                 sort_by: Some(0),
                 sort_descending: true,
                 take: Some(2),
@@ -1393,6 +1487,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1484,6 +1579,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1493,6 +1589,7 @@ mod tests {
                 children: vec![Scope {
                     target_field: "Year".into(),
                     source: Some(vec!["Row".into()]),
+                    sequence: None,
                     filter: None,
                     group_by: Some(0),
                     sort_by: None,
@@ -1605,6 +1702,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1614,6 +1712,7 @@ mod tests {
                 children: vec![Scope {
                     target_field: "Row".into(),
                     source: Some(vec!["Item".into()]),
+                    sequence: None,
                     filter: Some(3),
                     group_by: Some(0),
                     sort_by: None,
@@ -1728,6 +1827,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1737,6 +1837,7 @@ mod tests {
                 children: vec![Scope {
                     target_field: "OrderOut".into(),
                     source: Some(vec!["Order".into()]),
+                    sequence: None,
                     filter: None,
                     group_by: None,
                     sort_by: None,
@@ -1746,6 +1847,7 @@ mod tests {
                     children: vec![Scope {
                         target_field: "CategoryOut".into(),
                         source: Some(vec!["Items".into(), "Item".into()]),
+                        sequence: None,
                         filter: None,
                         group_by: Some(0),
                         sort_by: None,
@@ -1958,6 +2060,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: None,
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -1970,6 +2073,7 @@ mod tests {
                 children: vec![Scope {
                     target_field: "Order".into(),
                     source: Some(vec!["Order".into()]),
+                    sequence: None,
                     filter: None,
                     group_by: None,
                     sort_by: None,
@@ -2100,6 +2204,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec![]),
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -2179,6 +2284,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec!["customers".into()]),
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
@@ -2201,5 +2307,247 @@ mod tests {
         let target =
             run_with_sources(&project, &source, vec![("customers".into(), customers)]).unwrap();
         assert_eq!(target.as_repeated().map(<[Instance]>::len), Some(1));
+    }
+
+    #[test]
+    fn generated_sequences_reuse_nested_scope_controls_and_positions() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["Text".into()],
+                    frame: None,
+                },
+            ),
+            (
+                1,
+                Node::Const {
+                    value: Value::String(",".into()),
+                },
+            ),
+            (
+                2,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+            (
+                3,
+                Node::Call {
+                    function: "upper".into(),
+                    args: vec![2],
+                },
+            ),
+            (4, Node::Position { collection: vec![] }),
+            (
+                5,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                children: vec![Scope {
+                    target_field: "Row".into(),
+                    source: Some(vec!["Row".into()]),
+                    children: vec![Scope {
+                        target_field: "Token".into(),
+                        sequence: Some(SequenceExpr::Tokenize {
+                            input: 0,
+                            delimiter: 1,
+                            item: 2,
+                        }),
+                        take: Some(5),
+                        bindings: vec![
+                            Binding {
+                                target_field: "Value".into(),
+                                node: 3,
+                            },
+                            Binding {
+                                target_field: "Position".into(),
+                                node: 4,
+                            },
+                        ],
+                        ..Scope::default()
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            },
+        };
+        let mut invalid = project.clone();
+        invalid.root.children.push(Scope {
+            target_field: "Duplicate".into(),
+            source: Some(Vec::new()),
+            sequence: Some(SequenceExpr::Tokenize {
+                input: 0,
+                delimiter: 1,
+                item: 2,
+            }),
+            ..Scope::default()
+        });
+        invalid.root.children.push(Scope {
+            target_field: "Missing".into(),
+            sequence: Some(SequenceExpr::TokenizeByLength {
+                input: 999,
+                length: 998,
+                item: 997,
+            }),
+            ..Scope::default()
+        });
+        invalid.root.children.push(Scope {
+            target_field: "WrongItem".into(),
+            sequence: Some(SequenceExpr::Tokenize {
+                input: 0,
+                delimiter: 1,
+                item: 3,
+            }),
+            ..Scope::default()
+        });
+        let issues = validate(&invalid);
+        assert!(issues.iter().any(|issue| {
+            issue
+                .message
+                .contains("each generated sequence requires a unique item node")
+        }));
+        assert!(issues.iter().any(|issue| {
+            issue
+                .message
+                .contains("source path and generated sequence are mutually exclusive")
+        }));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.message == "sequence input references missing node 999")
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.message == "sequence item references missing node 997")
+        );
+        assert!(issues.iter().any(|issue| {
+            issue.message == "sequence item must reference an unframed empty-path source field"
+        }));
+        let row = |text: &str| {
+            Instance::Group(vec![(
+                "Text".into(),
+                Instance::Scalar(Value::String(text.into())),
+            )])
+        };
+        let source = Instance::Group(vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row("a,b,c"), row("d,e")]),
+        )]);
+
+        let output = run(&project, &source).unwrap();
+        let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+        let values = |row: &Instance| {
+            row.field("Token")
+                .and_then(Instance::as_repeated)
+                .unwrap()
+                .iter()
+                .map(|token| {
+                    (
+                        token.field("Value").and_then(Instance::as_scalar).cloned(),
+                        token
+                            .field("Position")
+                            .and_then(Instance::as_scalar)
+                            .cloned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            values(&rows[0]),
+            vec![
+                (Some(Value::String("A".into())), Some(Value::Int(1))),
+                (Some(Value::String("B".into())), Some(Value::Int(2))),
+            ]
+        );
+        assert_eq!(
+            values(&rows[1]),
+            vec![
+                (Some(Value::String("D".into())), Some(Value::Int(1))),
+                (Some(Value::String("E".into())), Some(Value::Int(2))),
+            ]
+        );
+    }
+
+    #[test]
+    fn tokenizers_handle_empty_and_unicode_inputs() {
+        assert_eq!(
+            tokenize(Value::String(String::new()), Value::String(",".into())).unwrap(),
+            vec![Value::String(String::new())]
+        );
+        assert_eq!(
+            tokenize_by_length(Value::String("aé🙂z".into()), Value::Int(2)).unwrap(),
+            vec![Value::String("aé".into()), Value::String("🙂z".into())]
+        );
+        assert!(matches!(
+            tokenize_by_length(Value::String("abc".into()), Value::Int(0)),
+            Err(EngineError::Function(
+                functions::FunctionError::InvalidArgument { .. }
+            ))
+        ));
+
+        let graph = graph_from(vec![
+            (0, Node::Const { value: Value::Null }),
+            (
+                1,
+                Node::Const {
+                    value: Value::String(",".into()),
+                },
+            ),
+            (
+                2,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                sequence: Some(SequenceExpr::Tokenize {
+                    input: 0,
+                    delimiter: 1,
+                    item: 2,
+                }),
+                ..Scope::default()
+            },
+        };
+        let output = run(&project, &Instance::Group(Vec::new())).unwrap();
+        assert!(output.as_repeated().is_some_and(<[Instance]>::is_empty));
+        let mut missing_parameter = project.clone();
+        missing_parameter.graph.nodes.insert(
+            0,
+            Node::Const {
+                value: Value::String("abc".into()),
+            },
+        );
+        missing_parameter
+            .graph
+            .nodes
+            .insert(1, Node::Const { value: Value::Null });
+        let output = run(&missing_parameter, &Instance::Group(Vec::new())).unwrap();
+        assert!(output.as_repeated().is_some_and(<[Instance]>::is_empty));
     }
 }

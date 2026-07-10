@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Input" library="xml" uid="2" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Input"><entry name="Words" outkey="10"/><entry name="Codes" outkey="11"/></entry></entry></entry></root>
+            <document schema="tokenize-source.xsd" inputinstance="tokenize.xml" instanceroot="{}Input"/>
+          </data>
+        </component>
+        <component name="Output" library="xml" uid="3" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Output"><entry name="Word" inpkey="20"><entry name="Value" inpkey="21"/></entry><entry name="Pair" inpkey="22"><entry name="Value" inpkey="23"/></entry></entry></entry></entry></root>
+            <document schema="tokenize-target.xsd" instanceroot="{}Output"/>
+          </data>
+        </component>
+        <component name="tokenize" library="core" uid="4" kind="5">
+          <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+          <targets><datapoint pos="0" key="32"/></targets>
+        </component>
+        <component name="constant" library="core" uid="5" kind="2">
+          <targets><datapoint pos="0" key="33"/></targets>
+          <data><constant value="," datatype="string"/></data>
+        </component>
+        <component name="left-trim" library="core" uid="6" kind="5">
+          <sources><datapoint pos="0" key="34"/></sources>
+          <targets><datapoint pos="0" key="35"/></targets>
+        </component>
+        <component name="tokenize-by-length" library="core" uid="7" kind="5">
+          <sources><datapoint pos="0" key="36"/><datapoint pos="1" key="37"/></sources>
+          <targets><datapoint pos="0" key="38"/></targets>
+        </component>
+        <component name="constant" library="core" uid="8" kind="2">
+          <targets><datapoint pos="0" key="39"/></targets>
+          <data><constant value="2" datatype="integer"/></data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="30"/>
+      <edge from="33" to="31"/>
+      <edge from="32" to="20"/>
+      <edge from="32" to="34"/>
+      <edge from="35" to="21"/>
+      <edge from="11" to="36"/>
+      <edge from="39" to="37"/>
+      <edge from="38" to="22"/>
+      <edge from="38" to="23"/>
+    </connections>
+  </component>
+</mapping>

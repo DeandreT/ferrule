@@ -10,6 +10,7 @@ use std::path::Path;
 use ir::{SchemaKind, SchemaNode, Value};
 use mapping::{
     AggregateOp, Binding, FormatOptions, Graph, NamedSource, Node, NodeId, Project, Scope,
+    SequenceExpr,
 };
 
 use crate::MfdError;
@@ -53,6 +54,9 @@ struct IterationFeed {
     /// Output key of the underlying source entry (or whatever else feeds
     /// the chain -- callers check it against the source ports).
     source_key: u32,
+    /// A function that generates the sequence instead of reading a source
+    /// collection directly.
+    sequence_component: Option<usize>,
     /// Path below `source_key` selected by transparent intermediate schema
     /// components crossed on the way to the target iteration.
     source_suffix: Vec<String>,
@@ -261,6 +265,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         graph: Graph::default(),
         next_id: 0,
         fn_nodes: BTreeMap::new(),
+        sequence_items: BTreeMap::new(),
+        sequence_scope_components: BTreeSet::new(),
+        warned_sequence_uses: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         edge_from: &edge_from,
         sources: &sources,
@@ -333,6 +340,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // before any function component materializes a SourceField.
     for (_, from) in &iterations {
         let feed = builder.resolve_iteration_feed(*from);
+        if let Some(idx) = feed.sequence_component {
+            builder.sequence_scope_components.insert(idx);
+        }
         if let Some(abs) = builder.iteration_source_path(&feed) {
             builder.note_framed_prefixes(&abs);
         }
@@ -354,6 +364,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             || is_sort_component(fc)
             || is_first_items_component(fc)
             || is_distinct_values_component(fc)
+            || is_sequence_producer(fc)
             || fc.name == "group-by"
             || fc.kind == 5 && aggregate_op(&fc.name).is_some())
         {
@@ -370,13 +381,17 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 target_path.join("/")
             ));
         }
-        let Some(source_abs) = builder.iteration_source_path(&feed) else {
+        let source_abs = builder.iteration_source_path(&feed);
+        let sequence = feed
+            .sequence_component
+            .and_then(|idx| builder.sequence_expr(idx));
+        if source_abs.is_none() && sequence.is_none() {
             builder.warnings.push(format!(
                 "iteration into `{}` comes from an unsupported feed; skipped",
                 target_path.join("/")
             ));
             continue;
-        };
+        }
         let mut filter_node = feed.filter_expr.and_then(|key| builder.value_node(key));
         let distinct_node = feed.distinct_key.and_then(|key| builder.value_node(key));
         let group_node = feed
@@ -407,20 +422,22 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     })
                 })
             });
-        scope_builder.add_iteration(
-            &target_path,
-            &source_abs,
-            IterationNodes {
-                filter: filter_node,
-                group_by: group_node,
-                sort_by: sort_node,
-                sort_descending: feed.sort_descending,
-                take: take_node,
-            },
-        );
+        let nodes = IterationNodes {
+            filter: filter_node,
+            group_by: group_node,
+            sort_by: sort_node,
+            sort_descending: feed.sort_descending,
+            take: take_node,
+        };
+        if let Some(sequence) = sequence {
+            scope_builder.add_sequence(&target_path, sequence, nodes);
+        } else if let Some(source_abs) = &source_abs {
+            scope_builder.add_iteration(&target_path, source_abs, nodes);
+        }
         if feed.projects_whole_group
+            && let Some(source_abs) = &source_abs
             && let (Some(source_group), Some(target_group)) = (
-                schema_node_at(&primary.schema, &source_abs),
+                schema_node_at(&primary.schema, source_abs),
                 schema_node_at(&target.schema, &target_path),
             )
         {
@@ -1421,10 +1438,19 @@ fn is_distinct_values_component(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "distinct-values"
 }
 
+fn is_sequence_producer(component: &FnComponent) -> bool {
+    component.library == "core"
+        && component.kind == 5
+        && matches!(component.name.as_str(), "tokenize" | "tokenize-by-length")
+}
+
 struct GraphBuilder<'a> {
     graph: Graph,
     next_id: NodeId,
     fn_nodes: BTreeMap<usize, NodeId>,
+    sequence_items: BTreeMap<usize, NodeId>,
+    sequence_scope_components: BTreeSet<usize>,
+    warned_sequence_uses: BTreeSet<usize>,
     source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
     edge_from: &'a BTreeMap<u32, u32>,
     sources: &'a [&'a SchemaComponent],
@@ -1464,6 +1490,18 @@ impl GraphBuilder<'_> {
             .entry(id)
             .or_insert(Node::SourceField { path, frame });
         id
+    }
+
+    fn sequence_item(&mut self, idx: usize) -> NodeId {
+        if let Some(&item) = self.sequence_items.get(&idx) {
+            return item;
+        }
+        let item = self.alloc(Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        });
+        self.sequence_items.insert(idx, item);
+        item
     }
 
     fn primary_source_field(&mut self, abs: &[String]) -> Option<NodeId> {
@@ -1617,6 +1655,17 @@ impl GraphBuilder<'_> {
             return self
                 .input_feed(idx, 0)
                 .and_then(|feed| self.value_node(feed));
+        }
+        if is_sequence_producer(&self.fn_components[idx]) {
+            if !self.sequence_scope_components.contains(&idx)
+                && self.warned_sequence_uses.insert(idx)
+            {
+                self.warnings.push(format!(
+                    "sequence function `{}` is not connected to a repeating target; scalar use is unsupported",
+                    self.fn_components[idx].name
+                ));
+            }
+            return Some(self.sequence_item(idx));
         }
         if is_first_items_component(&self.fn_components[idx]) {
             return self
@@ -1899,6 +1948,7 @@ impl GraphBuilder<'_> {
         let mut projects_whole_group = false;
         let mut projections = BTreeMap::new();
         let mut source_suffix = Vec::new();
+        let mut sequence_component = None;
         // Chains are short; the bound only guards against odd cycles.
         for _ in 0..12 {
             if let Some(intermediate) = self.intermediate_feed(from) {
@@ -1929,7 +1979,10 @@ impl GraphBuilder<'_> {
                 break;
             };
             let fc = &self.fn_components[idx];
-            if is_filter_component(fc) {
+            if is_sequence_producer(fc) {
+                sequence_component = Some(idx);
+                break;
+            } else if is_filter_component(fc) {
                 let Some(node_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
@@ -2007,6 +2060,7 @@ impl GraphBuilder<'_> {
         }
         IterationFeed {
             source_key: from,
+            sequence_component,
             source_suffix,
             filter_expr,
             group_key,
@@ -2055,6 +2109,9 @@ impl GraphBuilder<'_> {
     }
 
     fn iteration_source_path(&self, feed: &IterationFeed) -> Option<Vec<String>> {
+        if feed.sequence_component.is_some() {
+            return None;
+        }
         let mut path = self.source_abs_path(feed.source_key)?;
         path.extend(feed.source_suffix.iter().cloned());
         if feed.distinct_key.is_some() {
@@ -2063,6 +2120,29 @@ impl GraphBuilder<'_> {
         } else {
             Some(path)
         }
+    }
+
+    fn sequence_expr(&mut self, idx: usize) -> Option<SequenceExpr> {
+        let input = self
+            .input_feed(idx, 0)
+            .and_then(|feed| self.value_node(feed))?;
+        let parameter = self
+            .input_feed(idx, 1)
+            .and_then(|feed| self.value_node(feed))?;
+        let item = self.sequence_item(idx);
+        Some(match self.fn_components[idx].name.as_str() {
+            "tokenize" => SequenceExpr::Tokenize {
+                input,
+                delimiter: parameter,
+                item,
+            },
+            "tokenize-by-length" => SequenceExpr::TokenizeByLength {
+                input,
+                length: parameter,
+                item,
+            },
+            _ => return None,
+        })
     }
 
     /// The absolute source path behind output-port `key` on the primary
@@ -2236,6 +2316,21 @@ impl ScopeBuilder {
             .insert(target_path.to_vec(), source_abs.to_vec());
         let scope = self.ensure_scope(target_path);
         scope.source = Some(relative);
+        scope.filter = nodes.filter;
+        scope.group_by = nodes.group_by;
+        scope.sort_by = nodes.sort_by;
+        scope.sort_descending = nodes.sort_descending;
+        scope.take = nodes.take;
+    }
+
+    fn add_sequence(
+        &mut self,
+        target_path: &[String],
+        sequence: SequenceExpr,
+        nodes: IterationNodes,
+    ) {
+        let scope = self.ensure_scope(target_path);
+        scope.sequence = Some(sequence);
         scope.filter = nodes.filter;
         scope.group_by = nodes.group_by;
         scope.sort_by = nodes.sort_by;

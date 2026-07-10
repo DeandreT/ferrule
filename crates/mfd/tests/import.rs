@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
-use mapping::Node;
+use mapping::{Node, SequenceExpr};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -991,4 +991,97 @@ fn indexed_xml_entry_names_import_run_and_roundtrip() {
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     let rerun = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, rerun);
+}
+
+#[test]
+fn tokenizers_generate_distinct_scalar_sequences_and_roundtrip() {
+    let imported = mfd::import(&fixture("tokenize.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+    let word = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Word")
+        .unwrap();
+    let pair = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Pair")
+        .unwrap();
+    let Some(SequenceExpr::Tokenize {
+        item: word_item, ..
+    }) = word.sequence
+    else {
+        panic!("Word should iterate tokenize output");
+    };
+    let Some(SequenceExpr::TokenizeByLength {
+        item: pair_item, ..
+    }) = pair.sequence
+    else {
+        panic!("Pair should iterate tokenize-by-length output");
+    };
+    assert_ne!(word_item, pair_item);
+    assert!(matches!(
+        &project.graph.nodes[&word_item],
+        Node::SourceField { path, frame: None } if path.is_empty()
+    ));
+    assert!(matches!(
+        &project.graph.nodes[&pair_item],
+        Node::SourceField { path, frame: None } if path.is_empty()
+    ));
+
+    let source = format_xml::read(&fixture("tokenize.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let words = target
+        .field("Word")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        words
+            .iter()
+            .map(|row| scalar(row, "Value"))
+            .collect::<Vec<_>>(),
+        vec![
+            Value::String("alpha".into()),
+            Value::String("beta".into()),
+            Value::String("gamma".into()),
+        ]
+    );
+    let pairs = target
+        .field("Pair")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        pairs
+            .iter()
+            .map(|row| scalar(row, "Value"))
+            .collect::<Vec<_>>(),
+        vec![Value::String("Aé".into()), Value::String("🙂Z".into())]
+    );
+
+    let dir = TempDir::new("tokenize");
+    let out = dir.0.join("tokenize.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"tokenize\"").count(), 1);
+    assert_eq!(exported.matches("name=\"tokenize-by-length\"").count(), 1);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, rerun);
+}
+
+#[test]
+fn tokenizer_scalar_use_emits_an_actionable_warning() {
+    let imported = mfd::import(&fixture("tokenize-scalar.mfd")).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(
+        imported.warnings[0]
+            .contains("sequence function `tokenize` is not connected to a repeating target"),
+        "{:?}",
+        imported.warnings
+    );
 }

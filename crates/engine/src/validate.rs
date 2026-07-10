@@ -43,6 +43,14 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
 }
 
 fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
+    let mut sequence_item_scopes = BTreeMap::new();
+    collect_sequence_items(
+        &project.root,
+        &mut Vec::new(),
+        &mut sequence_item_scopes,
+        issues,
+    );
+    let sequence_items: BTreeSet<_> = sequence_item_scopes.keys().copied().collect();
     for (&id, node) in &project.graph.nodes {
         let location = format!("graph node {id}");
         for (input, referenced) in node_inputs(node) {
@@ -55,6 +63,7 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
         }
 
         match node {
+            Node::SourceField { .. } if sequence_items.contains(&id) => {}
             Node::SourceField { path, frame } => {
                 let mut absolute = frame.clone().unwrap_or_default();
                 absolute.extend(path.iter().cloned());
@@ -123,6 +132,35 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
             }
             _ => {}
         }
+    }
+}
+
+fn collect_sequence_items(
+    scope: &Scope,
+    path: &mut Vec<String>,
+    items: &mut BTreeMap<NodeId, String>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if let Some(sequence) = &scope.sequence {
+        let location = if path.is_empty() {
+            "root scope".to_string()
+        } else {
+            format!("scope `{}`", path.join("/"))
+        };
+        if let Some(first) = items.insert(sequence.item(), location.clone()) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "sequence item node {} is already owned by {first}; each generated sequence requires a unique item node",
+                    sequence.item()
+                ),
+            ));
+        }
+    }
+    for child in &scope.children {
+        path.push(child.target_field.clone());
+        collect_sequence_items(child, path, items, issues);
+        path.pop();
     }
 }
 
@@ -261,6 +299,34 @@ fn validate_scope(
             format!("source path `{}` does not exist", display_path(source)),
         ));
     }
+    if scope.source.is_some() && scope.sequence.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "source path and generated sequence are mutually exclusive",
+        ));
+    }
+    if let Some(sequence) = &scope.sequence {
+        for (label, node) in [
+            ("sequence input", sequence.inputs()[0]),
+            ("sequence parameter", sequence.inputs()[1]),
+            ("sequence item", sequence.item()),
+        ] {
+            if !project.graph.nodes.contains_key(&node) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!("{label} references missing node {node}"),
+                ));
+            }
+        }
+        if let Some(node) = project.graph.nodes.get(&sequence.item())
+            && !matches!(node, Node::SourceField { path, frame: None } if path.is_empty())
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "sequence item must reference an unframed empty-path source field",
+            ));
+        }
+    }
     for (label, node) in [
         ("filter", scope.filter),
         ("group-by key", scope.group_by),
@@ -276,25 +342,26 @@ fn validate_scope(
             ));
         }
     }
-    if scope.source.is_none() && scope.filter.is_some() {
+    let iterates = scope.source.is_some() || scope.sequence.is_some();
+    if !iterates && scope.filter.is_some() {
         issues.push(ValidationIssue::new(
             &location,
             "filter has no iterated source",
         ));
     }
-    if scope.source.is_none() && scope.group_by.is_some() {
+    if !iterates && scope.group_by.is_some() {
         issues.push(ValidationIssue::new(
             &location,
             "group-by key has no iterated source",
         ));
     }
-    if scope.source.is_none() && scope.sort_by.is_some() {
+    if !iterates && scope.sort_by.is_some() {
         issues.push(ValidationIssue::new(
             &location,
             "sort key has no iterated source",
         ));
     }
-    if scope.source.is_none() && scope.take.is_some() {
+    if !iterates && scope.take.is_some() {
         issues.push(ValidationIssue::new(
             &location,
             "take count has no iterated source",
