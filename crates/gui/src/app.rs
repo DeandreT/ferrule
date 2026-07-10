@@ -77,7 +77,7 @@ fn blank_project() -> Project {
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
-        Node::SourceField { .. } | Node::Const { .. } => vec![],
+        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => vec![],
         Node::Call { args, .. } => args.clone(),
         Node::If {
             condition,

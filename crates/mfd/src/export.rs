@@ -85,6 +85,28 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                     path.join("/")
                 )),
             },
+            Node::Position { collection } => {
+                let input = keys.next();
+                let out = keys.next();
+                node_out_key.insert(id, out);
+                match source_ports.key_for_suffix(collection) {
+                    Some(source) => edges.push((source, input)),
+                    None => warnings.push(format!(
+                        "position collection `{}` matches no source entry; its \
+                         context connection is skipped",
+                        collection.join("/")
+                    )),
+                }
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"position\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+            }
             Node::Lookup { .. } => warnings
                 .push("lookup nodes have no simple MapForce equivalent; skipped".to_string()),
             Node::Aggregate {

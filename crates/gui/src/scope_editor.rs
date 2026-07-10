@@ -179,6 +179,7 @@ fn node_picker(
 fn node_kind_label(node: &mapping::Node) -> &'static str {
     match node {
         mapping::Node::SourceField { .. } => "source_field",
+        mapping::Node::Position { .. } => "position",
         mapping::Node::Const { .. } => "const",
         mapping::Node::Call { .. } => "call",
         mapping::Node::If { .. } => "if",
