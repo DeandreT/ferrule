@@ -9,6 +9,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Instance-field name used for an XML element's simple text content.
+pub const XML_TEXT_FIELD: &str = "#text";
+
 /// The scalar types a field can hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +58,12 @@ pub struct SchemaNode {
     /// and a child element sharing a name collide (known limitation).
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub attribute: bool,
+    /// This scalar node is the text content of its parent XML element rather
+    /// than a nested element. XSD `simpleContent` uses one text child plus
+    /// zero or more attribute children. Non-XML formats treat it as an
+    /// ordinary named scalar field.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub text: bool,
     /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
     /// Schema's `const`), compared against the raw text before parsing.
     /// Format adapters use it both to validate and to disambiguate --
@@ -78,6 +87,7 @@ impl SchemaNode {
             name: name.into(),
             repeating: false,
             attribute: false,
+            text: false,
             fixed: None,
             kind: SchemaKind::Scalar { ty },
         }
@@ -88,6 +98,7 @@ impl SchemaNode {
             name: name.into(),
             repeating: false,
             attribute: false,
+            text: false,
             fixed: None,
             kind: SchemaKind::Group { children },
         }
@@ -105,6 +116,12 @@ impl SchemaNode {
         self
     }
 
+    /// Marks this scalar as its parent XML element's text content.
+    pub fn text(mut self) -> Self {
+        self.text = true;
+        self
+    }
+
     /// Requires this scalar to hold `value` (builder-style).
     pub fn fixed(mut self, value: impl Into<String>) -> Self {
         self.fixed = Some(value.into());
@@ -114,6 +131,13 @@ impl SchemaNode {
     pub fn child(&self, name: &str) -> Option<&SchemaNode> {
         match &self.kind {
             SchemaKind::Group { children } => children.iter().find(|c| c.name == name),
+            SchemaKind::Scalar { .. } => None,
+        }
+    }
+
+    pub fn text_child(&self) -> Option<&SchemaNode> {
+        match &self.kind {
+            SchemaKind::Group { children } => children.iter().find(|child| child.text),
             SchemaKind::Scalar { .. } => None,
         }
     }
@@ -225,5 +249,17 @@ mod tests {
                 .repeating
         );
         assert!(schema.child("missing").is_none());
+    }
+
+    #[test]
+    fn xml_text_marker_roundtrips_and_defaults_off() {
+        let text = SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text();
+        let json = serde_json::to_string(&text).unwrap();
+        assert!(json.contains("\"text\":true"));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&json).unwrap(), text);
+
+        let old_json = r#"{"name":"value","kind":{"kind":"scalar","ty":"string"}}"#;
+        let old = serde_json::from_str::<SchemaNode>(old_json).unwrap();
+        assert!(!old.text);
     }
 }
