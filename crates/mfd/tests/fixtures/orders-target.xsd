@@ -12,6 +12,8 @@
               <xs:element name="Total" type="xs:decimal"/>
               <xs:element name="DoubledTotal" type="xs:decimal"/>
               <xs:element name="Position" type="xs:int"/>
+              <xs:element name="PaddedPosition" type="xs:string"/>
+              <xs:element name="WithinLimit" type="xs:boolean"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>

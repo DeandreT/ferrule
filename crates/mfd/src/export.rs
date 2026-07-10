@@ -179,13 +179,14 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 fn_inputs.insert(id, ins.clone());
                 uid += 1;
                 let name = unmap_function_name(function);
+                let library = function_library(function);
                 let mut pins = String::new();
                 for (pos, key) in ins.iter().enumerate() {
                     let _ = write!(pins, "<datapoint pos=\"{pos}\" key=\"{key}\"/>");
                 }
                 let _ = write!(
                     components,
-                    "\t\t\t\t<component name=\"{}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                    "\t\t\t\t<component name=\"{}\" library=\"{library}\" uid=\"{uid}\" kind=\"5\">\n\
                      \t\t\t\t\t<sources>{pins}</sources>\n\
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
@@ -1025,12 +1026,23 @@ fn unmap_function_name(name: &str) -> String {
         "starts_with" => "starts-with",
         "upper" => "upper-case",
         "lower" => "lower-case",
+        "left_trim" => "left-trim",
+        "right_trim" => "right-trim",
+        "pad_string_left" => "pad-string-left",
+        "pad_string_right" => "pad-string-right",
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "date_from_datetime" => "date-from-datetime",
         other => other,
     }
     .to_string()
+}
+
+fn function_library(name: &str) -> &'static str {
+    match name {
+        "left_trim" | "right_trim" | "pad_string_left" | "pad_string_right" => "lang",
+        _ => "core",
+    }
 }
 
 fn xml_escape(text: &str) -> String {

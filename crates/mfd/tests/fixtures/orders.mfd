@@ -42,6 +42,8 @@
 											<entry name="Total" inpkey="23"/>
 											<entry name="DoubledTotal" inpkey="24"/>
 											<entry name="Position" inpkey="25"/>
+											<entry name="PaddedPosition" inpkey="26"/>
+											<entry name="WithinLimit" inpkey="27"/>
 										</entry>
 									</entry>
 								</entry>
@@ -174,6 +176,42 @@
 						<parameter usageKind="variable"/>
 					</data>
 				</component>
+				<component name="pad-string-left" library="lang" uid="62" kind="5">
+					<sources>
+						<datapoint pos="0" key="68"/>
+						<datapoint pos="1" key="69"/>
+						<datapoint pos="2" key="70"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="71"/>
+					</targets>
+					<view ltx="540" lty="350" rbx="650" rby="390"/>
+				</component>
+				<component name="constant" library="core" uid="63" kind="2">
+					<targets>
+						<datapoint pos="0" key="72"/>
+					</targets>
+					<view ltx="470" lty="430" rbx="530" rby="460"/>
+					<data>
+						<constant value="0" datatype="string"/>
+					</data>
+				</component>
+				<component name="equal-or-less" library="core" uid="64" kind="5">
+					<sources>
+						<datapoint pos="0" key="73"/>
+						<datapoint pos="1" key="74"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="75"/>
+					</targets>
+					<view ltx="540" lty="410" rbx="650" rby="450"/>
+				</component>
+				<component name="comment" library="core" uid="65" kind="35">
+					<view ltx="80" lty="490" rbx="300" rby="530"/>
+					<data>
+						<comment><text>Padding and comparison coverage.</text></comment>
+					</data>
+				</component>
 			</children>
 		</structure>
 		<connections>
@@ -198,6 +236,13 @@
 			<edge from="66" to="20"/>
 			<edge from="67" to="21"/>
 			<edge from="66" to="55"/>
+			<edge from="56" to="68"/>
+			<edge from="49" to="69"/>
+			<edge from="72" to="70"/>
+			<edge from="71" to="26"/>
+			<edge from="41" to="73"/>
+			<edge from="49" to="74"/>
+			<edge from="75" to="27"/>
 		</connections>
 	</component>
 </mapping>
