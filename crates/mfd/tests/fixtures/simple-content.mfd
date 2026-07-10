@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Catalog" library="xml" uid="2" kind="14">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Catalog" expanded="1">
+                    <entry name="Item" outkey="10" expanded="1">
+                      <entry name="Code" outkey="11"/>
+                      <entry name="Price" outkey="12" expanded="1">
+                        <entry name="currency" type="attribute" outkey="13"/>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="simple-content-source.xsd" inputinstance="simple-content.xml" instanceroot="{}Catalog"/>
+          </data>
+        </component>
+        <component name="PriceList" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="PriceList" expanded="1">
+                    <entry name="Entry" inpkey="20" expanded="1">
+                      <entry name="Label" inpkey="21"/>
+                      <entry name="Amount" inpkey="22" expanded="1">
+                        <entry name="currency" type="attribute" inpkey="23"/>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="simple-content-target.xsd" instanceroot="{}PriceList"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+          <vertex vertexkey="13"><edges><edge vertexkey="23"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>
