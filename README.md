@@ -33,7 +33,8 @@ A project file (plain JSON) holds four things:
   loops over it (a path may cross several repeating levels at once, flattening nested
   repetition), `filter` drops items, and field references fall back outward through
   enclosing scopes so parent-level values broadcast into child rows; scopes can also
-  generate scalar sequences with `tokenize` and `tokenize-by-length`
+  generate scalar sequences with `tokenize`, `tokenize-by-length`, and
+  inclusive integer ranges (capped at 1,000,000 materialized items per scope)
 - optional **extra sources** — named secondary inputs (reference data) that any scope or
   lookup can address by name
 
@@ -47,7 +48,8 @@ local `$ref` support, or the design's entry tree as a fallback), CSV text compon
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
-filter-, group-by-, distinct-values-, and tokenizer-driven iteration import directly;
+filter-, group-by-, distinct-values-, tokenizer-, and generated-range-driven iteration
+import directly; `string` and decimal-safe `format-number` conversion are supported;
 everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
 writes the same subset back out as `.mfd` plus generated XSD / JSON Schema files,
