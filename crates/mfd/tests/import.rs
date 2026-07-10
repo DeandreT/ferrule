@@ -539,6 +539,25 @@ fn aggregate_designs_import_run_and_roundtrip() {
         Node::Aggregate { function: mapping::AggregateOp::Sum, collection, value, .. }
             if collection == &["Item"] && value == &["Price"]
     ));
+    let doubled_binding = order_scope
+        .bindings
+        .iter()
+        .find(|b| b.target_field == "DoubledTotal")
+        .unwrap();
+    let doubled_expression = match &project.graph.nodes[&doubled_binding.node] {
+        Node::Aggregate {
+            function: mapping::AggregateOp::Sum,
+            collection,
+            value,
+            expression: Some(expression),
+            ..
+        } if collection == &["Item"] && value.is_empty() => *expression,
+        other => panic!("expected computed sum aggregate, got {other:?}"),
+    };
+    assert!(matches!(
+        &project.graph.nodes[&doubled_expression],
+        Node::Call { function, .. } if function == "multiply"
+    ));
     let ids_binding = project
         .root
         .bindings
@@ -547,7 +566,13 @@ fn aggregate_designs_import_run_and_roundtrip() {
         .unwrap();
     assert!(matches!(
         &project.graph.nodes[&ids_binding.node],
-        Node::Aggregate { function: mapping::AggregateOp::Join, collection, value, arg: Some(_) }
+        Node::Aggregate {
+            function: mapping::AggregateOp::Join,
+            collection,
+            value,
+            arg: Some(_),
+            ..
+        }
             if collection == &["Order"] && value == &["Id"]
     ));
 
@@ -560,8 +585,10 @@ fn aggregate_designs_import_run_and_roundtrip() {
         .unwrap();
     assert_eq!(scalar(&orders[0], "ItemCount"), Value::Int(2));
     assert_eq!(scalar(&orders[0], "Total"), Value::Float(4.0));
+    assert_eq!(scalar(&orders[0], "DoubledTotal"), Value::Float(8.0));
     assert_eq!(scalar(&orders[1], "ItemCount"), Value::Int(1));
     assert_eq!(scalar(&orders[1], "Total"), Value::Float(10.0));
+    assert_eq!(scalar(&orders[1], "DoubledTotal"), Value::Float(20.0));
 
     let dir = TempDir::new("orders");
     let out = dir.0.join("orders.mfd");

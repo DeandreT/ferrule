@@ -91,29 +91,38 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 function,
                 collection,
                 value,
+                expression,
                 arg,
             } => {
-                // The sequence pin wires straight to the source entry the
-                // collection/value path names.
-                let mut sequence = collection.clone();
-                sequence.extend(value.iter().cloned());
-                let Some(sequence_key) = source_ports.key_for_suffix(&sequence) else {
-                    warnings.push(format!(
-                        "aggregate over `{}` matches no source entry; its \
-                         connections are skipped",
-                        sequence.join("/")
-                    ));
-                    continue;
-                };
                 let in_sequence = keys.next();
                 let out = keys.next();
+                let mut dynamic_inputs = Vec::new();
+                if expression.is_some() {
+                    dynamic_inputs.push(in_sequence);
+                } else {
+                    // A path-selected sequence wires straight to its source
+                    // entry; computed sequences wire their graph expression.
+                    let mut sequence = collection.clone();
+                    sequence.extend(value.iter().cloned());
+                    let Some(sequence_key) = source_ports.key_for_suffix(&sequence) else {
+                        warnings.push(format!(
+                            "aggregate over `{}` matches no source entry; its \
+                             connections are skipped",
+                            sequence.join("/")
+                        ));
+                        continue;
+                    };
+                    edges.push((sequence_key, in_sequence));
+                }
                 node_out_key.insert(id, out);
-                edges.push((sequence_key, in_sequence));
                 let mut pins = format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>");
                 if arg.is_some() {
                     let in_arg = keys.next();
-                    fn_inputs.insert(id, vec![in_arg]);
+                    dynamic_inputs.push(in_arg);
                     let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                }
+                if !dynamic_inputs.is_empty() {
+                    fn_inputs.insert(id, dynamic_inputs);
                 }
                 uid += 1;
                 let _ = write!(
@@ -229,7 +238,9 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 else_,
             } => vec![*condition, *then, *else_],
             Node::ValueMap { input, .. } => vec![*input],
-            Node::Aggregate { arg: Some(arg), .. } => vec![*arg],
+            Node::Aggregate {
+                expression, arg, ..
+            } => expression.iter().chain(arg).copied().collect(),
             _ => continue,
         };
         for (i, arg) in args.iter().enumerate() {

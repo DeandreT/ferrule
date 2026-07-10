@@ -64,6 +64,7 @@ impl GraphViewer<'_> {
             function,
             collection: Vec::new(),
             value: Vec::new(),
+            expression: None,
             arg: Self::aggregate_needs_arg(function).then(|| self.fresh_const()),
         }
     }
@@ -113,7 +114,15 @@ impl GraphViewer<'_> {
                 },
                 Node::ValueMap { input, .. } => *input = from_id,
                 Node::Lookup { matches, .. } => *matches = from_id,
-                Node::Aggregate { arg, .. } => *arg = Some(from_id),
+                Node::Aggregate {
+                    expression, arg, ..
+                } => {
+                    if expression.is_some() && idx == 0 {
+                        *expression = Some(from_id);
+                    } else if arg.is_some() && idx == usize::from(expression.is_some()) {
+                        *arg = Some(from_id);
+                    }
+                }
                 _ => {}
             }
         }
@@ -172,7 +181,9 @@ impl GraphViewer<'_> {
                 } => vec![*condition, *then, *else_],
                 Node::ValueMap { input, .. } => vec![*input],
                 Node::Lookup { matches, .. } => vec![*matches],
-                Node::Aggregate { arg, .. } => arg.iter().copied().collect(),
+                Node::Aggregate {
+                    expression, arg, ..
+                } => expression.iter().chain(arg).copied().collect(),
             }
         }
 
@@ -221,7 +232,9 @@ impl GraphViewer<'_> {
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } => 1,
-            Node::Aggregate { arg, .. } => usize::from(arg.is_some()),
+            Node::Aggregate {
+                expression, arg, ..
+            } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
         }
     }
 }
@@ -246,12 +259,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     function,
                     collection,
                     value,
+                    expression,
                     ..
                 }) => {
                     let mut path = collection.clone();
-                    path.extend(value.iter().cloned());
+                    if expression.is_none() {
+                        path.extend(value.iter().cloned());
+                    }
                     let op = format!("{function:?}").to_lowercase();
-                    format!("{op}: {}", path.join("/"))
+                    let target = expression.map_or_else(|| path.join("/"), |_| "computed".into());
+                    format!("{op}: {target}")
                 }
                 None => "<missing>".to_string(),
             },
@@ -288,6 +305,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                 Some(Node::ValueMap { .. }) => "input".to_string(),
                 Some(Node::Lookup { .. }) => "match/key".to_string(),
+                Some(Node::Aggregate { expression, .. }) if expression.is_some() && idx == 0 => {
+                    "values".to_string()
+                }
                 Some(Node::Aggregate { .. }) => "arg".to_string(),
                 _ => String::new(),
             },
@@ -383,6 +403,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     function,
                     collection,
                     value,
+                    expression,
                     arg,
                 } => {
                     let previous = *function;
@@ -395,7 +416,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                 collection,
                             );
                             ui.end_row();
-                            if arg.is_some() {
+                            if expression.is_some() || arg.is_some() {
                                 ui.label("");
                             } else {
                                 ui.label("operation");
@@ -413,7 +434,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                                     }
                                 });
                             ui.end_row();
-                            if *function != AggregateOp::Count {
+                            if expression.is_some() {
+                                ui.label("value");
+                                ui.label("computed");
+                                ui.end_row();
+                            } else if *function != AggregateOp::Count {
                                 ui.label("value");
                                 self.source_paths.show_value_picker(
                                     ui,
@@ -459,9 +484,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
         }
         if remove_aggregate_wire {
+            let expression_input = self.graph.nodes.get(&node_id).is_some_and(|node| {
+                matches!(
+                    node,
+                    Node::Aggregate {
+                        expression: Some(_),
+                        ..
+                    }
+                )
+            });
             let input = InPinId {
                 node: pin.id.node,
-                input: 0,
+                input: usize::from(expression_input),
             };
             let remotes = snarl.in_pin(input).remotes;
             for remote in remotes {
@@ -849,6 +883,23 @@ mod tests {
             panic!("join should get a separator placeholder");
         };
         assert!(matches!(fx.graph.nodes[&arg], Node::Const { .. }));
+
+        let computed = Node::Aggregate {
+            function: AggregateOp::Sum,
+            collection: vec!["rows".into()],
+            value: vec![],
+            expression: Some(0),
+            arg: None,
+        };
+        assert_eq!(GraphViewer::input_count(&computed), 1);
+        let computed_join = Node::Aggregate {
+            function: AggregateOp::Join,
+            collection: vec!["rows".into()],
+            value: vec![],
+            expression: Some(0),
+            arg: Some(1),
+        };
+        assert_eq!(GraphViewer::input_count(&computed_join), 2);
     }
 
     #[test]

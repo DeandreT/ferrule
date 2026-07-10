@@ -168,6 +168,28 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             }
         }
     }
+    // Older designs store the same directed edges as flat from/to pairs.
+    if let Some(connections) = structure
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "connections")
+        .or_else(|| {
+            wrapper
+                .children()
+                .find(|n| n.is_element() && n.tag_name().name() == "connections")
+        })
+    {
+        for edge in connections
+            .children()
+            .filter(|node| node.is_element() && node.tag_name().name() == "edge")
+        {
+            if let (Some(from), Some(to)) = (
+                parse_u32(edge.attribute("from")),
+                parse_u32(edge.attribute("to")),
+            ) {
+                edge_from.insert(to, from);
+            }
+        }
+    }
 
     let sources: Vec<&SchemaComponent> = schema_components.iter().filter(|c| c.is_source).collect();
     let targets: Vec<&SchemaComponent> =
@@ -264,10 +286,20 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.note_framed_prefixes(&abs);
         }
     }
-    // Materialize every function component up front (filters and group-bys
+    // Materialize aggregates first so computed sequence functions are built
+    // under their per-item collection frame rather than as outer expressions.
+    for (i, fc) in fn_components.iter().enumerate() {
+        if fc.kind == 5 && aggregate_op(&fc.name).is_some() {
+            builder.fn_node(i);
+        }
+    }
+    // Materialize every remaining function up front (filters and group-bys
     // are handled at the scope stage instead).
     for (i, fc) in fn_components.iter().enumerate() {
-        if fc.name != "filter" && fc.name != "group-by" {
+        if fc.name != "filter"
+            && fc.name != "group-by"
+            && !(fc.kind == 5 && aggregate_op(&fc.name).is_some())
+        {
             builder.fn_node(i);
         }
     }
@@ -1203,7 +1235,7 @@ impl GraphBuilder<'_> {
         // Aggregates take a sequence connection, not scalar arguments, so
         // they must not materialize their feeds as SourceFields.
         let name = self.fn_components[idx].name.clone();
-        if let Some(op) = aggregate_op(&name) {
+        if let Some(op) = aggregate_op(&name).filter(|_| self.fn_components[idx].kind == 5) {
             let node = match self.aggregate_node(op, idx) {
                 Some(node) => node,
                 None => {
@@ -1291,51 +1323,93 @@ impl GraphBuilder<'_> {
     /// resolves to a source entry.
     fn aggregate_node(&mut self, op: AggregateOp, idx: usize) -> Option<Node> {
         let fc = &self.fn_components[idx];
-        let feeds: Vec<u32> = fc
-            .inputs
-            .iter()
-            .flatten()
-            .filter_map(|k| self.edge_from.get(k).copied())
-            .collect();
-        let source = *self.sources.first()?;
-        let mut source_paths: Vec<Vec<String>> = Vec::new();
-        let mut scalar_feeds: Vec<u32> = Vec::new();
-        for feed in feeds {
-            match self.sequence_source_path(feed) {
-                Some(abs) => source_paths.push(abs),
-                None => scalar_feeds.push(feed),
-            }
-        }
-        let (collection_abs, value) = match source_paths.as_slice() {
-            [] => return None,
-            [path] => split_at_innermost_repeating(&source.schema, path),
-            // An explicit parent-context pin followed by the values pin.
-            [ctx, val, ..] if val.starts_with(ctx) => (ctx.clone(), val[ctx.len()..].to_vec()),
-            [_, val, ..] => split_at_innermost_repeating(&source.schema, val),
-        };
-        // Strip enclosing iteration frames from the path *above* the
-        // collection, but never the collection node itself -- the
-        // aggregate needs the whole repetition even when some scope also
-        // iterates it (the engine's outward fallback finds the right
-        // frame either way).
+        let source_schema = self.sources.first()?.schema.clone();
+        let sequence_feed = self.input_feed(idx, 1).or_else(|| {
+            (fc.inputs.len() == 1)
+                .then(|| self.input_feed(idx, 0))
+                .flatten()
+        })?;
+
+        let (collection_abs, value, expression) =
+            if let Some(path) = self.sequence_source_path(sequence_feed) {
+                let (collection, value) = split_at_innermost_repeating(&source_schema, &path);
+                (collection, value, None)
+            } else {
+                let mut dependencies = self.sequence_dependency_paths(sequence_feed);
+                if let Some(context) = self
+                    .input_feed(idx, 0)
+                    .and_then(|feed| self.sequence_source_path(feed))
+                {
+                    dependencies.push(context);
+                }
+                let collection = compatible_collection(&source_schema, &dependencies)?;
+                let expression = self.value_node_in_collection(sequence_feed, &collection)?;
+                (collection, Vec::new(), Some(expression))
+            };
+
         let collection = match collection_abs.split_last() {
             Some((last, prefix)) => {
-                let mut relative = self.suffix_after_framed(&source.schema, prefix);
+                let mut relative = self.suffix_after_framed(&source_schema, prefix);
                 relative.push(last.clone());
                 relative
             }
             None => Vec::new(),
         };
-        let arg = scalar_feeds
-            .last()
-            .copied()
+        let arg = self
+            .input_feed(idx, 2)
             .and_then(|feed| self.value_node(feed));
         Some(Node::Aggregate {
             function: op,
             collection,
             value,
+            expression,
             arg,
         })
+    }
+
+    /// Source leaves used by a computed sequence expression. Aggregating
+    /// that expression iterates the deepest collection shared by the leaves;
+    /// outer leaves broadcast through the engine's normal context fallback.
+    fn sequence_dependency_paths(&self, feed: u32) -> Vec<Vec<String>> {
+        fn visit(
+            builder: &GraphBuilder<'_>,
+            feed: u32,
+            visited: &mut std::collections::BTreeSet<u32>,
+            paths: &mut Vec<Vec<String>>,
+        ) {
+            if !visited.insert(feed) {
+                return;
+            }
+            if let Some(path) = builder
+                .sources
+                .first()
+                .and_then(|source| source.ports.get(&feed))
+            {
+                paths.push(path.clone());
+                return;
+            }
+            let Some(&idx) = builder.fn_by_output.get(&feed) else {
+                return;
+            };
+            let component = &builder.fn_components[idx];
+            if aggregate_op(&component.name).is_some() && component.kind == 5 {
+                return;
+            }
+            for key in component.inputs.iter().flatten() {
+                if let Some(&input_feed) = builder.edge_from.get(key) {
+                    visit(builder, input_feed, visited, paths);
+                }
+            }
+        }
+
+        let mut paths = Vec::new();
+        visit(
+            self,
+            feed,
+            &mut std::collections::BTreeSet::new(),
+            &mut paths,
+        );
+        paths
     }
 
     /// The feed of pin `pos` on function component `idx`, if connected.
@@ -1346,6 +1420,17 @@ impl GraphBuilder<'_> {
             .copied()
             .flatten()
             .and_then(|k| self.edge_from.get(&k).copied())
+    }
+
+    /// Materializes an expression with `collection` treated as an iteration
+    /// frame, then restores the scope-derived frame set for other nodes.
+    fn value_node_in_collection(&mut self, key: u32, collection: &[String]) -> Option<NodeId> {
+        let inserted = !collection.is_empty() && self.framed.insert(collection.to_vec());
+        let node = self.value_node(key);
+        if inserted {
+            self.framed.remove(collection);
+        }
+        node
     }
 
     /// Follows an iteration feed through `filter` and `group-by`
@@ -1455,6 +1540,24 @@ fn split_at_innermost_repeating(schema: &SchemaNode, abs: &[String]) -> (Vec<Str
         Some(i) => (abs[..=i].to_vec(), abs[i + 1..].to_vec()),
         None => (Vec::new(), abs.to_vec()),
     }
+}
+
+/// Picks the deepest repeated collection used by a computed expression,
+/// provided every other dependency belongs to that collection or one of its
+/// enclosing contexts. Empty collections represent flat row sources.
+fn compatible_collection(schema: &SchemaNode, paths: &[Vec<String>]) -> Option<Vec<String>> {
+    if paths.is_empty() {
+        return None;
+    }
+    let collections: Vec<Vec<String>> = paths
+        .iter()
+        .map(|path| split_at_innermost_repeating(schema, path).0)
+        .collect();
+    let deepest = collections.iter().max_by_key(|path| path.len())?.clone();
+    collections
+        .iter()
+        .all(|path| deepest.starts_with(path))
+        .then_some(deepest)
 }
 
 fn map_function_name(name: &str) -> Option<&'static str> {
