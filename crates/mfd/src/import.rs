@@ -85,6 +85,27 @@ struct IterationFeed {
     projections: BTreeMap<Vec<String>, u32>,
 }
 
+fn note_iteration_control_order(
+    upstream: u8,
+    nearest_downstream: &mut Option<u8>,
+    issue: &mut Option<&'static str>,
+) {
+    if let Some(downstream) = *nearest_downstream
+        && upstream > downstream
+    {
+        issue.get_or_insert(match (upstream, downstream) {
+            (1, 0) => "applies sort after filter, which cannot be represented exactly",
+            (2, 0) => "applies sort after group-by, which cannot be represented exactly",
+            (2, 1) => "applies filter after group-by, which cannot be represented exactly",
+            (3, 0) => "applies sort after first-items, which cannot be represented exactly",
+            (3, 1) => "applies filter after first-items, which cannot be represented exactly",
+            (3, 2) => "applies group-by after first-items, which cannot be represented exactly",
+            _ => "uses a sequence-control order that cannot be represented exactly",
+        });
+    }
+    *nearest_downstream = Some(nearest_downstream.map_or(upstream, |rank| rank.min(upstream)));
+}
+
 /// One function component's extracted facts.
 type ValueMapData = (Vec<(String, String)>, Option<String>);
 
@@ -1441,7 +1462,10 @@ fn is_distinct_values_component(component: &FnComponent) -> bool {
 fn is_sequence_producer(component: &FnComponent) -> bool {
     component.library == "core"
         && component.kind == 5
-        && matches!(component.name.as_str(), "tokenize" | "tokenize-by-length")
+        && matches!(
+            component.name.as_str(),
+            "tokenize" | "tokenize-by-length" | "generate-sequence"
+        )
 }
 
 struct GraphBuilder<'a> {
@@ -1778,8 +1802,26 @@ impl GraphBuilder<'_> {
                         name.to_string()
                     }
                 };
-                let args = (0..fc.inputs.len().max(1))
-                    .map(|i| input_or_null(self, i))
+                // MapForce declares the function's full optional pin set even
+                // when callers leave its trailing optional arguments unwired.
+                // Keep interior pin positions, but do not turn unused trailing
+                // pins into ferrule arguments.
+                let arity = input_ids
+                    .iter()
+                    .rposition(Option::is_some)
+                    .map_or(1, |last| last + 1);
+                let args = (0..arity)
+                    .map(|i| {
+                        input_ids.get(i).copied().flatten().unwrap_or_else(|| {
+                            if function == "format_number" && i == 2 {
+                                self.alloc(Node::Const {
+                                    value: Value::String(".".into()),
+                                })
+                            } else {
+                                self.const_null()
+                            }
+                        })
+                    })
                     .collect();
                 Node::Call { function, args }
             }
@@ -1941,6 +1983,7 @@ impl GraphBuilder<'_> {
         let mut group_key = None;
         let mut distinct_key = None;
         let mut order_issue = None;
+        let mut nearest_control = None;
         let mut sort_expr = None;
         let mut sort_descending = false;
         let mut take_expr = None;
@@ -1986,12 +2029,14 @@ impl GraphBuilder<'_> {
                 let Some(node_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
+                note_iteration_control_order(1, &mut nearest_control, &mut order_issue);
                 filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
                 from = node_feed;
             } else if is_sort_component(fc) {
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
+                note_iteration_control_order(0, &mut nearest_control, &mut order_issue);
                 if sort_expr.is_none() {
                     sort_expr = self.input_feed(idx, 1);
                     sort_descending = fc.sort_descending.unwrap_or(false);
@@ -2001,6 +2046,7 @@ impl GraphBuilder<'_> {
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
+                note_iteration_control_order(3, &mut nearest_control, &mut order_issue);
                 if distinct_key.is_some() {
                     order_issue.get_or_insert(
                         "applies first-items before distinct-values, which cannot be represented exactly",
@@ -2046,6 +2092,7 @@ impl GraphBuilder<'_> {
                         let Some(nodes_feed) = self.input_feed(idx, 0) else {
                             break;
                         };
+                        note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
                         if distinct_key.is_some() {
                             order_issue.get_or_insert(
                                 "applies group-by before distinct-values, which cannot be represented exactly",
@@ -2123,24 +2170,43 @@ impl GraphBuilder<'_> {
     }
 
     fn sequence_expr(&mut self, idx: usize) -> Option<SequenceExpr> {
-        let input = self
-            .input_feed(idx, 0)
-            .and_then(|feed| self.value_node(feed))?;
-        let parameter = self
-            .input_feed(idx, 1)
-            .and_then(|feed| self.value_node(feed))?;
         let item = self.sequence_item(idx);
         Some(match self.fn_components[idx].name.as_str() {
-            "tokenize" => SequenceExpr::Tokenize {
-                input,
-                delimiter: parameter,
-                item,
-            },
-            "tokenize-by-length" => SequenceExpr::TokenizeByLength {
-                input,
-                length: parameter,
-                item,
-            },
+            "tokenize" => {
+                let input = self
+                    .input_feed(idx, 0)
+                    .and_then(|feed| self.value_node(feed))?;
+                let delimiter = self
+                    .input_feed(idx, 1)
+                    .and_then(|feed| self.value_node(feed))?;
+                SequenceExpr::Tokenize {
+                    input,
+                    delimiter,
+                    item,
+                }
+            }
+            "tokenize-by-length" => {
+                let input = self
+                    .input_feed(idx, 0)
+                    .and_then(|feed| self.value_node(feed))?;
+                let length = self
+                    .input_feed(idx, 1)
+                    .and_then(|feed| self.value_node(feed))?;
+                SequenceExpr::TokenizeByLength {
+                    input,
+                    length,
+                    item,
+                }
+            }
+            "generate-sequence" => {
+                let from = self
+                    .input_feed(idx, 0)
+                    .and_then(|feed| self.value_node(feed));
+                let to = self
+                    .input_feed(idx, 1)
+                    .and_then(|feed| self.value_node(feed))?;
+                SequenceExpr::Generate { from, to, item }
+            }
             _ => return None,
         })
     }
@@ -2235,6 +2301,8 @@ fn map_function_name(name: &str) -> Option<&'static str> {
         "starts-with" => "starts_with",
         "upper-case" => "upper",
         "lower-case" => "lower",
+        "string" => "string",
+        "format-number" => "format_number",
         "trim" => "trim",
         "left-trim" => "left_trim",
         "right-trim" => "right_trim",
@@ -2350,7 +2418,7 @@ impl ScopeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{instance_root_segments, normalize_xml_entry_name};
+    use super::{instance_root_segments, map_function_name, normalize_xml_entry_name};
 
     #[test]
     fn instance_root_paths_do_not_split_namespace_uris() {
@@ -2372,5 +2440,11 @@ mod tests {
         assert_eq!(normalize_xml_entry_name("12:@type"), ("type", true));
         assert_eq!(normalize_xml_entry_name("Person"), ("Person", false));
         assert_eq!(normalize_xml_entry_name("ns:Person"), ("ns:Person", false));
+    }
+
+    #[test]
+    fn scalar_function_names_use_canonical_ir_spelling() {
+        assert_eq!(map_function_name("string"), Some("string"));
+        assert_eq!(map_function_name("format-number"), Some("format_number"));
     }
 }
