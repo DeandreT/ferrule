@@ -218,6 +218,57 @@ fn xml_attributes_import_run_and_roundtrip() {
 }
 
 #[test]
+fn xml_simple_content_imports_runs_and_roundtrips() {
+    let imported = mfd::import(&fixture("simple-content.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    let source_price = project
+        .source
+        .child("Item")
+        .unwrap()
+        .child("Price")
+        .unwrap();
+    let source_text = source_price.child(ir::XML_TEXT_FIELD).unwrap();
+    assert!(source_text.text);
+    assert!(matches!(
+        source_text.kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Float
+        }
+    ));
+    assert!(source_price.child("currency").unwrap().attribute);
+
+    let source = format_xml::read(&fixture("simple-content.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let entries = target
+        .field("Entry")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    let amount = entries[1].field("Amount").unwrap();
+    assert_eq!(scalar(amount, ir::XML_TEXT_FIELD), Value::Float(8.75));
+    assert_eq!(scalar(amount, "currency"), Value::String("EUR".into()));
+
+    let dir = TempDir::new("simple_content");
+    let xml_out = dir.0.join("prices.xml");
+    format_xml::write(&xml_out, &project.target, &target).unwrap();
+    let xml = std::fs::read_to_string(&xml_out).unwrap();
+    assert!(xml.contains("<Amount currency=\"USD\">12.5</Amount>"));
+
+    let mfd_out = dir.0.join("prices.mfd");
+    let warnings = mfd::export(project, &mfd_out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&mfd_out).unwrap();
+    assert!(!exported.contains("name=\"#text\""));
+    let reimported = mfd::import(&mfd_out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(reimported.project.source, project.source);
+    assert_eq!(reimported.project.target, project.target);
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(rerun, target);
+}
+
+#[test]
 fn xml_to_json_with_ref_schema_imports_runs_and_roundtrips() {
     let imported = mfd::import(&fixture("stock.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

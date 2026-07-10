@@ -630,6 +630,13 @@ impl PortTree {
             if let SchemaKind::Group { children } = &node.kind {
                 for child in children {
                     path.push(child.name.clone());
+                    if child.text {
+                        let parent = &path[..path.len() - 1];
+                        let key = by_abs[parent];
+                        by_abs.insert(path.clone(), key);
+                        path.pop();
+                        continue;
+                    }
                     by_abs.insert(path.clone(), keys.next());
                     walk(child, path, keys, by_abs);
                     path.pop();
@@ -668,7 +675,7 @@ impl PortTree {
             out: &mut String,
         ) {
             if let SchemaKind::Group { children } = &node.kind {
-                for child in children {
+                for child in children.iter().filter(|child| !child.text) {
                     path.push(child.name.clone());
                     let pad = "\t".repeat(indent);
                     let key = by_abs[&*path];
@@ -695,9 +702,13 @@ impl PortTree {
         }
         // The document root itself is one entry level wrapping the children.
         let pad = "\t".repeat(indent);
+        let root_port = schema.text_child().map_or_else(String::new, |_| {
+            let key = self.by_abs[&Vec::<String>::new()];
+            format!(" {attr}=\"{key}\"")
+        });
         let _ = writeln!(
             out,
-            "{pad}<entry name=\"{}\" expanded=\"1\">",
+            "{pad}<entry name=\"{}\"{root_port} expanded=\"1\">",
             xml_escape(&schema.name)
         );
         walk(

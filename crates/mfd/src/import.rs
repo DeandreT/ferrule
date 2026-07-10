@@ -406,6 +406,7 @@ fn read_schema_component(
             }
         })
         .unwrap_or_else(|| entry_tree_schema(&entry));
+    normalize_xml_text_ports(&schema, &mut ports);
 
     Some(SchemaComponent {
         name,
@@ -421,6 +422,18 @@ fn read_schema_component(
         is_source,
         ports,
     })
+}
+
+/// MapForce puts a simple-content value on its parent element's port. The
+/// ferrule schema stores that scalar as a `#text` child, so normalize the
+/// port path once at component import and let the graph/scope builders use
+/// ordinary scalar paths afterward.
+fn normalize_xml_text_ports(schema: &SchemaNode, ports: &mut BTreeMap<u32, Vec<String>>) {
+    for path in ports.values_mut() {
+        if let Some(text) = schema_node_at(schema, path).and_then(SchemaNode::text_child) {
+            path.push(text.name.clone());
+        }
+    }
 }
 
 fn note_skipped_library(skipped: &mut Vec<String>, label: &str) {

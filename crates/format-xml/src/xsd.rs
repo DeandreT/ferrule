@@ -9,15 +9,14 @@
 //! resolve across local `xs:include` and `xs:import` schema locations
 //! (recursive references and include cycles degrade safely); `xs:choice`
 //! and `xs:all` import as if they were sequences (every branch becomes a
-//! child -- ferrule has no exclusivity concept). It does not support unions,
-//! `xs:any`, remote schema URLs, or `xs:simpleContent` (text-plus-attributes
-//! elements import as before, attributes ignored) -- that's the "lite" in
-//! the name.
+//! child -- ferrule has no exclusivity concept). `xs:simpleContent` becomes
+//! a `#text` scalar plus attribute scalars. It does not support unions,
+//! `xs:any`, or remote schema URLs -- that's the "lite" in the name.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use ir::{ScalarType, SchemaNode};
+use ir::{ScalarType, SchemaNode, XML_TEXT_FIELD};
 use roxmltree::Node;
 
 use crate::XmlFormatError;
@@ -412,6 +411,32 @@ fn parse_complex_type(
                     children.extend(parse_complex_type(&ext, schema_el, schema_path, state));
                 }
             }
+            "simpleContent" => {
+                if let Some(content) = child.children().find(|node| {
+                    node.is_element()
+                        && matches!(node.tag_name().name(), "extension" | "restriction")
+                }) {
+                    let mut resolved_base = false;
+                    if let Some(base) = content.attribute("base") {
+                        if let Some(base_children) =
+                            resolve_complex_type(base, schema_el, schema_path, state)
+                        {
+                            children.extend(base_children);
+                            resolved_base = true;
+                        } else {
+                            let ty = resolve_simple_type(base, schema_el, schema_path)
+                                .unwrap_or_else(|| map_xsd_type(base));
+                            children.push(SchemaNode::scalar(XML_TEXT_FIELD, ty).text());
+                            resolved_base = true;
+                        }
+                    }
+                    if !resolved_base {
+                        children
+                            .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+                    }
+                    children.extend(parse_complex_type(&content, schema_el, schema_path, state));
+                }
+            }
             _ => {}
         }
     }
@@ -527,11 +552,45 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
             let (attrs, elements): (Vec<_>, Vec<_>) = children
                 .iter()
                 .partition(|c| c.attribute && matches!(c.kind, ir::SchemaKind::Scalar { .. }));
+            let text = elements
+                .iter()
+                .find(|child| child.text && matches!(child.kind, ir::SchemaKind::Scalar { .. }));
+            let nested_elements: Vec<_> = elements
+                .iter()
+                .filter(|child| !child.text)
+                .copied()
+                .collect();
+            if let Some(text) = text
+                && nested_elements.is_empty()
+            {
+                let ir::SchemaKind::Scalar { ty } = &text.kind else {
+                    unreachable!("text child checked as Scalar");
+                };
+                out.push_str(&format!(
+                    "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:simpleContent>\n{pad}      <xs:extension base=\"{}\">\n",
+                    node.name,
+                    xsd_type_name(ty)
+                ));
+                for attr in attrs {
+                    let ir::SchemaKind::Scalar { ty } = &attr.kind else {
+                        unreachable!("partitioned on Scalar");
+                    };
+                    out.push_str(&format!(
+                        "{pad}        <xs:attribute name=\"{}\" type=\"{}\"/>\n",
+                        attr.name,
+                        xsd_type_name(ty)
+                    ));
+                }
+                out.push_str(&format!(
+                    "{pad}      </xs:extension>\n{pad}    </xs:simpleContent>\n{pad}  </xs:complexType>\n{pad}</xs:element>\n"
+                ));
+                return;
+            }
             out.push_str(&format!(
                 "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:sequence>\n",
                 node.name
             ));
-            for child in elements {
+            for child in nested_elements {
                 write_element(child, depth + 3, out);
             }
             out.push_str(&format!("{pad}    </xs:sequence>\n"));
@@ -977,6 +1036,58 @@ mod tests {
     }
 
     #[test]
+    fn imports_simple_content_as_text_plus_attributes() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_simple_content_test_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            r#"<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Catalog">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Price">
+          <xs:complexType>
+            <xs:simpleContent>
+              <xs:extension base="xs:decimal">
+                <xs:attribute name="currency" type="xs:string"/>
+              </xs:extension>
+            </xs:simpleContent>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+"#,
+        )
+        .unwrap();
+
+        let schema = import(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        let price = schema.child("Price").unwrap();
+        let text = price.child(XML_TEXT_FIELD).unwrap();
+        assert!(text.text);
+        assert!(matches!(
+            text.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Float
+            }
+        ));
+        let currency = price.child("currency").unwrap();
+        assert!(currency.attribute);
+        assert!(matches!(
+            currency.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        ));
+    }
+
+    #[test]
     fn export_then_import_roundtrips() {
         let schema = SchemaNode::group(
             "Orders",
@@ -994,6 +1105,13 @@ mod tests {
                     ],
                 )
                 .repeating(),
+                SchemaNode::group(
+                    "Price",
+                    vec![
+                        SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::Float).text(),
+                        SchemaNode::scalar("currency", ScalarType::String).attribute(),
+                    ],
+                ),
             ],
         );
         let text = export(&schema);

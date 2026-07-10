@@ -4,7 +4,7 @@
 //! with integer port keys), function components, and a flat port-to-port
 //! connection graph. [`import`] converts the supported subset -- XML
 //! components (resolvable XSDs incl. local includes/imports, attributes,
-//! and element refs), JSON
+//! simple-content values, and element refs), JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
 //! fallback), CSV text components (inline delimiter/header settings),
 //! single-table SQLite database components (schema introspected from the

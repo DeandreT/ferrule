@@ -66,6 +66,13 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
                         None => Value::Null,
                     };
                     fields.push((child.name.clone(), Instance::Scalar(value)));
+                } else if child.text {
+                    let SchemaKind::Scalar { ty } = child.kind else {
+                        return Err(XmlFormatError::MissingElement(child.name.clone()));
+                    };
+                    let text = el.text().unwrap_or("").trim();
+                    let value = parse_scalar(&child.name, ty, text)?;
+                    fields.push((child.name.clone(), Instance::Scalar(value)));
                 } else if child.repeating {
                     let mut items = Vec::new();
                     for el_child in el
@@ -160,7 +167,15 @@ fn write_node<W: std::io::Write>(
             }
             writer.write_event(Event::Start(start))?;
             if let SchemaKind::Group { children } = &schema.kind {
-                for child_schema in children.iter().filter(|c| !c.attribute) {
+                for child_schema in children.iter().filter(|c| c.text) {
+                    if let Some((_, Instance::Scalar(value))) =
+                        fields.iter().find(|(n, _)| n == &child_schema.name)
+                        && !matches!(value, Value::Null)
+                    {
+                        writer.write_event(Event::Text(BytesText::new(&format_scalar(value))))?;
+                    }
+                }
+                for child_schema in children.iter().filter(|c| !c.attribute && !c.text) {
                     if let Some((_, child_instance)) =
                         fields.iter().find(|(n, _)| n == &child_schema.name)
                     {
@@ -192,6 +207,7 @@ fn format_scalar(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ir::XML_TEXT_FIELD;
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -298,6 +314,42 @@ mod tests {
 
         let read_back = read(&path, &schema).unwrap();
         std::fs::remove_file(&path).unwrap();
+        assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn simple_content_text_and_attributes_roundtrip() {
+        let schema = SchemaNode::group(
+            "Catalog",
+            vec![SchemaNode::group(
+                "Price",
+                vec![
+                    SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::Float).text(),
+                    SchemaNode::scalar("currency", ScalarType::String).attribute(),
+                ],
+            )],
+        );
+        let instance = Instance::Group(vec![(
+            "Price".into(),
+            Instance::Group(vec![
+                (XML_TEXT_FIELD.into(), Instance::Scalar(Value::Float(12.5))),
+                (
+                    "currency".into(),
+                    Instance::Scalar(Value::String("USD".into())),
+                ),
+            ]),
+        )]);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xml_simple_content_test_{}.xml",
+            std::process::id()
+        ));
+
+        write(&path, &schema, &instance).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let read_back = read(&path, &schema).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert!(text.contains("<Price currency=\"USD\">12.5</Price>"));
         assert_eq!(read_back, instance);
     }
 

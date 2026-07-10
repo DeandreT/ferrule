@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Catalog>
+  <Item><Code>A-10</Code><Price currency="USD">12.5</Price></Item>
+  <Item><Code>B-20</Code><Price currency="EUR">8.75</Price></Item>
+</Catalog>
