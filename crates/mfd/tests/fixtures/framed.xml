@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Directory>
+  <Office>
+    <Name>West</Name>
+    <Department>
+      <Name>Alpha</Name>
+      <Person><First>Zed</First><Last>Zimmerman</Last></Person>
+      <Person><First>Amy</First><Last>Able</Last></Person>
+    </Department>
+  </Office>
+  <Office>
+    <Name>East</Name>
+    <Department>
+      <Name>Beta</Name>
+      <Person><First>Bob</First><Last>Baker</Last></Person>
+    </Department>
+  </Office>
+</Directory>

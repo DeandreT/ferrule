@@ -65,7 +65,7 @@ fn imports_schemas_scopes_and_functions() {
     assert_eq!(args.len(), 3);
     assert!(matches!(
         &project.graph.nodes[&args[0]],
-        Node::SourceField { path } if path == &["First"]
+        Node::SourceField { path, .. } if path == &["First"]
     ));
     assert!(matches!(
         &project.graph.nodes[&args[1]],
@@ -532,7 +532,7 @@ fn aggregate_position_filter_and_scalar_designs_import_run_and_roundtrip() {
         .unwrap();
     assert!(matches!(
         &project.graph.nodes[&id_binding.node],
-        Node::SourceField { path } if path == &["Id"]
+        Node::SourceField { path, .. } if path == &["Id"]
     ));
     let count_binding = order_scope
         .bindings
@@ -712,7 +712,7 @@ fn sorted_first_items_import_run_and_roundtrip() {
     assert!(top.sort_descending);
     assert!(matches!(
         &project.graph.nodes[&top.sort_by.unwrap()],
-        Node::SourceField { path } if path == &["Points"]
+        Node::SourceField { path, .. } if path == &["Points"]
     ));
     assert!(matches!(
         &project.graph.nodes[&top.take.unwrap()],
@@ -781,6 +781,75 @@ fn sorted_first_items_import_run_and_roundtrip() {
     let exported = std::fs::read_to_string(&out).unwrap();
     assert!(exported.contains("<key direction=\"descending\"/>"));
     assert_eq!(exported.matches("name=\"first-items\"").count(), 2);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, rerun);
+}
+
+#[test]
+fn constructed_variables_preserve_nested_source_frames() {
+    let imported = mfd::import(&fixture("framed.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+    let people_scope = &project.root.children[0];
+    assert_eq!(people_scope.target_field, "Person");
+    assert_eq!(
+        people_scope.source,
+        Some(vec!["Office".into(), "Department".into(), "Person".into()])
+    );
+    assert!(people_scope.sort_by.is_some());
+
+    let mut name_frames: Vec<_> = project
+        .graph
+        .nodes
+        .values()
+        .filter_map(|node| match node {
+            Node::SourceField { path, frame } if path == &["Name"] => frame.clone(),
+            _ => None,
+        })
+        .collect();
+    name_frames.sort();
+    assert_eq!(
+        name_frames,
+        vec![
+            vec![String::from("Office")],
+            vec![String::from("Office"), String::from("Department")],
+        ]
+    );
+
+    let source = format_xml::read(&fixture("framed.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let rows = target
+        .field("Person")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    let values: Vec<_> = rows
+        .iter()
+        .map(|row| (scalar(row, "First"), scalar(row, "Details")))
+        .collect();
+    assert_eq!(
+        values,
+        vec![
+            (
+                Value::String("Amy".into()),
+                Value::String("Alpha (West)".into())
+            ),
+            (
+                Value::String("Bob".into()),
+                Value::String("Beta (East)".into())
+            ),
+            (
+                Value::String("Zed".into()),
+                Value::String("Alpha (West)".into())
+            ),
+        ]
+    );
+
+    let dir = TempDir::new("framed");
+    let out = dir.0.join("framed.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
     let reimported = mfd::import(&out).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     let rerun = engine::run(&reimported.project, &source).unwrap();

@@ -55,13 +55,18 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
         }
 
         match node {
-            Node::SourceField { path } => {
-                if !source_path_matches(project, path, |node| {
+            Node::SourceField { path, frame } => {
+                let mut absolute = frame.clone().unwrap_or_default();
+                absolute.extend(path.iter().cloned());
+                if !source_path_matches(project, &absolute, |node| {
                     matches!(node.kind, SchemaKind::Scalar { .. })
                 }) {
                     issues.push(ValidationIssue::new(
                         &location,
-                        format!("source field `{}` matches no scalar", display_path(path)),
+                        format!(
+                            "source field `{}` matches no scalar",
+                            display_path(&absolute)
+                        ),
                     ));
                 }
             }
@@ -427,6 +432,7 @@ mod tests {
         graph.nodes.insert(
             0,
             Node::SourceField {
+                frame: None,
                 path: vec!["name".into()],
             },
         );
@@ -465,6 +471,7 @@ mod tests {
         project.graph.nodes.insert(
             1,
             Node::SourceField {
+                frame: None,
                 path: vec!["reference".into(), "code".into()],
             },
         );
@@ -492,6 +499,7 @@ mod tests {
         project.graph.nodes.insert(
             3,
             Node::SourceField {
+                frame: None,
                 path: vec!["missing".into()],
             },
         );

@@ -133,7 +133,7 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
-            Node::SourceField { path } => leaf_for_path(path).map(|leaf| (id, leaf)),
+            Node::SourceField { path, frame: None } => leaf_for_path(path).map(|leaf| (id, leaf)),
             _ => None,
         })
         .collect();
@@ -149,21 +149,26 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
     );
     let hidden_set: std::collections::BTreeSet<NodeId> = hidden.keys().copied().collect();
     let layout = layered_layout(&project.graph, &hidden_set, &binding_order);
+    let graph_start = source_pins
+        .iter()
+        .map(|leaf| leaf.label.chars().count())
+        .max()
+        .map_or(420.0, |length| (length as f32 * 9.0 + 180.0).max(420.0));
 
     let mut snarl_ids = std::collections::BTreeMap::new();
     let mut max_col = 0usize;
     for (&id, &(col, row)) in &layout {
         max_col = max_col.max(col);
         let snarl_id = snarl.insert_node(
-            egui::pos2(340.0 + col as f32 * 420.0, row as f32 * 190.0),
+            egui::pos2(graph_start + col as f32 * 420.0, row as f32 * 190.0),
             CanvasNode::Graph(id),
         );
         snarl_ids.insert(id, snarl_id);
     }
     let target_x = if layout.is_empty() {
-        420.0
+        graph_start
     } else {
-        340.0 + (max_col as f32 + 1.0) * 420.0
+        graph_start + (max_col as f32 + 1.0) * 420.0
     };
     let target_node = snarl.insert_node(egui::pos2(target_x, 0.0), CanvasNode::Target);
 
@@ -561,6 +566,7 @@ mod tests {
             0,
             Node::SourceField {
                 path: vec!["name".into()],
+                frame: None,
             },
         );
         graph.nodes.insert(
@@ -620,6 +626,7 @@ mod tests {
             2,
             Node::SourceField {
                 path: vec!["age".into()],
+                frame: None,
             },
         );
 

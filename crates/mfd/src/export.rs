@@ -75,16 +75,20 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut uid = 100u32;
     for (&id, node) in &project.graph.nodes {
         match node {
-            Node::SourceField { path } => match source_ports.key_for_suffix(path) {
-                Some(key) => {
-                    node_out_key.insert(id, key);
-                }
-                None => warnings.push(format!(
-                    "source field `{}` matches no source leaf; its connections \
+            Node::SourceField { path, frame } => {
+                let mut absolute = frame.clone().unwrap_or_default();
+                absolute.extend(path.iter().cloned());
+                match source_ports.key_for_suffix(&absolute) {
+                    Some(key) => {
+                        node_out_key.insert(id, key);
+                    }
+                    None => warnings.push(format!(
+                        "source field `{}` matches no source leaf; its connections \
                          are skipped",
-                    path.join("/")
-                )),
-            },
+                        absolute.join("/")
+                    )),
+                }
+            }
             Node::Position { collection } => {
                 let input = keys.next();
                 let out = keys.next();

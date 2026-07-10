@@ -24,7 +24,13 @@ pub enum Node {
     /// lets a leaf from an outer group (e.g. an Order's ID) be "broadcast"
     /// into a nested target group (e.g. every Item row) with no extra
     /// plumbing -- see `engine::resolve_scalar`.
-    SourceField { path: Vec<String> },
+    SourceField {
+        path: Vec<String>,
+        /// Absolute repeated collection whose current item owns `path`.
+        /// `None` preserves the usual innermost-first outward fallback.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame: Option<Vec<String>>,
+    },
     /// Returns the 1-based position of the current item in `collection`'s
     /// iteration. An empty collection selects the innermost iteration frame.
     Position {
