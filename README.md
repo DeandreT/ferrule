@@ -32,7 +32,8 @@ A project file (plain JSON) holds four things:
 - a **scope tree** that drives iteration: connecting a scope to a repeating source path
   loops over it (a path may cross several repeating levels at once, flattening nested
   repetition), `filter` drops items, and field references fall back outward through
-  enclosing scopes so parent-level values broadcast into child rows
+  enclosing scopes so parent-level values broadcast into child rows; scopes can also
+  generate scalar sequences with `tokenize` and `tokenize-by-length`
 - optional **extra sources** — named secondary inputs (reference data) that any scope or
   lookup can address by name
 
@@ -46,7 +47,8 @@ local `$ref` support, or the design's entry tree as a fallback), CSV text compon
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
-filter-, group-by-, and distinct-values-driven iteration import directly; everything else is skipped
+filter-, group-by-, distinct-values-, and tokenizer-driven iteration import directly;
+everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
 writes the same subset back out as `.mfd` plus generated XSD / JSON Schema files,
 picking each side's component kind from the project's instance paths. Designs built
@@ -68,6 +70,9 @@ cargo run -p cli -- run \
     --project examples/project.json \
     --input orders.xml \
     --output order_lines.csv
+
+# --input/--output may be omitted when source_path/target_path are stored in the project
+cargo run -p cli -- run --project examples/project.json
 
 # Check graph, scope, and schema references without reading input data
 cargo run -p cli -- validate --project examples/project.json
@@ -102,7 +107,7 @@ reference file. See `crates/cli/tests/fixtures/`.
 - `crates/format-edi` — EDI (ANSI X12 and UN/EDIFACT) schema-guided read/write
 - `crates/cli` — headless runner (`ferrule` binary): run a project file against inputs
 - `crates/gui` — visual mapping editor (`ferrule-gui` binary): schema trees, node-graph canvas,
-  dirty-state guards, and project undo/redo
+  persisted layout sidecars, dirty-state guards, and project undo/redo
 
 ## License
 
