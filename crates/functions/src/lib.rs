@@ -28,6 +28,11 @@ pub enum FunctionError {
     },
     #[error("division by zero")]
     DivideByZero,
+    #[error("`{function}` {message}")]
+    InvalidArgument {
+        function: &'static str,
+        message: &'static str,
+    },
 }
 
 /// Scalar builtin names accepted by [`call`], in editor display order.
@@ -36,9 +41,13 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "upper",
     "lower",
     "trim",
+    "left_trim",
+    "right_trim",
     "length",
     "starts_with",
     "contains",
+    "pad_string_left",
+    "pad_string_right",
     "add",
     "subtract",
     "multiply",
@@ -72,9 +81,17 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "upper" => unary_string(args, "upper", str::to_uppercase),
         "lower" => unary_string(args, "lower", str::to_lowercase),
         "trim" => unary_string(args, "trim", |s| s.trim().to_string()),
+        "left_trim" => unary_string(args, "left_trim", |s| {
+            s.trim_start_matches([' ', '\t', '\r', '\n']).to_string()
+        }),
+        "right_trim" => unary_string(args, "right_trim", |s| {
+            s.trim_end_matches([' ', '\t', '\r', '\n']).to_string()
+        }),
         "length" => length(args),
         "starts_with" => binary_string(args, "starts_with", |a, b| a.starts_with(b)),
         "contains" => binary_string(args, "contains", |a, b| a.contains(b)),
+        "pad_string_left" => pad_string(args, "pad_string_left", true),
+        "pad_string_right" => pad_string(args, "pad_string_right", false),
         "add" => numeric(args, "add", |a, b| a + b, |a, b| a + b),
         "subtract" => numeric(args, "subtract", |a, b| a - b, |a, b| a - b),
         "multiply" => numeric(args, "multiply", |a, b| a * b, |a, b| a * b),
@@ -209,6 +226,52 @@ fn length(args: &[Value]) -> Result<Value, FunctionError> {
             got: args.len(),
         }),
     }
+}
+
+fn scalar_text(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::Bool(value) => value.to_string(),
+        Value::Int(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
+        Value::String(value) => value.clone(),
+    }
+}
+
+fn pad_string(args: &[Value], name: &'static str, left: bool) -> Result<Value, FunctionError> {
+    let [value, desired_length, padding] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: name,
+            expected: 3,
+            got: args.len(),
+        });
+    };
+    let desired_length = number_arg(desired_length, name)? as i64;
+    let padding = scalar_text(padding);
+    let mut padding = padding.chars();
+    let Some(padding_char) = padding.next() else {
+        return Err(FunctionError::InvalidArgument {
+            function: name,
+            message: "requires one padding character",
+        });
+    };
+    if padding.next().is_some() {
+        return Err(FunctionError::InvalidArgument {
+            function: name,
+            message: "requires one padding character",
+        });
+    }
+
+    let value = scalar_text(value);
+    let count = desired_length
+        .saturating_sub(value.chars().count() as i64)
+        .max(0) as usize;
+    let padding: String = std::iter::repeat_n(padding_char, count).collect();
+    Ok(Value::String(if left {
+        padding + &value
+    } else {
+        value + &padding
+    }))
 }
 
 fn numeric(
@@ -530,6 +593,61 @@ mod tests {
         assert_eq!(
             call("length", &[Value::String("Jane".into())]).unwrap(),
             Value::Int(4)
+        );
+    }
+
+    #[test]
+    fn padding_and_directional_trim_follow_character_semantics() {
+        assert_eq!(
+            call(
+                "pad_string_left",
+                &[Value::Int(7), Value::Float(3.0), Value::String("0".into())]
+            )
+            .unwrap(),
+            Value::String("007".into())
+        );
+        assert_eq!(
+            call(
+                "pad_string_right",
+                &[
+                    Value::String("AP".into()),
+                    Value::Int(4),
+                    Value::String("Z".into())
+                ]
+            )
+            .unwrap(),
+            Value::String("APZZ".into())
+        );
+        assert_eq!(
+            call(
+                "pad_string_left",
+                &[
+                    Value::String("AP".into()),
+                    Value::Int(-3),
+                    Value::String("Z".into())
+                ]
+            )
+            .unwrap(),
+            Value::String("AP".into())
+        );
+        assert!(matches!(
+            call(
+                "pad_string_left",
+                &[
+                    Value::String("AP".into()),
+                    Value::Int(3),
+                    Value::String("YZ".into())
+                ]
+            ),
+            Err(FunctionError::InvalidArgument { .. })
+        ));
+        assert_eq!(
+            call("left_trim", &[Value::String(" \t\nvalue\u{a0}".into())]).unwrap(),
+            Value::String("value\u{a0}".into())
+        );
+        assert_eq!(
+            call("right_trim", &[Value::String("\u{a0}value\r\n ".into())]).unwrap(),
+            Value::String("\u{a0}value".into())
         );
     }
 

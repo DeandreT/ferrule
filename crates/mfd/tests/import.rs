@@ -509,7 +509,7 @@ fn db_target_designs_import_run_and_roundtrip() {
 }
 
 #[test]
-fn aggregate_position_and_typed_filter_designs_import_run_and_roundtrip() {
+fn aggregate_position_filter_and_scalar_designs_import_run_and_roundtrip() {
     let imported = mfd::import(&fixture("orders.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let project = &imported.project;
@@ -582,6 +582,24 @@ fn aggregate_position_and_typed_filter_designs_import_run_and_roundtrip() {
         &project.graph.nodes[&position_binding.node],
         Node::Position { collection } if collection == &["Order"]
     ));
+    let padded_binding = order_scope
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "PaddedPosition")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&padded_binding.node],
+        Node::Call { function, .. } if function == "pad_string_left"
+    ));
+    let limit_binding = order_scope
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "WithinLimit")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&limit_binding.node],
+        Node::Call { function, .. } if function == "less_or_equal"
+    ));
     let ids_binding = project
         .root
         .bindings
@@ -612,11 +630,18 @@ fn aggregate_position_and_typed_filter_designs_import_run_and_roundtrip() {
     assert_eq!(scalar(&orders[0], "Total"), Value::Float(4.0));
     assert_eq!(scalar(&orders[0], "DoubledTotal"), Value::Float(8.0));
     assert_eq!(scalar(&orders[0], "Position"), Value::Int(1));
+    assert_eq!(
+        scalar(&orders[0], "PaddedPosition"),
+        Value::String("01".into())
+    );
+    assert_eq!(scalar(&orders[0], "WithinLimit"), Value::Bool(true));
 
     let dir = TempDir::new("orders");
     let out = dir.0.join("orders.mfd");
     let warnings = mfd::export(project, &out).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert!(exported.contains("name=\"pad-string-left\" library=\"lang\""));
     let reimported = mfd::import(&out).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     let out_b = engine::run(&reimported.project, &source).unwrap();
