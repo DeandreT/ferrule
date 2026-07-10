@@ -1,6 +1,7 @@
 mod app;
 mod canvas;
 mod graph_viewer;
+mod path_picker;
 mod schema_tree;
 mod scope_editor;
 mod value_editor;
