@@ -308,12 +308,14 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.fn_node(i);
         }
     }
-    // Materialize every remaining function up front (filters and group-bys
-    // are handled at the scope stage instead).
+    // Materialize every remaining value-producing function up front
+    // (filters and group-bys are handled at the scope stage instead).
+    // Outputless core components are annotations such as comments.
     for (i, fc) in fn_components.iter().enumerate() {
-        if !is_filter_component(fc)
-            && fc.name != "group-by"
-            && !(fc.kind == 5 && aggregate_op(&fc.name).is_some())
+        if !(fc.outputs.is_empty()
+            || is_filter_component(fc)
+            || fc.name == "group-by"
+            || fc.kind == 5 && aggregate_op(&fc.name).is_some())
         {
             builder.fn_node(i);
         }
@@ -1736,8 +1738,8 @@ fn map_function_name(name: &str) -> Option<&'static str> {
         "not-equal" => "not_equal",
         "greater" => "greater_than",
         "less" => "less_than",
-        "greater-equal" | "greater-or-equal" => "greater_or_equal",
-        "less-equal" | "less-or-equal" => "less_or_equal",
+        "greater-equal" | "greater-or-equal" | "equal-or-greater" => "greater_or_equal",
+        "less-equal" | "less-or-equal" | "equal-or-less" => "less_or_equal",
         "logical-and" => "and",
         "logical-or" => "or",
         "logical-not" => "not",
@@ -1747,6 +1749,10 @@ fn map_function_name(name: &str) -> Option<&'static str> {
         "upper-case" => "upper",
         "lower-case" => "lower",
         "trim" => "trim",
+        "left-trim" => "left_trim",
+        "right-trim" => "right_trim",
+        "pad-string-left" => "pad_string_left",
+        "pad-string-right" => "pad_string_right",
         "substring" => "substring",
         "substring-before" => "substring_before",
         "substring-after" => "substring_after",
