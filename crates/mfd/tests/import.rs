@@ -509,7 +509,7 @@ fn db_target_designs_import_run_and_roundtrip() {
 }
 
 #[test]
-fn aggregate_designs_import_run_and_roundtrip() {
+fn aggregate_and_position_designs_import_run_and_roundtrip() {
     let imported = mfd::import(&fixture("orders.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let project = &imported.project;
@@ -558,6 +558,15 @@ fn aggregate_designs_import_run_and_roundtrip() {
         &project.graph.nodes[&doubled_expression],
         Node::Call { function, .. } if function == "multiply"
     ));
+    let position_binding = order_scope
+        .bindings
+        .iter()
+        .find(|b| b.target_field == "Position")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&position_binding.node],
+        Node::Position { collection } if collection == &["Order"]
+    ));
     let ids_binding = project
         .root
         .bindings
@@ -586,9 +595,11 @@ fn aggregate_designs_import_run_and_roundtrip() {
     assert_eq!(scalar(&orders[0], "ItemCount"), Value::Int(2));
     assert_eq!(scalar(&orders[0], "Total"), Value::Float(4.0));
     assert_eq!(scalar(&orders[0], "DoubledTotal"), Value::Float(8.0));
+    assert_eq!(scalar(&orders[0], "Position"), Value::Int(1));
     assert_eq!(scalar(&orders[1], "ItemCount"), Value::Int(1));
     assert_eq!(scalar(&orders[1], "Total"), Value::Float(10.0));
     assert_eq!(scalar(&orders[1], "DoubledTotal"), Value::Float(20.0));
+    assert_eq!(scalar(&orders[1], "Position"), Value::Int(2));
 
     let dir = TempDir::new("orders");
     let out = dir.0.join("orders.mfd");

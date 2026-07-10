@@ -41,6 +41,7 @@
 											<entry name="ItemCount" inpkey="22"/>
 											<entry name="Total" inpkey="23"/>
 											<entry name="DoubledTotal" inpkey="24"/>
+											<entry name="Position" inpkey="25"/>
 										</entry>
 									</entry>
 								</entry>
@@ -118,11 +119,21 @@
 					</targets>
 					<view ltx="550" lty="280" rbx="650" rby="320"/>
 				</component>
+				<component name="position" library="core" uid="57" kind="5">
+					<sources>
+						<datapoint pos="0" key="55"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="56"/>
+					</targets>
+					<view ltx="400" lty="330" rbx="500" rby="370"/>
+				</component>
 			</children>
 		</structure>
 		<connections>
 			<edge from="10" to="20"/>
 			<edge from="10" to="44"/>
+			<edge from="10" to="55"/>
 			<edge from="11" to="21"/>
 			<edge from="11" to="45"/>
 			<edge from="12" to="40"/>
@@ -135,6 +146,7 @@
 			<edge from="49" to="51"/>
 			<edge from="52" to="53"/>
 			<edge from="54" to="24"/>
+			<edge from="56" to="25"/>
 		</connections>
 	</component>
 </mapping>

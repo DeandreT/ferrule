@@ -21,6 +21,12 @@ pub enum Node {
     /// into a nested target group (e.g. every Item row) with no extra
     /// plumbing -- see `engine::resolve_scalar`.
     SourceField { path: Vec<String> },
+    /// Returns the 1-based position of the current item in `collection`'s
+    /// iteration. An empty collection selects the innermost iteration frame.
+    Position {
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        collection: Vec<String>,
+    },
     /// A literal value.
     Const { value: Value },
     /// Calls a built-in function (see the `functions` crate) with the

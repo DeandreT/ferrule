@@ -133,7 +133,9 @@ pub fn layered_layout(
 
     fn inputs(node: &mapping::Node) -> Vec<NodeId> {
         match node {
-            mapping::Node::SourceField { .. } | mapping::Node::Const { .. } => vec![],
+            mapping::Node::SourceField { .. }
+            | mapping::Node::Position { .. }
+            | mapping::Node::Const { .. } => vec![],
             mapping::Node::Call { args, .. } => args.clone(),
             mapping::Node::If {
                 condition,

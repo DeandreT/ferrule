@@ -65,6 +65,9 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
                     ));
                 }
             }
+            Node::Position { collection } if !collection.is_empty() => {
+                validate_collection_path(project, &location, collection, "position", issues);
+            }
             Node::Call { function, .. } if !functions::is_known(function) => {
                 issues.push(ValidationIssue::new(
                     &location,
@@ -161,7 +164,7 @@ fn validate_collection_value(
 
 fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
-        Node::SourceField { .. } | Node::Const { .. } => Vec::new(),
+        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
         Node::Call { args, .. } => args
             .iter()
             .enumerate()

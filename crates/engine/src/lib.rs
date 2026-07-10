@@ -1,7 +1,7 @@
 //! Interprets a mapping graph against a source instance to produce a target
 //! instance.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use ir::{Instance, Value};
 use mapping::{Graph, Node, NodeId, Project, Scope};
@@ -45,16 +45,31 @@ pub fn run_with_sources(
     extras: Vec<(String, Instance)>,
 ) -> Result<Instance, EngineError> {
     let extras_frame = Instance::Group(extras);
-    eval_scope(&project.graph, &project.root, &[&extras_frame, source])
+    eval_scope(&project.graph, &project.root, &[&extras_frame, source], &[])
+}
+
+#[derive(Clone)]
+struct PositionFrame {
+    collection: Vec<String>,
+    index: usize,
+}
+
+struct WalkExtension<'a> {
+    instances: Vec<&'a Instance>,
+    positions: Vec<PositionFrame>,
 }
 
 fn eval_scope(
     graph: &Graph,
     scope: &Scope,
     context: &[&Instance],
+    positions: &[PositionFrame],
 ) -> Result<Instance, EngineError> {
-    let extensions: Vec<Vec<&Instance>> = match &scope.source {
-        None => vec![vec![*context.last().expect("context is never empty")]],
+    let extensions = match &scope.source {
+        None => vec![WalkExtension {
+            instances: vec![*context.last().expect("context is never empty")],
+            positions: Vec::new(),
+        }],
         // The frame to iterate from is the innermost one that has the
         // path's first field -- so a nested scope can still iterate an
         // extra source (outermost frame) by name.
@@ -68,54 +83,102 @@ fn eval_scope(
                 })
                 .copied()
                 .unwrap_or_else(|| *context.last().expect("context is never empty"));
-            walk(base, path, &[])
+            walk(base, path, &[], &[], &[])
         }
     };
 
     let mut produced = Vec::with_capacity(extensions.len());
     if let (Some(key_node), Some(path)) = (scope.group_by, &scope.source) {
         // Partition the iterated items by their key, in first-seen order.
-        let mut groups: Vec<(Value, Vec<Instance>)> = Vec::new();
+        let mut groups: Vec<(Value, Vec<Instance>, Vec<PositionFrame>)> = Vec::new();
         for extension in &extensions {
             let mut item_context = context.to_vec();
-            item_context.extend(extension.iter().copied());
+            item_context.extend(extension.instances.iter().copied());
+            let mut item_positions = positions.to_vec();
+            item_positions.extend(extension.positions.iter().cloned());
             let mut in_progress = HashSet::new();
-            let key = eval_expr(graph, key_node, &item_context, &mut in_progress)?;
-            let member = (*extension.last().expect("extensions are never empty")).clone();
-            match groups.iter_mut().find(|(k, _)| *k == key) {
-                Some((_, members)) => members.push(member),
-                None => groups.push((key, vec![member])),
+            let key = eval_expr(
+                graph,
+                key_node,
+                &item_context,
+                &item_positions,
+                &mut in_progress,
+            )?;
+            let member = (*extension
+                .instances
+                .last()
+                .expect("extensions are never empty"))
+            .clone();
+            match groups.iter_mut().find(|(k, _, _)| *k == key) {
+                Some((_, members, _)) => members.push(member),
+                None => groups.push((key, vec![member], item_positions)),
             }
         }
         // Each group's context: a wrapper naming the members after the
         // collection's last segment (so collection paths shadow the
         // ungrouped data) plus the members themselves (bindings read the
         // first member, aggregates over `[]` reduce the members).
-        let owned: Vec<(Option<Instance>, Instance)> = groups
+        let owned: Vec<(Option<Instance>, Instance, Vec<PositionFrame>)> = groups
             .into_iter()
-            .map(|(_, members)| {
+            .map(|(_, members, positions)| {
                 let repeated = Instance::Repeated(members);
                 let wrapper = path
                     .last()
                     .map(|segment| Instance::Group(vec![(segment.clone(), repeated.clone())]));
-                (wrapper, repeated)
+                (wrapper, repeated, positions)
             })
             .collect();
-        for (wrapper, members) in &owned {
+        for (wrapper, members, candidate_positions) in &owned {
             let mut next_context = context.to_vec();
             if let Some(wrapper) = wrapper {
                 next_context.push(wrapper);
             }
             next_context.push(members);
-            if let Some(instance) = produce_item(graph, scope, &next_context)? {
+            let mut output_positions = candidate_positions.clone();
+            if let Some(position) = output_positions.last_mut() {
+                position.index = produced.len() + 1;
+            }
+            if let Some(instance) = produce_item(
+                graph,
+                scope,
+                &next_context,
+                candidate_positions,
+                &output_positions,
+            )? {
                 produced.push(instance);
             }
         }
     } else {
+        let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
         for extension in &extensions {
             let mut next_context = context.to_vec();
-            next_context.extend(extension.iter().copied());
-            if let Some(instance) = produce_item(graph, scope, &next_context)? {
+            next_context.extend(extension.instances.iter().copied());
+            let mut candidate_positions = positions.to_vec();
+            candidate_positions.extend(extension.positions.iter().cloned());
+
+            let parent_key: Vec<usize> = extension
+                .positions
+                .iter()
+                .take(extension.positions.len().saturating_sub(1))
+                .map(|position| position.index)
+                .collect();
+            let next_position = compact_positions.get(&parent_key).copied().unwrap_or(0) + 1;
+            let mut output_positions = candidate_positions.clone();
+            if !extension.positions.is_empty()
+                && let Some(position) = output_positions.last_mut()
+            {
+                position.index = next_position;
+            }
+            if let Some(instance) = produce_item(
+                graph,
+                scope,
+                &next_context,
+                &candidate_positions,
+                &output_positions,
+            )? {
+                if !extension.positions.is_empty() {
+                    compact_positions.insert(parent_key, next_position);
+                }
                 produced.push(instance);
             }
         }
@@ -137,10 +200,18 @@ fn produce_item(
     graph: &Graph,
     scope: &Scope,
     context: &[&Instance],
+    filter_positions: &[PositionFrame],
+    output_positions: &[PositionFrame],
 ) -> Result<Option<Instance>, EngineError> {
     if let Some(filter_node) = scope.filter {
         let mut in_progress = HashSet::new();
-        match eval_expr(graph, filter_node, context, &mut in_progress)? {
+        match eval_expr(
+            graph,
+            filter_node,
+            context,
+            filter_positions,
+            &mut in_progress,
+        )? {
             Value::Bool(true) => {}
             Value::Bool(false) => return Ok(None),
             other => {
@@ -155,11 +226,17 @@ fn produce_item(
     let mut fields = Vec::with_capacity(scope.bindings.len() + scope.children.len());
     for binding in &scope.bindings {
         let mut in_progress = HashSet::new();
-        let value = eval_expr(graph, binding.node, context, &mut in_progress)?;
+        let value = eval_expr(
+            graph,
+            binding.node,
+            context,
+            output_positions,
+            &mut in_progress,
+        )?;
         fields.push((binding.target_field.clone(), Instance::Scalar(value)));
     }
     for child in &scope.children {
-        let child_instance = eval_scope(graph, child, context)?;
+        let child_instance = eval_scope(graph, child, context, output_positions)?;
         fields.push((child.target_field.clone(), child_instance));
     }
     Ok(Some(Instance::Group(fields)))
@@ -169,40 +246,78 @@ fn produce_item(
 /// time it crosses a repeating element -- whether mid-path or, if `path` is
 /// exhausted and the final value is itself repeating (e.g. `path` is empty
 /// and `base` is a CSV file's rows), at the very end. Returns one extension
-/// (the new frames to push, innermost last) per produced item.
-fn walk<'a>(base: &'a Instance, path: &[String], acc: &[&'a Instance]) -> Vec<Vec<&'a Instance>> {
+/// (the new frames to push, innermost last) per produced item. Repeating
+/// frames also retain their collection path and 1-based source position.
+fn walk<'a>(
+    base: &'a Instance,
+    path: &[String],
+    prefix: &[String],
+    acc: &[&'a Instance],
+    positions: &[PositionFrame],
+) -> Vec<WalkExtension<'a>> {
     match path.split_first() {
         None => match base {
             Instance::Repeated(items) => items
                 .iter()
-                .map(|item| {
-                    let mut next = acc.to_vec();
-                    next.push(item);
-                    next
-                })
-                .collect(),
-            _ => {
-                let mut next = acc.to_vec();
-                next.push(base);
-                vec![next]
-            }
-        },
-        Some((segment, rest)) => match base.field(segment) {
-            None => Vec::new(),
-            Some(Instance::Repeated(items)) => items
-                .iter()
-                .flat_map(|item| {
-                    let mut next_acc = acc.to_vec();
-                    next_acc.push(item);
-                    if rest.is_empty() {
-                        vec![next_acc]
-                    } else {
-                        walk(item, rest, &next_acc)
+                .enumerate()
+                .map(|(index, item)| {
+                    let mut next_instances = acc.to_vec();
+                    next_instances.push(item);
+                    let mut next_positions = positions.to_vec();
+                    next_positions.push(PositionFrame {
+                        collection: prefix.to_vec(),
+                        index: index + 1,
+                    });
+                    WalkExtension {
+                        instances: next_instances,
+                        positions: next_positions,
                     }
                 })
                 .collect(),
-            Some(other) => walk(other, rest, acc),
+            _ => {
+                let mut next_instances = acc.to_vec();
+                next_instances.push(base);
+                vec![WalkExtension {
+                    instances: next_instances,
+                    positions: positions.to_vec(),
+                }]
+            }
         },
+        Some((segment, rest)) => {
+            let mut collection_path = prefix.to_vec();
+            collection_path.push(segment.clone());
+            match base.field(segment) {
+                None => Vec::new(),
+                Some(Instance::Repeated(items)) => items
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, item)| {
+                        let mut next_instances = acc.to_vec();
+                        next_instances.push(item);
+                        let mut next_positions = positions.to_vec();
+                        next_positions.push(PositionFrame {
+                            collection: collection_path.clone(),
+                            index: index + 1,
+                        });
+                        if rest.is_empty() {
+                            vec![WalkExtension {
+                                instances: next_instances,
+                                positions: next_positions,
+                            }]
+                        } else {
+                            walk(
+                                item,
+                                rest,
+                                &collection_path,
+                                &next_instances,
+                                &next_positions,
+                            )
+                        }
+                    })
+                    .collect(),
+                Some(other) => walk(other, rest, &collection_path, acc, positions),
+            }
+        }
     }
 }
 
@@ -210,6 +325,7 @@ fn eval_expr(
     graph: &Graph,
     node_id: NodeId,
     context: &[&Instance],
+    positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
     if !in_progress.insert(node_id) {
@@ -224,11 +340,12 @@ fn eval_expr(
     let result = match node {
         Node::SourceField { path } => resolve_scalar(context, path)
             .ok_or_else(|| EngineError::MissingSourceField(path.join("/"))),
+        Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
         Node::Const { value } => Ok(value.clone()),
         Node::Call { function, args } => {
             let mut values = Vec::with_capacity(args.len());
             for arg in args {
-                values.push(eval_expr(graph, *arg, context, in_progress)?);
+                values.push(eval_expr(graph, *arg, context, positions, in_progress)?);
             }
             functions::call(function, &values).map_err(EngineError::from)
         }
@@ -236,9 +353,9 @@ fn eval_expr(
             condition,
             then,
             else_,
-        } => match eval_expr(graph, *condition, context, in_progress)? {
-            Value::Bool(true) => eval_expr(graph, *then, context, in_progress),
-            Value::Bool(false) => eval_expr(graph, *else_, context, in_progress),
+        } => match eval_expr(graph, *condition, context, positions, in_progress)? {
+            Value::Bool(true) => eval_expr(graph, *then, context, positions, in_progress),
+            Value::Bool(false) => eval_expr(graph, *else_, context, positions, in_progress),
             other => Err(EngineError::NotABool {
                 node: *condition,
                 found: other.type_name(),
@@ -249,7 +366,7 @@ fn eval_expr(
             table,
             default,
         } => {
-            let value = eval_expr(graph, *input, context, in_progress)?;
+            let value = eval_expr(graph, *input, context, positions, in_progress)?;
             table
                 .iter()
                 .find(|(from, _)| *from == value)
@@ -263,7 +380,7 @@ fn eval_expr(
             matches,
             value,
         } => {
-            let needle = eval_expr(graph, *matches, context, in_progress)?;
+            let needle = eval_expr(graph, *matches, context, positions, in_progress)?;
             let items = resolve_repeated(context, collection)
                 .ok_or_else(|| EngineError::MissingSourceField(collection.join("/")))?;
             Ok(items
@@ -283,11 +400,22 @@ fn eval_expr(
             // erroring -- absent repeating data is normal instance data.
             let items = resolve_repeated(context, collection).unwrap_or(&[]);
             let mut values = Vec::with_capacity(items.len());
-            for item in items {
+            for (item_index, item) in items.iter().enumerate() {
                 let item_value = if let Some(expression) = expression {
                     let mut item_context = context.to_vec();
                     item_context.push(item);
-                    eval_expr(graph, *expression, &item_context, in_progress)?
+                    let mut item_positions = positions.to_vec();
+                    item_positions.push(PositionFrame {
+                        collection: collection.clone(),
+                        index: item_index + 1,
+                    });
+                    eval_expr(
+                        graph,
+                        *expression,
+                        &item_context,
+                        &item_positions,
+                        in_progress,
+                    )?
                 } else if value.is_empty() {
                     item.as_scalar().cloned().unwrap_or(Value::Null)
                 } else {
@@ -296,7 +424,7 @@ fn eval_expr(
                 values.push(item_value);
             }
             let arg_value = match arg {
-                Some(id) => Some(eval_expr(graph, *id, context, in_progress)?),
+                Some(id) => Some(eval_expr(graph, *id, context, positions, in_progress)?),
                 None => None,
             };
             Ok(aggregate(*function, items.len(), &values, arg_value))
@@ -305,6 +433,20 @@ fn eval_expr(
 
     in_progress.remove(&node_id);
     result
+}
+
+fn position(positions: &[PositionFrame], collection: &[String]) -> usize {
+    positions
+        .iter()
+        .rev()
+        .find(|position| {
+            collection.is_empty()
+                || position.collection.len() >= collection.len()
+                    && position.collection[position.collection.len() - collection.len()..]
+                        == *collection
+        })
+        .map(|position| position.index)
+        .unwrap_or(1)
 }
 
 /// Resolves `path` to a repeating collection, with the same outward
@@ -659,6 +801,24 @@ mod tests {
                     path: vec!["item_id".into()],
                 },
             ),
+            (
+                2,
+                Node::Position {
+                    collection: vec!["orders".into()],
+                },
+            ),
+            (
+                3,
+                Node::Position {
+                    collection: vec!["items".into()],
+                },
+            ),
+            (
+                4,
+                Node::SourceField {
+                    path: vec!["keep".into()],
+                },
+            ),
         ]);
         let project = Project {
             source: dummy_schema(),
@@ -672,7 +832,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec!["orders".into(), "items".into()]),
-                filter: None,
+                filter: Some(4),
                 group_by: None,
                 bindings: vec![
                     Binding {
@@ -683,16 +843,24 @@ mod tests {
                         target_field: "item_id".into(),
                         node: 1,
                     },
+                    Binding {
+                        target_field: "order_position".into(),
+                        node: 2,
+                    },
+                    Binding {
+                        target_field: "item_position".into(),
+                        node: 3,
+                    },
                 ],
                 children: vec![],
             },
         };
 
-        let item = |id: &str| {
-            Instance::Group(vec![(
-                "item_id".into(),
-                Instance::Scalar(Value::String(id.into())),
-            )])
+        let item = |id: &str, keep: bool| {
+            Instance::Group(vec![
+                ("item_id".into(), Instance::Scalar(Value::String(id.into()))),
+                ("keep".into(), Instance::Scalar(Value::Bool(keep))),
+            ])
         };
         let order = |cust: &str, items: Vec<Instance>| {
             Instance::Group(vec![
@@ -703,8 +871,11 @@ mod tests {
         let source = Instance::Group(vec![(
             "orders".into(),
             Instance::Repeated(vec![
-                order("Jane", vec![item("A"), item("B")]),
-                order("John", vec![item("C")]),
+                order(
+                    "Jane",
+                    vec![item("A", false), item("B", true), item("C", true)],
+                ),
+                order("John", vec![item("D", false), item("E", true)]),
             ]),
         )]);
 
@@ -720,13 +891,21 @@ mod tests {
                 .and_then(Instance::as_scalar)
                 .cloned()
         };
+        let position =
+            |i: usize, field: &str| row(i).field(field).and_then(Instance::as_scalar).cloned();
 
         assert_eq!(cust(0), Some(Value::String("Jane".into())));
-        assert_eq!(item_id(0), Some(Value::String("A".into())));
+        assert_eq!(item_id(0), Some(Value::String("B".into())));
+        assert_eq!(position(0, "order_position"), Some(Value::Int(1)));
+        assert_eq!(position(0, "item_position"), Some(Value::Int(1)));
         assert_eq!(cust(1), Some(Value::String("Jane".into())));
-        assert_eq!(item_id(1), Some(Value::String("B".into())));
+        assert_eq!(item_id(1), Some(Value::String("C".into())));
+        assert_eq!(position(1, "order_position"), Some(Value::Int(1)));
+        assert_eq!(position(1, "item_position"), Some(Value::Int(2)));
         assert_eq!(cust(2), Some(Value::String("John".into())));
-        assert_eq!(item_id(2), Some(Value::String("C".into())));
+        assert_eq!(item_id(2), Some(Value::String("E".into())));
+        assert_eq!(position(2, "order_position"), Some(Value::Int(2)));
+        assert_eq!(position(2, "item_position"), Some(Value::Int(1)));
     }
 
     #[test]
@@ -861,6 +1040,12 @@ mod tests {
                     args: vec![0, 1],
                 },
             ),
+            (
+                3,
+                Node::Position {
+                    collection: Vec::new(),
+                },
+            ),
         ]);
         let project = Project {
             source: dummy_schema(),
@@ -876,10 +1061,16 @@ mod tests {
                 source: Some(vec![]),
                 filter: Some(2),
                 group_by: None,
-                bindings: vec![Binding {
-                    target_field: "age".into(),
-                    node: 0,
-                }],
+                bindings: vec![
+                    Binding {
+                        target_field: "age".into(),
+                        node: 0,
+                    },
+                    Binding {
+                        target_field: "position".into(),
+                        node: 3,
+                    },
+                ],
                 children: vec![],
             },
         };
@@ -895,6 +1086,13 @@ mod tests {
             .map(|row| row.field("age").and_then(Instance::as_scalar).cloned())
             .collect();
         assert_eq!(ages, vec![Some(Value::Int(29)), Some(Value::Int(41))]);
+        let positions: Vec<_> = target
+            .as_repeated()
+            .unwrap()
+            .iter()
+            .map(|row| row.field("position").and_then(Instance::as_scalar).cloned())
+            .collect();
+        assert_eq!(positions, vec![Some(Value::Int(1)), Some(Value::Int(2))]);
     }
 
     /// A field path crossing a repeating element that no scope iterates
@@ -1151,6 +1349,22 @@ mod tests {
                     arg: None,
                 },
             ),
+            (
+                8,
+                Node::Position {
+                    collection: vec!["Item".into()],
+                },
+            ),
+            (
+                9,
+                Node::Aggregate {
+                    function: AggregateOp::Sum,
+                    collection: vec!["Item".into()],
+                    value: vec![],
+                    expression: Some(8),
+                    arg: None,
+                },
+            ),
         ]);
         let project = Project {
             source: dummy_schema(),
@@ -1187,6 +1401,10 @@ mod tests {
                         Binding {
                             target_field: "ComputedTotal".into(),
                             node: 7,
+                        },
+                        Binding {
+                            target_field: "PositionSum".into(),
+                            node: 9,
                         },
                     ],
                     children: vec![],
@@ -1236,6 +1454,10 @@ mod tests {
                 .and_then(Instance::as_scalar),
             Some(&Value::Float(8.0))
         );
+        assert_eq!(
+            orders[0].field("PositionSum").and_then(Instance::as_scalar),
+            Some(&Value::Int(3))
+        );
         // An empty collection counts 0 and sums to 0.
         assert_eq!(
             orders[1].field("ItemCount").and_then(Instance::as_scalar),
@@ -1249,6 +1471,10 @@ mod tests {
             orders[1]
                 .field("ComputedTotal")
                 .and_then(Instance::as_scalar),
+            Some(&Value::Int(0))
+        );
+        assert_eq!(
+            orders[1].field("PositionSum").and_then(Instance::as_scalar),
             Some(&Value::Int(0))
         );
     }

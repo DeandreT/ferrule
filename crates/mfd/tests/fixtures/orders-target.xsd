@@ -11,6 +11,7 @@
               <xs:element name="ItemCount" type="xs:int"/>
               <xs:element name="Total" type="xs:decimal"/>
               <xs:element name="DoubledTotal" type="xs:decimal"/>
+              <xs:element name="Position" type="xs:int"/>
             </xs:sequence>
           </xs:complexType>
         </xs:element>
