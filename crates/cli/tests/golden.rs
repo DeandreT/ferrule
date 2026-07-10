@@ -306,3 +306,47 @@ fn csv_orders_enriched_from_json_customers() {
     std::fs::remove_file(&output_path).unwrap();
     assert_eq!(actual, expected);
 }
+
+#[test]
+fn validates_projects_before_reading_input_data() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let valid_path = fixture_dir.join("project.json");
+    assert!(cli::validate_project(&valid_path).unwrap().is_empty());
+
+    let text = std::fs::read_to_string(&valid_path).unwrap();
+    let mut project: mapping::Project = serde_json::from_str(&text).unwrap();
+    project.graph.nodes.insert(
+        999,
+        mapping::Node::Call {
+            function: "not_a_builtin".into(),
+            args: vec![12345],
+        },
+    );
+    let invalid_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_invalid_project_{}.json",
+        std::process::id()
+    ));
+    std::fs::write(&invalid_path, serde_json::to_string(&project).unwrap()).unwrap();
+
+    let issues = cli::validate_project(&invalid_path).unwrap();
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.message.contains("unknown function"))
+    );
+    assert!(
+        issues
+            .iter()
+            .any(|issue| issue.message.contains("missing node 12345"))
+    );
+    let output = std::env::temp_dir().join(format!(
+        "ferrule_cli_invalid_output_{}.csv",
+        std::process::id()
+    ));
+    let error = cli::run_project(&invalid_path, Path::new("does-not-exist.csv"), &output)
+        .unwrap_err()
+        .to_string();
+    std::fs::remove_file(invalid_path).unwrap();
+    assert!(error.contains("project validation failed"));
+    assert!(!output.exists());
+}

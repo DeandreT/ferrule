@@ -7,6 +7,10 @@ use ir::{Instance, Value};
 use mapping::{Graph, Node, NodeId, Project, Scope};
 use thiserror::Error;
 
+mod validate;
+
+pub use validate::{ValidationIssue, validate};
+
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
     #[error("mapping graph has no node with id {0}")]

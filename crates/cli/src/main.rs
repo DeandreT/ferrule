@@ -22,6 +22,11 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
     },
+    /// Check project graph, scope, and schema references without reading data.
+    Validate {
+        #[arg(long)]
+        project: PathBuf,
+    },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
     ImportXsd {
@@ -68,6 +73,17 @@ fn main() -> anyhow::Result<()> {
             let rows = cli::run_project(&project, &input, &output)?;
             println!("wrote {rows} record(s) to {}", output.display());
             Ok(())
+        }
+        Command::Validate { project } => {
+            let issues = cli::validate_project(&project)?;
+            if issues.is_empty() {
+                println!("{} is valid", project.display());
+                return Ok(());
+            }
+            for issue in &issues {
+                eprintln!("error: {issue}");
+            }
+            anyhow::bail!("project has {} validation issue(s)", issues.len())
         }
         Command::ImportXsd { xsd } => {
             println!("{}", cli::import_xsd(&xsd)?);
