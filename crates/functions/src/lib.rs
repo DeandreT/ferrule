@@ -30,6 +30,39 @@ pub enum FunctionError {
     DivideByZero,
 }
 
+/// Whether `name` identifies a scalar builtin accepted by [`call`].
+pub fn is_known(name: &str) -> bool {
+    matches!(
+        name,
+        "concat"
+            | "upper"
+            | "lower"
+            | "trim"
+            | "length"
+            | "starts_with"
+            | "contains"
+            | "add"
+            | "subtract"
+            | "multiply"
+            | "divide"
+            | "equal"
+            | "not_equal"
+            | "less_than"
+            | "greater_than"
+            | "less_or_equal"
+            | "greater_or_equal"
+            | "and"
+            | "or"
+            | "not"
+            | "substring"
+            | "substring_before"
+            | "substring_after"
+            | "exists"
+            | "round"
+            | "date_from_datetime"
+    )
+}
+
 /// Dispatches a built-in function call by name.
 pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
     match name {
@@ -441,6 +474,8 @@ mod tests {
             call("nope", &[]),
             Err(FunctionError::UnknownFunction("nope".to_string()))
         );
+        assert!(!is_known("nope"));
+        assert!(is_known("concat"));
     }
 
     #[test]

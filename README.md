@@ -66,6 +66,9 @@ cargo run -p cli -- run \
     --input orders.xml \
     --output order_lines.csv
 
+# Check graph, scope, and schema references without reading input data
+cargo run -p cli -- validate --project examples/project.json
+
 # Bootstrap a schema from existing metadata
 cargo run -p cli -- import-xsd --xsd Orders.xsd
 cargo run -p cli -- import-json-schema --schema customers.schema.json

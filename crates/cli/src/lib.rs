@@ -23,10 +23,8 @@ pub fn run_project(
     input_path: &Path,
     output_path: &Path,
 ) -> anyhow::Result<usize> {
-    let project_json = std::fs::read_to_string(project_path)
-        .with_context(|| format!("reading project file {}", project_path.display()))?;
-    let project: mapping::Project = serde_json::from_str(&project_json)
-        .with_context(|| format!("parsing project file {}", project_path.display()))?;
+    let project = load_project(project_path)?;
+    require_valid(&project)?;
 
     let source_instance = read_instance(input_path, &project.source, &project.source_options)?;
 
@@ -96,6 +94,39 @@ pub fn run_project(
     Ok(row_count)
 }
 
+/// Validates a loaded project without reading any instance data.
+pub fn validate(project: &mapping::Project) -> Vec<engine::ValidationIssue> {
+    engine::validate(project)
+}
+
+/// Loads and validates a project file, returning every issue found.
+pub fn validate_project(project_path: &Path) -> anyhow::Result<Vec<engine::ValidationIssue>> {
+    Ok(validate(&load_project(project_path)?))
+}
+
+fn load_project(project_path: &Path) -> anyhow::Result<mapping::Project> {
+    let project_json = std::fs::read_to_string(project_path)
+        .with_context(|| format!("reading project file {}", project_path.display()))?;
+    serde_json::from_str(&project_json)
+        .with_context(|| format!("parsing project file {}", project_path.display()))
+}
+
+fn require_valid(project: &mapping::Project) -> anyhow::Result<()> {
+    let issues = validate(project);
+    if issues.is_empty() {
+        return Ok(());
+    }
+    let details = issues
+        .iter()
+        .map(|issue| format!("  - {issue}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    bail!(
+        "project validation failed with {} issue(s):\n{details}",
+        issues.len()
+    )
+}
+
 /// Imports the root element of an XSD file as a `SchemaNode`, printed as
 /// pretty JSON -- a starting point for hand-authoring a project file's
 /// `source`/`target` schema.
@@ -126,10 +157,7 @@ pub fn import_mfd(mfd_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String
 /// Converts a ferrule project file into a MapForce `.mfd` design (plus
 /// generated XSDs next to it). Returns warnings for skipped constructs.
 pub fn export_mfd(project_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String>> {
-    let project_json = std::fs::read_to_string(project_path)
-        .with_context(|| format!("reading project file {}", project_path.display()))?;
-    let project: mapping::Project = serde_json::from_str(&project_json)
-        .with_context(|| format!("parsing project file {}", project_path.display()))?;
+    let project = load_project(project_path)?;
     let warnings = mfd::export(&project, out_path)
         .with_context(|| format!("writing {}", out_path.display()))?;
     Ok(warnings)
