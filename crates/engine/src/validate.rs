@@ -306,11 +306,24 @@ fn validate_scope(
         ));
     }
     if let Some(sequence) = &scope.sequence {
-        for (label, node) in [
-            ("sequence input", sequence.inputs()[0]),
-            ("sequence parameter", sequence.inputs()[1]),
-            ("sequence item", sequence.item()),
-        ] {
+        let mut references = match sequence {
+            mapping::SequenceExpr::Tokenize {
+                input, delimiter, ..
+            } => vec![
+                ("sequence input", *input),
+                ("sequence parameter", *delimiter),
+            ],
+            mapping::SequenceExpr::TokenizeByLength { input, length, .. } => {
+                vec![("sequence input", *input), ("sequence parameter", *length)]
+            }
+            mapping::SequenceExpr::Generate { from, to, .. } => from
+                .iter()
+                .map(|&node| ("sequence lower boundary", node))
+                .chain([("sequence upper boundary", *to)])
+                .collect(),
+        };
+        references.push(("sequence item", sequence.item()));
+        for (label, node) in references {
             if !project.graph.nodes.contains_key(&node) {
                 issues.push(ValidationIssue::new(
                     &location,

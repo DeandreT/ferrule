@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, Value};
-use mapping::{FormatOptions, Node, NodeId, Project, Scope, SequenceExpr};
+use mapping::{FormatOptions, Graph, Node, NodeId, Project, Scope, SequenceExpr};
 
 use crate::MfdError;
 
@@ -70,6 +70,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     // Output key for each mapping node we can represent.
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
+    let mut position_inputs: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
     let mut edges: Vec<(u32, u32)> = Vec::new();
     let mut uid = 100u32;
@@ -77,22 +78,36 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut sequences = Vec::new();
     collect_sequences(&project.root, &mut sequences);
     for sequence in sequences {
-        let [input, parameter] = sequence.inputs();
-        let input_key = keys.next();
-        let parameter_key = keys.next();
+        let first_key = keys.next();
+        let second_key = keys.next();
         let out = keys.next();
         node_out_key.insert(sequence.item(), out);
-        sequence_inputs.push((input, input_key));
-        sequence_inputs.push((parameter, parameter_key));
         let name = match sequence {
-            SequenceExpr::Tokenize { .. } => "tokenize",
-            SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+            SequenceExpr::Tokenize {
+                input, delimiter, ..
+            } => {
+                sequence_inputs.push((*input, first_key));
+                sequence_inputs.push((*delimiter, second_key));
+                "tokenize"
+            }
+            SequenceExpr::TokenizeByLength { input, length, .. } => {
+                sequence_inputs.push((*input, first_key));
+                sequence_inputs.push((*length, second_key));
+                "tokenize-by-length"
+            }
+            SequenceExpr::Generate { from, to, .. } => {
+                if let Some(from) = from {
+                    sequence_inputs.push((*from, first_key));
+                }
+                sequence_inputs.push((*to, second_key));
+                "generate-sequence"
+            }
         };
         uid += 1;
         let _ = write!(
             components,
             "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-             \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input_key}\"/><datapoint pos=\"1\" key=\"{parameter_key}\"/></sources>\n\
+             \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{first_key}\"/><datapoint pos=\"1\" key=\"{second_key}\"/></sources>\n\
              \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
              \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
              \t\t\t\t</component>\n"
@@ -117,18 +132,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                     )),
                 }
             }
-            Node::Position { collection } => {
+            Node::Position { .. } => {
                 let input = keys.next();
                 let out = keys.next();
                 node_out_key.insert(id, out);
-                match source_ports.key_for_suffix(collection) {
-                    Some(source) => edges.push((source, input)),
-                    None => warnings.push(format!(
-                        "position collection `{}` matches no source entry; its \
-                         context connection is skipped",
-                        collection.join("/")
-                    )),
-                }
+                position_inputs.insert(id, input);
                 uid += 1;
                 let _ = write!(
                     components,
@@ -319,6 +327,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let target_root_iterable = matches!(target_format, SideFormat::Csv | SideFormat::Db)
         || (target_format == SideFormat::Json && project.target.repeating);
     let mut filter_components = String::new();
+    let mut position_contexts: BTreeMap<NodeId, Option<u32>> = BTreeMap::new();
     collect_scope_edges(
         &project.root,
         &mut Vec::new(),
@@ -326,13 +335,23 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         &source_ports,
         &target_ports,
         target_root_iterable,
+        &project.graph,
         &node_out_key,
+        &position_inputs,
+        &mut position_contexts,
         &mut keys,
         &mut uid,
         &mut filter_components,
         &mut edges,
         &mut warnings,
     );
+    for (id, input) in &position_inputs {
+        if !position_contexts.contains_key(id) {
+            warnings.push(format!(
+                "position node {id} has no matching iteration scope; its context input {input} is unconnected"
+            ));
+        }
+    }
     components.push_str(&filter_components);
 
     // Database sides register their connection as a mapping-level
@@ -893,6 +912,297 @@ fn json_type_name(ty: ScalarType) -> &'static str {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn append_scope_controls(
+    scope: &Scope,
+    chain: &[String],
+    source_collection: Option<&[String]>,
+    graph: &Graph,
+    node_out_key: &BTreeMap<NodeId, u32>,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    keys: &mut KeyAlloc,
+    uid: &mut u32,
+    components: &mut String,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+    mut from: u32,
+) -> u32 {
+    if let Some(sort_by) = scope.sort_by {
+        connect_position_roots(
+            [sort_by],
+            source_collection,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&sort_by) {
+            Some(&key_src) => {
+                let in_nodes = keys.next();
+                let in_key = keys.next();
+                let out_nodes = keys.next();
+                let direction = if scope.sort_descending {
+                    "descending"
+                } else {
+                    "ascending"
+                };
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+                     \t\t\t\t\t<data><sort><collation/><key direction=\"{direction}\"/></sort></data>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((key_src, in_key));
+                from = out_nodes;
+            }
+            None => warnings.push(format!(
+                "scope `{}` sort key references an unexported node; sorting dropped",
+                chain.join("/")
+            )),
+        }
+    }
+    if let Some(filter) = scope.filter {
+        connect_position_roots(
+            [filter],
+            source_collection,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&filter) {
+            Some(&bool_key_src) => {
+                let in_node = keys.next();
+                let in_bool = keys.next();
+                let out_true = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_node}\"/><datapoint pos=\"1\" key=\"{in_bool}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_true}\"/><datapoint/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_node));
+                edges.push((bool_key_src, in_bool));
+                from = out_true;
+            }
+            None => warnings.push(format!(
+                "scope `{}` filter references an unexported node; filter dropped",
+                chain.join("/")
+            )),
+        }
+    }
+    if let Some(group_by) = scope.group_by {
+        connect_position_roots(
+            [group_by],
+            source_collection,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&group_by) {
+            Some(&key_src) => {
+                let in_nodes = keys.next();
+                let in_key = keys.next();
+                let out_groups = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"group-by\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/><datapoint/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((key_src, in_key));
+                from = out_groups;
+            }
+            None => warnings.push(format!(
+                "scope `{}` group-by key references an unexported node; grouping dropped",
+                chain.join("/")
+            )),
+        }
+    }
+    if let Some(take) = scope.take {
+        match node_out_key.get(&take) {
+            Some(&count_src) => {
+                let in_nodes = keys.next();
+                let in_count = keys.next();
+                let out_nodes = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_count}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((count_src, in_count));
+                from = out_nodes;
+            }
+            None => warnings.push(format!(
+                "scope `{}` take count references an unexported node; item limit dropped",
+                chain.join("/")
+            )),
+        }
+    }
+    from
+}
+
+fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
+    match node {
+        Node::Call { args, .. } => args.clone(),
+        Node::If {
+            condition,
+            then,
+            else_,
+        } => vec![*condition, *then, *else_],
+        Node::ValueMap { input, .. } => vec![*input],
+        Node::Lookup { matches, .. } => vec![*matches],
+        Node::Aggregate {
+            expression, arg, ..
+        } => expression.iter().chain(arg).copied().collect(),
+        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
+    }
+}
+
+fn position_nodes_for_roots(
+    roots: impl IntoIterator<Item = NodeId>,
+    graph: &Graph,
+) -> std::collections::BTreeSet<NodeId> {
+    let mut pending: Vec<NodeId> = roots.into_iter().collect();
+    let mut visited = std::collections::BTreeSet::new();
+    let mut positions = std::collections::BTreeSet::new();
+    while let Some(id) = pending.pop() {
+        if !visited.insert(id) {
+            continue;
+        }
+        match graph.nodes.get(&id) {
+            Some(Node::Position { .. }) => {
+                positions.insert(id);
+            }
+            Some(node) => pending.extend(graph_node_inputs(node)),
+            None => {}
+        }
+    }
+    positions
+}
+
+#[allow(clippy::too_many_arguments)]
+fn connect_position_roots(
+    roots: impl IntoIterator<Item = NodeId>,
+    source_collection: Option<&[String]>,
+    allow_empty: bool,
+    from: u32,
+    graph: &Graph,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+) {
+    let referenced = position_nodes_for_roots(roots, graph);
+    for id in referenced {
+        let Some(&input) = position_inputs.get(&id) else {
+            continue;
+        };
+        let Some(Node::Position { collection }) = graph.nodes.get(&id) else {
+            continue;
+        };
+        let matches_scope = if collection.is_empty() {
+            allow_empty
+        } else {
+            source_collection.is_some_and(|source| source.ends_with(collection))
+        };
+        if !matches_scope {
+            continue;
+        }
+        match position_contexts.get(&id).copied() {
+            None => {
+                position_contexts.insert(id, Some(from));
+                edges.push((from, input));
+            }
+            Some(Some(existing)) if existing != from => {
+                warnings.push(format!(
+                    "position node {id} is used in multiple iteration stages or scopes; \
+                     its first context connection was kept"
+                ));
+                position_contexts.insert(id, None);
+            }
+            Some(_) => {}
+        }
+    }
+}
+
+fn descendant_binding_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
+    roots.extend(scope.bindings.iter().map(|binding| binding.node));
+    for child in &scope.children {
+        descendant_binding_roots(child, roots);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn connect_binding_positions(
+    scope: &Scope,
+    source_collection: Option<&[String]>,
+    from: u32,
+    graph: &Graph,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+) {
+    connect_position_roots(
+        scope.bindings.iter().map(|binding| binding.node),
+        source_collection,
+        true,
+        from,
+        graph,
+        position_inputs,
+        position_contexts,
+        edges,
+        warnings,
+    );
+
+    // A nested binding can explicitly request an outer named collection.
+    // Empty-path positions remain owned by the nested scope itself.
+    let mut descendant_roots = Vec::new();
+    for child in &scope.children {
+        descendant_binding_roots(child, &mut descendant_roots);
+    }
+    connect_position_roots(
+        descendant_roots,
+        source_collection,
+        false,
+        from,
+        graph,
+        position_inputs,
+        position_contexts,
+        edges,
+        warnings,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
 fn collect_scope_edges(
     scope: &Scope,
     chain: &mut Vec<String>,
@@ -900,7 +1210,10 @@ fn collect_scope_edges(
     source_ports: &PortTree,
     target_ports: &PortTree,
     target_root_iterable: bool,
+    graph: &Graph,
     node_out_key: &BTreeMap<NodeId, u32>,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
     keys: &mut KeyAlloc,
     uid: &mut u32,
     filter_components: &mut String,
@@ -920,7 +1233,34 @@ fn collect_scope_edges(
                 node_out_key.get(&sequence.item()),
                 target_ports.key_for_abs(chain),
             ) {
-                (Some(&from), Some(to)) => edges.push((from, to)),
+                (Some(&from), Some(to)) => {
+                    let from = append_scope_controls(
+                        scope,
+                        chain,
+                        None,
+                        graph,
+                        node_out_key,
+                        position_inputs,
+                        position_contexts,
+                        keys,
+                        uid,
+                        filter_components,
+                        edges,
+                        warnings,
+                        from,
+                    );
+                    connect_binding_positions(
+                        scope,
+                        None,
+                        from,
+                        graph,
+                        position_inputs,
+                        position_contexts,
+                        edges,
+                        warnings,
+                    );
+                    edges.push((from, to));
+                }
                 (None, _) => warnings.push(format!(
                     "scope `{}` sequence item references an unexported node; skipped",
                     chain.join("/")
@@ -929,16 +1269,6 @@ fn collect_scope_edges(
                     "scope `{}` has no matching target entry; sequence skipped",
                     chain.join("/")
                 )),
-            }
-            if scope.filter.is_some()
-                || scope.group_by.is_some()
-                || scope.sort_by.is_some()
-                || scope.take.is_some()
-            {
-                warnings.push(format!(
-                    "scope `{}` sequence controls are not yet exported; controls dropped",
-                    chain.join("/")
-                ));
             }
         }
     } else if scope.source.is_some() && chain.is_empty() && !target_root_iterable {
@@ -955,126 +1285,31 @@ fn collect_scope_edges(
             target_ports.key_for_abs(chain),
         ) {
             (Some(from), Some(to)) => {
-                // The iteration wire may pass through sequence components
-                // on its way to the target.
-                let mut from = from;
-                if let Some(filter) = scope.filter {
-                    match node_out_key.get(&filter) {
-                        Some(&bool_key_src) => {
-                            // filter component: node+bool in, on-true out.
-                            let in_node = keys.next();
-                            let in_bool = keys.next();
-                            let out_true = keys.next();
-                            *uid += 1;
-                            let _ = write!(
-                                filter_components,
-                                "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
-                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_node}\"/><datapoint pos=\"1\" key=\"{in_bool}\"/></sources>\n\
-                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_true}\"/><datapoint/></targets>\n\
-                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                                 \t\t\t\t</component>\n"
-                            );
-                            edges.push((from, in_node));
-                            edges.push((bool_key_src, in_bool));
-                            from = out_true;
-                        }
-                        None => {
-                            warnings.push(format!(
-                                "scope `{}` filter references an unexported node; \
-                                 filter dropped",
-                                chain.join("/")
-                            ));
-                        }
-                    }
-                }
-                if let Some(group_by) = scope.group_by {
-                    match node_out_key.get(&group_by) {
-                        Some(&key_src) => {
-                            // group-by component: nodes+key in, groups out
-                            // (the second, per-group key output stays
-                            // unwired -- reimport reads the key expression
-                            // directly).
-                            let in_nodes = keys.next();
-                            let in_key = keys.next();
-                            let out_groups = keys.next();
-                            *uid += 1;
-                            let _ = write!(
-                                filter_components,
-                                "\t\t\t\t<component name=\"group-by\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
-                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/><datapoint/></targets>\n\
-                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                                 \t\t\t\t</component>\n"
-                            );
-                            edges.push((from, in_nodes));
-                            edges.push((key_src, in_key));
-                            from = out_groups;
-                        }
-                        None => {
-                            warnings.push(format!(
-                                "scope `{}` group-by key references an unexported \
-                                 node; grouping dropped",
-                                chain.join("/")
-                            ));
-                        }
-                    }
-                }
-                if let Some(sort_by) = scope.sort_by {
-                    match node_out_key.get(&sort_by) {
-                        Some(&key_src) => {
-                            let in_nodes = keys.next();
-                            let in_key = keys.next();
-                            let out_nodes = keys.next();
-                            let direction = if scope.sort_descending {
-                                "descending"
-                            } else {
-                                "ascending"
-                            };
-                            *uid += 1;
-                            let _ = write!(
-                                filter_components,
-                                "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
-                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
-                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
-                                 \t\t\t\t\t<data><sort><collation/><key direction=\"{direction}\"/></sort></data>\n\
-                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                                 \t\t\t\t</component>\n"
-                            );
-                            edges.push((from, in_nodes));
-                            edges.push((key_src, in_key));
-                            from = out_nodes;
-                        }
-                        None => warnings.push(format!(
-                            "scope `{}` sort key references an unexported node; sorting dropped",
-                            chain.join("/")
-                        )),
-                    }
-                }
-                if let Some(take) = scope.take {
-                    match node_out_key.get(&take) {
-                        Some(&count_src) => {
-                            let in_nodes = keys.next();
-                            let in_count = keys.next();
-                            let out_nodes = keys.next();
-                            *uid += 1;
-                            let _ = write!(
-                                filter_components,
-                                "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_count}\"/></sources>\n\
-                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
-                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                                 \t\t\t\t</component>\n"
-                            );
-                            edges.push((from, in_nodes));
-                            edges.push((count_src, in_count));
-                            from = out_nodes;
-                        }
-                        None => warnings.push(format!(
-                            "scope `{}` take count references an unexported node; item limit dropped",
-                            chain.join("/")
-                        )),
-                    }
-                }
+                let from = append_scope_controls(
+                    scope,
+                    chain,
+                    Some(&abs),
+                    graph,
+                    node_out_key,
+                    position_inputs,
+                    position_contexts,
+                    keys,
+                    uid,
+                    filter_components,
+                    edges,
+                    warnings,
+                    from,
+                );
+                connect_binding_positions(
+                    scope,
+                    Some(&abs),
+                    from,
+                    graph,
+                    position_inputs,
+                    position_contexts,
+                    edges,
+                    warnings,
+                );
                 edges.push((from, to));
                 *anchor = abs;
             }
@@ -1112,7 +1347,10 @@ fn collect_scope_edges(
             source_ports,
             target_ports,
             target_root_iterable,
+            graph,
             node_out_key,
+            position_inputs,
+            position_contexts,
             keys,
             uid,
             filter_components,
@@ -1172,6 +1410,7 @@ fn unmap_function_name(name: &str) -> String {
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "date_from_datetime" => "date-from-datetime",
+        "format_number" => "format-number",
         other => other,
     }
     .to_string()
@@ -1189,4 +1428,17 @@ fn xml_escape(text: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{function_library, unmap_function_name};
+
+    #[test]
+    fn canonical_scalar_names_export_as_mapforce_core_functions() {
+        assert_eq!(unmap_function_name("string"), "string");
+        assert_eq!(unmap_function_name("format_number"), "format-number");
+        assert_eq!(function_library("string"), "core");
+        assert_eq!(function_library("format_number"), "core");
+    }
 }

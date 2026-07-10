@@ -137,21 +137,32 @@ pub enum SequenceExpr {
         length: NodeId,
         item: NodeId,
     },
+    /// Generates the inclusive integer range `from..=to`. When `from` is
+    /// omitted, MapForce's default lower boundary of 1 applies.
+    Generate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        from: Option<NodeId>,
+        to: NodeId,
+        item: NodeId,
+    },
 }
 
 impl SequenceExpr {
-    pub fn inputs(&self) -> [NodeId; 2] {
+    pub fn inputs(&self) -> Vec<NodeId> {
         match self {
             Self::Tokenize {
                 input, delimiter, ..
-            } => [*input, *delimiter],
-            Self::TokenizeByLength { input, length, .. } => [*input, *length],
+            } => vec![*input, *delimiter],
+            Self::TokenizeByLength { input, length, .. } => vec![*input, *length],
+            Self::Generate { from, to, .. } => from.iter().copied().chain([*to]).collect(),
         }
     }
 
     pub fn item(&self) -> NodeId {
         match self {
-            Self::Tokenize { item, .. } | Self::TokenizeByLength { item, .. } => *item,
+            Self::Tokenize { item, .. }
+            | Self::TokenizeByLength { item, .. }
+            | Self::Generate { item, .. } => *item,
         }
     }
 }

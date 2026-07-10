@@ -11,6 +11,8 @@ mod validate;
 
 pub use validate::{ValidationIssue, validate};
 
+const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
+
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
     #[error("mapping graph has no node with id {0}")]
@@ -27,6 +29,8 @@ pub enum EngineError {
     ValueMapMiss { node: NodeId },
     #[error("a scope with `filter` but no `source` filtered out its only item")]
     FilteredNonRepeatingScope,
+    #[error("generate-sequence requested {requested} items; maximum is {max}")]
+    GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error(transparent)]
     Function(#[from] functions::FunctionError),
 }
@@ -306,21 +310,82 @@ fn eval_sequence(
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<Vec<Value>, EngineError> {
-    let [input, parameter] = sequence.inputs();
-    let mut in_progress = HashSet::new();
-    let input = eval_expr(graph, input, context, positions, &mut in_progress)?;
-    if matches!(input, Value::Null) {
-        return Ok(Vec::new());
-    }
-    let mut in_progress = HashSet::new();
-    let parameter = eval_expr(graph, parameter, context, positions, &mut in_progress)?;
-    if matches!(parameter, Value::Null) {
-        return Ok(Vec::new());
-    }
-
     match sequence {
-        SequenceExpr::Tokenize { .. } => tokenize(input, parameter),
-        SequenceExpr::TokenizeByLength { .. } => tokenize_by_length(input, parameter),
+        SequenceExpr::Tokenize {
+            input, delimiter, ..
+        } => {
+            let Some(input) = eval_sequence_arg(graph, *input, context, positions)? else {
+                return Ok(Vec::new());
+            };
+            let Some(delimiter) = eval_sequence_arg(graph, *delimiter, context, positions)? else {
+                return Ok(Vec::new());
+            };
+            tokenize(input, delimiter)
+        }
+        SequenceExpr::TokenizeByLength { input, length, .. } => {
+            let Some(input) = eval_sequence_arg(graph, *input, context, positions)? else {
+                return Ok(Vec::new());
+            };
+            let Some(length) = eval_sequence_arg(graph, *length, context, positions)? else {
+                return Ok(Vec::new());
+            };
+            tokenize_by_length(input, length)
+        }
+        SequenceExpr::Generate { from, to, .. } => {
+            let from = match from {
+                Some(node) => {
+                    let Some(value) = eval_sequence_arg(graph, *node, context, positions)? else {
+                        return Ok(Vec::new());
+                    };
+                    Some(value)
+                }
+                None => None,
+            };
+            let Some(to) = eval_sequence_arg(graph, *to, context, positions)? else {
+                return Ok(Vec::new());
+            };
+            generate_sequence(from, to)
+        }
+    }
+}
+
+fn eval_sequence_arg(
+    graph: &Graph,
+    node: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<Option<Value>, EngineError> {
+    let mut in_progress = HashSet::new();
+    let value = eval_expr(graph, node, context, positions, &mut in_progress)?;
+    Ok((value != Value::Null).then_some(value))
+}
+
+fn generate_sequence(from: Option<Value>, to: Value) -> Result<Vec<Value>, EngineError> {
+    let from = from.map_or(Ok(1), |value| sequence_integer(value, "generate-sequence"))?;
+    let to = sequence_integer(to, "generate-sequence")?;
+    if from > to {
+        return Ok(Vec::new());
+    }
+    let requested = (i128::from(to) - i128::from(from) + 1) as u128;
+    if requested > MAX_GENERATED_SEQUENCE_ITEMS {
+        return Err(EngineError::GeneratedSequenceTooLarge {
+            requested,
+            max: MAX_GENERATED_SEQUENCE_ITEMS,
+        });
+    }
+    let mut values = Vec::with_capacity(requested as usize);
+    values.extend((from..=to).map(Value::Int));
+    Ok(values)
+}
+
+fn sequence_integer(value: Value, function: &'static str) -> Result<i64, EngineError> {
+    match value {
+        Value::Int(value) => Ok(value),
+        other => Err(functions::FunctionError::TypeMismatch {
+            function,
+            got: other.type_name(),
+        }
+        .into()),
     }
 }
 
@@ -2549,5 +2614,204 @@ mod tests {
             .insert(1, Node::Const { value: Value::Null });
         let output = run(&missing_parameter, &Instance::Group(Vec::new())).unwrap();
         assert!(output.as_repeated().is_some_and(<[Instance]>::is_empty));
+    }
+
+    #[test]
+    fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
+        assert_eq!(
+            generate_sequence(None, Value::Int(3)).unwrap(),
+            vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+        );
+        assert_eq!(
+            generate_sequence(Some(Value::Int(7)), Value::Int(7)).unwrap(),
+            vec![Value::Int(7)]
+        );
+        assert!(
+            generate_sequence(Some(Value::Int(4)), Value::Int(2))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            generate_sequence(Some(Value::Int(i64::MIN)), Value::Int(i64::MAX)),
+            Err(EngineError::GeneratedSequenceTooLarge {
+                requested: 1_u128 << 64,
+                max: MAX_GENERATED_SEQUENCE_ITEMS,
+            })
+        );
+
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["From".into()],
+                    frame: None,
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    path: vec!["To".into()],
+                    frame: None,
+                },
+            ),
+            (
+                2,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+            (
+                4,
+                Node::Position {
+                    collection: Vec::new(),
+                },
+            ),
+            (
+                5,
+                Node::SourceField {
+                    path: vec!["Name".into()],
+                    frame: None,
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                children: vec![Scope {
+                    target_field: "Row".into(),
+                    source: Some(vec!["Row".into()]),
+                    children: vec![
+                        Scope {
+                            target_field: "Bounded".into(),
+                            sequence: Some(SequenceExpr::Generate {
+                                from: Some(0),
+                                to: 1,
+                                item: 2,
+                            }),
+                            bindings: vec![
+                                Binding {
+                                    target_field: "Value".into(),
+                                    node: 2,
+                                },
+                                Binding {
+                                    target_field: "Position".into(),
+                                    node: 4,
+                                },
+                                Binding {
+                                    target_field: "Parent".into(),
+                                    node: 5,
+                                },
+                            ],
+                            ..Scope::default()
+                        },
+                        Scope {
+                            target_field: "Default".into(),
+                            sequence: Some(SequenceExpr::Generate {
+                                from: None,
+                                to: 1,
+                                item: 3,
+                            }),
+                            bindings: vec![Binding {
+                                target_field: "Value".into(),
+                                node: 3,
+                            }],
+                            ..Scope::default()
+                        },
+                    ],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            },
+        };
+        let row = |name: &str, from: i64, to: i64| {
+            Instance::Group(vec![
+                ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("From".into(), Instance::Scalar(Value::Int(from))),
+                ("To".into(), Instance::Scalar(Value::Int(to))),
+            ])
+        };
+        let source = Instance::Group(vec![(
+            "Row".into(),
+            Instance::Repeated(vec![row("A", 2, 4), row("B", 4, 2), row("C", 7, 7)]),
+        )]);
+
+        let output = run(&project, &source).unwrap();
+        let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+        let bounded = |row: &Instance| {
+            row.field("Bounded")
+                .and_then(Instance::as_repeated)
+                .unwrap()
+                .iter()
+                .map(|item| {
+                    (
+                        item.field("Value").and_then(Instance::as_scalar).cloned(),
+                        item.field("Position")
+                            .and_then(Instance::as_scalar)
+                            .cloned(),
+                        item.field("Parent").and_then(Instance::as_scalar).cloned(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            bounded(&rows[0]),
+            vec![
+                (
+                    Some(Value::Int(2)),
+                    Some(Value::Int(1)),
+                    Some(Value::String("A".into()))
+                ),
+                (
+                    Some(Value::Int(3)),
+                    Some(Value::Int(2)),
+                    Some(Value::String("A".into()))
+                ),
+                (
+                    Some(Value::Int(4)),
+                    Some(Value::Int(3)),
+                    Some(Value::String("A".into()))
+                ),
+            ]
+        );
+        assert!(bounded(&rows[1]).is_empty());
+        assert_eq!(bounded(&rows[2]).len(), 1);
+        assert_eq!(
+            rows[1]
+                .field("Default")
+                .and_then(Instance::as_repeated)
+                .map(<[Instance]>::len),
+            Some(2)
+        );
+
+        let mut invalid = project;
+        let Some(SequenceExpr::Generate { from, to, .. }) =
+            &mut invalid.root.children[0].children[0].sequence
+        else {
+            unreachable!()
+        };
+        *from = Some(998);
+        *to = 999;
+        let issues = validate(&invalid);
+        assert!(issues
+            .iter()
+            .any(|issue| issue.message == "sequence lower boundary references missing node 998"));
+        assert!(issues
+            .iter()
+            .any(|issue| issue.message == "sequence upper boundary references missing node 999"));
     }
 }

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Input" library="xml" uid="2" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Input"><entry name="Anchor" outkey="10"/></entry></entry></entry></root>
+            <document schema="generate-source.xsd" inputinstance="generate.xml" instanceroot="{}Input"/>
+          </data>
+        </component>
+        <component name="Output" library="xml" uid="3" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Output"><entry name="Item" inpkey="20"><entry name="Value" inpkey="21"/><entry name="Position" inpkey="22"/></entry><entry name="Default" inpkey="23"><entry name="Value" inpkey="24"/></entry></entry></entry></entry></root>
+            <document schema="generate-target.xsd" instanceroot="{}Output"/>
+          </data>
+        </component>
+        <component name="generate-sequence" library="core" uid="4" kind="5">
+          <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+          <targets><datapoint pos="0" key="32"/></targets>
+        </component>
+        <component name="constant" library="core" uid="5" kind="2"><targets><datapoint pos="0" key="50"/></targets><data><constant value="1" datatype="integer"/></data></component>
+        <component name="constant" library="core" uid="6" kind="2"><targets><datapoint pos="0" key="51"/></targets><data><constant value="5" datatype="integer"/></data></component>
+        <component name="constant" library="core" uid="7" kind="2"><targets><datapoint pos="0" key="52"/></targets><data><constant value="2" datatype="integer"/></data></component>
+        <component name="greater" library="core" uid="8" kind="5"><sources><datapoint pos="0" key="35"/><datapoint pos="1" key="36"/></sources><targets><datapoint pos="0" key="37"/></targets></component>
+        <component name="filter" library="core" uid="9" kind="3"><sources><datapoint pos="0" key="38"/><datapoint pos="1" key="39"/></sources><targets><datapoint pos="0" key="40"/><datapoint/></targets></component>
+        <component name="sort" library="core" uid="10" kind="30"><sources><datapoint pos="0" key="45"/><datapoint pos="1" key="46"/></sources><targets><datapoint pos="0" key="47"/></targets><data><sort><collation/><key direction="descending"/></sort></data></component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="50" to="30"/><edge from="51" to="31"/>
+      <edge from="32" to="35"/><edge from="52" to="36"/>
+      <edge from="32" to="38"/><edge from="37" to="39"/>
+      <edge from="40" to="45"/><edge from="32" to="46"/>
+      <edge from="47" to="20"/><edge from="32" to="21"/>
+    </connections>
+  </component>
+</mapping>
