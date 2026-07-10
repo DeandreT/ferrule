@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ferrule — open-source data mapping in Rust</title>
+  <meta name="description" content="ferrule is an open-source, Rust-native, any-to-any graphical data mapping tool: XML, JSON, CSV, SQLite, X12 & EDIFACT EDI — with MapForce .mfd import/export." />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="4" y="10" width="24" height="12" rx="3" fill="%23d98e32"/><rect x="8" y="10" width="3" height="12" fill="%2316130f"/><rect x="21" y="10" width="3" height="12" fill="%2316130f"/></svg>' />
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+        <rect x="4" y="10" width="24" height="12" rx="3" fill="var(--copper)"/>
+        <rect x="8" y="10" width="3" height="12" fill="var(--bg)"/>
+        <rect x="21" y="10" width="3" height="12" fill="var(--bg)"/>
+      </svg>
+      ferrule
+    </a>
+    <nav>
+      <a href="#features">features</a>
+      <a href="#mapforce">mapforce</a>
+      <a href="#start">get started</a>
+      <a href="demo/" class="btn btn-small">live demo</a>
+      <a href="https://github.com/DeandreT/ferrule" class="gh">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="kicker">// open source · Rust · GPL-3.0</p>
+        <h1>Wire any data<br/>into any other data.</h1>
+        <p class="lede">
+          <strong>ferrule</strong> is a graphical any-to-any data mapping tool —
+          draw wires from a source schema to a target schema, drop in functions,
+          filters, aggregates and group-bys, then run it anywhere: a native GUI,
+          a headless CLI, or your browser.
+        </p>
+        <p class="lede sub">
+          XML · JSON · CSV · SQLite · X12 &amp; EDIFACT EDI — plus best-effort
+          import and export of MapForce <code>.mfd</code> designs.
+        </p>
+        <div class="cta">
+          <a class="btn" href="demo/">▶ try it in your browser</a>
+          <a class="btn btn-ghost" href="https://github.com/DeandreT/ferrule">source on GitHub</a>
+        </div>
+      </div>
+
+      <figure class="hero-canvas" aria-label="a mapping: orders flow through sum and count nodes into a summary">
+        <svg viewBox="0 0 520 300" role="img">
+          <defs>
+            <linearGradient id="wire" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#8a6a3f"/>
+              <stop offset="1" stop-color="#d98e32"/>
+            </linearGradient>
+          </defs>
+          <!-- wires -->
+          <path class="w" d="M118 62  C 190 62, 180 84, 236 84"/>
+          <path class="w" d="M118 62  C 210 62, 300 52, 388 52"/>
+          <path class="w" d="M118 148 C 180 148, 180 152, 236 152"/>
+          <path class="w" d="M118 148 C 180 148, 190 220, 236 220"/>
+          <path class="w" d="M330 84  C 362 84,  356 90, 388 90"/>
+          <path class="w" d="M330 152 C 362 152, 356 128, 388 128"/>
+          <path class="w" d="M330 220 C 368 220, 352 166, 388 166"/>
+          <!-- source nodes -->
+          <g class="node" transform="translate(18,40)">
+            <rect width="100" height="44" rx="7"/>
+            <text x="12" y="19">field</text><text class="d" x="12" y="34">Order/Id</text>
+            <circle class="pin" cx="100" cy="22" r="4"/>
+          </g>
+          <g class="node" transform="translate(18,126)">
+            <rect width="100" height="44" rx="7"/>
+            <text x="12" y="19">field</text><text class="d" x="12" y="34">Item/Price</text>
+            <circle class="pin" cx="100" cy="22" r="4"/>
+          </g>
+          <!-- function nodes -->
+          <g class="node fn" transform="translate(236,62)">
+            <rect width="94" height="44" rx="7"/>
+            <text x="12" y="19">concat</text><text class="d" x="12" y="34">Id, " "</text>
+            <circle class="pin" cx="0" cy="22" r="4"/><circle class="pin" cx="94" cy="22" r="4"/>
+          </g>
+          <g class="node fn" transform="translate(236,130)">
+            <rect width="94" height="44" rx="7"/>
+            <text x="12" y="19">sum</text><text class="d" x="12" y="34">Item/Price</text>
+            <circle class="pin" cx="0" cy="22" r="4"/><circle class="pin" cx="94" cy="22" r="4"/>
+          </g>
+          <g class="node fn" transform="translate(236,198)">
+            <rect width="94" height="44" rx="7"/>
+            <text x="12" y="19">count</text><text class="d" x="12" y="34">Item</text>
+            <circle class="pin" cx="0" cy="22" r="4"/><circle class="pin" cx="94" cy="22" r="4"/>
+          </g>
+          <!-- target -->
+          <g class="node target" transform="translate(388,30)">
+            <rect width="114" height="156" rx="7"/>
+            <text x="12" y="20">Summary</text>
+            <text class="d" x="12" y="42">Id</text>
+            <text class="d" x="12" y="64">Name</text>
+            <text class="d" x="12" y="102">Total</text>
+            <text class="d" x="12" y="140">Items</text>
+            <circle class="pin" cx="0" cy="22" r="4"/>
+            <circle class="pin" cx="0" cy="60" r="4"/>
+            <circle class="pin" cx="0" cy="98" r="4"/>
+            <circle class="pin" cx="0" cy="136" r="4"/>
+          </g>
+        </svg>
+        <figcaption>a mapping is a graph: schemas at the edges, functions on the wires</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="features" class="features">
+    <div class="wrap">
+      <h2>What's in the box</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>⚙ A real mapping engine</h3>
+          <p>Repeating elements become loops; enclosing values broadcast into
+          nested rows; filters, <code>group-by</code>, aggregates
+          (<code>count / sum / avg / min / max / join</code>) and cross-source
+          lookups are first-class. Absent data flows as null instead of
+          crashing your run.</p>
+        </div>
+        <div class="card">
+          <h3>⇄ Any-to-any formats</h3>
+          <p>XML (XSD-driven, attributes included), JSON (JSON&nbsp;Schema with
+          <code>$ref</code>), CSV, SQLite tables — mixed freely per side, chosen
+          by file extension. Multiple named sources can feed one target.</p>
+        </div>
+        <div class="card">
+          <h3>⭑ EDI that actually parses</h3>
+          <p>X12 and EDIFACT with composite elements, qualifier-driven loops
+          (HIPAA <code>HL</code> hierarchies), repetition separators, and a
+          lenient mode for slim schemas — validated against real 837 / ORDERS
+          traffic.</p>
+        </div>
+        <div class="card">
+          <h3>🖱 Visual, headless, or embedded</h3>
+          <p>Draw mappings in the egui-based GUI, run them with
+          <code>ferrule run</code> in CI, or embed the pure-Rust engine — it
+          compiles to WebAssembly (that's the <a href="demo/">live demo</a>).</p>
+        </div>
+        <div class="card">
+          <h3>🧪 Warning, not wall</h3>
+          <p>Importers never die on the first unsupported construct: they
+          convert everything they can and hand you one actionable warning per
+          skipped piece, so a partial import still beats redrawing a mapping.</p>
+        </div>
+        <div class="card">
+          <h3>🦀 Small, honest Rust</h3>
+          <p>A workspace of focused crates around one format-agnostic IR.
+          No services, no runtime, no telemetry. GPL-3.0 licensed.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="mapforce" class="mapforce">
+    <div class="wrap">
+      <h2>Migrating from MapForce?</h2>
+      <p>ferrule imports MapForce <code>.mfd</code> designs
+      (best-effort) and exports its own projects back out: XML, JSON, CSV and
+      single-table SQLite components, the common core functions, aggregates,
+      and filter- / group-by-driven iteration convert directly — everything
+      else becomes an explicit warning you can finish in the editor.</p>
+      <pre><code><span class="c"># convert a design, then run it</span>
+cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
+cargo run -p cli -- run --project project.json --input orders.xml --output summary.json</code></pre>
+      <p class="fine">MapForce is a trademark of its owner; ferrule is an independent project.</p>
+    </div>
+  </section>
+
+  <section id="start" class="start">
+    <div class="wrap">
+      <h2>Get started</h2>
+      <pre><code><span class="c"># clone &amp; run the GUI</span>
+git clone https://github.com/DeandreT/ferrule
+cd ferrule
+cargo run -p gui
+
+<span class="c"># or run a mapping headlessly — formats picked by extension</span>
+cargo run -p cli -- run --project examples/project.json \
+    --input orders.xml --output order_lines.csv</code></pre>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>ferrule · GPL-3.0 ·
+      <a href="https://github.com/DeandreT/ferrule">github.com/DeandreT/ferrule</a></p>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,57 @@
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "crates/**"
+      - "Cargo.*"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
+      - name: build wasm demo
+        run: trunk build --release --public-url ./
+        working-directory: crates/web-demo
+      - name: assemble site
+        run: |
+          mkdir -p _site/demo
+          cp -r site/* _site/
+          cp -r crates/web-demo/dist/* _site/demo/
+          # older trunk versions render --public-url ./ as /./ (root-absolute);
+          # normalize so the demo works from any subpath
+          sed -i 's|"/\./|"./|g; s|'"'"'/\./|'"'"'./|g' _site/demo/index.html
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

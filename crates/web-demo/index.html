@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ferrule playground</title>
+  <!-- wasm-opt stays off: older binaryen builds corrupt the externref
+       table modern wasm-bindgen emits (WebAssembly.Table.grow errors). -->
+  <link data-trunk rel="rust" data-wasm-opt="0" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #16130f;
+      color: #e8e0d4;
+      font-family: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
+    }
+    #demo_canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+    .loader {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      pointer-events: none;
+    }
+    .loader .ring {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 4px solid #3a3126;
+      border-top-color: #d98e32;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loader p { color: #9c8f7c; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="loader" id="loader">
+    <div class="ring"></div>
+    <p>loading the ferrule engine (WebAssembly)…</p>
+  </div>
+  <canvas id="demo_canvas"></canvas>
+  <script type="module">
+    // Hide the loader once the wasm module has painted a frame.
+    const observer = new MutationObserver(() => {});
+    setTimeout(() => {
+      const el = document.getElementById("loader");
+      const hide = () => el && el.remove();
+      // eframe takes over the canvas; give it a beat, then remove.
+      const check = setInterval(() => {
+        const c = document.getElementById("demo_canvas");
+        if (c && c.width > 0) { hide(); clearInterval(check); }
+      }, 250);
+    }, 500);
+  </script>
+</body>
+</html>
