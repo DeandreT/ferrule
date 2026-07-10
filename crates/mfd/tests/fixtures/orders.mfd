@@ -128,13 +128,56 @@
 					</targets>
 					<view ltx="400" lty="330" rbx="500" rby="370"/>
 				</component>
+				<component name="Order" library="core" uid="58" kind="3">
+					<sources>
+						<datapoint pos="0" key="57"/>
+						<datapoint pos="1" key="58"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="59"/>
+						<datapoint/>
+					</targets>
+					<view ltx="260" lty="350" rbx="350" rby="390"/>
+				</component>
+				<component name="starts-with" library="core" uid="59" kind="5">
+					<sources>
+						<datapoint pos="0" key="60"/>
+						<datapoint pos="1" key="61"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="62"/>
+					</targets>
+					<view ltx="150" lty="390" rbx="250" rby="430"/>
+				</component>
+				<component name="constant" library="core" uid="60" kind="2">
+					<targets>
+						<datapoint pos="0" key="63"/>
+					</targets>
+					<view ltx="80" lty="430" rbx="140" rby="460"/>
+					<data>
+						<constant value="A" datatype="string"/>
+					</data>
+				</component>
+				<component name="document" library="xml" uid="61" kind="14">
+					<view ltx="380" lty="350" rbx="520" rby="430"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="compute-when" inpkey="64"/>
+							<entry name="document" expanded="1">
+								<entry name="Order" inpkey="65" outkey="66" expanded="1">
+									<entry name="Id" outkey="67"/>
+								</entry>
+							</entry>
+						</root>
+						<document schema="orders-variable.xsd" instanceroot="{}Order"/>
+						<parameter usageKind="variable"/>
+					</data>
+				</component>
 			</children>
 		</structure>
 		<connections>
-			<edge from="10" to="20"/>
 			<edge from="10" to="44"/>
-			<edge from="10" to="55"/>
-			<edge from="11" to="21"/>
 			<edge from="11" to="45"/>
 			<edge from="12" to="40"/>
 			<edge from="13" to="42"/>
@@ -147,6 +190,14 @@
 			<edge from="52" to="53"/>
 			<edge from="54" to="24"/>
 			<edge from="56" to="25"/>
+			<edge from="10" to="57"/>
+			<edge from="11" to="60"/>
+			<edge from="63" to="61"/>
+			<edge from="62" to="58"/>
+			<edge from="59" to="65"/>
+			<edge from="66" to="20"/>
+			<edge from="67" to="21"/>
+			<edge from="66" to="55"/>
 		</connections>
 	</component>
 </mapping>

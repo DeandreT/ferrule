@@ -509,7 +509,7 @@ fn db_target_designs_import_run_and_roundtrip() {
 }
 
 #[test]
-fn aggregate_and_position_designs_import_run_and_roundtrip() {
+fn aggregate_position_and_typed_filter_designs_import_run_and_roundtrip() {
     let imported = mfd::import(&fixture("orders.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let project = &imported.project;
@@ -519,6 +519,21 @@ fn aggregate_and_position_designs_import_run_and_roundtrip() {
     // collection keeps the Order segment.
     let order_scope = &project.root.children[0];
     assert_eq!(order_scope.target_field, "Order");
+    assert!(matches!(
+        order_scope
+            .filter
+            .and_then(|id| project.graph.nodes.get(&id)),
+        Some(Node::Call { function, .. }) if function == "starts_with"
+    ));
+    let id_binding = order_scope
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Id")
+        .unwrap();
+    assert!(matches!(
+        &project.graph.nodes[&id_binding.node],
+        Node::SourceField { path } if path == &["Id"]
+    ));
     let count_binding = order_scope
         .bindings
         .iter()
@@ -592,14 +607,11 @@ fn aggregate_and_position_designs_import_run_and_roundtrip() {
         .field("Order")
         .and_then(Instance::as_repeated)
         .unwrap();
+    assert_eq!(orders.len(), 1);
     assert_eq!(scalar(&orders[0], "ItemCount"), Value::Int(2));
     assert_eq!(scalar(&orders[0], "Total"), Value::Float(4.0));
     assert_eq!(scalar(&orders[0], "DoubledTotal"), Value::Float(8.0));
     assert_eq!(scalar(&orders[0], "Position"), Value::Int(1));
-    assert_eq!(scalar(&orders[1], "ItemCount"), Value::Int(1));
-    assert_eq!(scalar(&orders[1], "Total"), Value::Float(10.0));
-    assert_eq!(scalar(&orders[1], "DoubledTotal"), Value::Float(20.0));
-    assert_eq!(scalar(&orders[1], "Position"), Value::Int(2));
 
     let dir = TempDir::new("orders");
     let out = dir.0.join("orders.mfd");
