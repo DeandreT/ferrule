@@ -17,6 +17,7 @@ use ir::Value;
 use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Scope};
 
 use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
+use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 
 pub struct GraphViewer<'a> {
@@ -24,6 +25,7 @@ pub struct GraphViewer<'a> {
     pub root_scope: &'a mut Scope,
     pub source_leaves: &'a [SourceLeaf],
     pub target_leaves: &'a [TargetLeaf],
+    pub source_paths: &'a SourcePathCatalog,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
     /// line.
@@ -285,7 +287,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::Call { .. }) => format!("arg {idx}"),
                 Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                 Some(Node::ValueMap { .. }) => "input".to_string(),
-                Some(Node::Lookup { .. }) => "matches".to_string(),
+                Some(Node::Lookup { .. }) => "match/key".to_string(),
                 Some(Node::Aggregate { .. }) => "arg".to_string(),
                 _ => String::new(),
             },
@@ -349,21 +351,33 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     value,
                     ..
                 } => {
-                    for (label, path) in
-                        [("collection", collection), ("key", key), ("value", value)]
-                    {
-                        ui.horizontal(|ui| {
-                            ui.label(label);
-                            let mut joined = path.join("/");
-                            if ui.text_edit_singleline(&mut joined).changed() {
-                                *path = joined
-                                    .split('/')
-                                    .map(str::to_string)
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
-                            }
+                    ui.vertical(|ui| {
+                        egui::Grid::new(ui.id().with("lookup_paths")).show(ui, |ui| {
+                            ui.label("collection");
+                            self.source_paths.show_collection_picker(
+                                ui,
+                                ui.id().with("lookup_collection"),
+                                collection,
+                            );
+                            ui.end_row();
+                            ui.label("");
+                            self.source_paths.show_value_picker(
+                                ui,
+                                ui.id().with("lookup_key"),
+                                collection,
+                                key,
+                            );
+                            ui.end_row();
+                            ui.label("value");
+                            self.source_paths.show_value_picker(
+                                ui,
+                                ui.id().with("lookup_value"),
+                                collection,
+                                value,
+                            );
+                            ui.end_row();
                         });
-                    }
+                    });
                 }
                 Node::Aggregate {
                     function,
@@ -372,38 +386,53 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     arg,
                 } => {
                     let previous = *function;
-                    egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
-                        .selected_text(
-                            Self::AGGREGATE_OPS
-                                .iter()
-                                .find(|(op, _)| op == function)
-                                .map_or("Aggregate", |(_, label)| *label),
-                        )
-                        .show_ui(ui, |ui| {
-                            for (op, label) in Self::AGGREGATE_OPS {
-                                ui.selectable_value(function, op, label);
+                    ui.vertical(|ui| {
+                        egui::Grid::new(ui.id().with("aggregate_paths")).show(ui, |ui| {
+                            ui.label("collection");
+                            self.source_paths.show_collection_picker(
+                                ui,
+                                ui.id().with("aggregate_collection"),
+                                collection,
+                            );
+                            ui.end_row();
+                            if arg.is_some() {
+                                ui.label("");
+                            } else {
+                                ui.label("operation");
+                            }
+                            egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
+                                .selected_text(
+                                    Self::AGGREGATE_OPS
+                                        .iter()
+                                        .find(|(op, _)| op == function)
+                                        .map_or("Aggregate", |(_, label)| *label),
+                                )
+                                .show_ui(ui, |ui| {
+                                    for (op, label) in Self::AGGREGATE_OPS {
+                                        ui.selectable_value(function, op, label);
+                                    }
+                                });
+                            ui.end_row();
+                            if *function != AggregateOp::Count {
+                                ui.label("value");
+                                self.source_paths.show_value_picker(
+                                    ui,
+                                    ui.id().with("aggregate_value"),
+                                    collection,
+                                    value,
+                                );
+                                ui.end_row();
                             }
                         });
-                    if previous != *function {
-                        if Self::aggregate_needs_arg(*function) && arg.is_none() {
-                            new_aggregate_arg_needed = true;
-                        } else if !Self::aggregate_needs_arg(*function) && arg.take().is_some() {
-                            remove_aggregate_wire = true;
+                        if previous != *function {
+                            if Self::aggregate_needs_arg(*function) && arg.is_none() {
+                                new_aggregate_arg_needed = true;
+                            } else if !Self::aggregate_needs_arg(*function) && arg.take().is_some()
+                            {
+                                remove_aggregate_wire = true;
+                            }
                         }
-                    }
-                    for (label, path) in [("collection", collection), ("value", value)] {
-                        ui.horizontal(|ui| {
-                            ui.label(label);
-                            let mut joined = path.join("/");
-                            if ui.text_edit_singleline(&mut joined).changed() {
-                                *path = joined
-                                    .split('/')
-                                    .map(str::to_string)
-                                    .filter(|s| !s.is_empty())
-                                    .collect();
-                            }
-                        });
-                    }
+                    });
                 }
             }
         }
@@ -621,6 +650,7 @@ mod tests {
         root_scope: Scope,
         source_leaves: Vec<SourceLeaf>,
         target_leaves: Vec<TargetLeaf>,
+        source_paths: SourcePathCatalog,
         snarl: Snarl<CanvasNode>,
         source: SnarlNodeId,
         target: SnarlNodeId,
@@ -639,6 +669,7 @@ mod tests {
         );
         let target_schema =
             SchemaNode::group("row", vec![SchemaNode::scalar("out", ScalarType::String)]);
+        let source_paths = SourcePathCatalog::new(&source_schema, &[]);
         let mut graph = Graph::default();
         graph.nodes.insert(
             0,
@@ -656,6 +687,7 @@ mod tests {
             root_scope: Scope::default(),
             source_leaves: source_leaves(&source_schema),
             target_leaves: target_leaves(&target_schema),
+            source_paths,
             snarl,
             source,
             target,
@@ -670,6 +702,7 @@ mod tests {
                 root_scope: &mut self.root_scope,
                 source_leaves: &self.source_leaves,
                 target_leaves: &self.target_leaves,
+                source_paths: &self.source_paths,
                 error: None,
             }
         }
