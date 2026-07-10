@@ -14,6 +14,14 @@ use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
 use mapping::FormatOptions;
 
+/// Result of running a project after resolving its input and output paths.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunOutcome {
+    pub records_written: usize,
+    pub input_path: PathBuf,
+    pub output_path: PathBuf,
+}
+
 /// Loads the project at `project_path`, runs it against `input_path` (plus
 /// any extra sources the project declares), and writes the result to
 /// `output_path`. Returns the number of top-level records written (rows
@@ -23,10 +31,37 @@ pub fn run_project(
     input_path: &Path,
     output_path: &Path,
 ) -> anyhow::Result<usize> {
+    Ok(run_project_with_paths(project_path, Some(input_path), Some(output_path))?.records_written)
+}
+
+/// Loads and runs a project, using explicit paths when provided and falling
+/// back to the project's `source_path` and `target_path`. Relative stored
+/// paths are resolved from the project file's directory; explicit paths keep
+/// their normal process-relative semantics.
+pub fn run_project_with_paths(
+    project_path: &Path,
+    input_path: Option<&Path>,
+    output_path: Option<&Path>,
+) -> anyhow::Result<RunOutcome> {
     let project = load_project(project_path)?;
     require_valid(&project)?;
 
-    let source_instance = read_instance(input_path, &project.source, &project.source_options)?;
+    let input_path = resolve_run_path(
+        project_path,
+        input_path,
+        project.source_path.as_deref(),
+        "input",
+        "source_path",
+    )?;
+    let output_path = resolve_run_path(
+        project_path,
+        output_path,
+        project.target_path.as_deref(),
+        "output",
+        "target_path",
+    )?;
+
+    let source_instance = read_instance(&input_path, &project.source, &project.source_options)?;
 
     let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
     let mut extras = Vec::with_capacity(project.extra_sources.len());
@@ -46,13 +81,13 @@ pub fn run_project(
 
     let target_instance = engine::run_with_sources(&project, &source_instance, extras)?;
 
-    let row_count = match extension_of(output_path)?.as_str() {
+    let row_count = match extension_of(&output_path)?.as_str() {
         "csv" => {
             let rows = target_instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a CSV output")?;
             format_csv::write(
-                output_path,
+                &output_path,
                 &project.target,
                 rows,
                 project.target_options.delimiter,
@@ -62,12 +97,12 @@ pub fn run_project(
             rows.len()
         }
         "xml" => {
-            format_xml::write(output_path, &project.target, &target_instance)
+            format_xml::write(&output_path, &project.target, &target_instance)
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             1
         }
         "json" => {
-            format_json::write(output_path, &project.target, &target_instance)
+            format_json::write(&output_path, &project.target, &target_instance)
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             target_instance.as_repeated().map_or(1, <[Instance]>::len)
         }
@@ -75,7 +110,7 @@ pub fn run_project(
             let rows = target_instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for a database output")?;
-            format_db::write(output_path, &project.target, rows)
+            format_db::write(&output_path, &project.target, rows)
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             rows.len()
         }
@@ -84,14 +119,47 @@ pub fn run_project(
                 format_edi::Dialect::X12 => format_edi::x12::write,
                 format_edi::Dialect::Edifact => format_edi::edifact::write,
             };
-            write(output_path, &project.target, &target_instance)
+            write(&output_path, &project.target, &target_instance)
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             1
         }
         other => bail!("unsupported output file extension: .{other}"),
     };
 
-    Ok(row_count)
+    Ok(RunOutcome {
+        records_written: row_count,
+        input_path,
+        output_path,
+    })
+}
+
+fn resolve_run_path(
+    project_path: &Path,
+    explicit_path: Option<&Path>,
+    stored_path: Option<&str>,
+    argument: &str,
+    project_field: &str,
+) -> anyhow::Result<PathBuf> {
+    if let Some(path) = explicit_path {
+        return Ok(path.to_owned());
+    }
+
+    let stored_path = stored_path.filter(|path| !path.trim().is_empty()).with_context(|| {
+        format!(
+            "no {argument} path is configured; pass `--{argument} <PATH>` or set `{project_field}` in {}",
+            project_path.display()
+        )
+    })?;
+    let stored_path = PathBuf::from(stored_path);
+    if stored_path.is_absolute() {
+        return Ok(stored_path);
+    }
+
+    let project_dir = project_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    Ok(project_dir.join(stored_path))
 }
 
 /// Validates a loaded project without reading any instance data.

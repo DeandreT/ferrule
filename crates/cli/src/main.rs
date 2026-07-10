@@ -32,10 +32,12 @@ enum Command {
     Run {
         #[arg(long)]
         project: PathBuf,
+        /// Input instance; defaults to the project's source_path.
         #[arg(long)]
-        input: PathBuf,
+        input: Option<PathBuf>,
+        /// Output instance; defaults to the project's target_path.
         #[arg(long)]
-        output: PathBuf,
+        output: Option<PathBuf>,
     },
     /// Check project graph, scope, and schema references without reading data.
     Validate {
@@ -210,8 +212,13 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             input,
             output,
         } => {
-            let rows = cli::run_project(&project, &input, &output)?;
-            println!("wrote {rows} record(s) to {}", output.display());
+            let outcome =
+                cli::run_project_with_paths(&project, input.as_deref(), output.as_deref())?;
+            println!(
+                "wrote {} record(s) to {}",
+                outcome.records_written,
+                outcome.output_path.display()
+            );
             Ok(ExitCode::SUCCESS)
         }
         Command::Validate { project } => {
