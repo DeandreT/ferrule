@@ -5,6 +5,9 @@ target schema, wire them together with a mapping graph (functions, conditionals,
 tables, filters, cross-source joins), then run the mapping headlessly from the CLI or
 interactively from the visual editor.
 
+See [ROADMAP.md](ROADMAP.md) for the capability matrix and phased plan toward
+MapForce workflow parity.
+
 ## Supported formats
 
 Every format works as both a mapping source and a mapping target:
