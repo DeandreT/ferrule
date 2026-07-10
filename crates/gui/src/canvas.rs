@@ -12,6 +12,10 @@ pub enum CanvasNode {
     Source,
     Target,
     Graph(NodeId),
+    /// A GUI-created null producer that keeps a required graph input valid
+    /// until the user connects a value. Keeping it on the canvas prevents
+    /// the persisted graph and its visual representation from diverging.
+    Placeholder(NodeId),
 }
 
 /// One scalar leaf of the source schema. `path` is what a `SourceField`
