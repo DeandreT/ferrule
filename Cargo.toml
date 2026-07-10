@@ -13,6 +13,7 @@ members = [
     "crates/mfd",
     "crates/cli",
     "crates/gui",
+    "crates/web-demo",
 ]
 
 [workspace.package]
