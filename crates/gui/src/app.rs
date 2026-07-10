@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use egui_snarl::{InPinId, OutPinId, Snarl};
 use ir::SchemaNode;
 use mapping::{Graph, Node, NodeId, Project, Scope};
+use serde::{Deserialize, Serialize};
 
 use crate::canvas::{
     CanvasNode, SourceLeaf, TargetLeaf, layered_layout, source_leaves, target_leaves,
@@ -23,12 +24,56 @@ use crate::scope_editor::{ScopePath, scope_at_mut, show_scope_editor, show_scope
 
 const HISTORY_LIMIT: usize = 100;
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
+const LAYOUT_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct CanvasLayout {
+    version: u32,
+    nodes: Vec<CanvasNodeLayout>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct CanvasNodeLayout {
+    node: PersistedCanvasNode,
+    x: f32,
+    y: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum PersistedCanvasNode {
+    Source,
+    Target,
+    Graph { id: NodeId },
+}
+
+impl From<CanvasNode> for PersistedCanvasNode {
+    fn from(node: CanvasNode) -> Self {
+        match node {
+            CanvasNode::Source => Self::Source,
+            CanvasNode::Target => Self::Target,
+            CanvasNode::Graph(id) => Self::Graph { id },
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct EditorSnapshotRef<'a> {
+    project: &'a Project,
+    layout: CanvasLayout,
+}
+
+#[derive(Deserialize)]
+struct EditorSnapshot {
+    project: Project,
+    layout: CanvasLayout,
+}
 
 pub struct FerruleApp {
     project: Project,
-    /// Serialized project at the last successful load/save. `None` marks
+    /// Serialized editor state at the last successful load/save. `None` marks
     /// imported projects that have never been saved as ferrule JSON.
-    saved_project: Option<String>,
+    saved_editor: Option<String>,
     snarl: Snarl<CanvasNode>,
     project_path: String,
     input_path: String,
@@ -40,7 +85,7 @@ pub struct FerruleApp {
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
     pending_destructive_action: Option<DestructiveAction>,
     allow_close: bool,
-    history_project: String,
+    history_editor: String,
     undo_history: Vec<String>,
     redo_history: Vec<String>,
     pending_history: Option<PendingHistory>,
@@ -73,12 +118,11 @@ enum DestructiveAction {
 impl Default for FerruleApp {
     fn default() -> Self {
         let project = blank_project();
-        let saved_project = Some(project_snapshot(&project));
-        let history_project = project_snapshot(&project);
         let snarl = build_snarl(&project);
+        let snapshot = editor_snapshot(&project, &snarl);
         Self {
             project,
-            saved_project,
+            saved_editor: Some(snapshot.clone()),
             snarl,
             project_path: "project.json".to_string(),
             input_path: String::new(),
@@ -88,7 +132,7 @@ impl Default for FerruleApp {
             pending_dialog: None,
             pending_destructive_action: None,
             allow_close: false,
-            history_project,
+            history_editor: snapshot,
             undo_history: Vec::new(),
             redo_history: Vec::new(),
             pending_history: None,
@@ -96,8 +140,81 @@ impl Default for FerruleApp {
     }
 }
 
-fn project_snapshot(project: &Project) -> String {
-    serde_json::to_string(project).expect("Project serialization cannot fail")
+fn editor_snapshot(project: &Project, snarl: &Snarl<CanvasNode>) -> String {
+    serde_json::to_string(&EditorSnapshotRef {
+        project,
+        layout: CanvasLayout::capture(snarl),
+    })
+    .expect("Editor state serialization cannot fail")
+}
+
+impl CanvasLayout {
+    fn capture(snarl: &Snarl<CanvasNode>) -> Self {
+        let mut nodes: Vec<_> = snarl
+            .nodes_pos()
+            .map(|(pos, &node)| CanvasNodeLayout {
+                node: node.into(),
+                x: pos.x,
+                y: pos.y,
+            })
+            .collect();
+        nodes.sort_by_key(|entry| entry.node);
+        Self {
+            version: LAYOUT_VERSION,
+            nodes,
+        }
+    }
+
+    fn apply(&self, snarl: &mut Snarl<CanvasNode>) {
+        if self.version != LAYOUT_VERSION {
+            return;
+        }
+        let positions: std::collections::BTreeMap<_, _> = self
+            .nodes
+            .iter()
+            .filter(|entry| entry.x.is_finite() && entry.y.is_finite())
+            .map(|entry| (entry.node, egui::pos2(entry.x, entry.y)))
+            .collect();
+        let node_ids: Vec<_> = snarl
+            .node_ids()
+            .map(|(id, &node)| (id, PersistedCanvasNode::from(node)))
+            .collect();
+        for (id, node) in node_ids {
+            if let Some(&pos) = positions.get(&node)
+                && let Some(info) = snarl.get_node_info_mut(id)
+            {
+                info.pos = pos;
+            }
+        }
+    }
+}
+
+fn layout_path(project_path: &str) -> PathBuf {
+    let mut path = PathBuf::from(project_path);
+    path.set_extension("layout.json");
+    path
+}
+
+fn read_layout(project_path: &str) -> anyhow::Result<Option<CanvasLayout>> {
+    let path = layout_path(project_path);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let layout: CanvasLayout = serde_json::from_str(&text)?;
+    anyhow::ensure!(
+        layout.version == LAYOUT_VERSION,
+        "unsupported canvas layout version {}",
+        layout.version
+    );
+    Ok(Some(layout))
+}
+
+fn write_layout(project_path: &str, snarl: &Snarl<CanvasNode>) -> anyhow::Result<()> {
+    let json = serde_json::to_string_pretty(&CanvasLayout::capture(snarl))?;
+    std::fs::write(layout_path(project_path), json)?;
+    Ok(())
 }
 
 fn blank_project() -> Project {
@@ -159,6 +276,13 @@ fn walk_scopes(
 /// matches a source leaf are hidden -- wires leave the Source endpoint's
 /// pin directly.
 fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
+    build_snarl_with_layout(project, None)
+}
+
+fn build_snarl_with_layout(
+    project: &Project,
+    saved_layout: Option<&CanvasLayout>,
+) -> Snarl<CanvasNode> {
     let source_pins = source_leaves(&project.source);
     let target_pins = target_leaves(&project.target);
 
@@ -253,6 +377,9 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
         }
     }
 
+    if let Some(layout) = saved_layout {
+        layout.apply(&mut snarl);
+    }
     snarl
 }
 
@@ -298,17 +425,17 @@ fn save_file(
 
 impl FerruleApp {
     fn is_dirty(&self) -> bool {
-        self.saved_project
+        self.saved_editor
             .as_ref()
-            .is_none_or(|saved| *saved != project_snapshot(&self.project))
+            .is_none_or(|saved| *saved != editor_snapshot(&self.project, &self.snarl))
     }
 
     fn mark_clean(&mut self) {
-        self.saved_project = Some(project_snapshot(&self.project));
+        self.saved_editor = Some(editor_snapshot(&self.project, &self.snarl));
     }
 
     fn rebase_history(&mut self) {
-        self.history_project = project_snapshot(&self.project);
+        self.history_editor = editor_snapshot(&self.project, &self.snarl);
         self.undo_history.clear();
         self.redo_history.clear();
         self.pending_history = None;
@@ -323,22 +450,22 @@ impl FerruleApp {
 
     fn commit_pending_history(&mut self) {
         if let Some(pending) = self.pending_history.take()
-            && pending.before != self.history_project
+            && pending.before != self.history_editor
         {
             self.push_undo(pending.before);
         }
     }
 
-    /// Observes all project mutations after the frame has rendered. Changes
+    /// Observes project and canvas-layout mutations after the frame has rendered. Changes
     /// close together form one user-level undo transaction instead of one
     /// entry per keystroke/frame.
-    fn observe_project_history(
+    fn observe_editor_history(
         &mut self,
         now: std::time::Instant,
         coalesce_change: bool,
     ) -> Option<std::time::Duration> {
-        let current = project_snapshot(&self.project);
-        if current != self.history_project {
+        let current = editor_snapshot(&self.project, &self.snarl);
+        if current != self.history_editor {
             if coalesce_change {
                 if self.pending_history.as_ref().is_some_and(|pending| {
                     now.saturating_duration_since(pending.last_change) >= HISTORY_COALESCE_DELAY
@@ -349,18 +476,18 @@ impl FerruleApp {
                     Some(pending) => pending.last_change = now,
                     None => {
                         self.pending_history = Some(PendingHistory {
-                            before: self.history_project.clone(),
+                            before: self.history_editor.clone(),
                             last_change: now,
                         });
                         self.redo_history.clear();
                     }
                 }
-                self.history_project = current;
+                self.history_editor = current;
             } else {
                 self.commit_pending_history();
                 self.redo_history.clear();
-                self.push_undo(self.history_project.clone());
-                self.history_project = current;
+                self.push_undo(self.history_editor.clone());
+                self.history_editor = current;
                 return None;
             }
         }
@@ -378,16 +505,17 @@ impl FerruleApp {
     fn can_undo(&self) -> bool {
         self.pending_history
             .as_ref()
-            .is_some_and(|pending| pending.before != self.history_project)
+            .is_some_and(|pending| pending.before != self.history_editor)
             || !self.undo_history.is_empty()
     }
 
     fn restore_history_snapshot(&mut self, snapshot: String) {
-        self.project =
-            serde_json::from_str(&snapshot).expect("history contains valid Project JSON");
-        self.snarl = build_snarl(&self.project);
+        let state: EditorSnapshot =
+            serde_json::from_str(&snapshot).expect("history contains valid editor JSON");
+        self.project = state.project;
+        self.snarl = build_snarl_with_layout(&self.project, Some(&state.layout));
         self.selected_scope.clear();
-        self.history_project = snapshot;
+        self.history_editor = snapshot;
         self.pending_history = None;
     }
 
@@ -396,18 +524,18 @@ impl FerruleApp {
         let Some(previous) = self.undo_history.pop() else {
             return;
         };
-        self.redo_history.push(self.history_project.clone());
+        self.redo_history.push(self.history_editor.clone());
         self.restore_history_snapshot(previous);
-        self.status = "undid project edit".to_string();
+        self.status = "undid edit".to_string();
     }
 
     fn redo_project(&mut self) {
         let Some(next) = self.redo_history.pop() else {
             return;
         };
-        self.push_undo(self.history_project.clone());
+        self.push_undo(self.history_editor.clone());
         self.restore_history_snapshot(next);
-        self.status = "redid project edit".to_string();
+        self.status = "redid edit".to_string();
     }
 
     /// Returns the action when it can run immediately. Dirty projects queue
@@ -504,12 +632,24 @@ impl FerruleApp {
             serde_json::from_str::<Project>(&text).map_err(|e| std::io::Error::other(e.to_string()))
         }) {
             Ok(project) => {
-                self.snarl = build_snarl(&project);
+                let (layout, layout_warning) = match read_layout(&self.project_path) {
+                    Ok(layout) => (layout, None),
+                    Err(error) => (None, Some(error.to_string())),
+                };
+                self.snarl = build_snarl_with_layout(&project, layout.as_ref());
                 self.project = project;
                 self.selected_scope.clear();
                 self.mark_clean();
                 self.rebase_history();
-                self.status = format!("loaded {}", self.project_path);
+                self.status = layout_warning.map_or_else(
+                    || format!("loaded {}", self.project_path),
+                    |warning| {
+                        format!(
+                            "loaded {} with default canvas layout: {warning}",
+                            self.project_path
+                        )
+                    },
+                );
             }
             Err(e) => self.status = format!("failed to load: {e}"),
         }
@@ -518,6 +658,7 @@ impl FerruleApp {
     fn save_project(&mut self) -> anyhow::Result<Vec<String>> {
         let json = serde_json::to_string_pretty(&self.project)?;
         std::fs::write(&self.project_path, json)?;
+        write_layout(&self.project_path, &self.snarl)?;
         self.mark_clean();
         Ok(cli::validate(&self.project)
             .into_iter()
@@ -572,7 +713,7 @@ impl FerruleApp {
                 Ok(imported) => {
                     self.snarl = build_snarl(&imported.project);
                     self.project = imported.project;
-                    self.saved_project = None;
+                    self.saved_editor = None;
                     self.selected_scope.clear();
                     self.rebase_history();
                     self.project_path = std::path::Path::new(&path)
@@ -655,16 +796,17 @@ impl eframe::App for FerruleApp {
         );
         let redo_secondary = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Y);
         let coalesce_history_change = ui.ctx().input(|input| {
-            input.events.iter().any(|event| {
-                matches!(
-                    event,
-                    egui::Event::Cut
-                        | egui::Event::Paste(_)
-                        | egui::Event::Text(_)
-                        | egui::Event::Key { .. }
-                        | egui::Event::Ime(_)
-                )
-            })
+            input.pointer.primary_down()
+                || input.events.iter().any(|event| {
+                    matches!(
+                        event,
+                        egui::Event::Cut
+                            | egui::Event::Paste(_)
+                            | egui::Event::Text(_)
+                            | egui::Event::Key { .. }
+                            | egui::Event::Ime(_)
+                    )
+                })
         });
         if project_editing_enabled
             && ui
@@ -876,7 +1018,7 @@ impl eframe::App for FerruleApp {
 
         self.show_unsaved_confirmation(ui.ctx());
         if let Some(repaint_after) =
-            self.observe_project_history(std::time::Instant::now(), coalesce_history_change)
+            self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {
             ui.ctx().request_repaint_after(repaint_after);
         }
@@ -897,6 +1039,124 @@ mod tests {
     use super::*;
     use ir::ScalarType;
     use mapping::Binding;
+
+    fn canvas_position(snarl: &Snarl<CanvasNode>, wanted: CanvasNode) -> egui::Pos2 {
+        snarl
+            .nodes_pos()
+            .find_map(|(pos, &node)| (node == wanted).then_some(pos))
+            .expect("canvas node exists")
+    }
+
+    fn move_canvas_node(snarl: &mut Snarl<CanvasNode>, wanted: CanvasNode, pos: egui::Pos2) {
+        let id = snarl
+            .node_ids()
+            .find_map(|(id, &node)| (node == wanted).then_some(id))
+            .expect("canvas node exists");
+        snarl.get_node_info_mut(id).expect("canvas node exists").pos = pos;
+    }
+
+    fn temporary_project_path(test_name: &str) -> PathBuf {
+        static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let unique = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "ferrule-gui-{test_name}-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("temporary test directory is created");
+        dir.join("project.json")
+    }
+
+    #[test]
+    fn canvas_layout_saves_alongside_backward_compatible_project_json() {
+        let project_path = temporary_project_path("layout-roundtrip");
+        let mut app = FerruleApp::default();
+        app.project.graph.nodes.insert(
+            7,
+            Node::Const {
+                value: ir::Value::Null,
+            },
+        );
+        app.snarl = build_snarl(&app.project);
+        move_canvas_node(&mut app.snarl, CanvasNode::Source, egui::pos2(73.0, 91.0));
+        move_canvas_node(
+            &mut app.snarl,
+            CanvasNode::Graph(7),
+            egui::pos2(517.0, 233.0),
+        );
+        app.project_path = project_path.display().to_string();
+        app.save_project().expect("project and layout save");
+
+        let project_json = std::fs::read_to_string(&project_path).expect("project was written");
+        serde_json::from_str::<Project>(&project_json).expect("project JSON remains unchanged");
+        assert!(!project_json.contains("\"layout\""));
+        assert!(layout_path(&app.project_path).is_file());
+
+        let mut loaded = FerruleApp {
+            project_path: app.project_path.clone(),
+            ..Default::default()
+        };
+        loaded.load_project();
+        assert_eq!(
+            canvas_position(&loaded.snarl, CanvasNode::Source),
+            egui::pos2(73.0, 91.0)
+        );
+        assert_eq!(
+            canvas_position(&loaded.snarl, CanvasNode::Graph(7)),
+            egui::pos2(517.0, 233.0)
+        );
+        assert!(!loaded.is_dirty());
+
+        std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+            .expect("temporary test directory is removed");
+    }
+
+    #[test]
+    fn project_without_layout_sidecar_uses_default_layout() {
+        let project_path = temporary_project_path("legacy-project");
+        let project = blank_project();
+        std::fs::write(
+            &project_path,
+            serde_json::to_string_pretty(&project).expect("project serializes"),
+        )
+        .expect("legacy project is written");
+
+        let mut app = FerruleApp {
+            project_path: project_path.display().to_string(),
+            ..Default::default()
+        };
+        app.load_project();
+        assert_eq!(
+            canvas_position(&app.snarl, CanvasNode::Source),
+            egui::pos2(0.0, 0.0)
+        );
+        assert_eq!(app.status, format!("loaded {}", app.project_path));
+        assert!(!app.is_dirty());
+
+        std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+            .expect("temporary test directory is removed");
+    }
+
+    #[test]
+    fn canvas_moves_and_arrange_roundtrip_through_history() {
+        let mut app = FerruleApp::default();
+        let arranged = canvas_position(&app.snarl, CanvasNode::Source);
+        let custom = egui::pos2(123.0, 456.0);
+        move_canvas_node(&mut app.snarl, CanvasNode::Source, custom);
+        app.mark_clean();
+        app.rebase_history();
+
+        app.snarl = build_snarl(&app.project);
+        app.observe_editor_history(std::time::Instant::now(), false);
+        assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
+        assert!(app.is_dirty());
+
+        app.undo_project();
+        assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), custom);
+        assert!(!app.is_dirty());
+        app.redo_project();
+        assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
+        assert!(app.is_dirty());
+    }
 
     #[test]
     fn project_dirty_state_tracks_saved_content() {
@@ -926,7 +1186,7 @@ mod tests {
             Some(DestructiveAction::NewProject)
         );
 
-        app.saved_project = None;
+        app.saved_editor = None;
         assert_eq!(
             app.request_destructive_action(DestructiveAction::OpenProject),
             None
@@ -947,18 +1207,18 @@ mod tests {
                 value: ir::Value::String("a".into()),
             },
         );
-        app.observe_project_history(start, true);
+        app.observe_editor_history(start, true);
         app.project.graph.nodes.insert(
             0,
             Node::Const {
                 value: ir::Value::String("ab".into()),
             },
         );
-        app.observe_project_history(start + std::time::Duration::from_millis(100), true);
+        app.observe_editor_history(start + std::time::Duration::from_millis(100), true);
 
         assert!(app.undo_history.is_empty());
         assert!(app.pending_history.is_some());
-        app.observe_project_history(
+        app.observe_editor_history(
             start + HISTORY_COALESCE_DELAY + std::time::Duration::from_millis(100),
             true,
         );
@@ -985,14 +1245,14 @@ mod tests {
                 value: ir::Value::Null,
             },
         );
-        app.observe_project_history(start, false);
+        app.observe_editor_history(start, false);
         app.project.graph.nodes.insert(
             1,
             Node::Const {
                 value: ir::Value::Null,
             },
         );
-        app.observe_project_history(start, false);
+        app.observe_editor_history(start, false);
         assert_eq!(app.undo_history.len(), 2);
 
         app.undo_project();
@@ -1012,7 +1272,7 @@ mod tests {
                 value: ir::Value::String("first".into()),
             },
         );
-        app.observe_project_history(start, true);
+        app.observe_editor_history(start, true);
 
         app.project.graph.nodes.insert(
             0,
@@ -1020,7 +1280,7 @@ mod tests {
                 value: ir::Value::String("second".into()),
             },
         );
-        app.observe_project_history(start + HISTORY_COALESCE_DELAY, true);
+        app.observe_editor_history(start + HISTORY_COALESCE_DELAY, true);
         assert_eq!(app.undo_history.len(), 1);
 
         app.undo_project();
@@ -1043,7 +1303,7 @@ mod tests {
                 value: ir::Value::Null,
             },
         );
-        app.observe_project_history(std::time::Instant::now(), false);
+        app.observe_editor_history(std::time::Instant::now(), false);
         assert!(app.is_dirty());
 
         app.undo_project();
@@ -1102,6 +1362,7 @@ mod tests {
             root: Scope {
                 target_field: String::new(),
                 source: Some(vec![]),
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,

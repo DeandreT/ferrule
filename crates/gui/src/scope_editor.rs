@@ -15,6 +15,17 @@ fn first_node_id(graph: &Graph) -> Option<NodeId> {
     graph.nodes.keys().next().copied()
 }
 
+fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
+    match sequence {
+        mapping::SequenceExpr::Tokenize { .. } => "tokenize",
+        mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+    }
+}
+
+fn scope_iterates(scope: &Scope) -> bool {
+    scope.source.is_some() || scope.sequence.is_some()
+}
+
 pub fn scope_at_mut<'a>(root: &'a mut Scope, path: &[usize]) -> &'a mut Scope {
     let mut scope = root;
     for &i in path {
@@ -78,19 +89,31 @@ pub fn show_scope_editor(
         format!("scope: {}", scope.target_field)
     });
 
-    ui.horizontal(|ui| {
-        ui.label("source path:");
-        let mut has_source = scope.source.is_some();
-        if ui.checkbox(&mut has_source, "iterates").changed() {
-            scope.source = has_source.then(Vec::new);
-        }
-    });
-    if let Some(source) = &mut scope.source {
+    if let Some(sequence) = &scope.sequence {
         ui.horizontal(|ui| {
-            ui.label("  path:");
-            source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+            ui.label("iteration:");
+            ui.label(format!(
+                "generated ({})",
+                generated_sequence_label(sequence)
+            ));
         });
+    } else {
+        ui.horizontal(|ui| {
+            ui.label("source path:");
+            let mut has_source = scope.source.is_some();
+            if ui.checkbox(&mut has_source, "iterates").changed() {
+                scope.source = has_source.then(Vec::new);
+            }
+        });
+        if let Some(source) = &mut scope.source {
+            ui.horizontal(|ui| {
+                ui.label("  path:");
+                source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+            });
+        }
+    }
 
+    if scope_iterates(scope) {
         ui.horizontal(|ui| {
             ui.label("  filter node:");
             let mut has_filter = scope.filter.is_some();
@@ -239,5 +262,37 @@ mod tests {
             .nodes
             .insert(7, mapping::Node::Const { value: Value::Null });
         assert_eq!(first_node_id(&graph), Some(7));
+    }
+
+    #[test]
+    fn generated_sequences_are_named_and_count_as_iteration() {
+        let mut scope = Scope {
+            sequence: Some(mapping::SequenceExpr::Tokenize {
+                input: 1,
+                delimiter: 2,
+                item: 3,
+            }),
+            ..Default::default()
+        };
+        assert!(scope_iterates(&scope));
+        assert_eq!(
+            generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
+            "tokenize"
+        );
+
+        scope.sequence = Some(mapping::SequenceExpr::TokenizeByLength {
+            input: 1,
+            length: 2,
+            item: 3,
+        });
+        assert_eq!(
+            generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
+            "tokenize-by-length"
+        );
+
+        scope.sequence = None;
+        assert!(!scope_iterates(&scope));
+        scope.source = Some(Vec::new());
+        assert!(scope_iterates(&scope));
     }
 }
