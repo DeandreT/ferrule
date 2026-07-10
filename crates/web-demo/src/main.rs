@@ -113,6 +113,7 @@ fn demo_project() -> Project {
         root: Scope {
             target_field: String::new(),
             source: None,
+            sequence: None,
             filter: None,
             group_by: None,
             sort_by: None,
@@ -125,6 +126,7 @@ fn demo_project() -> Project {
             children: vec![Scope {
                 target_field: "Order".into(),
                 source: Some(vec!["Order".into()]),
+                sequence: None,
                 filter: None,
                 group_by: None,
                 sort_by: None,
