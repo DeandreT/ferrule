@@ -8,6 +8,10 @@ use std::collections::BTreeMap;
 use ir::{SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 pub type NodeId = u32;
 
 /// A single node in the mapping graph.
@@ -118,10 +122,12 @@ pub struct Binding {
 /// target-side repetition). If `source` is `None`, the scope runs exactly
 /// once, producing a single (non-repeating) target group instance.
 ///
-/// If `filter` is set, it's evaluated (in the same per-item context as
+/// If `sort_by` is set, candidate items are stably sorted by that expression
+/// before filtering/grouping. If `filter` is set, it's evaluated (in the same per-item context as
 /// `bindings`) for each candidate item and must return a `bool`; items for
 /// which it's `false` are dropped, producing fewer target items than source
-/// items. Only meaningful when `source` is set.
+/// items. `take` limits the number of produced items after filtering/grouping.
+/// These sequence controls are only meaningful when `source` is set.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
@@ -140,6 +146,16 @@ pub struct Scope {
     /// meaningful when `source` is set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_by: Option<NodeId>,
+    /// Sort key evaluated once per candidate item. Incomparable values keep
+    /// their source order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_by: Option<NodeId>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub sort_descending: bool,
+    /// Expression evaluated once in the parent context to determine the
+    /// maximum number of output items.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub take: Option<NodeId>,
     #[serde(default)]
     pub bindings: Vec<Binding>,
     #[serde(default)]
