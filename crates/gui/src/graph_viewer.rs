@@ -12,7 +12,7 @@
 
 use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
-use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, Snarl};
+use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use ir::Value;
 use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Scope};
 
@@ -55,24 +55,81 @@ impl GraphViewer<'_> {
         id
     }
 
+    fn mapping_id(node: CanvasNode) -> Option<NodeId> {
+        match node {
+            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => Some(id),
+            CanvasNode::Source | CanvasNode::Target => None,
+        }
+    }
+
+    fn placeholder_position(owner: egui::Pos2, input: usize, inputs: usize) -> egui::Pos2 {
+        let offset = input as f32 - (inputs.saturating_sub(1) as f32 / 2.0);
+        egui::pos2(owner.x - 260.0, owner.y + offset * 90.0)
+    }
+
+    fn insert_placeholder(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+    ) -> (NodeId, SnarlNodeId) {
+        let id = self.fresh_const();
+        let snarl_id = snarl.insert_node(pos, CanvasNode::Placeholder(id));
+        (id, snarl_id)
+    }
+
     fn aggregate_needs_arg(function: AggregateOp) -> bool {
         matches!(function, AggregateOp::Join | AggregateOp::ItemAt)
     }
 
-    fn aggregate_node(&mut self, function: AggregateOp) -> Node {
+    fn aggregate_node(function: AggregateOp, arg: Option<NodeId>) -> Node {
         Node::Aggregate {
             function,
             collection: Vec::new(),
             value: Vec::new(),
             expression: None,
-            arg: Self::aggregate_needs_arg(function).then(|| self.fresh_const()),
+            arg,
         }
     }
 
-    fn insert(&mut self, snarl: &mut Snarl<CanvasNode>, pos: egui::Pos2, node: Node) {
+    fn insert(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+        node: Node,
+    ) -> (NodeId, SnarlNodeId) {
         let id = self.fresh_id();
         self.graph.nodes.insert(id, node);
-        snarl.insert_node(pos, CanvasNode::Graph(id));
+        let snarl_id = snarl.insert_node(pos, CanvasNode::Graph(id));
+        (id, snarl_id)
+    }
+
+    fn insert_with_placeholders(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+        input_count: usize,
+        build: impl FnOnce(&[NodeId]) -> Node,
+    ) -> (NodeId, SnarlNodeId) {
+        let placeholders: Vec<_> = (0..input_count)
+            .map(|input| {
+                self.insert_placeholder(snarl, Self::placeholder_position(pos, input, input_count))
+            })
+            .collect();
+        let ids: Vec<_> = placeholders.iter().map(|(id, _)| *id).collect();
+        let result = self.insert(snarl, pos, build(&ids));
+        for (input, (_, placeholder)) in placeholders.into_iter().enumerate() {
+            snarl.connect(
+                OutPinId {
+                    node: placeholder,
+                    output: 0,
+                },
+                InPinId {
+                    node: result.1,
+                    input,
+                },
+            );
+        }
+        result
     }
 
     /// Reuses an existing `SourceField` with this exact path, or creates
@@ -132,6 +189,23 @@ impl GraphViewer<'_> {
         }
     }
 
+    fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
+        match self.graph.nodes.get(&node_id)? {
+            Node::Call { args, .. } => args.get(idx).copied(),
+            Node::If {
+                condition,
+                then,
+                else_,
+            } => [*condition, *then, *else_].get(idx).copied(),
+            Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
+            Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
+            Node::Aggregate {
+                expression, arg, ..
+            } => expression.iter().chain(arg).nth(idx).copied(),
+            Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => None,
+        }
+    }
+
     fn scope_for_chain<'s>(scope: &'s mut Scope, chain: &[String]) -> Option<&'s mut Scope> {
         let Some((first, rest)) = chain.split_first() else {
             return Some(scope);
@@ -171,6 +245,14 @@ impl GraphViewer<'_> {
         if let Some(scope) = Self::scope_for_chain(self.root_scope, &leaf.chain) {
             scope.bindings.retain(|b| b.target_field != leaf.field);
         }
+    }
+
+    fn binding_node(&mut self, leaf: &TargetLeaf) -> Option<NodeId> {
+        Self::scope_for_chain(self.root_scope, &leaf.chain)?
+            .bindings
+            .iter()
+            .find(|binding| binding.target_field == leaf.field)
+            .map(|binding| binding.node)
     }
 
     fn references_to(&self, needle: NodeId) -> Vec<String> {
@@ -214,6 +296,14 @@ impl GraphViewer<'_> {
             if scope.take == Some(needle) {
                 found.insert(format!("{label} take count"));
             }
+            if let Some(sequence) = &scope.sequence {
+                if sequence.inputs().contains(&needle) {
+                    found.insert(format!("{label} sequence input"));
+                }
+                if sequence.item() == needle {
+                    found.insert(format!("{label} sequence item"));
+                }
+            }
             for binding in &scope.bindings {
                 if binding.node == needle {
                     found.insert(format!("{label} binding {}", binding.target_field));
@@ -236,6 +326,52 @@ impl GraphViewer<'_> {
         found.into_iter().collect()
     }
 
+    fn remove_orphaned_placeholder(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
+        if !self.references_to(needle).is_empty() {
+            return;
+        }
+        let placeholder = snarl
+            .node_ids()
+            .find_map(|(id, &node)| (node == CanvasNode::Placeholder(needle)).then_some(id));
+        if let Some(placeholder) = placeholder {
+            snarl.remove_node(placeholder);
+            self.graph.nodes.remove(&needle);
+        } else {
+            let shown = snarl
+                .nodes()
+                .copied()
+                .filter_map(Self::mapping_id)
+                .any(|id| id == needle);
+            if !shown
+                && matches!(
+                    self.graph.nodes.get(&needle),
+                    Some(Node::SourceField { .. })
+                )
+            {
+                self.graph.nodes.remove(&needle);
+            }
+        }
+    }
+
+    fn remove_graph_node(
+        &mut self,
+        mapping_id: NodeId,
+        node: SnarlNodeId,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let inputs = self
+            .graph
+            .nodes
+            .get(&mapping_id)
+            .map(node_inputs)
+            .unwrap_or_default();
+        self.graph.nodes.remove(&mapping_id);
+        snarl.remove_node(node);
+        for input in inputs {
+            self.remove_orphaned_placeholder(input, snarl);
+        }
+    }
+
     fn input_count(node: &Node) -> usize {
         match node {
             Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => 0,
@@ -249,12 +385,29 @@ impl GraphViewer<'_> {
     }
 }
 
+fn node_inputs(node: &Node) -> Vec<NodeId> {
+    match node {
+        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
+        Node::Call { args, .. } => args.clone(),
+        Node::If {
+            condition,
+            then,
+            else_,
+        } => vec![*condition, *then, *else_],
+        Node::ValueMap { input, .. } => vec![*input],
+        Node::Lookup { matches, .. } => vec![*matches],
+        Node::Aggregate {
+            expression, arg, ..
+        } => expression.iter().chain(arg).copied().collect(),
+    }
+}
+
 impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn title(&mut self, node: &CanvasNode) -> String {
         match node {
             CanvasNode::Source => "Source".to_string(),
             CanvasNode::Target => "Target".to_string(),
-            CanvasNode::Graph(id) => match self.graph.nodes.get(id) {
+            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => match self.graph.nodes.get(id) {
                 Some(Node::SourceField { path, frame }) => {
                     let owner = frame
                         .as_ref()
@@ -302,7 +455,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         match node {
             CanvasNode::Source => 0,
             CanvasNode::Target => self.target_leaves.len(),
-            CanvasNode::Graph(id) => self.graph.nodes.get(id).map_or(0, Self::input_count),
+            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
+                self.graph.nodes.get(id).map_or(0, Self::input_count)
+            }
         }
     }
 
@@ -310,7 +465,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         match node {
             CanvasNode::Source => self.source_leaves.len(),
             CanvasNode::Target => 0,
-            CanvasNode::Graph(_) => 1,
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 1,
         }
     }
 
@@ -323,17 +478,21 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .get(idx)
                 .map_or_else(String::new, |l| l.label.clone()),
             CanvasNode::Source => String::new(),
-            CanvasNode::Graph(id) => match self.graph.nodes.get(&id) {
-                Some(Node::Call { .. }) => format!("arg {idx}"),
-                Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
-                Some(Node::ValueMap { .. }) => "input".to_string(),
-                Some(Node::Lookup { .. }) => "match/key".to_string(),
-                Some(Node::Aggregate { expression, .. }) if expression.is_some() && idx == 0 => {
-                    "values".to_string()
+            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
+                match self.graph.nodes.get(&id) {
+                    Some(Node::Call { .. }) => format!("arg {idx}"),
+                    Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
+                    Some(Node::ValueMap { .. }) => "input".to_string(),
+                    Some(Node::Lookup { .. }) => "match/key".to_string(),
+                    Some(Node::Aggregate { expression, .. })
+                        if expression.is_some() && idx == 0 =>
+                    {
+                        "values".to_string()
+                    }
+                    Some(Node::Aggregate { .. }) => "arg".to_string(),
+                    _ => String::new(),
                 }
-                Some(Node::Aggregate { .. }) => "arg".to_string(),
-                _ => String::new(),
-            },
+            }
         };
         ui.label(label);
         PinInfo::circle()
@@ -341,7 +500,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 
     #[allow(refining_impl_trait)]
     fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
-        let CanvasNode::Graph(node_id) = snarl[pin.id.node] else {
+        let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
             if let CanvasNode::Source = snarl[pin.id.node]
                 && let Some(leaf) = self.source_leaves.get(pin.id.output)
             {
@@ -352,7 +511,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let mut new_call_arg_needed = false;
         let mut remove_call_wire = None;
         let mut new_aggregate_arg_needed = false;
-        let mut remove_aggregate_wire = false;
+        let mut remove_aggregate_wire = None;
         if let Some(node) = self.graph.nodes.get_mut(&node_id) {
             match node {
                 Node::SourceField { path, frame } => {
@@ -393,8 +552,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             new_call_arg_needed = true;
                         }
                         if !args.is_empty() && ui.small_button("-arg").clicked() {
-                            remove_call_wire = Some(args.len() - 1);
-                            args.pop();
+                            let input = args.len() - 1;
+                            remove_call_wire = args.pop().map(|node| (input, node));
                         }
                     });
                 }
@@ -489,9 +648,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         if previous != *function {
                             if Self::aggregate_needs_arg(*function) && arg.is_none() {
                                 new_aggregate_arg_needed = true;
-                            } else if !Self::aggregate_needs_arg(*function) && arg.take().is_some()
-                            {
-                                remove_aggregate_wire = true;
+                            } else if !Self::aggregate_needs_arg(*function) {
+                                remove_aggregate_wire = arg.take();
                             }
                         }
                     });
@@ -499,12 +657,27 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
         }
         if new_call_arg_needed {
-            let new_id = self.fresh_const();
+            let input = self.graph.nodes.get(&node_id).map_or(0, Self::input_count);
+            let owner = snarl
+                .get_node_info(pin.id.node)
+                .map_or(egui::Pos2::ZERO, |node| node.pos);
+            let (new_id, placeholder) =
+                self.insert_placeholder(snarl, Self::placeholder_position(owner, input, input + 1));
             if let Some(Node::Call { args, .. }) = self.graph.nodes.get_mut(&node_id) {
                 args.push(new_id);
             }
+            snarl.connect(
+                OutPinId {
+                    node: placeholder,
+                    output: 0,
+                },
+                InPinId {
+                    node: pin.id.node,
+                    input,
+                },
+            );
         }
-        if let Some(input_index) = remove_call_wire {
+        if let Some((input_index, removed)) = remove_call_wire {
             let input = InPinId {
                 node: pin.id.node,
                 input: input_index,
@@ -513,14 +686,30 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             for remote in remotes {
                 snarl.disconnect(remote, input);
             }
+            self.remove_orphaned_placeholder(removed, snarl);
         }
         if new_aggregate_arg_needed {
-            let new_id = self.fresh_const();
+            let input = self.graph.nodes.get(&node_id).map_or(0, Self::input_count);
+            let owner = snarl
+                .get_node_info(pin.id.node)
+                .map_or(egui::Pos2::ZERO, |node| node.pos);
+            let (new_id, placeholder) =
+                self.insert_placeholder(snarl, Self::placeholder_position(owner, input, input + 1));
             if let Some(Node::Aggregate { arg, .. }) = self.graph.nodes.get_mut(&node_id) {
                 *arg = Some(new_id);
             }
+            snarl.connect(
+                OutPinId {
+                    node: placeholder,
+                    output: 0,
+                },
+                InPinId {
+                    node: pin.id.node,
+                    input,
+                },
+            );
         }
-        if remove_aggregate_wire {
+        if let Some(removed) = remove_aggregate_wire {
             let expression_input = self.graph.nodes.get(&node_id).is_some_and(|node| {
                 matches!(
                     node,
@@ -538,6 +727,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             for remote in remotes {
                 snarl.disconnect(remote, input);
             }
+            self.remove_orphaned_placeholder(removed, snarl);
         }
         PinInfo::circle()
     }
@@ -545,8 +735,19 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
         let from_node = snarl[from.id.node];
         let to_node = snarl[to.id.node];
+        let displaced = match to_node {
+            CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) => {
+                self.input_at(to_id, to.id.input)
+            }
+            CanvasNode::Target => self
+                .target_leaves
+                .get(to.id.input)
+                .cloned()
+                .and_then(|leaf| self.binding_node(&leaf)),
+            CanvasNode::Source => None,
+        };
         let accepted = match (from_node, to_node) {
-            (CanvasNode::Source, CanvasNode::Graph(to_id)) => {
+            (CanvasNode::Source, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
                 let Some(leaf) = self.source_leaves.get(from.id.output) else {
                     return;
                 };
@@ -566,13 +767,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 let field = self.source_field_for(&path);
                 self.set_binding(&target_leaf, field)
             }
-            (CanvasNode::Graph(from_id), CanvasNode::Target) => {
+            (CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id), CanvasNode::Target) => {
                 let Some(target_leaf) = self.target_leaves.get(to.id.input).cloned() else {
                     return;
                 };
                 self.set_binding(&target_leaf, from_id)
             }
-            (CanvasNode::Graph(from_id), CanvasNode::Graph(to_id)) => {
+            (
+                CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
+                CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id),
+            ) => {
                 self.set_input(to_id, to.id.input, from_id);
                 true
             }
@@ -586,22 +790,61 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             snarl.disconnect(remote, to.id);
         }
         snarl.connect(from.id, to.id);
+        if let Some(displaced) = displaced {
+            self.remove_orphaned_placeholder(displaced, snarl);
+        }
     }
 
     fn disconnect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
+        let disconnected = match snarl[to.id.node] {
+            CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) => {
+                self.input_at(to_id, to.id.input)
+            }
+            CanvasNode::Target => self
+                .target_leaves
+                .get(to.id.input)
+                .cloned()
+                .and_then(|leaf| self.binding_node(&leaf)),
+            CanvasNode::Source => None,
+        };
         match (snarl[from.id.node], snarl[to.id.node]) {
             (_, CanvasNode::Target) => {
                 if let Some(leaf) = self.target_leaves.get(to.id.input).cloned() {
                     self.remove_binding(&leaf);
                 }
             }
-            (_, CanvasNode::Graph(to_id)) => {
-                let placeholder = self.fresh_const();
+            (_, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
+                let owner = snarl
+                    .get_node_info(to.id.node)
+                    .map_or(egui::Pos2::ZERO, |node| node.pos);
+                snarl.disconnect(from.id, to.id);
+                let (placeholder, placeholder_node) = self.insert_placeholder(
+                    snarl,
+                    Self::placeholder_position(
+                        owner,
+                        to.id.input,
+                        self.graph.nodes.get(&to_id).map_or(1, Self::input_count),
+                    ),
+                );
                 self.set_input(to_id, to.id.input, placeholder);
+                snarl.connect(
+                    OutPinId {
+                        node: placeholder_node,
+                        output: 0,
+                    },
+                    to.id,
+                );
+                if let Some(disconnected) = disconnected {
+                    self.remove_orphaned_placeholder(disconnected, snarl);
+                }
+                return;
             }
             _ => {}
         }
         snarl.disconnect(from.id, to.id);
+        if let Some(disconnected) = disconnected {
+            self.remove_orphaned_placeholder(disconnected, snarl);
+        }
     }
 
     fn has_graph_menu(&mut self, _pos: egui::Pos2, _snarl: &mut Snarl<CanvasNode>) -> bool {
@@ -636,52 +879,37 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             ui.close();
         }
         if ui.button("If").clicked() {
-            let condition = self.fresh_const();
-            let then = self.fresh_const();
-            let else_ = self.fresh_const();
-            self.insert(
-                snarl,
-                pos,
-                Node::If {
-                    condition,
-                    then,
-                    else_,
-                },
-            );
+            self.insert_with_placeholders(snarl, pos, 3, |inputs| Node::If {
+                condition: inputs[0],
+                then: inputs[1],
+                else_: inputs[2],
+            });
             ui.close();
         }
         if ui.button("Value map").clicked() {
-            let input = self.fresh_const();
-            self.insert(
-                snarl,
-                pos,
-                Node::ValueMap {
-                    input,
-                    table: vec![],
-                    default: None,
-                },
-            );
+            self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::ValueMap {
+                input: inputs[0],
+                table: vec![],
+                default: None,
+            });
             ui.close();
         }
         if ui.button("Lookup").clicked() {
-            let matches = self.fresh_const();
-            self.insert(
-                snarl,
-                pos,
-                Node::Lookup {
-                    collection: vec![],
-                    key: vec![],
-                    matches,
-                    value: vec![],
-                },
-            );
+            self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::Lookup {
+                collection: vec![],
+                key: vec![],
+                matches: inputs[0],
+                value: vec![],
+            });
             ui.close();
         }
         ui.menu_button("Aggregate", |ui| {
             for (function, label) in Self::AGGREGATE_OPS {
                 if ui.button(label).clicked() {
-                    let node = self.aggregate_node(function);
-                    self.insert(snarl, pos, node);
+                    let inputs = usize::from(Self::aggregate_needs_arg(function));
+                    self.insert_with_placeholders(snarl, pos, inputs, |ids| {
+                        Self::aggregate_node(function, ids.first().copied())
+                    });
                     ui.close();
                 }
             }
@@ -700,7 +928,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn has_node_menu(&mut self, node: &CanvasNode) -> bool {
-        matches!(node, CanvasNode::Graph(_))
+        matches!(node, CanvasNode::Graph(_) | CanvasNode::Placeholder(_))
     }
 
     fn show_node_menu(
@@ -711,7 +939,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         ui: &mut Ui,
         snarl: &mut Snarl<CanvasNode>,
     ) {
-        let CanvasNode::Graph(mapping_id) = snarl[node] else {
+        let Some(mapping_id) = Self::mapping_id(snarl[node]) else {
             return;
         };
         let references = self.references_to(mapping_id);
@@ -719,8 +947,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             .add_enabled(references.is_empty(), egui::Button::new("Remove"))
             .on_disabled_hover_text(format!("Disconnect first: {}", references.join(", ")));
         if remove.clicked() {
-            self.graph.nodes.remove(&mapping_id);
-            snarl.remove_node(node);
+            self.remove_graph_node(mapping_id, node, snarl);
             ui.close();
         }
     }
@@ -873,6 +1100,132 @@ mod tests {
     }
 
     #[test]
+    fn required_inputs_are_visible_wired_placeholders() {
+        let mut fx = fixture();
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let pos = egui::pos2(600.0, 300.0);
+        let (_, if_node) = fx
+            .viewer()
+            .insert_with_placeholders(&mut snarl, pos, 3, |inputs| Node::If {
+                condition: inputs[0],
+                then: inputs[1],
+                else_: inputs[2],
+            });
+
+        let placeholders: Vec<_> = snarl
+            .nodes_pos()
+            .filter_map(|(pos, node)| match node {
+                CanvasNode::Placeholder(id) => Some((*id, pos)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(placeholders.len(), 3);
+        assert_eq!(
+            snarl.wires().filter(|(_, to)| to.node == if_node).count(),
+            3
+        );
+        for (input, (_, placeholder_pos)) in placeholders.iter().enumerate() {
+            assert_eq!(
+                *placeholder_pos,
+                GraphViewer::placeholder_position(pos, input, 3)
+            );
+        }
+        assert!(placeholders.iter().all(|(id, _)| matches!(
+            fx.graph.nodes.get(id),
+            Some(Node::Const { value: Value::Null })
+        )));
+    }
+
+    #[test]
+    fn reconnect_and_disconnect_replace_placeholders_without_orphans() {
+        let mut fx = fixture();
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let (placeholder, placeholder_node) = fx
+            .viewer()
+            .insert_placeholder(&mut snarl, egui::pos2(40.0, 80.0));
+        let Node::Call { args, .. } = fx.graph.nodes.get_mut(&0).unwrap() else {
+            panic!("fixture node should be a call");
+        };
+        args.push(placeholder);
+        snarl.connect(
+            OutPinId {
+                node: placeholder_node,
+                output: 0,
+            },
+            InPinId {
+                node: fx.call,
+                input: 0,
+            },
+        );
+
+        let from = snarl.out_pin(OutPinId {
+            node: fx.source,
+            output: 0,
+        });
+        let to = snarl.in_pin(InPinId {
+            node: fx.call,
+            input: 0,
+        });
+        fx.viewer().connect(&from, &to, &mut snarl);
+        assert!(!fx.graph.nodes.contains_key(&placeholder));
+        assert!(
+            !snarl
+                .nodes()
+                .any(|node| *node == CanvasNode::Placeholder(placeholder))
+        );
+
+        let source_field = fx
+            .graph
+            .nodes
+            .iter()
+            .find_map(|(&id, node)| matches!(node, Node::SourceField { .. }).then_some(id))
+            .expect("source wire has a backing field");
+        let from = snarl.out_pin(OutPinId {
+            node: fx.source,
+            output: 0,
+        });
+        let to = snarl.in_pin(InPinId {
+            node: fx.call,
+            input: 0,
+        });
+        fx.viewer().disconnect(&from, &to, &mut snarl);
+
+        assert!(!fx.graph.nodes.contains_key(&source_field));
+        let placeholders: Vec<_> = snarl
+            .nodes()
+            .filter(|node| matches!(node, CanvasNode::Placeholder(_)))
+            .collect();
+        assert_eq!(placeholders.len(), 1);
+        assert_eq!(snarl.wires().count(), 1);
+        assert_eq!(fx.graph.nodes.len(), 2, "call plus one live placeholder");
+    }
+
+    #[test]
+    fn deleting_a_node_removes_its_owned_placeholders() {
+        let mut fx = fixture();
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let (if_id, if_node) = fx.viewer().insert_with_placeholders(
+            &mut snarl,
+            egui::pos2(600.0, 300.0),
+            3,
+            |inputs| Node::If {
+                condition: inputs[0],
+                then: inputs[1],
+                else_: inputs[2],
+            },
+        );
+        fx.viewer().remove_graph_node(if_id, if_node, &mut snarl);
+
+        assert_eq!(fx.graph.nodes.len(), 1, "only the fixture call remains");
+        assert!(
+            !snarl
+                .nodes()
+                .any(|node| matches!(node, CanvasNode::Placeholder(_)))
+        );
+        assert_eq!(snarl.wires().count(), 0);
+    }
+
+    #[test]
     fn disconnecting_a_target_pin_removes_the_binding() {
         let mut fx = fixture();
         let mut snarl = std::mem::take(&mut fx.snarl);
@@ -928,10 +1281,11 @@ mod tests {
     #[test]
     fn aggregate_argument_pins_match_the_operation() {
         let mut fx = fixture();
-        let count = fx.viewer().aggregate_node(AggregateOp::Count);
+        let count = GraphViewer::aggregate_node(AggregateOp::Count, None);
         assert_eq!(GraphViewer::input_count(&count), 0);
 
-        let join = fx.viewer().aggregate_node(AggregateOp::Join);
+        let arg = fx.viewer().fresh_const();
+        let join = GraphViewer::aggregate_node(AggregateOp::Join, Some(arg));
         assert_eq!(GraphViewer::input_count(&join), 1);
         let Node::Aggregate { arg: Some(arg), .. } = join else {
             panic!("join should get a separator placeholder");
@@ -979,6 +1333,48 @@ mod tests {
                 "root scope sort key",
                 "root scope take count",
             ]
+        );
+    }
+
+    #[test]
+    fn generated_sequence_nodes_are_protected_from_deletion() {
+        let mut fx = fixture();
+        fx.graph.nodes.insert(
+            1,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        );
+        fx.graph.nodes.insert(
+            2,
+            Node::Const {
+                value: Value::Int(3),
+            },
+        );
+        fx.graph.nodes.insert(
+            3,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        );
+        fx.root_scope.sequence = Some(mapping::SequenceExpr::Generate {
+            from: Some(1),
+            to: 2,
+            item: 3,
+        });
+
+        assert_eq!(
+            fx.viewer().references_to(1),
+            vec!["root scope sequence input"]
+        );
+        assert_eq!(
+            fx.viewer().references_to(2),
+            vec!["root scope sequence input"]
+        );
+        assert_eq!(
+            fx.viewer().references_to(3),
+            vec!["root scope sequence item"]
         );
     }
 }
