@@ -40,6 +40,7 @@
 											<entry name="Id" inpkey="21"/>
 											<entry name="ItemCount" inpkey="22"/>
 											<entry name="Total" inpkey="23"/>
+											<entry name="DoubledTotal" inpkey="24"/>
 										</entry>
 									</entry>
 								</entry>
@@ -88,20 +89,52 @@
 						<constant value=", " datatype="string"/>
 					</data>
 				</component>
+				<component name="constant" library="core" uid="54" kind="2">
+					<targets>
+						<datapoint pos="0" key="49"/>
+					</targets>
+					<view ltx="350" lty="280" rbx="420" rby="310"/>
+					<data>
+						<constant value="2" datatype="integer"/>
+					</data>
+				</component>
+				<component name="multiply" library="core" uid="55" kind="5">
+					<sources>
+						<datapoint pos="0" key="50"/>
+						<datapoint pos="1" key="51"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="52"/>
+					</targets>
+					<view ltx="430" lty="280" rbx="530" rby="320"/>
+				</component>
+				<component name="sum" library="core" uid="56" kind="5">
+					<sources>
+						<datapoint/>
+						<datapoint pos="1" key="53"/>
+					</sources>
+					<targets>
+						<datapoint pos="0" key="54"/>
+					</targets>
+					<view ltx="550" lty="280" rbx="650" rby="320"/>
+				</component>
 			</children>
-			<graph directed="1">
-				<edges/>
-				<vertices>
-					<vertex vertexkey="10"><edges><edge vertexkey="20"/><edge vertexkey="44"/></edges></vertex>
-					<vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="45"/></edges></vertex>
-					<vertex vertexkey="12"><edges><edge vertexkey="40"/></edges></vertex>
-					<vertex vertexkey="13"><edges><edge vertexkey="42"/></edges></vertex>
-					<vertex vertexkey="41"><edges><edge vertexkey="22"/></edges></vertex>
-					<vertex vertexkey="43"><edges><edge vertexkey="23"/></edges></vertex>
-					<vertex vertexkey="48"><edges><edge vertexkey="46"/></edges></vertex>
-					<vertex vertexkey="47"><edges><edge vertexkey="29"/></edges></vertex>
-				</vertices>
-			</graph>
 		</structure>
+		<connections>
+			<edge from="10" to="20"/>
+			<edge from="10" to="44"/>
+			<edge from="11" to="21"/>
+			<edge from="11" to="45"/>
+			<edge from="12" to="40"/>
+			<edge from="13" to="42"/>
+			<edge from="13" to="50"/>
+			<edge from="41" to="22"/>
+			<edge from="43" to="23"/>
+			<edge from="48" to="46"/>
+			<edge from="47" to="29"/>
+			<edge from="49" to="51"/>
+			<edge from="52" to="53"/>
+			<edge from="54" to="24"/>
+		</connections>
 	</component>
 </mapping>

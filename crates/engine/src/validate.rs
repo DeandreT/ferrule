@@ -96,10 +96,13 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
                 );
             }
             Node::Aggregate {
-                collection, value, ..
+                collection,
+                value,
+                expression,
+                ..
             } => {
                 validate_collection_path(project, &location, collection, "aggregate", issues);
-                if !value.is_empty() {
+                if expression.is_none() && !value.is_empty() {
                     validate_collection_value(
                         project,
                         &location,
@@ -175,7 +178,13 @@ fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         ],
         Node::ValueMap { input, .. } => vec![("input".into(), *input)],
         Node::Lookup { matches, .. } => vec![("matches".into(), *matches)],
-        Node::Aggregate { arg, .. } => arg.iter().map(|&id| ("argument".to_string(), id)).collect(),
+        Node::Aggregate {
+            expression, arg, ..
+        } => expression
+            .iter()
+            .map(|&id| ("value expression".to_string(), id))
+            .chain(arg.iter().map(|&id| ("argument".to_string(), id)))
+            .collect(),
     }
 }
 

@@ -144,7 +144,9 @@ pub fn layered_layout(
             | mapping::Node::Lookup { matches: input, .. } => {
                 vec![*input]
             }
-            mapping::Node::Aggregate { arg, .. } => arg.iter().copied().collect(),
+            mapping::Node::Aggregate {
+                expression, arg, ..
+            } => expression.iter().chain(arg).copied().collect(),
         }
     }
 

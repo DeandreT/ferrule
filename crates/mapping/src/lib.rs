@@ -56,15 +56,19 @@ pub enum Node {
     },
     /// Reduces a repeating collection to one scalar. `collection` is
     /// resolved with the same outward fallback as `Lookup`; `value` picks
-    /// the scalar inside each item (empty = the item itself, for
-    /// collections of scalars). `arg` supplies the extra scalar parameter
-    /// some operations take: `join`'s separator (default "") and
+    /// the scalar inside each item (empty = the item itself, for collections
+    /// of scalars). When `expression` is set it is evaluated once per item
+    /// instead, which represents sequence-producing mappings such as
+    /// `sum(Item/Price * Item/Quantity)`. `arg` supplies the extra scalar
+    /// parameter some operations take: `join`'s separator (default "") and
     /// `item_at`'s 1-based position.
     Aggregate {
         function: AggregateOp,
         collection: Vec<String>,
         #[serde(default)]
         value: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression: Option<NodeId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arg: Option<NodeId>,
     },

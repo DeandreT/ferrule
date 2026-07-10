@@ -276,21 +276,25 @@ fn eval_expr(
             function,
             collection,
             value,
+            expression,
             arg,
         } => {
             // An unresolvable collection aggregates as empty rather than
             // erroring -- absent repeating data is normal instance data.
             let items = resolve_repeated(context, collection).unwrap_or(&[]);
-            let values: Vec<Value> = items
-                .iter()
-                .map(|item| {
-                    if value.is_empty() {
-                        item.as_scalar().cloned().unwrap_or(Value::Null)
-                    } else {
-                        field_scalar(item, value).cloned().unwrap_or(Value::Null)
-                    }
-                })
-                .collect();
+            let mut values = Vec::with_capacity(items.len());
+            for item in items {
+                let item_value = if let Some(expression) = expression {
+                    let mut item_context = context.to_vec();
+                    item_context.push(item);
+                    eval_expr(graph, *expression, &item_context, in_progress)?
+                } else if value.is_empty() {
+                    item.as_scalar().cloned().unwrap_or(Value::Null)
+                } else {
+                    field_scalar(item, value).cloned().unwrap_or(Value::Null)
+                };
+                values.push(item_value);
+            }
             let arg_value = match arg {
                 Some(id) => Some(eval_expr(graph, *id, context, in_progress)?),
                 None => None,
@@ -976,6 +980,7 @@ mod tests {
                     function: AggregateOp::Avg,
                     collection: vec!["Row".into()],
                     value: vec!["temp".into()],
+                    expression: None,
                     arg: None,
                 },
             ),
@@ -985,6 +990,7 @@ mod tests {
                     function: AggregateOp::Count,
                     collection: vec![],
                     value: vec![],
+                    expression: None,
                     arg: None,
                 },
             ),
@@ -1086,6 +1092,7 @@ mod tests {
                     function: AggregateOp::Count,
                     collection: vec!["Item".into()],
                     value: vec![],
+                    expression: None,
                     arg: None,
                 },
             ),
@@ -1095,6 +1102,7 @@ mod tests {
                     function: AggregateOp::Sum,
                     collection: vec!["Item".into()],
                     value: vec!["Price".into()],
+                    expression: None,
                     arg: None,
                 },
             ),
@@ -1110,7 +1118,37 @@ mod tests {
                     function: AggregateOp::Join,
                     collection: vec!["Order".into()],
                     value: vec!["Id".into()],
+                    expression: None,
                     arg: Some(2),
+                },
+            ),
+            (
+                4,
+                Node::SourceField {
+                    path: vec!["Price".into()],
+                },
+            ),
+            (
+                5,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
+            (
+                6,
+                Node::Call {
+                    function: "multiply".into(),
+                    args: vec![4, 5],
+                },
+            ),
+            (
+                7,
+                Node::Aggregate {
+                    function: AggregateOp::Sum,
+                    collection: vec!["Item".into()],
+                    value: vec![],
+                    expression: Some(6),
+                    arg: None,
                 },
             ),
         ]);
@@ -1145,6 +1183,10 @@ mod tests {
                         Binding {
                             target_field: "Total".into(),
                             node: 1,
+                        },
+                        Binding {
+                            target_field: "ComputedTotal".into(),
+                            node: 7,
                         },
                     ],
                     children: vec![],
@@ -1188,6 +1230,12 @@ mod tests {
             orders[0].field("Total").and_then(Instance::as_scalar),
             Some(&Value::Float(4.0))
         );
+        assert_eq!(
+            orders[0]
+                .field("ComputedTotal")
+                .and_then(Instance::as_scalar),
+            Some(&Value::Float(8.0))
+        );
         // An empty collection counts 0 and sums to 0.
         assert_eq!(
             orders[1].field("ItemCount").and_then(Instance::as_scalar),
@@ -1195,6 +1243,12 @@ mod tests {
         );
         assert_eq!(
             orders[1].field("Total").and_then(Instance::as_scalar),
+            Some(&Value::Int(0))
+        );
+        assert_eq!(
+            orders[1]
+                .field("ComputedTotal")
+                .and_then(Instance::as_scalar),
             Some(&Value::Int(0))
         );
     }
