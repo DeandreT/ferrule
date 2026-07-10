@@ -1075,6 +1075,215 @@ fn tokenizers_generate_distinct_scalar_sequences_and_roundtrip() {
 }
 
 #[test]
+fn generated_integer_ranges_import_controls_execute_and_roundtrip() {
+    let imported = mfd::import(&fixture("generate.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let project = &imported.project;
+    let item = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Item")
+        .unwrap();
+    let default = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Default")
+        .unwrap();
+    assert!(matches!(
+        item.sequence,
+        Some(SequenceExpr::Generate { from: Some(_), .. })
+    ));
+    assert!(matches!(
+        default.sequence,
+        Some(SequenceExpr::Generate { from: None, .. })
+    ));
+    assert!(item.filter.is_some());
+    assert!(item.group_by.is_some());
+    assert!(item.sort_by.is_some());
+    assert!(item.sort_descending);
+    assert!(item.take.is_some());
+
+    let source = format_xml::read(&fixture("generate.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let items = target
+        .field("Item")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        items
+            .iter()
+            .map(|row| (scalar(row, "Value"), scalar(row, "Position")))
+            .collect::<Vec<_>>(),
+        vec![
+            (Value::Int(6), Value::Int(1)),
+            (Value::Int(5), Value::Int(2))
+        ]
+    );
+    let defaults = target
+        .field("Default")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        defaults
+            .iter()
+            .map(|row| scalar(row, "Value"))
+            .collect::<Vec<_>>(),
+        vec![Value::Int(1), Value::Int(2), Value::Int(3)]
+    );
+
+    let dir = TempDir::new("generate");
+    let out = dir.0.join("generate.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"generate-sequence\"").count(), 2);
+    for component in ["filter", "group-by", "sort", "first-items"] {
+        assert_eq!(
+            exported.matches(&format!("name=\"{component}\"")).count(),
+            1,
+            "{component} was not exported exactly once"
+        );
+    }
+    let doc = roxmltree::Document::parse(&exported).unwrap();
+    let component_pin = |name: &str, pins: &str| {
+        doc.descendants()
+            .find(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "component"
+                    && node.attribute("name") == Some(name)
+            })
+            .and_then(|component| {
+                component
+                    .children()
+                    .find(|node| node.is_element() && node.tag_name().name() == pins)
+            })
+            .and_then(|pins| {
+                pins.children()
+                    .find(|node| node.is_element() && node.tag_name().name() == "datapoint")
+            })
+            .and_then(|pin| pin.attribute("key"))
+            .unwrap()
+            .to_string()
+    };
+    let controlled_output = component_pin("first-items", "targets");
+    let position_input = component_pin("position", "sources");
+    assert!(
+        doc.descendants()
+            .filter(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "vertex"
+                    && node.attribute("vertexkey") == Some(controlled_output.as_str())
+            })
+            .flat_map(|vertex| vertex.descendants())
+            .any(|node| {
+                node.is_element()
+                    && node.tag_name().name() == "edge"
+                    && node.attribute("vertexkey") == Some(position_input.as_str())
+            }),
+        "missing edge {controlled_output} -> {position_input}\n{exported}"
+    );
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let reimported_item = reimported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Item")
+        .unwrap();
+    assert!(reimported_item.filter.is_some());
+    assert!(reimported_item.group_by.is_some());
+    assert!(reimported_item.sort_by.is_some());
+    assert!(reimported_item.sort_descending);
+    assert!(reimported_item.take.is_some());
+    let rerun = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(target, rerun);
+}
+
+#[test]
+fn generic_functions_drop_trailing_optional_pins_but_preserve_interior_defaults() {
+    let imported = mfd::import(&fixture("format-number-optional.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let person = &imported.project.root.children[0];
+
+    let name = person
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Name")
+        .unwrap();
+    let Node::Call { function, args } = &imported.project.graph.nodes[&name.node] else {
+        panic!("Name should be bound to format-number");
+    };
+    assert_eq!(function, "format_number");
+    assert_eq!(args.len(), 2);
+
+    let age = person
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Age")
+        .unwrap();
+    let Node::Call { function, args } = &imported.project.graph.nodes[&age.node] else {
+        panic!("Age should be bound to format-number");
+    };
+    assert_eq!(function, "format_number");
+    assert_eq!(args.len(), 4);
+    assert!(matches!(
+        &imported.project.graph.nodes[&args[2]],
+        Node::Const { value: Value::String(value) } if value == "."
+    ));
+    assert!(matches!(
+        &imported.project.graph.nodes[&args[3]],
+        Node::Const { value: Value::String(value) } if value == "_"
+    ));
+}
+
+#[test]
+fn exporting_one_position_at_multiple_iteration_stages_warns_once() {
+    let mut project = mfd::import(&fixture("generate.mfd")).unwrap().project;
+    let item = project
+        .root
+        .children
+        .iter_mut()
+        .find(|scope| scope.target_field == "Item")
+        .unwrap();
+    let position = item
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Position")
+        .unwrap()
+        .node;
+    item.sort_by = Some(position);
+
+    let dir = TempDir::new("position_context_conflict");
+    let warnings = mfd::export(&project, &dir.0.join("conflict.mfd")).unwrap();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("used in multiple iteration stages or scopes"),
+        "{warnings:?}"
+    );
+}
+
+#[test]
+fn noncanonical_ordinary_control_order_warns_once() {
+    let imported = mfd::import(&fixture("control-order.mfd")).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(
+        imported.warnings[0]
+            .contains("applies sort after filter, which cannot be represented exactly"),
+        "{:?}",
+        imported.warnings
+    );
+    let item = &imported.project.root.children[0];
+    assert!(item.sequence.is_some());
+    assert!(item.filter.is_some());
+    assert!(item.sort_by.is_some());
+}
+
+#[test]
 fn tokenizer_scalar_use_emits_an_actionable_warning() {
     let imported = mfd::import(&fixture("tokenize-scalar.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);

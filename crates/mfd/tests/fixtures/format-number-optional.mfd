@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Company" library="xml" uid="2" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Company"><entry name="Staff" outkey="10"><entry name="First" outkey="11"/><entry name="Last" outkey="12"/><entry name="Age" outkey="13"/></entry></entry></entry></entry></root>
+            <document schema="people-source.xsd" inputinstance="people.xml" instanceroot="{}Company"/>
+          </data>
+        </component>
+        <component name="People" library="xml" uid="3" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="People"><entry name="Person" inpkey="20"><entry name="Name" inpkey="21"/><entry name="Age" inpkey="22"/></entry></entry></entry></entry></root>
+            <document schema="people-target.xsd" instanceroot="{}People"/>
+          </data>
+        </component>
+        <component name="format-number" library="core" uid="4" kind="5">
+          <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/><datapoint pos="2"/><datapoint pos="3"/></sources>
+          <targets><datapoint pos="0" key="33"/></targets>
+        </component>
+        <component name="constant" library="core" uid="5" kind="2">
+          <targets><datapoint pos="0" key="34"/></targets>
+          <data><constant value="#0" datatype="string"/></data>
+        </component>
+        <component name="format-number" library="core" uid="6" kind="5">
+          <sources><datapoint pos="0" key="40"/><datapoint pos="1" key="41"/><datapoint pos="2"/><datapoint pos="3" key="43"/></sources>
+          <targets><datapoint pos="0" key="44"/></targets>
+        </component>
+        <component name="constant" library="core" uid="7" kind="2">
+          <targets><datapoint pos="0" key="45"/></targets>
+          <data><constant value="#0.00" datatype="string"/></data>
+        </component>
+        <component name="constant" library="core" uid="8" kind="2">
+          <targets><datapoint pos="0" key="46"/></targets>
+          <data><constant value="_" datatype="string"/></data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="20"/>
+      <edge from="13" to="30"/><edge from="34" to="31"/><edge from="33" to="21"/>
+      <edge from="13" to="40"/><edge from="45" to="41"/><edge from="46" to="43"/><edge from="44" to="22"/>
+    </connections>
+  </component>
+</mapping>
