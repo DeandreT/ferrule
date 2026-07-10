@@ -17,6 +17,7 @@ use crate::canvas::{
     CanvasNode, SourceLeaf, TargetLeaf, layered_layout, source_leaves, target_leaves,
 };
 use crate::graph_viewer::GraphViewer;
+use crate::path_picker::SourcePathCatalog;
 use crate::schema_tree::show_schema_tree;
 use crate::scope_editor::{ScopePath, scope_at_mut, show_scope_editor, show_scope_tree};
 
@@ -385,6 +386,8 @@ impl FerruleApp {
 impl eframe::App for FerruleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.poll_dialog();
+        let source_paths =
+            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         if self.pending_dialog.is_some() {
             // Keep polling even without input events.
             ui.ctx()
@@ -513,8 +516,9 @@ impl eframe::App for FerruleApp {
             egui::ScrollArea::vertical()
                 .id_salt("scope_editor_scroll")
                 .show(ui, |ui| {
+                    let nested = !self.selected_scope.is_empty();
                     let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
-                    show_scope_editor(ui, scope, &self.project.graph);
+                    show_scope_editor(ui, scope, &self.project.graph, &source_paths, nested);
                 });
         });
 
@@ -526,6 +530,7 @@ impl eframe::App for FerruleApp {
                 root_scope: &mut self.project.root,
                 source_leaves: &source_pins,
                 target_leaves: &target_pins,
+                source_paths: &source_paths,
                 error: None,
             };
             egui_snarl::ui::SnarlWidget::new().show(&mut self.snarl, &mut viewer, ui);

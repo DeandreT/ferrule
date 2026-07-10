@@ -6,6 +6,8 @@
 use egui::Ui;
 use mapping::{Binding, Graph, NodeId, Scope};
 
+use crate::path_picker::SourcePathCatalog;
+
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
 
@@ -62,7 +64,13 @@ fn show_scope_node(
 }
 
 /// Edits `scope`'s `source` path, `filter` node, and `bindings`.
-pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
+pub fn show_scope_editor(
+    ui: &mut Ui,
+    scope: &mut Scope,
+    graph: &Graph,
+    source_paths: &SourcePathCatalog,
+    nested: bool,
+) {
     let first_node = first_node_id(graph);
     ui.strong(if scope.target_field.is_empty() {
         "root scope".to_string()
@@ -78,16 +86,9 @@ pub fn show_scope_editor(ui: &mut Ui, scope: &mut Scope, graph: &Graph) {
         }
     });
     if let Some(source) = &mut scope.source {
-        let mut joined = source.join("/");
         ui.horizontal(|ui| {
             ui.label("  path:");
-            if ui.text_edit_singleline(&mut joined).changed() {
-                *source = joined
-                    .split('/')
-                    .map(str::to_string)
-                    .filter(|s| !s.is_empty())
-                    .collect();
-            }
+            source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
         });
 
         ui.horizontal(|ui| {
