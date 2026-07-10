@@ -46,7 +46,7 @@ local `$ref` support, or the design's entry tree as a fallback), CSV text compon
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
-filter- and group-by-driven iteration import directly; everything else is skipped
+filter-, group-by-, and distinct-values-driven iteration import directly; everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
 writes the same subset back out as `.mfd` plus generated XSD / JSON Schema files,
 picking each side's component kind from the project's instance paths. Designs built
@@ -71,6 +71,9 @@ cargo run -p cli -- run \
 
 # Check graph, scope, and schema references without reading input data
 cargo run -p cli -- validate --project examples/project.json
+
+# Emit versioned JSON Lines diagnostics on stderr for automation
+cargo run -p cli -- --diagnostics json validate --project examples/project.json
 
 # Bootstrap a schema from existing metadata
 cargo run -p cli -- import-xsd --xsd Orders.xsd
@@ -98,7 +101,8 @@ reference file. See `crates/cli/tests/fixtures/`.
 - `crates/format-db` — database schema introspection and read/write (SQLite)
 - `crates/format-edi` — EDI (ANSI X12 and UN/EDIFACT) schema-guided read/write
 - `crates/cli` — headless runner (`ferrule` binary): run a project file against inputs
-- `crates/gui` — visual mapping editor (`ferrule-gui` binary): schema tree panes + node-graph canvas
+- `crates/gui` — visual mapping editor (`ferrule-gui` binary): schema trees, node-graph canvas,
+  dirty-state guards, and project undo/redo
 
 ## License
 
