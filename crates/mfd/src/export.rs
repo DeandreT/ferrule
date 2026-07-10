@@ -872,8 +872,8 @@ fn collect_scope_edges(
             target_ports.key_for_abs(chain),
         ) {
             (Some(from), Some(to)) => {
-                // The iteration wire may pass through a filter and/or a
-                // group-by component on its way to the target.
+                // The iteration wire may pass through sequence components
+                // on its way to the target.
                 let mut from = from;
                 if let Some(filter) = scope.filter {
                     match node_out_key.get(&filter) {
@@ -934,6 +934,62 @@ fn collect_scope_edges(
                                 chain.join("/")
                             ));
                         }
+                    }
+                }
+                if let Some(sort_by) = scope.sort_by {
+                    match node_out_key.get(&sort_by) {
+                        Some(&key_src) => {
+                            let in_nodes = keys.next();
+                            let in_key = keys.next();
+                            let out_nodes = keys.next();
+                            let direction = if scope.sort_descending {
+                                "descending"
+                            } else {
+                                "ascending"
+                            };
+                            *uid += 1;
+                            let _ = write!(
+                                filter_components,
+                                "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
+                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
+                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+                                 \t\t\t\t\t<data><sort><collation/><key direction=\"{direction}\"/></sort></data>\n\
+                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                                 \t\t\t\t</component>\n"
+                            );
+                            edges.push((from, in_nodes));
+                            edges.push((key_src, in_key));
+                            from = out_nodes;
+                        }
+                        None => warnings.push(format!(
+                            "scope `{}` sort key references an unexported node; sorting dropped",
+                            chain.join("/")
+                        )),
+                    }
+                }
+                if let Some(take) = scope.take {
+                    match node_out_key.get(&take) {
+                        Some(&count_src) => {
+                            let in_nodes = keys.next();
+                            let in_count = keys.next();
+                            let out_nodes = keys.next();
+                            *uid += 1;
+                            let _ = write!(
+                                filter_components,
+                                "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_count}\"/></sources>\n\
+                                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+                                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                                 \t\t\t\t</component>\n"
+                            );
+                            edges.push((from, in_nodes));
+                            edges.push((count_src, in_count));
+                            from = out_nodes;
+                        }
+                        None => warnings.push(format!(
+                            "scope `{}` take count references an unexported node; item limit dropped",
+                            chain.join("/")
+                        )),
                     }
                 }
                 edges.push((from, to));

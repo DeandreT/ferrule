@@ -63,7 +63,7 @@ fn show_scope_node(
         });
 }
 
-/// Edits `scope`'s `source` path, `filter` node, and `bindings`.
+/// Edits `scope`'s sequence controls and bindings.
 pub fn show_scope_editor(
     ui: &mut Ui,
     scope: &mut Scope,
@@ -124,6 +124,43 @@ pub fn show_scope_editor(
             }
             if let Some(group_by) = &mut scope.group_by {
                 node_picker(ui, "group_by_node", group_by, graph);
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("  sort key:");
+            let mut has_sort = scope.sort_by.is_some();
+            if ui
+                .add_enabled(
+                    scope.sort_by.is_some() || first_node.is_some(),
+                    egui::Checkbox::new(&mut has_sort, "sorted"),
+                )
+                .on_disabled_hover_text("Add a graph node before enabling sorting")
+                .changed()
+            {
+                scope.sort_by = if has_sort { first_node } else { None };
+            }
+            if let Some(sort_by) = &mut scope.sort_by {
+                node_picker(ui, "sort_by_node", sort_by, graph);
+                ui.checkbox(&mut scope.sort_descending, "descending");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("  item limit:");
+            let mut has_take = scope.take.is_some();
+            if ui
+                .add_enabled(
+                    scope.take.is_some() || first_node.is_some(),
+                    egui::Checkbox::new(&mut has_take, "limited"),
+                )
+                .on_disabled_hover_text("Add a graph node before enabling an item limit")
+                .changed()
+            {
+                scope.take = if has_take { first_node } else { None };
+            }
+            if let Some(take) = &mut scope.take {
+                node_picker(ui, "take_node", take, graph);
             }
         });
     }

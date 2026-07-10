@@ -21,6 +21,8 @@ pub enum EngineError {
     MissingSourceField(String),
     #[error("node {node}: expected a bool, got {found}")]
     NotABool { node: NodeId, found: &'static str },
+    #[error("node {node}: expected an item count, got {found}")]
+    NotAnItemCount { node: NodeId, found: &'static str },
     #[error("node {node}: value-map lookup missed and there's no default")]
     ValueMapMiss { node: NodeId },
     #[error("a scope with `filter` but no `source` filtered out its only item")]
@@ -65,7 +67,7 @@ fn eval_scope(
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<Instance, EngineError> {
-    let extensions = match &scope.source {
+    let mut extensions = match &scope.source {
         None => vec![WalkExtension {
             instances: vec![*context.last().expect("context is never empty")],
             positions: Vec::new(),
@@ -87,7 +89,48 @@ fn eval_scope(
         }
     };
 
-    let mut produced = Vec::with_capacity(extensions.len());
+    if let Some(sort_node) = scope.sort_by {
+        let mut keyed = Vec::with_capacity(extensions.len());
+        for extension in extensions {
+            let mut item_context = context.to_vec();
+            item_context.extend(extension.instances.iter().copied());
+            let mut item_positions = positions.to_vec();
+            item_positions.extend(extension.positions.iter().cloned());
+            let mut in_progress = HashSet::new();
+            let key = eval_expr(
+                graph,
+                sort_node,
+                &item_context,
+                &item_positions,
+                &mut in_progress,
+            )?;
+            keyed.push((extension, key));
+        }
+        keyed.sort_by(|(_, left), (_, right)| {
+            let ordering = value_ordering(left, right).unwrap_or(std::cmp::Ordering::Equal);
+            if scope.sort_descending {
+                ordering.reverse()
+            } else {
+                ordering
+            }
+        });
+        extensions = keyed
+            .into_iter()
+            .enumerate()
+            .map(|(index, (mut extension, _))| {
+                if let Some(position) = extension.positions.last_mut() {
+                    position.index = index + 1;
+                }
+                extension
+            })
+            .collect();
+    }
+
+    let take = scope
+        .take
+        .map(|node| eval_item_count(graph, node, context, positions))
+        .transpose()?;
+    let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
     if let (Some(key_node), Some(path)) = (scope.group_by, &scope.source) {
         // Partition the iterated items by their key, in first-seen order.
         let mut groups: Vec<(Value, Vec<Instance>, Vec<PositionFrame>)> = Vec::new();
@@ -129,6 +172,9 @@ fn eval_scope(
             })
             .collect();
         for (wrapper, members, candidate_positions) in &owned {
+            if take.is_some_and(|limit| produced.len() >= limit) {
+                break;
+            }
             let mut next_context = context.to_vec();
             if let Some(wrapper) = wrapper {
                 next_context.push(wrapper);
@@ -151,6 +197,9 @@ fn eval_scope(
     } else {
         let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
         for extension in &extensions {
+            if take.is_some_and(|limit| produced.len() >= limit) {
+                break;
+            }
             let mut next_context = context.to_vec();
             next_context.extend(extension.instances.iter().copied());
             let mut candidate_positions = positions.to_vec();
@@ -192,6 +241,28 @@ fn eval_scope(
             .next()
             .ok_or(EngineError::FilteredNonRepeatingScope)
     }
+}
+
+fn eval_item_count(
+    graph: &Graph,
+    node: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<usize, EngineError> {
+    let mut in_progress = HashSet::new();
+    let value = eval_expr(graph, node, context, positions, &mut in_progress)?;
+    let count = match &value {
+        Value::Int(value) => Some(*value),
+        Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
+        Value::String(value) => value.trim().parse::<i64>().ok(),
+        _ => None,
+    };
+    count
+        .map(|count| count.max(0) as usize)
+        .ok_or(EngineError::NotAnItemCount {
+            node,
+            found: value.type_name(),
+        })
 }
 
 /// Evaluates one iteration item: the filter (`None` when it drops the
@@ -693,6 +764,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "full_name".into(),
                     node: 3,
@@ -737,6 +811,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 0,
@@ -771,6 +848,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 0,
@@ -834,6 +914,9 @@ mod tests {
                 source: Some(vec!["orders".into(), "items".into()]),
                 filter: Some(4),
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![
                     Binding {
                         target_field: "cust".into(),
@@ -955,6 +1038,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 3,
@@ -1004,6 +1090,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "out".into(),
                     node: 1,
@@ -1061,6 +1150,9 @@ mod tests {
                 source: Some(vec![]),
                 filter: Some(2),
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![
                     Binding {
                         target_field: "age".into(),
@@ -1095,6 +1187,100 @@ mod tests {
         assert_eq!(positions, vec![Some(Value::Int(1)), Some(Value::Int(2))]);
     }
 
+    #[test]
+    fn scope_sort_and_take_are_stable_and_reindex_positions() {
+        let graph = graph_from(vec![
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["score".into()],
+                },
+            ),
+            (
+                1,
+                Node::SourceField {
+                    path: vec!["name".into()],
+                },
+            ),
+            (
+                2,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
+            (
+                3,
+                Node::Position {
+                    collection: Vec::new(),
+                },
+            ),
+        ]);
+        let project = Project {
+            source: dummy_schema(),
+            target: dummy_schema(),
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                source: Some(Vec::new()),
+                sort_by: Some(0),
+                sort_descending: true,
+                take: Some(2),
+                bindings: vec![
+                    Binding {
+                        target_field: "name".into(),
+                        node: 1,
+                    },
+                    Binding {
+                        target_field: "position".into(),
+                        node: 3,
+                    },
+                ],
+                ..Scope::default()
+            },
+        };
+        let row = |name: &str, score: i64| {
+            Instance::Group(vec![
+                ("name".into(), Instance::Scalar(Value::String(name.into()))),
+                ("score".into(), Instance::Scalar(Value::Int(score))),
+            ])
+        };
+        let source = Instance::Repeated(vec![
+            row("low", 1),
+            row("first-high", 5),
+            row("second-high", 5),
+            row("middle", 3),
+        ]);
+
+        let target = run(&project, &source).unwrap();
+        let rows = target.as_repeated().unwrap();
+        let values: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.field("name").and_then(Instance::as_scalar).cloned(),
+                    row.field("position").and_then(Instance::as_scalar).cloned(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            values,
+            vec![
+                (
+                    Some(Value::String("first-high".into())),
+                    Some(Value::Int(1))
+                ),
+                (
+                    Some(Value::String("second-high".into())),
+                    Some(Value::Int(2))
+                ),
+            ]
+        );
+    }
+
     /// A field path crossing a repeating element that no scope iterates
     /// reads the first item (the visual-mapper convention for wiring a
     /// repeating source into a singular target).
@@ -1120,6 +1306,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "City".into(),
                     node: 0,
@@ -1207,12 +1396,18 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![],
                 children: vec![Scope {
                     target_field: "Year".into(),
                     source: Some(vec!["Row".into()]),
                     filter: None,
                     group_by: Some(0),
+                    sort_by: None,
+                    sort_descending: false,
+                    take: None,
                     bindings: vec![
                         Binding {
                             target_field: "Label".into(),
@@ -1380,6 +1575,9 @@ mod tests {
                 source: None,
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "AllIds".into(),
                     node: 3,
@@ -1389,6 +1587,9 @@ mod tests {
                     source: Some(vec!["Order".into()]),
                     filter: None,
                     group_by: None,
+                    sort_by: None,
+                    sort_descending: false,
+                    take: None,
                     bindings: vec![
                         Binding {
                             target_field: "ItemCount".into(),
@@ -1515,6 +1716,9 @@ mod tests {
                 source: Some(vec![]),
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![
                     Binding {
                         target_field: "customer_id".into(),
@@ -1590,6 +1794,9 @@ mod tests {
                 source: Some(vec!["customers".into()]),
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![Binding {
                     target_field: "name".into(),
                     node: 0,

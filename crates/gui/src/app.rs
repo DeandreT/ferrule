@@ -596,6 +596,9 @@ mod tests {
                 source: Some(vec![]),
                 filter: None,
                 group_by: None,
+                sort_by: None,
+                sort_descending: false,
+                take: None,
                 bindings: vec![
                     Binding {
                         target_field: "loud_name".into(),

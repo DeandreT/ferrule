@@ -39,6 +39,8 @@ struct SchemaComponent {
     options: FormatOptions,
     is_source: bool,
     is_variable: bool,
+    /// Input key of a variable component's compute-when control entry.
+    compute_when_key: Option<u32>,
     /// Port key -> absolute entry path (segments below the schema root).
     ports: BTreeMap<u32, Vec<String>>,
     input_keys: BTreeSet<u32>,
@@ -58,6 +60,16 @@ struct IterationFeed {
     filter_expr: Option<u32>,
     /// The group-by's key expression key, if a group-by was crossed.
     group_key: Option<u32>,
+    /// A sort key expression and direction crossed by the sequence.
+    sort_expr: Option<u32>,
+    sort_descending: bool,
+    /// A connected first-items count, or an absent count meaning the
+    /// function's default of one item.
+    take_expr: Option<u32>,
+    take_default_one: bool,
+    /// A transparent variable projects the connected source group as a
+    /// constructed value, so matching scalar descendants must be copied.
+    projects_whole_group: bool,
 }
 
 /// One function component's extracted facts.
@@ -73,6 +85,7 @@ struct FnComponent {
     outputs: Vec<u32>,
     constant: Option<(String, String)>,
     valuemap: Option<ValueMapData>,
+    sort_descending: Option<bool>,
 }
 
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
@@ -314,12 +327,17 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     for (i, fc) in fn_components.iter().enumerate() {
         if !(fc.outputs.is_empty()
             || is_filter_component(fc)
+            || is_input_component(fc)
+            || is_sort_component(fc)
+            || is_first_items_component(fc)
             || fc.name == "group-by"
             || fc.kind == 5 && aggregate_op(&fc.name).is_some())
         {
             builder.fn_node(i);
         }
     }
+    let connected_bindings: BTreeSet<Vec<String>> =
+        bindings.iter().map(|(path, _)| path.clone()).collect();
     for (target_path, from) in iterations {
         let feed = builder.resolve_iteration_feed(from);
         let Some(source_abs) = builder.iteration_source_path(&feed) else {
@@ -331,7 +349,54 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         };
         let filter_node = feed.filter_expr.and_then(|key| builder.value_node(key));
         let group_node = feed.group_key.and_then(|key| builder.value_node(key));
-        scope_builder.add_iteration(&target_path, &source_abs, filter_node, group_node);
+        let sort_node = feed.sort_expr.and_then(|key| builder.value_node(key));
+        let take_node = feed
+            .take_expr
+            .and_then(|key| builder.value_node(key))
+            .or_else(|| {
+                feed.take_default_one.then(|| {
+                    builder.alloc(Node::Const {
+                        value: Value::Int(1),
+                    })
+                })
+            });
+        scope_builder.add_iteration(
+            &target_path,
+            &source_abs,
+            IterationNodes {
+                filter: filter_node,
+                group_by: group_node,
+                sort_by: sort_node,
+                sort_descending: feed.sort_descending,
+                take: take_node,
+            },
+        );
+        if feed.projects_whole_group
+            && let (Some(source_group), Some(target_group)) = (
+                schema_node_at(&primary.schema, &source_abs),
+                schema_node_at(&target.schema, &target_path),
+            )
+        {
+            let mut relative_paths = Vec::new();
+            collect_matching_scalar_paths(
+                source_group,
+                target_group,
+                &mut Vec::new(),
+                &mut relative_paths,
+            );
+            for relative in relative_paths {
+                let mut target_leaf = target_path.clone();
+                target_leaf.extend(relative.iter().cloned());
+                if connected_bindings.contains(&target_leaf) {
+                    continue;
+                }
+                let mut source_leaf = source_abs.clone();
+                source_leaf.extend(relative);
+                if let Some(node) = builder.primary_source_field(&source_leaf) {
+                    scope_builder.add_binding(&target_leaf, node);
+                }
+            }
+        }
     }
     for (target_path, from) in bindings {
         let Some(node) = builder.value_node(from) else {
@@ -493,6 +558,12 @@ fn read_schema_component(
         is_variable: data.descendants().any(|node| {
             node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
         }),
+        compute_when_key: root_el
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("entry") && node.attribute("name") == Some("compute-when")
+            })
+            .and_then(|entry| parse_u32(entry.attribute("inpkey"))),
         ports,
         input_keys,
         output_keys,
@@ -632,6 +703,7 @@ fn read_json_component(
         options: FormatOptions::default(),
         is_source,
         is_variable: false,
+        compute_when_key: None,
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
@@ -853,6 +925,7 @@ fn read_csv_component(
         options,
         is_source,
         is_variable: false,
+        compute_when_key: None,
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
@@ -1072,6 +1145,7 @@ fn read_db_component(
         options: FormatOptions::default(),
         is_source,
         is_variable: false,
+        compute_when_key: None,
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
@@ -1138,6 +1212,13 @@ fn read_fn_component(component: &roxmltree::Node) -> FnComponent {
                 .filter(|_| vm.attribute("defaultValueMode") == Some("custom"));
             (table, default)
         });
+    let sort_descending = data
+        .and_then(|data| data.descendants().find(|node| node.has_tag_name("sort")))
+        .map(|sort| {
+            sort.descendants()
+                .find(|node| node.has_tag_name("key"))
+                .is_some_and(|key| key.attribute("direction") == Some("descending"))
+        });
 
     FnComponent {
         library,
@@ -1147,6 +1228,7 @@ fn read_fn_component(component: &roxmltree::Node) -> FnComponent {
         outputs,
         constant,
         valuemap,
+        sort_descending,
     }
 }
 
@@ -1158,8 +1240,45 @@ fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sch
     Some(node)
 }
 
+fn collect_matching_scalar_paths(
+    source: &SchemaNode,
+    target: &SchemaNode,
+    path: &mut Vec<String>,
+    paths: &mut Vec<Vec<String>>,
+) {
+    match (&source.kind, &target.kind) {
+        (SchemaKind::Scalar { .. }, SchemaKind::Scalar { .. }) => paths.push(path.clone()),
+        (SchemaKind::Group { .. }, SchemaKind::Group { children }) => {
+            for target_child in children {
+                if target_child.repeating {
+                    continue;
+                }
+                let Some(source_child) = source.child(&target_child.name) else {
+                    continue;
+                };
+                path.push(target_child.name.clone());
+                collect_matching_scalar_paths(source_child, target_child, path, paths);
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
 fn is_filter_component(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 3
+}
+
+fn is_input_component(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 6
+}
+
+fn is_sort_component(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 30 && component.sort_descending.is_some()
+}
+
+fn is_first_items_component(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 5 && component.name == "first-items"
 }
 
 struct GraphBuilder<'a> {
@@ -1255,7 +1374,7 @@ impl GraphBuilder<'_> {
     /// input that supplies it plus the output's path below that input. An
     /// output with connected descendant inputs is being constructed, not
     /// transparently projected, so it deliberately remains unsupported.
-    fn intermediate_feed(&self, output_key: u32) -> Option<(u32, Vec<String>)> {
+    fn intermediate_feed(&self, output_key: u32) -> Option<(u32, Vec<String>, Option<u32>)> {
         for component in self.intermediates {
             if !component.output_keys.contains(&output_key) {
                 continue;
@@ -1280,7 +1399,10 @@ impl GraphBuilder<'_> {
                 })
                 .max_by_key(|(_, path)| path.len())?;
             let feed = *self.edge_from.get(input_key)?;
-            return Some((feed, output_path[input_path.len()..].to_vec()));
+            let control = component
+                .compute_when_key
+                .and_then(|key| self.edge_from.get(&key).copied());
+            return Some((feed, output_path[input_path.len()..].to_vec(), control));
         }
         None
     }
@@ -1302,7 +1424,7 @@ impl GraphBuilder<'_> {
             }
         }
         // A transparent output of a variable schema component?
-        if let Some((feed, suffix)) = self.intermediate_feed(key) {
+        if let Some((feed, suffix, _)) = self.intermediate_feed(key) {
             if suffix.is_empty() {
                 return self.value_node(feed);
             }
@@ -1318,6 +1440,12 @@ impl GraphBuilder<'_> {
             // feeds the filter's first input.
             let feed = self.input_feed(idx, 0)?;
             return self.value_node(feed);
+        }
+        if is_input_component(&self.fn_components[idx]) {
+            return match self.input_feed(idx, 0) {
+                Some(feed) => self.value_node(feed),
+                None => Some(self.const_null()),
+            };
         }
         match self.fn_components[idx].name.as_str() {
             // A group-by's key output is the key expression itself
@@ -1577,13 +1705,36 @@ impl GraphBuilder<'_> {
     /// components back to the underlying source entry, collecting the
     /// filter's boolean expression and the group-by's key expression on
     /// the way.
-    fn resolve_iteration_feed(&self, mut from: u32) -> IterationFeed {
+    fn resolve_iteration_feed(&self, from: u32) -> IterationFeed {
+        self.resolve_iteration_feed_inner(from, 0)
+    }
+
+    fn resolve_iteration_feed_inner(&self, mut from: u32, depth: usize) -> IterationFeed {
         let mut filter_expr = None;
         let mut group_key = None;
+        let mut sort_expr = None;
+        let mut sort_descending = false;
+        let mut take_expr = None;
+        let mut take_default_one = false;
+        let mut projects_whole_group = false;
         let mut source_suffix = Vec::new();
         // Chains are short; the bound only guards against odd cycles.
         for _ in 0..12 {
-            if let Some((feed, mut suffix)) = self.intermediate_feed(from) {
+            if let Some((feed, mut suffix, control)) = self.intermediate_feed(from) {
+                projects_whole_group |= suffix.is_empty();
+                if let Some(control) = control
+                    && depth < 12
+                {
+                    let control = self.resolve_iteration_feed_inner(control, depth + 1);
+                    filter_expr = filter_expr.or(control.filter_expr);
+                    group_key = group_key.or(control.group_key);
+                    if sort_expr.is_none() && control.sort_expr.is_some() {
+                        sort_expr = control.sort_expr;
+                        sort_descending = control.sort_descending;
+                    }
+                    take_expr = take_expr.or(control.take_expr);
+                    take_default_one |= control.take_default_one;
+                }
                 suffix.extend(source_suffix);
                 source_suffix = suffix;
                 from = feed;
@@ -1599,6 +1750,28 @@ impl GraphBuilder<'_> {
                 };
                 filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
                 from = node_feed;
+            } else if is_sort_component(fc) {
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                if sort_expr.is_none() {
+                    sort_expr = self.input_feed(idx, 1);
+                    sort_descending = fc.sort_descending.unwrap_or(false);
+                }
+                from = nodes_feed;
+            } else if is_first_items_component(fc) {
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                // A variable driven by group-by uses first-items to select
+                // the first member inside each group. Grouped scope frames
+                // already expose that member to scalar bindings, so an
+                // outer item limit would incorrectly truncate the groups.
+                if group_key.is_none() && take_expr.is_none() && !take_default_one {
+                    take_expr = self.input_feed(idx, 1);
+                    take_default_one = take_expr.is_none();
+                }
+                from = nodes_feed;
             } else {
                 match fc.name.as_str() {
                     "group-by" if fc.outputs.first() == Some(&from) => {
@@ -1617,6 +1790,11 @@ impl GraphBuilder<'_> {
             source_suffix,
             filter_expr,
             group_key,
+            sort_expr,
+            sort_descending,
+            take_expr,
+            take_default_one,
+            projects_whole_group,
         }
     }
 
@@ -1630,7 +1808,7 @@ impl GraphBuilder<'_> {
                 path.extend(suffix);
                 return Some(path);
             }
-            if let Some((upstream, mut intermediate_suffix)) = self.intermediate_feed(feed) {
+            if let Some((upstream, mut intermediate_suffix, _)) = self.intermediate_feed(feed) {
                 intermediate_suffix.extend(suffix);
                 suffix = intermediate_suffix;
                 feed = upstream;
@@ -1638,7 +1816,7 @@ impl GraphBuilder<'_> {
             }
             let &idx = self.fn_by_output.get(&feed)?;
             let fc = &self.fn_components[idx];
-            if is_filter_component(fc) {
+            if is_filter_component(fc) || is_sort_component(fc) || is_first_items_component(fc) {
                 feed = self.input_feed(idx, 0)?;
             } else {
                 match fc.name.as_str() {
@@ -1771,6 +1949,14 @@ struct ScopeBuilder {
     anchors: BTreeMap<Vec<String>, Vec<String>>,
 }
 
+struct IterationNodes {
+    filter: Option<NodeId>,
+    group_by: Option<NodeId>,
+    sort_by: Option<NodeId>,
+    sort_descending: bool,
+    take: Option<NodeId>,
+}
+
 impl ScopeBuilder {
     fn ensure_scope(&mut self, chain: &[String]) -> &mut Scope {
         let mut scope = &mut self.root;
@@ -1809,8 +1995,7 @@ impl ScopeBuilder {
         &mut self,
         target_path: &[String],
         source_abs: &[String],
-        filter: Option<NodeId>,
-        group_by: Option<NodeId>,
+        nodes: IterationNodes,
     ) {
         let anchor = self.enclosing_anchor(target_path);
         let relative: Vec<String> = if source_abs.starts_with(&anchor) {
@@ -1822,8 +2007,11 @@ impl ScopeBuilder {
             .insert(target_path.to_vec(), source_abs.to_vec());
         let scope = self.ensure_scope(target_path);
         scope.source = Some(relative);
-        scope.filter = filter;
-        scope.group_by = group_by;
+        scope.filter = nodes.filter;
+        scope.group_by = nodes.group_by;
+        scope.sort_by = nodes.sort_by;
+        scope.sort_descending = nodes.sort_descending;
+        scope.take = nodes.take;
     }
 
     fn add_binding(&mut self, target_path: &[String], node: NodeId) {
