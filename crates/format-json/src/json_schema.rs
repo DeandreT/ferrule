@@ -82,11 +82,10 @@ fn parse(
             SchemaNode::group(name, children)
         }
         Some("array") => {
-            let items = schema
-                .get("items")
-                .cloned()
-                .unwrap_or(serde_json::Value::Null);
-            parse(name, &items, doc, active_refs).repeating()
+            let Some(items) = schema.get("items") else {
+                return SchemaNode::scalar(name, ScalarType::String).repeating();
+            };
+            parse(name, items, doc, active_refs).repeating()
         }
         Some("integer") => SchemaNode::scalar(name, ScalarType::Int),
         Some("number") => SchemaNode::scalar(name, ScalarType::Float),

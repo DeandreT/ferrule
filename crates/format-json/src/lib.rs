@@ -15,6 +15,8 @@ use std::path::Path;
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use thiserror::Error;
 
+const MAX_EXACT_F64_INTEGER: u64 = 1_u64 << f64::MANTISSA_DIGITS;
+
 #[derive(Debug, Error)]
 pub enum JsonFormatError {
     #[error("io error: {0}")]
@@ -125,8 +127,25 @@ fn read_scalar(
         (ScalarType::Int, serde_json::Value::Number(n)) => {
             n.as_i64().map(Value::Int).ok_or_else(|| bad("integer"))
         }
-        (ScalarType::Float, serde_json::Value::Number(n)) => {
-            n.as_f64().map(Value::Float).ok_or_else(|| bad("number"))
+        (ScalarType::Float, serde_json::Value::Number(number)) => {
+            if number
+                .as_i64()
+                .is_some_and(|value| value.unsigned_abs() > MAX_EXACT_F64_INTEGER)
+                || number
+                    .as_u64()
+                    .is_some_and(|value| value > MAX_EXACT_F64_INTEGER)
+            {
+                return Err(JsonFormatError::Shape {
+                    name: name.to_string(),
+                    expected: "number",
+                    got: "integer outside the exact f64 range",
+                });
+            }
+            number
+                .as_f64()
+                .filter(|value| value.is_finite())
+                .map(Value::Float)
+                .ok_or_else(|| bad("finite number"))
         }
         (ScalarType::Bool, serde_json::Value::Bool(b)) => Ok(Value::Bool(*b)),
         (ScalarType::String, _) => Err(bad("string")),
@@ -139,64 +158,181 @@ fn read_scalar(
 /// Writes an [`Instance`] tree shaped by `schema` to a pretty-printed JSON
 /// file.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), JsonFormatError> {
-    let value = write_node(schema, instance);
+    // A root scope can produce flat rows even though the row schema itself
+    // is not repeating (the same convention used by CSV). Preserve that
+    // established JSON-output shape while keeping nested nodes
+    // schema-directed.
+    let value = match instance {
+        Instance::Repeated(items) if !schema.repeating => items
+            .iter()
+            .map(|item| write_single_node(schema, item))
+            .collect::<Result<Vec<_>, _>>()
+            .map(serde_json::Value::Array)?,
+        _ => write_node(schema, instance)?,
+    };
     let mut text = serde_json::to_string_pretty(&value)?;
     text.push('\n');
     std::fs::write(path, text)?;
     Ok(())
 }
 
-fn write_node(schema: &SchemaNode, instance: &Instance) -> serde_json::Value {
-    match instance {
-        Instance::Repeated(items) => {
-            serde_json::Value::Array(items.iter().map(|item| write_node(schema, item)).collect())
+fn write_node(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<serde_json::Value, JsonFormatError> {
+    if schema.repeating {
+        let Instance::Repeated(items) = instance else {
+            return Err(write_shape_error(
+                schema,
+                "array",
+                instance_type_name(instance),
+            ));
+        };
+        return items
+            .iter()
+            .map(|item| write_single_node(schema, item))
+            .collect::<Result<Vec<_>, _>>()
+            .map(serde_json::Value::Array);
+    }
+    write_single_node(schema, instance)
+}
+
+fn write_single_node(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<serde_json::Value, JsonFormatError> {
+    match (&schema.kind, instance) {
+        (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
+            write_scalar(value, *ty, &schema.name)
         }
-        Instance::Scalar(value) => write_scalar(value, schema),
-        Instance::Group(fields) => {
+        (SchemaKind::Group { children }, Instance::Group(fields)) => {
             let mut out = serde_json::Map::with_capacity(fields.len());
-            if let SchemaKind::Group { children } = &schema.kind {
-                for child_schema in children {
-                    if let Some((_, child_instance)) =
-                        fields.iter().find(|(n, _)| n == &child_schema.name)
+            for child_schema in children {
+                if let Some((_, child_instance)) =
+                    fields.iter().find(|(n, _)| n == &child_schema.name)
+                {
+                    // A Null scalar is an absent property, not an
+                    // explicit null (mirrors the reader's treatment).
+                    if !child_schema.repeating
+                        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
+                        && matches!(child_instance, Instance::Scalar(Value::Null))
                     {
-                        // A Null scalar is an absent property, not an
-                        // explicit null (mirrors the reader's treatment).
-                        if matches!(child_instance, Instance::Scalar(Value::Null)) {
-                            continue;
-                        }
-                        out.insert(
-                            child_schema.name.clone(),
-                            write_node(child_schema, child_instance),
-                        );
+                        continue;
                     }
+                    out.insert(
+                        child_schema.name.clone(),
+                        write_node(child_schema, child_instance)?,
+                    );
                 }
             }
-            serde_json::Value::Object(out)
+            Ok(serde_json::Value::Object(out))
         }
+        (SchemaKind::Scalar { ty }, other) => Err(write_shape_error(
+            schema,
+            scalar_type_name(*ty),
+            instance_type_name(other),
+        )),
+        (SchemaKind::Group { .. }, other) => Err(write_shape_error(
+            schema,
+            "object",
+            instance_type_name(other),
+        )),
     }
 }
 
-fn write_scalar(value: &Value, schema: &SchemaNode) -> serde_json::Value {
-    // A string flowing into a typed leaf (common when the source format is
-    // untyped text/XML) is coerced so the output matches the schema.
-    if let (Value::String(s), SchemaKind::Scalar { ty }) = (value, &schema.kind) {
-        let coerced = match ty {
-            ScalarType::Int => s.trim().parse().map(Value::Int).ok(),
-            ScalarType::Float => s.trim().parse().map(Value::Float).ok(),
-            ScalarType::Bool => s.trim().parse().map(Value::Bool).ok(),
-            ScalarType::String => None,
-        };
-        if let Some(coerced) = coerced {
-            return write_scalar(&coerced, schema);
-        }
+fn write_scalar(
+    value: &Value,
+    ty: ScalarType,
+    name: &str,
+) -> Result<serde_json::Value, JsonFormatError> {
+    if let Value::Float(value) = value
+        && !value.is_finite()
+    {
+        return Err(JsonFormatError::Shape {
+            name: name.to_string(),
+            expected: "finite number",
+            got: "non-finite float",
+        });
     }
-    match value {
-        Value::Null => serde_json::Value::Null,
-        Value::Bool(b) => serde_json::Value::Bool(*b),
-        Value::Int(i) => serde_json::Value::Number((*i).into()),
-        Value::Float(f) => serde_json::Number::from_f64(*f)
-            .map_or(serde_json::Value::Null, serde_json::Value::Number),
-        Value::String(s) => serde_json::Value::String(s.clone()),
+
+    let bad = || JsonFormatError::Shape {
+        name: name.to_string(),
+        expected: scalar_type_name(ty),
+        got: value.type_name(),
+    };
+    match (ty, value) {
+        (_, Value::Null) => Ok(serde_json::Value::Null),
+        (ScalarType::String, Value::Bool(value)) => {
+            Ok(serde_json::Value::String(value.to_string()))
+        }
+        (ScalarType::String, Value::Int(value)) => Ok(serde_json::Value::String(value.to_string())),
+        (ScalarType::String, Value::Float(value)) => {
+            Ok(serde_json::Value::String(value.to_string()))
+        }
+        (ScalarType::String, Value::String(value)) => Ok(serde_json::Value::String(value.clone())),
+        (ScalarType::Int, Value::Int(value)) => Ok(serde_json::Value::Number((*value).into())),
+        (ScalarType::Int, Value::String(value)) => value
+            .trim()
+            .parse::<i64>()
+            .map(|value| serde_json::Value::Number(value.into()))
+            .map_err(|_| bad()),
+        (ScalarType::Float, Value::Int(value)) if value.unsigned_abs() <= MAX_EXACT_F64_INTEGER => {
+            Ok(serde_json::Value::Number((*value).into()))
+        }
+        (ScalarType::Float, Value::Int(_)) => Err(JsonFormatError::Shape {
+            name: name.to_string(),
+            expected: "number",
+            got: "int outside the exact f64 range",
+        }),
+        (ScalarType::Float, Value::Float(value)) => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .ok_or_else(bad),
+        (ScalarType::Float, Value::String(value)) => {
+            let parsed = value.trim().parse::<f64>().map_err(|_| bad())?;
+            serde_json::Number::from_f64(parsed)
+                .map(serde_json::Value::Number)
+                .ok_or_else(|| JsonFormatError::Shape {
+                    name: name.to_string(),
+                    expected: "finite number",
+                    got: "string",
+                })
+        }
+        (ScalarType::Bool, Value::Bool(value)) => Ok(serde_json::Value::Bool(*value)),
+        (ScalarType::Bool, Value::String(value)) => value
+            .trim()
+            .parse::<bool>()
+            .map(serde_json::Value::Bool)
+            .map_err(|_| bad()),
+        _ => Err(bad()),
+    }
+}
+
+fn scalar_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "number",
+        ScalarType::Bool => "bool",
+    }
+}
+
+fn instance_type_name(instance: &Instance) -> &'static str {
+    match instance {
+        Instance::Scalar(value) => value.type_name(),
+        Instance::Group(_) => "object",
+        Instance::Repeated(_) => "array",
+    }
+}
+
+fn write_shape_error(
+    schema: &SchemaNode,
+    expected: &'static str,
+    got: &'static str,
+) -> JsonFormatError {
+    JsonFormatError::Shape {
+        name: schema.name.clone(),
+        expected,
+        got,
     }
 }
 
@@ -299,6 +435,30 @@ mod tests {
     }
 
     #[test]
+    fn null_only_omits_scalar_leaves() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::group(
+                    "Object",
+                    vec![SchemaNode::scalar("Value", ScalarType::String)],
+                ),
+                SchemaNode::scalar("Items", ScalarType::String).repeating(),
+            ],
+        );
+
+        for field in ["Object", "Items"] {
+            let instance =
+                Instance::Group(vec![(field.to_string(), Instance::Scalar(Value::Null))]);
+            let error = write_node(&schema, &instance).unwrap_err();
+            assert!(matches!(
+                error,
+                JsonFormatError::Shape { ref name, got: "null", .. } if name == field
+            ));
+        }
+    }
+
+    #[test]
     fn wrong_shape_is_reported_with_field_name() {
         let dir = std::env::temp_dir();
         let path = dir.join(format!(
@@ -313,5 +473,136 @@ mod tests {
         assert!(
             matches!(err, JsonFormatError::Shape { ref name, expected: "string", .. } if name == "Name")
         );
+    }
+
+    fn write_scalar_value(
+        ty: ScalarType,
+        value: Value,
+    ) -> Result<serde_json::Value, JsonFormatError> {
+        write_node(&SchemaNode::scalar("Field", ty), &Instance::Scalar(value))
+    }
+
+    #[test]
+    fn string_leaves_serialize_every_finite_scalar_as_json_text() {
+        for (value, expected) in [
+            (Value::Bool(true), "true"),
+            (Value::Int(-42), "-42"),
+            (Value::Float(2.5), "2.5"),
+            (Value::String("value".into()), "value"),
+        ] {
+            assert_eq!(
+                write_scalar_value(ScalarType::String, value).unwrap(),
+                serde_json::Value::String(expected.into())
+            );
+        }
+    }
+
+    #[test]
+    fn typed_leaves_coerce_text_and_widen_integers_to_numbers() {
+        assert_eq!(
+            write_scalar_value(ScalarType::Int, Value::String(" 42 ".into())).unwrap(),
+            serde_json::json!(42)
+        );
+        assert_eq!(
+            write_scalar_value(ScalarType::Float, Value::Int(42)).unwrap(),
+            serde_json::json!(42)
+        );
+        assert_eq!(
+            write_scalar_value(ScalarType::Float, Value::String("2.5".into())).unwrap(),
+            serde_json::json!(2.5)
+        );
+        assert_eq!(
+            write_scalar_value(ScalarType::Bool, Value::String("true".into())).unwrap(),
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn float_leaves_only_widen_integers_that_roundtrip_exactly() {
+        let schema = SchemaNode::scalar("Field", ScalarType::Float);
+        let boundary = MAX_EXACT_F64_INTEGER as i64;
+        let encoded = write_node(&schema, &Instance::Scalar(Value::Int(boundary))).unwrap();
+        assert_eq!(
+            read_node(&encoded, &schema).unwrap(),
+            Instance::Scalar(Value::Float(boundary as f64))
+        );
+
+        for value in [boundary + 1, -(boundary + 1)] {
+            let error = write_node(&schema, &Instance::Scalar(Value::Int(value))).unwrap_err();
+            assert!(matches!(
+                error,
+                JsonFormatError::Shape {
+                    ref name,
+                    expected: "number",
+                    got: "int outside the exact f64 range"
+                } if name == "Field"
+            ));
+        }
+    }
+
+    #[test]
+    fn float_leaves_reject_lossy_external_json_integers() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_json_float_precision_{}.json",
+            std::process::id()
+        ));
+        let schema = SchemaNode::scalar("Field", ScalarType::Float);
+
+        std::fs::write(&path, (MAX_EXACT_F64_INTEGER + 1).to_string()).unwrap();
+        let error = read(&path, &schema).unwrap_err();
+        assert!(matches!(
+            error,
+            JsonFormatError::Shape {
+                ref name,
+                expected: "number",
+                got: "integer outside the exact f64 range"
+            } if name == "Field"
+        ));
+
+        std::fs::write(&path, "1.25").unwrap();
+        assert_eq!(
+            read(&path, &schema).unwrap(),
+            Instance::Scalar(Value::Float(1.25))
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn incompatible_and_non_finite_values_return_typed_errors() {
+        let incompatible = write_scalar_value(ScalarType::Int, Value::Float(2.0)).unwrap_err();
+        assert!(matches!(
+            incompatible,
+            JsonFormatError::Shape {
+                ref name,
+                expected: "integer",
+                got: "float"
+            } if name == "Field"
+        ));
+
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let error = write_scalar_value(ScalarType::Float, Value::Float(value)).unwrap_err();
+            assert!(matches!(
+                error,
+                JsonFormatError::Shape {
+                    ref name,
+                    expected: "finite number",
+                    got: "non-finite float"
+                } if name == "Field"
+            ));
+        }
+
+        let wrong_shape = write_node(
+            &SchemaNode::scalar("Field", ScalarType::Bool),
+            &Instance::Group(Vec::new()),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            wrong_shape,
+            JsonFormatError::Shape {
+                ref name,
+                expected: "bool",
+                got: "object"
+            } if name == "Field"
+        ));
     }
 }
