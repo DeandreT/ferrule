@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="30">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <structure>
+      <children>
+        <component name="document" library="xml" uid="2" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Beta">
+              <entry name="Rows" outkey="20"><entry name="Name" outkey="21"/></entry>
+            </entry></entry></entry></root>
+            <document schema="multi-source.xsd" inputinstance="beta.xml" instanceroot="{}Beta"/>
+          </data>
+        </component>
+        <component name="document" library="xml" uid="3" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Alpha">
+              <entry name="RowsA" outkey="10"><entry name="Name" outkey="11"/></entry>
+              <entry name="RowsB" outkey="12"><entry name="Name" outkey="13"/></entry>
+            </entry></entry></entry></root>
+            <document schema="multi-source.xsd" inputinstance="alpha.xml" instanceroot="{}Alpha"/>
+          </data>
+        </component>
+        <component name="document" library="xml" uid="4" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Output">
+              <entry name="AOne" inpkey="110"><entry name="Name" inpkey="111"/></entry>
+              <entry name="ATwo" inpkey="112"><entry name="Name" inpkey="113"/></entry>
+              <entry name="B" inpkey="120"><entry name="Name" inpkey="121"/></entry>
+            </entry></entry></entry></root>
+            <document schema="multi-source.xsd" outputinstance="output.xml" instanceroot="{}Output"/>
+          </data>
+        </component>
+        <component name="sort" library="core" uid="5" kind="30">
+          <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+          <targets><datapoint pos="0" key="32"/></targets>
+          <data><sort><collation/><key direction="ascending"/></sort></data>
+        </component>
+        <component name="filter" library="core" uid="6" kind="3">
+          <sources><datapoint pos="0" key="33"/><datapoint pos="1" key="34"/></sources>
+          <targets><datapoint pos="0" key="35"/><datapoint/></targets>
+        </component>
+        <component name="group-into-blocks" library="core" uid="7" kind="5">
+          <sources><datapoint pos="0" key="36"/><datapoint pos="1" key="37"/></sources>
+          <targets><datapoint pos="0" key="38"/></targets>
+        </component>
+        <component name="first-items" library="core" uid="8" kind="5">
+          <sources><datapoint pos="0" key="39"/><datapoint pos="1" key="40"/></sources>
+          <targets><datapoint pos="0" key="41"/></targets>
+        </component>
+        <component name="constant" library="core" uid="9" kind="2">
+          <targets><datapoint pos="0" key="50"/></targets>
+          <data><constant value="true" datatype="boolean"/></data>
+        </component>
+        <component name="constant" library="core" uid="10" kind="2">
+          <targets><datapoint pos="0" key="51"/></targets>
+          <data><constant value="2" datatype="integer"/></data>
+        </component>
+        <component name="constant" library="core" uid="11" kind="2">
+          <targets><datapoint pos="0" key="52"/></targets>
+          <data><constant value="1" datatype="integer"/></data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="30"/>
+      <edge from="11" to="31"/>
+      <edge from="32" to="33"/>
+      <edge from="50" to="34"/>
+      <edge from="35" to="36"/>
+      <edge from="51" to="37"/>
+      <edge from="38" to="39"/>
+      <edge from="52" to="40"/>
+      <edge from="41" to="110"/>
+      <edge from="11" to="111"/>
+    </connections>
+  </component>
+</mapping>

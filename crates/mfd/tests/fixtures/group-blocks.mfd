@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Values" library="xml" uid="2" kind="14">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance"><entry name="document"><entry name="Values">
+                <entry name="Row" outkey="10"><entry name="Value" outkey="11"/></entry>
+              </entry></entry></entry>
+            </root>
+            <document schema="group-blocks-source.xsd" inputinstance="group-blocks.xml" instanceroot="{}Values"/>
+          </data>
+        </component>
+        <component name="Blocks" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance"><entry name="document"><entry name="Blocks">
+                <entry name="Block" inpkey="20">
+                  <entry name="First" inpkey="21"/>
+                  <entry name="Count" inpkey="22"/>
+                </entry>
+              </entry></entry></entry>
+            </root>
+            <document schema="group-blocks-target.xsd" instanceroot="{}Blocks"/>
+          </data>
+        </component>
+        <component name="constant" library="core" uid="4" kind="2">
+          <targets><datapoint pos="0" key="30"/></targets>
+          <data><constant value="2" datatype="integer"/></data>
+        </component>
+        <component name="group-into-blocks" library="core" uid="5" kind="5">
+          <sources><datapoint pos="0" key="31"/><datapoint pos="1" key="32"/></sources>
+          <targets><datapoint pos="0" key="33"/></targets>
+        </component>
+        <component name="count" library="core" uid="6" kind="5">
+          <sources><datapoint/><datapoint pos="1" key="34"/></sources>
+          <targets><datapoint pos="0" key="35"/></targets>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="31"/>
+      <edge from="30" to="32"/>
+      <edge from="33" to="20"/>
+      <edge from="11" to="21"/>
+      <edge from="33" to="34"/>
+      <edge from="35" to="22"/>
+    </connections>
+  </component>
+</mapping>

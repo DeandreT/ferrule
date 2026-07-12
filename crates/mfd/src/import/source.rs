@@ -1,0 +1,377 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
+
+use ir::{SchemaKind, SchemaNode};
+use mapping::NodeId;
+
+use super::function::{
+    FnComponent, is_distinct_values, is_filter, is_first_items, is_group_into_blocks, is_input,
+    is_sort,
+};
+use super::graph::GraphBuilder;
+use super::iteration::{IterationFeed, split_at_innermost_repeating};
+use super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SourcePath {
+    pub(super) source: usize,
+    pub(super) path: Vec<String>,
+}
+
+/// Selects the ordinary input that most directly drives target repetition.
+/// Dynamic components without a stored instance remain secondary until the
+/// importer can represent their connected run-time resource path.
+pub(super) fn primary_index(
+    sources: &[&SchemaComponent],
+    target: &SchemaComponent,
+    edge_from: &BTreeMap<u32, u32>,
+    fn_components: &[FnComponent],
+) -> usize {
+    let mut scores = vec![0usize; sources.len()];
+    for (input, target_path) in &target.ports {
+        let Some(&feed) = edge_from.get(input) else {
+            continue;
+        };
+        let feed = iteration_source_feed(feed, edge_from, fn_components);
+        let Some(target_node) = schema_node_at(&target.schema, target_path) else {
+            continue;
+        };
+        let row_root = target_path.is_empty()
+            && (matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
+                || target.format == ComponentFormat::Json && target_node.repeating);
+        if !(row_root
+            || target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. }))
+        {
+            continue;
+        }
+        for (index, source) in sources.iter().enumerate() {
+            let has_dynamic_input = source
+                .input_keys
+                .iter()
+                .any(|key| edge_from.contains_key(key));
+            if source.input_instance.is_some()
+                && !has_dynamic_input
+                && source.ports.contains_key(&feed)
+            {
+                scores[index] += 1;
+            }
+        }
+    }
+    scores
+        .iter()
+        .enumerate()
+        .max_by_key(|(index, score)| (**score, std::cmp::Reverse(*index)))
+        .filter(|(_, score)| **score > 0)
+        .map_or(0, |(index, _)| index)
+}
+
+/// Follows sequence controls through their node-sequence input. This mirrors
+/// the pass-through subset handled by `resolve_iteration_feed`, but is kept
+/// independent so primary source selection can happen before graph building.
+fn iteration_source_feed(
+    mut feed: u32,
+    edge_from: &BTreeMap<u32, u32>,
+    fn_components: &[FnComponent],
+) -> u32 {
+    let mut visited = BTreeSet::new();
+    while visited.insert(feed) {
+        let Some(component) = fn_components
+            .iter()
+            .find(|component| component.outputs.contains(&feed))
+        else {
+            break;
+        };
+        let is_group_output = component.library == "core"
+            && component.kind == 5
+            && component.name == "group-by"
+            && component.outputs.first() == Some(&feed);
+        if !(is_filter(component)
+            || is_sort(component)
+            || is_first_items(component)
+            || is_group_into_blocks(component)
+            || is_distinct_values(component)
+            || is_input(component)
+            || is_group_output)
+        {
+            break;
+        }
+        let Some(input) = component.inputs.first().copied().flatten() else {
+            break;
+        };
+        let Some(&upstream) = edge_from.get(&input) else {
+            break;
+        };
+        feed = upstream;
+    }
+    feed
+}
+
+/// Assigns stable names used as the first context-path segment for secondary
+/// inputs. Generic component labels fall back to the schema root, and names
+/// cannot shadow a primary source field because scope lookup is inner-first.
+pub(super) fn runtime_names(sources: &[&SchemaComponent]) -> Vec<String> {
+    let mut used = BTreeSet::new();
+    if let Some(primary) = sources.first()
+        && let SchemaKind::Group { children } = &primary.schema.kind
+    {
+        used.extend(children.iter().map(|child| child.name.clone()));
+    }
+
+    sources
+        .iter()
+        .enumerate()
+        .map(|(index, source)| {
+            if index == 0 {
+                return preferred_name(source);
+            }
+            unique_name(preferred_name(source), &mut used)
+        })
+        .collect()
+}
+
+fn preferred_name(source: &SchemaComponent) -> String {
+    let component_name = source.name.trim();
+    if !component_name.is_empty()
+        && !matches!(
+            component_name.to_ascii_lowercase().as_str(),
+            "document" | "structure" | "source" | "input"
+        )
+    {
+        return component_name.to_string();
+    }
+    if !source.schema.name.trim().is_empty() {
+        return source.schema.name.clone();
+    }
+    source
+        .input_instance
+        .as_deref()
+        .and_then(|path| Path::new(path).file_stem())
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("source")
+        .to_string()
+}
+
+fn unique_name(base: String, used: &mut BTreeSet<String>) -> String {
+    if used.insert(base.clone()) {
+        return base;
+    }
+    for suffix in 2usize.. {
+        let candidate = format!("{base}_{suffix}");
+        if used.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    base
+}
+
+impl GraphBuilder<'_> {
+    pub(super) fn source_field_at(&mut self, source_path: &SourcePath) -> Option<NodeId> {
+        let schema = &self.sources.get(source_path.source)?.schema;
+        let path = self.suffix_after_framed(source_path.source, schema, &source_path.path);
+        let frame = self.frame_for_field(source_path.source, schema, &source_path.path);
+        Some(self.source_field(frame, path))
+    }
+
+    pub(super) fn schema_node(&self, source_path: &SourcePath) -> Option<&SchemaNode> {
+        let schema = &self.sources.get(source_path.source)?.schema;
+        schema_node_at(schema, &source_path.path)
+    }
+
+    pub(super) fn context_path(&self, source_path: &SourcePath) -> Vec<String> {
+        self.context_prefix(source_path.source, &source_path.path)
+    }
+
+    fn context_prefix(&self, source: usize, prefix: &[String]) -> Vec<String> {
+        if source == 0 {
+            return prefix.to_vec();
+        }
+        let mut path = vec![self.source_names[source].clone()];
+        path.extend(prefix.iter().cloned());
+        path
+    }
+
+    pub(super) fn collection_path(
+        &self,
+        source: usize,
+        collection: &[String],
+    ) -> Option<Vec<String>> {
+        let schema = &self.sources.get(source)?.schema;
+        Some(match collection.split_last() {
+            Some((last, prefix)) => {
+                let mut relative = self.suffix_after_framed(source, schema, prefix);
+                relative.push(last.clone());
+                relative
+            }
+            None => self.context_prefix(source, &[]),
+        })
+    }
+
+    pub(super) fn note_framed_prefixes(&mut self, source_path: &SourcePath) {
+        let Some(source) = self.sources.get(source_path.source) else {
+            return;
+        };
+        if source_path.source > 0 && source_path.path.is_empty() {
+            self.framed
+                .insert(self.context_prefix(source_path.source, &[]));
+        }
+        let mut node = &source.schema;
+        for (index, segment) in source_path.path.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            if child.repeating {
+                let prefix = self.context_prefix(source_path.source, &source_path.path[..=index]);
+                self.framed.insert(prefix);
+            }
+            node = child;
+        }
+    }
+
+    fn suffix_after_framed(
+        &self,
+        source: usize,
+        schema: &SchemaNode,
+        absolute: &[String],
+    ) -> Vec<String> {
+        let mut node = schema;
+        let mut suffix_start = 0;
+        let root_frame = self.context_prefix(source, &[]);
+        let mut has_frame = source > 0 && self.framed.contains(&root_frame);
+        for (index, segment) in absolute.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            let prefix = self.context_prefix(source, &absolute[..=index]);
+            if child.repeating && self.framed.contains(&prefix) {
+                suffix_start = index + 1;
+                has_frame = true;
+            }
+            node = child;
+        }
+        if !has_frame {
+            self.context_prefix(source, absolute)
+        } else {
+            absolute[suffix_start..].to_vec()
+        }
+    }
+
+    fn frame_for_field(
+        &self,
+        source: usize,
+        schema: &SchemaNode,
+        absolute: &[String],
+    ) -> Option<Vec<String>> {
+        let mut node = schema;
+        let root_frame = self.context_prefix(source, &[]);
+        let mut frame = (source > 0 && self.framed.contains(&root_frame)).then_some(root_frame);
+        for (index, segment) in absolute.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            let prefix = self.context_prefix(source, &absolute[..=index]);
+            if child.repeating && self.framed.contains(&prefix) {
+                frame = Some(prefix);
+            }
+            node = child;
+        }
+        frame
+    }
+
+    /// Follows supported sequence pass-throughs to the source entry a
+    /// sequence connection ultimately reads, for aggregates and scopes.
+    pub(super) fn sequence_source_path(&self, mut feed: u32) -> Option<SourcePath> {
+        let mut suffix = Vec::new();
+        for _ in 0..12 {
+            if let Some(mut source_path) = self.source_abs_path(feed) {
+                source_path.path.extend(suffix);
+                return Some(source_path);
+            }
+            if let Some(intermediate) = self.intermediate_feed(feed) {
+                let mut intermediate_suffix = intermediate.suffix;
+                intermediate_suffix.extend(suffix);
+                suffix = intermediate_suffix;
+                feed = intermediate.feed;
+                continue;
+            }
+            let &idx = self.fn_by_output.get(&feed)?;
+            let component = &self.fn_components[idx];
+            let passes_nodes = is_filter(component)
+                || is_sort(component)
+                || is_first_items(component)
+                || is_group_into_blocks(component)
+                || component.name == "group-by" && component.outputs.first() == Some(&feed);
+            if passes_nodes {
+                feed = self.input_feed(idx, 0)?;
+            } else {
+                return None;
+            }
+        }
+        None
+    }
+
+    pub(super) fn iteration_source_path(&self, feed: &IterationFeed) -> Option<SourcePath> {
+        if feed.sequence_component.is_some() {
+            return None;
+        }
+        let mut source_path = self.source_abs_path(feed.source_key)?;
+        source_path.path.extend(feed.source_suffix.iter().cloned());
+        if feed.distinct_key.is_some() {
+            let schema = &self.sources.get(source_path.source)?.schema;
+            source_path.path = split_at_innermost_repeating(schema, &source_path.path).0;
+        }
+        Some(source_path)
+    }
+
+    fn source_abs_path(&self, key: u32) -> Option<SourcePath> {
+        self.sources
+            .iter()
+            .enumerate()
+            .find_map(|(source, component)| {
+                component
+                    .ports
+                    .get(&key)
+                    .cloned()
+                    .map(|path| SourcePath { source, path })
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn iteration_source_tracing_crosses_every_supported_control() {
+        let controls = [
+            ("core", "filter", 3, None),
+            ("core", "sort", 30, Some(false)),
+            ("core", "group-by", 5, None),
+            ("core", "group-into-blocks", 5, None),
+            ("core", "first-items", 5, None),
+            ("core", "distinct-values", 5, None),
+            ("core", "input", 6, None),
+        ];
+        let mut edge_from = BTreeMap::new();
+        let mut components = Vec::new();
+        let mut upstream = 1;
+        for (index, (library, name, kind, sort_descending)) in controls.into_iter().enumerate() {
+            let input = 100 + index as u32;
+            let output = 200 + index as u32;
+            edge_from.insert(input, upstream);
+            components.push(FnComponent {
+                library: library.to_string(),
+                name: name.to_string(),
+                kind,
+                inputs: vec![Some(input)],
+                outputs: vec![output],
+                constant: None,
+                valuemap: None,
+                sort_descending,
+            });
+            upstream = output;
+        }
+
+        assert_eq!(iteration_source_feed(upstream, &edge_from, &components), 1);
+    }
+}
