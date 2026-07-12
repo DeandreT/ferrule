@@ -182,23 +182,36 @@ impl SequenceExpr {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IterationOutput {
+    /// Preserve every produced item as a repeating target value.
+    #[default]
+    Repeated,
+    /// Produce the first surviving item as a non-repeating target group.
+    First,
+}
+
 /// Populates one target group.
 ///
-/// If `source` is set, this scope iterates the source data found by
-/// following that path from the parent scope's current item -- crossing a
-/// repeating element branches, producing one target group per source item
-/// (a path may cross several repeating levels at once, e.g. `["Order",
-/// "Items", "Item"]`, which flattens nested repetition into a single
-/// target-side repetition). A `sequence` instead evaluates a producer in the
-/// parent context and iterates its generated scalar items. When both are
-/// absent, the scope runs exactly once and produces a non-repeating group.
+/// If `source` is set, this scope iterates the source data found by following
+/// that path from the parent scope's current item -- crossing a repeating
+/// element branches, producing one target group per source item (a path may
+/// cross several repeating levels at once). A `sequence` instead evaluates a
+/// producer in the parent context and iterates its generated scalar items.
+/// When both are absent, the scope runs exactly once and produces a
+/// non-repeating group.
 ///
-/// If `sort_by` is set, candidate items are stably sorted by that expression
-/// before filtering/grouping. If `filter` is set, it's evaluated (in the same per-item context as
-/// `bindings`) for each candidate item and must return a `bool`; items for
-/// which it's `false` are dropped, producing fewer target items than source
-/// items. `take` limits the number of produced items after filtering/grouping.
-/// These controls apply to both source-backed and generated iteration.
+/// Iterating scopes use [`Scope::iteration_output`] to retain every produced
+/// group or return only the first surviving group. First-item output returns
+/// an empty group when no item survives. Sorting, filtering, grouping, and
+/// `take` are applied before output cardinality is selected.
+///
+/// If `filter` is set, it is evaluated in the same per-item context as
+/// `bindings`; items for which it returns `false` are dropped. `sort_by`
+/// stably orders candidates before filtering/grouping, and `take` limits the
+/// number of produced items after filtering/grouping. These controls apply to
+/// both source-backed and generated iteration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
@@ -236,6 +249,10 @@ pub struct Scope {
     /// maximum number of output items.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub take: Option<NodeId>,
+    /// Cardinality of an iterating scope's target value. Older projects omit
+    /// this field and retain the original repeated behavior.
+    #[serde(default, skip_serializing_if = "is_repeated_output")]
+    pub iteration_output: IterationOutput,
     #[serde(default)]
     pub bindings: Vec<Binding>,
     /// Computed scalar fields of an open target group.
@@ -253,6 +270,10 @@ pub struct Scope {
     /// merges those fragments into one object and rejects duplicate names.
     #[serde(default, skip_serializing_if = "is_false")]
     pub merge_dynamic_fields: bool,
+}
+
+fn is_repeated_output(output: &IterationOutput) -> bool {
+    *output == IterationOutput::Repeated
 }
 
 /// A complete mapping project: the source/target shapes, the graph, and the
@@ -327,6 +348,7 @@ mod tests {
         assert!(scope.dynamic_bindings.is_empty());
         assert!(scope.dynamic_children.is_empty());
         assert!(!scope.merge_dynamic_fields);
+        assert_eq!(scope.iteration_output, IterationOutput::Repeated);
     }
 
     #[test]
@@ -348,5 +370,18 @@ mod tests {
         assert_eq!(decoded.dynamic_bindings.len(), 1);
         assert_eq!(decoded.dynamic_children.len(), 1);
         assert!(decoded.merge_dynamic_fields);
+    }
+
+    #[test]
+    fn first_item_iteration_output_roundtrips() {
+        let scope = Scope {
+            source: Some(vec!["items".into()]),
+            iteration_output: IterationOutput::First,
+            ..Scope::default()
+        };
+        let encoded = serde_json::to_string(&scope).unwrap();
+        assert!(encoded.contains(r#""iteration_output":"first""#));
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.iteration_output, IterationOutput::First);
     }
 }

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Graph, Node, NodeId, Project, Scope};
+use mapping::{Graph, IterationOutput, Node, NodeId, Project, Scope};
 
 /// One actionable problem found before a mapping is executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -416,6 +416,27 @@ fn validate_scope(
         }
     }
     let iterates = scope.source.is_some() || scope.sequence.is_some();
+    if scope.iteration_output == IterationOutput::First && !iterates {
+        issues.push(ValidationIssue::new(
+            &location,
+            "first-item output requires an iterated source",
+        ));
+    }
+    if scope.iteration_output == IterationOutput::First && scope.merge_dynamic_fields {
+        issues.push(ValidationIssue::new(
+            &location,
+            "first-item output cannot be combined with dynamic object merge",
+        ));
+    }
+    if scope.iteration_output == IterationOutput::First
+        && target
+            .is_some_and(|node| node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        issues.push(ValidationIssue::new(
+            &location,
+            "first-item output requires a non-repeating target group schema",
+        ));
+    }
     if !iterates && scope.filter.is_some() {
         issues.push(ValidationIssue::new(
             &location,
@@ -584,7 +605,9 @@ fn validate_scope(
                 ));
             }
             let child_iterates = child.scope.source.is_some() || child.scope.sequence.is_some();
-            let child_repeats = child_iterates && !child.scope.merge_dynamic_fields;
+            let child_repeats = child_iterates
+                && child.scope.iteration_output == IterationOutput::Repeated
+                && !child.scope.merge_dynamic_fields;
             if child_repeats != dynamic_target.repeating {
                 issues.push(ValidationIssue::new(
                     &location,
