@@ -393,6 +393,19 @@ mod tests {
     #[test]
     fn writer_rejects_instance_kind_and_cardinality_mismatches() {
         let schema = validation_schema();
+        assert!(matches!(
+            write_segments(
+                &schema,
+                &Instance::MappedSequence(Vec::new()),
+                &WRITE_OPTIONS,
+            ),
+            Err(EdiFormatError::InstanceShape {
+                ref name,
+                expected: "a group",
+                got: "a mapped sequence",
+            }) if name == "EDIFACT"
+        ));
+
         let wrong_scalar = Instance::Group(vec![(
             "UNB".into(),
             Instance::Group(vec![("01".into(), Instance::Group(Vec::new()))]),
@@ -403,6 +416,19 @@ mod tests {
                 ref name,
                 expected: "a scalar",
                 got: "a group",
+            }) if name == "01"
+        ));
+
+        let mapped_scalar = Instance::Group(vec![(
+            "UNB".into(),
+            Instance::Group(vec![("01".into(), Instance::MappedSequence(Vec::new()))]),
+        )]);
+        assert!(matches!(
+            write_segments(&schema, &mapped_scalar, &WRITE_OPTIONS),
+            Err(EdiFormatError::InstanceShape {
+                ref name,
+                expected: "a scalar",
+                got: "a mapped sequence",
             }) if name == "01"
         ));
 

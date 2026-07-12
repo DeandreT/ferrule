@@ -190,6 +190,9 @@ pub enum IterationOutput {
     Repeated,
     /// Produce the first surviving item as a non-repeating target group.
     First,
+    /// Preserve mapping-produced XML occurrences independently of the
+    /// target schema's declared repetition.
+    MappedSequence,
 }
 
 /// Populates one target group.
@@ -204,8 +207,10 @@ pub enum IterationOutput {
 ///
 /// Iterating scopes use [`Scope::iteration_output`] to retain every produced
 /// group or return only the first surviving group. First-item output returns
-/// an empty group when no item survives. Sorting, filtering, grouping, and
-/// `take` are applied before output cardinality is selected.
+/// an empty group when no item survives. Mapped-sequence output retains zero
+/// or more XML element occurrences without changing schema cardinality.
+/// Sorting, filtering, grouping, and `take` are applied before output
+/// cardinality is selected.
 ///
 /// If `filter` is set, it is evaluated in the same per-item context as
 /// `bindings`; items for which it returns `false` are dropped. `sort_by`
@@ -383,5 +388,18 @@ mod tests {
         assert!(encoded.contains(r#""iteration_output":"first""#));
         let decoded: Scope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded.iteration_output, IterationOutput::First);
+    }
+
+    #[test]
+    fn mapped_sequence_iteration_output_roundtrips() {
+        let scope = Scope {
+            source: Some(vec!["items".into()]),
+            iteration_output: IterationOutput::MappedSequence,
+            ..Scope::default()
+        };
+        let encoded = serde_json::to_string(&scope).unwrap();
+        assert!(encoded.contains(r#""iteration_output":"mapped_sequence""#));
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.iteration_output, IterationOutput::MappedSequence);
     }
 }

@@ -320,6 +320,9 @@ pub enum Instance {
     Scalar(Value),
     Group(Vec<(String, Instance)>),
     Repeated(Vec<Instance>),
+    /// Mapping-produced XML element occurrences whose cardinality is
+    /// independent of the schema node's declared repetition.
+    MappedSequence(Vec<Instance>),
 }
 
 impl Instance {
@@ -340,6 +343,13 @@ impl Instance {
     pub fn as_repeated(&self) -> Option<&[Instance]> {
         match self {
             Instance::Repeated(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    pub fn as_mapped_sequence(&self) -> Option<&[Instance]> {
+        match self {
+            Instance::MappedSequence(items) => Some(items),
             _ => None,
         }
     }
@@ -396,6 +406,19 @@ mod tests {
             2
         );
         assert_eq!(instance.field("missing"), None);
+    }
+
+    #[test]
+    fn mapped_sequence_roundtrips_without_becoming_schema_repetition() {
+        let instance = Instance::MappedSequence(vec![
+            Instance::Group(Vec::new()),
+            Instance::Group(Vec::new()),
+        ]);
+        let encoded = serde_json::to_string(&instance).unwrap();
+        let decoded: Instance = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, instance);
+        assert_eq!(decoded.as_mapped_sequence().map(<[_]>::len), Some(2));
+        assert!(decoded.as_repeated().is_none());
     }
 
     #[test]

@@ -213,6 +213,20 @@ fn write_node<W: std::io::Write>(
     instance: &Instance,
     is_root: bool,
 ) -> Result<(), XmlFormatError> {
+    if let Instance::MappedSequence(items) = instance {
+        if is_root || schema.repeating || !matches!(&schema.kind, SchemaKind::Group { .. }) {
+            let expected = if is_root {
+                "one document root"
+            } else {
+                "one non-repeating element group"
+            };
+            return Err(shape_error(schema, expected, instance));
+        }
+        for item in items {
+            write_single_node(writer, schema, item)?;
+        }
+        return Ok(());
+    }
     if schema.repeating && !is_root {
         let Instance::Repeated(items) = instance else {
             return Err(shape_error(schema, "repeating elements", instance));
@@ -372,6 +386,7 @@ fn instance_has_value(instance: &Instance) -> bool {
         Instance::Scalar(_) => true,
         Instance::Group(fields) => fields.iter().any(|(_, value)| instance_has_value(value)),
         Instance::Repeated(items) => items.iter().any(instance_has_value),
+        Instance::MappedSequence(items) => items.iter().any(instance_has_value),
     }
 }
 
@@ -408,6 +423,7 @@ fn shape_error(schema: &SchemaNode, expected: &'static str, instance: &Instance)
         Instance::Scalar(_) => "a scalar",
         Instance::Group(_) => "an element group",
         Instance::Repeated(_) => "repeating elements",
+        Instance::MappedSequence(_) => "a mapped element sequence",
     };
     XmlFormatError::Shape {
         name: schema.name.clone(),
@@ -647,6 +663,85 @@ mod tests {
                 expected: "a scalar",
                 got: "an element group",
             }) if name == "Name"
+        ));
+    }
+
+    #[test]
+    fn mapped_sequence_writes_zero_one_or_many_non_repeating_child_groups() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::group(
+                "Entry",
+                vec![SchemaNode::scalar("Value", ScalarType::String)],
+            )],
+        );
+        let entry = |value: &str| {
+            Instance::Group(vec![(
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )])
+        };
+        for (items, expected) in [
+            (Vec::new(), Vec::<&str>::new()),
+            (vec![entry("one")], vec!["one"]),
+            (vec![entry("one"), entry("two")], vec!["one", "two"]),
+        ] {
+            let instance = Instance::Group(vec![("Entry".into(), Instance::MappedSequence(items))]);
+            let xml = to_string(&schema, &instance).unwrap();
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            let values = document
+                .descendants()
+                .filter(|node| node.has_tag_name("Entry"))
+                .filter_map(|node| {
+                    node.children()
+                        .find(|child| child.has_tag_name("Value"))
+                        .and_then(|child| child.text())
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(values, expected);
+        }
+    }
+
+    #[test]
+    fn mapped_sequence_is_rejected_for_roots_scalars_and_repeating_schema_nodes() {
+        let sequence = Instance::MappedSequence(vec![Instance::Group(Vec::new())]);
+        assert!(matches!(
+            to_string(&schema(), &sequence),
+            Err(XmlFormatError::Shape {
+                expected: "one document root",
+                got: "a mapped element sequence",
+                ..
+            })
+        ));
+
+        let scalar_schema = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let scalar_sequence =
+            Instance::Group(vec![("Value".into(), Instance::MappedSequence(Vec::new()))]);
+        assert!(matches!(
+            to_string(&scalar_schema, &scalar_sequence),
+            Err(XmlFormatError::Shape {
+                expected: "one non-repeating element group",
+                got: "a mapped element sequence",
+                ..
+            })
+        ));
+
+        let repeating_schema = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::group("Entry", Vec::new()).repeating()],
+        );
+        let repeating_sequence =
+            Instance::Group(vec![("Entry".into(), Instance::MappedSequence(Vec::new()))]);
+        assert!(matches!(
+            to_string(&repeating_schema, &repeating_sequence),
+            Err(XmlFormatError::Shape {
+                expected: "one non-repeating element group",
+                got: "a mapped element sequence",
+                ..
+            })
         ));
     }
 
