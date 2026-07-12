@@ -445,6 +445,9 @@ fn parse_complex_type(
     state: &mut ParseState,
 ) -> Vec<SchemaNode> {
     let mut children = Vec::new();
+    if complex_type.attribute("mixed") == Some("true") {
+        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+    }
     for child in complex_type.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
             "sequence" | "choice" | "all" => {
