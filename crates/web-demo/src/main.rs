@@ -124,6 +124,7 @@ fn demo_project() -> Project {
                 target_field: "AllIds".into(),
                 node: 2,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![Scope {
                 target_field: "Order".into(),
                 source: Some(vec!["Order".into()]),
@@ -148,8 +149,13 @@ fn demo_project() -> Project {
                         node: 4,
                     },
                 ],
+                dynamic_bindings: Vec::new(),
                 children: vec![],
+                dynamic_children: Vec::new(),
+                merge_dynamic_fields: false,
             }],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     }
 }

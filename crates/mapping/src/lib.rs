@@ -118,6 +118,21 @@ pub struct Binding {
     pub node: NodeId,
 }
 
+/// Inserts one scalar under a property name evaluated at run time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DynamicBinding {
+    pub key: NodeId,
+    pub value: NodeId,
+}
+
+/// Inserts a child scope's complete value under a property name evaluated
+/// in the enclosing scope context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DynamicChild {
+    pub key: NodeId,
+    pub scope: Scope,
+}
+
 /// A scalar sequence generated in the enclosing scope context.
 ///
 /// Sequence expressions live on a scope instead of in [`Node`] because graph
@@ -223,8 +238,21 @@ pub struct Scope {
     pub take: Option<NodeId>,
     #[serde(default)]
     pub bindings: Vec<Binding>,
+    /// Computed scalar fields of an open target group.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dynamic_bindings: Vec<DynamicBinding>,
     #[serde(default)]
     pub children: Vec<Scope>,
+    /// Computed fields whose values are complete child scopes (objects or
+    /// arrays). Kept separate from `children` so static and computed names
+    /// cannot form an invalid mixed target descriptor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dynamic_children: Vec<DynamicChild>,
+    /// An iterating scope normally produces an array. For an open object,
+    /// each iteration may instead produce one property fragment; this flag
+    /// merges those fragments into one object and rejects duplicate names.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub merge_dynamic_fields: bool,
 }
 
 /// A complete mapping project: the source/target shapes, the graph, and the
@@ -284,4 +312,41 @@ pub struct FormatOptions {
     /// CSV: whether the file's first row is a header (default true).
     #[serde(default)]
     pub has_header_row: Option<bool>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_scopes_default_dynamic_target_metadata_off() {
+        let scope: Scope = serde_json::from_str(
+            r#"{"target_field":"","source":null,"bindings":[],"children":[]}"#,
+        )
+        .unwrap();
+        assert!(scope.dynamic_bindings.is_empty());
+        assert!(scope.dynamic_children.is_empty());
+        assert!(!scope.merge_dynamic_fields);
+    }
+
+    #[test]
+    fn dynamic_target_metadata_roundtrips() {
+        let scope = Scope {
+            dynamic_bindings: vec![DynamicBinding { key: 1, value: 2 }],
+            dynamic_children: vec![DynamicChild {
+                key: 3,
+                scope: Scope {
+                    source: Some(vec!["items".into()]),
+                    ..Scope::default()
+                },
+            }],
+            merge_dynamic_fields: true,
+            ..Scope::default()
+        };
+        let encoded = serde_json::to_string(&scope).unwrap();
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.dynamic_bindings.len(), 1);
+        assert_eq!(decoded.dynamic_children.len(), 1);
+        assert!(decoded.merge_dynamic_fields);
+    }
 }

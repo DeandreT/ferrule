@@ -66,7 +66,10 @@ fn evaluates_a_function_call_over_source_fields() {
                 target_field: "full_name".into(),
                 node: 3,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let source = Instance::Group(vec![
@@ -116,7 +119,10 @@ fn missing_source_field_is_reported() {
                 target_field: "out".into(),
                 node: 0,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let err = run(&project, &Instance::Group(vec![])).unwrap_err();
@@ -155,7 +161,10 @@ fn self_referential_node_is_a_cycle() {
                 target_field: "out".into(),
                 node: 0,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let err = run(&project, &Instance::Group(vec![])).unwrap_err();
@@ -240,7 +249,10 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
                     node: 3,
                 },
             ],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
 
@@ -352,7 +364,10 @@ fn if_only_evaluates_the_taken_branch() {
                 target_field: "out".into(),
                 node: 3,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let target = run(&project, &Instance::Group(vec![])).unwrap();
@@ -406,7 +421,10 @@ fn value_map_falls_back_to_default_on_miss() {
                 target_field: "out".into(),
                 node: 1,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let target = run(&project, &Instance::Group(vec![])).unwrap();
@@ -475,7 +493,10 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
                     node: 3,
                 },
             ],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let person =
@@ -644,7 +665,10 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
                 target_field: "City".into(),
                 node: 0,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
     let address = |city: &str| {
@@ -719,7 +743,10 @@ fn lookup_joins_rows_against_an_extra_source() {
                     node: 1,
                 },
             ],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
 
@@ -794,7 +821,10 @@ fn scope_source_path_reaches_an_extra_source() {
                 target_field: "name".into(),
                 node: 0,
             }],
+            dynamic_bindings: Vec::new(),
             children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
         },
     };
 

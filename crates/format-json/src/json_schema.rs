@@ -3,9 +3,11 @@
 //! `properties` (in document order) and `items`, maps `integer`/`number`/
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
-//! refs degrade to string scalars). It does not support `oneOf`/`anyOf`,
-//! `additionalProperties`, or validation keywords -- the same "lite" scope
-//! as the XSD importer.
+//! refs degrade to string scalars). Compatible closed-object `oneOf` unions
+//! and typed `additionalProperties` schemas are preserved. An omitted or
+//! false `additionalProperties` is treated as closed; explicitly
+//! unconstrained `true`/`{}` schemas, `anyOf`, and validation keywords remain
+//! outside this "lite" subset.
 
 use ir::{GroupAlternative, ScalarType, SchemaKind, SchemaNode};
 
@@ -74,7 +76,7 @@ fn parse(
     match ty {
         Some("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
-            Ok(SchemaNode::group(name, children))
+            attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
         }
         Some("array") => {
             let Some(items) = schema.get("items") else {
@@ -87,10 +89,72 @@ fn parse(
         Some("boolean") => Ok(SchemaNode::scalar(name, ScalarType::Bool)),
         _ if schema.get("properties").is_some() => {
             let children = parse_properties(schema, doc, active_refs)?;
-            Ok(SchemaNode::group(name, children))
+            attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
         }
         _ => Ok(SchemaNode::scalar(name, ScalarType::String)),
     }
+}
+
+fn attach_dynamic_fields(
+    group: SchemaNode,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let additional = match schema.get("additionalProperties") {
+        None | Some(serde_json::Value::Bool(false)) => return Ok(group),
+        Some(serde_json::Value::Bool(true)) => {
+            return Err(unsupported_object(
+                &group.name,
+                "unconstrained additionalProperties true has no exact ferrule value schema",
+            ));
+        }
+        Some(serde_json::Value::Object(object))
+            if object.is_empty() || !declares_supported_shape(object) =>
+        {
+            return Err(unsupported_object(
+                &group.name,
+                "unconstrained additionalProperties schema has no exact ferrule value type",
+            ));
+        }
+        Some(additional @ serde_json::Value::Object(_)) => additional,
+        Some(_) => {
+            return Err(unsupported_object(
+                &group.name,
+                "additionalProperties must be false or a typed schema",
+            ));
+        }
+    };
+    let value = parse("*", additional, doc, active_refs)?;
+    let name = group.name.clone();
+    group
+        .with_dynamic_fields(value)
+        .ok_or_else(|| JsonFormatError::UnsupportedSchemaUnion {
+            name,
+            reason: "open objects cannot use closed object alternatives".to_string(),
+        })
+}
+
+fn declares_supported_shape(schema: &serde_json::Map<String, serde_json::Value>) -> bool {
+    schema.contains_key("$ref")
+        || schema.contains_key("oneOf")
+        || schema.contains_key("anyOf")
+        || schema.contains_key("properties")
+        || schema.get("type").is_some_and(|value| match value {
+            serde_json::Value::String(ty) => matches!(
+                ty.as_str(),
+                "object" | "array" | "string" | "integer" | "number" | "boolean"
+            ),
+            serde_json::Value::Array(types) => types.iter().any(|ty| {
+                ty.as_str().is_some_and(|ty| {
+                    matches!(
+                        ty,
+                        "object" | "array" | "string" | "integer" | "number" | "boolean"
+                    )
+                })
+            }),
+            _ => false,
+        })
 }
 
 fn parse_properties(
@@ -225,6 +289,13 @@ fn unsupported_union(name: &str, reason: &str) -> JsonFormatError {
     }
 }
 
+fn unsupported_object(name: &str, reason: &str) -> JsonFormatError {
+    JsonFormatError::UnsupportedSchemaObject {
+        name: name.to_string(),
+        reason: reason.to_string(),
+    }
+}
+
 /// Renders a [`SchemaNode`] as JSON Schema text -- the inverse of
 /// [`import`], producing the same `type: object/array/scalar` subset it
 /// reads (repeating nodes become `type: array` wrappers). The root gets a
@@ -263,6 +334,7 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
         SchemaKind::Group {
             children,
             alternatives,
+            dynamic,
         } => {
             out.insert("type".into(), "object".into());
             if !alternatives.is_empty() {
@@ -302,6 +374,16 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 props.insert(child.name.clone(), serde_json::Value::Object(prop));
             }
             out.insert("properties".into(), serde_json::Value::Object(props));
+            if let Some(dynamic) = dynamic {
+                let mut additional = serde_json::Map::new();
+                render(dynamic, &mut additional);
+                out.insert(
+                    "additionalProperties".into(),
+                    serde_json::Value::Object(additional),
+                );
+            } else {
+                out.insert("additionalProperties".into(), false.into());
+            }
         }
     }
 }
@@ -361,6 +443,7 @@ mod tests {
         let SchemaKind::Group {
             children,
             alternatives,
+            ..
         } = &schema.kind
         else {
             panic!("oneOf should import as a group projection");
@@ -608,5 +691,77 @@ mod tests {
         let imported = import(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(imported, schema);
+    }
+
+    #[test]
+    fn typed_additional_properties_roundtrip_as_dynamic_fields() {
+        let schema = import_str(
+            r#"{
+  "title": "Metrics",
+  "type": "object",
+  "properties": { "source": { "type": "string" } },
+  "additionalProperties": { "type": "number" }
+}"#,
+        );
+        assert!(matches!(
+            schema.dynamic_fields().map(|node| &node.kind),
+            Some(SchemaKind::Scalar {
+                ty: ScalarType::Float
+            })
+        ));
+        let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+        assert_eq!(exported["additionalProperties"]["type"], "number");
+    }
+
+    #[test]
+    fn typed_object_additional_properties_preserve_their_exact_shape() {
+        let schema = import_str(
+            r#"{
+  "title": "Directory",
+  "type": "object",
+  "additionalProperties": {
+    "type": "object",
+    "properties": { "name": { "type": "string" } },
+    "additionalProperties": false
+  }
+}"#,
+        );
+        let dynamic = schema.dynamic_fields().unwrap();
+        assert!(matches!(dynamic.kind, SchemaKind::Group { .. }));
+        assert_eq!(
+            dynamic.child("name").map(|child| &child.kind),
+            Some(&SchemaKind::Scalar {
+                ty: ScalarType::String,
+            })
+        );
+
+        let exported = export(&schema);
+        let value: serde_json::Value = serde_json::from_str(&exported).unwrap();
+        assert_eq!(value["additionalProperties"]["additionalProperties"], false);
+        assert_eq!(import_str(&exported), schema);
+    }
+
+    #[test]
+    fn explicit_unconstrained_additional_properties_are_rejected() {
+        for additional in ["true", "{}"] {
+            let text = format!(
+                r#"{{"title":"Open","type":"object","additionalProperties":{additional}}}"#
+            );
+            assert!(matches!(
+                import_str_result(&text),
+                Err(JsonFormatError::UnsupportedSchemaObject { reason, .. })
+                    if reason.contains("unconstrained additionalProperties")
+            ));
+        }
+    }
+
+    #[test]
+    fn closed_groups_export_explicit_closed_object_semantics() {
+        let schema = SchemaNode::group(
+            "Closed",
+            vec![SchemaNode::scalar("value", ScalarType::String)],
+        );
+        let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+        assert_eq!(exported["additionalProperties"], false);
     }
 }

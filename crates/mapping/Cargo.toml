@@ -9,3 +9,6 @@ description = "Mapping graph IR (nodes/edges/functions/conditions) and project f
 [dependencies]
 ir = { workspace = true }
 serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -7,7 +7,10 @@ use ir::{Instance, Value};
 use mapping::{Graph, Node, NodeId, Project, Scope, SequenceExpr};
 use thiserror::Error;
 
+mod dynamic_target;
 mod validate;
+
+use dynamic_target::{eval_dynamic_key, insert_target_field, merge_dynamic_fragments};
 
 pub use validate::{ValidationIssue, validate};
 
@@ -33,6 +36,12 @@ pub enum EngineError {
     ValueMapMiss { node: NodeId },
     #[error("a scope with `filter` but no `source` filtered out its only item")]
     FilteredNonRepeatingScope,
+    #[error("node {node}: dynamic target property name must be a string, got {found}")]
+    DynamicPropertyName { node: NodeId, found: &'static str },
+    #[error("dynamic target object contains duplicate or fixed-colliding property `{0}`")]
+    DuplicateDynamicProperty(String),
+    #[error("a dynamic object merge can contain only object property fragments")]
+    InvalidDynamicPropertyFragment,
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error("{function:?} aggregate overflowed the integer range")]
@@ -59,7 +68,13 @@ pub fn run_with_sources(
     extras: Vec<(String, Instance)>,
 ) -> Result<Instance, EngineError> {
     let extras_frame = Instance::Group(extras);
-    eval_scope(&project.graph, &project.root, &[&extras_frame, source], &[])
+    eval_scope(
+        &project.graph,
+        &project.root,
+        Some(&project.target),
+        &[&extras_frame, source],
+        &[],
+    )
 }
 
 #[derive(Clone)]
@@ -99,6 +114,7 @@ enum GroupingMode {
 fn eval_scope(
     graph: &Graph,
     scope: &Scope,
+    target: Option<&ir::SchemaNode>,
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<Instance, EngineError> {
@@ -280,6 +296,7 @@ fn eval_scope(
             if let Some(instance) = produce_item(
                 graph,
                 scope,
+                target,
                 &next_context,
                 &group.positions,
                 &output_positions,
@@ -315,6 +332,7 @@ fn eval_scope(
             if let Some(instance) = produce_item(
                 graph,
                 scope,
+                target,
                 &next_context,
                 &candidate_positions,
                 &output_positions,
@@ -329,7 +347,11 @@ fn eval_scope(
     }
 
     if scope.source.is_some() || scope.sequence.is_some() {
-        Ok(Instance::Repeated(produced))
+        if scope.merge_dynamic_fields {
+            merge_dynamic_fragments(produced)
+        } else {
+            Ok(Instance::Repeated(produced))
+        }
     } else {
         produced
             .into_iter()
@@ -511,6 +533,7 @@ fn eval_block_size(
 fn produce_item(
     graph: &Graph,
     scope: &Scope,
+    target: Option<&ir::SchemaNode>,
     context: &[&Instance],
     filter_positions: &[PositionFrame],
     output_positions: &[PositionFrame],
@@ -520,7 +543,12 @@ fn produce_item(
         return Ok(None);
     }
 
-    let mut fields = Vec::with_capacity(scope.bindings.len() + scope.children.len());
+    let mut fields = Vec::with_capacity(
+        scope.bindings.len()
+            + scope.dynamic_bindings.len()
+            + scope.children.len()
+            + scope.dynamic_children.len(),
+    );
     for binding in &scope.bindings {
         let mut in_progress = HashSet::new();
         let value = eval_expr(
@@ -530,11 +558,40 @@ fn produce_item(
             output_positions,
             &mut in_progress,
         )?;
-        fields.push((binding.target_field.clone(), Instance::Scalar(value)));
+        insert_target_field(
+            &mut fields,
+            binding.target_field.clone(),
+            Instance::Scalar(value),
+        )?;
+    }
+    for binding in &scope.dynamic_bindings {
+        let key = eval_dynamic_key(graph, binding.key, context, output_positions)?;
+        let mut in_progress = HashSet::new();
+        let value = eval_expr(
+            graph,
+            binding.value,
+            context,
+            output_positions,
+            &mut in_progress,
+        )?;
+        dynamic_target::insert_dynamic_target_field(
+            &mut fields,
+            key,
+            Instance::Scalar(value),
+            target,
+        )?;
     }
     for child in &scope.children {
-        let child_instance = eval_scope(graph, child, context, output_positions)?;
-        fields.push((child.target_field.clone(), child_instance));
+        let child_target = target.and_then(|schema| schema.child(&child.target_field));
+        let child_instance = eval_scope(graph, child, child_target, context, output_positions)?;
+        insert_target_field(&mut fields, child.target_field.clone(), child_instance)?;
+    }
+    for child in &scope.dynamic_children {
+        let key = eval_dynamic_key(graph, child.key, context, output_positions)?;
+        let child_target = target.and_then(ir::SchemaNode::dynamic_fields);
+        let child_instance =
+            eval_scope(graph, &child.scope, child_target, context, output_positions)?;
+        dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
     }
     Ok(Some(Instance::Group(fields)))
 }
@@ -1125,5 +1182,7 @@ mod aggregate_tests;
 mod collection_tests;
 #[cfg(test)]
 mod core_tests;
+#[cfg(test)]
+mod dynamic_target_tests;
 #[cfg(test)]
 mod group_blocks_tests;

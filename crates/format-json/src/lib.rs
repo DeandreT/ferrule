@@ -31,10 +31,14 @@ pub enum JsonFormatError {
     },
     #[error("JSON Schema union `{name}` is not representable: {reason}")]
     UnsupportedSchemaUnion { name: String, reason: String },
+    #[error("JSON Schema object `{name}` is not representable: {reason}")]
+    UnsupportedSchemaObject { name: String, reason: String },
     #[error("object `{name}` matches no declared schema alternative")]
     NoMatchingAlternative { name: String },
     #[error("object `{name}` matches more than one declared schema alternative")]
     AmbiguousAlternative { name: String },
+    #[error("object `{object}` contains duplicate property `{property}`")]
+    DuplicateProperty { object: String, property: String },
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -83,6 +87,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
         SchemaKind::Group {
             children,
             alternatives,
+            dynamic,
         } => {
             let serde_json::Value::Object(fields) = value else {
                 return Err(JsonFormatError::Shape {
@@ -98,6 +103,33 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     .iter()
                     .map(|(name, value)| (name.as_str(), !value.is_null())),
             )?;
+            if dynamic.is_some() && !alternatives.is_empty() {
+                return Err(JsonFormatError::UnsupportedSchemaUnion {
+                    name: schema.name.clone(),
+                    reason: "open objects cannot use closed object alternatives".to_string(),
+                });
+            }
+            if let Some(dynamic) = dynamic {
+                let mut out = Vec::with_capacity(fields.len().max(children.len()));
+                for (name, field_value) in fields {
+                    let field_schema = children
+                        .iter()
+                        .find(|child| child.name == *name)
+                        .unwrap_or(dynamic);
+                    let field = if field_schema.repeating {
+                        read_repeated(field_value, field_schema)?
+                    } else {
+                        read_node(field_value, field_schema)?
+                    };
+                    out.push((name.clone(), field));
+                }
+                for child in children {
+                    if !fields.contains_key(&child.name) {
+                        out.push((child.name.clone(), missing_instance(child)));
+                    }
+                }
+                return Ok(Instance::Group(out));
+            }
             let mut out = Vec::with_capacity(children.len());
             for child in children {
                 match fields.get(&child.name) {
@@ -114,15 +146,22 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     // objects routinely omit optional keys), not errors:
                     // scalars read as Null, objects as empty.
                     None => {
-                        let value = match child.kind {
-                            SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
-                            SchemaKind::Group { .. } => Instance::Group(Vec::new()),
-                        };
-                        out.push((child.name.clone(), value));
+                        out.push((child.name.clone(), missing_instance(child)));
                     }
                 }
             }
             Ok(Instance::Group(out))
+        }
+    }
+}
+
+fn missing_instance(schema: &SchemaNode) -> Instance {
+    if schema.repeating {
+        Instance::Repeated(Vec::new())
+    } else {
+        match schema.kind {
+            SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+            SchemaKind::Group { .. } => Instance::Group(Vec::new()),
         }
     }
 }
@@ -225,10 +264,39 @@ fn write_single_node(
             SchemaKind::Group {
                 children,
                 alternatives,
+                dynamic,
             },
             Instance::Group(fields),
         ) => {
+            if dynamic.is_some() && !alternatives.is_empty() {
+                return Err(JsonFormatError::UnsupportedSchemaUnion {
+                    name: schema.name.clone(),
+                    reason: "open objects cannot use closed object alternatives".to_string(),
+                });
+            }
             let mut out = serde_json::Map::with_capacity(fields.len());
+            if let Some(dynamic) = dynamic {
+                for (name, child_instance) in fields {
+                    if out.contains_key(name) {
+                        return Err(JsonFormatError::DuplicateProperty {
+                            object: schema.name.clone(),
+                            property: name.clone(),
+                        });
+                    }
+                    let child_schema = children
+                        .iter()
+                        .find(|child| child.name == *name)
+                        .unwrap_or(dynamic);
+                    if !child_schema.repeating
+                        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
+                        && matches!(child_instance, Instance::Scalar(Value::Null))
+                    {
+                        continue;
+                    }
+                    out.insert(name.clone(), write_node(child_schema, child_instance)?);
+                }
+                return Ok(serde_json::Value::Object(out));
+            }
             for child_schema in children {
                 if let Some((_, child_instance)) =
                     fields.iter().find(|(n, _)| n == &child_schema.name)
@@ -438,6 +506,41 @@ mod tests {
             },
         ])
         .unwrap()
+    }
+
+    #[test]
+    fn hybrid_open_objects_preserve_order_and_reject_duplicates() {
+        let schema = SchemaNode::group("Object", vec![SchemaNode::scalar("id", ScalarType::Int)])
+            .with_dynamic_fields(SchemaNode::scalar("value", ScalarType::String))
+            .unwrap();
+        let value = serde_json::json!({"before": "B", "id": 7, "after": "A"});
+        let instance = read_node(&value, &schema).unwrap();
+        let Instance::Group(fields) = &instance else {
+            panic!("open object should read as a group")
+        };
+        assert_eq!(
+            fields
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect::<Vec<_>>(),
+            ["before", "id", "after"]
+        );
+        assert_eq!(write_node(&schema, &instance).unwrap(), value);
+
+        let duplicate = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("first".into())),
+            ),
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("second".into())),
+            ),
+        ]);
+        assert!(matches!(
+            write_node(&schema, &duplicate),
+            Err(JsonFormatError::DuplicateProperty { ref property, .. }) if property == "name"
+        ));
     }
 
     #[test]

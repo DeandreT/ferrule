@@ -2066,6 +2066,7 @@ version = "0.1.0"
 dependencies = [
  "ir",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2105,6 +2106,7 @@ dependencies = [
  "mapping",
  "roxmltree",
  "rusqlite",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 

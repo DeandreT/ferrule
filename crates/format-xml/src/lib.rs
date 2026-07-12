@@ -107,6 +107,7 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
         SchemaKind::Group {
             children,
             alternatives,
+            ..
         } => {
             if !alternatives.is_empty() {
                 return Err(XmlFormatError::UnsupportedAlternativeRead {
@@ -249,6 +250,7 @@ fn write_single_node<W: std::io::Write>(
             SchemaKind::Group {
                 children,
                 alternatives,
+                ..
             },
             Instance::Group(fields),
         ) => {
