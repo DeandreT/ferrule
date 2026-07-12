@@ -242,6 +242,7 @@ fn node_kind_label(node: &mapping::Node) -> &'static str {
         mapping::Node::SourceField { .. } => "source_field",
         mapping::Node::Position { .. } => "position",
         mapping::Node::Const { .. } => "const",
+        mapping::Node::RuntimeValue { .. } => "runtime_value",
         mapping::Node::Call { .. } => "call",
         mapping::Node::If { .. } => "if",
         mapping::Node::ValueMap { .. } => "value_map",
