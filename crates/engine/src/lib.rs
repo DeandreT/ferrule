@@ -2,9 +2,10 @@
 //! instance.
 
 use std::collections::{BTreeMap, HashSet};
+use std::path::Path;
 
 use ir::{Instance, Value};
-use mapping::{Graph, IterationOutput, Node, NodeId, Project, Scope};
+use mapping::{Graph, IterationOutput, Node, NodeId, Project, RuntimeValue, Scope};
 use thiserror::Error;
 
 mod dynamic_target;
@@ -40,6 +41,8 @@ pub enum EngineError {
     ConflictingGroupingModes,
     #[error("node {node}: value-map lookup missed and there's no default")]
     ValueMapMiss { node: NodeId },
+    #[error("execution context does not provide {0:?}")]
+    MissingRuntimeValue(RuntimeValue),
     #[error("a scope with `filter` but no `source` filtered out its only item")]
     FilteredNonRepeatingScope,
     #[error("node {node}: dynamic target property name must be a string, got {found}")]
@@ -67,7 +70,52 @@ pub enum EngineError {
 /// Runs `project`'s scope tree against `source`, producing one target
 /// instance.
 pub fn run(project: &Project, source: &Instance) -> Result<Instance, EngineError> {
-    run_with_sources(project, source, Vec::new())
+    run_internal(project, source, Vec::new(), None)
+}
+
+/// Host values available to runtime graph nodes.
+#[derive(Debug, Clone, Copy)]
+pub struct ExecutionContext<'a> {
+    mapping_file_path: &'a Path,
+    main_mapping_file_path: &'a Path,
+}
+
+impl<'a> ExecutionContext<'a> {
+    /// Uses one path for both the active and top-level mapping.
+    pub fn new(mapping_file_path: &'a Path) -> Self {
+        Self {
+            mapping_file_path,
+            main_mapping_file_path: mapping_file_path,
+        }
+    }
+
+    /// Distinguishes a reusable mapping's path from its top-level caller.
+    pub fn with_main_mapping_file_path(
+        mapping_file_path: &'a Path,
+        main_mapping_file_path: &'a Path,
+    ) -> Self {
+        Self {
+            mapping_file_path,
+            main_mapping_file_path,
+        }
+    }
+
+    fn value(self, value: RuntimeValue) -> Value {
+        let path = match value {
+            RuntimeValue::MappingFilePath => self.mapping_file_path,
+            RuntimeValue::MainMappingFilePath => self.main_mapping_file_path,
+        };
+        Value::String(path.to_string_lossy().into_owned())
+    }
+}
+
+/// Like [`run`], with host-provided runtime values.
+pub fn run_with_context(
+    project: &Project,
+    source: &Instance,
+    execution: &ExecutionContext<'_>,
+) -> Result<Instance, EngineError> {
+    run_internal(project, source, Vec::new(), Some(execution))
 }
 
 /// Like [`run`], with named secondary sources. They form the outermost
@@ -79,14 +127,57 @@ pub fn run_with_sources(
     source: &Instance,
     extras: Vec<(String, Instance)>,
 ) -> Result<Instance, EngineError> {
+    run_internal(project, source, extras, None)
+}
+
+/// Like [`run_with_sources`], with host-provided runtime values.
+pub fn run_with_sources_and_context(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: &ExecutionContext<'_>,
+) -> Result<Instance, EngineError> {
+    run_internal(project, source, extras, Some(execution))
+}
+
+fn run_internal(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: Option<&ExecutionContext<'_>>,
+) -> Result<Instance, EngineError> {
+    let runtime_frame = Instance::Group(
+        execution
+            .into_iter()
+            .flat_map(|execution| {
+                [
+                    RuntimeValue::MappingFilePath,
+                    RuntimeValue::MainMappingFilePath,
+                ]
+                .map(|value| {
+                    (
+                        runtime_field(value).to_string(),
+                        Instance::Scalar(execution.value(value)),
+                    )
+                })
+            })
+            .collect(),
+    );
     let extras_frame = Instance::Group(extras);
     eval_scope(
         &project.graph,
         &project.root,
         Some(&project.target),
-        &[&extras_frame, source],
+        &[&runtime_frame, &extras_frame, source],
         &[],
     )
+}
+
+fn runtime_field(value: RuntimeValue) -> &'static str {
+    match value {
+        RuntimeValue::MappingFilePath => "\0mapping_file_path",
+        RuntimeValue::MainMappingFilePath => "\0main_mapping_file_path",
+    }
 }
 
 #[derive(Clone)]
@@ -601,6 +692,12 @@ fn eval_expr(
         }
         Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
         Node::Const { value } => Ok(value.clone()),
+        Node::RuntimeValue { value } => context
+            .first()
+            .and_then(|frame| frame.field(runtime_field(*value)))
+            .and_then(Instance::as_scalar)
+            .cloned()
+            .ok_or(EngineError::MissingRuntimeValue(*value)),
         Node::Call { function, args } => {
             let mut values = Vec::with_capacity(args.len());
             for arg in args {

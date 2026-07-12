@@ -8,7 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{SchemaKind, Value};
-use mapping::{AggregateOp, Graph, NamedSource, Node, NodeId, Project, Scope, SequenceExpr};
+use mapping::{
+    AggregateOp, Graph, NamedSource, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr,
+};
 
 use crate::MfdError;
 
@@ -72,7 +74,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut warnings = Vec::new();
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
-    let udf_registry = UdfRegistry::read(&mapping_el);
+    let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
+    schema_components.extend(udf_registry.take_sources());
     let mut udf_calls = Vec::new();
     let mut skipped_libraries: Vec<String> = Vec::new();
 
@@ -261,6 +264,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
     let mut group_projections = Vec::new();
+    let mut structured_udf_targets = Vec::new();
     for (&inpkey, target_path) in &target.ports {
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
@@ -268,6 +272,19 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         let node_kind = schema_node_at(&target.schema, target_path);
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
+                if copy_all_targets.contains(&inpkey)
+                    && udf::structured::accept_target(
+                        target,
+                        target_path,
+                        node,
+                        inpkey,
+                        from,
+                        &builder,
+                    )
+                {
+                    structured_udf_targets.push((target_path.clone(), from));
+                    continue;
+                }
                 group_projection::classify_target_connection(
                     target,
                     group_projection::TargetConnection {
@@ -331,12 +348,19 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.fn_node(i);
         }
     }
-    let skipped_iteration_paths = target_iteration::build(
+    let mut skipped_iteration_paths = target_iteration::build(
         iterations,
         target,
         &bindings,
         &mut builder,
         &mut scope_builder,
+    );
+    udf::structured::build_targets(
+        structured_udf_targets,
+        target,
+        &mut builder,
+        &mut scope_builder,
+        &mut skipped_iteration_paths,
     );
     group_projection::build(
         group_projections,
@@ -616,6 +640,12 @@ impl GraphBuilder<'_> {
                     value: parse_constant(&value, &datatype),
                 }
             }
+            ("mfd-filepath", _) => Node::RuntimeValue {
+                value: RuntimeValue::MappingFilePath,
+            },
+            ("main-mfd-filepath", _) => Node::RuntimeValue {
+                value: RuntimeValue::MainMappingFilePath,
+            },
             ("if-else", _) => Node::If {
                 condition: input_or_null(self, 0),
                 then: input_or_null(self, 1),

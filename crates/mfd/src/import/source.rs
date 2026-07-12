@@ -390,7 +390,7 @@ impl GraphBuilder<'_> {
         Some(source_path)
     }
 
-    fn source_abs_path(&self, key: u32) -> Option<SourcePath> {
+    pub(super) fn source_abs_path(&self, key: u32) -> Option<SourcePath> {
         self.sources
             .iter()
             .enumerate()

@@ -79,7 +79,11 @@ pub fn run_project_with_paths(
         ));
     }
 
-    let target_instance = engine::run_with_sources(&project, &source_instance, extras)?;
+    let runtime_project_path = std::fs::canonicalize(project_path)
+        .with_context(|| format!("resolving project path {}", project_path.display()))?;
+    let execution = engine::ExecutionContext::new(&runtime_project_path);
+    let target_instance =
+        engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
 
     let row_count = match extension_of(&output_path)?.as_str() {
         "csv" => {

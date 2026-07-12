@@ -14,6 +14,16 @@ fn is_false(value: &bool) -> bool {
 
 pub type NodeId = u32;
 
+/// A value supplied by the execution host rather than source instance data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeValue {
+    /// Path of the mapping that owns the expression being evaluated.
+    MappingFilePath,
+    /// Path of the top-level mapping for the current run.
+    MainMappingFilePath,
+}
+
 /// A single node in the mapping graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -39,6 +49,8 @@ pub enum Node {
     },
     /// A literal value.
     Const { value: Value },
+    /// Reads a value supplied explicitly by the execution host.
+    RuntimeValue { value: RuntimeValue },
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.
     Call { function: String, args: Vec<NodeId> },

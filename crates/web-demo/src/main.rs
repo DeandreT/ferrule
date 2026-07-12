@@ -184,7 +184,10 @@ fn flat_bindings(scope: &Scope, prefix: &str, out: &mut Vec<(String, NodeId)>) {
 /// The wired inputs a graph node has (pin order).
 fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
-        Node::SourceField { .. } | Node::Const { .. } | Node::Position { .. } => vec![],
+        Node::SourceField { .. }
+        | Node::Const { .. }
+        | Node::RuntimeValue { .. }
+        | Node::Position { .. } => vec![],
         Node::Call { args, .. } => args.iter().copied().map(Some).collect(),
         Node::If {
             condition,
@@ -203,6 +206,7 @@ fn node_title(node: &Node) -> String {
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::Position { collection } => format!("position · {}", collection.join("/")),
         Node::Const { .. } => "const".to_string(),
+        Node::RuntimeValue { value } => format!("runtime · {value:?}"),
         Node::Call { function, .. } => function.clone(),
         Node::If { .. } => "if".to_string(),
         Node::ValueMap { .. } => "value-map".to_string(),

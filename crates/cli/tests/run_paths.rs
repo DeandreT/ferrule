@@ -146,3 +146,32 @@ fn missing_output_default_reports_how_to_configure_it() {
     assert!(stderr.contains("target_path"), "{stderr}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn run_supplies_the_active_project_path_to_runtime_nodes() {
+    let dir = test_dir("runtime_project_path");
+    std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
+    let mut project = project_with_paths(Some("input.csv"), Some("output.csv"));
+    project.graph.nodes.insert(
+        3,
+        mapping::Node::RuntimeValue {
+            value: mapping::RuntimeValue::MappingFilePath,
+        },
+    );
+    let project_path = write_project(&dir, &project);
+
+    let output = ferrule(
+        Path::new("/"),
+        &["run", "--project", project_path.to_str().unwrap()],
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let expected_path = std::fs::canonicalize(&project_path).unwrap();
+    let csv = std::fs::read_to_string(dir.join("output.csv")).unwrap();
+    assert_eq!(csv.matches(expected_path.to_str().unwrap()).count(), 2);
+    std::fs::remove_dir_all(dir).unwrap();
+}

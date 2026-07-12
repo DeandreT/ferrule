@@ -266,7 +266,10 @@ fn validate_collection_value(
 
 fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
-        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
+        Node::SourceField { .. }
+        | Node::Position { .. }
+        | Node::Const { .. }
+        | Node::RuntimeValue { .. } => Vec::new(),
         Node::Call { args, .. } => args
             .iter()
             .enumerate()

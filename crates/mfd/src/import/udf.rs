@@ -7,6 +7,8 @@ use super::function::{FnComponent, map_name, parse_constant, read as read_functi
 use super::graph::{GraphBuilder, read_edges};
 use super::schema::parse_u32;
 
+pub(super) mod structured;
+
 #[derive(Clone)]
 pub(super) enum ScalarExpr {
     Parameter(u32),
@@ -39,6 +41,7 @@ struct LookupExpr {
 enum OutputExpr {
     Scalar(ScalarExpr),
     Lookup(LookupExpr),
+    Structured(structured::Recipe),
 }
 
 pub(super) struct Definition {
@@ -52,10 +55,15 @@ pub(super) struct Registry {
     definitions: Vec<Definition>,
     supported: BTreeMap<(String, String), usize>,
     unsupported: BTreeMap<(String, String), String>,
+    sources: Vec<super::schema::SchemaComponent>,
 }
 
 impl Registry {
-    pub(super) fn read(mapping: &roxmltree::Node<'_, '_>) -> Self {
+    pub(super) fn read(
+        mapping: &roxmltree::Node<'_, '_>,
+        mfd_path: &std::path::Path,
+        warnings: &mut Vec<String>,
+    ) -> Self {
         let mut registry = Self::default();
         for component in mapping
             .children()
@@ -67,10 +75,12 @@ impl Registry {
             }
             let name = component.attribute("name").unwrap_or_default();
             let key = (library.to_string(), name.to_string());
-            match read_definition(&component) {
-                Ok(definition) => {
+            match read_definition(&component, mfd_path) {
+                Ok((definition, source, source_warnings)) => {
                     let idx = registry.definitions.len();
                     registry.definitions.push(definition);
+                    registry.sources.extend(source);
+                    warnings.extend(source_warnings);
                     registry.supported.insert(key, idx);
                 }
                 Err(reason) => {
@@ -95,6 +105,10 @@ impl Registry {
 
     pub(super) fn definition(&self, idx: usize) -> Option<&Definition> {
         self.definitions.get(idx)
+    }
+
+    pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
+        std::mem::take(&mut self.sources)
     }
 }
 
@@ -158,7 +172,7 @@ impl Call {
             }
         }
         if outputs.is_empty() {
-            return Err("call has no scalar output ports".to_string());
+            return Err("call has no supported output ports".to_string());
         }
         if let Some(component_id) = outputs
             .values()
@@ -202,10 +216,33 @@ fn collect_call_entries<'a, 'input>(
     }
 }
 
-fn read_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
+fn read_definition(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &std::path::Path,
+) -> Result<
+    (
+        Definition,
+        Option<super::schema::SchemaComponent>,
+        Vec<String>,
+    ),
+    String,
+> {
     match read_scalar_definition(component) {
-        Ok(definition) => Ok(definition),
-        Err(scalar_reason) => read_lookup_definition(component).map_err(|_| scalar_reason),
+        Ok(definition) => Ok((definition, None, Vec::new())),
+        Err(scalar_reason) => match read_lookup_definition(component) {
+            Ok(definition) => Ok((definition, None, Vec::new())),
+            Err(_) => structured::read(component, mfd_path).map_err(|structured_reason| {
+                if component.descendants().any(|node| {
+                    node.has_tag_name("properties") && node.attribute("UsageKind") == Some("output")
+                        || node.has_tag_name("parameter")
+                            && node.attribute("usageKind") == Some("output")
+                }) {
+                    structured_reason
+                } else {
+                    scalar_reason
+                }
+            }),
+        },
     }
 }
 
@@ -620,6 +657,7 @@ impl GraphBuilder<'_> {
             OutputExpr::Lookup(expression) => {
                 self.instantiate_lookup(call_idx, &expression, &parameters)?
             }
+            OutputExpr::Structured(_) => return None,
         };
         self.udf_nodes.insert(output_key, node);
         Some(node)
@@ -811,7 +849,11 @@ mod tests {
             </mapping>"#,
         )
         .unwrap();
-        let registry = Registry::read(&document.root_element());
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
         assert_eq!(
             registry.unsupported_reason("user", "loop"),
             Some("definition is recursive: `loop` (user)")
@@ -832,7 +874,11 @@ mod tests {
             </mapping>"#,
         )
         .unwrap();
-        let registry = Registry::read(&document.root_element());
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
         assert_eq!(
             registry.unsupported_reason("user", "chunks"),
             Some("definition uses sequence operation `tokenize`")
@@ -865,7 +911,11 @@ mod tests {
             ),
         ] {
             let document = Document::parse(xml).unwrap();
-            let registry = Registry::read(&document.root_element());
+            let registry = Registry::read(
+                &document.root_element(),
+                std::path::Path::new("mapping.mfd"),
+                &mut Vec::new(),
+            );
             assert!(
                 registry
                     .unsupported_reason("user", "bad")

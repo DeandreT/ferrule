@@ -11,7 +11,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use mapping::{Graph, Node, NodeId, Project, Scope, SequenceExpr};
+use mapping::{Graph, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
 
 use crate::MfdError;
 
@@ -217,6 +217,22 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                      \t\t\t\t\t<data><constant value=\"{}\" datatype=\"{datatype}\"/></data>\n\
                      \t\t\t\t</component>\n",
                     xml_escape(&text)
+                );
+            }
+            Node::RuntimeValue { value } => {
+                let out = keys.next();
+                node_out_key.insert(id, out);
+                uid += 1;
+                let name = match value {
+                    RuntimeValue::MappingFilePath => "mfd-filepath",
+                    RuntimeValue::MainMappingFilePath => "main-mfd-filepath",
+                };
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
                 );
             }
             Node::Call { function, args } => {
@@ -780,7 +796,10 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
-        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
+        Node::SourceField { .. }
+        | Node::Position { .. }
+        | Node::Const { .. }
+        | Node::RuntimeValue { .. } => Vec::new(),
     }
 }
 

@@ -13,6 +13,7 @@ use thiserror::Error;
 
 mod datetime;
 mod datetime_add;
+mod filepath;
 mod format_number;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
@@ -86,6 +87,9 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "parse_datetime",
     "parse_time",
     "substitute_missing",
+    "get_folder",
+    "remove_folder",
+    "resolve_filepath",
 ];
 
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
@@ -143,6 +147,9 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "parse_datetime" => datetime::parse_datetime(args),
         "parse_time" => datetime::parse_time(args),
         "substitute_missing" => substitute_missing(args),
+        "get_folder" => filepath::get_folder(args),
+        "remove_folder" => filepath::remove_folder(args),
+        "resolve_filepath" => filepath::resolve_filepath(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
 }

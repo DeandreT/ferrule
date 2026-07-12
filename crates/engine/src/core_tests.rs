@@ -12,6 +12,73 @@ fn dummy_schema() -> SchemaNode {
     SchemaNode::group("root", vec![])
 }
 
+fn runtime_project() -> Project {
+    Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph: graph_from(vec![
+            (
+                0,
+                Node::RuntimeValue {
+                    value: RuntimeValue::MappingFilePath,
+                },
+            ),
+            (
+                1,
+                Node::RuntimeValue {
+                    value: RuntimeValue::MainMappingFilePath,
+                },
+            ),
+        ]),
+        root: Scope {
+            bindings: vec![
+                Binding {
+                    target_field: "mapping".into(),
+                    node: 0,
+                },
+                Binding {
+                    target_field: "main".into(),
+                    node: 1,
+                },
+            ],
+            ..Scope::default()
+        },
+    }
+}
+
+#[test]
+fn runtime_values_require_an_explicit_execution_context() {
+    let error = run(&runtime_project(), &Instance::Group(Vec::new())).unwrap_err();
+    assert_eq!(
+        error,
+        EngineError::MissingRuntimeValue(RuntimeValue::MappingFilePath)
+    );
+}
+
+#[test]
+fn runtime_values_distinguish_active_and_main_mapping_paths() {
+    let project = runtime_project();
+    let source = Instance::Group(Vec::new());
+    let execution = ExecutionContext::with_main_mapping_file_path(
+        Path::new("/maps/library.ferrule.json"),
+        Path::new("/maps/main.ferrule.json"),
+    );
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("mapping").and_then(Instance::as_scalar),
+        Some(&Value::String("/maps/library.ferrule.json".into()))
+    );
+    assert_eq!(
+        output.field("main").and_then(Instance::as_scalar),
+        Some(&Value::String("/maps/main.ferrule.json".into()))
+    );
+}
+
 #[test]
 fn evaluates_a_function_call_over_source_fields() {
     let graph = graph_from(vec![
