@@ -325,6 +325,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "time-from-datetime" => "time_from_datetime",
         "datetime-from-date-and-time" => "datetime_from_date_and_time",
         "datetime-from-parts" => "datetime_from_parts",
+        "datetime-add" => "datetime_add",
         "parse-date" => "parse_date",
         "parse-dateTime" => "parse_datetime",
         "parse-time" => "parse_time",
@@ -347,6 +348,7 @@ mod tests {
             Some("datetime_from_date_and_time")
         );
         assert_eq!(map_name("datetime-from-parts"), Some("datetime_from_parts"));
+        assert_eq!(map_name("datetime-add"), Some("datetime_add"));
         assert_eq!(map_name("parse-date"), Some("parse_date"));
         assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));

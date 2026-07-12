@@ -267,7 +267,7 @@ fn decimal_part(value: &Value, function: &'static str) -> Result<f64, FunctionEr
     })
 }
 
-fn split_iso_timezone<'a>(
+pub(super) fn split_iso_timezone<'a>(
     value: &'a str,
     function: &'static str,
 ) -> Result<(&'a str, Option<&'a str>), FunctionError> {
@@ -723,7 +723,7 @@ fn days_in_month(year: u32, month: u32) -> u32 {
     }
 }
 
-fn validate_iso_date(value: &str, function: &'static str) -> Result<(), FunctionError> {
+pub(super) fn validate_iso_date(value: &str, function: &'static str) -> Result<(), FunctionError> {
     if !value.is_ascii() || value.len() < 10 {
         return invalid(function);
     }
@@ -767,7 +767,7 @@ fn days_in_month_with_leap(month: u32, leap: bool) -> u32 {
     }
 }
 
-fn validate_iso_time(value: &str, function: &'static str) -> Result<(), FunctionError> {
+pub(super) fn validate_iso_time(value: &str, function: &'static str) -> Result<(), FunctionError> {
     if !value.is_ascii() {
         return invalid(function);
     }

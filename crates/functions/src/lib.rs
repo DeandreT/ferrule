@@ -12,6 +12,7 @@ use ir::Value;
 use thiserror::Error;
 
 mod datetime;
+mod datetime_add;
 mod format_number;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
@@ -80,6 +81,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "time_from_datetime",
     "datetime_from_date_and_time",
     "datetime_from_parts",
+    "datetime_add",
     "parse_date",
     "parse_datetime",
     "parse_time",
@@ -136,6 +138,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "time_from_datetime" => datetime::time_from_datetime(args),
         "datetime_from_date_and_time" => datetime::datetime_from_date_and_time(args),
         "datetime_from_parts" => datetime::datetime_from_parts(args),
+        "datetime_add" => datetime_add::datetime_add(args),
         "parse_date" => datetime::parse_date(args),
         "parse_datetime" => datetime::parse_datetime(args),
         "parse_time" => datetime::parse_time(args),
