@@ -143,6 +143,75 @@ fn source_pin_to_call_arg_reuses_one_source_field() {
 }
 
 #[test]
+fn sibling_repeating_source_pins_create_distinct_framed_fields() {
+    let source_schema = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::group("A", vec![SchemaNode::scalar("Id", ScalarType::String)]).repeating(),
+            SchemaNode::group("B", vec![SchemaNode::scalar("Id", ScalarType::String)]).repeating(),
+        ],
+    );
+    let target_schema =
+        SchemaNode::group("root", vec![SchemaNode::scalar("out", ScalarType::String)]);
+    let source_leaves = source_leaves(&source_schema);
+    let target_leaves = target_leaves(&target_schema);
+    let source_paths = SourcePathCatalog::new(&source_schema, &[]);
+    let mut graph = Graph::default();
+    graph.nodes.insert(
+        0,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![100, 101],
+        },
+    );
+    let mut root_scope = Scope::default();
+    let mut snarl = Snarl::new();
+    let source = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
+    let call = snarl.insert_node(egui::pos2(200.0, 0.0), CanvasNode::Graph(0));
+    let mut viewer = GraphViewer {
+        graph: &mut graph,
+        root_scope: &mut root_scope,
+        source_leaves: &source_leaves,
+        target_leaves: &target_leaves,
+        source_paths: &source_paths,
+        error: None,
+    };
+
+    for pin in 0..2 {
+        let from = snarl.out_pin(OutPinId {
+            node: source,
+            output: pin,
+        });
+        let to = snarl.in_pin(InPinId {
+            node: call,
+            input: pin,
+        });
+        viewer.connect(&from, &to, &mut snarl);
+    }
+
+    let fields: std::collections::BTreeSet<_> = viewer
+        .graph
+        .nodes
+        .values()
+        .filter_map(|node| match node {
+            Node::SourceField { frame, path } => Some((frame.clone(), path.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        fields,
+        std::collections::BTreeSet::from([
+            (Some(vec!["A".into()]), vec!["Id".into()]),
+            (Some(vec!["B".into()]), vec!["Id".into()]),
+        ])
+    );
+    let Some(Node::Call { args, .. }) = viewer.graph.nodes.get(&0) else {
+        panic!("call node vanished");
+    };
+    assert_ne!(args[0], args[1]);
+}
+
+#[test]
 fn required_inputs_are_visible_wired_placeholders() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
