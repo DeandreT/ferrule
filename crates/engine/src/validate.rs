@@ -89,6 +89,11 @@ fn validate_schema(
         validate_schema(root, child, path, issues);
         path.pop();
     }
+    if let Some(dynamic) = schema.dynamic_fields() {
+        path.push("*".to_string());
+        validate_schema(root, dynamic, path, issues);
+        path.pop();
+    }
 }
 
 fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
@@ -209,6 +214,11 @@ fn collect_sequence_items(
     for child in &scope.children {
         path.push(child.target_field.clone());
         collect_sequence_items(child, path, items, issues);
+        path.pop();
+    }
+    for child in &scope.dynamic_children {
+        path.push("*".to_string());
+        collect_sequence_items(&child.scope, path, items, issues);
         path.pop();
     }
 }
@@ -442,6 +452,38 @@ fn validate_scope(
             "take count has no iterated source",
         ));
     }
+    if scope.merge_dynamic_fields && !iterates {
+        issues.push(ValidationIssue::new(
+            &location,
+            "dynamic object merge requires an iterated source",
+        ));
+    }
+    if scope.merge_dynamic_fields
+        && !(scope.bindings.is_empty()
+            && scope.children.is_empty()
+            && scope.dynamic_bindings.is_empty())
+    {
+        issues.push(ValidationIssue::new(
+            &location,
+            "dynamic object merge accepts only computed child-scope properties",
+        ));
+    }
+    if scope.merge_dynamic_fields && scope.dynamic_children.is_empty() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "dynamic object merge requires at least one computed child-scope property",
+        ));
+    }
+    if (scope.merge_dynamic_fields
+        || !scope.dynamic_bindings.is_empty()
+        || !scope.dynamic_children.is_empty())
+        && target.and_then(SchemaNode::dynamic_fields).is_none()
+    {
+        issues.push(ValidationIssue::new(
+            &location,
+            "computed target properties require an open target group schema",
+        ));
+    }
 
     let mut bound_fields = BTreeSet::new();
     for binding in &scope.bindings {
@@ -503,6 +545,55 @@ fn validate_scope(
             )),
         }
         validate_scope(project, child, child_target, path, issues);
+        path.pop();
+    }
+    let dynamic_target = target.and_then(SchemaNode::dynamic_fields);
+    for binding in &scope.dynamic_bindings {
+        for (label, node) in [
+            ("dynamic property key", binding.key),
+            ("dynamic property value", binding.value),
+        ] {
+            if !project.graph.nodes.contains_key(&node) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!("{label} references missing node {node}"),
+                ));
+            }
+        }
+        if dynamic_target
+            .is_some_and(|node| node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. }))
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "computed scalar binding requires a non-repeating scalar dynamic field schema",
+            ));
+        }
+    }
+    for child in &scope.dynamic_children {
+        if !project.graph.nodes.contains_key(&child.key) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!("dynamic child key references missing node {}", child.key),
+            ));
+        }
+        if let Some(dynamic_target) = dynamic_target {
+            if !matches!(dynamic_target.kind, SchemaKind::Group { .. }) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "computed child scope requires a group dynamic field schema",
+                ));
+            }
+            let child_iterates = child.scope.source.is_some() || child.scope.sequence.is_some();
+            let child_repeats = child_iterates && !child.scope.merge_dynamic_fields;
+            if child_repeats != dynamic_target.repeating {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "computed child scope cardinality does not match the dynamic field schema",
+                ));
+            }
+        }
+        path.push("*".to_string());
+        validate_scope(project, &child.scope, dynamic_target, path, issues);
         path.pop();
     }
 }

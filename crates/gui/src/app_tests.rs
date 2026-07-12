@@ -472,15 +472,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
         extra_sources: Vec::new(),
         graph,
         root: Scope {
-            target_field: String::new(),
             source: Some(vec![]),
-            sequence: None,
-            filter: None,
-            group_by: None,
-            group_into_blocks: None,
-            sort_by: None,
-            sort_descending: false,
-            take: None,
             bindings: vec![
                 Binding {
                     target_field: "loud_name".into(),
@@ -493,7 +485,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
                     node: 2,
                 },
             ],
-            children: vec![],
+            ..Scope::default()
         },
     };
     // 2: hidden SourceField for "age", bound directly to the target.

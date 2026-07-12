@@ -692,6 +692,7 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
     let ir::SchemaKind::Group {
         children,
         alternatives,
+        ..
     } = &node.kind
     else {
         return Ok(());

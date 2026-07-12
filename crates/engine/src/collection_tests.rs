@@ -102,7 +102,9 @@ fn group_by_partitions_iterated_items() {
                     },
                 ],
                 children: vec![],
+                ..Scope::default()
             }],
+            ..Scope::default()
         },
     };
     let row = |month: &str, temp: f64| {
@@ -223,7 +225,9 @@ fn filter_removes_candidates_before_grouping() {
                     },
                 ],
                 children: vec![],
+                ..Scope::default()
             }],
+            ..Scope::default()
         },
     };
     let item = |category: &str, label: &str| {
@@ -369,8 +373,11 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
                         },
                     ],
                     children: vec![],
+                    ..Scope::default()
                 }],
+                ..Scope::default()
             }],
+            ..Scope::default()
         },
     };
     let item = |category: &str| {
@@ -597,7 +604,9 @@ fn aggregates_reduce_collections_in_context() {
                     },
                 ],
                 children: vec![],
+                ..Scope::default()
             }],
+            ..Scope::default()
         },
     };
     let item = |price: f64| {
