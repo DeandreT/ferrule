@@ -103,6 +103,201 @@ pub(super) fn time_from_datetime(args: &[Value]) -> Result<Value, FunctionError>
     Ok(Value::String(time.to_string()))
 }
 
+pub(super) fn datetime_from_date_and_time(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "datetime_from_date_and_time";
+    let (date, time) = match args {
+        [Value::String(date)] => (date.as_str(), "00:00:00"),
+        [Value::String(date), Value::String(time)] => (date.as_str(), time.as_str()),
+        [Value::String(date), Value::Null] => (date.as_str(), "00:00:00"),
+        [first, second] => {
+            let bad = if matches!(first, Value::String(_)) {
+                second
+            } else {
+                first
+            };
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: bad.type_name(),
+            });
+        }
+        [other] => {
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: other.type_name(),
+            });
+        }
+        _ => {
+            return Err(FunctionError::ArityMismatch {
+                function: FUNCTION,
+                expected: 1,
+                got: args.len(),
+            });
+        }
+    };
+
+    let (date, date_zone) = split_iso_timezone(date, FUNCTION)?;
+    let (time, time_zone) = split_iso_timezone(time, FUNCTION)?;
+    validate_iso_date(date, FUNCTION)?;
+    validate_iso_time(time, FUNCTION)?;
+    let zone = match (date_zone, time_zone) {
+        (Some(date_zone), Some(time_zone))
+            if timezone_offset(date_zone) != timezone_offset(time_zone) =>
+        {
+            return invalid(FUNCTION);
+        }
+        (Some(date_zone), _) => Some(date_zone),
+        (None, time_zone) => time_zone,
+    };
+
+    let mut output = format!("{date}T{time}");
+    if let Some(zone) = zone {
+        output.push_str(zone);
+    }
+    Ok(Value::String(output))
+}
+
+pub(super) fn datetime_from_parts(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "datetime_from_parts";
+    if !(3..=8).contains(&args.len()) {
+        return Err(FunctionError::ArityMismatch {
+            function: FUNCTION,
+            expected: 3,
+            got: args.len(),
+        });
+    }
+
+    let year = integer_part(&args[0], FUNCTION)?;
+    let month = integer_part(&args[1], FUNCTION)?;
+    let day = integer_part(&args[2], FUNCTION)?;
+    let optional = |index: usize| -> Result<i64, FunctionError> {
+        match args.get(index) {
+            None | Some(Value::Null) => Ok(0),
+            Some(value) => integer_part(value, FUNCTION),
+        }
+    };
+    let hour = optional(3)?;
+    let minute = optional(4)?;
+    let second = optional(5)?;
+    let millisecond = match args.get(6) {
+        None | Some(Value::Null) => 0.0,
+        Some(value) => decimal_part(value, FUNCTION)?,
+    };
+    let timezone = match args.get(7) {
+        None | Some(Value::Null) => None,
+        Some(value) => Some(integer_part(value, FUNCTION)?),
+    };
+
+    let (Ok(month), Ok(day), Ok(hour), Ok(minute), Ok(second)) = (
+        u32::try_from(month),
+        u32::try_from(day),
+        u32::try_from(hour),
+        u32::try_from(minute),
+        u32::try_from(second),
+    ) else {
+        return invalid(FUNCTION);
+    };
+    if !valid_signed_date(year, month, day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+        || !millisecond.is_finite()
+        || !(0.0..1000.0).contains(&millisecond)
+    {
+        return invalid(FUNCTION);
+    }
+
+    let year = if year < 0 {
+        format!("-{:04}", year.unsigned_abs())
+    } else {
+        format!("{year:04}")
+    };
+    let mut output = format!("{year}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}");
+    if millisecond != 0.0 {
+        let fraction = format!("{:.15}", millisecond / 1000.0);
+        let fraction = fraction.trim_start_matches('0').trim_end_matches('0');
+        if fraction != "." {
+            output.push_str(fraction);
+        }
+    }
+    if let Some(offset) = timezone.filter(|offset| *offset != -32_768) {
+        if !(-840..=840).contains(&offset) {
+            return invalid(FUNCTION);
+        }
+        if offset == 0 {
+            output.push('Z');
+        } else {
+            let sign = if offset < 0 { '-' } else { '+' };
+            let absolute = offset.unsigned_abs();
+            output.push_str(&format!("{sign}{:02}:{:02}", absolute / 60, absolute % 60));
+        }
+    }
+    Ok(Value::String(output))
+}
+
+fn integer_part(value: &Value, function: &'static str) -> Result<i64, FunctionError> {
+    let parsed = match value {
+        Value::Int(value) => Some(*value),
+        Value::Float(value)
+            if value.is_finite()
+                && value.fract() == 0.0
+                && *value >= i64::MIN as f64
+                && *value < -(i64::MIN as f64) =>
+        {
+            Some(*value as i64)
+        }
+        Value::String(value) => value.trim().parse().ok(),
+        _ => None,
+    };
+    parsed.ok_or(FunctionError::TypeMismatch {
+        function,
+        got: value.type_name(),
+    })
+}
+
+fn decimal_part(value: &Value, function: &'static str) -> Result<f64, FunctionError> {
+    let parsed = match value {
+        Value::Int(value) => Some(*value as f64),
+        Value::Float(value) => Some(*value),
+        Value::String(value) => value.trim().parse().ok(),
+        _ => None,
+    };
+    parsed.ok_or(FunctionError::TypeMismatch {
+        function,
+        got: value.type_name(),
+    })
+}
+
+fn split_iso_timezone<'a>(
+    value: &'a str,
+    function: &'static str,
+) -> Result<(&'a str, Option<&'a str>), FunctionError> {
+    if let Some(value) = value.strip_suffix('Z') {
+        return Ok((value, Some("Z")));
+    }
+    if value.len() >= 6 {
+        let start = value.len() - 6;
+        let candidate = &value[start..];
+        if matches!(candidate.as_bytes().first(), Some(b'+' | b'-'))
+            && candidate.as_bytes().get(3) == Some(&b':')
+        {
+            timezone(candidate, false, function)?;
+            return Ok((&value[..start], Some(candidate)));
+        }
+    }
+    Ok((value, None))
+}
+
+fn timezone_offset(value: &str) -> i32 {
+    if value == "Z" {
+        return 0;
+    }
+    let bytes = value.as_bytes();
+    let sign = if value.starts_with('-') { -1 } else { 1 };
+    let hour = i32::from(bytes[1] - b'0') * 10 + i32::from(bytes[2] - b'0');
+    let minute = i32::from(bytes[4] - b'0') * 10 + i32::from(bytes[5] - b'0');
+    sign * (hour * 60 + minute)
+}
+
 fn string_pair<'a>(
     args: &'a [Value],
     function: &'static str,
@@ -509,6 +704,15 @@ fn valid_date(year: u32, month: u32, day: u32) -> bool {
     year > 0 && (1..=12).contains(&month) && day > 0 && day <= days_in_month(year, month)
 }
 
+fn valid_signed_date(year: i64, month: u32, day: u32) -> bool {
+    if year == 0 || !(1..=12).contains(&month) || day == 0 {
+        return false;
+    }
+    let year = year.unsigned_abs();
+    let leap = year.is_multiple_of(400) || year.is_multiple_of(4) && !year.is_multiple_of(100);
+    day <= days_in_month_with_leap(month, leap)
+}
+
 fn days_in_month(year: u32, month: u32) -> u32 {
     match month {
         1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
@@ -690,5 +894,83 @@ mod tests {
         }
         assert!(time_from_datetime(&[text("2001-02-29T09:30:02")]).is_err());
         assert!(time_from_datetime(&[text("2001-01-01T09:30:0é")]).is_err());
+    }
+
+    #[test]
+    fn composes_datetime_from_xml_date_and_time() {
+        assert_eq!(
+            datetime_from_date_and_time(&[text("2024-02-29+05:30"), text("09:08:07.125+05:30"),])
+                .unwrap(),
+            text("2024-02-29T09:08:07.125+05:30")
+        );
+        assert_eq!(
+            datetime_from_date_and_time(&[text("2024-02-29"), text("09:08:07-04:00")]).unwrap(),
+            text("2024-02-29T09:08:07-04:00")
+        );
+        assert_eq!(
+            datetime_from_date_and_time(&[text("2024-01-02Z")]).unwrap(),
+            text("2024-01-02T00:00:00Z")
+        );
+        assert_eq!(
+            datetime_from_date_and_time(&[text("-0001-01-02")]).unwrap(),
+            text("-0001-01-02T00:00:00")
+        );
+        assert!(datetime_from_date_and_time(&[text("2023-02-29")]).is_err());
+        assert!(
+            datetime_from_date_and_time(&[text("2024-02-29+05:30"), text("09:08:07-04:00")])
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn composes_datetime_from_typed_parts() {
+        assert_eq!(
+            datetime_from_parts(&[
+                text("2024"),
+                Value::Int(2),
+                Value::Float(29.0),
+                Value::Int(9),
+                Value::Int(8),
+                Value::Int(7),
+                Value::Float(125.5),
+                Value::Int(330),
+            ])
+            .unwrap(),
+            text("2024-02-29T09:08:07.1255+05:30")
+        );
+        assert_eq!(
+            datetime_from_parts(&[text("2024"), text("1"), text("2")]).unwrap(),
+            text("2024-01-02T00:00:00")
+        );
+        assert_eq!(
+            datetime_from_parts(&[
+                text("-1"),
+                text("1"),
+                text("2"),
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Float(f64::EPSILON),
+            ])
+            .unwrap(),
+            text("-0001-01-02T00:00:00")
+        );
+        assert!(datetime_from_parts(&[text("2023"), text("2"), text("29")]).is_err());
+        assert!(
+            datetime_from_parts(&[Value::Float(-(i64::MIN as f64)), text("1"), text("2")]).is_err()
+        );
+        assert!(
+            datetime_from_parts(&[
+                text("2024"),
+                text("1"),
+                text("2"),
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Null,
+                Value::Int(841),
+            ])
+            .is_err()
+        );
     }
 }
