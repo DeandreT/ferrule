@@ -29,12 +29,58 @@ struct QueryPlan {
     correlated_column: Option<String>,
 }
 
+pub(super) struct CatalogRoutine<'a, 'input> {
+    pub(super) parent: roxmltree::Node<'a, 'input>,
+    pub(super) routine: roxmltree::Node<'a, 'input>,
+}
+
+enum PortShape<'a, 'input> {
+    Query,
+    Catalog(CatalogRoutine<'a, 'input>),
+}
+
 pub(super) fn read_component(
     component: &roxmltree::Node<'_, '_>,
     mapping: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
     connection: &roxmltree::Node<'_, '_>,
     component_query: &str,
+) -> Result<SchemaComponent, String> {
+    read_correlated_component(
+        component,
+        mapping,
+        mfd_path,
+        connection,
+        component_query,
+        PortShape::Query,
+    )
+}
+
+pub(super) fn read_catalog_component(
+    component: &roxmltree::Node<'_, '_>,
+    mapping: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    connection: &roxmltree::Node<'_, '_>,
+    component_query: &str,
+    routine: CatalogRoutine<'_, '_>,
+) -> Result<SchemaComponent, String> {
+    read_correlated_component(
+        component,
+        mapping,
+        mfd_path,
+        connection,
+        component_query,
+        PortShape::Catalog(routine),
+    )
+}
+
+fn read_correlated_component(
+    component: &roxmltree::Node<'_, '_>,
+    mapping: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    connection: &roxmltree::Node<'_, '_>,
+    component_query: &str,
+    port_shape: PortShape<'_, '_>,
 ) -> Result<SchemaComponent, String> {
     let relation = read_relation(connection, component_query)?;
     let parameter_keys = read_parameter_keys(component)?;
@@ -126,17 +172,27 @@ pub(super) fn read_component(
     let parent_path = vec![canonical_parent_table.clone()];
     let mut child_path = parent_path.clone();
     child_path.push(relation_name);
-    let ports = read_correlated_ports(
-        component,
-        mapping,
-        &canonical_parent_table,
-        &relation.child_query,
-        &parent_schema,
-        &parent_path,
-        &child_path,
-        parent.as_ref(),
-        &child,
-    )?;
+    let ports = match port_shape {
+        PortShape::Query => read_correlated_ports(
+            component,
+            mapping,
+            &canonical_parent_table,
+            &relation.child_query,
+            &parent_schema,
+            &parent_path,
+            &child_path,
+            parent.as_ref(),
+            &child,
+        )?,
+        PortShape::Catalog(routine) => read_catalog_ports(
+            &routine,
+            &parent_schema,
+            &parent_path,
+            &child_path,
+            parent.as_ref(),
+            &child,
+        )?,
+    };
     let schema = SchemaNode::group("database", vec![parent_schema]);
     format_db::validate_relational_schema(&db_path, &schema)
         .map_err(|error| format!("query relation does not match SQLite foreign keys ({error})"))?;
@@ -392,6 +448,102 @@ fn append_child(parent: &mut SchemaNode, child: SchemaNode) -> Result<(), String
         return Err("parent query table is not a group".to_string());
     };
     children.push(child);
+    Ok(())
+}
+
+fn read_catalog_ports(
+    routine: &CatalogRoutine<'_, '_>,
+    parent_schema: &SchemaNode,
+    parent_path: &[String],
+    child_path: &[String],
+    parent_plan: Option<&QueryPlan>,
+    child_plan: &QueryPlan,
+) -> Result<BTreeMap<u32, Vec<String>>, String> {
+    if parent_plan.is_some() {
+        return Err("inline query catalogs require a physical parent table".to_string());
+    }
+    let child_tables = routine
+        .routine
+        .children()
+        .filter(|entry| entry.has_tag_name("entry") && entry.attribute("type") == Some("table"))
+        .collect::<Vec<_>>();
+    let [child_table] = child_tables.as_slice() else {
+        return Err("inline query result must contain exactly one table entry".to_string());
+    };
+    if routine.routine.descendants().any(|entry| {
+        entry != routine.routine
+            && entry.has_tag_name("entry")
+            && entry.attribute("type").is_some_and(|kind| kind != "table")
+    }) {
+        return Err("inline query result contains unsupported nested entry kinds".to_string());
+    }
+
+    let mut ports = BTreeMap::new();
+    insert_port(
+        &mut ports,
+        parse_u32(routine.routine.attribute("outkey"))
+            .ok_or_else(|| "inline query collection has an invalid output key".to_string())?,
+        child_path.to_vec(),
+    )?;
+    collect_inline_columns(&routine.parent, parent_schema, parent_path, &[], &mut ports)?;
+    collect_inline_columns(
+        child_table,
+        parent_schema
+            .child(child_path.last().map(String::as_str).unwrap_or_default())
+            .ok_or_else(|| "inline query child schema is missing".to_string())?,
+        child_path,
+        &child_plan.selected,
+        &mut ports,
+    )?;
+    Ok(ports)
+}
+
+fn collect_inline_columns(
+    entry: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+    prefix: &[String],
+    selected: &[String],
+    ports: &mut BTreeMap<u32, Vec<String>>,
+) -> Result<(), String> {
+    let mut exposed = BTreeSet::new();
+    for column in entry.children().filter(|child| {
+        child.has_tag_name("entry")
+            && child.attribute("type").is_none()
+            && child.attribute("outkey").is_some()
+    }) {
+        let name = column.attribute("name").unwrap_or_default();
+        if !selected.is_empty()
+            && !selected
+                .iter()
+                .any(|selected| selected.eq_ignore_ascii_case(name))
+        {
+            return Err(format!(
+                "inline query output `{name}` is not selected by its SQL query"
+            ));
+        }
+        if !exposed.insert(name.to_ascii_lowercase()) {
+            return Err(format!(
+                "inline query output `{name}` is exposed more than once ignoring ASCII case"
+            ));
+        }
+        let mut path = prefix.to_vec();
+        path.push(canonical_column(schema, name)?);
+        insert_port(
+            ports,
+            parse_u32(column.attribute("outkey"))
+                .ok_or_else(|| format!("database output `{name}` has an invalid key"))?,
+            path,
+        )?;
+    }
+    if !selected.is_empty()
+        && exposed
+            != selected
+                .iter()
+                .map(|name| name.to_ascii_lowercase())
+                .collect()
+    {
+        return Err("SQL projection does not match the inline query outputs".to_string());
+    }
     Ok(())
 }
 

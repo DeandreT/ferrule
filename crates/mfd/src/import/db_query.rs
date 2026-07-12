@@ -9,7 +9,10 @@ use super::function::{FnComponent, is_input, parse_constant};
 use super::schema::{ComponentFormat, SchemaComponent, entry_key_sets, parse_u32};
 use super::source::SourcePath;
 
+mod catalog;
 mod correlated;
+
+pub(super) use catalog::read_embedded_catalog;
 
 #[derive(Clone)]
 pub(super) struct DbQuery {
