@@ -421,7 +421,13 @@ fn parse_element(
     Ok(match ty {
         ScalarType::String => Value::String(raw.to_string()),
         ScalarType::Int => Value::Int(raw.parse().map_err(|_| bad())?),
-        ScalarType::Float => Value::Float(raw.parse().map_err(|_| bad())?),
+        ScalarType::Float => {
+            let value = raw.parse::<f64>().map_err(|_| bad())?;
+            if !value.is_finite() {
+                return Err(bad());
+            }
+            Value::Float(value)
+        }
         ScalarType::Bool => Value::Bool(raw.parse().map_err(|_| bad())?),
     })
 }
@@ -512,7 +518,7 @@ fn validate_isa_separator(
     if segment != "ISA" {
         return Ok(());
     }
-    let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar));
+    let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
     let expected = match index {
         10 => {
             let mut chars = text.chars();
@@ -570,27 +576,21 @@ fn write_one_repeat(
     allowed_reserved: Option<char>,
 ) -> Result<String, EdiFormatError> {
     match &schema.kind {
-        SchemaKind::Scalar { .. } => escape(
-            &scalar_or_fixed(schema, instance.and_then(Instance::as_scalar)),
-            &schema.name,
-            opts,
-            allowed_reserved,
-        ),
+        SchemaKind::Scalar { .. } => {
+            let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
+            escape(&text, &schema.name, opts, allowed_reserved)
+        }
         SchemaKind::Group { children } => {
             let mut components: Vec<String> = children
                 .iter()
                 .map(|c| {
-                    escape(
-                        &scalar_or_fixed(
-                            c,
-                            instance
-                                .and_then(|i| i.field(&c.name))
-                                .and_then(Instance::as_scalar),
-                        ),
-                        &c.name,
-                        opts,
-                        None,
-                    )
+                    let text = scalar_or_fixed(
+                        c,
+                        instance
+                            .and_then(|i| i.field(&c.name))
+                            .and_then(Instance::as_scalar),
+                    )?;
+                    escape(&text, &c.name, opts, None)
                 })
                 .collect::<Result<_, _>>()?;
             while components.last().is_some_and(String::is_empty) {
@@ -604,14 +604,14 @@ fn write_one_repeat(
 /// The serialized text for one element/component: the instance value, or
 /// the schema's `fixed` value when the instance doesn't provide one -- so
 /// qualifier elements need no explicit bindings in a mapping.
-fn scalar_or_fixed(schema: &SchemaNode, value: Option<&Value>) -> String {
-    let text = format_value(value);
+fn scalar_or_fixed(schema: &SchemaNode, value: Option<&Value>) -> Result<String, EdiFormatError> {
+    let text = format_value(&schema.name, value)?;
     if text.is_empty()
         && let Some(fixed) = &schema.fixed
     {
-        return fixed.clone();
+        return Ok(fixed.clone());
     }
-    text
+    Ok(text)
 }
 
 fn escape(
@@ -652,12 +652,15 @@ fn escape(
     Ok(out)
 }
 
-fn format_value(value: Option<&Value>) -> String {
+fn format_value(element: &str, value: Option<&Value>) -> Result<String, EdiFormatError> {
     match value {
-        None | Some(Value::Null) => String::new(),
-        Some(Value::Bool(b)) => b.to_string(),
-        Some(Value::Int(i)) => i.to_string(),
-        Some(Value::Float(f)) => f.to_string(),
-        Some(Value::String(s)) => s.clone(),
+        None | Some(Value::Null) => Ok(String::new()),
+        Some(Value::Bool(b)) => Ok(b.to_string()),
+        Some(Value::Int(i)) => Ok(i.to_string()),
+        Some(Value::Float(f)) if f.is_finite() => Ok(f.to_string()),
+        Some(Value::Float(_)) => Err(EdiFormatError::NonFiniteFloat {
+            element: element.to_string(),
+        }),
+        Some(Value::String(s)) => Ok(s.clone()),
     }
 }
