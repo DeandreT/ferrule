@@ -55,6 +55,8 @@ pub enum EdiFormatError {
         value: String,
         reason: &'static str,
     },
+    #[error("element `{element}` cannot serialize a non-finite float")]
+    NonFiniteFloat { element: String },
     #[error(
         "unsupported schema shape at `{0}`: a group named like a segment ID holds \
          scalars/composites, any other group is a loop/container of groups"

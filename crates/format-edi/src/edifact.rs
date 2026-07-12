@@ -48,6 +48,10 @@ const DEFAULT_SEPARATORS: Separators = Separators {
 /// release character is interpreted exactly once -- a two-pass split would
 /// unescape `?+` into a literal `+` and then wrongly re-split on it.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
+    tokenize_with_separators(text).map(|(segments, _)| segments)
+}
+
+fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), EdiFormatError> {
     let text = text.trim_start();
     let (separators, body) = if let Some(rest) = text.strip_prefix("UNA") {
         let advice: Vec<char> = rest.chars().take(6).collect();
@@ -79,9 +83,12 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
     let mut chars = body.chars();
     while let Some(c) = chars.next() {
         if c == separators.release {
-            if let Some(escaped) = chars.next() {
-                push_char(&mut current, escaped);
-            }
+            let Some(escaped) = chars.next() else {
+                return Err(EdiFormatError::NotEdifact(
+                    "dangling release character at end of interchange",
+                ));
+            };
+            push_char(&mut current, escaped)?;
         } else if c == separators.terminator {
             finish_segment(
                 &mut segments,
@@ -90,21 +97,21 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
         } else if c == separators.element {
             current.push(vec![vec![String::new()]]);
         } else if c == separators.component {
-            current
+            let components = current
                 .last_mut()
-                .expect("current is never empty")
+                .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?
                 .last_mut()
-                .expect("repeats are never empty")
-                .push(String::new());
+                .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?;
+            components.push(String::new());
         } else if c.is_whitespace() && at_segment_start(&current) {
             // Skip formatting whitespace between segments (e.g. newlines).
         } else {
-            push_char(&mut current, c);
+            push_char(&mut current, c)?;
         }
     }
     // Tolerate a missing terminator on the final segment.
     finish_segment(&mut segments, current);
-    Ok(segments)
+    Ok((segments, separators))
 }
 
 fn at_segment_start(current: &[Vec<Vec<String>>]) -> bool {
@@ -125,15 +132,16 @@ fn finish_segment(segments: &mut Vec<Segment>, mut parts: Vec<Vec<Vec<String>>>)
     });
 }
 
-fn push_char(elements: &mut [Vec<Vec<String>>], c: char) {
+fn push_char(elements: &mut [Vec<Vec<String>>], c: char) -> Result<(), EdiFormatError> {
     elements
         .last_mut()
-        .expect("elements is never empty")
+        .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?
         .last_mut()
-        .expect("repeats are never empty")
+        .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?
         .last_mut()
-        .expect("components is never empty")
+        .ok_or(EdiFormatError::NotEdifact("invalid tokenizer state"))?
         .push(c);
+    Ok(())
 }
 
 /// Reads an EDIFACT file into an [`Instance`] tree shaped by `schema`.
@@ -141,8 +149,8 @@ fn push_char(elements: &mut [Vec<Vec<String>>], c: char) {
 /// (bounded by the schema's own expectations) instead of erroring.
 pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance, EdiFormatError> {
     let text = std::fs::read_to_string(path)?;
-    let segments = tokenize(&text)?;
-    read_segments(schema, &segments, ':', lenient)
+    let (segments, separators) = tokenize_with_separators(&text)?;
+    read_segments(schema, &segments, separators.component, lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as EDIFACT.
@@ -195,9 +203,80 @@ mod tests {
     }
 
     #[test]
+    fn scalar_composites_preserve_the_una_component_separator() {
+        let text = "UNA;|.! $UNB|UNOB;1|S|R|970101;1230|1$RFF|AA;123$";
+        let schema = SchemaNode::group(
+            "EDIFACT",
+            vec![
+                segment("UNB", vec![]),
+                segment("RFF", vec![scalar("01", ScalarType::String)]),
+            ],
+        );
+
+        let path = write_temp("custom_component_scalar", text);
+        let instance = read(&path, &schema, false).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(
+            instance
+                .field("RFF")
+                .and_then(|segment| segment.field("01"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("AA;123".into()))
+        );
+    }
+
+    #[test]
     fn missing_unb_is_reported() {
         let err = tokenize("ISA*00~").unwrap_err();
         assert!(matches!(err, EdiFormatError::NotEdifact(_)));
+    }
+
+    #[test]
+    fn dangling_release_character_is_rejected() {
+        let error = tokenize("UNB+UNOB:1+S+R+970101:1230+1?").unwrap_err();
+        assert!(matches!(
+            error,
+            EdiFormatError::NotEdifact("dangling release character at end of interchange")
+        ));
+    }
+
+    #[test]
+    fn non_finite_float_elements_are_rejected_on_read_and_write() {
+        let schema = SchemaNode::group(
+            "EDIFACT",
+            vec![
+                segment("UNB", vec![]),
+                segment("MEA", vec![scalar("01", ScalarType::Float)]),
+            ],
+        );
+        let path = write_temp("non_finite", "UNB+UNOB:1+S+R+970101:1230+1'MEA+NaN'");
+        assert!(matches!(
+            read(&path, &schema, false),
+            Err(EdiFormatError::ElementParse {
+                ref segment,
+                element: 1,
+                expected: ScalarType::Float,
+                ..
+            }) if segment == "MEA"
+        ));
+        std::fs::remove_file(&path).unwrap();
+
+        let instance = Instance::Group(vec![
+            ("UNB".into(), Instance::Group(Vec::new())),
+            (
+                "MEA".into(),
+                Instance::Group(vec![(
+                    "01".into(),
+                    Instance::Scalar(Value::Float(f64::INFINITY)),
+                )]),
+            ),
+        ]);
+        assert!(matches!(
+            write(&path, &schema, &instance),
+            Err(EdiFormatError::NonFiniteFloat { ref element }) if element == "01"
+        ));
+        assert!(!path.exists());
     }
 
     fn orders_schema() -> SchemaNode {
