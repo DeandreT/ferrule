@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{SchemaKind, Value};
-use mapping::{IterationOutput, Node};
+use mapping::{AggregateOp, IterationOutput, Node, SequenceExpr};
 
 use super::{Call, Definition, OutputExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
@@ -15,9 +15,15 @@ use crate::import::source::SourcePath;
 
 #[derive(Clone)]
 pub(super) struct Recipe {
-    catalog_port: u32,
-    filter: Expr,
+    source: RecipeSource,
+    filter: Option<Expr>,
     bindings: BTreeMap<Vec<String>, Expr>,
+}
+
+#[derive(Clone, Copy)]
+enum RecipeSource {
+    Catalog { port: u32 },
+    SequenceParameter { component_id: u32 },
 }
 
 #[derive(Clone)]
@@ -38,6 +44,10 @@ enum Expr {
         input: Box<Expr>,
         table: Vec<(Value, Value)>,
         default: Option<Value>,
+    },
+    Aggregate {
+        function: AggregateOp,
+        value: Vec<String>,
     },
 }
 
@@ -76,6 +86,21 @@ pub(super) fn read(
         .ok_or("structured lookup catalog schema cannot be read")?;
     let output = read_schema_component(&output_node, mfd_path, &mut schema_warnings)
         .ok_or("structured lookup output schema cannot be read")?;
+    if catalog.is_source
+        && catalog.input_instance.is_none()
+        && !output.is_source
+        && is_sequence_parameter(catalog_node)
+    {
+        return read_aggregate_record(
+            &structure,
+            &children,
+            catalog_node,
+            output_node,
+            &catalog,
+            &output,
+            schema_warnings,
+        );
+    }
     if !catalog.is_source || catalog.input_instance.is_none() || output.is_source {
         return Err("structured lookup XML component directions are unsupported".to_string());
     }
@@ -246,13 +271,163 @@ pub(super) fn read(
             outputs: BTreeMap::from([(
                 output_id,
                 OutputExpr::Structured(Recipe {
-                    catalog_port,
-                    filter: filter_expr,
+                    source: RecipeSource::Catalog { port: catalog_port },
+                    filter: Some(filter_expr),
                     bindings,
                 }),
             )]),
         },
         Some(catalog),
+        schema_warnings,
+    ))
+}
+
+fn is_sequence_parameter(component: roxmltree::Node<'_, '_>) -> bool {
+    component.descendants().any(|node| {
+        node.has_tag_name("parameter")
+            && node.attribute("usageKind") == Some("input")
+            && node.attribute("sequence") == Some("1")
+    })
+}
+
+fn read_aggregate_record(
+    structure: &roxmltree::Node<'_, '_>,
+    children: &[roxmltree::Node<'_, '_>],
+    source_node: roxmltree::Node<'_, '_>,
+    output_node: roxmltree::Node<'_, '_>,
+    source: &SchemaComponent,
+    output: &SchemaComponent,
+    schema_warnings: Vec<String>,
+) -> Result<(Definition, Option<SchemaComponent>, Vec<String>), String> {
+    if !flat_group_fields(&output.schema) {
+        return Err("structured aggregate output must be one flat group".to_string());
+    }
+    let source_id = component_id(source_node)?;
+    let output_id = component_id(output_node)?;
+    let edge_from = crate::import::graph::read_edges(structure, None);
+    let mut aggregates = BTreeMap::new();
+    for child in children {
+        if child.attribute("library") == Some("xml") {
+            continue;
+        }
+        let function = read_function(child);
+        let operation = (function.kind == 5)
+            .then(|| crate::import::function::aggregate_op(&function.name))
+            .flatten()
+            .filter(|operation| {
+                matches!(
+                    operation,
+                    AggregateOp::Sum | AggregateOp::Avg | AggregateOp::Min | AggregateOp::Max
+                )
+            })
+            .ok_or_else(|| {
+                format!(
+                    "structured aggregate contains unsupported component `{}`",
+                    function.name
+                )
+            })?;
+        let [output_key] = function.outputs.as_slice() else {
+            return Err(format!(
+                "structured aggregate `{}` has invalid output pins",
+                function.name
+            ));
+        };
+        if aggregates
+            .insert(*output_key, (operation, function))
+            .is_some()
+        {
+            return Err("structured aggregate has duplicate output keys".to_string());
+        }
+    }
+    if aggregates.is_empty() {
+        return Err("structured aggregate output has no reductions".to_string());
+    }
+
+    let mut bindings = BTreeMap::new();
+    for input in &output.input_keys {
+        let path = output
+            .ports
+            .get(input)
+            .ok_or("structured aggregate output port has no schema path")?;
+        if path.is_empty() {
+            continue;
+        }
+        if path.len() != 1
+            || !schema_node_at(&output.schema, path).is_some_and(|node| {
+                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+            })
+        {
+            return Err("structured aggregate output bindings must be flat scalars".to_string());
+        }
+        let feed = edge_from.get(input).copied().ok_or_else(|| {
+            format!(
+                "structured aggregate output `{}` is not connected",
+                path.join("/")
+            )
+        })?;
+        let (operation, function) = aggregates.get(&feed).ok_or_else(|| {
+            format!(
+                "structured aggregate output `{}` is not a reduction",
+                path.join("/")
+            )
+        })?;
+        let sequence_input = function.inputs.get(1).copied().flatten().or_else(|| {
+            (function.inputs.len() == 1)
+                .then(|| function.inputs.first().copied().flatten())
+                .flatten()
+        });
+        let value_feed = sequence_input
+            .and_then(|input| edge_from.get(&input).copied())
+            .ok_or_else(|| {
+                format!(
+                    "structured aggregate `{}` has no connected value sequence",
+                    function.name
+                )
+            })?;
+        let value = source
+            .ports
+            .get(&value_feed)
+            .cloned()
+            .filter(|path| {
+                !path.is_empty()
+                    && schema_node_at(&source.schema, path).is_some_and(|node| {
+                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                    })
+            })
+            .ok_or_else(|| {
+                format!(
+                    "structured aggregate `{}` does not reduce a scalar sequence parameter field",
+                    function.name
+                )
+            })?;
+        bindings.insert(
+            path.clone(),
+            Expr::Aggregate {
+                function: *operation,
+                value,
+            },
+        );
+    }
+    if bindings.is_empty() {
+        return Err("structured aggregate output has no scalar bindings".to_string());
+    }
+
+    Ok((
+        Definition {
+            parameters: BTreeSet::new(),
+            structured_parameters: BTreeSet::from([source_id]),
+            outputs: BTreeMap::from([(
+                output_id,
+                OutputExpr::Structured(Recipe {
+                    source: RecipeSource::SequenceParameter {
+                        component_id: source_id,
+                    },
+                    filter: None,
+                    bindings,
+                }),
+            )]),
+        },
+        None,
         schema_warnings,
     ))
 }
@@ -273,12 +448,15 @@ fn component_id(component: roxmltree::Node<'_, '_>) -> Result<u32, String> {
 }
 
 fn flat_output_group(schema: &ir::SchemaNode) -> bool {
-    !schema.repeating
-        && matches!(
-            &schema.kind,
-            SchemaKind::Group { children, dynamic: None, .. }
-                if children.iter().all(|child| !child.repeating && matches!(child.kind, SchemaKind::Scalar { .. }))
-        )
+    !schema.repeating && flat_group_fields(schema)
+}
+
+fn flat_group_fields(schema: &ir::SchemaNode) -> bool {
+    matches!(
+        &schema.kind,
+        SchemaKind::Group { children, dynamic: None, .. }
+            if children.iter().all(|child| !child.repeating && matches!(child.kind, SchemaKind::Scalar { .. }))
+    )
 }
 
 fn parameter_outputs(functions: &[FnComponent], ids: &[u32]) -> Result<BTreeMap<u32, u32>, String> {
@@ -429,26 +607,48 @@ pub(in crate::import) fn accept_target(
     feed: u32,
     builder: &GraphBuilder<'_>,
 ) -> bool {
-    target.format == ComponentFormat::Xml
+    let Some((_, recipe)) = builder.structured_recipe(feed) else {
+        return false;
+    };
+    let common = target.format == ComponentFormat::Xml
         && !target_path.is_empty()
-        && !target_node.repeating
         && matches!(target_node.kind, SchemaKind::Group { .. })
-        && builder.structured_recipe(feed).is_some()
         && target
             .ports
             .iter()
             .filter(|(key, path)| *path == target_path && builder.edge_from.contains_key(key))
             .count()
             == 1
-        && target.ports.iter().all(|(key, path)| {
-            path.len() <= target_path.len()
-                || !path.starts_with(target_path)
-                || !builder.edge_from.contains_key(key)
-        })
         && target
             .ports
             .get(&input_key)
-            .is_some_and(|path| path == target_path)
+            .is_some_and(|path| path == target_path);
+    if !common {
+        return false;
+    }
+    match recipe.source {
+        RecipeSource::Catalog { .. } => {
+            !target_node.repeating
+                && target.ports.iter().all(|(key, path)| {
+                    path.len() <= target_path.len()
+                        || !path.starts_with(target_path)
+                        || !builder.edge_from.contains_key(key)
+                })
+        }
+        RecipeSource::SequenceParameter { .. } => {
+            target_node.repeating
+                && target.ports.iter().all(|(key, path)| {
+                    let recipe_field = recipe.bindings.keys().any(|relative| {
+                        path.strip_prefix(target_path) == Some(relative.as_slice())
+                    });
+                    !recipe_field
+                        || builder
+                            .edge_from
+                            .get(key)
+                            .is_some_and(|feed| builder.structured_recipe(*feed).is_some())
+                })
+        }
+    }
 }
 
 pub(in crate::import) fn build_targets(
@@ -470,6 +670,32 @@ pub(in crate::import) fn build_targets(
     }
 }
 
+pub(in crate::import) fn prepare_target_frames(
+    targets: &[(Vec<String>, u32)],
+    builder: &mut GraphBuilder<'_>,
+) {
+    for (_, feed) in targets {
+        let Some((call, recipe)) = builder.structured_recipe(*feed) else {
+            continue;
+        };
+        let RecipeSource::SequenceParameter { component_id } = recipe.source else {
+            continue;
+        };
+        let input = call
+            .structured_inputs
+            .get(&component_id)
+            .and_then(|inputs| inputs.as_slice().first())
+            .map(|(_, input)| *input);
+        let source = input
+            .and_then(|input| builder.edge_from.get(&input).copied())
+            .map(|feed| builder.resolve_iteration_feed(feed))
+            .and_then(|control| builder.iteration_source_path(&control));
+        if let Some(source) = source {
+            builder.note_framed_prefixes(&source);
+        }
+    }
+}
+
 fn build_target(
     target_path: &[String],
     feed: u32,
@@ -481,9 +707,42 @@ fn build_target(
         .structured_recipe(feed)
         .ok_or("its UDF output recipe is missing")?;
     let call_inputs = call.inputs.clone();
+    let structured_inputs = call.structured_inputs.clone();
     let recipe = recipe.clone();
+    match recipe.source {
+        RecipeSource::Catalog { port } => build_catalog_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &call_inputs,
+            &recipe,
+            port,
+        ),
+        RecipeSource::SequenceParameter { component_id } => build_aggregate_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &structured_inputs,
+            &recipe,
+            component_id,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_catalog_target(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    call_inputs: &BTreeMap<u32, u32>,
+    recipe: &Recipe,
+    catalog_port: u32,
+) -> Result<(), String> {
     let collection = builder
-        .source_abs_path(recipe.catalog_port)
+        .source_abs_path(catalog_port)
         .ok_or("its catalog collection is not an imported source")?;
     if !builder
         .schema_node(&collection)
@@ -494,7 +753,7 @@ fn build_target(
     builder.note_framed_prefixes(&collection);
 
     let mut parameters = BTreeMap::new();
-    for (parameter, input) in call_inputs {
+    for (&parameter, &input) in call_inputs {
         let node = builder
             .edge_from
             .get(&input)
@@ -517,10 +776,14 @@ fn build_target(
         }
         let target = TargetLeaf::from_path(&path)
             .ok_or_else(|| format!("target field `{}` is invalid", path.join("/")))?;
-        let node = instantiate(expression, &collection, &parameters, builder)?;
+        let node = instantiate(expression, &collection, &parameters, None, builder)?;
         target_bindings.push((target, node));
     }
-    let filter = instantiate(&recipe.filter, &collection, &parameters, builder)?;
+    let filter_expression = recipe
+        .filter
+        .as_ref()
+        .ok_or_else(|| "its catalog filter is missing".to_string())?;
+    let filter = instantiate(filter_expression, &collection, &parameters, None, builder)?;
     scopes.add_iteration(
         target_path,
         &builder.context_path(&collection),
@@ -541,6 +804,107 @@ fn build_target(
     Ok(())
 }
 
+fn build_aggregate_target(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    recipe: &Recipe,
+    component_id: u32,
+) -> Result<(), String> {
+    let [(call_path, input)] = structured_inputs
+        .get(&component_id)
+        .map(Vec::as_slice)
+        .ok_or("its sequence parameter is not connected")?
+    else {
+        return Err("its sequence parameter must have one collection input".to_string());
+    };
+    if call_path.is_empty() {
+        return Err("its sequence parameter collection path is missing".to_string());
+    }
+    let feed = builder
+        .edge_from
+        .get(input)
+        .copied()
+        .ok_or("its sequence parameter collection is not connected")?;
+    let control = builder.resolve_iteration_feed(feed);
+    if control.sequence_component.is_some()
+        || control.db_where_component.is_some()
+        || control.has_key_grouping
+        || control.has_start_grouping
+        || control.has_block_grouping
+        || control.distinct_key.is_some()
+        || control.order_issue.is_some()
+        || control.has_sort
+        || control.take_expr.is_some()
+        || control.take_default_one
+    {
+        return Err("its sequence parameter uses controls beyond one optional filter".to_string());
+    }
+    let collection = builder
+        .iteration_source_path(&control)
+        .ok_or("its sequence parameter is not an imported source collection")?;
+    if !builder
+        .schema_node(&collection)
+        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        return Err("its sequence parameter is not a repeating group".to_string());
+    }
+    builder.note_framed_prefixes(&collection);
+    let filter = control.filter_expr.and_then(|key| builder.value_node(key));
+    if control.has_filter && filter.is_none() {
+        return Err("its sequence parameter filter is not representable".to_string());
+    }
+    let parameters = BTreeMap::new();
+    let mut target_bindings = Vec::with_capacity(recipe.bindings.len());
+    for (relative, expression) in &recipe.bindings {
+        let mut path = target_path.to_vec();
+        path.extend(relative.iter().cloned());
+        if !schema_node_at(&target.schema, &path)
+            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        {
+            return Err(format!(
+                "target field `{}` is not a flat scalar",
+                path.join("/")
+            ));
+        }
+        let target = TargetLeaf::from_path(&path)
+            .ok_or_else(|| format!("target field `{}` is invalid", path.join("/")))?;
+        let node = instantiate(expression, &collection, &parameters, filter, builder)?;
+        target_bindings.push((target, node));
+    }
+    let one = builder.alloc(Node::Const {
+        value: Value::Int(1),
+    });
+    let item = builder.alloc(Node::SourceField {
+        path: Vec::new(),
+        frame: None,
+    });
+    scopes.add_sequence(
+        target_path,
+        SequenceExpr::Generate {
+            from: Some(one),
+            to: one,
+            item,
+        },
+        IterationNodes {
+            filter: None,
+            group_by: None,
+            group_starting_with: None,
+            group_into_blocks: None,
+            sort_by: None,
+            sort_descending: false,
+            take: None,
+        },
+        IterationOutput::Repeated,
+    );
+    for (target, node) in target_bindings {
+        scopes.add_binding(target, node);
+    }
+    Ok(())
+}
+
 impl GraphBuilder<'_> {
     fn structured_recipe(&self, feed: u32) -> Option<(&Call, &Recipe)> {
         let (call_index, component_id) = *self.udf_by_output.get(&feed)?;
@@ -551,12 +915,17 @@ impl GraphBuilder<'_> {
             _ => None,
         }
     }
+
+    pub(in crate::import) fn is_structured_recipe(&self, feed: u32) -> bool {
+        self.structured_recipe(feed).is_some()
+    }
 }
 
 fn instantiate(
     expression: &Expr,
     collection: &SourcePath,
     parameters: &BTreeMap<u32, mapping::NodeId>,
+    sequence_filter: Option<mapping::NodeId>,
     builder: &mut GraphBuilder<'_>,
 ) -> Result<mapping::NodeId, String> {
     Ok(match expression {
@@ -577,7 +946,9 @@ fn instantiate(
         Expr::Call { function, args } => {
             let args = args
                 .iter()
-                .map(|argument| instantiate(argument, collection, parameters, builder))
+                .map(|argument| {
+                    instantiate(argument, collection, parameters, sequence_filter, builder)
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             builder.alloc(Node::Call {
                 function: function.clone(),
@@ -589,9 +960,10 @@ fn instantiate(
             then,
             else_,
         } => {
-            let condition = instantiate(condition, collection, parameters, builder)?;
-            let then = instantiate(then, collection, parameters, builder)?;
-            let else_ = instantiate(else_, collection, parameters, builder)?;
+            let condition =
+                instantiate(condition, collection, parameters, sequence_filter, builder)?;
+            let then = instantiate(then, collection, parameters, sequence_filter, builder)?;
+            let else_ = instantiate(else_, collection, parameters, sequence_filter, builder)?;
             builder.alloc(Node::If {
                 condition,
                 then,
@@ -603,11 +975,39 @@ fn instantiate(
             table,
             default,
         } => {
-            let input = instantiate(input, collection, parameters, builder)?;
+            let input = instantiate(input, collection, parameters, sequence_filter, builder)?;
             builder.alloc(Node::ValueMap {
                 input,
                 table: table.clone(),
                 default: default.clone(),
+            })
+        }
+        Expr::Aggregate { function, value } => {
+            let mut field = collection.clone();
+            field.path.extend(value.iter().cloned());
+            let value = builder
+                .source_field_at(&field)
+                .ok_or("aggregate sequence field cannot be resolved")?;
+            let expression = match sequence_filter {
+                Some(condition) => {
+                    let missing = builder.alloc(Node::Const { value: Value::Null });
+                    Some(builder.alloc(Node::If {
+                        condition,
+                        then: value,
+                        else_: missing,
+                    }))
+                }
+                None => Some(value),
+            };
+            let collection = builder
+                .collection_path(collection.source, &collection.path)
+                .ok_or("aggregate collection cannot be resolved")?;
+            builder.alloc(Node::Aggregate {
+                function: *function,
+                collection,
+                value: Vec::new(),
+                expression,
+                arg: None,
             })
         }
     })

@@ -161,7 +161,11 @@ impl Call {
                 }
             }
             if let Some(key) = output_key {
-                if !output_parameters.insert(component_id) {
+                let structured = matches!(
+                    shape.outputs.get(&component_id),
+                    Some(OutputExpr::Structured(_))
+                );
+                if !structured && !output_parameters.insert(component_id) {
                     return Err(format!(
                         "call has duplicate output parameter componentid `{component_id}`"
                     ));
