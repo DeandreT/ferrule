@@ -51,11 +51,30 @@ pub(crate) struct WriteOptions {
 }
 
 fn is_segment_id(name: &str) -> bool {
-    (2..=3).contains(&name.len())
-        && name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-        && name
-            .chars()
-            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    schema_segment_id(name).is_some()
+}
+
+fn schema_segment_id(name: &str) -> Option<&str> {
+    let candidate = name.strip_prefix("MF_").unwrap_or(name);
+    if is_edifact_segment_group(candidate) {
+        return None;
+    }
+    (2..=3).contains(&candidate.len()).then_some(())?;
+    candidate
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_uppercase())
+        .then_some(())?;
+    candidate
+        .chars()
+        .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
+        .then_some(candidate)
+}
+
+fn is_edifact_segment_group(name: &str) -> bool {
+    name.strip_prefix("SG").is_some_and(|suffix| {
+        !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+    })
 }
 
 enum Shape<'a> {
@@ -111,7 +130,9 @@ pub(crate) fn root_trigger(schema: &SchemaNode) -> Result<&str, EdiFormatError> 
             let first = children
                 .first()
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(schema.name.clone()))?;
-            Ok(&trigger_of(first)?.name)
+            let trigger = trigger_of(first)?;
+            schema_segment_id(&trigger.name)
+                .ok_or_else(|| EdiFormatError::UnsupportedSchema(trigger.name.clone()))
         }
         Shape::Segment(_) => Err(EdiFormatError::UnsupportedSchema(schema.name.clone())),
     }
@@ -122,7 +143,7 @@ pub(crate) fn root_trigger(schema: &SchemaNode) -> Result<&str, EdiFormatError> 
 /// what disambiguate qualifier-driven loops (e.g. `HL` with `HL03` fixed
 /// to `20` vs `22`, or repeated `NM1`s told apart by `NM101`).
 fn segment_matches(trigger: &SchemaNode, segment: &Segment) -> bool {
-    if trigger.name != segment.id {
+    if schema_segment_id(&trigger.name) != Some(segment.id.as_str()) {
         return false;
     }
     let SchemaKind::Group { children } = &trigger.kind else {
@@ -328,7 +349,7 @@ fn read_segment(
             expected: describe_trigger(node),
             found: "end of interchange".to_string(),
         })?;
-    if segment.id != node.name {
+    if schema_segment_id(&node.name) != Some(segment.id.as_str()) {
         return Err(EdiFormatError::UnexpectedSegment {
             index: cursor.pos,
             expected: describe_trigger(node),
@@ -545,18 +566,20 @@ fn write_node(
     }
     match shape_of(node, is_root)? {
         Shape::Segment(element_schemas) => {
+            let segment_id = schema_segment_id(&node.name)
+                .ok_or_else(|| EdiFormatError::UnsupportedSchema(node.name.clone()))?;
             let mut elements = element_schemas
                 .iter()
                 .enumerate()
                 .map(|(index, element)| {
                     validate_isa_separator(
-                        &node.name,
+                        segment_id,
                         index,
                         element,
                         instance.field(&element.name),
                         opts,
                     )?;
-                    let allowed_reserved = match (node.name.as_str(), index) {
+                    let allowed_reserved = match (segment_id, index) {
                         ("ISA", 10) => opts.repetition,
                         ("ISA", 15) => Some(opts.component),
                         _ => None,
@@ -569,12 +592,12 @@ fn write_node(
                     )
                 })
                 .collect::<Result<Vec<String>, _>>()?;
-            if node.name != "ISA" {
+            if segment_id != "ISA" {
                 while elements.last().is_some_and(String::is_empty) {
                     elements.pop();
                 }
             }
-            out.push_str(&node.name);
+            out.push_str(segment_id);
             for element in &elements {
                 out.push(opts.element);
                 out.push_str(element);
@@ -830,4 +853,41 @@ fn exact_f64(value: i64) -> Option<f64> {
     }
     let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
     (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numbered_edifact_segment_groups_are_containers() {
+        let schema = SchemaNode::group(
+            "EDIFACT",
+            vec![SchemaNode::group(
+                "SG2",
+                vec![SchemaNode::group(
+                    "NAD",
+                    vec![SchemaNode::scalar("3035", ScalarType::String)],
+                )],
+            )],
+        );
+
+        assert_eq!(root_trigger(&schema).unwrap(), "NAD");
+    }
+
+    #[test]
+    fn mapforce_acknowledgement_prefix_is_not_part_of_the_segment_id() {
+        let schema = SchemaNode::group(
+            "X12",
+            vec![SchemaNode::group(
+                "ParserErrors",
+                vec![SchemaNode::group(
+                    "MF_AK9",
+                    vec![SchemaNode::scalar("715", ScalarType::String)],
+                )],
+            )],
+        );
+
+        assert_eq!(root_trigger(&schema).unwrap(), "AK9");
+    }
 }

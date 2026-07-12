@@ -4,7 +4,8 @@ use ir::Value;
 use mapping::{Graph, Node, NodeId};
 
 use super::function::FnComponent;
-use super::schema::SchemaComponent;
+use super::schema::{SchemaComponent, parse_u32};
+use super::udf::{Call as UdfCall, Registry as UdfRegistry};
 
 pub(super) struct GraphBuilder<'a> {
     pub(super) graph: Graph,
@@ -19,6 +20,10 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) intermediates: &'a [&'a SchemaComponent],
     pub(super) fn_components: &'a [FnComponent],
     pub(super) fn_by_output: BTreeMap<u32, usize>,
+    pub(super) udf_nodes: BTreeMap<u32, NodeId>,
+    pub(super) udf_by_output: BTreeMap<u32, (usize, u32)>,
+    pub(super) udf_calls: &'a [UdfCall],
+    pub(super) udf_registry: &'a UdfRegistry,
     /// Absolute source paths ending at a repeating node that some scope's
     /// iteration crosses -- i.e. levels that get their own context frame
     /// at run time. SourceField paths are cut after the innermost framed
@@ -65,4 +70,56 @@ impl GraphBuilder<'_> {
         self.sequence_items.insert(idx, item);
         item
     }
+}
+
+pub(super) fn read_edges(
+    structure: &roxmltree::Node<'_, '_>,
+    legacy_parent: Option<&roxmltree::Node<'_, '_>>,
+) -> BTreeMap<u32, u32> {
+    let mut edge_from = BTreeMap::new();
+    if let Some(graph) = structure
+        .children()
+        .find(|node| node.is_element() && node.has_tag_name("graph"))
+    {
+        for vertex in graph
+            .descendants()
+            .filter(|node| node.has_tag_name("vertex"))
+        {
+            let Some(from) = parse_u32(vertex.attribute("vertexkey")) else {
+                continue;
+            };
+            for edge in vertex
+                .descendants()
+                .filter(|node| node.has_tag_name("edge"))
+            {
+                if let Some(to) = parse_u32(edge.attribute("vertexkey")) {
+                    edge_from.insert(to, from);
+                }
+            }
+        }
+    }
+    let connections = structure
+        .children()
+        .find(|node| node.is_element() && node.has_tag_name("connections"))
+        .or_else(|| {
+            legacy_parent.and_then(|parent| {
+                parent
+                    .children()
+                    .find(|node| node.is_element() && node.has_tag_name("connections"))
+            })
+        });
+    if let Some(connections) = connections {
+        for edge in connections
+            .children()
+            .filter(|node| node.is_element() && node.has_tag_name("edge"))
+        {
+            if let (Some(from), Some(to)) = (
+                parse_u32(edge.attribute("from")),
+                parse_u32(edge.attribute("to")),
+            ) {
+                edge_from.insert(to, from);
+            }
+        }
+    }
+    edge_from
 }

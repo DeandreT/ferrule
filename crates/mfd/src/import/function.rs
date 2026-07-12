@@ -1,7 +1,7 @@
 use ir::Value;
 use mapping::AggregateOp;
 
-use super::parse_u32;
+use super::schema::parse_u32;
 
 /// One function component's extracted facts.
 pub(super) type ValueMapData = (Vec<(String, String)>, Option<String>);

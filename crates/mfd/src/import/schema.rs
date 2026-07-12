@@ -9,6 +9,7 @@ pub(super) enum ComponentFormat {
     Xml,
     Json,
     Csv,
+    Edi,
     Db,
 }
 
@@ -21,6 +22,7 @@ pub(super) struct SchemaComponent {
     pub(super) output_instance: Option<String>,
     pub(super) options: FormatOptions,
     pub(super) is_source: bool,
+    pub(super) is_default_output: bool,
     pub(super) is_variable: bool,
     /// Input key of a variable component's compute-when control entry.
     pub(super) compute_when_key: Option<u32>,
@@ -46,6 +48,14 @@ fn entry_key_sets(root: &roxmltree::Node) -> (BTreeSet<u32>, BTreeSet<u32>) {
         }
     }
     (inputs, outputs)
+}
+
+fn is_default_output(component: &roxmltree::Node) -> bool {
+    component
+        .children()
+        .find(|node| node.has_tag_name("properties"))
+        .and_then(|properties| properties.attribute("XSLTDefaultOutput"))
+        == Some("1")
 }
 
 /// Reads an xml schema component: entry tree, ports, and the schema itself
@@ -158,6 +168,7 @@ pub(super) fn read_schema_component(
             .map(str::to_string),
         options: FormatOptions::default(),
         is_source,
+        is_default_output: is_default_output(component),
         is_variable: data.descendants().any(|node| {
             node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
         }),
@@ -329,6 +340,7 @@ pub(super) fn read_json_component(
             .map(str::to_string),
         options: FormatOptions::default(),
         is_source,
+        is_default_output: is_default_output(component),
         is_variable: false,
         compute_when_key: None,
         ports,
@@ -551,12 +563,147 @@ pub(super) fn read_csv_component(
         output_instance: text_el.attribute("outputinstance").map(str::to_string),
         options,
         is_source,
+        is_default_output: is_default_output(component),
         is_variable: false,
         compute_when_key: None,
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
     })
+}
+
+/// Reads an EDI text component from the visible entry tree. MapForce's
+/// external configuration files are not portable with the design, so the
+/// fallback preserves connected paths while being explicit about the lost
+/// types, qualifiers, and exact cardinalities.
+pub(super) fn read_edi_component(
+    component: &roxmltree::Node,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    let name = component.attribute("name").unwrap_or_default().to_string();
+    let data = component
+        .children()
+        .find(|node| node.has_tag_name("data"))?;
+    let text = data
+        .children()
+        .find(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi"))?;
+    let kind = text.attribute("kind").unwrap_or_default();
+    let root = data.children().find(|node| node.has_tag_name("root"))?;
+    let mut entry = root.children().find(|node| node.has_tag_name("entry"))?;
+    while matches!(
+        entry.attribute("name"),
+        Some("FileInstance") | Some("document")
+    ) {
+        entry = entry.children().find(|node| node.has_tag_name("entry"))?;
+    }
+
+    let mut schema = edi_entry_tree_schema(&entry, true, false)?;
+    schema.name = match kind {
+        "EDIX12" => "MFD-X12",
+        "EDIFACT" => "MFD-EDIFACT",
+        "EDIHL7" => "HL7",
+        "EDIFIXED" => "IDOC",
+        "SWIFTMT" => "SWIFT",
+        "EDITRADACOMS" => "TRADACOMS",
+        _ if kind.is_empty() => "EDI",
+        other => other,
+    }
+    .to_string();
+
+    let mut ports = BTreeMap::new();
+    let mut out_count = 0usize;
+    let mut in_count = 0usize;
+    let (input_keys, output_keys) = entry_key_sets(&root);
+    record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
+    collect_entry_ports(
+        &entry,
+        &mut Vec::new(),
+        &mut ports,
+        &mut out_count,
+        &mut in_count,
+        warnings,
+    );
+    if out_count == 0 && in_count == 0 {
+        warnings.push(format!("component `{name}` has no connected ports"));
+    }
+
+    warnings.push(format!(
+        "EDI component `{name}` uses an entry-tree schema inferred without its external `{kind}` \
+         configuration; its mapping graph was imported, but execution is disabled until a schema \
+         with element positions, scalar types, fixed qualifiers, and cardinalities is supplied"
+    ));
+    if !matches!(kind, "EDIX12" | "EDIFACT") {
+        warnings.push(format!(
+            "EDI component `{name}` uses runtime dialect `{kind}`; its mapping graph was imported, \
+             but ferrule currently executes only EDIX12 and EDIFACT instances"
+        ));
+    }
+
+    Some(SchemaComponent {
+        name,
+        format: ComponentFormat::Edi,
+        schema,
+        input_instance: text.attribute("inputinstance").map(str::to_string),
+        output_instance: text.attribute("outputinstance").map(str::to_string),
+        options: FormatOptions {
+            lenient_segments: true,
+            ..FormatOptions::default()
+        },
+        is_source: out_count >= in_count,
+        is_default_output: is_default_output(component),
+        is_variable: false,
+        compute_when_key: None,
+        ports,
+        input_keys,
+        output_keys,
+    })
+}
+
+fn edi_entry_tree_schema(
+    entry: &roxmltree::Node,
+    is_root: bool,
+    parent_is_segment: bool,
+) -> Option<SchemaNode> {
+    let name = entry.attribute("name").unwrap_or("EDI");
+    let is_segment = is_inferred_edi_segment(name);
+    let child_entries: Vec<_> = entry
+        .children()
+        .filter(|node| node.has_tag_name("entry"))
+        .collect();
+    let children: Vec<_> = child_entries
+        .iter()
+        .filter_map(|child| edi_entry_tree_schema(child, false, is_segment))
+        .collect();
+    let connected = entry.attribute("inpkey").is_some() || entry.attribute("outkey").is_some();
+
+    if child_entries.is_empty() {
+        return connected.then(|| SchemaNode::scalar(name, ir::ScalarType::String));
+    }
+    if children.is_empty() && !connected && !is_root {
+        return None;
+    }
+
+    let node = SchemaNode::group(name, children);
+    if !is_root && !parent_is_segment && (connected || !is_segment) {
+        Some(node.repeating())
+    } else {
+        Some(node)
+    }
+}
+
+fn is_inferred_edi_segment(name: &str) -> bool {
+    let name = name.strip_prefix("MF_").unwrap_or(name);
+    (2..=3).contains(&name.len())
+        && name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_uppercase())
+        && name
+            .chars()
+            .all(|character| character.is_ascii_uppercase() || character.is_ascii_digit())
+        && !name.strip_prefix("SG").is_some_and(|suffix| {
+            !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+        })
 }
 
 fn collect_entry_ports(
@@ -792,6 +939,7 @@ pub(super) fn read_db_component(
         output_instance: connection,
         options: FormatOptions::default(),
         is_source,
+        is_default_output: is_default_output(component),
         is_variable: false,
         compute_when_key: None,
         ports,
