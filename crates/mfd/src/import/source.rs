@@ -45,7 +45,7 @@ pub(super) fn primary_index(
             continue;
         }
         for (index, source) in sources.iter().enumerate() {
-            let has_dynamic_input = source.db_query.is_none()
+            let has_dynamic_input = source.db_queries.is_empty()
                 && source
                     .input_keys
                     .iter()
@@ -175,6 +175,41 @@ impl GraphBuilder<'_> {
         Some(self.source_field(frame, path))
     }
 
+    pub(super) fn source_field_at_anchor(
+        &mut self,
+        source_path: &SourcePath,
+        active_anchor: &[String],
+    ) -> Option<NodeId> {
+        let schema = &self.sources.get(source_path.source)?.schema;
+        let root_frame = self.context_prefix(source_path.source, &[]);
+        let mut frame = (source_path.source > 0
+            && self.framed.contains(&root_frame)
+            && active_anchor.starts_with(&root_frame))
+        .then_some((root_frame, 0));
+        let mut node = schema;
+        for (index, segment) in source_path.path.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            let prefix = self.context_prefix(source_path.source, &source_path.path[..=index]);
+            if child.repeating
+                && self.framed.contains(&prefix)
+                && active_anchor.starts_with(&prefix)
+            {
+                frame = Some((prefix, index + 1));
+            }
+            node = child;
+        }
+        let (frame, path) = match frame {
+            Some((frame, suffix_start)) => (Some(frame), source_path.path[suffix_start..].to_vec()),
+            None => (
+                None,
+                self.context_prefix(source_path.source, &source_path.path),
+            ),
+        };
+        Some(self.source_field(frame, path))
+    }
+
     pub(super) fn schema_node(&self, source_path: &SourcePath) -> Option<&SchemaNode> {
         let schema = &self.sources.get(source_path.source)?.schema;
         schema_node_at(schema, &source_path.path)
@@ -213,7 +248,7 @@ impl GraphBuilder<'_> {
         let Some(source) = self.sources.get(source_path.source) else {
             return;
         };
-        if source.db_query.is_some() {
+        if !source.db_queries.is_empty() {
             self.query_scope_sources.insert(source_path.source);
         }
         if source_path.source > 0 && source_path.path.is_empty() {

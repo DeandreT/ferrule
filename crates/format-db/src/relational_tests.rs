@@ -1,7 +1,7 @@
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use rusqlite::Connection;
 
-use super::{DbFormatError, read_instance};
+use super::{DbFormatError, ForeignKeySide, read_instance, resolve_foreign_key_relation};
 
 fn test_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -229,5 +229,65 @@ fn rejects_a_relation_that_matches_both_directions() {
             child_table,
             join_column,
         } if parent_table == "parents" && child_table == "children" && join_column == "link_id"
+    ));
+}
+
+#[test]
+fn resolves_exact_forward_and_reverse_foreign_key_endpoints() {
+    let path = test_path("exact_endpoints");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE parents (id INTEGER PRIMARY KEY, referenced_child INTEGER, \
+             FOREIGN KEY(referenced_child) REFERENCES children(id)); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER, \
+             FOREIGN KEY(parent_id) REFERENCES parents(id));",
+    )
+    .unwrap();
+    drop(conn);
+
+    let forward =
+        resolve_foreign_key_relation(&path, "parents", "id", "children", "parent_id").unwrap();
+    let reverse =
+        resolve_foreign_key_relation(&path, "parents", "referenced_child", "children", "id")
+            .unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(forward.side, ForeignKeySide::Child);
+    assert_eq!(forward.join_column, "parent_id");
+    assert_eq!(reverse.side, ForeignKeySide::Parent);
+    assert_eq!(reverse.join_column, "referenced_child");
+}
+
+#[test]
+fn exact_endpoint_resolution_rejects_mismatch_and_ambiguity() {
+    let path = test_path("endpoint_errors");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE parents (id INTEGER PRIMARY KEY, other_id INTEGER); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER, \
+             FOREIGN KEY(parent_id) REFERENCES parents(id), \
+             FOREIGN KEY(parent_id) REFERENCES parents(id));",
+    )
+    .unwrap();
+    drop(conn);
+
+    let mismatch =
+        resolve_foreign_key_relation(&path, "parents", "other_id", "children", "parent_id")
+            .unwrap_err();
+    let ambiguous =
+        resolve_foreign_key_relation(&path, "parents", "id", "children", "parent_id").unwrap_err();
+    std::fs::remove_file(&path).unwrap();
+
+    assert!(matches!(
+        mismatch,
+        DbFormatError::MissingForeignKeyEndpoints { .. }
+    ));
+    assert!(matches!(
+        ambiguous,
+        DbFormatError::AmbiguousForeignKeyEndpoints { .. }
     ));
 }
