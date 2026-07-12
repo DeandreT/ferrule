@@ -106,6 +106,7 @@ impl ScopeBuilder {
         target_path: &[String],
         sequence: SequenceExpr,
         nodes: IterationNodes,
+        output: IterationOutput,
     ) {
         let scope = self.ensure_scope(target_path);
         scope.sequence = Some(sequence);
@@ -115,6 +116,7 @@ impl ScopeBuilder {
         scope.sort_by = nodes.sort_by;
         scope.sort_descending = nodes.sort_descending;
         scope.take = nodes.take;
+        scope.iteration_output = output;
     }
 
     pub(super) fn add_binding(&mut self, target: TargetLeaf, node: NodeId) {
