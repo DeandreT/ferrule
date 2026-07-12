@@ -11,6 +11,7 @@
 use ir::Value;
 use thiserror::Error;
 
+mod datetime;
 mod format_number;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
@@ -52,6 +53,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "length",
     "starts_with",
     "contains",
+    "sql_like",
     "pad_string_left",
     "pad_string_right",
     "add",
@@ -75,6 +77,11 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "exists",
     "round",
     "date_from_datetime",
+    "time_from_datetime",
+    "parse_date",
+    "parse_datetime",
+    "parse_time",
+    "substitute_missing",
 ];
 
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
@@ -98,6 +105,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "length" => length(args),
         "starts_with" => binary_string(args, "starts_with", |a, b| a.starts_with(b)),
         "contains" => binary_string(args, "contains", |a, b| a.contains(b)),
+        "sql_like" => binary_string(args, "sql_like", sql_like),
         "pad_string_left" => pad_string(args, "pad_string_left", true),
         "pad_string_right" => pad_string(args, "pad_string_right", false),
         "add" => numeric(args, "add", i64::checked_add, |a, b| a + b),
@@ -123,8 +131,44 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "exists" => exists(args),
         "round" => round(args),
         "date_from_datetime" => date_from_datetime(args),
+        "time_from_datetime" => datetime::time_from_datetime(args),
+        "parse_date" => datetime::parse_date(args),
+        "parse_datetime" => datetime::parse_datetime(args),
+        "parse_time" => datetime::parse_time(args),
+        "substitute_missing" => substitute_missing(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
+}
+
+/// Matches a complete string using SQL LIKE's `%` (zero or more characters)
+/// and `_` (exactly one character) wildcards. ASCII literals use SQLite's
+/// default case-insensitive LIKE behavior; non-ASCII literals compare exactly.
+fn sql_like(value: &str, pattern: &str) -> bool {
+    let value = value.chars().collect::<Vec<_>>();
+    let mut previous = vec![false; value.len() + 1];
+    previous[0] = true;
+    for token in pattern.chars() {
+        let mut current = vec![false; value.len() + 1];
+        match token {
+            '%' => {
+                current[0] = previous[0];
+                for index in 1..=value.len() {
+                    current[index] = previous[index] || current[index - 1];
+                }
+            }
+            '_' => {
+                current[1..].copy_from_slice(&previous[..value.len()]);
+            }
+            literal => {
+                for index in 1..=value.len() {
+                    current[index] =
+                        previous[index - 1] && value[index - 1].eq_ignore_ascii_case(&literal);
+                }
+            }
+        }
+        previous = current;
+    }
+    previous[value.len()]
 }
 
 fn concat(args: &[Value]) -> Value {
@@ -503,6 +547,18 @@ fn date_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     }
 }
 
+fn substitute_missing(args: &[Value]) -> Result<Value, FunctionError> {
+    match args {
+        [Value::Null, replacement] => Ok(replacement.clone()),
+        [value, _] => Ok(value.clone()),
+        _ => Err(FunctionError::ArityMismatch {
+            function: "substitute_missing",
+            expected: 2,
+            got: args.len(),
+        }),
+    }
+}
+
 fn value_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => a.partial_cmp(b),
@@ -652,6 +708,33 @@ mod tests {
             call("length", &[Value::String("Jane".into())]).unwrap(),
             Value::Int(4)
         );
+    }
+
+    #[test]
+    fn sql_like_matches_percent_and_single_character_wildcards() {
+        for (value, pattern, expected) in [
+            ("Baker", "B%", true),
+            ("baker", "B%", true),
+            ("Baker", "%ake_", true),
+            ("Baker", "B_k_r", true),
+            ("Baker", "B_k", false),
+            ("", "%", true),
+            ("", "_", false),
+            ("é", "_", true),
+        ] {
+            assert_eq!(
+                call(
+                    "sql_like",
+                    &[
+                        Value::String(value.to_string()),
+                        Value::String(pattern.to_string())
+                    ]
+                )
+                .unwrap(),
+                Value::Bool(expected),
+                "{value:?} LIKE {pattern:?}"
+            );
+        }
     }
 
     #[test]
@@ -1051,6 +1134,33 @@ mod tests {
         assert_eq!(
             call("date_from_datetime", &[Value::String("2024-03-01".into())]).unwrap(),
             Value::String("2024-03-01".into())
+        );
+    }
+
+    #[test]
+    fn substitute_missing_only_replaces_absent_values() {
+        assert_eq!(
+            call(
+                "substitute_missing",
+                &[Value::Null, Value::String("fallback".into())]
+            )
+            .unwrap(),
+            Value::String("fallback".into())
+        );
+        assert_eq!(
+            call(
+                "substitute_missing",
+                &[
+                    Value::String(String::new()),
+                    Value::String("fallback".into())
+                ]
+            )
+            .unwrap(),
+            Value::String(String::new())
+        );
+        assert_eq!(
+            call("substitute_missing", &[Value::Int(0), Value::Int(9)]).unwrap(),
+            Value::Int(0)
         );
     }
 
