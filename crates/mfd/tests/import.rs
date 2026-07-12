@@ -5,6 +5,8 @@ use mapping::{Node, SequenceExpr};
 
 #[path = "import/sequence_controls.rs"]
 mod sequence_controls;
+#[path = "import/udf.rs"]
+mod udf;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

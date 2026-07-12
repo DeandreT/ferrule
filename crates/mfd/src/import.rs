@@ -17,6 +17,7 @@ mod graph;
 mod iteration;
 mod schema;
 mod scope;
+mod udf;
 
 use function::{
     aggregate_op, is_distinct_values as is_distinct_values_component,
@@ -24,17 +25,18 @@ use function::{
     is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
     map_name as map_function_name, parse_constant, read as read_fn_component,
 };
-use graph::GraphBuilder;
+use graph::{GraphBuilder, read_edges};
 use iteration::{
     IntermediateFeed, IterationFeed, compatible_collection, note_iteration_control_order,
     split_at_innermost_repeating,
 };
 use schema::{
     ComponentFormat, SchemaComponent, collect_matching_scalar_paths, note_skipped_library,
-    parse_u32, read_csv_component, read_db_component, read_json_component, read_schema_component,
-    schema_node_at,
+    read_csv_component, read_db_component, read_edi_component, read_json_component,
+    read_schema_component, schema_node_at,
 };
 use scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use udf::{Call as UdfCall, Registry as UdfRegistry};
 
 pub struct Imported {
     pub project: Project,
@@ -60,6 +62,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut warnings = Vec::new();
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
+    let udf_registry = UdfRegistry::read(&mapping_el);
+    let mut udf_calls = Vec::new();
     let mut skipped_libraries: Vec<String> = Vec::new();
 
     if let Some(children) = structure
@@ -95,6 +99,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped csv component `{name}`")),
                         }
+                    } else if flavor == "edi" {
+                        match read_edi_component(&component, &mut warnings) {
+                            Some(sc) => schema_components.push(sc),
+                            None => warnings.push(format!("skipped edi component `{name}`")),
+                        }
                     } else {
                         let label = if flavor.is_empty() {
                             "text".to_string()
@@ -104,7 +113,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         note_skipped_library(&mut skipped_libraries, &label);
                         warnings.push(format!(
                             "skipped component `{name}`: text flavor `{flavor}` is \
-                             not supported yet (only csv text components import)"
+                             not supported yet (only csv and edi text components import)"
                         ));
                     }
                 }
@@ -114,55 +123,35 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 },
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
                 other => {
-                    note_skipped_library(&mut skipped_libraries, other);
-                    warnings.push(format!(
-                        "skipped component `{name}`: unsupported library `{other}` \
-                         (only xml/json/csv/db and core/lang function components import)"
-                    ));
+                    if let Some(definition) = udf_registry.supported(other, &name) {
+                        if let Some(shape) = udf_registry.definition(definition) {
+                            match UdfCall::read(&component, definition, shape) {
+                                Ok(call) => udf_calls.push(call),
+                                Err(reason) => warnings.push(format!(
+                                    "skipped user-defined function `{name}`: {reason}"
+                                )),
+                            }
+                        }
+                    } else {
+                        note_skipped_library(&mut skipped_libraries, other);
+                        if let Some(reason) = udf_registry.unsupported_reason(other, &name) {
+                            warnings
+                                .push(format!("skipped user-defined function `{name}`: {reason}"));
+                        } else {
+                            warnings.push(format!(
+                                "skipped component `{name}`: unsupported library `{other}` \
+                                 (only xml/json/csv/edi/db, scalar user-defined functions, and \
+                                 core/lang function components import)"
+                            ));
+                        }
+                    }
                 }
             }
         }
     }
 
-    // Edges: to-key -> from-key (every input pin has at most one feed).
-    let mut edge_from: BTreeMap<u32, u32> = BTreeMap::new();
-    if let Some(graph_el) = structure
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "graph")
-    {
-        for vertex in graph_el.descendants().filter(|n| n.has_tag_name("vertex")) {
-            let Some(from) = parse_u32(vertex.attribute("vertexkey")) else {
-                continue;
-            };
-            for edge in vertex.descendants().filter(|n| n.has_tag_name("edge")) {
-                if let Some(to) = parse_u32(edge.attribute("vertexkey")) {
-                    edge_from.insert(to, from);
-                }
-            }
-        }
-    }
-    // Older designs store the same directed edges as flat from/to pairs.
-    if let Some(connections) = structure
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "connections")
-        .or_else(|| {
-            wrapper
-                .children()
-                .find(|n| n.is_element() && n.tag_name().name() == "connections")
-        })
-    {
-        for edge in connections
-            .children()
-            .filter(|node| node.is_element() && node.tag_name().name() == "edge")
-        {
-            if let (Some(from), Some(to)) = (
-                parse_u32(edge.attribute("from")),
-                parse_u32(edge.attribute("to")),
-            ) {
-                edge_from.insert(to, from);
-            }
-        }
-    }
+    // Edges are indexed as to-key -> from-key; each input has at most one feed.
+    let edge_from = read_edges(&structure, Some(&wrapper));
 
     let sources: Vec<&SchemaComponent> = schema_components
         .iter()
@@ -176,18 +165,31 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         schema_components.iter().filter(|c| c.is_variable).collect();
     let unsupported = |side: &str| {
         MfdError::Unsupported(if skipped_libraries.is_empty() {
-            format!("no importable {side} component (xml/json/csv/db) found in this design")
+            format!("no importable {side} component (xml/json/csv/edi/db) found in this design")
         } else {
             format!(
-                "no importable {side} component (xml/json/csv/db) found; this design \
+                "no importable {side} component (xml/json/csv/edi/db) found; this design \
                  uses {} components, which ferrule cannot import yet",
                 skipped_libraries.join("/")
             )
         })
     };
     let primary = sources.first().ok_or_else(|| unsupported("source"))?;
-    let target = targets.first().ok_or_else(|| unsupported("target"))?;
-    if targets.len() > 1 {
+    let default_target = targets
+        .iter()
+        .copied()
+        .find(|component| component.is_default_output);
+    let target = default_target
+        .or_else(|| targets.first().copied())
+        .ok_or_else(|| unsupported("target"))?;
+    let drops_connected_target = targets.iter().copied().any(|component| {
+        !std::ptr::eq(component, target)
+            && component
+                .ports
+                .keys()
+                .any(|key| edge_from.contains_key(key))
+    });
+    if targets.len() > 1 && (default_target.is_none() || drops_connected_target) {
         warnings.push(format!(
             "multiple target components; only `{}` imported",
             target.name
@@ -207,12 +209,23 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         intermediates: &intermediates,
         fn_components: &fn_components,
         fn_by_output: BTreeMap::new(),
+        udf_nodes: BTreeMap::new(),
+        udf_by_output: BTreeMap::new(),
+        udf_calls: &udf_calls,
+        udf_registry: &udf_registry,
         framed: std::collections::BTreeSet::new(),
         warnings: Vec::new(),
     };
     for (i, fc) in fn_components.iter().enumerate() {
         for &out in &fc.outputs {
             builder.fn_by_output.insert(out, i);
+        }
+    }
+    for (call_idx, call) in udf_calls.iter().enumerate() {
+        for (&output, &component_id) in &call.outputs {
+            builder
+                .udf_by_output
+                .insert(output, (call_idx, component_id));
         }
     }
     // Scopes and bindings from the target's connected ports.
@@ -611,6 +624,9 @@ impl GraphBuilder<'_> {
             let mut abs = self.sequence_source_path(intermediate.feed)?;
             abs.extend(intermediate.suffix);
             return self.primary_source_field(&abs);
+        }
+        if let Some(&(call_idx, component_id)) = self.udf_by_output.get(&key) {
+            return self.udf_output_node(key, call_idx, component_id);
         }
         // A function output?
         let idx = *self.fn_by_output.get(&key)?;

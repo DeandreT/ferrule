@@ -95,6 +95,12 @@ pub enum Dialect {
 }
 
 pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
+    if matches!(schema.name.as_str(), "MFD-X12" | "MFD-EDIFACT") {
+        return Err(EdiFormatError::UnsupportedSchema(
+            "an MFD entry-tree schema has no reliable element positions; supply a complete EDI schema before execution"
+                .to_string(),
+        ));
+    }
     match segments::root_trigger(schema)? {
         "ISA" => Ok(Dialect::X12),
         "UNB" => Ok(Dialect::Edifact),
@@ -133,5 +139,37 @@ mod tests {
             dialect_of(&nested_composite),
             Err(EdiFormatError::UnsupportedSchema(_))
         ));
+    }
+
+    #[test]
+    fn importer_entry_tree_schemas_are_graph_only_until_repaired() {
+        let x12 = SchemaNode::group(
+            "MFD-X12",
+            vec![SchemaNode::group(
+                "Message",
+                vec![SchemaNode::group(
+                    "BEG",
+                    vec![SchemaNode::scalar("01", ScalarType::String)],
+                )],
+            )],
+        );
+        let edifact = SchemaNode::group(
+            "MFD-EDIFACT",
+            vec![SchemaNode::group(
+                "Message",
+                vec![SchemaNode::group(
+                    "BGM",
+                    vec![SchemaNode::scalar("1004", ScalarType::String)],
+                )],
+            )],
+        );
+
+        for schema in [&x12, &edifact] {
+            assert!(matches!(
+                dialect_of(schema),
+                Err(EdiFormatError::UnsupportedSchema(message))
+                    if message.contains("no reliable element positions")
+            ));
+        }
     }
 }

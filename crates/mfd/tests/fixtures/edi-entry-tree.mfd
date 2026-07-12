@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="orders" library="text" uid="2" kind="16">
+          <properties/>
+          <data>
+            <root>
+              <header><namespaces/></header>
+              <entry name="FileInstance">
+                <entry name="document">
+                  <entry name="Envelope">
+                    <entry name="Interchange">
+                      <entry name="Group">
+                        <entry name="Message">
+                          <entry name="SG2" outkey="10">
+                            <entry name="NAD">
+                              <entry name="F93" outkey="11"/>
+                              <entry name="F380" outkey="12"/>
+                            </entry>
+                          </entry>
+                          <entry name="SG3"/>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <text type="edi" kind="EDIFACT" inputinstance="orders.edi">
+              <settings><separators dataelement="+" component=":" segment="'"/></settings>
+            </text>
+          </data>
+        </component>
+        <component name="ignored" library="xml" uid="3" kind="14">
+          <properties/>
+          <data>
+            <root>
+              <header><namespaces/></header>
+              <entry name="Ignored"><entry name="Value" inpkey="90"/></entry>
+            </root>
+          </data>
+        </component>
+        <component name="people" library="xml" uid="4" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces/></header>
+              <entry name="FileInstance">
+                <entry name="document">
+                  <entry name="People">
+                    <entry name="Person" inpkey="20">
+                      <entry name="Name" inpkey="21"/>
+                      <entry name="Age" inpkey="22"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="people-target.xsd" instanceroot="{}People" outputinstance="people.xml"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="90"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

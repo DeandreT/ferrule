@@ -21,14 +21,23 @@ fn warning_category(w: &str) -> String {
         if c == '`' {
             if !in_quote {
                 out.push_str("`_");
+            } else {
+                out.push('`');
             }
-            out.push('`');
             in_quote = !in_quote;
         } else if !in_quote {
             out.push(c);
         }
     }
     out
+}
+
+#[test]
+fn warning_categories_replace_quoted_values_once() {
+    assert_eq!(
+        warning_category("binding for `Person/Name` comes from `source`"),
+        "binding for `_` comes from `_`"
+    );
 }
 
 #[test]
@@ -51,6 +60,7 @@ fn survey_samples() {
     let mut ok_clean = 0usize;
     let mut errors: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let mut warning_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut warnings_by_file: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for path in &mfds {
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
@@ -62,6 +72,10 @@ fn survey_samples() {
                 }
                 for w in &imported.warnings {
                     *warning_counts.entry(warning_category(w)).or_default() += 1;
+                    warnings_by_file
+                        .entry(name.clone())
+                        .or_default()
+                        .push(w.clone());
                 }
             }
             Err(err) => {
@@ -88,5 +102,14 @@ fn survey_samples() {
     warnings.sort_by_key(|a| std::cmp::Reverse(a.1));
     for (cat, n) in warnings {
         println!("{n:4}  {cat}");
+    }
+    if std::env::var_os("FERRULE_SURVEY_DETAILS").is_some() {
+        println!("\n-- warnings by file --");
+        for (file, warnings) in warnings_by_file {
+            println!("{file}");
+            for warning in warnings {
+                println!("    {warning}");
+            }
+        }
     }
 }
