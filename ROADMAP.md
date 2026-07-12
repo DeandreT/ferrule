@@ -63,6 +63,7 @@ stage-correct positions. Compatible JSON object alternatives can drive exact
 derived XML type output, database WHERE/ORDER controls lower into runtime scopes,
 static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
+standalone max-one queries preserve empty/single document-root cardinality,
 computed JSON targets, plain structural group copies, and filtered XML occurrence
 sequences lower exactly, and
 high-value date/time/duration/missing-value functions execute natively. Non-representable
