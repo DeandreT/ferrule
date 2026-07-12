@@ -431,6 +431,9 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
         target_field: "out".into(),
         node: 1,
     });
+    fx.root_scope.group_by = Some(1);
+    fx.root_scope.group_starting_with = Some(1);
+    fx.root_scope.group_into_blocks = Some(1);
     fx.root_scope.sort_by = Some(1);
     fx.root_scope.take = Some(1);
 
@@ -439,6 +442,9 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
         vec![
             "graph node 0",
             "root scope binding out",
+            "root scope group block size",
+            "root scope group-by key",
+            "root scope group-starting predicate",
             "root scope sort key",
             "root scope take count",
         ]

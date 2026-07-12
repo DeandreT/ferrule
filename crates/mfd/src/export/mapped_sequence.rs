@@ -202,6 +202,7 @@ fn collect_mapped_bindings(
         || scope.sequence.is_some()
         || scope.filter.is_some() && !relative.is_empty()
         || scope.group_by.is_some()
+        || scope.group_starting_with.is_some()
         || scope.group_into_blocks.is_some()
         || scope.sort_by.is_some() && !relative.is_empty()
         || scope.take.is_some() && !relative.is_empty()

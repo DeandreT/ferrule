@@ -275,6 +275,10 @@ pub(super) fn is_group_into_blocks(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "group-into-blocks"
 }
 
+pub(super) fn is_group_starting_with(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 5 && component.name == "group-starting-with"
+}
+
 pub(super) fn is_distinct_values(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "distinct-values"
 }

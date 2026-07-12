@@ -70,6 +70,7 @@ fn build_one(
         && (feed.db_where_component.is_some()
             || feed.has_filter
             || feed.has_key_grouping
+            || feed.has_start_grouping
             || feed.has_block_grouping
             || feed.distinct_key.is_some()
             || feed.has_sort
@@ -90,6 +91,17 @@ fn build_one(
         .and_then(|key| builder.value_node(key))
         .or(distinct);
     let resolved_block = feed.block_size.and_then(|key| builder.value_node(key));
+    let start_group = feed
+        .group_starting_with
+        .and_then(|key| builder.value_node(key));
+    if feed.has_start_grouping && start_group.is_none() {
+        builder.warnings.push(format!(
+            "group-starting-with feeding `{}` has a missing or unsupported predicate; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
+        return;
+    }
     if feed.has_block_grouping && resolved_block.is_none() {
         builder.warnings.push(format!(
             "group-into-blocks feeding `{}` has a missing or unsupported block-size; iteration skipped",
@@ -98,7 +110,7 @@ fn build_one(
         skipped.push(target_path);
         return;
     }
-    let block = resolved_block.filter(|_| group.is_none());
+    let block = resolved_block.filter(|_| group.is_none() && start_group.is_none());
     if let Some(distinct) = distinct {
         let exists = builder.alloc(Node::Call {
             function: "exists".into(),
@@ -137,6 +149,7 @@ fn build_one(
     let nodes = IterationNodes {
         filter,
         group_by: group,
+        group_starting_with: start_group,
         group_into_blocks: block,
         sort_by: sort,
         sort_descending: ordinary_sort

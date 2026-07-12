@@ -253,9 +253,15 @@ pub struct Scope {
     /// for a source-backed or generated iteration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_by: Option<NodeId>,
+    /// Partitions items into contiguous groups whenever this per-item
+    /// predicate is true. Items before its first true result form an initial
+    /// group. Mutually exclusive with the other grouping modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_starting_with: Option<NodeId>,
     /// Partitions iterated items into contiguous groups of this many members.
     /// The expression is evaluated once in the parent context and must produce
-    /// a positive item count. Mutually exclusive with [`Scope::group_by`].
+    /// a positive item count. Mutually exclusive with the other grouping
+    /// modes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_into_blocks: Option<NodeId>,
     /// Sort key evaluated once per candidate item. Incomparable values keep
@@ -368,6 +374,20 @@ mod tests {
         assert!(scope.dynamic_children.is_empty());
         assert!(!scope.merge_dynamic_fields);
         assert_eq!(scope.iteration_output, IterationOutput::Repeated);
+        assert!(scope.group_starting_with.is_none());
+    }
+
+    #[test]
+    fn group_starting_predicate_roundtrips() {
+        let scope = Scope {
+            source: Some(vec!["items".into()]),
+            group_starting_with: Some(7),
+            ..Scope::default()
+        };
+        let encoded = serde_json::to_string(&scope).unwrap();
+        assert!(encoded.contains(r#""group_starting_with":7"#));
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.group_starting_with, Some(7));
     }
 
     #[test]

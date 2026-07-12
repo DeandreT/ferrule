@@ -527,6 +527,7 @@ fn build_target(
         IterationNodes {
             filter: Some(filter),
             group_by: None,
+            group_starting_with: None,
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,

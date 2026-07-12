@@ -169,6 +169,6 @@ fn group_into_blocks_rejects_a_second_grouping_mode() {
     assert!(issues.iter().any(|issue| {
         issue
             .to_string()
-            .contains("group-by and group-into-blocks are mutually exclusive")
+            .contains("scope grouping modes are mutually exclusive")
     }));
 }
