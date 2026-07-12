@@ -20,5 +20,4 @@ engine = { workspace = true }
 format-csv = { workspace = true }
 rusqlite = { workspace = true }
 
-[dev-dependencies]
 serde_json = { workspace = true }
