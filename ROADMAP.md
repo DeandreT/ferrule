@@ -22,8 +22,8 @@ clean-room interoperability, and extensible adapters.
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
-  structural group projection, mapped and computed XML occurrence sequences, and
-  45 scalar built-ins.
+  structural group projection, mapped and computed XML occurrence sequences,
+  contiguous boundary-driven grouping, and 45 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
@@ -70,9 +70,11 @@ standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
 constructed records, mapping-path and stable per-run clock values use explicit
 host context, computed JSON targets, plain structural group copies, and filtered
-or generated XML occurrence sequences lower exactly. Repeating copy-all groups
-retain their scalar descendants, `xsi:nil` remains distinct from absent values,
-and inclusive ranges accept exact integral decimal inputs.
+or generated XML occurrence sequences lower exactly. `group-starting-with`
+partitions filtered rows into contiguous groups and round-trips through `.mfd`.
+Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
+distinct from absent values, and inclusive ranges accept exact integral decimal
+inputs.
 High-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
 conversion.
@@ -245,9 +247,10 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 401 (400 executable plus the ignored local-sample survey).
+- Workspace tests: 407 (406 executable plus the ignored local-sample survey).
 - `.mfd` survey: 96/120 import, 54 warning-free.
-- Unsupported-function warnings: 3 across the expanded importable set.
+- Unsupported-function warnings: 2 (`auto-number` and `sleep`) across the
+  expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
 - Non-repeating structural-group warnings: 6 across the expanded importable set.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
