@@ -5,7 +5,7 @@ use mapping::{Graph, Node, NodeId};
 
 use super::function::{FnComponent, map_name, parse_constant, read as read_function};
 use super::graph::{GraphBuilder, read_edges};
-use super::schema::parse_u32;
+use super::schema::{parse_u32, read_schema_component, schema_node_at};
 
 pub(super) mod structured;
 
@@ -31,10 +31,21 @@ pub(super) enum ScalarExpr {
 
 #[derive(Clone)]
 struct LookupExpr {
-    structured_parameter: u32,
-    key_path: Vec<String>,
+    source: LookupSource,
     matches: ScalarExpr,
-    value_path: Vec<String>,
+}
+
+#[derive(Clone)]
+enum LookupSource {
+    Parameter {
+        component_id: u32,
+        key_path: Vec<String>,
+        value_path: Vec<String>,
+    },
+    Catalog {
+        key_port: u32,
+        value_port: u32,
+    },
 }
 
 #[derive(Clone)]
@@ -233,8 +244,8 @@ fn read_definition(
 > {
     match read_scalar_definition(component) {
         Ok(definition) => Ok((definition, None, Vec::new())),
-        Err(scalar_reason) => match read_lookup_definition(component) {
-            Ok(definition) => Ok((definition, None, Vec::new())),
+        Err(scalar_reason) => match read_lookup_definition(component, mfd_path) {
+            Ok(definition) => Ok(definition),
             Err(_) => structured::read(component, mfd_path).map_err(|structured_reason| {
                 if component.descendants().any(|node| {
                     node.has_tag_name("properties") && node.attribute("UsageKind") == Some("output")
@@ -372,7 +383,17 @@ fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
     })
 }
 
-fn read_lookup_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
+fn read_lookup_definition(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &std::path::Path,
+) -> Result<
+    (
+        Definition,
+        Option<super::schema::SchemaComponent>,
+        Vec<String>,
+    ),
+    String,
+> {
     let structure = component
         .children()
         .find(|node| node.has_tag_name("structure"))
@@ -402,12 +423,7 @@ fn read_lookup_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
         child.attribute("library") == Some("core") && child.attribute("kind") == Some("3")
     })?;
     let document = one_component(&children, |child| {
-        child.attribute("library") == Some("xml")
-            && child.attribute("kind") == Some("14")
-            && child
-                .children()
-                .find(|node| node.has_tag_name("properties"))
-                .is_some_and(|properties| properties.attribute("UsageKind") == Some("input"))
+        child.attribute("library") == Some("xml") && child.attribute("kind") == Some("14")
     })?;
 
     let scalar_input_id = component_uid(scalar_input)?;
@@ -459,7 +475,27 @@ fn read_lookup_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
     let value_feed = *edge_from
         .get(filter_values)
         .ok_or("lookup filter value is not connected")?;
-    let ports = xml_output_paths(document)?;
+    let parameter_catalog = document
+        .children()
+        .find(|node| node.has_tag_name("properties"))
+        .is_some_and(|properties| properties.attribute("UsageKind") == Some("input"));
+    let mut schema_warnings = Vec::new();
+    let mut catalog = None;
+    let ports = if parameter_catalog {
+        xml_output_paths(document)?
+    } else {
+        let parsed = read_schema_component(&document, mfd_path, &mut schema_warnings)
+            .ok_or("lookup XML catalog schema cannot be read")?;
+        if !parsed.is_source || parsed.input_instance.is_none() {
+            return Err(
+                "lookup XML component must be an input parameter or have a static input instance"
+                    .to_string(),
+            );
+        }
+        let ports = parsed.ports.clone();
+        catalog = Some(parsed);
+        ports
+    };
     let key_path = ports
         .get(&key_feed)
         .cloned()
@@ -475,19 +511,51 @@ fn read_lookup_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
         return Err("lookup key and value must be siblings in one collection".to_string());
     }
 
-    Ok(Definition {
-        parameters: BTreeSet::from([scalar_input_id]),
-        structured_parameters: BTreeSet::from([structured_id]),
-        outputs: BTreeMap::from([(
-            scalar_output_id,
-            OutputExpr::Lookup(LookupExpr {
-                structured_parameter: structured_id,
-                key_path,
-                matches,
-                value_path,
-            }),
-        )]),
-    })
+    if let Some(catalog) = &catalog {
+        let collection = &key_path[..key_path.len() - 1];
+        let key = schema_node_at(&catalog.schema, &key_path);
+        let value = schema_node_at(&catalog.schema, &value_path);
+        if !schema_node_at(&catalog.schema, collection)
+            .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+            || !key.is_some_and(|node| {
+                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+            })
+            || !value.is_some_and(|node| {
+                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+            })
+        {
+            return Err(
+                "lookup static catalog key and value must be scalar siblings in one repeating group"
+                    .to_string(),
+            );
+        }
+    }
+    let source = match catalog {
+        Some(_) => LookupSource::Catalog {
+            key_port: key_feed,
+            value_port: value_feed,
+        },
+        None => LookupSource::Parameter {
+            component_id: structured_id,
+            key_path,
+            value_path,
+        },
+    };
+    Ok((
+        Definition {
+            parameters: BTreeSet::from([scalar_input_id]),
+            structured_parameters: match &source {
+                LookupSource::Parameter { component_id, .. } => BTreeSet::from([*component_id]),
+                LookupSource::Catalog { .. } => BTreeSet::new(),
+            },
+            outputs: BTreeMap::from([(
+                scalar_output_id,
+                OutputExpr::Lookup(LookupExpr { source, matches }),
+            )]),
+        },
+        catalog,
+        schema_warnings,
+    ))
 }
 
 fn one_component<'a, 'input>(
@@ -673,22 +741,47 @@ impl GraphBuilder<'_> {
         expression: &LookupExpr,
         parameters: &BTreeMap<u32, NodeId>,
     ) -> Option<NodeId> {
-        let inputs = self
-            .udf_calls
-            .get(call_idx)?
-            .structured_inputs
-            .get(&expression.structured_parameter)?
-            .clone();
-        let key_port = matching_call_port(&inputs, &expression.key_path)?;
-        let value_port = matching_call_port(&inputs, &expression.value_path)?;
-        let key_source = self
-            .edge_from
-            .get(&key_port)
-            .and_then(|feed| self.sequence_source_path(*feed))?;
-        let value_source = self
-            .edge_from
-            .get(&value_port)
-            .and_then(|feed| self.sequence_source_path(*feed))?;
+        let (key_source, value_source) = match &expression.source {
+            LookupSource::Parameter {
+                component_id,
+                key_path,
+                value_path,
+            } => {
+                let inputs = self
+                    .udf_calls
+                    .get(call_idx)?
+                    .structured_inputs
+                    .get(component_id)?
+                    .clone();
+                let key_port = matching_call_port(&inputs, key_path)?;
+                let value_port = matching_call_port(&inputs, value_path)?;
+                let key_source = self
+                    .edge_from
+                    .get(&key_port)
+                    .and_then(|feed| self.sequence_source_path(*feed))?;
+                let value_source = self
+                    .edge_from
+                    .get(&value_port)
+                    .and_then(|feed| self.sequence_source_path(*feed))?;
+                for (_, port) in &inputs {
+                    let source = self
+                        .edge_from
+                        .get(port)
+                        .and_then(|feed| self.sequence_source_path(*feed))?;
+                    if source.source != key_source.source {
+                        return None;
+                    }
+                }
+                (key_source, value_source)
+            }
+            LookupSource::Catalog {
+                key_port,
+                value_port,
+            } => (
+                self.source_abs_path(*key_port)?,
+                self.source_abs_path(*value_port)?,
+            ),
+        };
         if key_source.source == 0
             || key_source.source != value_source.source
             || key_source.path.len() < 2
@@ -696,15 +789,6 @@ impl GraphBuilder<'_> {
                 != value_source.path[..value_source.path.len() - 1]
         {
             return None;
-        }
-        for (_, port) in &inputs {
-            let source = self
-                .edge_from
-                .get(port)
-                .and_then(|feed| self.sequence_source_path(*feed))?;
-            if source.source != key_source.source {
-                return None;
-            }
         }
         let collection_abs = key_source.path[..key_source.path.len() - 1].to_vec();
         let collection_node = self
