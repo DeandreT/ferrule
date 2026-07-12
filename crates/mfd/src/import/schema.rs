@@ -4,8 +4,10 @@ use std::path::Path;
 use ir::{SchemaKind, SchemaNode};
 use mapping::FormatOptions;
 
+mod csv;
 mod xml_ports;
 
+use csv::select_block as select_csv_block;
 use xml_ports::normalize_xml_text_ports;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -492,21 +494,11 @@ pub(super) fn read_csv_component(
             .find(|n| n.is_element() && n.tag_name().name() == "names")
     });
 
-    // The entry tree is FileInstance > document > block(fields).
     let root_el = data
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "root")?;
-    let mut block = root_el
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
-    while matches!(
-        block.attribute("name"),
-        Some("FileInstance") | Some("document")
-    ) {
-        block = block
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
-    }
+    let configured_block = names_el.and_then(|names| names.attribute("block"));
+    let block = select_csv_block(root_el, configured_block, &name, warnings)?;
 
     let fields: Vec<SchemaNode> = names_el
         .map(|names| {

@@ -45,6 +45,9 @@ pub(super) struct FnComponent {
     pub(super) inputs: Vec<Option<u32>>,
     /// Output pin keys in `pos` order.
     pub(super) outputs: Vec<u32>,
+    /// Declared output positions, retaining keyless pins so a secondary
+    /// output cannot be mistaken for the primary result.
+    pub(super) output_pins: Vec<Option<u32>>,
     pub(super) constant: Option<(String, String)>,
     pub(super) valuemap: Option<ValueMapData>,
     pub(super) sort_descending: Option<bool>,
@@ -63,15 +66,30 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
             .children()
             .find(|n| n.is_element() && n.tag_name().name() == tag)
             .map(|pins| {
-                pins.children()
+                let datapoints: Vec<_> = pins
+                    .children()
                     .filter(|n| n.is_element() && n.tag_name().name() == "datapoint")
-                    .map(|d| parse_u32(d.attribute("key")))
-                    .collect()
+                    .collect();
+                let mut ordered = Vec::new();
+                for (index, datapoint) in datapoints.into_iter().enumerate() {
+                    let position = parse_u32(datapoint.attribute("pos"))
+                        .and_then(|position| usize::try_from(position).ok())
+                        .filter(|position| *position < 64)
+                        .unwrap_or(index);
+                    if ordered.len() <= position {
+                        ordered.resize(position + 1, None);
+                    }
+                    if ordered[position].is_none() {
+                        ordered[position] = parse_u32(datapoint.attribute("key"));
+                    }
+                }
+                ordered
             })
             .unwrap_or_default()
     };
     let inputs = pins("sources");
-    let outputs: Vec<u32> = pins("targets").into_iter().flatten().collect();
+    let output_pins = pins("targets");
+    let outputs: Vec<u32> = output_pins.iter().flatten().copied().collect();
 
     let data = component
         .children()
@@ -127,6 +145,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         kind,
         inputs,
         outputs,
+        output_pins,
         constant,
         valuemap,
         sort_descending,
@@ -366,7 +385,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::map_name;
+    use super::{map_name, read};
 
     #[test]
     fn scalar_names_use_canonical_ir_spelling() {
@@ -383,5 +402,20 @@ mod tests {
         assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
         assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
+    }
+
+    #[test]
+    fn datapoint_positions_preserve_keyless_primary_outputs() {
+        let document = roxmltree::Document::parse(
+            r#"<component name="filter" library="core" kind="3">
+                <sources><datapoint pos="1" key="2"/><datapoint pos="0" key="1"/></sources>
+                <targets><datapoint pos="1" key="9"/><datapoint pos="0"/></targets>
+            </component>"#,
+        )
+        .unwrap();
+        let component = read(&document.root_element());
+        assert_eq!(component.inputs, vec![Some(1), Some(2)]);
+        assert_eq!(component.output_pins, vec![None, Some(9)]);
+        assert_eq!(component.outputs, vec![9]);
     }
 }

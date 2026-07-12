@@ -19,11 +19,7 @@ use context::runtime_field;
 use dynamic_target::{eval_dynamic_key, insert_target_field};
 use grouping::GroupingMode;
 use iteration_output::finalize_scope_output;
-#[cfg(test)]
-use mapping::SequenceExpr;
-use sequence::eval_sequence;
-#[cfg(test)]
-use sequence::{MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length};
+use sequence::{eval_sequence, eval_sequence_exists};
 
 pub use validate::{ValidationIssue, validate};
 
@@ -779,6 +775,10 @@ fn eval_expr(
                 .and_then(|item| field_scalar(item, value).cloned())
                 .unwrap_or(Value::Null))
         }
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } => eval_sequence_exists(graph, sequence, *predicate, context, positions, in_progress),
         Node::Aggregate {
             function,
             collection,
@@ -1196,3 +1196,5 @@ mod group_blocks_tests;
 mod group_starting_tests;
 #[cfg(test)]
 mod iteration_output_tests;
+#[cfg(test)]
+mod sequence_exists_tests;
