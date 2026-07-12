@@ -32,7 +32,7 @@ fn imports_edi_entry_tree_paths_and_honors_default_output() {
     let person = &project.root.children[0];
     assert_eq!(person.target_field, "Person");
     assert_eq!(
-        person.source.as_deref(),
+        person.source(),
         Some(
             ["Interchange", "Group", "Message", "SG2"]
                 .map(String::from)

@@ -18,7 +18,7 @@ pub(super) fn build(
 ) -> Vec<Vec<String>> {
     let connected: BTreeSet<Vec<String>> =
         bindings.iter().map(|(target, _)| target.path()).collect();
-    let mut skipped = Vec::new();
+    let mut skipped = builder.rejected_join_paths.iter().cloned().collect();
     for iteration in iterations {
         build_one(iteration, target, &connected, builder, scopes, &mut skipped);
     }
@@ -34,7 +34,49 @@ fn build_one(
     skipped: &mut Vec<Vec<String>>,
 ) {
     let target_path = iteration.target_path;
+    let join = iteration.join;
     let feed = builder.resolve_iteration_feed(iteration.feed);
+    if let Some(id) = join {
+        match builder.prepare_join_iteration(
+            id,
+            &target_path,
+            iteration.output == IterationOutput::MappedSequence,
+            scopes,
+        ) {
+            super::join::PreparedIteration::Owner => {}
+            super::join::PreparedIteration::Projection => {
+                let has_connected_descendant = connected
+                    .iter()
+                    .any(|path| path.len() > target_path.len() && path.starts_with(&target_path));
+                if !has_connected_descendant {
+                    builder.rejected_join_paths.insert(target_path.clone());
+                    builder.warnings.push(format!(
+                        "join projection into `{}` has no connected scalar descendants; structural copy is unsupported and was skipped",
+                        target_path.join("/")
+                    ));
+                    skipped.push(target_path);
+                } else if feed.has_filter
+                    || feed.has_sort
+                    || feed.take_expr.is_some()
+                    || feed.take_default_one
+                {
+                    builder.rejected_join_paths.insert(target_path.clone());
+                    if builder.warned_join_controls.insert(id) {
+                        builder.warnings.push(format!(
+                            "join projection into `{}` has independent filter, sort, or item-limit controls; projection skipped",
+                            target_path.join("/")
+                        ));
+                    }
+                    skipped.push(target_path);
+                }
+                return;
+            }
+            super::join::PreparedIteration::Rejected => {
+                skipped.push(target_path);
+                return;
+            }
+        }
+    }
     if let Some(issue) = feed.order_issue {
         builder.warnings.push(format!(
             "sequence into `{}` {issue}; imported using ferrule's sequence order",
@@ -45,7 +87,7 @@ fn build_one(
     let sequence = feed
         .sequence_component
         .and_then(|index| builder.sequence_expr(index));
-    if source_path.is_none() && sequence.is_none() {
+    if source_path.is_none() && sequence.is_none() && join.is_none() {
         builder.warnings.push(format!(
             "iteration into `{}` comes from an unsupported feed; skipped",
             target_path.join("/")
@@ -53,6 +95,19 @@ fn build_one(
         return;
     }
     let existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
+    if let Some(id) = join
+        && feed.has_filter
+        && existing_filter.is_none()
+    {
+        reject_join_control(
+            builder,
+            skipped,
+            id,
+            target_path,
+            "has a missing or unsupported filter predicate",
+        );
+        return;
+    }
     let (mut filter, database_sort, database_descending, query_at_most_one) = match builder
         .apply_db_controls(
             feed.db_where_component,
@@ -125,6 +180,19 @@ fn build_one(
         });
     }
     let ordinary_sort = feed.sort_expr.and_then(|key| builder.value_node(key));
+    if let Some(id) = join
+        && feed.has_sort
+        && ordinary_sort.is_none()
+    {
+        reject_join_control(
+            builder,
+            skipped,
+            id,
+            target_path,
+            "has a missing or unsupported sort key",
+        );
+        return;
+    }
     if ordinary_sort.is_some() && database_sort.is_some() {
         builder.warn_conflicting_db_sort(&target_path);
         skipped.push(target_path);
@@ -146,6 +214,19 @@ fn build_one(
                 })
             })
     };
+    if let Some(id) = join
+        && feed.take_expr.is_some()
+        && take.is_none()
+    {
+        reject_join_control(
+            builder,
+            skipped,
+            id,
+            target_path,
+            "has an unsupported item-limit count",
+        );
+        return;
+    }
     let nodes = IterationNodes {
         filter,
         group_by: group,
@@ -157,7 +238,13 @@ fn build_one(
             .unwrap_or(database_descending),
         take,
     };
-    if let Some(sequence) = sequence {
+    if let Some(id) = join {
+        let Some(plan) = builder.join_plan(id) else {
+            skipped.push(target_path);
+            return;
+        };
+        scopes.add_join(&target_path, id, plan, nodes, iteration.output);
+    } else if let Some(sequence) = sequence {
         scopes.add_sequence(&target_path, sequence, nodes, iteration.output);
     } else if let Some(source_path) = &source_path {
         let scope_source = if iteration.output == IterationOutput::MappedSequence {
@@ -198,6 +285,23 @@ fn build_one(
         builder,
         scopes,
     );
+}
+
+fn reject_join_control(
+    builder: &mut GraphBuilder<'_>,
+    skipped: &mut Vec<Vec<String>>,
+    join: mapping::JoinId,
+    target_path: Vec<String>,
+    reason: &str,
+) {
+    builder.rejected_join_paths.insert(target_path.clone());
+    if builder.warned_join_controls.insert(join) {
+        builder.warnings.push(format!(
+            "join feeding `{}` {reason}; iteration skipped",
+            target_path.join("/")
+        ));
+    }
+    skipped.push(target_path);
 }
 
 fn project_whole_group(

@@ -187,7 +187,7 @@ fn unsupported_condition_warns_once_and_does_not_pass_rows_through() {
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("condition must be"));
     assert!(imported.warnings[0].contains("iteration into `` skipped"));
-    assert!(imported.project.root.source.is_none());
+    assert!(imported.project.root.source().is_none());
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn multiple_order_keys_warn_once_and_do_not_pass_rows_through() {
     let imported = mfd::import(&design).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("order must contain one identifier"));
-    assert!(imported.project.root.source.is_none());
+    assert!(imported.project.root.source().is_none());
 }
 
 #[test]
@@ -247,5 +247,5 @@ fn database_order_combined_with_another_sort_warns_and_skips_iteration() {
     let imported = mfd::import(&design).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("combines database ORDER"));
-    assert!(imported.project.root.source.is_none());
+    assert!(imported.project.root.source().is_none());
 }

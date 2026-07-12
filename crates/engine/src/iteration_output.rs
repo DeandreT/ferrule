@@ -7,7 +7,7 @@ pub(super) fn finalize_scope_output(
     scope: &Scope,
     produced: Vec<Instance>,
 ) -> Result<Instance, EngineError> {
-    let iterates = scope.source.is_some() || scope.sequence.is_some();
+    let iterates = scope.iterates();
     if !iterates {
         if scope.iteration_output == IterationOutput::First {
             return Err(EngineError::FirstOutputWithoutIteration);

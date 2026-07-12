@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, IterationOutput, Node, Project, Scope};
+use mapping::{Binding, Graph, IterationOutput, Node, Project, Scope, ScopeIteration};
 
 struct TempDir(PathBuf);
 
@@ -141,7 +141,7 @@ fn nested_source_group_project(copy_extra: bool) -> Project {
         root: Scope {
             children: vec![Scope {
                 target_field: "Header".into(),
-                source: Some(vec!["Order".into()]),
+                iteration: ScopeIteration::Source(vec!["Order".into()]),
                 iteration_output: IterationOutput::MappedSequence,
                 bindings,
                 ..Scope::default()

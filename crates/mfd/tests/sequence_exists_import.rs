@@ -211,7 +211,7 @@ fn reducer_and_generated_iteration_own_distinct_sequence_items() {
         .children
         .iter()
         .find(|scope| scope.target_field == "Token")
-        .and_then(|scope| scope.sequence.as_ref())
+        .and_then(mapping::Scope::sequence)
         .map(|sequence| sequence.item())
         .unwrap();
 

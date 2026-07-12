@@ -2,7 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Graph, IterationOutput, Node, NodeId, Project, Scope};
+use mapping::{Graph, IterationOutput, JoinId, Node, NodeId, Project, Scope};
+
+use super::validate_join::{
+    validate_plan as validate_join_plan, validate_roots as validate_join_roots,
+    validate_scope_nodes as validate_scope_join_nodes,
+};
 
 /// One actionable problem found before a mapping is executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,7 +17,7 @@ pub struct ValidationIssue {
 }
 
 impl ValidationIssue {
-    fn new(location: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(super) fn new(location: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             location: location.into(),
             message: message.into(),
@@ -57,6 +62,8 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         &project.root,
         Some(&project.target),
         &mut Vec::new(),
+        &[],
+        &mut BTreeMap::new(),
         &mut issues,
     );
     issues
@@ -219,7 +226,7 @@ fn collect_sequence_items(
     items: &mut BTreeMap<NodeId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    if let Some(sequence) = &scope.sequence {
+    if let Some(sequence) = scope.sequence() {
         let location = if path.is_empty() {
             "root scope".to_string()
         } else {
@@ -382,7 +389,7 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
         .into_iter()
         .flatten(),
     );
-    if let Some(sequence) = &scope.sequence {
+    if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());
     }
     roots.extend(scope.bindings.iter().map(|binding| binding.node));
@@ -416,7 +423,7 @@ fn validate_collection_path(
     }
 }
 
-fn validate_collection_value(
+pub(super) fn validate_collection_value(
     project: &Project,
     location: &str,
     collection: &[String],
@@ -439,10 +446,12 @@ fn validate_collection_value(
     }
 }
 
-fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
+pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
         Node::SourceField { .. }
         | Node::Position { .. }
+        | Node::JoinField { .. }
+        | Node::JoinPosition { .. }
         | Node::Const { .. }
         | Node::RuntimeValue { .. } => Vec::new(),
         Node::Call { args, .. } => args
@@ -530,6 +539,8 @@ fn validate_scope(
     scope: &Scope,
     target: Option<&SchemaNode>,
     path: &mut Vec<String>,
+    active_joins: &[(JoinId, Vec<Vec<String>>)],
+    join_owners: &mut BTreeMap<JoinId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
     let location = if path.is_empty() {
@@ -538,7 +549,7 @@ fn validate_scope(
         format!("scope `{}`", path.join("/"))
     };
 
-    if let Some(source) = &scope.source
+    if let Some(source) = scope.source()
         && !source_path_matches(project, source, |_| true)
     {
         issues.push(ValidationIssue::new(
@@ -546,13 +557,7 @@ fn validate_scope(
             format!("source path `{}` does not exist", display_path(source)),
         ));
     }
-    if scope.source.is_some() && scope.sequence.is_some() {
-        issues.push(ValidationIssue::new(
-            &location,
-            "source path and generated sequence are mutually exclusive",
-        ));
-    }
-    if let Some(sequence) = &scope.sequence {
+    if let Some(sequence) = scope.sequence() {
         let mut references = match sequence {
             mapping::SequenceExpr::Tokenize {
                 input, delimiter, ..
@@ -587,6 +592,54 @@ fn validate_scope(
             ));
         }
     }
+    let mut parent_roots = scope.take.into_iter().collect::<Vec<_>>();
+    if let Some(sequence) = scope.sequence() {
+        parent_roots.extend(sequence.inputs());
+    }
+    validate_join_roots(
+        &project.graph,
+        parent_roots,
+        active_joins,
+        &location,
+        project,
+        issues,
+    );
+    let mut active_joins = active_joins.to_vec();
+    if let Some((join, plan)) = scope.join() {
+        validate_join_plan(project, join, plan, &location, issues);
+        if let Some(first) = join_owners.insert(join, location.clone()) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "join id {} is already owned by {first}; each join scope requires a unique id",
+                    join.get()
+                ),
+            ));
+        }
+        active_joins.push((
+            join,
+            plan.sources()
+                .map(|source| source.collection().to_vec())
+                .collect(),
+        ));
+        if scope.group_by.is_some()
+            || scope.group_starting_with.is_some()
+            || scope.group_into_blocks.is_some()
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "inner join iteration cannot be combined with grouping controls",
+            ));
+        }
+    }
+    validate_scope_join_nodes(
+        &project.graph,
+        scope,
+        &active_joins,
+        &location,
+        project,
+        issues,
+    );
     for (label, node) in [
         ("filter", scope.filter),
         ("group-by key", scope.group_by),
@@ -604,7 +657,7 @@ fn validate_scope(
             ));
         }
     }
-    let iterates = scope.source.is_some() || scope.sequence.is_some();
+    let iterates = scope.iterates();
     if scope.iteration_output == IterationOutput::First && !iterates {
         issues.push(ValidationIssue::new(
             &location,
@@ -796,7 +849,15 @@ fn validate_scope(
                 "target scope does not exist",
             )),
         }
-        validate_scope(project, child, child_target, path, issues);
+        validate_scope(
+            project,
+            child,
+            child_target,
+            path,
+            &active_joins,
+            join_owners,
+            issues,
+        );
         path.pop();
     }
     let dynamic_target = target.and_then(SchemaNode::dynamic_fields);
@@ -841,7 +902,7 @@ fn validate_scope(
                     "computed child scope requires a group dynamic field schema",
                 ));
             }
-            let child_iterates = child.scope.source.is_some() || child.scope.sequence.is_some();
+            let child_iterates = child.scope.iterates();
             let child_repeats = child_iterates
                 && child.scope.iteration_output == IterationOutput::Repeated
                 && !child.scope.merge_dynamic_fields;
@@ -853,12 +914,20 @@ fn validate_scope(
             }
         }
         path.push("*".to_string());
-        validate_scope(project, &child.scope, dynamic_target, path, issues);
+        validate_scope(
+            project,
+            &child.scope,
+            dynamic_target,
+            path,
+            &active_joins,
+            join_owners,
+            issues,
+        );
         path.pop();
     }
 }
 
-fn source_path_matches(
+pub(super) fn source_path_matches(
     project: &Project,
     path: &[String],
     predicate: impl Fn(&SchemaNode) -> bool + Copy,
@@ -906,7 +975,7 @@ fn follow_schema<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sche
     Some(current)
 }
 
-fn display_path(path: &[String]) -> String {
+pub(super) fn display_path(path: &[String]) -> String {
     if path.is_empty() {
         "<current>".to_string()
     } else {
@@ -939,7 +1008,7 @@ mod tests {
             extra_sources: Vec::new(),
             graph,
             root: Scope {
-                source: Some(Vec::new()),
+                iteration: mapping::ScopeIteration::Source(Vec::new()),
                 bindings: vec![Binding {
                     target_field: "name".into(),
                     node: 0,
@@ -1021,7 +1090,7 @@ mod tests {
                 value: Value::String("unused".into()),
             },
         );
-        project.root.source = None;
+        project.root.set_source(None);
         project.root.filter = Some(88);
         project.root.group_by = Some(89);
         project.root.group_starting_with = Some(92);

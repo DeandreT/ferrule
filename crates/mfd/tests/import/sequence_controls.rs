@@ -289,7 +289,10 @@ fn distinct_values_imports_as_stable_sequence_and_roundtrips() {
         .iter()
         .find(|scope| scope.target_field == "Row")
         .unwrap();
-    assert_eq!(rows.source, Some(vec!["Item".into()]));
+    assert_eq!(
+        rows.source().map(|path| path.to_vec()),
+        Some(vec!["Item".into()])
+    );
     let Node::Call { function, args } = &project.graph.nodes[&rows.filter.unwrap()] else {
         panic!("distinct filter should combine the design predicate with exists");
     };
@@ -374,23 +377,23 @@ fn tokenizers_generate_distinct_scalar_sequences_and_roundtrip() {
         .unwrap();
     let Some(SequenceExpr::Tokenize {
         item: word_item, ..
-    }) = word.sequence
+    }) = word.sequence()
     else {
         panic!("Word should iterate tokenize output");
     };
     let Some(SequenceExpr::TokenizeByLength {
         item: pair_item, ..
-    }) = pair.sequence
+    }) = pair.sequence()
     else {
         panic!("Pair should iterate tokenize-by-length output");
     };
     assert_ne!(word_item, pair_item);
     assert!(matches!(
-        &project.graph.nodes[&word_item],
+        &project.graph.nodes[word_item],
         Node::SourceField { path, frame: None } if path.is_empty()
     ));
     assert!(matches!(
-        &project.graph.nodes[&pair_item],
+        &project.graph.nodes[pair_item],
         Node::SourceField { path, frame: None } if path.is_empty()
     ));
 
@@ -455,11 +458,11 @@ fn generated_integer_ranges_import_controls_execute_and_roundtrip() {
         .find(|scope| scope.target_field == "Default")
         .unwrap();
     assert!(matches!(
-        item.sequence,
+        item.sequence(),
         Some(SequenceExpr::Generate { from: Some(_), .. })
     ));
     assert!(matches!(
-        default.sequence,
+        default.sequence(),
         Some(SequenceExpr::Generate { from: None, .. })
     ));
     assert!(item.filter.is_some());
@@ -603,7 +606,7 @@ fn noncanonical_ordinary_control_order_warns_once() {
         imported.warnings
     );
     let item = &imported.project.root.children[0];
-    assert!(item.sequence.is_some());
+    assert!(item.sequence().is_some());
     assert!(item.filter.is_some());
     assert!(item.sort_by.is_some());
 }

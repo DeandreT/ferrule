@@ -151,8 +151,7 @@ fn evaluates_a_function_call_over_source_fields() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -206,8 +205,7 @@ fn missing_source_field_is_reported() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -250,8 +248,7 @@ fn self_referential_node_is_a_cycle() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -326,8 +323,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: Some(vec!["orders".into(), "items".into()]),
-            sequence: None,
+            iteration: mapping::ScopeIteration::Source(vec!["orders".into(), "items".into()]),
             filter: Some(4),
             group_by: None,
             group_starting_with: None,
@@ -457,8 +453,7 @@ fn if_only_evaluates_the_taken_branch() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -516,8 +511,7 @@ fn value_map_falls_back_to_default_on_miss() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -584,8 +578,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: Some(vec![]),
-            sequence: None,
+            iteration: mapping::ScopeIteration::Source(vec![]),
             filter: Some(2),
             group_by: None,
             group_starting_with: None,
@@ -671,8 +664,7 @@ fn scope_sort_and_take_are_stable_and_reindex_positions() {
         extra_sources: Vec::new(),
         graph,
         root: Scope {
-            source: Some(Vec::new()),
-            sequence: None,
+            iteration: mapping::ScopeIteration::Source(Vec::new()),
             sort_by: Some(0),
             sort_descending: true,
             take: Some(2),
@@ -764,8 +756,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -838,8 +829,7 @@ fn lookup_joins_rows_against_an_extra_source() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: Some(vec![]),
-            sequence: None,
+            iteration: mapping::ScopeIteration::Source(vec![]),
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -924,8 +914,7 @@ fn scope_source_path_reaches_an_extra_source() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: Some(vec!["customers".into()]),
-            sequence: None,
+            iteration: mapping::ScopeIteration::Source(vec!["customers".into()]),
             filter: None,
             group_by: None,
             group_starting_with: None,

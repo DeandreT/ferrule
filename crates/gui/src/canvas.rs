@@ -158,6 +158,8 @@ pub fn layered_layout(
         match node {
             mapping::Node::SourceField { .. }
             | mapping::Node::Position { .. }
+            | mapping::Node::JoinField { .. }
+            | mapping::Node::JoinPosition { .. }
             | mapping::Node::Const { .. }
             | mapping::Node::RuntimeValue { .. } => vec![],
             mapping::Node::Call { args, .. } => args.clone(),

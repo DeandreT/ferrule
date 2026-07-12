@@ -252,6 +252,8 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::SourceField { .. }
         | Node::Position { .. }
+        | Node::JoinField { .. }
+        | Node::JoinPosition { .. }
         | Node::Const { .. }
         | Node::RuntimeValue { .. } => vec![],
         Node::Call { args, .. } => args.clone(),

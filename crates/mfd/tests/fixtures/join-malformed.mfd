@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26">
+  <component name="map">
+    <structure><children>
+      <component name="join" library="core" uid="1" kind="32">
+        <data>
+          <root><entry name="document"><entry name="tuple">
+            <entry name="dynamic_tree_node0"><entry name="Left" inpkey="10"/></entry>
+            <entry name="dynamic_tree_node2"><entry name="Right" inpkey="20"/></entry>
+          </entry></entry></root>
+          <join>
+            <joinkeys><keypair><first-key path-id="1"/><second-key path-id="2"/></keypair></joinkeys>
+            <keypaths><entry><condition/><entry name="Id" outkey="1"><condition/></entry><entry name="Code" outkey="2"><condition/></entry></entry></keypaths>
+          </join>
+        </data>
+      </component>
+    </children></structure>
+  </component>
+</mapping>

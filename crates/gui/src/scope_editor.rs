@@ -4,7 +4,7 @@
 //! `app.rs` for why that's out of scope for this first GUI pass).
 
 use egui::Ui;
-use mapping::{Binding, Graph, NodeId, Scope};
+use mapping::{Binding, Graph, NodeId, Scope, ScopeIteration};
 
 use crate::path_picker::SourcePathCatalog;
 
@@ -42,8 +42,27 @@ fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     }
 }
 
+fn join_summary(id: mapping::JoinId, plan: &mapping::JoinPlan) -> String {
+    format!(
+        "inner join #{} ({} sources, {} conditions)",
+        id.get(),
+        plan.sources().count(),
+        plan.stages()
+            .map(|(_, conditions)| conditions.iter().count())
+            .sum::<usize>()
+    )
+}
+
+fn join_condition_label(source: &mapping::JoinSource, key: &mapping::JoinKey) -> String {
+    let mut left = key.left_collection().to_vec();
+    left.extend(key.left_path().iter().cloned());
+    let mut right = source.collection().to_vec();
+    right.extend(key.right_path().iter().cloned());
+    format!("{} = {}", left.join("/"), right.join("/"))
+}
+
 fn scope_iterates(scope: &Scope) -> bool {
-    scope.source.is_some() || scope.sequence.is_some()
+    scope.iterates()
 }
 
 pub fn scope_at_mut<'a>(root: &'a mut Scope, path: &[usize]) -> &'a mut Scope {
@@ -109,27 +128,55 @@ pub fn show_scope_editor(
         format!("scope: {}", scope.target_field)
     });
 
-    if let Some(sequence) = &scope.sequence {
-        ui.horizontal(|ui| {
-            ui.label("iteration:");
-            ui.label(format!(
-                "generated ({})",
-                generated_sequence_label(sequence)
-            ));
-        });
-    } else {
-        ui.horizontal(|ui| {
-            ui.label("source path:");
-            let mut has_source = scope.source.is_some();
-            if ui.checkbox(&mut has_source, "iterates").changed() {
-                scope.source = has_source.then(Vec::new);
-            }
-        });
-        if let Some(source) = &mut scope.source {
+    match &scope.iteration {
+        ScopeIteration::Sequence(sequence) => {
             ui.horizontal(|ui| {
-                ui.label("  path:");
-                source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+                ui.label("iteration:");
+                ui.label(format!(
+                    "generated ({})",
+                    generated_sequence_label(sequence)
+                ));
             });
+        }
+        ScopeIteration::InnerJoin { id, plan } => {
+            ui.horizontal(|ui| {
+                ui.label("iteration:");
+                ui.label(join_summary(*id, plan));
+            });
+            for (index, source) in plan.sources().enumerate() {
+                let collection = if source.collection().is_empty() {
+                    "<rows>".to_string()
+                } else {
+                    source.collection().join("/")
+                };
+                ui.horizontal(|ui| {
+                    ui.label(format!("  input {}:", index + 1));
+                    ui.monospace(collection);
+                });
+            }
+            for (source, conditions) in plan.stages() {
+                for condition in conditions.iter() {
+                    ui.horizontal(|ui| {
+                        ui.label("  on:");
+                        ui.monospace(join_condition_label(source, condition));
+                    });
+                }
+            }
+        }
+        ScopeIteration::None | ScopeIteration::Source(_) => {
+            ui.horizontal(|ui| {
+                ui.label("source path:");
+                let mut has_source = scope.source().is_some();
+                if ui.checkbox(&mut has_source, "iterates").changed() {
+                    scope.set_source(has_source.then(Vec::new));
+                }
+            });
+            if let Some(source) = scope.source_mut() {
+                ui.horizontal(|ui| {
+                    ui.label("  path:");
+                    source_paths.show_scope_picker(ui, "scope_source_path", source, nested);
+                });
+            }
         }
     }
 
@@ -152,70 +199,72 @@ pub fn show_scope_editor(
             }
         });
 
-        ui.horizontal(|ui| {
-            ui.label("  grouping:");
-            let mut mode = if scope.group_by.is_some() {
-                GroupingMode::ByKey
-            } else if scope.group_starting_with.is_some() {
-                GroupingMode::StartingWith
-            } else if scope.group_into_blocks.is_some() {
-                GroupingMode::IntoBlocks
-            } else {
-                GroupingMode::None
-            };
-            let previous = mode;
-            ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
-                egui::ComboBox::from_id_salt("scope_grouping_mode")
-                    .selected_text(mode.label())
-                    .show_ui(ui, |ui| {
-                        for choice in [
-                            GroupingMode::None,
-                            GroupingMode::ByKey,
-                            GroupingMode::StartingWith,
-                            GroupingMode::IntoBlocks,
-                        ] {
-                            ui.selectable_value(&mut mode, choice, choice.label());
+        if scope.join().is_none() {
+            ui.horizontal(|ui| {
+                ui.label("  grouping:");
+                let mut mode = if scope.group_by.is_some() {
+                    GroupingMode::ByKey
+                } else if scope.group_starting_with.is_some() {
+                    GroupingMode::StartingWith
+                } else if scope.group_into_blocks.is_some() {
+                    GroupingMode::IntoBlocks
+                } else {
+                    GroupingMode::None
+                };
+                let previous = mode;
+                ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
+                    egui::ComboBox::from_id_salt("scope_grouping_mode")
+                        .selected_text(mode.label())
+                        .show_ui(ui, |ui| {
+                            for choice in [
+                                GroupingMode::None,
+                                GroupingMode::ByKey,
+                                GroupingMode::StartingWith,
+                                GroupingMode::IntoBlocks,
+                            ] {
+                                ui.selectable_value(&mut mode, choice, choice.label());
+                            }
+                        });
+                })
+                .response
+                .on_disabled_hover_text("Add a graph node before enabling grouping");
+                if mode != previous {
+                    scope.group_by = if mode == GroupingMode::ByKey {
+                        first_node
+                    } else {
+                        None
+                    };
+                    scope.group_starting_with = if mode == GroupingMode::StartingWith {
+                        first_node
+                    } else {
+                        None
+                    };
+                    scope.group_into_blocks = if mode == GroupingMode::IntoBlocks {
+                        first_node
+                    } else {
+                        None
+                    };
+                }
+                match mode {
+                    GroupingMode::None => {}
+                    GroupingMode::ByKey => {
+                        if let Some(group_by) = &mut scope.group_by {
+                            node_picker(ui, "group_by_node", group_by, graph);
                         }
-                    });
-            })
-            .response
-            .on_disabled_hover_text("Add a graph node before enabling grouping");
-            if mode != previous {
-                scope.group_by = if mode == GroupingMode::ByKey {
-                    first_node
-                } else {
-                    None
-                };
-                scope.group_starting_with = if mode == GroupingMode::StartingWith {
-                    first_node
-                } else {
-                    None
-                };
-                scope.group_into_blocks = if mode == GroupingMode::IntoBlocks {
-                    first_node
-                } else {
-                    None
-                };
-            }
-            match mode {
-                GroupingMode::None => {}
-                GroupingMode::ByKey => {
-                    if let Some(group_by) = &mut scope.group_by {
-                        node_picker(ui, "group_by_node", group_by, graph);
+                    }
+                    GroupingMode::StartingWith => {
+                        if let Some(predicate) = &mut scope.group_starting_with {
+                            node_picker(ui, "group_starting_node", predicate, graph);
+                        }
+                    }
+                    GroupingMode::IntoBlocks => {
+                        if let Some(block_size) = &mut scope.group_into_blocks {
+                            node_picker(ui, "group_block_size_node", block_size, graph);
+                        }
                     }
                 }
-                GroupingMode::StartingWith => {
-                    if let Some(predicate) = &mut scope.group_starting_with {
-                        node_picker(ui, "group_starting_node", predicate, graph);
-                    }
-                }
-                GroupingMode::IntoBlocks => {
-                    if let Some(block_size) = &mut scope.group_into_blocks {
-                        node_picker(ui, "group_block_size_node", block_size, graph);
-                    }
-                }
-            }
-        });
+            });
+        }
 
         ui.horizontal(|ui| {
             ui.label("  sort key:");
@@ -307,6 +356,8 @@ fn node_kind_label(node: &mapping::Node) -> &'static str {
     match node {
         mapping::Node::SourceField { .. } => "source_field",
         mapping::Node::Position { .. } => "position",
+        mapping::Node::JoinField { .. } => "join_field",
+        mapping::Node::JoinPosition { .. } => "join_position",
         mapping::Node::Const { .. } => "const",
         mapping::Node::RuntimeValue { .. } => "runtime_value",
         mapping::Node::Call { .. } => "call",
@@ -336,7 +387,7 @@ mod tests {
     #[test]
     fn generated_sequences_are_named_and_count_as_iteration() {
         let mut scope = Scope {
-            sequence: Some(mapping::SequenceExpr::Tokenize {
+            iteration: ScopeIteration::Sequence(mapping::SequenceExpr::Tokenize {
                 input: 1,
                 delimiter: 2,
                 item: 3,
@@ -345,33 +396,66 @@ mod tests {
         };
         assert!(scope_iterates(&scope));
         assert_eq!(
-            generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
+            generated_sequence_label(scope.sequence().expect("sequence exists")),
             "tokenize"
         );
 
-        scope.sequence = Some(mapping::SequenceExpr::TokenizeByLength {
+        scope.set_sequence(Some(mapping::SequenceExpr::TokenizeByLength {
             input: 1,
             length: 2,
             item: 3,
-        });
+        }));
         assert_eq!(
-            generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
+            generated_sequence_label(scope.sequence().expect("sequence exists")),
             "tokenize-by-length"
         );
 
-        scope.sequence = Some(mapping::SequenceExpr::Generate {
+        scope.set_sequence(Some(mapping::SequenceExpr::Generate {
             from: Some(1),
             to: 2,
             item: 3,
-        });
+        }));
         assert_eq!(
-            generated_sequence_label(scope.sequence.as_ref().expect("sequence exists")),
+            generated_sequence_label(scope.sequence().expect("sequence exists")),
             "generate-sequence"
         );
 
-        scope.sequence = None;
+        scope.set_sequence(None);
         assert!(!scope_iterates(&scope));
-        scope.source = Some(Vec::new());
+        scope.set_source(Some(Vec::new()));
         assert!(scope_iterates(&scope));
+    }
+
+    #[test]
+    fn joins_are_named_and_count_as_iteration() {
+        let orders = mapping::JoinSource::new(vec!["orders".into()]);
+        let products = mapping::JoinSource::new(vec!["products".into()]);
+        let condition = mapping::JoinConditions::new(mapping::JoinKey::new(
+            vec!["orders".into()],
+            vec!["sku".into()],
+            vec!["sku".into()],
+        ));
+        let plan = mapping::JoinPlan::new(orders, products, condition).unwrap();
+        let scope = Scope {
+            iteration: ScopeIteration::InnerJoin {
+                id: mapping::JoinId::new(12),
+                plan,
+            },
+            ..Scope::default()
+        };
+
+        assert!(scope_iterates(&scope));
+        let Some((id, plan)) = scope.join() else {
+            panic!("expected join iteration");
+        };
+        assert_eq!(
+            join_summary(id, plan),
+            "inner join #12 (2 sources, 1 conditions)"
+        );
+        let (source, conditions) = plan.stages().next().expect("join has one stage");
+        assert_eq!(
+            join_condition_label(source, conditions.iter().next().expect("stage has a key")),
+            "orders/sku = products/sku"
+        );
     }
 }

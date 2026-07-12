@@ -106,9 +106,9 @@ fn aggregate_record_udf_imports_filters_executes_and_roundtrips() {
     assert!(engine::validate(&imported.project).is_empty());
     let summary = &imported.project.root.children[0];
     assert_eq!(summary.target_field, "Summary");
-    assert!(summary.source.is_none());
+    assert!(summary.source().is_none());
     assert!(matches!(
-        summary.sequence,
+        summary.sequence(),
         Some(mapping::SequenceExpr::Generate { .. })
     ));
     assert_eq!(summary.bindings.len(), 4);

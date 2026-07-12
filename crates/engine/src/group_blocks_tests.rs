@@ -48,7 +48,7 @@ fn project(block_size: Value) -> Project {
     };
     let member = Scope {
         target_field: "Member".into(),
-        source: Some(vec!["Row".into()]),
+        iteration: mapping::ScopeIteration::Source(vec!["Row".into()]),
         bindings: vec![Binding {
             target_field: "Value".into(),
             node: 1,
@@ -57,7 +57,7 @@ fn project(block_size: Value) -> Project {
     };
     let block = Scope {
         target_field: "Block".into(),
-        source: Some(vec!["Row".into()]),
+        iteration: mapping::ScopeIteration::Source(vec!["Row".into()]),
         filter: Some(4),
         group_into_blocks: Some(0),
         bindings: vec![

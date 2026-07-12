@@ -16,6 +16,8 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) sequence_predicate_components: BTreeSet<usize>,
     pub(super) warned_sequence_uses: BTreeSet<usize>,
     pub(super) warned_scalar_filters: BTreeSet<usize>,
+    pub(super) warned_join_controls: BTreeSet<mapping::JoinId>,
+    pub(super) rejected_join_paths: BTreeSet<Vec<String>>,
     pub(super) source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
     pub(super) query_scope_sources: BTreeSet<usize>,
     pub(super) warned_unscoped_queries: BTreeSet<usize>,
@@ -29,6 +31,7 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) udf_by_output: BTreeMap<u32, (usize, u32)>,
     pub(super) udf_calls: &'a [UdfCall],
     pub(super) udf_registry: &'a UdfRegistry,
+    pub(super) joins: super::join::Registry,
     /// Absolute source paths ending at a repeating node that some scope's
     /// iteration crosses -- i.e. levels that get their own context frame
     /// at run time. SourceField paths are cut after the innermost framed

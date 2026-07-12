@@ -23,6 +23,8 @@ mod generated_occurrence;
 mod graph;
 mod group_projection;
 mod iteration;
+mod join;
+mod materialize;
 mod output_parameter;
 mod schema;
 mod scope;
@@ -79,6 +81,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
     let mut udf_calls = Vec::new();
+    let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
 
     if let Some(children) = structure
@@ -142,6 +145,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 },
                 "core" if component.attribute("kind") == Some("7") => {
                     output_parameters.push(output_parameter::read(&component));
+                }
+                "core" if component.attribute("kind") == Some("32") => {
+                    pending_joins.read(component, &mut warnings);
                 }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
                 other => {
@@ -226,6 +232,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     sources.swap(0, primary_source);
     let source_names = runtime_names(&sources);
     let primary = sources[0];
+    let joins = pending_joins.resolve(&edge_from, &sources, &mut warnings);
 
     let mut builder = GraphBuilder {
         graph: Graph::default(),
@@ -236,6 +243,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         sequence_predicate_components: BTreeSet::new(),
         warned_sequence_uses: BTreeSet::new(),
         warned_scalar_filters: BTreeSet::new(),
+        warned_join_controls: BTreeSet::new(),
+        rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         query_scope_sources: BTreeSet::new(),
         warned_unscoped_queries: BTreeSet::new(),
@@ -249,6 +258,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         udf_by_output: BTreeMap::new(),
         udf_calls: &udf_calls,
         udf_registry: &udf_registry,
+        joins,
         framed: std::collections::BTreeSet::new(),
         warnings: Vec::new(),
     };
@@ -316,6 +326,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     udf::structured::prepare_target_frames(&structured_udf_targets, &mut builder);
     generated_occurrence::infer(target, &mut builder, &mut iterations);
     iterations.sort_by_key(|iteration| iteration.target_path.len());
+    join::prepare_iterations(&iterations, &mut builder, &mut scope_builder);
     for iteration in &iterations {
         let feed = builder.resolve_iteration_feed(iteration.feed);
         if let Some(idx) = feed.sequence_component {
@@ -325,39 +336,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.note_framed_prefixes(&source_path);
         }
     }
-    // Build computed aggregate sequences in their per-item frame first.
-    for (i, fc) in fn_components.iter().enumerate() {
-        if fc.kind == 5 && aggregate_op(&fc.name).is_some() {
-            builder.fn_node(i);
-        }
-    }
-    // Existential sequence consumers must claim their producer before a
-    // predicate node independently encounters the producer's scalar port.
-    for (i, fc) in fn_components.iter().enumerate() {
-        if fc.kind == 5 && fc.name == "exists" {
-            builder.fn_node(i);
-        }
-    }
-    // Materialize every remaining value-producing function up front
-    // (filters and group-bys are handled at the scope stage instead).
-    // Outputless core components are annotations such as comments.
-    for (i, fc) in fn_components.iter().enumerate() {
-        if !(fc.outputs.is_empty()
-            || is_filter_component(fc)
-            || is_db_where_component(fc)
-            || is_input_component(fc)
-            || is_sort_component(fc)
-            || is_first_items_component(fc)
-            || is_group_into_blocks(fc)
-            || is_group_starting_with(fc)
-            || is_distinct_values_component(fc)
-            || is_sequence_producer(fc)
-            || fc.name == "group-by"
-            || fc.kind == 5 && aggregate_op(&fc.name).is_some())
-        {
-            builder.fn_node(i);
-        }
-    }
+    materialize::eager_functions(&mut builder);
     let mut skipped_iteration_paths = target_iteration::build(
         iterations,
         target,
@@ -385,6 +364,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     );
     for (target, from) in bindings {
         let target_path = target.path();
+        if builder.join_dependency_rejected(from) {
+            continue;
+        }
         if structured_udf_paths
             .iter()
             .any(|path| target_path.starts_with(path))
@@ -511,6 +493,9 @@ impl GraphBuilder<'_> {
     /// The ferrule node producing the value at output-port `key`, creating
     /// SourceField/function nodes on demand. `None` for unsupported feeds.
     pub(super) fn value_node(&mut self, key: u32) -> Option<NodeId> {
+        if let Some(node) = self.join_field_node(key) {
+            return Some(node);
+        }
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
             if let Some(abs) = source.ports.get(&key).cloned() {
@@ -603,7 +588,6 @@ impl GraphBuilder<'_> {
         }
     }
 
-    /// Materializes function component `idx` as a mapping node.
     fn fn_node(&mut self, idx: usize) -> NodeId {
         if let Some(&id) = self.fn_nodes.get(&idx) {
             return id;
@@ -646,8 +630,12 @@ impl GraphBuilder<'_> {
             return id;
         }
         if name == "position" && self.fn_components[idx].kind == 5 {
-            let collection = self.position_collection(idx);
-            self.graph.nodes.insert(id, Node::Position { collection });
+            let node = self
+                .join_position_node(idx)
+                .unwrap_or_else(|| Node::Position {
+                    collection: self.position_collection(idx),
+                });
+            self.graph.nodes.insert(id, node);
             return id;
         }
         let fc = &self.fn_components[idx];

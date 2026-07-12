@@ -87,6 +87,7 @@ pub(super) fn infer(
             feed,
             output: IterationOutput::MappedSequence,
             projects_whole_group: false,
+            join: None,
         });
     }
 }

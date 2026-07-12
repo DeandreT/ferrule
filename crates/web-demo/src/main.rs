@@ -8,7 +8,7 @@ use eframe::egui;
 use egui_snarl::ui::{PinInfo, SnarlViewer, SnarlWidget};
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Project, Scope};
+use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Project, Scope, ScopeIteration};
 
 const SAMPLE_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Orders>
@@ -112,8 +112,7 @@ fn demo_project() -> Project {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -129,8 +128,7 @@ fn demo_project() -> Project {
             dynamic_bindings: Vec::new(),
             children: vec![Scope {
                 target_field: "Order".into(),
-                source: Some(vec!["Order".into()]),
-                sequence: None,
+                iteration: ScopeIteration::Source(vec!["Order".into()]),
                 filter: None,
                 group_by: None,
                 group_starting_with: None,
@@ -217,7 +215,9 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::SourceField { .. }
         | Node::Const { .. }
         | Node::RuntimeValue { .. }
-        | Node::Position { .. } => vec![],
+        | Node::Position { .. }
+        | Node::JoinField { .. }
+        | Node::JoinPosition { .. } => vec![],
         Node::Call { args, .. } => args.iter().copied().map(Some).collect(),
         Node::If {
             condition,
@@ -244,6 +244,16 @@ fn node_title(node: &Node) -> String {
     match node {
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
         Node::Position { collection } => format!("position · {}", collection.join("/")),
+        Node::JoinField {
+            join,
+            collection,
+            path,
+        } => {
+            let mut field = collection.clone();
+            field.extend(path.iter().cloned());
+            format!("join {} field · {}", join.get(), field.join("/"))
+        }
+        Node::JoinPosition { join } => format!("join {} position", join.get()),
         Node::Const { .. } => "const".to_string(),
         Node::RuntimeValue { value } => format!("runtime · {value:?}"),
         Node::Call { function, .. } => function.clone(),

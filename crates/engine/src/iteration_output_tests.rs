@@ -78,7 +78,7 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
     };
     let selected_scope = Scope {
         target_field: "Selected".into(),
-        source: Some(vec!["Person".into()]),
+        iteration: mapping::ScopeIteration::Source(vec!["Person".into()]),
         filter: Some(1),
         take: Some(2),
         iteration_output,
@@ -110,7 +110,7 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
         root: Scope {
             children: vec![Scope {
                 target_field: "Department".into(),
-                source: Some(vec!["Department".into()]),
+                iteration: mapping::ScopeIteration::Source(vec!["Department".into()]),
                 bindings: vec![Binding {
                     target_field: "Position".into(),
                     node: 3,
@@ -263,7 +263,7 @@ fn mapped_sequence_preserves_zero_one_or_many_ordered_items() {
 #[test]
 fn validation_rejects_invalid_mapped_sequence_scopes_and_targets() {
     let mut root = project_with_output(IterationOutput::MappedSequence);
-    root.root.source = Some(vec!["Department".into()]);
+    root.root.set_source(Some(vec!["Department".into()]));
     root.root.iteration_output = IterationOutput::MappedSequence;
     let issues = validate(&root);
     assert!(issues.iter().any(|issue| {
@@ -305,7 +305,7 @@ fn validation_rejects_invalid_mapped_sequence_scopes_and_targets() {
     }));
 
     let mut without_iteration = project_with_output(IterationOutput::MappedSequence);
-    without_iteration.root.children[0].children[0].source = None;
+    without_iteration.root.children[0].children[0].set_source(None);
     let issues = validate(&without_iteration);
     assert!(issues.iter().any(|issue| {
         issue
@@ -353,7 +353,7 @@ fn first_output_does_not_evaluate_later_unused_bindings() {
             ]),
         },
         root: Scope {
-            source: Some(Vec::new()),
+            iteration: mapping::ScopeIteration::Source(Vec::new()),
             iteration_output: IterationOutput::First,
             bindings: vec![Binding {
                 target_field: "Value".into(),
