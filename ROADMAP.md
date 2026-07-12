@@ -1,6 +1,6 @@
 # Ferrule Mapping Workflow Roadmap
 
-Updated: 2026-07-10
+Updated: 2026-07-11
 
 ## Goal
 
