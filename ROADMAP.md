@@ -36,8 +36,8 @@ clean-room interoperability, and extensible adapters.
 | XML | XSD subset, includes/imports, attributes, simple content | Namespace identity, `xsi:nil`/`xsi:type`, wildcards, mixed content |
 | JSON | JSON Schema subset and local refs | Union/composition schemas, mixed arrays, dynamic properties |
 | Flat files | Delimited CSV | Fixed length, reusable structured-text/FlexText-style layouts |
-| Database | One SQLite table, full-replace output | Multi-table/query model, keys/relations, insert/update/delete, PostgreSQL |
-| EDI | Schema-guided X12 and EDIFACT runtime | `.mfd` EDI/config import, validation reports, pluggable HL7/IDoc/etc. packs |
+| Database | Relational SQLite reads, flat-table full-replace output | Query model, relational writes, insert/update/delete, PostgreSQL |
+| EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
 | Other formats | None | XLSX, Protobuf, then demand-driven XBRL/PDF support |
 | Dataflow | One primary source plus named lookup sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
