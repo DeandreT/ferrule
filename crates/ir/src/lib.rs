@@ -7,6 +7,7 @@
 //! is what lets the mapping engine implement the visual-mapper convention
 //! that connecting two repeating groups implies a loop.
 
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
 /// Instance-field name used for an XML element's simple text content.
@@ -31,6 +32,42 @@ pub enum Value {
     Int(i64),
     Float(f64),
     String(String),
+    XmlNil(XmlNil),
+}
+
+/// Marker for an XML element that is present with `xsi:nil="true"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XmlNil;
+
+impl Serialize for XmlNil {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("XmlNil", 1)?;
+        state.serialize_field("$xml_nil", &true)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for XmlNil {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Repr {
+            #[serde(rename = "$xml_nil")]
+            xml_nil: bool,
+        }
+
+        let repr = Repr::deserialize(deserializer)?;
+        if !repr.xml_nil {
+            return Err(serde::de::Error::custom("$xml_nil must be true"));
+        }
+        Ok(Self)
+    }
 }
 
 impl Value {
@@ -41,7 +78,16 @@ impl Value {
             Value::Int(_) => "int",
             Value::Float(_) => "float",
             Value::String(_) => "string",
+            Value::XmlNil(_) => "xml nil",
         }
+    }
+
+    pub fn xml_nil() -> Self {
+        Self::XmlNil(XmlNil)
+    }
+
+    pub fn is_xml_nil(&self) -> bool {
+        matches!(self, Self::XmlNil(_))
     }
 }
 
@@ -64,6 +110,9 @@ pub struct SchemaNode {
     /// ordinary named scalar field.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub text: bool,
+    /// This XML element may be present with `xsi:nil="true"`.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub nillable: bool,
     /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
     /// Schema's `const`), compared against the raw text before parsing.
     /// Format adapters use it both to validate and to disambiguate --
@@ -89,6 +138,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             text: bool,
             #[serde(default)]
+            nillable: bool,
+            #[serde(default)]
             fixed: Option<String>,
             kind: SchemaKind,
         }
@@ -99,6 +150,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             repeating: repr.repeating,
             attribute: repr.attribute,
             text: repr.text,
+            nillable: repr.nillable,
             fixed: repr.fixed,
             kind: repr.kind,
         };
@@ -150,6 +202,7 @@ impl SchemaNode {
             repeating: false,
             attribute: false,
             text: false,
+            nillable: false,
             fixed: None,
             kind: SchemaKind::Scalar { ty },
         }
@@ -161,6 +214,7 @@ impl SchemaNode {
             repeating: false,
             attribute: false,
             text: false,
+            nillable: false,
             fixed: None,
             kind: SchemaKind::Group {
                 children,
@@ -259,6 +313,11 @@ impl SchemaNode {
     /// Marks this scalar as its parent XML element's text content.
     pub fn text(mut self) -> Self {
         self.text = true;
+        self
+    }
+
+    pub fn nillable(mut self) -> Self {
+        self.nillable = true;
         self
     }
 
@@ -375,6 +434,13 @@ mod tests {
             Value::String("hi".to_string())
         );
         assert_eq!(serde_json::from_str::<Value>("null").unwrap(), Value::Null);
+        let nil = serde_json::to_string(&Value::xml_nil()).unwrap();
+        assert_eq!(nil, r#"{"$xml_nil":true}"#);
+        assert_eq!(
+            serde_json::from_str::<Value>(&nil).unwrap(),
+            Value::xml_nil()
+        );
+        assert!(serde_json::from_str::<Value>(r#"{"$xml_nil":false}"#).is_err());
     }
 
     #[test]

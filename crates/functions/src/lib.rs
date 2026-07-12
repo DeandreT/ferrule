@@ -90,6 +90,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "get_folder",
     "remove_folder",
     "resolve_filepath",
+    "is_xml_nil",
 ];
 
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
@@ -150,8 +151,20 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "get_folder" => filepath::get_folder(args),
         "remove_folder" => filepath::remove_folder(args),
         "resolve_filepath" => filepath::resolve_filepath(args),
+        "is_xml_nil" => is_xml_nil(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
+}
+
+fn is_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "is_xml_nil",
+            expected: 1,
+            got: args.len(),
+        });
+    };
+    Ok(Value::Bool(value.is_xml_nil()))
 }
 
 /// Matches a complete string using SQL LIKE's `%` (zero or more characters)
@@ -189,7 +202,7 @@ fn concat(args: &[Value]) -> Value {
     let mut out = String::new();
     for arg in args {
         match arg {
-            Value::Null => {}
+            Value::Null | Value::XmlNil(_) => {}
             Value::Bool(b) => out.push_str(&b.to_string()),
             Value::Int(i) => out.push_str(&i.to_string()),
             Value::Float(f) => out.push_str(&f.to_string()),
@@ -298,7 +311,7 @@ fn length(args: &[Value]) -> Result<Value, FunctionError> {
 
 fn scalar_text(value: &Value) -> String {
     match value {
-        Value::Null => String::new(),
+        Value::Null | Value::XmlNil(_) => String::new(),
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),
@@ -1119,6 +1132,22 @@ mod tests {
         assert_eq!(
             call("exists", &[Value::String("".into())]).unwrap(),
             Value::Bool(true)
+        );
+    }
+
+    #[test]
+    fn xml_nil_predicate_distinguishes_nil_null_and_values() {
+        assert_eq!(
+            call("is_xml_nil", &[Value::xml_nil()]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            call("is_xml_nil", &[Value::Null]).unwrap(),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            call("is_xml_nil", &[Value::String(String::new())]).unwrap(),
+            Value::Bool(false)
         );
     }
 

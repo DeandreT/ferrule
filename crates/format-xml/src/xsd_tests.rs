@@ -686,3 +686,20 @@ fn export_rejects_conflicting_and_repeating_xml_roles() {
         Err(XmlFormatError::RepeatingSchemaRole { .. })
     ));
 }
+
+#[test]
+fn nillable_elements_import_and_export() {
+    let path =
+        std::env::temp_dir().join(format!("ferrule_xsd_nillable_{}.xsd", std::process::id()));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Root"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string" nillable="true"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+    let schema = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let value = schema.child("Value").unwrap();
+    assert!(value.nillable);
+    let exported = export(&schema).unwrap();
+    assert!(exported.contains(r#"name="Value" type="xs:string" nillable="true""#));
+}
