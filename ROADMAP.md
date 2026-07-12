@@ -69,9 +69,11 @@ standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
 constructed records, while filtered sequence-parameter UDFs can construct one
 flat aggregate record. Filtered tokenizer sequences lower to executable existential
-reducers, and selected sibling values lower to round-trippable lookups. Mapping-path
-and stable per-run clock values use explicit
-host context, computed JSON targets, plain structural group copies, and filtered
+reducers, and selected sibling values lower to round-trippable lookups. Static XML
+catalogs inside scalar lookup UDFs become named lookup sources, while designs with
+only core output parameters synthesize an executable typed target. Mapping-path and
+stable per-run clock values use explicit host context, computed JSON targets, plain
+structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
 Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
