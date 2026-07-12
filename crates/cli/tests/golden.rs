@@ -166,6 +166,92 @@ fn sqlite_input_produces_the_same_adults_csv() {
     assert_eq!(actual, expected);
 }
 
+#[test]
+fn composite_sqlite_input_iterates_a_selected_table() {
+    use std::collections::BTreeMap;
+
+    use ir::{Instance, ScalarType, SchemaNode, Value};
+    use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
+
+    let table_schema = SchemaNode::group(
+        "departments",
+        vec![
+            SchemaNode::scalar("id", ScalarType::Int),
+            SchemaNode::scalar("name", ScalarType::String),
+        ],
+    )
+    .repeating();
+    let source_schema = SchemaNode::group("database", vec![table_schema.clone()]);
+    let target_schema = SchemaNode::group(
+        "row",
+        vec![SchemaNode::scalar("department", ScalarType::String)],
+    );
+    let department = |id, name: &str| {
+        Instance::Group(vec![
+            ("id".into(), Instance::Scalar(Value::Int(id))),
+            ("name".into(), Instance::Scalar(Value::String(name.into()))),
+        ])
+    };
+    let db_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_composite_source_{}.db",
+        std::process::id()
+    ));
+    let project_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_composite_source_{}.json",
+        std::process::id()
+    ));
+    let output_path = std::env::temp_dir().join(format!(
+        "ferrule_cli_composite_source_{}.csv",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&db_path);
+    let _ = std::fs::remove_file(&project_path);
+    let _ = std::fs::remove_file(&output_path);
+    format_db::write(
+        &db_path,
+        &table_schema,
+        &[department(1, "Engineering"), department(2, "Sales")],
+    )
+    .unwrap();
+
+    let project = Project {
+        source: source_schema,
+        target: target_schema,
+        source_path: None,
+        target_path: None,
+        source_options: FormatOptions::default(),
+        target_options: FormatOptions::default(),
+        extra_sources: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::SourceField {
+                    path: vec!["name".into()],
+                    frame: None,
+                },
+            )]),
+        },
+        root: Scope {
+            source: Some(vec!["departments".into()]),
+            bindings: vec![Binding {
+                target_field: "department".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        },
+    };
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+
+    let rows = cli::run_project(&project_path, &db_path, &output_path).unwrap();
+    let actual = std::fs::read_to_string(&output_path).unwrap();
+    std::fs::remove_file(&output_path).unwrap();
+    std::fs::remove_file(&project_path).unwrap();
+    std::fs::remove_file(&db_path).unwrap();
+
+    assert_eq!(rows, 2);
+    assert_eq!(actual, "department\nEngineering\nSales\n");
+}
+
 /// Milestone 6 (SQLite output): the orders flattening written into a SQLite
 /// table, then read back through format-db and checked row by row against
 /// the JSON golden fixture.

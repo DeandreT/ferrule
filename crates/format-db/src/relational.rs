@@ -34,7 +34,7 @@ pub(super) fn read_instance(
     db_path: &Path,
     schema: &SchemaNode,
 ) -> Result<Instance, DbFormatError> {
-    if schema.repeating && is_flat_table(schema) {
+    if is_flat_table(schema) {
         return read(db_path, schema).map(Instance::Repeated);
     }
 
