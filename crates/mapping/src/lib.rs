@@ -22,6 +22,8 @@ pub enum RuntimeValue {
     MappingFilePath,
     /// Path of the top-level mapping for the current run.
     MainMappingFilePath,
+    /// One stable local timestamp captured for the current run.
+    CurrentDateTime,
 }
 
 /// A single node in the mapping graph.

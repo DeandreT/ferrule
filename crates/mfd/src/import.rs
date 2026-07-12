@@ -646,6 +646,9 @@ impl GraphBuilder<'_> {
             ("main-mfd-filepath", _) => Node::RuntimeValue {
                 value: RuntimeValue::MainMappingFilePath,
             },
+            ("now", _) => Node::RuntimeValue {
+                value: RuntimeValue::CurrentDateTime,
+            },
             ("if-else", _) => Node::If {
                 condition: input_or_null(self, 0),
                 then: input_or_null(self, 1),

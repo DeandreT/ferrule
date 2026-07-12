@@ -81,7 +81,11 @@ pub fn run_project_with_paths(
 
     let runtime_project_path = std::fs::canonicalize(project_path)
         .with_context(|| format!("resolving project path {}", project_path.display()))?;
-    let execution = engine::ExecutionContext::new(&runtime_project_path);
+    let current_datetime = jiff::Zoned::now()
+        .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
+        .to_string();
+    let execution = engine::ExecutionContext::new(&runtime_project_path)
+        .with_current_datetime(&current_datetime);
     let target_instance =
         engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
 
