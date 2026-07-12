@@ -55,7 +55,7 @@ fn root_group_projects_nested_scalars_simple_content_and_attributes() {
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source" outkey="10"><entry name="Info"/></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target" inpkey="20"><entry name="Info"/></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
-        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="20" edgekey="90"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
     );
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
@@ -148,17 +148,20 @@ fn group_projection_uses_only_its_owning_iteration_frame() {
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Order" outkey="10"><entry name="Customer" outkey="11"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Header" inpkey="22"/><entry name="Row" inpkey="20"><entry name="Customer" inpkey="21"/></entry></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
-        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="22"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge><edge edgekey="91"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21" edgekey="90"/><edge vertexkey="22" edgekey="91"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
     );
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let source = format_xml::read(&dir.0.join("source.xml"), &imported.project.source).unwrap();
     let target = engine::run(&imported.project, &source).unwrap();
-    assert_eq!(
-        scalar(target.field("Header").unwrap(), "Name"),
-        &Value::String("Ada".into())
-    );
+    let headers = target
+        .field("Header")
+        .and_then(Instance::as_mapped_sequence)
+        .unwrap();
+    assert_eq!(headers.len(), 2);
+    assert_eq!(scalar(&headers[0], "Name"), &Value::String("Ada".into()));
+    assert_eq!(scalar(&headers[1], "Name"), &Value::String("Grace".into()));
     let rows = target.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(
@@ -185,7 +188,7 @@ fn repeating_only_group_projection_warns_once_and_adds_no_bindings() {
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Wrapper" outkey="10"/></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Wrapper" inpkey="20"/></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
-        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="20" edgekey="90"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
     );
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
@@ -208,7 +211,7 @@ fn mixed_group_projection_copies_scalars_and_warns_about_repeating_children() {
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Wrapper" outkey="10"/></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Wrapper" inpkey="20"/></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
-        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="20" edgekey="90"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
     );
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();

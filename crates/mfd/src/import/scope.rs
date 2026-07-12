@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use mapping::{Binding, NodeId, Scope, SequenceExpr};
+use mapping::{Binding, IterationOutput, NodeId, Scope, SequenceExpr};
 
 #[derive(Clone)]
 pub(super) struct TargetLeaf {
@@ -80,6 +80,7 @@ impl ScopeBuilder {
         target_path: &[String],
         source_abs: &[String],
         nodes: IterationNodes,
+        output: IterationOutput,
     ) {
         let anchor = self.enclosing_anchor(target_path);
         let relative: Vec<String> = if source_abs.starts_with(&anchor) {
@@ -97,6 +98,7 @@ impl ScopeBuilder {
         scope.sort_by = nodes.sort_by;
         scope.sort_descending = nodes.sort_descending;
         scope.take = nodes.take;
+        scope.iteration_output = output;
     }
 
     pub(super) fn add_sequence(
