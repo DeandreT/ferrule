@@ -36,6 +36,8 @@ pub enum MfdError {
     Io(#[from] std::io::Error),
     #[error("xml parse error: {0}")]
     Xml(#[from] roxmltree::Error),
+    #[error("schema export error: {0}")]
+    SchemaExport(#[from] format_xml::XmlFormatError),
     #[error("not a MapForce design: {0}")]
     NotMfd(&'static str),
     #[error("cannot export: {0}")]

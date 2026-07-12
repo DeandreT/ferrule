@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::FormatOptions;
@@ -62,9 +62,19 @@ impl Side {
     }
 }
 
-/// Renders one schema component (and writes its schema sibling file, when
-/// the family has one) for the source or target side of the design.
-pub(super) fn schema_component_xml(
+pub(super) struct GeneratedSibling {
+    pub(super) path: PathBuf,
+    pub(super) contents: String,
+}
+
+pub(super) struct RenderedSchemaComponent {
+    pub(super) xml: String,
+    pub(super) sibling: Option<GeneratedSibling>,
+}
+
+/// Renders one schema component and its optional generated schema sibling.
+/// The caller writes artifacts only after both mapping sides validate.
+pub(super) fn render_schema_component(
     schema: &SchemaNode,
     format: SideFormat,
     ports: &PortTree,
@@ -72,7 +82,7 @@ pub(super) fn schema_component_xml(
     instance_path: Option<&str>,
     options: &FormatOptions,
     mfd_path: &Path,
-) -> Result<String, MfdError> {
+) -> Result<RenderedSchemaComponent, MfdError> {
     let stem = mfd_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -93,10 +103,14 @@ pub(super) fn schema_component_xml(
         .unwrap_or_default();
 
     let mut out = String::new();
+    let mut sibling = None;
     match format {
         SideFormat::Xml => {
             let schema_file = format!("{stem}-{side_name}.xsd");
-            std::fs::write(dir.join(&schema_file), format_xml::xsd::export(schema))?;
+            sibling = Some(GeneratedSibling {
+                path: dir.join(&schema_file),
+                contents: format_xml::xsd::export(schema)?,
+            });
             let _ = write!(
                 out,
                 "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
@@ -121,10 +135,10 @@ pub(super) fn schema_component_xml(
         }
         SideFormat::Json => {
             let schema_file = format!("{stem}-{side_name}.schema.json");
-            std::fs::write(
-                dir.join(&schema_file),
-                format_json::json_schema::export(schema),
-            )?;
+            sibling = Some(GeneratedSibling {
+                path: dir.join(&schema_file),
+                contents: format_json::json_schema::export(schema),
+            });
             let _ = write!(
                 out,
                 "\t\t\t\t<component name=\"{}\" library=\"json\" uid=\"{uid}\" kind=\"31\">\n\
@@ -246,7 +260,7 @@ pub(super) fn schema_component_xml(
             );
         }
     }
-    Ok(out)
+    Ok(RenderedSchemaComponent { xml: out, sibling })
 }
 
 /// The flat scalar fields a csv component needs, or `None` when the schema
@@ -302,6 +316,12 @@ pub(super) struct PortTree {
     by_abs: BTreeMap<Vec<String>, u32>,
 }
 
+pub(super) enum PortMatch {
+    Missing,
+    Unique(u32),
+    Ambiguous,
+}
+
 impl PortTree {
     pub(super) fn build(schema: &SchemaNode, keys: &mut KeyAlloc) -> Self {
         let mut by_abs = BTreeMap::new();
@@ -349,15 +369,28 @@ impl PortTree {
         })
     }
 
-    /// Finds the (first) absolute path ending in `suffix`. SourceField
-    /// paths are absolute paths cut at some enclosing iteration frame, so
-    /// tail matching recovers a plausible port; with several candidates
-    /// this is best-effort (`BTreeMap` order decides).
-    pub(super) fn key_for_suffix(&self, suffix: &[String]) -> Option<u32> {
-        self.by_abs
+    /// Finds a unique absolute path ending in `suffix`. SourceField paths
+    /// can be cut at an enclosing iteration frame, but choosing one of
+    /// several equal tails would silently miswire the exported mapping.
+    pub(super) fn match_suffix(&self, suffix: &[String]) -> PortMatch {
+        if suffix.is_empty() {
+            return self
+                .key_for_abs(suffix)
+                .map_or(PortMatch::Missing, PortMatch::Unique);
+        }
+        let mut matches = self
+            .by_abs
             .iter()
-            .find(|(abs, _)| abs.ends_with(suffix))
-            .map(|(_, &k)| k)
+            .filter(|(abs, _)| abs.ends_with(suffix))
+            .map(|(_, &key)| key);
+        let Some(first) = matches.next() else {
+            return PortMatch::Missing;
+        };
+        if matches.next().is_some() {
+            PortMatch::Ambiguous
+        } else {
+            PortMatch::Unique(first)
+        }
     }
 
     /// Entry-tree XML for a schema with `attr` (outkey/inpkey) on every
