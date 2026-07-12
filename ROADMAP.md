@@ -66,8 +66,9 @@ static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
-constructed records, mapping-path functions use explicit host context, computed
-JSON targets, plain structural group copies, and filtered or generated XML
+constructed records, mapping-path and stable per-run clock values use explicit
+host context, computed JSON targets, plain structural group copies, and filtered
+or generated XML
 occurrence sequences lower exactly, and inclusive ranges accept exact integral
 decimal inputs.
 High-value date/time/duration/missing-value functions execute natively. Non-representable
