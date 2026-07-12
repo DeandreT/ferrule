@@ -11,6 +11,7 @@ pub fn display_string(value: &Value) -> String {
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
         Value::String(s) => s.clone(),
+        Value::XmlNil(_) => "xsi:nil".to_string(),
     }
 }
 
@@ -48,6 +49,9 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             {
                 *value = Value::String(String::new());
             }
+            if ui.selectable_label(value.is_xml_nil(), "xsi:nil").clicked() {
+                *value = Value::xml_nil();
+            }
         });
     match value {
         Value::Null => {}
@@ -63,6 +67,7 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
         Value::String(s) => {
             ui.text_edit_singleline(s);
         }
+        Value::XmlNil(_) => {}
     }
 }
 

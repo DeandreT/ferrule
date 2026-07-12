@@ -186,25 +186,33 @@ fn parse_element(
         return SchemaNode::scalar(local, ScalarType::String);
     }
     let name = el.attribute("name").unwrap_or_default().to_string();
-    if let Some(complex_type) = el
+    let node = if let Some(complex_type) = el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "complexType")
     {
-        return SchemaNode::group(
+        SchemaNode::group(
             name,
             parse_complex_type(&complex_type, schema_el, schema_path, state),
-        );
-    }
-    if let Some(ty) = el.attribute("type") {
+        )
+    } else if let Some(ty) = el.attribute("type") {
         if let Some(children) = resolve_complex_type(ty, schema_el, schema_path, state) {
-            return SchemaNode::group(name, children);
+            SchemaNode::group(name, children)
+        } else if let Some(ty) = resolve_simple_type(ty, schema_el, schema_path) {
+            SchemaNode::scalar(name, ty)
+        } else {
+            SchemaNode::scalar(name, map_xsd_type(ty))
         }
-        if let Some(ty) = resolve_simple_type(ty, schema_el, schema_path) {
-            return SchemaNode::scalar(name, ty);
-        }
-        return SchemaNode::scalar(name, map_xsd_type(ty));
+    } else {
+        SchemaNode::scalar(name, ScalarType::String)
+    };
+    if el
+        .attribute("nillable")
+        .is_some_and(|value| matches!(value, "true" | "1"))
+    {
+        node.nillable()
+    } else {
+        node
     }
-    SchemaNode::scalar(name, ScalarType::String)
 }
 
 /// Finds a named top-level declaration (`xs:complexType name=..` etc.).
@@ -730,10 +738,15 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<()
     } else {
         ""
     };
+    let nillable = if node.nillable {
+        " nillable=\"true\""
+    } else {
+        ""
+    };
     match &node.kind {
         ir::SchemaKind::Scalar { ty } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}/>\n",
                 node.name,
                 xsd_type_name(ty)
             ));
@@ -760,7 +773,7 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<()
                     });
                 };
                 out.push_str(&format!(
-                    "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:simpleContent>\n{pad}      <xs:extension base=\"{}\">\n",
+                    "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n{pad}  <xs:complexType>\n{pad}    <xs:simpleContent>\n{pad}      <xs:extension base=\"{}\">\n",
                     node.name,
                     xsd_type_name(ty)
                 ));
@@ -784,7 +797,7 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<()
                 return Ok(());
             }
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:sequence>\n",
+                "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n{pad}  <xs:complexType>\n{pad}    <xs:sequence>\n",
                 node.name
             ));
             for child in nested_elements {

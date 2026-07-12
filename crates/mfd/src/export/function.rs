@@ -20,6 +20,7 @@ pub(super) fn constant_parts(value: &Value) -> (String, &'static str) {
         Value::Int(value) => (value.to_string(), "integer"),
         Value::Float(value) => (value.to_string(), "decimal"),
         Value::String(value) => (value.clone(), "string"),
+        Value::XmlNil(_) => (String::new(), "string"),
     }
 }
 
@@ -50,6 +51,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "get_folder" => "get-folder",
         "remove_folder" => "remove-folder",
         "resolve_filepath" => "resolve-filepath",
+        "is_xml_nil" => "is-xsi-nil",
         "date_from_datetime" => "date-from-datetime",
         "time_from_datetime" => "time-from-datetime",
         "datetime_from_date_and_time" => "datetime-from-date-and-time",

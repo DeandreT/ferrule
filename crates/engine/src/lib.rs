@@ -1066,7 +1066,7 @@ fn value_ordering(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
 
 fn value_text(value: &Value) -> String {
     match value {
-        Value::Null => String::new(),
+        Value::Null | Value::XmlNil(_) => String::new(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),

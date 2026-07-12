@@ -247,7 +247,13 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
     component.name == "constant"
         || matches!(
             component.name.as_str(),
-            "if-else" | "value-map" | "position" | "mfd-filepath" | "main-mfd-filepath" | "now"
+            "if-else"
+                | "value-map"
+                | "position"
+                | "mfd-filepath"
+                | "main-mfd-filepath"
+                | "now"
+                | "set-xsi-nil"
         )
         || component.kind == 5 && aggregate_op(&component.name).is_some()
         || map_name(&component.name).is_some()
@@ -338,6 +344,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "get-folder" => "get_folder",
         "remove-folder" => "remove_folder",
         "resolve-filepath" => "resolve_filepath",
+        "is-xsi-nil" => "is_xml_nil",
         "exists" => "exists",
         "round" | "round-precision" => "round",
         "date-from-datetime" => "date_from_datetime",

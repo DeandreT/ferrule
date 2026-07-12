@@ -118,7 +118,9 @@ pub(super) fn classify_target_connection(
         return;
     }
     if target_node.repeating {
-        iterations.push(TargetIteration::repeated(target_path, feed));
+        let mut iteration = TargetIteration::repeated(target_path, feed);
+        iteration.projects_whole_group = copy_all;
+        iterations.push(iteration);
     } else if is_xml_text_group(target, target_node)
         && !text_is_connected(target, target_path, builder)
         && is_scalar_feed(builder, feed)

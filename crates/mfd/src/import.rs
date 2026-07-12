@@ -649,6 +649,9 @@ impl GraphBuilder<'_> {
             ("now", _) => Node::RuntimeValue {
                 value: RuntimeValue::CurrentDateTime,
             },
+            ("set-xsi-nil", _) => Node::Const {
+                value: Value::xml_nil(),
+            },
             ("if-else", _) => Node::If {
                 condition: input_or_null(self, 0),
                 then: input_or_null(self, 1),
