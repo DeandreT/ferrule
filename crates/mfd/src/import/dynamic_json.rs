@@ -180,6 +180,8 @@ impl DynamicJsonTarget {
         let unsupported = feed.sequence_component.is_some()
             || feed.db_where_component.is_some()
             || feed.filter_expr.is_some()
+            || feed.group_starting_with.is_some()
+            || feed.has_start_grouping
             || feed.block_size.is_some()
             || feed.has_block_grouping
             || feed.distinct_key.is_some()
@@ -229,6 +231,7 @@ fn root_is_unconfigured(root: &Scope) -> bool {
         && root.sequence.is_none()
         && root.filter.is_none()
         && root.group_by.is_none()
+        && root.group_starting_with.is_none()
         && root.group_into_blocks.is_none()
         && root.sort_by.is_none()
         && !root.sort_descending

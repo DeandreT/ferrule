@@ -289,6 +289,12 @@ impl GraphViewer<'_> {
             if scope.group_by == Some(needle) {
                 found.insert(format!("{label} group-by key"));
             }
+            if scope.group_starting_with == Some(needle) {
+                found.insert(format!("{label} group-starting predicate"));
+            }
+            if scope.group_into_blocks == Some(needle) {
+                found.insert(format!("{label} group block size"));
+            }
             if scope.sort_by == Some(needle) {
                 found.insert(format!("{label} sort key"));
             }

@@ -11,6 +11,25 @@ use crate::path_picker::SourcePathCatalog;
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GroupingMode {
+    None,
+    ByKey,
+    StartingWith,
+    IntoBlocks,
+}
+
+impl GroupingMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::ByKey => "key",
+            Self::StartingWith => "starting predicate",
+            Self::IntoBlocks => "fixed blocks",
+        }
+    }
+}
+
 fn first_node_id(graph: &Graph) -> Option<NodeId> {
     graph.nodes.keys().next().copied()
 }
@@ -134,20 +153,67 @@ pub fn show_scope_editor(
         });
 
         ui.horizontal(|ui| {
-            ui.label("  group-by key:");
-            let mut has_group = scope.group_by.is_some();
-            if ui
-                .add_enabled(
-                    scope.group_by.is_some() || first_node.is_some(),
-                    egui::Checkbox::new(&mut has_group, "grouped"),
-                )
-                .on_disabled_hover_text("Add a graph node before enabling grouping")
-                .changed()
-            {
-                scope.group_by = if has_group { first_node } else { None };
+            ui.label("  grouping:");
+            let mut mode = if scope.group_by.is_some() {
+                GroupingMode::ByKey
+            } else if scope.group_starting_with.is_some() {
+                GroupingMode::StartingWith
+            } else if scope.group_into_blocks.is_some() {
+                GroupingMode::IntoBlocks
+            } else {
+                GroupingMode::None
+            };
+            let previous = mode;
+            ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
+                egui::ComboBox::from_id_salt("scope_grouping_mode")
+                    .selected_text(mode.label())
+                    .show_ui(ui, |ui| {
+                        for choice in [
+                            GroupingMode::None,
+                            GroupingMode::ByKey,
+                            GroupingMode::StartingWith,
+                            GroupingMode::IntoBlocks,
+                        ] {
+                            ui.selectable_value(&mut mode, choice, choice.label());
+                        }
+                    });
+            })
+            .response
+            .on_disabled_hover_text("Add a graph node before enabling grouping");
+            if mode != previous {
+                scope.group_by = if mode == GroupingMode::ByKey {
+                    first_node
+                } else {
+                    None
+                };
+                scope.group_starting_with = if mode == GroupingMode::StartingWith {
+                    first_node
+                } else {
+                    None
+                };
+                scope.group_into_blocks = if mode == GroupingMode::IntoBlocks {
+                    first_node
+                } else {
+                    None
+                };
             }
-            if let Some(group_by) = &mut scope.group_by {
-                node_picker(ui, "group_by_node", group_by, graph);
+            match mode {
+                GroupingMode::None => {}
+                GroupingMode::ByKey => {
+                    if let Some(group_by) = &mut scope.group_by {
+                        node_picker(ui, "group_by_node", group_by, graph);
+                    }
+                }
+                GroupingMode::StartingWith => {
+                    if let Some(predicate) = &mut scope.group_starting_with {
+                        node_picker(ui, "group_starting_node", predicate, graph);
+                    }
+                }
+                GroupingMode::IntoBlocks => {
+                    if let Some(block_size) = &mut scope.group_into_blocks {
+                        node_picker(ui, "group_block_size_node", block_size, graph);
+                    }
+                }
             }
         });
 

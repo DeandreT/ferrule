@@ -1,6 +1,122 @@
 use super::*;
 
 #[test]
+fn group_starting_with_imports_executes_and_roundtrips() {
+    let imported = mfd::import(&fixture("group-starting.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let group = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Group")
+        .unwrap();
+    assert!(group.group_by.is_none());
+    assert!(group.group_into_blocks.is_none());
+    let predicate = group.group_starting_with.unwrap();
+    assert!(matches!(
+        &imported.project.graph.nodes[&predicate],
+        Node::SourceField { path, frame }
+            if path == &["Start"]
+                && frame.as_deref().is_some_and(|frame| frame.len() == 1 && frame[0] == "Row")
+    ));
+
+    let source =
+        format_xml::read(&fixture("group-starting.xml"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let groups = output
+        .field("Group")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(groups.len(), 3);
+    assert_eq!(scalar(&groups[0], "First"), Value::String("alpha".into()));
+    assert_eq!(scalar(&groups[0], "Count"), Value::Int(1));
+    assert_eq!(scalar(&groups[1], "First"), Value::String("beta".into()));
+    assert_eq!(scalar(&groups[1], "Count"), Value::Int(2));
+    assert_eq!(scalar(&groups[2], "First"), Value::String("delta".into()));
+    assert_eq!(scalar(&groups[2], "Count"), Value::Int(1));
+
+    let dir = TempDir::new("group_starting");
+    let out = dir.0.join("group-starting.mfd");
+    let warnings = mfd::export(&imported.project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"group-starting-with\"").count(), 1);
+    let document = roxmltree::Document::parse(&exported).unwrap();
+    let component = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component") && node.attribute("name") == Some("group-starting-with")
+        })
+        .unwrap();
+    let input_keys: Vec<&str> = component
+        .descendants()
+        .filter(|node| node.has_tag_name("sources"))
+        .flat_map(|sources| sources.children())
+        .filter(|node| node.has_tag_name("datapoint"))
+        .filter_map(|node| node.attribute("key"))
+        .collect();
+    assert_eq!(input_keys.len(), 2);
+    assert!(input_keys.iter().all(|input| {
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("edge") && node.attribute("vertexkey") == Some(*input))
+    }));
+
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert!(
+        reimported.project.root.children[0]
+            .group_starting_with
+            .is_some()
+    );
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
+}
+
+#[test]
+fn malformed_group_starting_predicates_skip_the_affected_iteration() {
+    let original = std::fs::read_to_string(fixture("group-starting.mfd")).unwrap();
+    let variants = [
+        (
+            "missing",
+            original.replace("      <edge from=\"12\" to=\"31\"/>\n", ""),
+        ),
+        (
+            "dangling",
+            original.replace("from=\"12\" to=\"31\"", "from=\"999\" to=\"31\""),
+        ),
+    ];
+    for (name, design) in variants {
+        let dir = TempDir::new(&format!("group_starting_{name}"));
+        for schema in ["group-starting-source.xsd", "group-starting-target.xsd"] {
+            std::fs::copy(fixture(schema), dir.0.join(schema)).unwrap();
+        }
+        let path = dir.0.join("group-starting.mfd");
+        std::fs::write(&path, design).unwrap();
+        let imported = mfd::import(&path).unwrap();
+        assert_eq!(
+            imported.warnings.len(),
+            1,
+            "{name}: {:?}",
+            imported.warnings
+        );
+        assert!(
+            imported.warnings[0].contains(
+                "group-starting-with feeding `Group` has a missing or unsupported predicate; iteration skipped"
+            ),
+            "{name}: {:?}",
+            imported.warnings
+        );
+        assert!(
+            imported.project.root.children.is_empty(),
+            "{name}: skipped iteration left a singular target scope"
+        );
+    }
+}
+
+#[test]
 fn group_into_blocks_imports_executes_and_roundtrips() {
     let imported = mfd::import(&fixture("group-blocks.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

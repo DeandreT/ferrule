@@ -405,6 +405,7 @@ fn validate_scope(
     for (label, node) in [
         ("filter", scope.filter),
         ("group-by key", scope.group_by),
+        ("group-starting-with predicate", scope.group_starting_with),
         ("group block size", scope.group_into_blocks),
         ("sort key", scope.sort_by),
         ("take count", scope.take),
@@ -479,16 +480,31 @@ fn validate_scope(
             "group-by key has no iterated source",
         ));
     }
+    if !iterates && scope.group_starting_with.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "group-starting-with predicate has no iterated source",
+        ));
+    }
     if !iterates && scope.group_into_blocks.is_some() {
         issues.push(ValidationIssue::new(
             &location,
             "group block size has no iterated source",
         ));
     }
-    if scope.group_by.is_some() && scope.group_into_blocks.is_some() {
+    if [
+        scope.group_by,
+        scope.group_starting_with,
+        scope.group_into_blocks,
+    ]
+    .into_iter()
+    .flatten()
+    .count()
+        > 1
+    {
         issues.push(ValidationIssue::new(
             &location,
-            "group-by and group-into-blocks are mutually exclusive",
+            "scope grouping modes are mutually exclusive",
         ));
     }
     if !iterates && scope.sort_by.is_some() {
@@ -823,6 +839,8 @@ mod tests {
         project.root.source = None;
         project.root.filter = Some(88);
         project.root.group_by = Some(89);
+        project.root.group_starting_with = Some(92);
+        project.root.group_into_blocks = Some(93);
         project.root.sort_by = Some(90);
         project.root.take = Some(91);
         project.root.bindings.push(Binding {
@@ -845,6 +863,11 @@ mod tests {
             "source field `missing` matches no scalar",
             "filter references missing node 88",
             "group-by key references missing node 89",
+            "group-starting-with predicate references missing node 92",
+            "group block size references missing node 93",
+            "group-starting-with predicate has no iterated source",
+            "group block size has no iterated source",
+            "scope grouping modes are mutually exclusive",
             "sort key references missing node 90",
             "take count references missing node 91",
             "filter has no iterated source",

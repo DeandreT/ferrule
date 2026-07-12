@@ -150,6 +150,27 @@ fn late_dynamic_resolution_failure_leaves_root_scope_unchanged() {
 }
 
 #[test]
+fn group_starting_control_rejects_computed_json_properties() {
+    let dir = TempDir::new("group_starting");
+    let design = write_fixture(&dir.0);
+    let text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace("name=\"group-by\"", "name=\"group-starting-with\"");
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("dynamic JSON target")
+            && warning.contains("support only plain iteration and one outer group-by")
+    }));
+    let root = &imported.project.root;
+    assert!(root.source.is_none());
+    assert!(root.group_starting_with.is_none());
+    assert!(!root.merge_dynamic_fields);
+    assert!(root.dynamic_children.is_empty());
+}
+
+#[test]
 fn export_rejects_dynamic_mapping_without_publishing_artifacts() {
     let dir = TempDir::new("export");
     let project = mfd::import(&write_fixture(&dir.0)).unwrap().project;

@@ -22,6 +22,11 @@ pub(super) struct IterationFeed {
     pub(super) group_key: Option<u32>,
     /// Whether a key-based group operation was crossed.
     pub(super) has_key_grouping: bool,
+    /// Boundary predicate for a contiguous group-starting-with operation.
+    pub(super) group_starting_with: Option<u32>,
+    /// Whether the chain contains group-starting-with, including a malformed
+    /// component with a missing predicate.
+    pub(super) has_start_grouping: bool,
     /// The block-size expression key, if group-into-blocks was crossed.
     pub(super) block_size: Option<u32>,
     /// Whether the chain contains group-into-blocks, including a component

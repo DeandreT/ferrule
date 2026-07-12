@@ -18,6 +18,8 @@ use crate::MfdError;
 mod function;
 mod mapped_sequence;
 mod schema;
+#[cfg(test)]
+mod tests;
 
 use function::{
     aggregate_component_name, constant_parts, function_library, unmap_function_name, value_text,
@@ -721,6 +723,42 @@ fn append_scope_controls(
             )),
         }
     }
+    if let Some(predicate) = scope.group_starting_with {
+        connect_position_roots(
+            [predicate],
+            source_collection,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&predicate) {
+            Some(&predicate_src) => {
+                let in_nodes = keys.next();
+                let in_predicate = keys.next();
+                let out_groups = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"group-starting-with\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_predicate}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((predicate_src, in_predicate));
+                from = out_groups;
+            }
+            None => warnings.push(format!(
+                "scope `{}` group-starting predicate references an unexported node; grouping dropped",
+                chain.join("/")
+            )),
+        }
+    }
     if let Some(block_size) = scope.group_into_blocks {
         connect_position_roots(
             [block_size],
@@ -1108,66 +1146,4 @@ fn collect_scope_edges(
         chain.pop();
     }
     anchor.truncate(anchor_len);
-}
-
-#[cfg(test)]
-mod tests {
-    use ir::{ScalarType, SchemaNode};
-
-    use super::function::{function_library, unmap_function_name};
-    use super::schema::{KeyAlloc, PortMatch, PortTree};
-
-    #[test]
-    fn canonical_scalar_names_export_as_mapforce_core_functions() {
-        assert_eq!(unmap_function_name("string"), "string");
-        assert_eq!(unmap_function_name("format_number"), "format-number");
-        assert_eq!(function_library("string"), "core");
-        assert_eq!(function_library("format_number"), "core");
-        assert_eq!(
-            unmap_function_name("time_from_datetime"),
-            "time-from-datetime"
-        );
-        assert_eq!(function_library("time_from_datetime"), "lang");
-        assert_eq!(
-            unmap_function_name("datetime_from_date_and_time"),
-            "datetime-from-date-and-time"
-        );
-        assert_eq!(function_library("datetime_from_date_and_time"), "lang");
-        assert_eq!(
-            unmap_function_name("datetime_from_parts"),
-            "datetime-from-parts"
-        );
-        assert_eq!(function_library("datetime_from_parts"), "lang");
-        assert_eq!(unmap_function_name("datetime_add"), "datetime-add");
-        assert_eq!(function_library("datetime_add"), "lang");
-        assert_eq!(unmap_function_name("parse_date"), "parse-date");
-        assert_eq!(unmap_function_name("parse_datetime"), "parse-dateTime");
-        assert_eq!(
-            unmap_function_name("substitute_missing"),
-            "substitute-missing"
-        );
-    }
-
-    #[test]
-    fn suffix_matching_rejects_ambiguous_source_leaves() {
-        let schema = SchemaNode::group(
-            "Root",
-            vec![
-                SchemaNode::group("Customer", vec![SchemaNode::scalar("Id", ScalarType::Int)]),
-                SchemaNode::group("Order", vec![SchemaNode::scalar("Id", ScalarType::Int)]),
-            ],
-        );
-        let mut keys = KeyAlloc { next: 1 };
-        let ports = PortTree::build(&schema, &mut keys);
-
-        assert!(matches!(
-            ports.match_suffix(&["Id".to_string()]),
-            PortMatch::Ambiguous
-        ));
-        assert!(matches!(
-            ports.match_suffix(&["Customer".to_string(), "Id".to_string()]),
-            PortMatch::Unique(_)
-        ));
-        assert!(matches!(ports.match_suffix(&[]), PortMatch::Unique(_)));
-    }
 }

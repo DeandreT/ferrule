@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Values" library="xml" uid="2" kind="14">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance"><entry name="document"><entry name="Values">
+                <entry name="Row" outkey="10">
+                  <entry name="Value" outkey="11"/>
+                  <entry name="Start" outkey="12"/>
+                </entry>
+              </entry></entry></entry>
+            </root>
+            <document schema="group-starting-source.xsd" inputinstance="group-starting.xml" instanceroot="{}Values"/>
+          </data>
+        </component>
+        <component name="Groups" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance"><entry name="document"><entry name="Groups">
+                <entry name="Group" inpkey="20">
+                  <entry name="First" inpkey="21"/>
+                  <entry name="Count" inpkey="22"/>
+                </entry>
+              </entry></entry></entry>
+            </root>
+            <document schema="group-starting-target.xsd" instanceroot="{}Groups"/>
+          </data>
+        </component>
+        <component name="group-starting-with" library="core" uid="4" kind="5">
+          <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+          <targets><datapoint pos="0" key="32"/></targets>
+        </component>
+        <component name="count" library="core" uid="5" kind="5">
+          <sources><datapoint/><datapoint pos="1" key="33"/></sources>
+          <targets><datapoint pos="0" key="34"/></targets>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="30"/>
+      <edge from="12" to="31"/>
+      <edge from="32" to="20"/>
+      <edge from="11" to="21"/>
+      <edge from="32" to="33"/>
+      <edge from="34" to="22"/>
+    </connections>
+  </component>
+</mapping>
