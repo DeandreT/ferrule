@@ -4,19 +4,23 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{Instance, Value};
-use mapping::{Graph, IterationOutput, Node, NodeId, Project, Scope, SequenceExpr};
+use mapping::{Graph, IterationOutput, Node, NodeId, Project, Scope};
 use thiserror::Error;
 
 mod dynamic_target;
 mod iteration_output;
+mod sequence;
 mod validate;
 
 use dynamic_target::{eval_dynamic_key, insert_target_field};
 use iteration_output::finalize_scope_output;
+#[cfg(test)]
+use mapping::SequenceExpr;
+use sequence::eval_sequence;
+#[cfg(test)]
+use sequence::{MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length};
 
 pub use validate::{ValidationIssue, validate};
-
-const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
@@ -359,139 +363,6 @@ fn eval_scope(
     }
 
     finalize_scope_output(scope, produced)
-}
-
-fn eval_sequence(
-    graph: &Graph,
-    sequence: &SequenceExpr,
-    context: &[&Instance],
-    positions: &[PositionFrame],
-) -> Result<Vec<Value>, EngineError> {
-    match sequence {
-        SequenceExpr::Tokenize {
-            input, delimiter, ..
-        } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions)? else {
-                return Ok(Vec::new());
-            };
-            let Some(delimiter) = eval_sequence_arg(graph, *delimiter, context, positions)? else {
-                return Ok(Vec::new());
-            };
-            tokenize(input, delimiter)
-        }
-        SequenceExpr::TokenizeByLength { input, length, .. } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions)? else {
-                return Ok(Vec::new());
-            };
-            let Some(length) = eval_sequence_arg(graph, *length, context, positions)? else {
-                return Ok(Vec::new());
-            };
-            tokenize_by_length(input, length)
-        }
-        SequenceExpr::Generate { from, to, .. } => {
-            let from = match from {
-                Some(node) => {
-                    let Some(value) = eval_sequence_arg(graph, *node, context, positions)? else {
-                        return Ok(Vec::new());
-                    };
-                    Some(value)
-                }
-                None => None,
-            };
-            let Some(to) = eval_sequence_arg(graph, *to, context, positions)? else {
-                return Ok(Vec::new());
-            };
-            generate_sequence(from, to)
-        }
-    }
-}
-
-fn eval_sequence_arg(
-    graph: &Graph,
-    node: NodeId,
-    context: &[&Instance],
-    positions: &[PositionFrame],
-) -> Result<Option<Value>, EngineError> {
-    let mut in_progress = HashSet::new();
-    let value = eval_expr(graph, node, context, positions, &mut in_progress)?;
-    Ok((value != Value::Null).then_some(value))
-}
-
-fn generate_sequence(from: Option<Value>, to: Value) -> Result<Vec<Value>, EngineError> {
-    let from = from.map_or(Ok(1), |value| sequence_integer(value, "generate-sequence"))?;
-    let to = sequence_integer(to, "generate-sequence")?;
-    if from > to {
-        return Ok(Vec::new());
-    }
-    let requested = (i128::from(to) - i128::from(from) + 1) as u128;
-    if requested > MAX_GENERATED_SEQUENCE_ITEMS {
-        return Err(EngineError::GeneratedSequenceTooLarge {
-            requested,
-            max: MAX_GENERATED_SEQUENCE_ITEMS,
-        });
-    }
-    let mut values = Vec::with_capacity(requested as usize);
-    values.extend((from..=to).map(Value::Int));
-    Ok(values)
-}
-
-fn sequence_integer(value: Value, function: &'static str) -> Result<i64, EngineError> {
-    match value {
-        Value::Int(value) => Ok(value),
-        other => Err(functions::FunctionError::TypeMismatch {
-            function,
-            got: other.type_name(),
-        }
-        .into()),
-    }
-}
-
-fn tokenize(input: Value, delimiter: Value) -> Result<Vec<Value>, EngineError> {
-    let input = sequence_string(input, "tokenize")?;
-    let delimiter = sequence_string(delimiter, "tokenize")?;
-    if delimiter.is_empty() {
-        return Err(functions::FunctionError::InvalidArgument {
-            function: "tokenize",
-            message: "requires a non-empty delimiter",
-        }
-        .into());
-    }
-    Ok(input
-        .split(&delimiter)
-        .map(|value| Value::String(value.to_string()))
-        .collect())
-}
-
-fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Value>, EngineError> {
-    let input = sequence_string(input, "tokenize-by-length")?;
-    let length = match length {
-        Value::Int(value) => Some(value),
-        Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
-        Value::String(value) => value.trim().parse().ok(),
-        _ => None,
-    }
-    .filter(|length| *length > 0)
-    .ok_or(functions::FunctionError::InvalidArgument {
-        function: "tokenize-by-length",
-        message: "requires a positive integer length",
-    })? as usize;
-
-    let chars: Vec<char> = input.chars().collect();
-    Ok(chars
-        .chunks(length)
-        .map(|chunk| Value::String(chunk.iter().collect()))
-        .collect())
-}
-
-fn sequence_string(value: Value, function: &'static str) -> Result<String, EngineError> {
-    match value {
-        Value::String(value) => Ok(value),
-        other => Err(functions::FunctionError::TypeMismatch {
-            function,
-            got: other.type_name(),
-        }
-        .into()),
-    }
 }
 
 fn eval_item_count(

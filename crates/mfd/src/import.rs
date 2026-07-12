@@ -17,6 +17,7 @@ mod db_query;
 mod db_where;
 mod dynamic_json;
 mod function;
+mod generated_occurrence;
 mod graph;
 mod group_projection;
 mod iteration;
@@ -294,6 +295,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             )),
         }
     }
+    generated_occurrence::infer(target, &mut builder, &mut iterations);
     iterations.sort_by_key(|iteration| iteration.target_path.len());
     for iteration in &iterations {
         let feed = builder.resolve_iteration_feed(iteration.feed);
@@ -586,11 +588,17 @@ impl GraphBuilder<'_> {
             return id;
         }
         let fc = &self.fn_components[idx];
+        let numeric_inputs = matches!(fc.name.as_str(), "add" | "subtract" | "multiply" | "divide");
 
         let mut input_ids = Vec::with_capacity(fc.inputs.len());
         for input in fc.inputs.clone() {
             let feed = input.and_then(|k| self.edge_from.get(&k).copied());
-            let node = feed.and_then(|from| self.value_node(from));
+            let node = feed.and_then(|from| {
+                numeric_inputs
+                    .then(|| self.numeric_string_constant(from))
+                    .flatten()
+                    .or_else(|| self.value_node(from))
+            });
             input_ids.push(node);
         }
         let input_or_null = |builder: &mut Self, i: usize| {
@@ -661,6 +669,25 @@ impl GraphBuilder<'_> {
         };
         self.graph.nodes.insert(id, node);
         id
+    }
+
+    fn numeric_string_constant(&mut self, feed: u32) -> Option<NodeId> {
+        let component = self
+            .fn_by_output
+            .get(&feed)
+            .and_then(|index| self.fn_components.get(*index))?;
+        let (text, datatype) = component.constant.as_ref()?;
+        if datatype != "string" {
+            return None;
+        }
+        let value = text
+            .trim()
+            .parse::<i64>()
+            .map(Value::Int)
+            .or_else(|_| text.trim().parse::<f64>().map(Value::Float))
+            .ok()
+            .filter(|value| !matches!(value, Value::Float(value) if !value.is_finite()))?;
+        Some(self.alloc(Node::Const { value }))
     }
 
     /// Converts an aggregate function component into a [`Node::Aggregate`].

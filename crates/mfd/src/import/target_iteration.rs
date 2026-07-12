@@ -145,7 +145,7 @@ fn build_one(
         take,
     };
     if let Some(sequence) = sequence {
-        scopes.add_sequence(&target_path, sequence, nodes);
+        scopes.add_sequence(&target_path, sequence, nodes, iteration.output);
     } else if let Some(source_path) = &source_path {
         let scope_source = if iteration.output == IterationOutput::MappedSequence {
             builder
