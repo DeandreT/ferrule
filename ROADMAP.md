@@ -22,11 +22,11 @@ clean-room interoperability, and extensible adapters.
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
-  structural group projection, and 41 scalar built-ins.
+  structural group projection, mapped XML occurrence sequences, and 41 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 96/120 local MapForce 2026 samples import; 42 import without
+- `.mfd` survey: 96/120 local MapForce 2026 samples import; 47 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -64,7 +64,9 @@ are implemented. Generated scopes export sort/filter/group/take controls and
 stage-correct positions. Compatible JSON object alternatives can drive exact
 derived XML type output, database WHERE/ORDER controls lower into runtime scopes,
 static and foreign-key-correlated queries recover executable SQLite sources,
-computed JSON targets and plain structural group copies lower exactly, and
+embedded correlated catalog queries recover executable relational sources,
+computed JSON targets, plain structural group copies, and filtered XML occurrence
+sequences lower exactly, and
 high-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
 conversion.
@@ -237,11 +239,11 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 345 (344 executable plus the ignored local-sample survey).
-- `.mfd` survey: 96/120 import, 42 warning-free.
+- Workspace tests: 367 (366 executable plus the ignored local-sample survey).
+- `.mfd` survey: 96/120 import, 47 warning-free.
 - Unsupported-function warnings: 12 across the expanded importable set.
-- Target-path mismatch warnings: 3 across the expanded importable set.
-- Non-repeating structural-group warnings: 10 across the expanded importable set.
+- Target-path mismatch warnings: 1 across the expanded importable set.
+- Non-repeating structural-group warnings: 8 across the expanded importable set.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
   warnings, runtime failures, and invalid command usage.
 - CLI run paths: explicit flags override project-relative `source_path` and
