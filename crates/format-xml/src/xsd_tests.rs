@@ -12,6 +12,33 @@ fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
 }
 
 #[test]
+fn imports_inline_simple_type_restriction_base() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_inline_simple_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element name="Quantity"><xs:simpleType>
+              <xs:restriction base="xs:positiveInteger"/>
+            </xs:simpleType></xs:element>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let schema = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(matches!(
+        schema.child("Quantity").map(|child| &child.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Int
+        })
+    ));
+}
+
+#[test]
 fn imports_named_derived_complex_types() {
     let path =
         std::env::temp_dir().join(format!("ferrule_xsd_named_type_{}.xsd", std::process::id()));

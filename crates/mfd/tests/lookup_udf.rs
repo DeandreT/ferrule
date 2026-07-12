@@ -71,6 +71,41 @@ fn mapping() -> &'static str {
 </mapping>"#
 }
 
+fn static_catalog_mapping() -> &'static str {
+    r#"<mapping version="26">
+  <component name="map"><structure><children>
+    <component name="input" library="xml" kind="14"><data><root>
+      <entry name="Input"><entry name="Needle" outkey="10"/></entry>
+    </root><document schema="input.xsd" inputinstance="input.xml" instanceroot="{}Input"/></data></component>
+    <component name="Find" library="user" kind="19"><data>
+      <root><entry name="needle" inpkey="30" componentid="101"/></root>
+      <root rootindex="1"><entry name="result" outkey="34" componentid="102"/></root>
+    </data></component>
+    <component name="output" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root>
+      <entry name="Output"><entry name="Result" inpkey="40"/></entry>
+    </root><document schema="output.xsd" outputinstance="output.xml" instanceroot="{}Output"/></data></component>
+  </children><graph><vertices>
+    <vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>
+    <vertex vertexkey="34"><edges><edge vertexkey="40"/></edges></vertex>
+  </vertices></graph></structure></component>
+  <component name="Find" library="user"><structure><children>
+    <component name="result" library="core" uid="102" kind="7"><sources><datapoint key="200"/></sources></component>
+    <component name="needle" library="core" uid="101" kind="6"><targets><datapoint key="201"/></targets></component>
+    <component name="equal" library="core" uid="103" kind="5"><sources><datapoint key="202"/><datapoint key="203"/></sources><targets><datapoint key="204"/></targets></component>
+    <component name="filter" library="core" uid="105" kind="3"><sources><datapoint key="205"/><datapoint key="206"/></sources><targets><datapoint key="207"/><datapoint/></targets></component>
+    <component name="Catalog" library="xml" uid="104" kind="14"><properties ParameterName="catalog"/><data><root>
+      <entry name="Catalog"><entry name="Item"><entry name="Key" outkey="208"/><entry name="Value" outkey="209"/></entry></entry>
+    </root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component>
+  </children><graph><vertices>
+    <vertex vertexkey="201"><edges><edge vertexkey="202"/></edges></vertex>
+    <vertex vertexkey="208"><edges><edge vertexkey="203"/></edges></vertex>
+    <vertex vertexkey="204"><edges><edge vertexkey="206"/></edges></vertex>
+    <vertex vertexkey="209"><edges><edge vertexkey="205"/></edges></vertex>
+    <vertex vertexkey="207"><edges><edge vertexkey="200"/></edges></vertex>
+  </vertices></graph></structure></component>
+</mapping>"#
+}
+
 fn setup(mfd: &str) -> TempDir {
     let dir = TempDir::new();
     write(
@@ -144,6 +179,66 @@ fn structured_lookup_near_miss_retains_actionable_warning() {
         "{:?}",
         imported.warnings
     );
+    assert!(
+        !imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::Lookup { .. }))
+    );
+}
+
+#[test]
+fn static_catalog_filter_udf_imports_as_an_executable_named_source_lookup() {
+    let dir = setup(static_catalog_mapping());
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.extra_sources.len(), 1);
+    assert_eq!(imported.project.extra_sources[0].name, "Catalog");
+    assert_eq!(imported.project.extra_sources[0].path, "catalog.xml");
+    assert!(imported.project.graph.nodes.values().any(|node| matches!(
+        node,
+        Node::Lookup { collection, key, value, .. }
+            if collection == &["Catalog", "Item"] && key == &["Key"] && value == &["Value"]
+    )));
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let catalog = Instance::Group(vec![(
+        "Item".into(),
+        Instance::Repeated(vec![item("A", "first"), item("A", "second")]),
+    )]);
+    for (needle, expected) in [("A", Value::String("first".into())), ("B", Value::Null)] {
+        let input = Instance::Group(vec![(
+            "Needle".into(),
+            Instance::Scalar(Value::String(needle.into())),
+        )]);
+        let output = engine::run_with_sources(
+            &imported.project,
+            &input,
+            vec![("Catalog".into(), catalog.clone())],
+        )
+        .unwrap();
+        assert_eq!(
+            output.field("Result").and_then(Instance::as_scalar),
+            Some(&expected)
+        );
+    }
+}
+
+#[test]
+fn static_catalog_lookup_rejects_non_equality_predicates() {
+    let near_miss = static_catalog_mapping().replace("name=\"equal\"", "name=\"greater-than\"");
+    let dir = setup(&near_miss);
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(
+        imported.warnings.iter().any(|warning| warning.contains(
+            "skipped user-defined function `Find`: definition uses sequence operation `filter`"
+        )),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(imported.project.extra_sources.is_empty());
     assert!(
         !imported
             .project

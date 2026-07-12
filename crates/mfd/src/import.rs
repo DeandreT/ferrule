@@ -23,6 +23,7 @@ mod generated_occurrence;
 mod graph;
 mod group_projection;
 mod iteration;
+mod output_parameter;
 mod schema;
 mod scope;
 mod sequence_scalar;
@@ -75,8 +76,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut warnings = Vec::new();
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
+    let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
-    schema_components.extend(udf_registry.take_sources());
     let mut udf_calls = Vec::new();
     let mut skipped_libraries: Vec<String> = Vec::new();
 
@@ -139,6 +140,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     Some(sc) => schema_components.push(sc),
                     None => note_skipped_library(&mut skipped_libraries, "db"),
                 },
+                "core" if component.attribute("kind") == Some("7") => {
+                    output_parameters.push(output_parameter::read(&component));
+                }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
                 other => {
                     if let Some(definition) = udf_registry.supported(other, &name) {
@@ -167,10 +171,21 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             }
         }
     }
+    // UDF-owned static catalogs are secondary to ordinary mapping sources.
+    // Keeping them last also preserves the document source as the default in
+    // scalar-only mappings, where repetition-based primary scoring is tied.
+    schema_components.extend(udf_registry.take_sources());
 
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
     let edge_from = read_edges(&structure, Some(&wrapper));
     let copy_all_targets = read_copy_all_targets(&structure);
+
+    let output_failed = output_parameter::install_fallback(
+        &mut schema_components,
+        output_parameters,
+        &edge_from,
+        &mut warnings,
+    );
 
     let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
@@ -182,17 +197,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .collect();
     let intermediates: Vec<&SchemaComponent> =
         schema_components.iter().filter(|c| c.is_variable).collect();
-    let unsupported = |side: &str| {
-        MfdError::Unsupported(if skipped_libraries.is_empty() {
-            format!("no importable {side} component (xml/json/csv/edi/db) found in this design")
-        } else {
-            format!(
-                "no importable {side} component (xml/json/csv/edi/db) found; this design \
-                 uses {} components, which ferrule cannot import yet",
-                skipped_libraries.join("/")
-            )
-        })
-    };
+    let unsupported =
+        |side: &str| output_parameter::missing_error(side, &skipped_libraries, output_failed);
     let default_target = targets
         .iter()
         .copied()
