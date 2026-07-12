@@ -343,6 +343,7 @@ fn validate_scope(
     for (label, node) in [
         ("filter", scope.filter),
         ("group-by key", scope.group_by),
+        ("group block size", scope.group_into_blocks),
         ("sort key", scope.sort_by),
         ("take count", scope.take),
     ] {
@@ -366,6 +367,18 @@ fn validate_scope(
         issues.push(ValidationIssue::new(
             &location,
             "group-by key has no iterated source",
+        ));
+    }
+    if !iterates && scope.group_into_blocks.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "group block size has no iterated source",
+        ));
+    }
+    if scope.group_by.is_some() && scope.group_into_blocks.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "group-by and group-into-blocks are mutually exclusive",
         ));
     }
     if !iterates && scope.sort_by.is_some() {
