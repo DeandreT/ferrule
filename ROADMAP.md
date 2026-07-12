@@ -68,7 +68,8 @@ static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
-constructed records, mapping-path and stable per-run clock values use explicit
+constructed records, while filtered sequence-parameter UDFs can construct one
+flat aggregate record. Mapping-path and stable per-run clock values use explicit
 host context, computed JSON targets, plain structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
@@ -247,8 +248,8 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 407 (406 executable plus the ignored local-sample survey).
-- `.mfd` survey: 96/120 import, 54 warning-free.
+- Workspace tests: 409 (408 executable plus the ignored local-sample survey).
+- `.mfd` survey: 96/120 import, 55 warning-free.
 - Unsupported-function warnings: 2 (`auto-number` and `sleep`) across the
   expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
