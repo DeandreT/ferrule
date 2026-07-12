@@ -121,7 +121,7 @@ pub(super) fn read_schema_component(
         .and_then(|d| d.attribute("instanceroot"))
         .map(instance_root_segments)
         .unwrap_or_default();
-    let schema = document
+    let mut schema = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
             let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
@@ -154,6 +154,10 @@ pub(super) fn read_schema_component(
             }
         })
         .unwrap_or_else(|| entry_tree_schema(&entry));
+    if let Some(rel) = document.and_then(|document| document.attribute("schema")) {
+        let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
+        super::alternatives::merge_conditioned_xml_types(&entry, &mut schema, &xsd_path, warnings);
+    }
     normalize_xml_text_ports(&schema, &mut ports);
 
     Some(SchemaComponent {
@@ -373,7 +377,14 @@ fn collect_json_ports(
                 collect_json_ports(&child, path, ports, out_count, in_count, warnings);
                 path.pop();
             }
-            Some("json-propertyname") | Some("json-subtype") => {
+            Some("json-subtype") => {
+                // A subtype is an alternative object view, not a path
+                // segment. Its root and descendant ports address the same
+                // property path represented by the merged schema projection.
+                record_entry_keys(&child, path, ports, out_count, in_count);
+                collect_json_ports(&child, path, ports, out_count, in_count, warnings);
+            }
+            Some("json-propertyname") => {
                 if child.attribute("outkey").is_some()
                     || child.attribute("inpkey").is_some()
                     || child
@@ -1028,7 +1039,7 @@ fn collect_db_column_types(
             match format_db::introspect(db_path, physical_table) {
                 Ok(schema) => {
                     let column_types = match schema.kind {
-                        SchemaKind::Group { children } => children
+                        SchemaKind::Group { children, .. } => children
                             .into_iter()
                             .filter_map(|column| match column.kind {
                                 SchemaKind::Scalar { ty } => Some((column.name, ty)),
@@ -1105,7 +1116,7 @@ pub(super) fn collect_matching_scalar_paths(
 ) {
     match (&source.kind, &target.kind) {
         (SchemaKind::Scalar { .. }, SchemaKind::Scalar { .. }) => paths.push(path.clone()),
-        (SchemaKind::Group { .. }, SchemaKind::Group { children }) => {
+        (SchemaKind::Group { .. }, SchemaKind::Group { children, .. }) => {
             for target_child in children {
                 if target_child.repeating {
                     continue;

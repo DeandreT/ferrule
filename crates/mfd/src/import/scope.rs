@@ -117,6 +117,13 @@ impl ScopeBuilder {
 
     pub(super) fn add_binding(&mut self, target: TargetLeaf, node: NodeId) {
         let scope = self.ensure_scope(&target.chain);
+        if scope
+            .bindings
+            .iter()
+            .any(|binding| binding.target_field == target.field && binding.node == node)
+        {
+            return;
+        }
         scope.bindings.push(Binding {
             target_field: target.field,
             node,

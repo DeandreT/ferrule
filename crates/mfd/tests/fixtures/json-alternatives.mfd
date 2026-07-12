@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Addresses" library="json" uid="2" kind="31">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+              <entry name="Rows" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" outkey="10">
+                <entry name="address" type="json-property"><entry name="object">
+                  <entry name="oneOf0" type="json-subtype" outkey="11">
+                    <entry name="name" type="json-property"><entry name="string" outkey="12"/></entry>
+                    <entry name="state" type="json-property"><entry name="string" outkey="13"/></entry>
+                  </entry>
+                  <entry name="oneOf1" type="json-subtype" outkey="14">
+                    <entry name="name" type="json-property"><entry name="string" outkey="15"/></entry>
+                    <entry name="postcode" type="json-property"><entry name="string" outkey="16"/></entry>
+                  </entry>
+                </entry></entry>
+              </entry></entry></entry></entry>
+            </entry></entry></entry></entry></root>
+            <json schema="json-alternatives.schema.json" inputinstance="json-alternatives.json"/>
+          </data>
+        </component>
+        <component name="Result" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Result">
+              <entry name="Row" inpkey="20">
+                <entry name="Address" displayselectionmode="all"/>
+                <entry name="Address" inpkey="21">
+                  <condition><expression><function name="equal" library="core">
+                    <expression><attribute ns="http://www.w3.org/2001/XMLSchema-instance" name="type"/></expression>
+                    <expression><constant value="{urn:ferrule:alternatives}Domestic" datatype="QName"/></expression>
+                  </function></expression></condition>
+                  <entry name="name" inpkey="22"/>
+                  <entry name="state" inpkey="23"/>
+                </entry>
+                <entry name="Address" inpkey="24">
+                  <condition><expression><function name="equal" library="core">
+                    <expression><attribute ns="http://www.w3.org/2001/XMLSchema-instance" name="type"/></expression>
+                    <expression><constant value="{urn:ferrule:alternatives}International" datatype="QName"/></expression>
+                  </function></expression></condition>
+                  <entry name="name" inpkey="25"/>
+                  <entry name="postcode" inpkey="26"/>
+                </entry>
+              </entry>
+            </entry></entry></entry></root>
+            <document schema="json-alternatives-target.xsd" instanceroot="{urn:ferrule:alternatives}Result"/>
+          </data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="20"/>
+      <edge from="11" to="21"/>
+      <edge from="12" to="22"/>
+      <edge from="13" to="23"/>
+      <edge from="14" to="24"/>
+      <edge from="15" to="25"/>
+      <edge from="16" to="26"/>
+    </connections>
+  </component>
+</mapping>

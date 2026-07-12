@@ -119,6 +119,56 @@ pub fn import_root(
     }))
 }
 
+/// Imports a named complex type, resolving it through local includes and
+/// imports. The returned group is named after the type's local QName.
+pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormatError> {
+    let text = std::fs::read_to_string(path)?;
+    let doc = roxmltree::Document::parse(&text)?;
+    let schema_el = doc.root_element();
+    let mut state = ParseState::default();
+    let (namespace, local) = type_name
+        .strip_prefix('{')
+        .and_then(|name| name.split_once('}'))
+        .map_or((None, local_name(type_name)), |(namespace, local)| {
+            (Some(namespace), local)
+        });
+    let children = match namespace {
+        None => resolve_complex_type(type_name, &schema_el, path, &mut state),
+        Some(namespace) if schema_el.attribute("targetNamespace") == Some(namespace) => {
+            resolve_complex_type(local, &schema_el, path, &mut state)
+        }
+        Some(namespace) => {
+            let mut visited = BTreeSet::new();
+            visited.insert(normalized_path(path));
+            let effective_namespace = schema_el.attribute("targetNamespace");
+            search_dependencies(
+                &schema_el,
+                path,
+                "complexType",
+                local,
+                Some(namespace),
+                effective_namespace,
+                &mut visited,
+            )
+            .and_then(|external_path| {
+                let text = std::fs::read_to_string(&external_path).ok()?;
+                let doc = roxmltree::Document::parse(&text).ok()?;
+                let external_schema = doc.root_element();
+                let declaration = top_level(&external_schema, "complexType", local)?;
+                parse_complex_type_declaration(
+                    &declaration,
+                    &external_schema,
+                    &external_path,
+                    local,
+                    &mut state,
+                )
+            })
+        }
+    }
+    .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:complexType `{type_name}`")))?;
+    state.finish(SchemaNode::group(local, children))
+}
+
 fn parse_element(
     el: &Node,
     schema_el: &Node,
@@ -639,9 +689,18 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
             });
         }
     }
-    let ir::SchemaKind::Group { children } = &node.kind else {
+    let ir::SchemaKind::Group {
+        children,
+        alternatives,
+    } = &node.kind
+    else {
         return Ok(());
     };
+    if !alternatives.is_empty() {
+        return Err(XmlFormatError::UnsupportedGroupAlternatives {
+            group: node.name.clone(),
+        });
+    }
     for child in children {
         validate_export_node(child, false)?;
     }
@@ -675,7 +734,7 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<()
                 xsd_type_name(ty)
             ));
         }
-        ir::SchemaKind::Group { children } => {
+        ir::SchemaKind::Group { children, .. } => {
             // XSD requires attributes after the content model, so partition
             // on the fly; only scalar children can be attributes.
             let (attrs, elements): (Vec<_>, Vec<_>) =

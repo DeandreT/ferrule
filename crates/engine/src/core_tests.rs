@@ -596,6 +596,19 @@ fn scope_sort_and_take_are_stable_and_reindex_positions() {
     );
 }
 
+#[test]
+fn sort_order_places_null_first_for_ascending_and_last_when_reversed() {
+    assert_eq!(
+        value_ordering(&Value::Null, &Value::String("value".into())),
+        Some(std::cmp::Ordering::Less)
+    );
+    assert_eq!(
+        value_ordering(&Value::String("value".into()), &Value::Null)
+            .map(std::cmp::Ordering::reverse),
+        Some(std::cmp::Ordering::Less)
+    );
+}
+
 /// A field path crossing a repeating element that no scope iterates
 /// reads the first item (the visual-mapper convention for wiring a
 /// repeating source into a singular target).

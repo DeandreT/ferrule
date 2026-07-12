@@ -12,6 +12,73 @@ fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
 }
 
 #[test]
+fn imports_named_derived_complex_types() {
+    let path =
+        std::env::temp_dir().join(format!("ferrule_xsd_named_type_{}.xsd", std::process::id()));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:complexType name="Base">
+    <xs:sequence><xs:element name="name" type="xs:string"/></xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Domestic">
+    <xs:complexContent><xs:extension base="Base">
+      <xs:sequence><xs:element name="zip" type="xs:integer"/></xs:sequence>
+    </xs:extension></xs:complexContent>
+  </xs:complexType>
+</xs:schema>"#,
+    )
+    .unwrap();
+    let schema = import_type(&path, "Domestic").unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(schema.child("name").is_some());
+    assert!(matches!(
+        schema.child("zip").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+}
+
+#[test]
+fn expanded_type_names_keep_their_namespace_during_resolution() {
+    let dir =
+        std::env::temp_dir().join(format!("ferrule_xsd_expanded_type_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:root">
+  <xs:import namespace="urn:derived" schemaLocation="derived.xsd"/>
+  <xs:complexType name="Domestic">
+    <xs:sequence><xs:element name="wrong" type="xs:string"/></xs:sequence>
+  </xs:complexType>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("derived.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:derived">
+  <xs:complexType name="Domestic">
+    <xs:sequence><xs:element name="zip" type="xs:integer"/></xs:sequence>
+  </xs:complexType>
+</xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_type(&root, "{urn:derived}Domestic").unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(schema.child("wrong").is_none());
+    assert!(matches!(
+        schema.child("zip").map(|child| &child.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Int
+        })
+    ));
+}
+
+#[test]
 fn imports_nested_repeating_groups() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("ferrule_xsd_test_{}.xsd", std::process::id()));
@@ -537,6 +604,31 @@ fn export_rejects_group_nodes_with_scalar_xml_roles() {
             Err(XmlFormatError::UnsupportedSchemaRole { kind: "group", .. })
         ));
     }
+}
+
+#[test]
+fn export_rejects_group_alternatives_instead_of_flattening_them() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    )
+    .with_alternatives(vec![
+        ir::GroupAlternative {
+            name: "first".into(),
+            members: vec!["Value".into()],
+            required: vec!["Value".into()],
+        },
+        ir::GroupAlternative {
+            name: "second".into(),
+            members: Vec::new(),
+            required: Vec::new(),
+        },
+    ])
+    .unwrap();
+    assert!(matches!(
+        export(&schema),
+        Err(XmlFormatError::UnsupportedGroupAlternatives { ref group }) if group == "Root"
+    ));
 }
 
 #[test]

@@ -43,7 +43,7 @@ pub struct TargetLeaf {
 
 pub fn source_leaves(schema: &SchemaNode) -> Vec<SourceLeaf> {
     let mut out = Vec::new();
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return out;
     };
     let root_frame_len = schema.repeating.then_some(0);
@@ -80,7 +80,7 @@ fn collect_source(
             });
             suffix.pop();
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group { children, .. } => {
             // Descending into a repeating group resets the suffix: it is
             // the new innermost repeating ancestor.
             let mut fresh = Vec::new();
@@ -112,7 +112,7 @@ fn collect_source(
 
 pub fn target_leaves(schema: &SchemaNode) -> Vec<TargetLeaf> {
     let mut out = Vec::new();
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return out;
     };
     for child in children {
@@ -132,7 +132,7 @@ fn collect_target(node: &SchemaNode, chain: &mut Vec<String>, out: &mut Vec<Targ
                 field: node.name.clone(),
             });
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group { children, .. } => {
             chain.push(node.name.clone());
             for child in children {
                 collect_target(child, chain, out);

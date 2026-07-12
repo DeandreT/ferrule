@@ -215,7 +215,7 @@ fn write_options(schema: &SchemaNode, instance: &Instance) -> Result<WriteOption
 
 fn isa_element(schema: &SchemaNode, index: usize) -> Option<&SchemaNode> {
     match &schema.kind {
-        SchemaKind::Group { children } => children.get(index),
+        SchemaKind::Group { children, .. } => children.get(index),
         SchemaKind::Scalar { .. } => None,
     }
 }

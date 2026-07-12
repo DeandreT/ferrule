@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:t="urn:ferrule:alternatives"
+           targetNamespace="urn:ferrule:alternatives">
+  <xs:complexType name="Address">
+    <xs:sequence>
+      <xs:element name="name" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="Domestic">
+    <xs:complexContent>
+      <xs:extension base="t:Address">
+        <xs:sequence><xs:element name="state" type="xs:string"/></xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="International">
+    <xs:complexContent>
+      <xs:extension base="t:Address">
+        <xs:sequence><xs:element name="postcode" type="xs:string"/></xs:sequence>
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:element name="Result">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Row" minOccurs="0" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence><xs:element name="Address" type="t:Address"/></xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

@@ -16,7 +16,7 @@ fn show_node(ui: &mut Ui, node: &SchemaNode) {
         SchemaKind::Scalar { ty } => {
             ui.label(format!("{prefix}{}{suffix}: {ty:?}", node.name));
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group { children, .. } => {
             egui::CollapsingHeader::new(format!("{}{suffix}", node.name))
                 .default_open(true)
                 .show(ui, |ui| {

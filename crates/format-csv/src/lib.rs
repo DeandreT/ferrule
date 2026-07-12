@@ -66,7 +66,7 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatE
         return Err(CsvFormatError::UnsupportedSchema);
     }
     match &schema.kind {
-        SchemaKind::Group { children } => children
+        SchemaKind::Group { children, .. } => children
             .iter()
             .map(|c| match &c.kind {
                 SchemaKind::Scalar { ty } if !c.repeating => Ok((c.name.as_str(), *ty)),

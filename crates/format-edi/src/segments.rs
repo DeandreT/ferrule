@@ -83,13 +83,13 @@ enum Shape<'a> {
 }
 
 fn shape_of(node: &SchemaNode, is_root: bool) -> Result<Shape<'_>, EdiFormatError> {
-    let SchemaKind::Group { children } = &node.kind else {
+    let SchemaKind::Group { children, .. } = &node.kind else {
         return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
     };
     if !is_root && is_segment_id(&node.name) {
         let valid_segment = children.iter().all(|c| match &c.kind {
             SchemaKind::Scalar { .. } => true,
-            SchemaKind::Group { children } => children
+            SchemaKind::Group { children, .. } => children
                 .iter()
                 .all(|cc| matches!(cc.kind, SchemaKind::Scalar { .. })),
         });
@@ -146,7 +146,7 @@ fn segment_matches(trigger: &SchemaNode, segment: &Segment) -> bool {
     if schema_segment_id(&trigger.name) != Some(segment.id.as_str()) {
         return false;
     }
-    let SchemaKind::Group { children } = &trigger.kind else {
+    let SchemaKind::Group { children, .. } = &trigger.kind else {
         return false;
     };
     children.iter().enumerate().all(|(i, child)| {
@@ -156,6 +156,7 @@ fn segment_matches(trigger: &SchemaNode, segment: &Segment) -> bool {
             SchemaKind::Scalar { .. } => fixed_holds(child, components.and_then(|c| c.first())),
             SchemaKind::Group {
                 children: component_schemas,
+                ..
             } => component_schemas
                 .iter()
                 .enumerate()
@@ -174,7 +175,7 @@ fn fixed_holds(schema: &SchemaNode, raw: Option<&String>) -> bool {
 /// Human-readable description of a trigger for error messages, e.g.
 /// `HL(03=22)`.
 fn describe_trigger(trigger: &SchemaNode) -> String {
-    let SchemaKind::Group { children } = &trigger.kind else {
+    let SchemaKind::Group { children, .. } = &trigger.kind else {
         return trigger.name.clone();
     };
     let constraints: Vec<String> = children
@@ -188,6 +189,7 @@ fn describe_trigger(trigger: &SchemaNode) -> String {
                 .collect::<Vec<_>>(),
             SchemaKind::Group {
                 children: component_schemas,
+                ..
             } => component_schemas
                 .iter()
                 .filter_map(|comp| {
@@ -404,6 +406,7 @@ fn read_one_repeat(
         }
         SchemaKind::Group {
             children: component_schemas,
+            ..
         } => {
             let mut parts = Vec::with_capacity(component_schemas.len());
             for (j, component_schema) in component_schemas.iter().enumerate() {
@@ -497,7 +500,7 @@ fn validate_single_instance(
             };
             scalar_or_fixed(schema, Some(value)).map(|_| ())
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group { children, .. } => {
             let Instance::Group(fields) = instance else {
                 return Err(instance_shape_error(schema, "a group", instance));
             };
@@ -688,7 +691,7 @@ fn write_one_repeat(
             let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
             escape(&text, &schema.name, opts, allowed_reserved)
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group { children, .. } => {
             let mut components: Vec<String> = children
                 .iter()
                 .map(|c| {

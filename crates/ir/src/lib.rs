@@ -47,7 +47,7 @@ impl Value {
 
 /// The declared shape of one level of a source/target document: either a
 /// scalar leaf or a named group of children.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SchemaNode {
     pub name: String,
     #[serde(default)]
@@ -74,11 +74,69 @@ pub struct SchemaNode {
     pub kind: SchemaKind,
 }
 
+impl<'de> Deserialize<'de> for SchemaNode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Repr {
+            name: String,
+            #[serde(default)]
+            repeating: bool,
+            #[serde(default)]
+            attribute: bool,
+            #[serde(default)]
+            text: bool,
+            #[serde(default)]
+            fixed: Option<String>,
+            kind: SchemaKind,
+        }
+
+        let repr = Repr::deserialize(deserializer)?;
+        let node = Self {
+            name: repr.name,
+            repeating: repr.repeating,
+            attribute: repr.attribute,
+            text: repr.text,
+            fixed: repr.fixed,
+            kind: repr.kind,
+        };
+        if !node.alternatives_are_valid() {
+            return Err(serde::de::Error::custom(
+                "group alternative metadata has duplicate or unknown names, members, or required fields",
+            ));
+        }
+        Ok(node)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SchemaKind {
-    Scalar { ty: ScalarType },
-    Group { children: Vec<SchemaNode> },
+    Scalar {
+        ty: ScalarType,
+    },
+    Group {
+        children: Vec<SchemaNode>,
+        /// Explicit compatible object/type alternatives represented by the
+        /// merged `children` projection. Empty for ordinary groups.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        alternatives: Vec<GroupAlternative>,
+    },
+}
+
+/// One structurally compatible alternative of a group projection.
+///
+/// Every member and required name must identify a child in the enclosing
+/// group. Overlapping members share that one child schema, so importers must
+/// reject alternatives that declare incompatible shapes for the same name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupAlternative {
+    pub name: String,
+    pub members: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required: Vec<String>,
 }
 
 impl SchemaNode {
@@ -100,7 +158,49 @@ impl SchemaNode {
             attribute: false,
             text: false,
             fixed: None,
-            kind: SchemaKind::Group { children },
+            kind: SchemaKind::Group {
+                children,
+                alternatives: Vec::new(),
+            },
+        }
+    }
+
+    /// Attaches validated alternative membership to a group node.
+    pub fn with_alternatives(mut self, alternatives: Vec<GroupAlternative>) -> Option<Self> {
+        self.set_alternatives(alternatives).then_some(self)
+    }
+
+    /// Replaces alternative membership when it is valid for this group.
+    pub fn set_alternatives(&mut self, alternatives: Vec<GroupAlternative>) -> bool {
+        let SchemaKind::Group {
+            children,
+            alternatives: target,
+        } = &mut self.kind
+        else {
+            return false;
+        };
+        if !valid_group_alternatives(children, &alternatives) {
+            return false;
+        }
+        *target = alternatives;
+        true
+    }
+
+    /// Checks metadata that may have entered through direct deserialization.
+    pub fn alternatives_are_valid(&self) -> bool {
+        match &self.kind {
+            SchemaKind::Group {
+                children,
+                alternatives,
+            } => alternatives.is_empty() || valid_group_alternatives(children, alternatives),
+            SchemaKind::Scalar { .. } => true,
+        }
+    }
+
+    pub fn alternatives(&self) -> &[GroupAlternative] {
+        match &self.kind {
+            SchemaKind::Group { alternatives, .. } => alternatives,
+            SchemaKind::Scalar { .. } => &[],
         }
     }
 
@@ -130,17 +230,48 @@ impl SchemaNode {
 
     pub fn child(&self, name: &str) -> Option<&SchemaNode> {
         match &self.kind {
-            SchemaKind::Group { children } => children.iter().find(|c| c.name == name),
+            SchemaKind::Group { children, .. } => children.iter().find(|c| c.name == name),
             SchemaKind::Scalar { .. } => None,
         }
     }
 
     pub fn text_child(&self) -> Option<&SchemaNode> {
         match &self.kind {
-            SchemaKind::Group { children } => children.iter().find(|child| child.text),
+            SchemaKind::Group { children, .. } => children.iter().find(|child| child.text),
             SchemaKind::Scalar { .. } => None,
         }
     }
+}
+
+fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAlternative]) -> bool {
+    alternatives.len() >= 2
+        && children.iter().enumerate().all(|(index, child)| {
+            !children[..index]
+                .iter()
+                .any(|previous| previous.name == child.name)
+        })
+        && alternatives.iter().enumerate().all(|(index, alternative)| {
+            !alternative.name.is_empty()
+                && !alternatives[..index]
+                    .iter()
+                    .any(|previous| previous.name == alternative.name)
+                && alternative
+                    .members
+                    .iter()
+                    .enumerate()
+                    .all(|(member_index, member)| {
+                        !alternative.members[..member_index].contains(member)
+                            && children.iter().any(|child| child.name == *member)
+                    })
+                && alternative
+                    .required
+                    .iter()
+                    .enumerate()
+                    .all(|(required_index, required)| {
+                        !alternative.required[..required_index].contains(required)
+                            && alternative.members.contains(required)
+                    })
+        })
 }
 
 /// An actual value tree, shaped by some [`SchemaNode`].
@@ -225,6 +356,56 @@ mod tests {
             2
         );
         assert_eq!(instance.field("missing"), None);
+    }
+
+    #[test]
+    fn group_alternatives_are_explicit_validated_and_serde_defaulted() {
+        let group = SchemaNode::group(
+            "Address",
+            vec![
+                SchemaNode::scalar("state", ScalarType::String),
+                SchemaNode::scalar("postcode", ScalarType::String),
+            ],
+        );
+        assert!(group.clone().with_alternatives(Vec::new()).is_none());
+        assert!(
+            group
+                .clone()
+                .with_alternatives(vec![
+                    GroupAlternative {
+                        name: "domestic".into(),
+                        members: vec!["missing".into()],
+                        required: Vec::new(),
+                    },
+                    GroupAlternative {
+                        name: "international".into(),
+                        members: vec!["postcode".into()],
+                        required: vec!["postcode".into()],
+                    },
+                ])
+                .is_none()
+        );
+
+        let old_json = r#"{
+          "name":"Address",
+          "repeating":false,
+          "kind":{"kind":"group","children":[]}
+        }"#;
+        let decoded: SchemaNode = serde_json::from_str(old_json).unwrap();
+        assert!(decoded.alternatives().is_empty());
+        assert!(
+            !serde_json::to_string(&decoded)
+                .unwrap()
+                .contains("alternatives")
+        );
+
+        let invalid_json = r#"{
+          "name":"Address",
+          "kind":{"kind":"group","children":[],"alternatives":[{
+            "name":"only","members":["missing"],"required":["missing"]
+          }]}
+        }"#;
+        assert!(serde_json::from_str::<SchemaNode>(invalid_json).is_err());
     }
 
     #[test]

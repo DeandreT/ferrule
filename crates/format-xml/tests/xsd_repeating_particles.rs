@@ -105,7 +105,7 @@ fn ignores_disabled_particles_when_checking_a_repeating_sequence() {
     let schema = xsd::import(&path).unwrap();
     std::fs::remove_file(&path).unwrap();
 
-    let SchemaKind::Group { children } = schema.kind else {
+    let SchemaKind::Group { children, .. } = schema.kind else {
         panic!("expected imported root group");
     };
     assert_eq!(children.len(), 1);
@@ -139,7 +139,7 @@ fn keeps_repeating_choice_import_best_effort() {
     let schema = xsd::import(&path).unwrap();
     std::fs::remove_file(&path).unwrap();
 
-    let SchemaKind::Group { children } = schema.kind else {
+    let SchemaKind::Group { children, .. } = schema.kind else {
         panic!("expected imported root group");
     };
     assert_eq!(children.len(), 2);

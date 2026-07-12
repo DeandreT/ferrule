@@ -1084,6 +1084,11 @@ fn unmap_function_name(name: &str) -> String {
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "date_from_datetime" => "date-from-datetime",
+        "time_from_datetime" => "time-from-datetime",
+        "parse_date" => "parse-date",
+        "parse_datetime" => "parse-dateTime",
+        "parse_time" => "parse-time",
+        "substitute_missing" => "substitute-missing",
         "format_number" => "format-number",
         other => other,
     }
@@ -1092,7 +1097,8 @@ fn unmap_function_name(name: &str) -> String {
 
 fn function_library(name: &str) -> &'static str {
     match name {
-        "left_trim" | "right_trim" | "pad_string_left" | "pad_string_right" => "lang",
+        "left_trim" | "right_trim" | "pad_string_left" | "pad_string_right"
+        | "time_from_datetime" => "lang",
         _ => "core",
     }
 }
@@ -1110,6 +1116,17 @@ mod tests {
         assert_eq!(unmap_function_name("format_number"), "format-number");
         assert_eq!(function_library("string"), "core");
         assert_eq!(function_library("format_number"), "core");
+        assert_eq!(
+            unmap_function_name("time_from_datetime"),
+            "time-from-datetime"
+        );
+        assert_eq!(function_library("time_from_datetime"), "lang");
+        assert_eq!(unmap_function_name("parse_date"), "parse-date");
+        assert_eq!(unmap_function_name("parse_datetime"), "parse-dateTime");
+        assert_eq!(
+            unmap_function_name("substitute_missing"),
+            "substitute-missing"
+        );
     }
 
     #[test]

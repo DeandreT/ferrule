@@ -9,6 +9,8 @@ pub(super) struct IterationFeed {
     /// A function that generates the sequence instead of reading a source
     /// collection directly.
     pub(super) sequence_component: Option<usize>,
+    /// A database kind=21 where/order control crossed by the sequence.
+    pub(super) db_where_component: Option<usize>,
     /// Path below `source_key` selected by transparent intermediate schema
     /// components crossed on the way to the target iteration.
     pub(super) source_suffix: Vec<String>,

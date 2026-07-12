@@ -206,7 +206,7 @@ fn add_repeating_contexts(
     entries: &mut BTreeMap<Vec<String>, CollectionEntry>,
     scope_paths: &mut BTreeSet<Vec<String>>,
 ) {
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return;
     };
     for child in children {
@@ -218,7 +218,7 @@ fn add_repeating_contexts(
 }
 
 fn add_scope_paths(schema: &SchemaNode, prefix: &[String], paths: &mut BTreeSet<Vec<String>>) {
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return;
     };
     for child in children {
@@ -239,7 +239,7 @@ fn add_resolvable_collections(
     prefix: &[String],
     entries: &mut BTreeMap<Vec<String>, CollectionEntry>,
 ) {
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return;
     };
     for child in children {
@@ -271,7 +271,7 @@ fn add_scalar_paths(
         SchemaKind::Scalar { .. } => {
             paths.insert(prefix.clone());
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group { children, .. } => {
             for child in children {
                 if child.repeating {
                     continue;
