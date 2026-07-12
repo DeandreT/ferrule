@@ -20,6 +20,7 @@ clean-room interoperability, and extensible adapters.
 - Formats, both directions: XML, JSON, CSV, SQLite, X12, and EDIFACT.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
+  bounded existential reduction over generated scalar sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
   structural group projection, mapped and computed XML occurrence sequences,
@@ -67,7 +68,9 @@ embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
 constructed records, while filtered sequence-parameter UDFs can construct one
-flat aggregate record. Mapping-path and stable per-run clock values use explicit
+flat aggregate record. Filtered tokenizer sequences lower to executable existential
+reducers, and selected sibling values lower to round-trippable lookups. Mapping-path
+and stable per-run clock values use explicit
 host context, computed JSON targets, plain structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
