@@ -810,7 +810,7 @@ fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
 /// index and encode attributes with a leading `@` (`0:Person`, `12:@type`).
 /// Real QName prefixes are left intact because only all-decimal prefixes are
 /// an entry-tree index.
-fn normalize_xml_entry_name(name: &str) -> (&str, bool) {
+pub(super) fn normalize_xml_entry_name(name: &str) -> (&str, bool) {
     let name = match name.split_once(':') {
         Some((prefix, local))
             if !prefix.is_empty() && prefix.bytes().all(|byte| byte.is_ascii_digit()) =>

@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::Value;
+use ir::{SchemaKind, Value};
 use mapping::{Graph, Node, NodeId};
 
 use super::function::{FnComponent, map_name, parse_constant, read as read_function};
 use super::graph::{GraphBuilder, read_edges};
 use super::schema::parse_u32;
 
+#[derive(Clone)]
 pub(super) enum ScalarExpr {
     Parameter(u32),
     Const(Value),
@@ -26,9 +27,24 @@ pub(super) enum ScalarExpr {
     },
 }
 
+#[derive(Clone)]
+struct LookupExpr {
+    structured_parameter: u32,
+    key_path: Vec<String>,
+    matches: ScalarExpr,
+    value_path: Vec<String>,
+}
+
+#[derive(Clone)]
+enum OutputExpr {
+    Scalar(ScalarExpr),
+    Lookup(LookupExpr),
+}
+
 pub(super) struct Definition {
     parameters: BTreeSet<u32>,
-    pub(super) outputs: BTreeMap<u32, ScalarExpr>,
+    structured_parameters: BTreeSet<u32>,
+    outputs: BTreeMap<u32, OutputExpr>,
 }
 
 #[derive(Default)]
@@ -85,6 +101,7 @@ impl Registry {
 pub(super) struct Call {
     pub(super) definition: usize,
     pub(super) inputs: BTreeMap<u32, u32>,
+    structured_inputs: BTreeMap<u32, Vec<(Vec<String>, u32)>>,
     pub(super) outputs: BTreeMap<u32, u32>,
 }
 
@@ -96,25 +113,38 @@ impl Call {
     ) -> Result<Self, String> {
         let mut inputs = BTreeMap::new();
         let mut outputs = BTreeMap::new();
+        let mut structured_inputs = BTreeMap::new();
         let mut output_parameters = BTreeSet::new();
-        for entry in component
+        let mut entries = Vec::new();
+        for root in component
             .descendants()
-            .filter(|node| node.has_tag_name("entry"))
+            .filter(|node| node.has_tag_name("root"))
         {
+            collect_call_entries(root, None, &mut Vec::new(), &mut entries);
+        }
+        if entries.is_empty() {
+            collect_call_entries(*component, None, &mut Vec::new(), &mut entries);
+        }
+        for (entry, component_id, path) in entries {
             let input_key = parse_u32(entry.attribute("inpkey"));
             let output_key = parse_u32(entry.attribute("outkey"));
             if input_key.is_none() && output_key.is_none() {
                 continue;
             }
-            let component_id = parse_u32(entry.attribute("componentid")).ok_or_else(|| {
+            let component_id = component_id.ok_or_else(|| {
                 "connected call port has a missing or invalid componentid".to_string()
             })?;
-            if let Some(key) = input_key
-                && inputs.insert(component_id, key).is_some()
-            {
-                return Err(format!(
-                    "call has duplicate input parameter componentid `{component_id}`"
-                ));
+            if let Some(key) = input_key {
+                if shape.structured_parameters.contains(&component_id) {
+                    structured_inputs
+                        .entry(component_id)
+                        .or_insert_with(Vec::new)
+                        .push((path, key));
+                } else if inputs.insert(component_id, key).is_some() {
+                    return Err(format!(
+                        "call has duplicate input parameter componentid `{component_id}`"
+                    ));
+                }
             }
             if let Some(key) = output_key {
                 if !output_parameters.insert(component_id) {
@@ -149,12 +179,37 @@ impl Call {
         Ok(Self {
             definition,
             inputs,
+            structured_inputs,
             outputs,
         })
     }
 }
 
+fn collect_call_entries<'a, 'input>(
+    node: roxmltree::Node<'a, 'input>,
+    inherited_component: Option<u32>,
+    path: &mut Vec<String>,
+    entries: &mut Vec<(roxmltree::Node<'a, 'input>, Option<u32>, Vec<String>)>,
+) {
+    for entry in node.children().filter(|child| child.has_tag_name("entry")) {
+        let component = parse_u32(entry.attribute("componentid")).or(inherited_component);
+        let (name, _) =
+            super::schema::normalize_xml_entry_name(entry.attribute("name").unwrap_or_default());
+        path.push(name.to_string());
+        entries.push((entry, component, path.clone()));
+        collect_call_entries(entry, component, path, entries);
+        path.pop();
+    }
+}
+
 fn read_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
+    match read_scalar_definition(component) {
+        Ok(definition) => Ok(definition),
+        Err(scalar_reason) => read_lookup_definition(component).map_err(|_| scalar_reason),
+    }
+}
+
+fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
     let name = component.attribute("name").unwrap_or_default();
     let structure = component
         .children()
@@ -267,12 +322,179 @@ fn read_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, St
     let mut outputs = BTreeMap::new();
     for (component_id, feed) in output_feeds {
         let expression = context.expression(feed, &mut BTreeSet::new())?;
-        outputs.insert(component_id, expression);
+        outputs.insert(component_id, OutputExpr::Scalar(expression));
     }
     Ok(Definition {
         parameters: parameter_by_key.values().copied().collect(),
+        structured_parameters: BTreeSet::new(),
         outputs,
     })
+}
+
+fn read_lookup_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
+    let structure = component
+        .children()
+        .find(|node| node.has_tag_name("structure"))
+        .ok_or("lookup definition has no structure")?;
+    let children = structure
+        .children()
+        .find(|node| node.has_tag_name("children"))
+        .ok_or("lookup definition has no component list")?
+        .children()
+        .filter(|node| node.has_tag_name("component"))
+        .collect::<Vec<_>>();
+    if children.len() != 5 {
+        return Err("lookup definition must contain exactly five components".to_string());
+    }
+    let scalar_input = one_component(&children, |child| {
+        child.attribute("library") == Some("core") && child.attribute("kind") == Some("6")
+    })?;
+    let scalar_output = one_component(&children, |child| {
+        child.attribute("library") == Some("core") && child.attribute("kind") == Some("7")
+    })?;
+    let equal = one_component(&children, |child| {
+        child.attribute("library") == Some("core")
+            && child.attribute("kind") == Some("5")
+            && child.attribute("name") == Some("equal")
+    })?;
+    let filter = one_component(&children, |child| {
+        child.attribute("library") == Some("core") && child.attribute("kind") == Some("3")
+    })?;
+    let document = one_component(&children, |child| {
+        child.attribute("library") == Some("xml")
+            && child.attribute("kind") == Some("14")
+            && child
+                .children()
+                .find(|node| node.has_tag_name("properties"))
+                .is_some_and(|properties| properties.attribute("UsageKind") == Some("input"))
+    })?;
+
+    let scalar_input_id = component_uid(scalar_input)?;
+    let scalar_output_id = component_uid(scalar_output)?;
+    let structured_id = component_uid(document)?;
+    let input_function = read_function(&scalar_input);
+    let output_function = read_function(&scalar_output);
+    let equal_function = read_function(&equal);
+    let filter_function = read_function(&filter);
+    let [scalar_key] = input_function.outputs.as_slice() else {
+        return Err("lookup scalar input must have one output".to_string());
+    };
+    let [Some(output_input)] = output_function.inputs.as_slice() else {
+        return Err("lookup scalar output must have one input".to_string());
+    };
+    let [Some(equal_left), Some(equal_right)] = equal_function.inputs.as_slice() else {
+        return Err("lookup equality must have two inputs".to_string());
+    };
+    let [equal_output] = equal_function.outputs.as_slice() else {
+        return Err("lookup equality must have one output".to_string());
+    };
+    let [Some(filter_values), Some(filter_predicate)] = filter_function.inputs.as_slice() else {
+        return Err("lookup filter must have value and predicate inputs".to_string());
+    };
+    let [filter_output, ..] = filter_function.outputs.as_slice() else {
+        return Err("lookup filter must have an output".to_string());
+    };
+
+    let edge_from = read_edges(&structure, None);
+    if edge_from.len() != 5
+        || edge_from.get(output_input) != Some(filter_output)
+        || edge_from.get(filter_predicate) != Some(equal_output)
+    {
+        return Err("lookup definition has unsupported wiring".to_string());
+    }
+    let (key_feed, matches) = match (edge_from.get(equal_left), edge_from.get(equal_right)) {
+        (Some(left), Some(right)) if *left == *scalar_key => {
+            (*right, ScalarExpr::Parameter(scalar_input_id))
+        }
+        (Some(left), Some(right)) if *right == *scalar_key => {
+            (*left, ScalarExpr::Parameter(scalar_input_id))
+        }
+        _ => {
+            return Err(
+                "lookup equality must compare one XML key with its scalar input".to_string(),
+            );
+        }
+    };
+    let value_feed = *edge_from
+        .get(filter_values)
+        .ok_or("lookup filter value is not connected")?;
+    let ports = xml_output_paths(document)?;
+    let key_path = ports
+        .get(&key_feed)
+        .cloned()
+        .ok_or("lookup key is not an XML field")?;
+    let value_path = ports
+        .get(&value_feed)
+        .cloned()
+        .ok_or("lookup value is not an XML field")?;
+    if key_path.len() < 2
+        || value_path.len() < 2
+        || key_path[..key_path.len() - 1] != value_path[..value_path.len() - 1]
+    {
+        return Err("lookup key and value must be siblings in one collection".to_string());
+    }
+
+    Ok(Definition {
+        parameters: BTreeSet::from([scalar_input_id]),
+        structured_parameters: BTreeSet::from([structured_id]),
+        outputs: BTreeMap::from([(
+            scalar_output_id,
+            OutputExpr::Lookup(LookupExpr {
+                structured_parameter: structured_id,
+                key_path,
+                matches,
+                value_path,
+            }),
+        )]),
+    })
+}
+
+fn one_component<'a, 'input>(
+    children: &[roxmltree::Node<'a, 'input>],
+    predicate: impl Fn(&roxmltree::Node<'a, 'input>) -> bool,
+) -> Result<roxmltree::Node<'a, 'input>, String> {
+    let matches = children
+        .iter()
+        .filter(|child| predicate(child))
+        .collect::<Vec<_>>();
+    let [component] = matches.as_slice() else {
+        return Err("lookup definition component shape is not exact".to_string());
+    };
+    Ok(**component)
+}
+
+fn component_uid(component: roxmltree::Node<'_, '_>) -> Result<u32, String> {
+    parse_u32(component.attribute("uid"))
+        .ok_or_else(|| "lookup component uid is invalid".to_string())
+}
+
+fn xml_output_paths(
+    component: roxmltree::Node<'_, '_>,
+) -> Result<BTreeMap<u32, Vec<String>>, String> {
+    let root = component
+        .descendants()
+        .find(|node| node.has_tag_name("root"))
+        .ok_or("lookup XML input has no entry root")?;
+    let mut ports = BTreeMap::new();
+    collect_xml_output_paths(root, &mut Vec::new(), &mut ports);
+    Ok(ports)
+}
+
+fn collect_xml_output_paths(
+    node: roxmltree::Node<'_, '_>,
+    path: &mut Vec<String>,
+    ports: &mut BTreeMap<u32, Vec<String>>,
+) {
+    for entry in node.children().filter(|child| child.has_tag_name("entry")) {
+        let (name, _) =
+            super::schema::normalize_xml_entry_name(entry.attribute("name").unwrap_or_default());
+        path.push(name.to_string());
+        if let Some(key) = parse_u32(entry.attribute("outkey")) {
+            ports.insert(key, path.clone());
+        }
+        collect_xml_output_paths(entry, path, ports);
+        path.pop();
+    }
 }
 
 struct DefinitionContext<'a> {
@@ -390,11 +612,89 @@ impl GraphBuilder<'_> {
             parameters.insert(parameter, node);
         }
         let definition = self.udf_registry.definition(call.definition)?;
-        let expression = definition.outputs.get(&component_id)?;
-        let node = instantiate(expression, &parameters, &mut self.graph, &mut self.next_id);
+        let expression = definition.outputs.get(&component_id)?.clone();
+        let node = match expression {
+            OutputExpr::Scalar(expression) => {
+                instantiate(&expression, &parameters, &mut self.graph, &mut self.next_id)
+            }
+            OutputExpr::Lookup(expression) => {
+                self.instantiate_lookup(call_idx, &expression, &parameters)?
+            }
+        };
         self.udf_nodes.insert(output_key, node);
         Some(node)
     }
+
+    fn instantiate_lookup(
+        &mut self,
+        call_idx: usize,
+        expression: &LookupExpr,
+        parameters: &BTreeMap<u32, NodeId>,
+    ) -> Option<NodeId> {
+        let inputs = self
+            .udf_calls
+            .get(call_idx)?
+            .structured_inputs
+            .get(&expression.structured_parameter)?
+            .clone();
+        let key_port = matching_call_port(&inputs, &expression.key_path)?;
+        let value_port = matching_call_port(&inputs, &expression.value_path)?;
+        let key_source = self
+            .edge_from
+            .get(&key_port)
+            .and_then(|feed| self.sequence_source_path(*feed))?;
+        let value_source = self
+            .edge_from
+            .get(&value_port)
+            .and_then(|feed| self.sequence_source_path(*feed))?;
+        if key_source.source == 0
+            || key_source.source != value_source.source
+            || key_source.path.len() < 2
+            || key_source.path[..key_source.path.len() - 1]
+                != value_source.path[..value_source.path.len() - 1]
+        {
+            return None;
+        }
+        for (_, port) in &inputs {
+            let source = self
+                .edge_from
+                .get(port)
+                .and_then(|feed| self.sequence_source_path(*feed))?;
+            if source.source != key_source.source {
+                return None;
+            }
+        }
+        let collection_abs = key_source.path[..key_source.path.len() - 1].to_vec();
+        let collection_node = self
+            .sources
+            .get(key_source.source)
+            .and_then(|source| super::schema::schema_node_at(&source.schema, &collection_abs))?;
+        if !collection_node.repeating || !matches!(collection_node.kind, SchemaKind::Group { .. }) {
+            return None;
+        }
+        let collection = self.collection_path(key_source.source, &collection_abs)?;
+        let matches = instantiate(
+            &expression.matches,
+            parameters,
+            &mut self.graph,
+            &mut self.next_id,
+        );
+        Some(self.alloc(Node::Lookup {
+            collection,
+            key: vec![key_source.path.last()?.clone()],
+            matches,
+            value: vec![value_source.path.last()?.clone()],
+        }))
+    }
+}
+
+fn matching_call_port(inputs: &[(Vec<String>, u32)], definition_path: &[String]) -> Option<u32> {
+    let mut matches = inputs
+        .iter()
+        .filter(|(path, _)| path.ends_with(definition_path))
+        .map(|(_, port)| *port);
+    let port = matches.next()?;
+    matches.next().is_none().then_some(port)
 }
 
 fn instantiate(
@@ -481,7 +781,7 @@ mod tests {
     use mapping::{Graph, Node};
     use roxmltree::Document;
 
-    use super::{Call, Definition, Registry, ScalarExpr, instantiate};
+    use super::{Call, Definition, OutputExpr, Registry, ScalarExpr, instantiate};
 
     #[test]
     fn omitted_scalar_parameter_expands_to_null() {
@@ -586,7 +886,8 @@ mod tests {
         .unwrap();
         let definition = Definition {
             parameters: BTreeSet::from([1]),
-            outputs: BTreeMap::from([(2, ScalarExpr::Const(Value::Null))]),
+            structured_parameters: BTreeSet::new(),
+            outputs: BTreeMap::from([(2, OutputExpr::Scalar(ScalarExpr::Const(Value::Null)))]),
         };
 
         assert!(matches!(
