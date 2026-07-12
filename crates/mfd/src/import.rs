@@ -33,7 +33,7 @@ use db_query::is_routine_catalog;
 use function::{
     aggregate_op, is_db_function_component, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
-    is_first_items as is_first_items_component, is_group_into_blocks,
+    is_first_items as is_first_items_component, is_group_into_blocks, is_group_starting_with,
     is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
     map_name as map_function_name, parse_constant, read as read_fn_component,
 };
@@ -340,6 +340,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             || is_sort_component(fc)
             || is_first_items_component(fc)
             || is_group_into_blocks(fc)
+            || is_group_starting_with(fc)
             || is_distinct_values_component(fc)
             || is_sequence_producer(fc)
             || fc.name == "group-by"
@@ -551,6 +552,11 @@ impl GraphBuilder<'_> {
                 .and_then(|feed| self.value_node(feed));
         }
         if is_group_into_blocks(&self.fn_components[idx]) {
+            return self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.value_node(feed));
+        }
+        if is_group_starting_with(&self.fn_components[idx]) {
             return self
                 .input_feed(idx, 0)
                 .and_then(|feed| self.value_node(feed));
@@ -855,10 +861,8 @@ impl GraphBuilder<'_> {
         node
     }
 
-    /// Follows an iteration feed through `filter` and `group-by`
-    /// components back to the underlying source entry, collecting the
-    /// filter's boolean expression and the group-by's key expression on
-    /// the way.
+    /// Follows an iteration feed through sequence controls back to the
+    /// underlying source entry, collecting their expressions on the way.
     pub(super) fn resolve_iteration_feed(&self, from: u32) -> IterationFeed {
         self.resolve_iteration_feed_inner(from, 0)
     }
@@ -868,6 +872,8 @@ impl GraphBuilder<'_> {
         let mut has_filter = false;
         let mut group_key = None;
         let mut has_key_grouping = false;
+        let mut group_starting_with = None;
+        let mut has_start_grouping = false;
         let mut block_size = None;
         let mut has_block_grouping = false;
         let mut distinct_key = None;
@@ -894,17 +900,28 @@ impl GraphBuilder<'_> {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
                     filter_expr = filter_expr.or(control.filter_expr);
                     has_filter |= control.has_filter;
-                    group_key = group_key.or(control.group_key);
-                    has_key_grouping |= control.has_key_grouping;
-                    if (group_key.is_some() || distinct_key.is_some())
-                        && control.block_size.is_some()
-                        || block_size.is_some()
-                            && (control.group_key.is_some() || control.distinct_key.is_some())
-                    {
+                    let grouping_count = [
+                        group_key,
+                        distinct_key,
+                        group_starting_with,
+                        block_size,
+                        control.group_key,
+                        control.distinct_key,
+                        control.group_starting_with,
+                        control.block_size,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .count();
+                    if grouping_count > 1 {
                         order_issue.get_or_insert(
-                            "combines group-into-blocks with another grouping control, which cannot be represented exactly",
+                            "combines multiple grouping controls, which cannot be represented exactly",
                         );
                     }
+                    group_key = group_key.or(control.group_key);
+                    has_key_grouping |= control.has_key_grouping;
+                    group_starting_with = group_starting_with.or(control.group_starting_with);
+                    has_start_grouping |= control.has_start_grouping;
                     block_size = block_size.or(control.block_size);
                     has_block_grouping |= control.has_block_grouping;
                     distinct_key = distinct_key.or(control.distinct_key);
@@ -975,6 +992,7 @@ impl GraphBuilder<'_> {
                 // already expose that member to scalar bindings, so an
                 // outer item limit would incorrectly truncate the groups.
                 if group_key.is_none()
+                    && group_starting_with.is_none()
                     && block_size.is_none()
                     && take_expr.is_none()
                     && !take_default_one
@@ -983,13 +1001,35 @@ impl GraphBuilder<'_> {
                     take_default_one = take_expr.is_none();
                 }
                 from = nodes_feed;
+            } else if is_group_starting_with(fc) {
+                has_start_grouping = true;
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
+                if group_key.is_some()
+                    || group_starting_with.is_some()
+                    || block_size.is_some()
+                    || distinct_key.is_some()
+                {
+                    order_issue.get_or_insert(
+                        "combines group-starting-with with another grouping control, which cannot be represented exactly",
+                    );
+                } else {
+                    group_starting_with = group_starting_with.or_else(|| self.input_feed(idx, 1));
+                }
+                from = nodes_feed;
             } else if is_group_into_blocks(fc) {
                 has_block_grouping = true;
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
                 note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
-                if group_key.is_some() || distinct_key.is_some() {
+                if group_key.is_some()
+                    || group_starting_with.is_some()
+                    || block_size.is_some()
+                    || distinct_key.is_some()
+                {
                     order_issue.get_or_insert(
                         "combines group-into-blocks with another grouping control, which cannot be represented exactly",
                     );
@@ -1007,6 +1047,8 @@ impl GraphBuilder<'_> {
                     Some("filter")
                 } else if group_key.is_some() {
                     Some("group-by")
+                } else if group_starting_with.is_some() {
+                    Some("group-starting-with")
                 } else if block_size.is_some() {
                     Some("group-into-blocks")
                 } else if distinct_key.is_some() {
@@ -1019,6 +1061,7 @@ impl GraphBuilder<'_> {
                         "sort" => "applies distinct-values before sort, which cannot be represented exactly",
                         "filter" => "applies distinct-values before filter, which cannot be represented exactly",
                         "group-by" => "applies distinct-values before group-by, which cannot be represented exactly",
+                        "group-starting-with" => "applies distinct-values before group-starting-with, which cannot be represented exactly",
                         "group-into-blocks" => "applies distinct-values before group-into-blocks, which cannot be represented exactly",
                         _ => "chains multiple distinct-values components, which cannot be represented exactly",
                     });
@@ -1038,9 +1081,12 @@ impl GraphBuilder<'_> {
                                 "applies group-by before distinct-values, which cannot be represented exactly",
                             );
                         }
-                        if block_size.is_some() {
+                        if group_key.is_some()
+                            || block_size.is_some()
+                            || group_starting_with.is_some()
+                        {
                             order_issue.get_or_insert(
-                                "combines group-into-blocks with another grouping control, which cannot be represented exactly",
+                                "combines multiple grouping controls, which cannot be represented exactly",
                             );
                         } else {
                             group_key = group_key.or_else(|| self.input_feed(idx, 1));
@@ -1060,6 +1106,8 @@ impl GraphBuilder<'_> {
             has_filter,
             group_key,
             has_key_grouping,
+            group_starting_with,
+            has_start_grouping,
             block_size,
             has_block_grouping,
             distinct_key,

@@ -8,12 +8,16 @@ use ir::{Instance, Value};
 use mapping::{Graph, IterationOutput, Node, NodeId, Project, RuntimeValue, Scope};
 use thiserror::Error;
 
+mod context;
 mod dynamic_target;
+mod grouping;
 mod iteration_output;
 mod sequence;
 mod validate;
 
+use context::runtime_field;
 use dynamic_target::{eval_dynamic_key, insert_target_field};
+use grouping::GroupingMode;
 use iteration_output::finalize_scope_output;
 #[cfg(test)]
 use mapping::SequenceExpr;
@@ -37,7 +41,7 @@ pub enum EngineError {
     NotAnItemCount { node: NodeId, found: &'static str },
     #[error("node {node}: group block size must be greater than zero")]
     InvalidBlockSize { node: NodeId },
-    #[error("a scope cannot combine group-by with group-into-blocks")]
+    #[error("a scope cannot combine multiple grouping modes")]
     ConflictingGroupingModes,
     #[error("node {node}: value-map lookup missed and there's no default")]
     ValueMapMiss { node: NodeId },
@@ -189,14 +193,6 @@ fn run_internal(
     )
 }
 
-fn runtime_field(value: RuntimeValue) -> &'static str {
-    match value {
-        RuntimeValue::MappingFilePath => "\0mapping_file_path",
-        RuntimeValue::MainMappingFilePath => "\0main_mapping_file_path",
-        RuntimeValue::CurrentDateTime => "\0current_datetime",
-    }
-}
-
 #[derive(Clone)]
 struct PositionFrame {
     collection: Vec<String>,
@@ -223,12 +219,6 @@ struct OwnedGroup {
     intermediate_frames: Vec<Instance>,
     members: Instance,
     positions: Vec<PositionFrame>,
-}
-
-#[derive(Clone, Copy)]
-enum GroupingMode {
-    By(NodeId),
-    IntoBlocks(usize),
 }
 
 fn eval_scope(
@@ -317,13 +307,27 @@ fn eval_scope(
         IterationOutput::Repeated | IterationOutput::MappedSequence => take,
         IterationOutput::First => Some(take.unwrap_or(1).min(1)),
     };
-    let grouping = match (scope.group_by, scope.group_into_blocks) {
-        (Some(_), Some(_)) => return Err(EngineError::ConflictingGroupingModes),
-        (Some(node), None) => Some(GroupingMode::By(node)),
-        (None, Some(node)) => Some(GroupingMode::IntoBlocks(eval_block_size(
+    let grouping_count = [
+        scope.group_by,
+        scope.group_starting_with,
+        scope.group_into_blocks,
+    ]
+    .into_iter()
+    .flatten()
+    .count();
+    if grouping_count > 1 {
+        return Err(EngineError::ConflictingGroupingModes);
+    }
+    let grouping = if let Some(node) = scope.group_by {
+        Some(GroupingMode::By(node))
+    } else if let Some(node) = scope.group_starting_with {
+        Some(GroupingMode::StartingWith(node))
+    } else if let Some(node) = scope.group_into_blocks {
+        Some(GroupingMode::IntoBlocks(eval_block_size(
             graph, node, context, positions,
-        )?)),
-        (None, None) => None,
+        )?))
+    } else {
+        None
     };
     let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
     if let Some(grouping) = grouping {
@@ -354,10 +358,23 @@ fn eval_scope(
                         &mut in_progress,
                     )?)
                 }
-                GroupingMode::IntoBlocks(_) => None,
+                GroupingMode::StartingWith(_) | GroupingMode::IntoBlocks(_) => None,
+            };
+            let starts_group = match grouping {
+                GroupingMode::StartingWith(predicate) => {
+                    passes_filter(graph, Some(predicate), &item_context, &item_positions)?
+                }
+                GroupingMode::By(_) | GroupingMode::IntoBlocks(_) => false,
             };
             let existing = match grouping {
                 GroupingMode::By(_) => groups.iter_mut().find(|group| group.key == key),
+                GroupingMode::StartingWith(_) => {
+                    if starts_group {
+                        None
+                    } else {
+                        groups.last_mut()
+                    }
+                }
                 GroupingMode::IntoBlocks(size) => {
                     groups.last_mut().filter(|group| group.members.len() < size)
                 }
@@ -1175,5 +1192,7 @@ mod core_tests;
 mod dynamic_target_tests;
 #[cfg(test)]
 mod group_blocks_tests;
+#[cfg(test)]
+mod group_starting_tests;
 #[cfg(test)]
 mod iteration_output_tests;

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Values>
+  <Row><Value>alpha</Value><Start>false</Start></Row>
+  <Row><Value>beta</Value><Start>true</Start></Row>
+  <Row><Value>gamma</Value><Start>false</Start></Row>
+  <Row><Value>delta</Value><Start>true</Start></Row>
+</Values>

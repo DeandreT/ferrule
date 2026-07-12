@@ -6,7 +6,7 @@ use mapping::NodeId;
 
 use super::function::{
     FnComponent, is_db_where, is_distinct_values, is_filter, is_first_items, is_group_into_blocks,
-    is_input, is_sort,
+    is_group_starting_with, is_input, is_sort,
 };
 use super::graph::GraphBuilder;
 use super::iteration::{IterationFeed, split_at_innermost_repeating};
@@ -117,6 +117,7 @@ fn iteration_source_feed(
             || is_sort(component)
             || is_first_items(component)
             || is_group_into_blocks(component)
+            || is_group_starting_with(component)
             || is_distinct_values(component)
             || is_input(component)
             || is_group_output)
@@ -367,6 +368,7 @@ impl GraphBuilder<'_> {
                 || is_sort(component)
                 || is_first_items(component)
                 || is_group_into_blocks(component)
+                || is_group_starting_with(component)
                 || component.name == "group-by" && component.outputs.first() == Some(&feed);
             if passes_nodes {
                 feed = self.input_feed(idx, 0)?;
