@@ -15,8 +15,10 @@ use crate::MfdError;
 mod alternatives;
 mod db_query;
 mod db_where;
+mod dynamic_json;
 mod function;
 mod graph;
+mod group_projection;
 mod iteration;
 mod schema;
 mod scope;
@@ -37,9 +39,9 @@ use iteration::{
     split_at_innermost_repeating,
 };
 use schema::{
-    ComponentFormat, SchemaComponent, collect_matching_scalar_paths, note_skipped_library,
-    read_csv_component, read_db_component, read_edi_component, read_json_component,
-    read_schema_component, schema_node_at,
+    SchemaComponent, collect_matching_scalar_paths, note_skipped_library, read_csv_component,
+    read_db_component, read_edi_component, read_json_component, read_schema_component,
+    schema_node_at,
 };
 use scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -253,8 +255,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         root: Scope::default(),
         anchors: BTreeMap::new(),
     };
+    let dynamic_target = dynamic_json::prepare_target(target, &mut builder);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
+    let mut group_projections = Vec::new();
     for (&inpkey, target_path) in &target.ports {
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
@@ -262,35 +266,15 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         let node_kind = schema_node_at(&target.schema, target_path);
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
-                // Iteration connection (or filtered iteration). An empty
-                // path is a document-level connection: for row/array-shaped
-                // targets (a CSV block, a repeating JSON root) it iterates
-                // the root scope; for document-shaped targets the root runs
-                // exactly once anyway, so it carries no information.
-                if target_path.is_empty() {
-                    let row_shaped =
-                        matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
-                            || (target.format == ComponentFormat::Json && node.repeating);
-                    if row_shaped {
-                        iterations.push((target_path.clone(), from));
-                    }
-                    continue;
-                }
-                if !node.repeating {
-                    let descendants_are_connected = target.ports.iter().any(|(key, path)| {
-                        path.len() > target_path.len()
-                            && path.starts_with(target_path)
-                            && edge_from.contains_key(key)
-                    });
-                    if !descendants_are_connected {
-                        builder.warnings.push(format!(
-                            "connection into non-repeating group `{}` ignored",
-                            target_path.join("/")
-                        ));
-                    }
-                    continue;
-                }
-                iterations.push((target_path.clone(), from));
+                group_projection::classify_target_connection(
+                    target,
+                    target_path,
+                    node,
+                    from,
+                    &mut builder,
+                    &mut iterations,
+                    &mut group_projections,
+                )
             }
             Some(_) => match TargetLeaf::from_path(target_path) {
                 Some(target) => bindings.push((target, from)),
@@ -305,11 +289,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             )),
         }
     }
-    // Iterations first (outer before inner), so anchors exist for bindings.
     iterations.sort_by_key(|(path, _)| path.len());
-    // SourceField paths are relative to the enclosing iteration frames, so
-    // the builder must know which repeating levels the scopes will iterate
-    // before any function component materializes a SourceField.
     for (_, from) in &iterations {
         let feed = builder.resolve_iteration_feed(*from);
         if let Some(idx) = feed.sequence_component {
@@ -319,8 +299,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.note_framed_prefixes(&source_path);
         }
     }
-    // Materialize aggregates first so computed sequence functions are built
-    // under their per-item collection frame rather than as outer expressions.
+    // Build computed aggregate sequences in their per-item frame first.
     for (i, fc) in fn_components.iter().enumerate() {
         if fc.kind == 5 && aggregate_op(&fc.name).is_some() {
             builder.fn_node(i);
@@ -501,6 +480,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             }
         }
     }
+    group_projection::build(
+        group_projections,
+        target,
+        &skipped_iteration_paths,
+        &mut builder,
+        &mut scope_builder,
+    );
     for (target, from) in bindings {
         if skipped_iteration_paths
             .iter()
@@ -513,10 +499,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         };
         scope_builder.add_binding(target, node);
     }
+    dynamic_json::build_target(
+        dynamic_target,
+        target,
+        &mut builder,
+        &mut scope_builder.root,
+    );
 
     let mut extra_sources = Vec::new();
     for (index, extra) in sources.iter().enumerate().skip(1) {
-        let has_dynamic_input = extra.db_query.is_none()
+        let has_dynamic_input = extra.db_queries.is_empty()
             && extra
                 .input_keys
                 .iter()
@@ -948,19 +940,22 @@ impl GraphBuilder<'_> {
     /// components back to the underlying source entry, collecting the
     /// filter's boolean expression and the group-by's key expression on
     /// the way.
-    fn resolve_iteration_feed(&self, from: u32) -> IterationFeed {
+    pub(super) fn resolve_iteration_feed(&self, from: u32) -> IterationFeed {
         self.resolve_iteration_feed_inner(from, 0)
     }
 
     fn resolve_iteration_feed_inner(&self, mut from: u32, depth: usize) -> IterationFeed {
         let mut filter_expr = None;
+        let mut has_filter = false;
         let mut group_key = None;
+        let mut has_key_grouping = false;
         let mut block_size = None;
         let mut has_block_grouping = false;
         let mut distinct_key = None;
         let mut order_issue = None;
         let mut nearest_control = None;
         let mut sort_expr = None;
+        let mut has_sort = false;
         let mut sort_descending = false;
         let mut take_expr = None;
         let mut take_default_one = false;
@@ -979,7 +974,9 @@ impl GraphBuilder<'_> {
                 {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
                     filter_expr = filter_expr.or(control.filter_expr);
+                    has_filter |= control.has_filter;
                     group_key = group_key.or(control.group_key);
+                    has_key_grouping |= control.has_key_grouping;
                     if (group_key.is_some() || distinct_key.is_some())
                         && control.block_size.is_some()
                         || block_size.is_some()
@@ -997,6 +994,7 @@ impl GraphBuilder<'_> {
                         sort_expr = control.sort_expr;
                         sort_descending = control.sort_descending;
                     }
+                    has_sort |= control.has_sort;
                     take_expr = take_expr.or(control.take_expr);
                     take_default_one |= control.take_default_one;
                 }
@@ -1025,6 +1023,7 @@ impl GraphBuilder<'_> {
                 }
                 from = nodes_feed;
             } else if is_filter_component(fc) {
+                has_filter = true;
                 let Some(node_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
@@ -1032,6 +1031,7 @@ impl GraphBuilder<'_> {
                 filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
                 from = node_feed;
             } else if is_sort_component(fc) {
+                has_sort = true;
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
@@ -1109,6 +1109,7 @@ impl GraphBuilder<'_> {
             } else {
                 match fc.name.as_str() {
                     "group-by" if fc.outputs.first() == Some(&from) => {
+                        has_key_grouping = true;
                         let Some(nodes_feed) = self.input_feed(idx, 0) else {
                             break;
                         };
@@ -1137,12 +1138,15 @@ impl GraphBuilder<'_> {
             db_where_component,
             source_suffix,
             filter_expr,
+            has_filter,
             group_key,
+            has_key_grouping,
             block_size,
             has_block_grouping,
             distinct_key,
             order_issue,
             sort_expr,
+            has_sort,
             sort_descending,
             take_expr,
             take_default_one,
