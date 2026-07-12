@@ -13,6 +13,8 @@ use thiserror::Error;
 
 mod format_number;
 
+const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
+
 #[derive(Debug, Error, PartialEq)]
 pub enum FunctionError {
     #[error("unknown function `{0}`")]
@@ -265,7 +267,28 @@ fn pad_string(args: &[Value], name: &'static str, left: bool) -> Result<Value, F
             got: args.len(),
         });
     };
-    let desired_length = number_arg(desired_length, name)? as i64;
+    let desired_length = match desired_length {
+        Value::Int(length) => *length,
+        Value::Float(length) if length.is_finite() => *length as i64,
+        Value::Float(_) => {
+            return Err(FunctionError::InvalidArgument {
+                function: name,
+                message: "requires a finite desired length",
+            });
+        }
+        other => {
+            return Err(FunctionError::TypeMismatch {
+                function: name,
+                got: other.type_name(),
+            });
+        }
+    };
+    if desired_length > MAX_GENERATED_PADDING_CHARS {
+        return Err(FunctionError::InvalidArgument {
+            function: name,
+            message: "requested output exceeds 1000000 characters",
+        });
+    }
     let padding = scalar_text(padding);
     let mut padding = padding.chars();
     let Some(padding_char) = padding.next() else {
@@ -676,6 +699,39 @@ mod tests {
             ),
             Err(FunctionError::InvalidArgument { .. })
         ));
+        for name in ["pad_string_left", "pad_string_right"] {
+            for desired_length in [
+                Value::Int(MAX_GENERATED_PADDING_CHARS + 1),
+                Value::Int(i64::MAX),
+                Value::Float(f64::NAN),
+                Value::Float(f64::INFINITY),
+                Value::Float(f64::NEG_INFINITY),
+            ] {
+                assert!(matches!(
+                    call(
+                        name,
+                        &[
+                            Value::String(String::new()),
+                            desired_length,
+                            Value::String("x".into()),
+                        ]
+                    ),
+                    Err(FunctionError::InvalidArgument { function, .. }) if function == name
+                ));
+            }
+        }
+        assert_eq!(
+            call(
+                "pad_string_left",
+                &[
+                    Value::String("7".into()),
+                    Value::Float(3.9),
+                    Value::String("0".into()),
+                ]
+            )
+            .unwrap(),
+            Value::String("007".into())
+        );
         assert_eq!(
             call("left_trim", &[Value::String(" \t\nvalue\u{a0}".into())]).unwrap(),
             Value::String("value\u{a0}".into())
