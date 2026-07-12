@@ -7,17 +7,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::Path;
 
 use mapping::{Graph, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
 
 use crate::MfdError;
 
+mod artifact;
 mod function;
 mod mapped_sequence;
 mod schema;
+mod sequence;
 #[cfg(test)]
 mod tests;
 
@@ -29,6 +29,7 @@ use schema::{
     KeyAlloc, PortMatch, PortTree, Side, SideFormat, db_datasource_name, render_schema_component,
     side_format, xml_escape,
 };
+use sequence::{SequenceExistsPins, collect_scope_sequences};
 
 /// Writes `project` as a MapForce design at `path`, plus generated schema
 /// siblings (`<stem>-source.xsd` / `.schema.json`, dito target) where the
@@ -62,7 +63,12 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut uid = 100u32;
     let mut sequence_inputs = Vec::new();
     let mut sequences = Vec::new();
-    collect_sequences(&project.root, &mut sequences);
+    collect_scope_sequences(&project.root, &mut sequences);
+    for node in project.graph.nodes.values() {
+        if let Node::SequenceExists { sequence, .. } = node {
+            sequences.push(sequence);
+        }
+    }
     for sequence in sequences {
         let first_key = keys.next();
         let second_key = keys.next();
@@ -99,6 +105,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
              \t\t\t\t</component>\n"
         );
     }
+    let mut sequence_exists_pins = Vec::new();
     for (&id, node) in &project.graph.nodes {
         match node {
             Node::SourceField { path, frame } => {
@@ -145,8 +152,102 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                      \t\t\t\t</component>\n"
                 );
             }
-            Node::Lookup { .. } => warnings
-                .push("lookup nodes have no simple MapForce equivalent; skipped".to_string()),
+            Node::Lookup {
+                collection,
+                key,
+                matches: _,
+                value,
+            } => {
+                let mut key_path = collection.clone();
+                key_path.extend(key.iter().cloned());
+                let mut value_path = collection.clone();
+                value_path.extend(value.iter().cloned());
+                let (Some(key_output), Some(value_output)) = (
+                    source_ports.key_for_abs(&key_path),
+                    source_ports.key_for_abs(&value_path),
+                ) else {
+                    warnings.push(format!(
+                        "lookup node {id} key/value paths do not match primary source leaves; skipped"
+                    ));
+                    continue;
+                };
+
+                let equal_key = keys.next();
+                let equal_match = keys.next();
+                let equal_output = keys.next();
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"equal\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{equal_key}\"/><datapoint pos=\"1\" key=\"{equal_match}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{equal_output}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+
+                let filter_nodes = keys.next();
+                let filter_predicate = keys.next();
+                let filter_output = keys.next();
+                node_out_key.insert(id, filter_output);
+                fn_inputs.insert(id, vec![equal_match]);
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{filter_nodes}\"/><datapoint pos=\"1\" key=\"{filter_predicate}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{filter_output}\"/><datapoint/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.extend([
+                    (key_output, equal_key),
+                    (value_output, filter_nodes),
+                    (equal_output, filter_predicate),
+                ]);
+            }
+            Node::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                let Some(&sequence_output) = node_out_key.get(&sequence.item()) else {
+                    warnings.push(format!(
+                        "sequence-exists node {id} references an unexported sequence item; skipped"
+                    ));
+                    continue;
+                };
+                let filter_nodes = keys.next();
+                let filter_predicate = keys.next();
+                let filter_output = keys.next();
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{filter_nodes}\"/><datapoint pos=\"1\" key=\"{filter_predicate}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{filter_output}\"/><datapoint/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+
+                let exists_input = keys.next();
+                let exists_output = keys.next();
+                node_out_key.insert(id, exists_output);
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"exists\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{exists_input}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{exists_output}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((sequence_output, filter_nodes));
+                edges.push((filter_output, exists_input));
+                sequence_exists_pins.push(SequenceExistsPins {
+                    predicate: *predicate,
+                    sequence_output,
+                    filter_predicate,
+                });
+            }
             Node::Aggregate {
                 function,
                 collection,
@@ -344,9 +445,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 else_,
             } => vec![*condition, *then, *else_],
             Node::ValueMap { input, .. } => vec![*input],
+            Node::Lookup { matches, .. } => vec![*matches],
             Node::Aggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).copied().collect(),
+            Node::SequenceExists { .. } => continue,
             _ => continue,
         };
         for (i, arg) in args.iter().enumerate() {
@@ -371,6 +474,26 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         || (target_format == SideFormat::Json && project.target.repeating);
     let mut filter_components = String::new();
     let mut position_contexts: BTreeMap<NodeId, Option<u32>> = BTreeMap::new();
+    for pins in sequence_exists_pins {
+        match node_out_key.get(&pins.predicate) {
+            Some(&predicate_output) => edges.push((predicate_output, pins.filter_predicate)),
+            None => warnings.push(format!(
+                "sequence-exists predicate references unexported node {}; connection skipped",
+                pins.predicate
+            )),
+        }
+        connect_position_roots(
+            [pins.predicate],
+            None,
+            true,
+            pins.sequence_output,
+            &project.graph,
+            &position_inputs,
+            &mut position_contexts,
+            &mut edges,
+            &mut warnings,
+        );
+    }
     collect_scope_edges(
         &project.root,
         &mut Vec::new(),
@@ -509,88 +632,6 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     artifacts.push((path.to_path_buf(), out));
     write_artifacts(artifacts)?;
     Ok(warnings)
-}
-
-static TEMP_ARTIFACT_ID: AtomicU64 = AtomicU64::new(0);
-
-struct StagedArtifact {
-    temporary: PathBuf,
-    destination: PathBuf,
-}
-
-impl Drop for StagedArtifact {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.temporary);
-    }
-}
-
-fn write_artifacts(artifacts: Vec<(PathBuf, String)>) -> io::Result<()> {
-    for (destination, _) in &artifacts {
-        match std::fs::symlink_metadata(destination) {
-            Ok(metadata) if metadata.file_type().is_dir() => {
-                return Err(io::Error::new(
-                    io::ErrorKind::IsADirectory,
-                    format!(
-                        "artifact destination is a directory: {}",
-                        destination.display()
-                    ),
-                ));
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
-        }
-    }
-
-    let mut staged = Vec::with_capacity(artifacts.len());
-    for (destination, contents) in artifacts {
-        let artifact = stage_artifact(destination, contents.as_bytes())?;
-        staged.push(artifact);
-    }
-    for artifact in &staged {
-        std::fs::rename(&artifact.temporary, &artifact.destination)?;
-    }
-    Ok(())
-}
-
-fn stage_artifact(destination: PathBuf, contents: &[u8]) -> io::Result<StagedArtifact> {
-    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
-    let file_name = destination
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("mapping");
-    loop {
-        let id = TEMP_ARTIFACT_ID.fetch_add(1, Ordering::Relaxed);
-        let temporary = parent.join(format!(
-            ".{file_name}.ferrule-{}-{id}.tmp",
-            std::process::id()
-        ));
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary);
-        let mut file = match file {
-            Ok(file) => file,
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        };
-        let artifact = StagedArtifact {
-            temporary,
-            destination,
-        };
-        std::io::Write::write_all(&mut file, contents)?;
-        file.sync_all()?;
-        return Ok(artifact);
-    }
-}
-
-fn collect_sequences<'a>(scope: &'a Scope, sequences: &mut Vec<&'a SequenceExpr>) {
-    if let Some(sequence) = &scope.sequence {
-        sequences.push(sequence);
-    }
-    for child in &scope.children {
-        collect_sequences(child, sequences);
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -844,6 +885,10 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
+        // The reducer's predicate has its own generated-item context and is
+        // connected explicitly when the filter/exists chain is emitted.
+        // Its sequence arguments still execute in the enclosing scope.
+        Node::SequenceExists { sequence, .. } => sequence.inputs(),
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
@@ -1147,3 +1192,4 @@ fn collect_scope_edges(
     }
     anchor.truncate(anchor_len);
 }
+use artifact::write_artifacts;

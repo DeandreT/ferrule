@@ -420,6 +420,108 @@ fn aggregate_argument_pins_match_the_operation() {
 }
 
 #[test]
+fn sequence_exists_exposes_sequence_inputs_then_predicate() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        10,
+        Node::SequenceExists {
+            sequence: mapping::SequenceExpr::Tokenize {
+                input: 1,
+                delimiter: 2,
+                item: 3,
+            },
+            predicate: 4,
+        },
+    );
+    assert_eq!(GraphViewer::input_count(&fx.graph.nodes[&10]), 3);
+    {
+        let mut viewer = fx.viewer();
+        assert_eq!(viewer.input_at(10, 0), Some(1));
+        assert_eq!(viewer.input_at(10, 1), Some(2));
+        assert_eq!(viewer.input_at(10, 2), Some(4));
+        viewer.set_input(10, 0, 5);
+        viewer.set_input(10, 2, 6);
+    }
+    let Node::SequenceExists {
+        sequence,
+        predicate,
+    } = &fx.graph.nodes[&10]
+    else {
+        panic!("test node should remain sequence-exists");
+    };
+    assert_eq!(sequence.inputs(), vec![5, 2]);
+    assert_eq!(*predicate, 6);
+
+    let generated = Node::SequenceExists {
+        sequence: mapping::SequenceExpr::Generate {
+            from: None,
+            to: 7,
+            item: 8,
+        },
+        predicate: 9,
+    };
+    assert_eq!(GraphViewer::input_count(&generated), 2);
+
+    let mut bounded = Node::SequenceExists {
+        sequence: mapping::SequenceExpr::Generate {
+            from: Some(7),
+            to: 8,
+            item: 9,
+        },
+        predicate: 4,
+    };
+    assert_eq!(GraphViewer::input_count(&bounded), 3);
+    fx.graph.nodes.insert(11, bounded);
+    {
+        let mut viewer = fx.viewer();
+        assert_eq!(viewer.input_at(11, 0), Some(7));
+        assert_eq!(viewer.input_at(11, 1), Some(8));
+        assert_eq!(viewer.input_at(11, 2), Some(4));
+        viewer.set_input(11, 0, 5);
+        viewer.set_input(11, 1, 6);
+        viewer.set_input(11, 2, 10);
+    }
+    bounded = fx.graph.nodes.remove(&11).unwrap();
+    let Node::SequenceExists {
+        sequence,
+        predicate,
+    } = bounded
+    else {
+        panic!("test node should remain sequence-exists");
+    };
+    assert_eq!(sequence.inputs(), vec![5, 6]);
+    assert_eq!(predicate, 10);
+}
+
+#[test]
+fn sequence_exists_item_is_protected_from_deletion() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        10,
+        Node::SequenceExists {
+            sequence: mapping::SequenceExpr::Generate {
+                from: None,
+                to: 0,
+                item: 3,
+            },
+            predicate: 0,
+        },
+    );
+    fx.graph.nodes.insert(
+        3,
+        Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        },
+    );
+
+    assert_eq!(
+        fx.viewer().references_to(3),
+        vec!["graph node 10 sequence item"]
+    );
+}
+
+#[test]
 fn referenced_nodes_report_graph_and_scope_consumers() {
     let mut fx = fixture();
     fx.graph.nodes.insert(1, Node::Const { value: Value::Null });
