@@ -21,7 +21,7 @@ clean-room interoperability, and extensible adapters.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
-  aggregates, computed aggregate expressions, and 32 scalar built-ins.
+  aggregates, computed aggregate expressions, and 38 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
@@ -33,10 +33,10 @@ clean-room interoperability, and extensible adapters.
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, includes/imports, attributes, simple content | Namespace identity, `xsi:nil`/`xsi:type`, wildcards, mixed content |
-| JSON | JSON Schema subset and local refs | Union/composition schemas, mixed arrays, dynamic properties |
+| XML | XSD subset, includes/imports, attributes, simple content, selected derived-type output | Namespace identity, derived-type input identity, `xsi:nil`, wildcards, mixed content |
+| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf` | General union/composition schemas, mixed arrays, dynamic properties |
 | Flat files | Delimited CSV | Fixed length, reusable structured-text/FlexText-style layouts |
-| Database | Relational SQLite reads, flat-table full-replace output | Query model, relational writes, insert/update/delete, PostgreSQL |
+| Database | Relational SQLite reads, flat-table full-replace output, simple imported WHERE/ORDER controls | General query model, relational writes, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
 | Other formats | None | XLSX, Protobuf, then demand-driven XBRL/PDF support |
 | Dataflow | One primary source plus named lookup sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
@@ -58,8 +58,11 @@ Build breadth only where imported mappings can execute equivalently.
 Progress: legacy indexed XML names, stable `distinct-values` pipelines, first-class
 `tokenize`/`tokenize-by-length` sequences, and inclusive `generate-sequence` ranges
 are implemented. Generated scopes export sort/filter/group/take controls and
-stage-correct positions. Non-representable operator order produces an actionable
-warning instead of silently claiming exact conversion.
+stage-correct positions. Compatible JSON object alternatives can drive exact
+derived XML type output, database WHERE/ORDER controls lower into runtime scopes,
+and high-value date/time/missing-value functions execute natively. Non-representable
+operator order produces an actionable warning instead of silently claiming exact
+conversion.
 
 - Normalize legacy and namespace-indexed XML entry encodings.
 - Add first-class generated sequences: `distinct-values`, `tokenize`,
