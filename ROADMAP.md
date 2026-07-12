@@ -1,6 +1,6 @@
 # Ferrule MapForce Workflow-Parity Roadmap
 
-Updated: 2026-07-10
+Updated: 2026-07-11
 
 ## Goal
 
@@ -231,7 +231,7 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 171 (170 executable plus the ignored local-sample survey).
+- Workspace tests: 194 (193 executable plus the ignored local-sample survey).
 - `.mfd` survey: 73/120 import, 27 warning-free.
 - Unsupported-function warnings: 16, down from 19 in the previous increment.
 - Target-path mismatch warnings: 14, down from 36.
