@@ -231,7 +231,7 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 207 (206 executable plus the ignored local-sample survey).
+- Workspace tests: 240 (239 executable plus the ignored local-sample survey).
 - `.mfd` survey: 73/120 import, 27 warning-free.
 - Unsupported-function warnings: 16, down from 19 in the previous increment.
 - Target-path mismatch warnings: 14, down from 36.
