@@ -194,6 +194,11 @@ fn parse_element(
             name,
             parse_complex_type(&complex_type, schema_el, schema_path, state),
         )
+    } else if let Some(simple_type) = el
+        .children()
+        .find(|n| n.is_element() && n.tag_name().name() == "simpleType")
+    {
+        SchemaNode::scalar(name, simple_type_scalar(&simple_type))
     } else if let Some(ty) = el.attribute("type") {
         if let Some(children) = resolve_complex_type(ty, schema_el, schema_path, state) {
             SchemaNode::group(name, children)
