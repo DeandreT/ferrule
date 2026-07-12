@@ -5,6 +5,8 @@
 //! scalar fields; the file's row-repetition itself is a format convention,
 //! not something declared in the schema (unlike XML, where `repeating` is a
 //! per-element schema property).
+//! Empty cells represent [`Value::Null`] for every scalar type; CSV therefore
+//! cannot distinguish a null string from an intentionally empty string.
 
 use std::path::Path;
 
@@ -31,6 +33,21 @@ pub enum CsvFormatError {
         row: usize,
         expected: usize,
         got: usize,
+    },
+    #[error("row {row}: expected a group, got {got}")]
+    RowShape { row: usize, got: &'static str },
+    #[error("row {row}: missing column `{field}`")]
+    MissingField { row: usize, field: String },
+    #[error("row {row}: unexpected column `{field}`")]
+    UnexpectedField { row: usize, field: String },
+    #[error("row {row}: duplicate column `{field}`")]
+    DuplicateField { row: usize, field: String },
+    #[error("row {row}: column `{field}` expected {expected:?}, got {got}")]
+    ValueType {
+        row: usize,
+        field: String,
+        expected: ScalarType,
+        got: &'static str,
     },
     #[error("`{0}` is not a valid CSV delimiter (must be a single-byte character)")]
     BadDelimiter(char),
@@ -103,6 +120,9 @@ fn parse_value(
     cell: &str,
     row: usize,
 ) -> Result<Value, CsvFormatError> {
+    if cell.is_empty() {
+        return Ok(Value::Null);
+    }
     let bad = || CsvFormatError::Parse {
         row,
         field: name.to_string(),
@@ -112,7 +132,13 @@ fn parse_value(
     Ok(match ty {
         ScalarType::String => Value::String(cell.to_string()),
         ScalarType::Int => Value::Int(cell.parse().map_err(|_| bad())?),
-        ScalarType::Float => Value::Float(cell.parse().map_err(|_| bad())?),
+        ScalarType::Float => {
+            let value = cell.parse::<f64>().map_err(|_| bad())?;
+            if !value.is_finite() {
+                return Err(bad());
+            }
+            Value::Float(value)
+        }
         ScalarType::Bool => Value::Bool(cell.parse().map_err(|_| bad())?),
     })
 }
@@ -127,29 +153,163 @@ pub fn write(
     has_headers: bool,
 ) -> Result<(), CsvFormatError> {
     let fields = row_fields(schema)?;
+    let delimiter = delimiter_byte(delimiter)?;
+    // Validate and materialize every record before opening the destination.
+    // A shape/type error must not truncate a previously valid output file.
+    let records = rows
+        .iter()
+        .enumerate()
+        .map(|(row, instance)| format_row(row, instance, &fields))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut writer = csv::WriterBuilder::new()
-        .delimiter(delimiter_byte(delimiter)?)
+        .delimiter(delimiter)
         .from_path(path)?;
     if has_headers {
         writer.write_record(fields.iter().map(|(n, _)| *n))?;
     }
-    for row in rows {
-        let cells = fields
-            .iter()
-            .map(|(n, _)| format_value(row.field(n).and_then(Instance::as_scalar)));
-        writer.write_record(cells)?;
+    for record in records {
+        writer.write_record(record)?;
     }
     writer.flush()?;
     Ok(())
 }
 
-fn format_value(value: Option<&Value>) -> String {
-    match value {
-        None | Some(Value::Null) => String::new(),
-        Some(Value::Bool(b)) => b.to_string(),
-        Some(Value::Int(i)) => i.to_string(),
-        Some(Value::Float(f)) => f.to_string(),
-        Some(Value::String(s)) => s.clone(),
+fn format_row(
+    row: usize,
+    instance: &Instance,
+    schema_fields: &[(&str, ScalarType)],
+) -> Result<Vec<String>, CsvFormatError> {
+    let Instance::Group(instance_fields) = instance else {
+        return Err(CsvFormatError::RowShape {
+            row,
+            got: instance_type_name(instance),
+        });
+    };
+
+    for (index, (name, _)) in instance_fields.iter().enumerate() {
+        if !schema_fields
+            .iter()
+            .any(|(schema_name, _)| schema_name == name)
+        {
+            return Err(CsvFormatError::UnexpectedField {
+                row,
+                field: name.clone(),
+            });
+        }
+        if instance_fields[..index]
+            .iter()
+            .any(|(previous, _)| previous == name)
+        {
+            return Err(CsvFormatError::DuplicateField {
+                row,
+                field: name.clone(),
+            });
+        }
+    }
+
+    schema_fields
+        .iter()
+        .map(|(name, ty)| {
+            let value = instance_fields
+                .iter()
+                .find(|(instance_name, _)| instance_name == name)
+                .ok_or_else(|| CsvFormatError::MissingField {
+                    row,
+                    field: (*name).to_string(),
+                })?;
+            let Instance::Scalar(value) = &value.1 else {
+                return Err(value_type_error(
+                    row,
+                    name,
+                    *ty,
+                    instance_type_name(&value.1),
+                ));
+            };
+            format_value(row, name, *ty, value)
+        })
+        .collect()
+}
+
+fn format_value(
+    row: usize,
+    field: &str,
+    ty: ScalarType,
+    value: &Value,
+) -> Result<String, CsvFormatError> {
+    let incompatible = || value_type_error(row, field, ty, value.type_name());
+    match (ty, value) {
+        (_, Value::Null) => Ok(String::new()),
+        (ScalarType::String, Value::Bool(value)) => Ok(value.to_string()),
+        (ScalarType::String, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::String, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
+        (ScalarType::String, Value::Float(_)) => {
+            Err(value_type_error(row, field, ty, "non-finite float"))
+        }
+        (ScalarType::String, Value::String(value)) => Ok(value.clone()),
+        (ScalarType::Int, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::Int, Value::String(value)) => value
+            .trim()
+            .parse::<i64>()
+            .map(|value| value.to_string())
+            .map_err(|_| incompatible()),
+        (ScalarType::Float, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
+        (ScalarType::Float, Value::Float(_)) => {
+            Err(value_type_error(row, field, ty, "non-finite float"))
+        }
+        (ScalarType::Float, Value::Int(value)) if exact_f64(*value).is_some() => {
+            Ok(value.to_string())
+        }
+        (ScalarType::Float, Value::Int(_)) => Err(value_type_error(
+            row,
+            field,
+            ty,
+            "int outside the exact f64 range",
+        )),
+        (ScalarType::Float, Value::String(value)) => value
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(|value| value.to_string())
+            .ok_or_else(incompatible),
+        (ScalarType::Bool, Value::Bool(value)) => Ok(value.to_string()),
+        (ScalarType::Bool, Value::String(value)) => value
+            .trim()
+            .parse::<bool>()
+            .map(|value| value.to_string())
+            .map_err(|_| incompatible()),
+        _ => Err(incompatible()),
+    }
+}
+
+fn exact_f64(value: i64) -> Option<f64> {
+    let magnitude = value.unsigned_abs();
+    if magnitude == 0 {
+        return Some(0.0);
+    }
+    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
+    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
+}
+
+fn value_type_error(
+    row: usize,
+    field: &str,
+    expected: ScalarType,
+    got: &'static str,
+) -> CsvFormatError {
+    CsvFormatError::ValueType {
+        row,
+        field: field.to_string(),
+        expected,
+        got,
+    }
+}
+
+fn instance_type_name(instance: &Instance) -> &'static str {
+    match instance {
+        Instance::Scalar(value) => value.type_name(),
+        Instance::Group(_) => "group",
+        Instance::Repeated(_) => "repeated",
     }
 }
 
@@ -267,5 +427,154 @@ mod tests {
         assert!(text.starts_with("name;age"));
         // The value containing the delimiter must be quoted, not split.
         assert_eq!(read_back, vec![row]);
+    }
+
+    #[test]
+    fn write_rejects_incompatible_typed_strings_without_truncating_output() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_csv_test_invalid_value_{}.csv",
+            std::process::id()
+        ));
+        std::fs::write(&path, "existing output\n").unwrap();
+        let row = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            (
+                "age".into(),
+                Instance::Scalar(Value::String("not a number".into())),
+            ),
+        ]);
+
+        let error = write(&path, &schema(), &[row], None, true).unwrap_err();
+        let unchanged = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert!(matches!(
+            error,
+            CsvFormatError::ValueType {
+                row: 0,
+                field,
+                expected: ScalarType::Int,
+                got: "string",
+            } if field == "age"
+        ));
+        assert_eq!(unchanged, "existing output\n");
+    }
+
+    #[test]
+    fn write_rejects_non_group_rows() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_csv_test_scalar_row_{}.csv",
+            std::process::id()
+        ));
+
+        let error = write(
+            &path,
+            &schema(),
+            &[Instance::Scalar(Value::String("Jane,29".into()))],
+            None,
+            true,
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            CsvFormatError::RowShape {
+                row: 0,
+                got: "string"
+            }
+        ));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn write_rejects_missing_and_non_scalar_fields() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_csv_test_bad_fields_{}.csv",
+            std::process::id()
+        ));
+        let missing = Instance::Group(vec![(
+            "name".into(),
+            Instance::Scalar(Value::String("Jane".into())),
+        )]);
+        let error = write(&path, &schema(), &[missing], None, false).unwrap_err();
+        assert!(matches!(
+            error,
+            CsvFormatError::MissingField { row: 0, field } if field == "age"
+        ));
+
+        let nested = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            ("age".into(), Instance::Group(Vec::new())),
+        ]);
+        let error = write(&path, &schema(), &[nested], None, false).unwrap_err();
+        assert!(matches!(
+            error,
+            CsvFormatError::ValueType {
+                row: 0,
+                field,
+                expected: ScalarType::Int,
+                got: "group",
+            } if field == "age"
+        ));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn null_cells_roundtrip_for_all_scalar_types() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_csv_test_nulls_{}.csv",
+            std::process::id()
+        ));
+        let schema = SchemaNode::group(
+            "row",
+            vec![
+                SchemaNode::scalar("text", ScalarType::String),
+                SchemaNode::scalar("integer", ScalarType::Int),
+                SchemaNode::scalar("number", ScalarType::Float),
+                SchemaNode::scalar("boolean", ScalarType::Bool),
+            ],
+        );
+        let row = Instance::Group(
+            ["text", "integer", "number", "boolean"]
+                .into_iter()
+                .map(|name| (name.to_string(), Instance::Scalar(Value::Null)))
+                .collect(),
+        );
+
+        write(&path, &schema, std::slice::from_ref(&row), None, true).unwrap();
+        let read_back = read(&path, &schema, None, true).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(read_back, vec![row]);
+    }
+
+    #[test]
+    fn read_rejects_non_finite_float_cells() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_csv_test_non_finite_{}.csv",
+            std::process::id()
+        ));
+        let schema =
+            SchemaNode::group("row", vec![SchemaNode::scalar("number", ScalarType::Float)]);
+
+        for value in ["NaN", "inf", "1e999"] {
+            std::fs::write(&path, format!("{value}\n")).unwrap();
+            assert!(matches!(
+                read(&path, &schema, None, false),
+                Err(CsvFormatError::Parse {
+                    row: 0,
+                    ref field,
+                    expected: ScalarType::Float,
+                    ..
+                }) if field == "number"
+            ));
+        }
+        std::fs::remove_file(path).unwrap();
     }
 }
