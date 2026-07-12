@@ -15,6 +15,8 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) sequence_scope_components: BTreeSet<usize>,
     pub(super) warned_sequence_uses: BTreeSet<usize>,
     pub(super) source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
+    pub(super) query_scope_sources: BTreeSet<usize>,
+    pub(super) warned_unscoped_queries: BTreeSet<usize>,
     pub(super) edge_from: &'a BTreeMap<u32, u32>,
     pub(super) sources: &'a [&'a SchemaComponent],
     pub(super) source_names: &'a [String],

@@ -13,6 +13,7 @@ use mapping::{AggregateOp, Graph, NamedSource, Node, NodeId, Project, Scope, Seq
 use crate::MfdError;
 
 mod alternatives;
+mod db_query;
 mod db_where;
 mod function;
 mod graph;
@@ -22,6 +23,7 @@ mod scope;
 mod source;
 mod udf;
 
+use db_query::is_routine_catalog;
 use function::{
     aggregate_op, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
@@ -125,6 +127,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 "db" if component.attribute("kind") == Some("21") => {
                     fn_components.push(read_fn_component(&component));
                 }
+                "db" if is_routine_catalog(&component, &children) => {}
                 "db" => match read_db_component(&component, &mapping_el, path, &mut warnings) {
                     Some(sc) => schema_components.push(sc),
                     None => note_skipped_library(&mut skipped_libraries, "db"),
@@ -218,6 +221,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         sequence_scope_components: BTreeSet::new(),
         warned_sequence_uses: BTreeSet::new(),
         source_fields: BTreeMap::new(),
+        query_scope_sources: BTreeSet::new(),
+        warned_unscoped_queries: BTreeSet::new(),
         edge_from: &edge_from,
         sources: &sources,
         source_names: &source_names,
@@ -363,22 +368,15 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             continue;
         }
         let existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
-        let db_where_name = feed
-            .db_where_component
-            .and_then(|index| builder.fn_components.get(index))
-            .map(|component| component.name.clone());
-        let (mut filter_node, db_sort_node, db_sort_descending) = match builder.apply_db_where(
-            feed.db_where_component,
-            source_path.as_ref(),
-            existing_filter,
-        ) {
+        let (mut filter_node, database_sort_node, database_sort_descending) = match builder
+            .apply_db_controls(
+                feed.db_where_component,
+                source_path.as_ref(),
+                existing_filter,
+            ) {
             Ok(nodes) => nodes,
-            Err(reason) => {
-                builder.warnings.push(format!(
-                    "database where/order component `{}` is unsupported: {reason}; iteration into `{}` skipped",
-                    db_where_name.as_deref().unwrap_or("unknown"),
-                    target_path.join("/")
-                ));
+            Err(error) => {
+                builder.warnings.push(error.warning(&target_path));
                 skipped_iteration_paths.push(target_path);
                 continue;
             }
@@ -412,12 +410,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             });
         }
         let ordinary_sort_node = feed.sort_expr.and_then(|key| builder.value_node(key));
-        if ordinary_sort_node.is_some() && db_sort_node.is_some() {
+        if ordinary_sort_node.is_some() && database_sort_node.is_some() {
             builder.warn_conflicting_db_sort(&target_path);
             skipped_iteration_paths.push(target_path);
             continue;
         }
-        let sort_node = ordinary_sort_node.or(db_sort_node);
+        let sort_node = ordinary_sort_node.or(database_sort_node);
         let take_node = feed
             .take_expr
             .and_then(|key| builder.value_node(key))
@@ -435,7 +433,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             sort_by: sort_node,
             sort_descending: ordinary_sort_node
                 .map(|_| feed.sort_descending)
-                .unwrap_or(db_sort_descending),
+                .unwrap_or(database_sort_descending),
             take: take_node,
         };
         if let Some(sequence) = sequence {
@@ -510,11 +508,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         {
             continue;
         }
-        let Some(node) = builder.value_node(from) else {
-            builder.warnings.push(format!(
-                "binding for `{}` comes from an unsupported feed; skipped",
-                target.path().join("/")
-            ));
+        let Some(node) = builder.binding_node(from, &target.path()) else {
             continue;
         };
         scope_builder.add_binding(target, node);
@@ -522,10 +516,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
     let mut extra_sources = Vec::new();
     for (index, extra) in sources.iter().enumerate().skip(1) {
-        let has_dynamic_input = extra
-            .input_keys
-            .iter()
-            .any(|key| edge_from.contains_key(key));
+        let has_dynamic_input = extra.db_query.is_none()
+            && extra
+                .input_keys
+                .iter()
+                .any(|key| edge_from.contains_key(key));
         if has_dynamic_input {
             builder.warnings.push(format!(
                 "extra source `{}` has a connected run-time input; the stored instance path is \
@@ -619,7 +614,7 @@ impl GraphBuilder<'_> {
 
     /// The ferrule node producing the value at output-port `key`, creating
     /// SourceField/function nodes on demand. `None` for unsupported feeds.
-    fn value_node(&mut self, key: u32) -> Option<NodeId> {
+    pub(super) fn value_node(&mut self, key: u32) -> Option<NodeId> {
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
             if let Some(abs) = source.ports.get(&key).cloned() {
