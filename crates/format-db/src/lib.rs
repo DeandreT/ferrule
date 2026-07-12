@@ -28,6 +28,14 @@ pub enum DbFormatError {
         expected: ScalarType,
         got: &'static str,
     },
+    #[error("row {row}: expected a group, got {got}")]
+    RowShape { row: usize, got: &'static str },
+    #[error("row {row}: missing column `{column}`")]
+    MissingField { row: usize, column: String },
+    #[error("row {row}: unexpected column `{column}`")]
+    UnexpectedField { row: usize, column: String },
+    #[error("row {row}: duplicate column `{column}`")]
+    DuplicateField { row: usize, column: String },
     #[error("column `{column}`: cannot read SQLite {got} as {expected:?}")]
     CellType {
         column: String,
@@ -236,6 +244,11 @@ fn sqlite_type_name(value: ValueRef) -> &'static str {
 /// mapping runs idempotent.
 pub fn write(db_path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(), DbFormatError> {
     let columns = columns_of(schema)?;
+    let records = rows
+        .iter()
+        .enumerate()
+        .map(|(row, instance)| row_values(row, instance, &columns))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut conn = Connection::open(db_path)?;
 
     let column_defs = columns
@@ -266,18 +279,68 @@ pub fn write(db_path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(
             "INSERT INTO {} ({column_list}) VALUES ({placeholders})",
             quote(&schema.name)
         ))?;
-        for row in rows {
-            let params = columns
-                .iter()
-                .map(|(name, ty)| {
-                    to_sql_value(name, *ty, row.field(name).and_then(Instance::as_scalar))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+        for params in records {
             stmt.execute(rusqlite::params_from_iter(params))?;
         }
     }
     tx.commit()?;
     Ok(())
+}
+
+fn row_values(
+    row: usize,
+    instance: &Instance,
+    columns: &[(&str, ScalarType)],
+) -> Result<Vec<rusqlite::types::Value>, DbFormatError> {
+    let Instance::Group(fields) = instance else {
+        return Err(DbFormatError::RowShape {
+            row,
+            got: instance_type_name(instance),
+        });
+    };
+    for (index, (name, _)) in fields.iter().enumerate() {
+        if !columns.iter().any(|(column, _)| column == name) {
+            return Err(DbFormatError::UnexpectedField {
+                row,
+                column: name.clone(),
+            });
+        }
+        if fields[..index].iter().any(|(previous, _)| previous == name) {
+            return Err(DbFormatError::DuplicateField {
+                row,
+                column: name.clone(),
+            });
+        }
+    }
+
+    columns
+        .iter()
+        .map(|(name, ty)| {
+            let (_, value) = fields
+                .iter()
+                .find(|(field, _)| field == name)
+                .ok_or_else(|| DbFormatError::MissingField {
+                    row,
+                    column: (*name).to_string(),
+                })?;
+            let Instance::Scalar(value) = value else {
+                return Err(DbFormatError::ValueType {
+                    column: (*name).to_string(),
+                    expected: *ty,
+                    got: instance_type_name(value),
+                });
+            };
+            to_sql_value(name, *ty, value)
+        })
+        .collect()
+}
+
+fn instance_type_name(instance: &Instance) -> &'static str {
+    match instance {
+        Instance::Scalar(value) => value.type_name(),
+        Instance::Group(_) => "group",
+        Instance::Repeated(_) => "repeated",
+    }
 }
 
 fn declared_columns(
@@ -328,19 +391,19 @@ fn affinity_preserves(ty: ScalarType, affinity: SqliteAffinity) -> bool {
 fn to_sql_value(
     column: &str,
     ty: ScalarType,
-    value: Option<&Value>,
+    value: &Value,
 ) -> Result<rusqlite::types::Value, DbFormatError> {
     use rusqlite::types::Value as Sql;
     match (ty, value) {
-        (_, None | Some(Value::Null)) => Ok(Sql::Null),
-        (ScalarType::Int, Some(Value::Int(i))) => Ok(Sql::Integer(*i)),
-        (ScalarType::Float, Some(Value::Float(f))) if f.is_finite() => Ok(Sql::Real(*f)),
-        (ScalarType::Float, Some(Value::Float(_))) => Err(DbFormatError::ValueType {
+        (_, Value::Null) => Ok(Sql::Null),
+        (ScalarType::Int, Value::Int(i)) => Ok(Sql::Integer(*i)),
+        (ScalarType::Float, Value::Float(f)) if f.is_finite() => Ok(Sql::Real(*f)),
+        (ScalarType::Float, Value::Float(_)) => Err(DbFormatError::ValueType {
             column: column.to_string(),
             expected: ty,
             got: "non-finite float",
         }),
-        (ScalarType::Float, Some(Value::Int(i))) => {
+        (ScalarType::Float, Value::Int(i)) => {
             exact_f64(*i)
                 .map(Sql::Real)
                 .ok_or_else(|| DbFormatError::ValueType {
@@ -349,9 +412,9 @@ fn to_sql_value(
                     got: "int outside the exact f64 range",
                 })
         }
-        (ScalarType::Bool, Some(Value::Bool(b))) => Ok(Sql::Integer(i64::from(*b))),
-        (ScalarType::String, Some(Value::String(s))) => Ok(Sql::Text(s.clone())),
-        (_, Some(other)) => Err(DbFormatError::ValueType {
+        (ScalarType::Bool, Value::Bool(b)) => Ok(Sql::Integer(i64::from(*b))),
+        (ScalarType::String, Value::String(s)) => Ok(Sql::Text(s.clone())),
+        (_, other) => Err(DbFormatError::ValueType {
             column: column.to_string(),
             expected: ty,
             got: other.type_name(),
@@ -699,5 +762,40 @@ mod tests {
             .unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(table_count, 0);
+    }
+
+    #[test]
+    fn malformed_rows_are_rejected_before_opening_the_database() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_row_shape_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "metrics",
+            vec![SchemaNode::scalar("score", ScalarType::Int)],
+        )
+        .repeating();
+
+        assert!(matches!(
+            write(&path, &schema, &[Instance::Scalar(Value::Int(1))]),
+            Err(DbFormatError::RowShape { row: 0, got: "int" })
+        ));
+        assert!(matches!(
+            write(&path, &schema, &[Instance::Group(Vec::new())]),
+            Err(DbFormatError::MissingField { row: 0, column }) if column == "score"
+        ));
+        assert!(matches!(
+            write(
+                &path,
+                &schema,
+                &[Instance::Group(vec![
+                    ("score".into(), Instance::Scalar(Value::Int(1))),
+                    ("extra".into(), Instance::Scalar(Value::Int(2))),
+                ])],
+            ),
+            Err(DbFormatError::UnexpectedField { row: 0, column }) if column == "extra"
+        ));
+        assert!(!path.exists());
     }
 }
