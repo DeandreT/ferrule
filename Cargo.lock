@@ -2104,6 +2104,7 @@ dependencies = [
  "ir",
  "mapping",
  "roxmltree",
+ "rusqlite",
  "thiserror 2.0.18",
 ]
 

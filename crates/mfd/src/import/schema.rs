@@ -790,12 +790,12 @@ fn normalize_xml_entry_name(name: &str) -> (&str, bool) {
     }
 }
 
-/// Reads a single-table database component: the table entry's own port is
-/// the row iteration (path `[]`, like a csv block), column entries map to
-/// `[column]`, and the schema comes from introspecting the referenced
-/// SQLite file when it exists (untyped column names otherwise). Components
-/// with several tables, nested (foreign-key) tables, or SQL statements
-/// are skipped with a warning -- ferrule's db adapter is whole-table.
+/// Reads a database schema component. A lone flat table preserves the
+/// historical flat-row shape: its own port maps to `[]` and its columns map
+/// below that. Relational components retain each repeating table level;
+/// several top-level tables live below a non-repeating `database` root and
+/// nested relationship names keep MapForce's `PhysicalTable|JoinColumn`
+/// convention understood by `format_db::read_instance`.
 pub(super) fn read_db_component(
     component: &roxmltree::Node,
     mapping_el: &roxmltree::Node,
@@ -803,6 +803,12 @@ pub(super) fn read_db_component(
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     let name = component.attribute("name").unwrap_or_default().to_string();
+    if component.attribute("kind") == Some("28") {
+        warnings.push(format!(
+            "skipped database query component `{name}`: SQL query components are not supported yet"
+        ));
+        return None;
+    }
     let data = component
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "data")?;
@@ -830,47 +836,58 @@ pub(super) fn read_db_component(
             _ => break,
         }
     }
-    let tables: Vec<roxmltree::Node> = container
+    let entries: Vec<roxmltree::Node> = container
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
         .collect();
-    let single_plain_table = tables.len() == 1
-        && tables[0].attribute("type") == Some("table")
-        && !tables[0]
-            .descendants()
-            .skip(1)
-            .any(|n| n.attribute("type") == Some("table"));
-    if !single_plain_table {
+    let tables: Vec<roxmltree::Node> = entries
+        .iter()
+        .copied()
+        .filter(|entry| entry.attribute("type") == Some("table"))
+        .collect();
+    if tables.is_empty() {
         warnings.push(format!(
-            "skipped database component `{name}`: only single-table components \
-             import (nested tables and SQL statements need manual conversion)"
+            "skipped database component `{name}`: it contains no table entries"
         ));
         return None;
     }
-    let table = tables[0];
-    let table_name = table.attribute("name").unwrap_or_default().to_string();
+    if container.descendants().any(|entry| {
+        entry.has_tag_name("entry")
+            && entry
+                .attribute("type")
+                .is_some_and(|entry_type| entry_type != "table")
+    }) {
+        warnings.push(format!(
+            "database component `{name}` contains non-table database entries; those entries were skipped"
+        ));
+    }
+    let single_plain_table = tables.len() == 1
+        && !tables[0]
+            .children()
+            .any(|n| n.attribute("type") == Some("table"));
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
     let mut in_count = 0usize;
-    record_entry_keys(&table, &[], &mut ports, &mut out_count, &mut in_count);
-    for column in table
-        .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
-    {
-        let column_name = column.attribute("name").unwrap_or_default();
-        record_entry_keys(
-            &column,
-            &[column_name.to_string()],
-            &mut ports,
-            &mut out_count,
-            &mut in_count,
-        );
+    for table in &tables {
+        let mut path = if single_plain_table || tables.len() == 1 {
+            Vec::new()
+        } else {
+            vec![table.attribute("name").unwrap_or_default().to_string()]
+        };
+        collect_db_ports(table, &mut path, &mut ports, &mut out_count, &mut in_count);
     }
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
+    let (input_keys, output_keys) = entry_key_sets(&root_el);
+    if !single_plain_table && !is_source {
+        warnings.push(format!(
+            "relational database target component `{name}` is non-executable: \
+             ferrule can read relational schemas but cannot write them yet"
+        ));
+    }
 
     // The connection string lives in the mapping's datasource registry,
     // linked from the component by name.
@@ -892,44 +909,65 @@ pub(super) fn read_db_component(
         ));
     }
 
-    // Schema: introspect the SQLite file when it is reachable (types),
-    // else fall back to the column entries (untyped).
-    let schema = connection
-        .as_deref()
-        .and_then(|conn| {
-            let db_path = mfd_path.parent().unwrap_or(Path::new(".")).join(conn);
-            if !db_path.exists() {
-                warnings.push(format!(
-                    "component `{name}`: database `{conn}` not found next to the \
-                     design; falling back to untyped columns"
-                ));
-                return None;
-            }
-            match format_db::introspect(&db_path, &table_name) {
+    let db_path = connection.as_deref().and_then(|conn| {
+        let path = mfd_path.parent().unwrap_or(Path::new(".")).join(conn);
+        if path.exists() {
+            Some(path)
+        } else {
+            warnings.push(format!(
+                "component `{name}`: database `{conn}` not found next to the \
+                 design; falling back to untyped columns"
+            ));
+            None
+        }
+    });
+
+    // Keep the exact existing flat-table behavior, including exposing every
+    // introspected column. Relational entry trees instead select their own
+    // columns and use introspection only to recover each selected leaf type.
+    let schema = if single_plain_table {
+        let table = tables[0];
+        let table_name = table.attribute("name").unwrap_or_default();
+        db_path
+            .as_deref()
+            .and_then(|path| match format_db::introspect(path, table_name) {
                 Ok(schema) => Some(schema),
-                Err(e) => {
+                Err(error) => {
                     warnings.push(format!(
-                        "component `{name}`: could not introspect `{conn}` ({e}); \
-                         falling back to untyped columns"
+                        "component `{name}`: could not introspect `{}` ({error}); \
+                         falling back to untyped columns",
+                        connection.as_deref().unwrap_or_default()
                     ));
                     None
                 }
-            }
-        })
-        .unwrap_or_else(|| {
-            let columns = table
-                .children()
-                .filter(|n| n.is_element() && n.tag_name().name() == "entry")
-                .map(|c| {
-                    SchemaNode::scalar(
-                        c.attribute("name").unwrap_or_default(),
-                        ir::ScalarType::String,
-                    )
-                })
-                .collect();
-            // Tables are repeating groups by format-db convention.
-            SchemaNode::group(&table_name, columns).repeating()
-        });
+            })
+            .unwrap_or_else(|| db_table_schema(&table, &BTreeMap::new()))
+    } else {
+        let mut types = BTreeMap::new();
+        if let Some(path) = db_path.as_deref() {
+            collect_db_column_types(path, &tables, &name, warnings, &mut types);
+        }
+        if tables.len() == 1 {
+            db_table_schema(&tables[0], &types)
+        } else {
+            SchemaNode::group(
+                "database",
+                tables
+                    .iter()
+                    .map(|table| db_table_schema(table, &types))
+                    .collect(),
+            )
+        }
+    };
+    if !single_plain_table
+        && let Some(path) = db_path.as_deref()
+        && let Err(error) = format_db::validate_relational_schema(path, &schema)
+    {
+        warnings.push(format!(
+            "component `{name}`: relational schema does not match SQLite foreign-key metadata \
+             ({error}); execution is disabled until the relationship is corrected"
+        ));
+    }
 
     Some(SchemaComponent {
         name,
@@ -943,9 +981,109 @@ pub(super) fn read_db_component(
         is_variable: false,
         compute_when_key: None,
         ports,
-        input_keys: BTreeSet::new(),
-        output_keys: BTreeSet::new(),
+        input_keys,
+        output_keys,
     })
+}
+
+fn collect_db_ports(
+    table: &roxmltree::Node,
+    path: &mut Vec<String>,
+    ports: &mut BTreeMap<u32, Vec<String>>,
+    out_count: &mut usize,
+    in_count: &mut usize,
+) {
+    record_entry_keys(table, path, ports, out_count, in_count);
+    for child in table
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name() == "entry")
+    {
+        path.push(child.attribute("name").unwrap_or_default().to_string());
+        match child.attribute("type") {
+            Some("table") => collect_db_ports(&child, path, ports, out_count, in_count),
+            None => record_entry_keys(&child, path, ports, out_count, in_count),
+            Some(_) => {}
+        }
+        path.pop();
+    }
+}
+
+fn collect_db_column_types(
+    db_path: &Path,
+    tables: &[roxmltree::Node<'_, '_>],
+    component_name: &str,
+    warnings: &mut Vec<String>,
+    types: &mut BTreeMap<String, BTreeMap<String, ir::ScalarType>>,
+) {
+    for entry in tables {
+        let physical_table = entry
+            .attribute("name")
+            .unwrap_or_default()
+            .split_once('|')
+            .map_or_else(
+                || entry.attribute("name").unwrap_or_default(),
+                |(table, _)| table,
+            );
+        if !types.contains_key(physical_table) {
+            match format_db::introspect(db_path, physical_table) {
+                Ok(schema) => {
+                    let column_types = match schema.kind {
+                        SchemaKind::Group { children } => children
+                            .into_iter()
+                            .filter_map(|column| match column.kind {
+                                SchemaKind::Scalar { ty } => Some((column.name, ty)),
+                                SchemaKind::Group { .. } => None,
+                            })
+                            .collect(),
+                        SchemaKind::Scalar { .. } => BTreeMap::new(),
+                    };
+                    types.insert(physical_table.to_string(), column_types);
+                }
+                Err(error) => {
+                    warnings.push(format!(
+                        "component `{component_name}`: could not introspect table \
+                         `{physical_table}` ({error}); its columns are untyped"
+                    ));
+                    types.insert(physical_table.to_string(), BTreeMap::new());
+                }
+            }
+        }
+        let nested = entry
+            .children()
+            .filter(|node| node.has_tag_name("entry") && node.attribute("type") == Some("table"))
+            .collect::<Vec<_>>();
+        collect_db_column_types(db_path, &nested, component_name, warnings, types);
+    }
+}
+
+fn db_table_schema(
+    table: &roxmltree::Node,
+    types: &BTreeMap<String, BTreeMap<String, ir::ScalarType>>,
+) -> SchemaNode {
+    let name = table.attribute("name").unwrap_or_default();
+    let physical_table = name.split_once('|').map_or(name, |(table, _)| table);
+    let columns = types.get(physical_table);
+    let children = table
+        .children()
+        .filter(|node| node.is_element() && node.tag_name().name() == "entry")
+        .filter_map(|entry| match entry.attribute("type") {
+            Some("table") => Some(db_table_schema(&entry, types)),
+            None => {
+                let column = entry.attribute("name").unwrap_or_default();
+                let ty = columns
+                    .and_then(|columns| {
+                        columns
+                            .iter()
+                            .find(|(name, _)| name.eq_ignore_ascii_case(column))
+                            .map(|(_, ty)| *ty)
+                    })
+                    .unwrap_or(ir::ScalarType::String);
+                Some(SchemaNode::scalar(column, ty))
+            }
+            Some(_) => None,
+        })
+        .collect();
+    SchemaNode::group(name, children).repeating()
 }
 
 pub(super) fn schema_node_at<'a>(
