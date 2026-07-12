@@ -20,6 +20,7 @@ clean-room interoperability, and extensible adapters.
 - Formats, both directions: XML, JSON, CSV, SQLite, X12, and EDIFACT.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
+  bounded existential reduction over generated scalar sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
   structural group projection, mapped and computed XML occurrence sequences,
@@ -27,7 +28,7 @@ clean-room interoperability, and extensible adapters.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 96/120 local MapForce 2026 samples import; 54 import without
+- `.mfd` survey: 96/120 local MapForce 2026 samples import; 55 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -69,7 +70,9 @@ embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
 constructed records, while filtered sequence-parameter UDFs can construct one
-flat aggregate record. Mapping-path and stable per-run clock values use explicit
+flat aggregate record. Filtered tokenizer sequences lower to executable existential
+reducers, and selected sibling values lower to round-trippable lookups. Mapping-path
+and stable per-run clock values use explicit
 host context, computed JSON targets, plain structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
