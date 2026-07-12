@@ -27,7 +27,7 @@ mod udf;
 
 use db_query::is_routine_catalog;
 use function::{
-    aggregate_op, is_db_where as is_db_where_component,
+    aggregate_op, is_db_function_component, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
     is_first_items as is_first_items_component, is_group_into_blocks,
     is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
@@ -126,7 +126,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         ));
                     }
                 }
-                "db" if component.attribute("kind") == Some("21") => {
+                "db" if is_db_function_component(&component) => {
                     fn_components.push(read_fn_component(&component));
                 }
                 "db" if is_routine_catalog(&component, &children) => {}
