@@ -4,13 +4,15 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{Instance, Value};
-use mapping::{Graph, Node, NodeId, Project, Scope, SequenceExpr};
+use mapping::{Graph, IterationOutput, Node, NodeId, Project, Scope, SequenceExpr};
 use thiserror::Error;
 
 mod dynamic_target;
+mod iteration_output;
 mod validate;
 
-use dynamic_target::{eval_dynamic_key, insert_target_field, merge_dynamic_fragments};
+use dynamic_target::{eval_dynamic_key, insert_target_field};
+use iteration_output::finalize_scope_output;
 
 pub use validate::{ValidationIssue, validate};
 
@@ -42,6 +44,10 @@ pub enum EngineError {
     DuplicateDynamicProperty(String),
     #[error("a dynamic object merge can contain only object property fragments")]
     InvalidDynamicPropertyFragment,
+    #[error("first-item output requires an iterating scope")]
+    FirstOutputWithoutIteration,
+    #[error("first-item output cannot be combined with dynamic object merging")]
+    ConflictingIterationOutput,
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error("{function:?} aggregate overflowed the integer range")]
@@ -193,6 +199,10 @@ fn eval_scope(
         .take
         .map(|node| eval_item_count(graph, node, context, positions))
         .transpose()?;
+    let take = match scope.iteration_output {
+        IterationOutput::Repeated => take,
+        IterationOutput::First => Some(take.unwrap_or(1).min(1)),
+    };
     let grouping = match (scope.group_by, scope.group_into_blocks) {
         (Some(_), Some(_)) => return Err(EngineError::ConflictingGroupingModes),
         (Some(node), None) => Some(GroupingMode::By(node)),
@@ -346,18 +356,7 @@ fn eval_scope(
         }
     }
 
-    if scope.source.is_some() || scope.sequence.is_some() {
-        if scope.merge_dynamic_fields {
-            merge_dynamic_fragments(produced)
-        } else {
-            Ok(Instance::Repeated(produced))
-        }
-    } else {
-        produced
-            .into_iter()
-            .next()
-            .ok_or(EngineError::FilteredNonRepeatingScope)
-    }
+    finalize_scope_output(scope, produced)
 }
 
 fn eval_sequence(
@@ -1186,3 +1185,5 @@ mod core_tests;
 mod dynamic_target_tests;
 #[cfg(test)]
 mod group_blocks_tests;
+#[cfg(test)]
+mod iteration_output_tests;

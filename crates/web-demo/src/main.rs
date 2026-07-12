@@ -120,6 +120,7 @@ fn demo_project() -> Project {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "AllIds".into(),
                 node: 2,
@@ -135,6 +136,7 @@ fn demo_project() -> Project {
                 sort_by: None,
                 sort_descending: false,
                 take: None,
+                iteration_output: Default::default(),
                 bindings: vec![
                     Binding {
                         target_field: "Id".into(),
