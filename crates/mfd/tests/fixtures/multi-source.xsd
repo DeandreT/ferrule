@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Alpha">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="RowsA" maxOccurs="unbounded">
+          <xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+        </xs:element>
+        <xs:element name="RowsB" maxOccurs="unbounded">
+          <xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="Beta">
+    <xs:complexType><xs:sequence>
+      <xs:element name="Rows" maxOccurs="unbounded">
+        <xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+      </xs:element>
+    </xs:sequence></xs:complexType>
+  </xs:element>
+  <xs:element name="Output">
+    <xs:complexType><xs:sequence>
+      <xs:element name="AOne" maxOccurs="unbounded">
+        <xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+      </xs:element>
+      <xs:element name="ATwo" maxOccurs="unbounded">
+        <xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+      </xs:element>
+      <xs:element name="B" maxOccurs="unbounded">
+        <xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType>
+      </xs:element>
+    </xs:sequence></xs:complexType>
+  </xs:element>
+</xs:schema>

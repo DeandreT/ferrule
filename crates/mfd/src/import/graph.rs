@@ -17,6 +17,7 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
     pub(super) edge_from: &'a BTreeMap<u32, u32>,
     pub(super) sources: &'a [&'a SchemaComponent],
+    pub(super) source_names: &'a [String],
     pub(super) intermediates: &'a [&'a SchemaComponent],
     pub(super) fn_components: &'a [FnComponent],
     pub(super) fn_by_output: BTreeMap<u32, usize>,

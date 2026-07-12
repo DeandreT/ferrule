@@ -668,7 +668,54 @@ fn append_scope_controls(
             )),
         }
     }
+    if let Some(block_size) = scope.group_into_blocks {
+        connect_position_roots(
+            [block_size],
+            source_collection,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&block_size) {
+            Some(&size_src) => {
+                let in_nodes = keys.next();
+                let in_size = keys.next();
+                let out_groups = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"group-into-blocks\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_size}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((size_src, in_size));
+                from = out_groups;
+            }
+            None => warnings.push(format!(
+                "scope `{}` group block size references an unexported node; grouping dropped",
+                chain.join("/")
+            )),
+        }
+    }
     if let Some(take) = scope.take {
+        connect_position_roots(
+            [take],
+            source_collection,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
         match node_out_key.get(&take) {
             Some(&count_src) => {
                 let in_nodes = keys.next();
