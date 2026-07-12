@@ -2,7 +2,9 @@ use std::path::Path;
 
 use crate::import::schema::SchemaComponent;
 
-use super::{correlated, query_connection, query_identity, same_query_identity};
+use super::{
+    correlated, query_connection, query_identity, read_inline_component, same_query_identity,
+};
 
 pub(in crate::import) fn read_embedded_catalog(
     component: &roxmltree::Node<'_, '_>,
@@ -45,7 +47,7 @@ pub(in crate::import) fn read_embedded_catalog(
         .ancestors()
         .find(|entry| entry.has_tag_name("entry") && entry.attribute("type") == Some("table"))
     else {
-        return Ok(None);
+        return read_inline_component(component, mapping, mfd_path, query_name).map(Some);
     };
     if component
         .descendants()
