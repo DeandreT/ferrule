@@ -325,14 +325,32 @@ fn build_snarl_with_layout(
     let mut snarl = Snarl::new();
     let source_node = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
 
-    // A SourceField is hidden when some source leaf carries its path.
-    let leaf_for_path = |path: &[String]| source_pins.iter().position(|l| l.path == path);
+    // A SourceField is hidden when a source leaf carries its exact frame and
+    // relative path. The frame distinguishes equal leaf paths in siblings.
+    let leaf_for_field = |frame: &Option<Vec<String>>, path: &[String]| {
+        let exact = source_pins
+            .iter()
+            .position(|leaf| &leaf.frame == frame && leaf.path == path);
+        if exact.is_some() || frame.is_some() {
+            return exact;
+        }
+        // Older GUI projects stored repeating source fields without a
+        // frame. Preserve their endpoint wire only when the suffix is
+        // unique; ambiguous fields stay visible instead of being miswired.
+        let mut legacy_matches = source_pins
+            .iter()
+            .enumerate()
+            .filter(|(_, leaf)| leaf.path == path)
+            .map(|(index, _)| index);
+        let first = legacy_matches.next()?;
+        legacy_matches.next().is_none().then_some(first)
+    };
     let hidden: std::collections::BTreeMap<NodeId, usize> = project
         .graph
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
-            Node::SourceField { path, frame: None } => leaf_for_path(path).map(|leaf| (id, leaf)),
+            Node::SourceField { path, frame } => leaf_for_field(frame, path).map(|leaf| (id, leaf)),
             _ => None,
         })
         .collect();

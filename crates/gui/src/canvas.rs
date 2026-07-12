@@ -20,12 +20,13 @@ pub enum CanvasNode {
 
 /// One scalar leaf of the source schema. `path` is what a `SourceField`
 /// should hold to read this leaf: the segments after the innermost
-/// repeating ancestor, because at runtime the enclosing scopes' iteration
-/// items are the context frames the path resolves against (with outward
-/// fallback covering broadcast from enclosing levels).
+/// repeating ancestor. `frame` identifies that ancestor by its absolute
+/// source path so equal relative paths in different collections stay
+/// distinct. A repeating document root uses an empty frame path.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceLeaf {
     pub label: String,
+    pub frame: Option<Vec<String>>,
     pub path: Vec<String>,
 }
 
@@ -45,8 +46,16 @@ pub fn source_leaves(schema: &SchemaNode) -> Vec<SourceLeaf> {
     let SchemaKind::Group { children } = &schema.kind else {
         return out;
     };
+    let root_frame_len = schema.repeating.then_some(0);
     for child in children {
-        collect_source(child, &mut Vec::new(), &mut Vec::new(), &mut out);
+        collect_source(
+            child,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            &mut Vec::new(),
+            root_frame_len,
+            &mut out,
+        );
     }
     out
 }
@@ -54,15 +63,19 @@ pub fn source_leaves(schema: &SchemaNode) -> Vec<SourceLeaf> {
 fn collect_source(
     node: &SchemaNode,
     label: &mut Vec<String>,
+    absolute: &mut Vec<String>,
     suffix: &mut Vec<String>,
+    frame_len: Option<usize>,
     out: &mut Vec<SourceLeaf>,
 ) {
     label.push(node.name.clone());
+    absolute.push(node.name.clone());
     match &node.kind {
         SchemaKind::Scalar { .. } => {
             suffix.push(node.name.clone());
             out.push(SourceLeaf {
                 label: label.join("/"),
+                frame: frame_len.map(|len| absolute[..len].to_vec()),
                 path: suffix.clone(),
             });
             suffix.pop();
@@ -80,14 +93,20 @@ fn collect_source(
             if node.repeating {
                 suffix.clear();
             }
+            let frame_len = if node.repeating {
+                Some(absolute.len())
+            } else {
+                frame_len
+            };
             for child in children {
-                collect_source(child, label, suffix, out);
+                collect_source(child, label, absolute, suffix, frame_len, out);
             }
             if !node.repeating {
                 suffix.pop();
             }
         }
     }
+    absolute.pop();
     label.pop();
 }
 
@@ -321,23 +340,52 @@ mod tests {
             ],
         );
         let leaves = source_leaves(&schema);
-        let by_label: Vec<(&str, Vec<&str>)> = leaves
-            .iter()
-            .map(|l| {
-                (
-                    l.label.as_str(),
-                    l.path.iter().map(String::as_str).collect(),
-                )
-            })
-            .collect();
         assert_eq!(
-            by_label,
+            leaves,
             vec![
-                ("Date", vec!["Date"]),
-                ("Order/Cust_Name", vec!["Cust_Name"]),
-                ("Order/Items/Item/Price", vec!["Price"]),
+                SourceLeaf {
+                    label: "Date".into(),
+                    frame: None,
+                    path: vec!["Date".into()],
+                },
+                SourceLeaf {
+                    label: "Order/Cust_Name".into(),
+                    frame: Some(vec!["Order".into()]),
+                    path: vec!["Cust_Name".into()],
+                },
+                SourceLeaf {
+                    label: "Order/Items/Item/Price".into(),
+                    frame: Some(vec!["Order".into(), "Items".into(), "Item".into()]),
+                    path: vec!["Price".into()],
+                },
             ]
         );
+    }
+
+    #[test]
+    fn sibling_repeating_leaves_keep_distinct_frames() {
+        let schema = SchemaNode::group(
+            "root",
+            vec![
+                SchemaNode::group("A", vec![SchemaNode::scalar("Id", ScalarType::String)])
+                    .repeating(),
+                SchemaNode::group("B", vec![SchemaNode::scalar("Id", ScalarType::String)])
+                    .repeating(),
+            ],
+        );
+
+        let leaves = source_leaves(&schema);
+        assert_eq!(leaves[0].path, leaves[1].path);
+        assert_eq!(leaves[0].frame, Some(vec!["A".into()]));
+        assert_eq!(leaves[1].frame, Some(vec!["B".into()]));
+    }
+
+    #[test]
+    fn repeating_root_uses_an_empty_absolute_frame() {
+        let schema = SchemaNode::group("row", vec![SchemaNode::scalar("Id", ScalarType::String)])
+            .repeating();
+
+        assert_eq!(source_leaves(&schema)[0].frame, Some(Vec::new()));
     }
 
     #[test]
