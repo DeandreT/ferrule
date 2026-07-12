@@ -23,6 +23,7 @@ mod iteration;
 mod schema;
 mod scope;
 mod source;
+mod target_iteration;
 mod udf;
 
 use db_query::is_routine_catalog;
@@ -33,17 +34,16 @@ use function::{
     is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
     map_name as map_function_name, parse_constant, read as read_fn_component,
 };
-use graph::{GraphBuilder, read_edges};
+use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use iteration::{
     IntermediateFeed, IterationFeed, compatible_collection, note_iteration_control_order,
     split_at_innermost_repeating,
 };
 use schema::{
-    SchemaComponent, collect_matching_scalar_paths, note_skipped_library, read_csv_component,
-    read_db_component, read_edi_component, read_json_component, read_schema_component,
-    schema_node_at,
+    SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
+    read_edi_component, read_json_component, read_schema_component, schema_node_at,
 };
-use scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};
 
@@ -165,6 +165,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
     let edge_from = read_edges(&structure, Some(&wrapper));
+    let copy_all_targets = read_copy_all_targets(&structure);
 
     let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
@@ -268,9 +269,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
                 group_projection::classify_target_connection(
                     target,
-                    target_path,
-                    node,
-                    from,
+                    group_projection::TargetConnection {
+                        target_path,
+                        target_node: node,
+                        input_key: inpkey,
+                        feed: from,
+                        copy_all_targets: &copy_all_targets,
+                    },
                     &mut builder,
                     &mut iterations,
                     &mut group_projections,
@@ -289,9 +294,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             )),
         }
     }
-    iterations.sort_by_key(|(path, _)| path.len());
-    for (_, from) in &iterations {
-        let feed = builder.resolve_iteration_feed(*from);
+    iterations.sort_by_key(|iteration| iteration.target_path.len());
+    for iteration in &iterations {
+        let feed = builder.resolve_iteration_feed(iteration.feed);
         if let Some(idx) = feed.sequence_component {
             builder.sequence_scope_components.insert(idx);
         }
@@ -324,162 +329,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             builder.fn_node(i);
         }
     }
-    let connected_bindings: BTreeSet<Vec<String>> =
-        bindings.iter().map(|(target, _)| target.path()).collect();
-    let mut skipped_iteration_paths = Vec::new();
-    for (target_path, from) in iterations {
-        let feed = builder.resolve_iteration_feed(from);
-        if let Some(issue) = feed.order_issue {
-            builder.warnings.push(format!(
-                "sequence into `{}` {issue}; imported using ferrule's sequence order",
-                target_path.join("/")
-            ));
-        }
-        let source_path = builder.iteration_source_path(&feed);
-        let sequence = feed
-            .sequence_component
-            .and_then(|idx| builder.sequence_expr(idx));
-        if source_path.is_none() && sequence.is_none() {
-            builder.warnings.push(format!(
-                "iteration into `{}` comes from an unsupported feed; skipped",
-                target_path.join("/")
-            ));
-            continue;
-        }
-        let existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
-        let (mut filter_node, database_sort_node, database_sort_descending) = match builder
-            .apply_db_controls(
-                feed.db_where_component,
-                source_path.as_ref(),
-                existing_filter,
-            ) {
-            Ok(nodes) => nodes,
-            Err(error) => {
-                builder.warnings.push(error.warning(&target_path));
-                skipped_iteration_paths.push(target_path);
-                continue;
-            }
-        };
-        let distinct_node = feed.distinct_key.and_then(|key| builder.value_node(key));
-        let group_node = feed
-            .group_key
-            .and_then(|key| builder.value_node(key))
-            .or(distinct_node);
-        let resolved_block_size = feed.block_size.and_then(|key| builder.value_node(key));
-        if feed.has_block_grouping && resolved_block_size.is_none() {
-            builder.warnings.push(format!(
-                "group-into-blocks feeding `{}` has a missing or unsupported block-size; iteration skipped",
-                target_path.join("/")
-            ));
-            skipped_iteration_paths.push(target_path);
-            continue;
-        }
-        let block_size_node = resolved_block_size.filter(|_| group_node.is_none());
-        if let Some(distinct_node) = distinct_node {
-            let exists = builder.alloc(Node::Call {
-                function: "exists".into(),
-                args: vec![distinct_node],
-            });
-            filter_node = Some(match filter_node {
-                Some(filter) => builder.alloc(Node::Call {
-                    function: "and".into(),
-                    args: vec![filter, exists],
-                }),
-                None => exists,
-            });
-        }
-        let ordinary_sort_node = feed.sort_expr.and_then(|key| builder.value_node(key));
-        if ordinary_sort_node.is_some() && database_sort_node.is_some() {
-            builder.warn_conflicting_db_sort(&target_path);
-            skipped_iteration_paths.push(target_path);
-            continue;
-        }
-        let sort_node = ordinary_sort_node.or(database_sort_node);
-        let take_node = feed
-            .take_expr
-            .and_then(|key| builder.value_node(key))
-            .or_else(|| {
-                feed.take_default_one.then(|| {
-                    builder.alloc(Node::Const {
-                        value: Value::Int(1),
-                    })
-                })
-            });
-        let nodes = IterationNodes {
-            filter: filter_node,
-            group_by: group_node,
-            group_into_blocks: block_size_node,
-            sort_by: sort_node,
-            sort_descending: ordinary_sort_node
-                .map(|_| feed.sort_descending)
-                .unwrap_or(database_sort_descending),
-            take: take_node,
-        };
-        if let Some(sequence) = sequence {
-            scope_builder.add_sequence(&target_path, sequence, nodes);
-        } else if let Some(source_path) = &source_path {
-            scope_builder.add_iteration(&target_path, &builder.context_path(source_path), nodes);
-        }
-        if feed.projects_whole_group
-            && let Some(source_path) = &source_path
-            && let (Some(source_group), Some(target_group)) = (
-                builder.schema_node(source_path),
-                schema_node_at(&target.schema, &target_path),
-            )
-        {
-            let mut relative_paths = Vec::new();
-            collect_matching_scalar_paths(
-                source_group,
-                target_group,
-                &mut Vec::new(),
-                &mut relative_paths,
-            );
-            for relative in relative_paths {
-                let mut target_leaf = target_path.clone();
-                target_leaf.extend(relative.iter().cloned());
-                if connected_bindings.contains(&target_leaf)
-                    || feed.projections.contains_key(&relative)
-                {
-                    continue;
-                }
-                let mut source_leaf = source_path.clone();
-                source_leaf.path.extend(relative);
-                if let (Some(target), Some(node)) = (
-                    TargetLeaf::from_path(&target_leaf),
-                    builder.source_field_at(&source_leaf),
-                ) {
-                    scope_builder.add_binding(target, node);
-                }
-            }
-        }
-        let mut projection_paths = Vec::new();
-        if let Some(target_group) = schema_node_at(&target.schema, &target_path) {
-            collect_matching_scalar_paths(
-                target_group,
-                target_group,
-                &mut Vec::new(),
-                &mut projection_paths,
-            );
-        }
-        for relative in projection_paths {
-            let Some(value_feed) = feed.projections.get(&relative) else {
-                continue;
-            };
-            let mut target_leaf = target_path.clone();
-            target_leaf.extend(relative.iter().cloned());
-            if connected_bindings.contains(&target_leaf)
-                || !schema_node_at(&target.schema, &target_leaf)
-                    .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
-            {
-                continue;
-            }
-            if let Some(node) = builder.value_node(*value_feed)
-                && let Some(target) = TargetLeaf::from_path(&target_leaf)
-            {
-                scope_builder.add_binding(target, node);
-            }
-        }
-    }
+    let skipped_iteration_paths = target_iteration::build(
+        iterations,
+        target,
+        &bindings,
+        &mut builder,
+        &mut scope_builder,
+    );
     group_projection::build(
         group_projections,
         target,

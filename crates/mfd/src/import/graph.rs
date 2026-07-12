@@ -126,3 +126,38 @@ pub(super) fn read_edges(
     }
     edge_from
 }
+
+pub(super) fn read_copy_all_targets(structure: &roxmltree::Node<'_, '_>) -> BTreeSet<u32> {
+    let Some(graph) = structure
+        .children()
+        .find(|node| node.is_element() && node.has_tag_name("graph"))
+    else {
+        return BTreeSet::new();
+    };
+    let copy_edges = graph
+        .children()
+        .find(|node| node.is_element() && node.has_tag_name("edges"))
+        .into_iter()
+        .flat_map(|edges| edges.children().filter(|node| node.has_tag_name("edge")))
+        .filter(|edge| {
+            edge.descendants().any(|node| {
+                node.has_tag_name("dataconnection") && node.attribute("type") == Some("2")
+            })
+        })
+        .filter_map(|edge| super::schema::parse_u32(edge.attribute("edgekey")))
+        .collect::<BTreeSet<_>>();
+    graph
+        .descendants()
+        .filter(|node| node.has_tag_name("vertex"))
+        .flat_map(|vertex| {
+            vertex
+                .descendants()
+                .filter(|node| node.has_tag_name("edge"))
+        })
+        .filter(|edge| {
+            super::schema::parse_u32(edge.attribute("edgekey"))
+                .is_some_and(|key| copy_edges.contains(&key))
+        })
+        .filter_map(|edge| super::schema::parse_u32(edge.attribute("vertexkey")))
+        .collect()
+}

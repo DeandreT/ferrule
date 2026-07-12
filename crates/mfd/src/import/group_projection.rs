@@ -1,10 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
+use mapping::IterationOutput;
 
 use super::function::{aggregate_op, produces_scalar};
 use super::graph::GraphBuilder;
-use super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
+use super::schema::{
+    ComponentFormat, SchemaComponent, collect_matching_scalar_paths, schema_node_at,
+};
 use super::scope::{ScopeBuilder, TargetLeaf};
 
 pub(super) enum Projection {
@@ -12,15 +15,57 @@ pub(super) enum Projection {
     Text(Vec<String>, u32),
 }
 
+pub(super) struct TargetIteration {
+    pub(super) target_path: Vec<String>,
+    pub(super) feed: u32,
+    pub(super) output: IterationOutput,
+    pub(super) projects_whole_group: bool,
+}
+
+pub(super) struct TargetConnection<'a> {
+    pub(super) target_path: &'a [String],
+    pub(super) target_node: &'a SchemaNode,
+    pub(super) input_key: u32,
+    pub(super) feed: u32,
+    pub(super) copy_all_targets: &'a BTreeSet<u32>,
+}
+
+impl TargetIteration {
+    fn repeated(target_path: &[String], feed: u32) -> Self {
+        Self {
+            target_path: target_path.to_vec(),
+            feed,
+            output: IterationOutput::Repeated,
+            projects_whole_group: false,
+        }
+    }
+}
+
 pub(super) fn classify_target_connection(
     target: &SchemaComponent,
-    target_path: &[String],
-    target_node: &SchemaNode,
-    feed: u32,
+    connection: TargetConnection<'_>,
     builder: &mut GraphBuilder<'_>,
-    iterations: &mut Vec<(Vec<String>, u32)>,
+    iterations: &mut Vec<TargetIteration>,
     projections: &mut Vec<Projection>,
 ) {
+    let TargetConnection {
+        target_path,
+        target_node,
+        input_key,
+        feed,
+        copy_all_targets,
+    } = connection;
+    let structural_feeds =
+        connected_structural_feeds(target, target_path, builder, copy_all_targets);
+    let Some(connection_role) = structural_feeds.get(&feed) else {
+        return;
+    };
+    let copy_all = connection_role.copy_all;
+    let mapped_xml_target =
+        target.format == ComponentFormat::Xml && !target_path.is_empty() && !target_node.repeating;
+    if mapped_xml_target && connection_role.representative != input_key {
+        return;
+    }
     let resolved = builder.resolve_iteration_feed(feed);
     let plain_feed = resolved.sequence_component.is_none()
         && resolved.db_where_component.is_none()
@@ -44,21 +89,60 @@ pub(super) fn classify_target_connection(
         let row_shaped = matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
             || (target.format == ComponentFormat::Json && target_node.repeating);
         if row_shaped {
-            iterations.push((target_path.to_vec(), feed));
-        } else if exact_group_source && !has_connected_descendant(target, target_path, builder) {
+            iterations.push(TargetIteration::repeated(target_path, feed));
+        } else if copy_all && has_connected_descendant(target, target_path, builder) {
+            builder.warnings.push(
+                "copy-all document connection also has connected descendants; mapping skipped"
+                    .to_string(),
+            );
+        } else if copy_all
+            && exact_group_source
+            && !has_connected_descendant(target, target_path, builder)
+        {
             projections.push(Projection::Group(target_path.to_vec(), feed));
         }
         return;
     }
     if target_node.repeating {
-        iterations.push((target_path.to_vec(), feed));
+        iterations.push(TargetIteration::repeated(target_path, feed));
     } else if is_xml_text_group(target, target_node)
         && !text_is_connected(target, target_path, builder)
         && is_scalar_feed(builder, feed)
     {
         projections.push(Projection::Text(target_path.to_vec(), feed));
+    } else if copy_all && has_connected_descendant(target, target_path, builder) {
+        builder.warnings.push(format!(
+            "copy-all group connection into `{}` also has connected descendants; mapping skipped",
+            target_path.join("/")
+        ));
+    } else if mapped_group_sequence(target, target_path, builder, &resolved, copy_all) {
+        let mapped_feeds = structural_feeds
+            .iter()
+            .filter(|(structural_feed, role)| {
+                let candidate = builder.resolve_iteration_feed(**structural_feed);
+                mapped_group_sequence(target, target_path, builder, &candidate, role.copy_all)
+            })
+            .collect::<Vec<_>>();
+        if mapped_feeds.len() != 1 {
+            if mapped_feeds
+                .first()
+                .is_some_and(|(_, role)| role.representative == input_key)
+            {
+                builder.warnings.push(format!(
+                    "target group `{}` has multiple connected structural sequence feeds; iteration skipped",
+                    target_path.join("/")
+                ));
+            }
+            return;
+        }
+        iterations.push(TargetIteration {
+            target_path: target_path.to_vec(),
+            feed,
+            output: IterationOutput::MappedSequence,
+            projects_whole_group: copy_all,
+        });
     } else if !has_connected_descendant(target, target_path, builder) {
-        if exact_group_source {
+        if copy_all && exact_group_source {
             projections.push(Projection::Group(target_path.to_vec(), feed));
         } else {
             builder.warnings.push(format!(
@@ -67,6 +151,116 @@ pub(super) fn classify_target_connection(
             ));
         }
     }
+}
+
+struct StructuralFeedRole {
+    representative: u32,
+    copy_all: bool,
+}
+
+fn connected_structural_feeds(
+    target: &SchemaComponent,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    copy_all_targets: &BTreeSet<u32>,
+) -> BTreeMap<u32, StructuralFeedRole> {
+    let mut feeds = BTreeMap::new();
+    for (key, path) in &target.ports {
+        if path != target_path {
+            continue;
+        }
+        let Some(feed) = builder.edge_from.get(key) else {
+            continue;
+        };
+        let role = feeds.entry(*feed).or_insert(StructuralFeedRole {
+            representative: *key,
+            copy_all: false,
+        });
+        role.copy_all |= copy_all_targets.contains(key);
+    }
+    feeds
+}
+
+fn mapped_group_sequence(
+    target: &SchemaComponent,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    feed: &super::iteration::IterationFeed,
+    copy_all: bool,
+) -> bool {
+    let has_descendants = has_connected_descendant(target, target_path, builder);
+    if target.format != ComponentFormat::Xml
+        || target_path.is_empty()
+        || !copy_all && !has_descendants
+        || feed.sequence_component.is_some()
+        || feed.order_issue.is_some()
+        || feed.has_key_grouping
+        || feed.has_block_grouping
+        || feed.distinct_key.is_some()
+        || feed.projects_whole_group
+        || !feed.projections.is_empty()
+        || feed.has_filter && feed.filter_expr.is_none()
+        || feed.has_sort && feed.sort_expr.is_none()
+    {
+        return false;
+    }
+    let Some(source_path) = builder.iteration_source_path(feed) else {
+        return false;
+    };
+    if enclosing_iteration_owns_source(target, target_path, builder, &source_path) {
+        return false;
+    }
+    let Some(source_group) = builder.schema_node(&source_path) else {
+        return false;
+    };
+    let Some(target_group) = schema_node_at(&target.schema, target_path) else {
+        return false;
+    };
+    let mut compatible = Vec::new();
+    collect_matching_scalar_paths(source_group, target_group, &mut Vec::new(), &mut compatible);
+    (!copy_all || !compatible.is_empty()) && is_group_sequence_path(builder, &source_path)
+}
+
+fn is_group_sequence_path(
+    builder: &GraphBuilder<'_>,
+    source_path: &super::source::SourcePath,
+) -> bool {
+    let Some(source) = builder.sources.get(source_path.source) else {
+        return false;
+    };
+    let mut node = &source.schema;
+    let mut repeats = node.repeating || source.format == ComponentFormat::Csv;
+    for segment in &source_path.path {
+        let Some(child) = node.child(segment) else {
+            return false;
+        };
+        repeats |= child.repeating;
+        node = child;
+    }
+    repeats && matches!(node.kind, SchemaKind::Group { .. })
+}
+
+fn enclosing_iteration_owns_source(
+    target: &SchemaComponent,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    source_path: &super::source::SourcePath,
+) -> bool {
+    target.ports.iter().any(|(key, path)| {
+        path.len() < target_path.len()
+            && target_path.starts_with(path)
+            && builder.edge_from.get(key).is_some_and(|feed| {
+                let enclosing = builder.resolve_iteration_feed(*feed);
+                builder
+                    .iteration_source_path(&enclosing)
+                    .is_some_and(|source| {
+                        source.source == source_path.source
+                            && source_path.path.starts_with(&source.path)
+                            && schema_node_at(&target.schema, path)
+                                .is_some_and(|node| node.repeating)
+                    })
+            })
+    })
 }
 
 fn is_xml_text_group(target: &SchemaComponent, node: &SchemaNode) -> bool {
