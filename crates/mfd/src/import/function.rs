@@ -247,7 +247,7 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
     component.name == "constant"
         || matches!(
             component.name.as_str(),
-            "if-else" | "value-map" | "position" | "mfd-filepath" | "main-mfd-filepath"
+            "if-else" | "value-map" | "position" | "mfd-filepath" | "main-mfd-filepath" | "now"
         )
         || component.kind == 5 && aggregate_op(&component.name).is_some()
         || map_name(&component.name).is_some()

@@ -80,6 +80,36 @@ fn runtime_values_distinguish_active_and_main_mapping_paths() {
 }
 
 #[test]
+fn current_datetime_is_stable_and_explicitly_supplied() {
+    let mut project = runtime_project();
+    project.graph.nodes.insert(
+        2,
+        Node::RuntimeValue {
+            value: RuntimeValue::CurrentDateTime,
+        },
+    );
+    project.root.bindings = vec![Binding {
+        target_field: "now".into(),
+        node: 2,
+    }];
+    let source = Instance::Group(Vec::new());
+    let without_clock = ExecutionContext::new(Path::new("/maps/main.ferrule.json"));
+    assert_eq!(
+        run_with_context(&project, &source, &without_clock),
+        Err(EngineError::MissingRuntimeValue(
+            RuntimeValue::CurrentDateTime
+        ))
+    );
+
+    let execution = without_clock.with_current_datetime("2026-07-12T11:45:30.25-07:00");
+    let output = run_with_context(&project, &source, &execution).unwrap();
+    assert_eq!(
+        output.field("now").and_then(Instance::as_scalar),
+        Some(&Value::String("2026-07-12T11:45:30.25-07:00".into()))
+    );
+}
+
+#[test]
 fn evaluates_a_function_call_over_source_fields() {
     let graph = graph_from(vec![
         (

@@ -175,3 +175,38 @@ fn run_supplies_the_active_project_path_to_runtime_nodes() {
     assert_eq!(csv.matches(expected_path.to_str().unwrap()).count(), 2);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn run_supplies_one_valid_current_datetime_to_every_row() {
+    let dir = test_dir("runtime_current_datetime");
+    std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
+    let mut project = project_with_paths(Some("input.csv"), Some("output.csv"));
+    project.graph.nodes.insert(
+        3,
+        mapping::Node::RuntimeValue {
+            value: mapping::RuntimeValue::CurrentDateTime,
+        },
+    );
+    let project_path = write_project(&dir, &project);
+
+    let output = ferrule(
+        Path::new("/"),
+        &["run", "--project", project_path.to_str().unwrap()],
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let csv = std::fs::read_to_string(dir.join("output.csv")).unwrap();
+    let timestamps = csv
+        .lines()
+        .skip(1)
+        .filter_map(|line| line.split(',').next())
+        .collect::<Vec<_>>();
+    assert_eq!(timestamps.len(), 2);
+    assert_eq!(timestamps[0], timestamps[1]);
+    assert!(timestamps[0].parse::<jiff::Timestamp>().is_ok());
+    std::fs::remove_dir_all(dir).unwrap();
+}

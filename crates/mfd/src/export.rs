@@ -226,6 +226,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 let name = match value {
                     RuntimeValue::MappingFilePath => "mfd-filepath",
                     RuntimeValue::MainMappingFilePath => "main-mfd-filepath",
+                    RuntimeValue::CurrentDateTime => "now",
                 };
                 let _ = write!(
                     components,

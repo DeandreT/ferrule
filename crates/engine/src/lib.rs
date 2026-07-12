@@ -78,6 +78,7 @@ pub fn run(project: &Project, source: &Instance) -> Result<Instance, EngineError
 pub struct ExecutionContext<'a> {
     mapping_file_path: &'a Path,
     main_mapping_file_path: &'a Path,
+    current_datetime: Option<&'a str>,
 }
 
 impl<'a> ExecutionContext<'a> {
@@ -86,6 +87,7 @@ impl<'a> ExecutionContext<'a> {
         Self {
             mapping_file_path,
             main_mapping_file_path: mapping_file_path,
+            current_datetime: None,
         }
     }
 
@@ -97,15 +99,28 @@ impl<'a> ExecutionContext<'a> {
         Self {
             mapping_file_path,
             main_mapping_file_path,
+            current_datetime: None,
         }
     }
 
-    fn value(self, value: RuntimeValue) -> Value {
-        let path = match value {
-            RuntimeValue::MappingFilePath => self.mapping_file_path,
-            RuntimeValue::MainMappingFilePath => self.main_mapping_file_path,
-        };
-        Value::String(path.to_string_lossy().into_owned())
+    /// Supplies one stable XML `dateTime` lexical value for the run.
+    pub fn with_current_datetime(mut self, current_datetime: &'a str) -> Self {
+        self.current_datetime = Some(current_datetime);
+        self
+    }
+
+    fn value(self, value: RuntimeValue) -> Option<Value> {
+        match value {
+            RuntimeValue::MappingFilePath => Some(Value::String(
+                self.mapping_file_path.to_string_lossy().into_owned(),
+            )),
+            RuntimeValue::MainMappingFilePath => Some(Value::String(
+                self.main_mapping_file_path.to_string_lossy().into_owned(),
+            )),
+            RuntimeValue::CurrentDateTime => self
+                .current_datetime
+                .map(|value| Value::String(value.to_string())),
+        }
     }
 }
 
@@ -153,12 +168,13 @@ fn run_internal(
                 [
                     RuntimeValue::MappingFilePath,
                     RuntimeValue::MainMappingFilePath,
+                    RuntimeValue::CurrentDateTime,
                 ]
-                .map(|value| {
-                    (
-                        runtime_field(value).to_string(),
-                        Instance::Scalar(execution.value(value)),
-                    )
+                .into_iter()
+                .filter_map(|value| {
+                    execution.value(value).map(|instance| {
+                        (runtime_field(value).to_string(), Instance::Scalar(instance))
+                    })
                 })
             })
             .collect(),
@@ -177,6 +193,7 @@ fn runtime_field(value: RuntimeValue) -> &'static str {
     match value {
         RuntimeValue::MappingFilePath => "\0mapping_file_path",
         RuntimeValue::MainMappingFilePath => "\0main_mapping_file_path",
+        RuntimeValue::CurrentDateTime => "\0current_datetime",
     }
 }
 
