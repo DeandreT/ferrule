@@ -8,6 +8,13 @@ use std::collections::BTreeMap;
 use ir::{SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
+mod iteration;
+mod scope_serde;
+
+pub use iteration::{
+    JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
+};
+
 fn is_false(value: &bool) -> bool {
     !*value
 }
@@ -49,6 +56,16 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         collection: Vec<String>,
     },
+    /// Reads a scalar from one source frame owned by an inner-join scope.
+    /// Unlike `SourceField`, this node cannot fall back to an unrelated
+    /// context when the owning join is not active.
+    JoinField {
+        join: JoinId,
+        collection: Vec<String>,
+        path: Vec<String>,
+    },
+    /// Returns the flattened 1-based output position of an inner join.
+    JoinPosition { join: JoinId },
     /// A literal value.
     Const { value: Value },
     /// Reads a value supplied explicitly by the execution host.
@@ -160,7 +177,7 @@ pub struct DynamicChild {
 /// nodes produce one scalar value. Each generated value becomes the scope's
 /// current scalar iteration frame, and `item` identifies the empty-path
 /// [`Node::SourceField`] used by downstream graph expressions to read it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SequenceExpr {
     Tokenize {
@@ -218,13 +235,10 @@ pub enum IterationOutput {
 
 /// Populates one target group.
 ///
-/// If `source` is set, this scope iterates the source data found by following
-/// that path from the parent scope's current item -- crossing a repeating
-/// element branches, producing one target group per source item (a path may
-/// cross several repeating levels at once). A `sequence` instead evaluates a
-/// producer in the parent context and iterates its generated scalar items.
-/// When both are absent, the scope runs exactly once and produces a
-/// non-repeating group.
+/// [`ScopeIteration::Source`] follows a path from the parent scope's current
+/// item, branching whenever it crosses repetition. A generated sequence or
+/// inner join supplies items instead. [`ScopeIteration::None`] runs exactly
+/// once and produces a non-repeating group.
 ///
 /// Iterating scopes use [`Scope::iteration_output`] to retain every produced
 /// group or return only the first surviving group. First-item output returns
@@ -238,19 +252,13 @@ pub enum IterationOutput {
 /// stably orders candidates before filtering/grouping, and `take` limits the
 /// number of produced items after filtering/grouping. These controls apply to
 /// both source-backed and generated iteration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
     /// for a project's root scope.
-    #[serde(default)]
     pub target_field: String,
-    #[serde(default)]
-    pub source: Option<Vec<String>>,
-    /// A generated scalar sequence to iterate instead of a source path.
-    /// Absent in older project files; mutually exclusive with `source`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sequence: Option<SequenceExpr>,
-    #[serde(default)]
+    /// Exactly one iteration form, or `None` for a non-iterating scope.
+    pub iteration: ScopeIteration,
     pub filter: Option<NodeId>,
     /// Groups the iterated items by this key expression (evaluated once
     /// per item): the scope then produces one target group per distinct
@@ -258,50 +266,94 @@ pub struct Scope {
     /// group's members -- so bindings read the first member, aggregates
     /// reduce the members, and nested scopes iterate them. Only meaningful
     /// for a source-backed or generated iteration.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_by: Option<NodeId>,
     /// Partitions items into contiguous groups whenever this per-item
     /// predicate is true. Items before its first true result form an initial
     /// group. Mutually exclusive with the other grouping modes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_starting_with: Option<NodeId>,
     /// Partitions iterated items into contiguous groups of this many members.
     /// The expression is evaluated once in the parent context and must produce
     /// a positive item count. Mutually exclusive with the other grouping
     /// modes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_into_blocks: Option<NodeId>,
     /// Sort key evaluated once per candidate item. Incomparable values keep
     /// their source order.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sort_by: Option<NodeId>,
-    #[serde(default, skip_serializing_if = "is_false")]
     pub sort_descending: bool,
     /// Expression evaluated once in the parent context to determine the
     /// maximum number of output items.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub take: Option<NodeId>,
     /// Cardinality of an iterating scope's target value. Older projects omit
     /// this field and retain the original repeated behavior.
-    #[serde(default, skip_serializing_if = "is_repeated_output")]
     pub iteration_output: IterationOutput,
-    #[serde(default)]
     pub bindings: Vec<Binding>,
     /// Computed scalar fields of an open target group.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dynamic_bindings: Vec<DynamicBinding>,
-    #[serde(default)]
     pub children: Vec<Scope>,
     /// Computed fields whose values are complete child scopes (objects or
     /// arrays). Kept separate from `children` so static and computed names
     /// cannot form an invalid mixed target descriptor.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dynamic_children: Vec<DynamicChild>,
     /// An iterating scope normally produces an array. For an open object,
     /// each iteration may instead produce one property fragment; this flag
     /// merges those fragments into one object and rejects duplicate names.
-    #[serde(default, skip_serializing_if = "is_false")]
     pub merge_dynamic_fields: bool,
+}
+
+impl Scope {
+    pub fn source(&self) -> Option<&[String]> {
+        self.iteration.source()
+    }
+
+    pub fn source_mut(&mut self) -> Option<&mut Vec<String>> {
+        match &mut self.iteration {
+            ScopeIteration::Source(path) => Some(path),
+            ScopeIteration::None
+            | ScopeIteration::Sequence(_)
+            | ScopeIteration::InnerJoin { .. } => None,
+        }
+    }
+
+    pub fn set_source(&mut self, source: Option<Vec<String>>) {
+        match source {
+            Some(path) => self.iteration = ScopeIteration::Source(path),
+            None if matches!(self.iteration, ScopeIteration::Source(_)) => {
+                self.iteration = ScopeIteration::None;
+            }
+            None => {}
+        }
+    }
+
+    pub fn sequence(&self) -> Option<&SequenceExpr> {
+        self.iteration.sequence()
+    }
+
+    pub fn sequence_mut(&mut self) -> Option<&mut SequenceExpr> {
+        match &mut self.iteration {
+            ScopeIteration::Sequence(sequence) => Some(sequence),
+            ScopeIteration::None | ScopeIteration::Source(_) | ScopeIteration::InnerJoin { .. } => {
+                None
+            }
+        }
+    }
+
+    pub fn set_sequence(&mut self, sequence: Option<SequenceExpr>) {
+        match sequence {
+            Some(sequence) => self.iteration = ScopeIteration::Sequence(sequence),
+            None if matches!(self.iteration, ScopeIteration::Sequence(_)) => {
+                self.iteration = ScopeIteration::None;
+            }
+            None => {}
+        }
+    }
+
+    pub fn join(&self) -> Option<(JoinId, &JoinPlan)> {
+        self.iteration.join()
+    }
+
+    pub fn iterates(&self) -> bool {
+        self.iteration.iterates()
+    }
 }
 
 fn is_repeated_output(output: &IterationOutput) -> bool {
@@ -371,6 +423,17 @@ pub struct FormatOptions {
 mod tests {
     use super::*;
 
+    fn join_plan() -> JoinPlan {
+        let orders = JoinSource::new(vec!["orders".into()]);
+        let products = JoinSource::new(vec!["products".into()]);
+        let product_key = JoinKey::new(
+            vec!["orders".into()],
+            vec!["sku".into()],
+            vec!["sku".into()],
+        );
+        JoinPlan::new(orders, products, JoinConditions::new(product_key)).unwrap()
+    }
+
     #[test]
     fn old_scopes_default_dynamic_target_metadata_off() {
         let scope: Scope = serde_json::from_str(
@@ -382,12 +445,220 @@ mod tests {
         assert!(!scope.merge_dynamic_fields);
         assert_eq!(scope.iteration_output, IterationOutput::Repeated);
         assert!(scope.group_starting_with.is_none());
+        assert!(!scope.iterates());
+    }
+
+    #[test]
+    fn legacy_source_and_sequence_fields_select_typed_iteration() {
+        let source: Scope = serde_json::from_str(
+            r#"{"target_field":"","source":["items"],"bindings":[],"children":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(source.source(), Some(["items".to_string()].as_slice()));
+        assert!(source.sequence().is_none());
+
+        let sequence: Scope = serde_json::from_str(
+            r#"{"target_field":"","source":null,"sequence":{"kind":"generate","to":2,"item":3},"bindings":[],"children":[]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            sequence.sequence(),
+            Some(SequenceExpr::Generate {
+                from: None,
+                to: 2,
+                item: 3
+            })
+        ));
+
+        let encoded = serde_json::to_string(&source).unwrap();
+        assert!(encoded.contains(r#""source":["items"]"#));
+        assert!(!encoded.contains(r#""iteration""#));
+    }
+
+    #[test]
+    fn scope_deserialization_rejects_multiple_iteration_forms() {
+        let source_and_sequence = serde_json::from_str::<Scope>(
+            r#"{"source":["items"],"sequence":{"kind":"generate","to":2,"item":3}}"#,
+        );
+        assert!(
+            source_and_sequence
+                .unwrap_err()
+                .to_string()
+                .contains("mutually exclusive")
+        );
+
+        let join = serde_json::to_value(Scope {
+            iteration: ScopeIteration::InnerJoin {
+                id: JoinId::new(9),
+                plan: join_plan(),
+            },
+            ..Scope::default()
+        })
+        .unwrap();
+        let mut conflicting = join.as_object().cloned().unwrap();
+        conflicting.insert("source".into(), serde_json::json!(["items"]));
+        assert!(
+            serde_json::from_value::<Scope>(serde_json::Value::Object(conflicting))
+                .unwrap_err()
+                .to_string()
+                .contains("mutually exclusive")
+        );
+    }
+
+    #[test]
+    fn join_plan_enforces_ordered_distinct_sources() {
+        let plan = join_plan()
+            .then(
+                JoinSource::new(vec!["inventory".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["products".into()],
+                    vec!["id".into()],
+                    vec!["product_id".into()],
+                ))
+                .and(JoinKey::new(
+                    vec!["orders".into()],
+                    vec!["region".into()],
+                    vec!["region".into()],
+                )),
+            )
+            .unwrap();
+        let sources: Vec<_> = plan
+            .sources()
+            .map(|source| source.collection().join("/"))
+            .collect();
+        assert_eq!(sources, ["orders", "products", "inventory"]);
+        assert_eq!(plan.stages().count(), 2);
+
+        let duplicate = join_plan().then(
+            JoinSource::new(vec!["orders".into()]),
+            JoinConditions::new(JoinKey::new(
+                vec!["products".into()],
+                vec!["sku".into()],
+                vec!["sku".into()],
+            )),
+        );
+        assert!(matches!(
+            duplicate,
+            Err(JoinPlanError::DuplicateCollection(_))
+        ));
+
+        let unknown = JoinPlan::new(
+            JoinSource::new(vec!["orders".into()]),
+            JoinSource::new(vec!["products".into()]),
+            JoinConditions::new(JoinKey::new(
+                vec!["missing".into()],
+                vec!["sku".into()],
+                vec!["sku".into()],
+            )),
+        );
+        assert!(matches!(
+            unknown,
+            Err(JoinPlanError::UnknownLeftCollection(_))
+        ));
+    }
+
+    #[test]
+    fn join_plan_deserialization_reapplies_constructor_invariants() {
+        let join_scope = |second_collection: &str, left_collection: &str| {
+            serde_json::json!({
+                "join": {
+                    "id": 1,
+                    "plan": {
+                        "first": { "collection": ["orders"] },
+                        "second": {
+                            "source": { "collection": [second_collection] },
+                            "conditions": {
+                                "first": {
+                                    "left_collection": [left_collection],
+                                    "left_path": ["sku"],
+                                    "right_path": ["sku"]
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        };
+
+        let duplicate = serde_json::from_value::<Scope>(join_scope("orders", "orders"));
+        assert!(
+            duplicate
+                .unwrap_err()
+                .to_string()
+                .contains("used more than once")
+        );
+
+        let unknown = serde_json::from_value::<Scope>(join_scope("products", "missing"));
+        assert!(
+            unknown
+                .unwrap_err()
+                .to_string()
+                .contains("before it is joined")
+        );
+    }
+
+    #[test]
+    fn join_scope_and_owned_nodes_roundtrip() {
+        let scope = Scope {
+            iteration: ScopeIteration::InnerJoin {
+                id: JoinId::new(44),
+                plan: join_plan(),
+            },
+            ..Scope::default()
+        };
+        let encoded = serde_json::to_string(&scope).unwrap();
+        assert!(encoded.contains(r#""join":{"id":44"#));
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        let Some((id, plan)) = decoded.join() else {
+            panic!("expected inner join");
+        };
+        assert_eq!(id.get(), 44);
+        assert_eq!(plan.sources().count(), 2);
+
+        for node in [
+            Node::JoinField {
+                join: id,
+                collection: vec!["products".into()],
+                path: vec!["name".into()],
+            },
+            Node::JoinPosition { join: id },
+        ] {
+            let encoded = serde_json::to_string(&node).unwrap();
+            let decoded: Node = serde_json::from_str(&encoded).unwrap();
+            assert!(matches!(
+                decoded,
+                Node::JoinField { join, .. } | Node::JoinPosition { join }
+                    if join == JoinId::new(44)
+            ));
+        }
+    }
+
+    #[test]
+    fn scope_iteration_helpers_replace_and_clear_only_their_form() {
+        let mut scope = Scope::default();
+        scope.set_source(Some(vec!["rows".into()]));
+        scope.source_mut().unwrap().push("items".into());
+        assert_eq!(
+            scope.source(),
+            Some(["rows".into(), "items".into()].as_slice())
+        );
+
+        let sequence = SequenceExpr::Generate {
+            from: None,
+            to: 7,
+            item: 8,
+        };
+        scope.set_sequence(Some(sequence));
+        scope.set_source(None);
+        assert!(scope.sequence().is_some());
+        scope.set_sequence(None);
+        assert!(!scope.iterates());
     }
 
     #[test]
     fn group_starting_predicate_roundtrips() {
         let scope = Scope {
-            source: Some(vec!["items".into()]),
+            iteration: ScopeIteration::Source(vec!["items".into()]),
             group_starting_with: Some(7),
             ..Scope::default()
         };
@@ -404,7 +675,7 @@ mod tests {
             dynamic_children: vec![DynamicChild {
                 key: 3,
                 scope: Scope {
-                    source: Some(vec!["items".into()]),
+                    iteration: ScopeIteration::Source(vec!["items".into()]),
                     ..Scope::default()
                 },
             }],
@@ -421,7 +692,7 @@ mod tests {
     #[test]
     fn first_item_iteration_output_roundtrips() {
         let scope = Scope {
-            source: Some(vec!["items".into()]),
+            iteration: ScopeIteration::Source(vec!["items".into()]),
             iteration_output: IterationOutput::First,
             ..Scope::default()
         };
@@ -434,7 +705,7 @@ mod tests {
     #[test]
     fn mapped_sequence_iteration_output_roundtrips() {
         let scope = Scope {
-            source: Some(vec!["items".into()]),
+            iteration: ScopeIteration::Source(vec!["items".into()]),
             iteration_output: IterationOutput::MappedSequence,
             ..Scope::default()
         };

@@ -472,7 +472,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
         extra_sources: Vec::new(),
         graph,
         root: Scope {
-            source: Some(vec![]),
+            iteration: mapping::ScopeIteration::Source(vec![]),
             bindings: vec![
                 Binding {
                     target_field: "loud_name".into(),

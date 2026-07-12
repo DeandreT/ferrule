@@ -27,7 +27,10 @@ fn cloned_csv_row_block_preserves_iteration_and_reducer_bindings() {
         imported.warnings
     );
     assert!(engine::validate(&imported.project).is_empty());
-    assert_eq!(imported.project.root.source, Some(vec!["Item".into()]));
+    assert_eq!(
+        imported.project.root.source().map(|path| path.to_vec()),
+        Some(vec!["Item".into()])
+    );
 
     let source = Instance::Group(vec![(
         "Item".into(),

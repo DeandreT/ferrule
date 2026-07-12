@@ -522,6 +522,38 @@ fn sequence_exists_item_is_protected_from_deletion() {
 }
 
 #[test]
+fn join_owned_nodes_are_read_only_zero_input_nodes() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        10,
+        Node::JoinField {
+            join: mapping::JoinId::new(24),
+            collection: vec!["products".into()],
+            path: vec!["name".into()],
+        },
+    );
+    fx.graph.nodes.insert(
+        11,
+        Node::JoinPosition {
+            join: mapping::JoinId::new(24),
+        },
+    );
+
+    assert_eq!(GraphViewer::input_count(&fx.graph.nodes[&10]), 0);
+    assert_eq!(GraphViewer::input_count(&fx.graph.nodes[&11]), 0);
+    assert!(node_inputs(&fx.graph.nodes[&10]).is_empty());
+    assert!(node_inputs(&fx.graph.nodes[&11]).is_empty());
+    assert_eq!(
+        fx.viewer().title(&CanvasNode::Graph(10)),
+        "Join field #24: products/name"
+    );
+    assert_eq!(
+        fx.viewer().title(&CanvasNode::Graph(11)),
+        "Join position #24"
+    );
+}
+
+#[test]
 fn referenced_nodes_report_graph_and_scope_consumers() {
     let mut fx = fixture();
     fx.graph.nodes.insert(1, Node::Const { value: Value::Null });
@@ -575,11 +607,12 @@ fn generated_sequence_nodes_are_protected_from_deletion() {
             frame: None,
         },
     );
-    fx.root_scope.sequence = Some(mapping::SequenceExpr::Generate {
-        from: Some(1),
-        to: 2,
-        item: 3,
-    });
+    fx.root_scope
+        .set_sequence(Some(mapping::SequenceExpr::Generate {
+            from: Some(1),
+            to: 2,
+            item: 3,
+        }));
 
     assert_eq!(
         fx.viewer().references_to(1),

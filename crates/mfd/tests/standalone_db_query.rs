@@ -97,7 +97,7 @@ fn run(dir: &Path, design: &Path) -> (mapping::Project, Instance) {
         imported.project.root.iteration_output,
         IterationOutput::First
     );
-    assert_eq!(imported.project.root.source, Some(Vec::new()));
+    assert_eq!(imported.project.root.source(), Some([].as_slice()));
     assert!(imported.project.root.take.is_some());
     assert!(engine::validate(&imported.project).is_empty());
     let source =

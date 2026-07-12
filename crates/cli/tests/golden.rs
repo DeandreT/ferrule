@@ -171,7 +171,7 @@ fn composite_sqlite_input_iterates_a_selected_table() {
     use std::collections::BTreeMap;
 
     use ir::{Instance, ScalarType, SchemaNode, Value};
-    use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope};
+    use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
 
     let table_schema = SchemaNode::group(
         "departments",
@@ -232,7 +232,7 @@ fn composite_sqlite_input_iterates_a_selected_table() {
             )]),
         },
         root: Scope {
-            source: Some(vec!["departments".into()]),
+            iteration: ScopeIteration::Source(vec!["departments".into()]),
             bindings: vec![Binding {
                 target_field: "department".into(),
                 node: 0,

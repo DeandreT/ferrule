@@ -99,7 +99,7 @@ fn collect_scope_plans(
     plans: &mut ScopePlans,
 ) -> bool {
     let anchor_len = anchor.len();
-    if let Some(source) = &scope.source {
+    if let Some(source) = scope.source() {
         anchor.extend(source.iter().cloned());
     }
     if scope.iteration_output == IterationOutput::MappedSequence {
@@ -137,7 +137,7 @@ fn mapped_scope_plan(
     target_path: &[String],
     collection: &[String],
 ) -> Option<ScopePlan> {
-    if scope.source.is_none() || scope.sequence.is_some() || target_path.is_empty() {
+    if scope.source().is_none() || scope.sequence().is_some() || target_path.is_empty() {
         return None;
     }
     let target_group = schema_node_at(target_schema, target_path)?;
@@ -198,8 +198,8 @@ fn collect_mapped_bindings(
     relative: &mut Vec<String>,
     bindings: &mut Vec<MappedBinding>,
 ) -> Option<()> {
-    if scope.source.is_some() && !relative.is_empty()
-        || scope.sequence.is_some()
+    if scope.source().is_some() && !relative.is_empty()
+        || scope.sequence().is_some()
         || scope.filter.is_some() && !relative.is_empty()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()

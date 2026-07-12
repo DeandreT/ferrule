@@ -5,21 +5,26 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use ir::{Instance, Value};
-use mapping::{Graph, IterationOutput, Node, NodeId, Project, RuntimeValue, Scope};
+use mapping::{Graph, IterationOutput, JoinId, Node, NodeId, Project, RuntimeValue, Scope};
 use thiserror::Error;
 
 mod context;
 mod dynamic_target;
 mod grouping;
 mod iteration_output;
+mod join;
 mod sequence;
+mod source_iteration;
 mod validate;
+mod validate_join;
 
 use context::runtime_field;
 use dynamic_target::{eval_dynamic_key, insert_target_field};
 use grouping::GroupingMode;
 use iteration_output::finalize_scope_output;
+use join::{execute as execute_join, extensions as join_extensions};
 use sequence::{eval_sequence, eval_sequence_exists};
+use source_iteration::{PositionFrame, WalkExtension, walk};
 
 pub use validate::{ValidationIssue, validate};
 
@@ -59,6 +64,10 @@ pub enum EngineError {
     MappedSequenceDynamicTarget,
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
+    #[error("join {} is not active in the current scope", .join.get())]
+    MissingJoinContext { join: JoinId },
+    #[error("inner-join iteration cannot be combined with grouping controls")]
+    JoinGroupingUnsupported,
     #[error("{function:?} aggregate overflowed the integer range")]
     AggregateIntegerOverflow { function: mapping::AggregateOp },
     #[error("{function:?} aggregate encountered or produced a non-finite number")]
@@ -189,20 +198,6 @@ fn run_internal(
     )
 }
 
-#[derive(Clone)]
-struct PositionFrame {
-    collection: Vec<String>,
-    index: usize,
-    /// The matching context instance has a synthetic named collection
-    /// wrapper immediately before it.
-    grouped: bool,
-}
-
-struct WalkExtension<'a> {
-    instances: Vec<&'a Instance>,
-    positions: Vec<PositionFrame>,
-}
-
 struct GroupBucket {
     key: Option<Value>,
     members: Vec<Instance>,
@@ -225,36 +220,39 @@ fn eval_scope(
     positions: &[PositionFrame],
 ) -> Result<Instance, EngineError> {
     let sequence_items = scope
-        .sequence
-        .as_ref()
+        .sequence()
         .map(|sequence| eval_sequence(graph, sequence, context, positions))
         .transpose()?
         .map(|values| {
             Instance::Repeated(values.into_iter().map(Instance::Scalar).collect::<Vec<_>>())
         });
-    let mut extensions = if let Some(items) = &sequence_items {
+    let join_rows = scope
+        .join()
+        .map(|(join, plan)| execute_join(context, join, plan))
+        .transpose()?;
+    let mut extensions = if let Some(rows) = &join_rows {
+        join_extensions(rows)
+    } else if let Some(items) = &sequence_items {
         walk(items, &[], &[], &[], &[])
     } else {
-        match &scope.source {
+        match scope.source() {
             None => vec![WalkExtension {
-                instances: vec![*context.last().expect("context is never empty")],
+                instances: Vec::new(),
                 positions: Vec::new(),
             }],
             // The frame to iterate from is the innermost one that has the
             // path's first field -- so a nested scope can still iterate an
             // extra source (outermost frame) by name.
-            Some(path) => {
-                let base = context
-                    .iter()
-                    .rev()
-                    .find(|frame| match path.first() {
-                        Some(first) => frame.field(first).is_some(),
-                        None => true,
-                    })
-                    .copied()
-                    .unwrap_or_else(|| *context.last().expect("context is never empty"));
-                walk(base, path, &[], &[], &[])
-            }
+            Some(path) => context
+                .iter()
+                .rev()
+                .find(|frame| match path.first() {
+                    Some(first) => frame.field(first).is_some(),
+                    None => true,
+                })
+                .copied()
+                .or_else(|| context.last().copied())
+                .map_or_else(Vec::new, |base| walk(base, path, &[], &[], &[])),
         }
     };
 
@@ -287,9 +285,7 @@ fn eval_scope(
             .into_iter()
             .enumerate()
             .map(|(index, (mut extension, _))| {
-                if let Some(position) = extension.positions.last_mut() {
-                    position.index = index + 1;
-                }
+                renumber_extension(&mut extension.positions, index + 1);
                 extension
             })
             .collect();
@@ -311,6 +307,9 @@ fn eval_scope(
     .into_iter()
     .flatten()
     .count();
+    if scope.join().is_some() && grouping_count != 0 {
+        return Err(EngineError::JoinGroupingUnsupported);
+    }
     if grouping_count > 1 {
         return Err(EngineError::ConflictingGroupingModes);
     }
@@ -397,8 +396,7 @@ fn eval_scope(
             .map(|group| {
                 let members = Instance::Repeated(group.members);
                 let wrapper = scope
-                    .source
-                    .as_ref()
+                    .source()
                     .and_then(|path| path.last())
                     .map(|segment| Instance::Group(vec![(segment.clone(), members.clone())]));
                 OwnedGroup {
@@ -459,13 +457,17 @@ fn eval_scope(
                 .take(extension.positions.len().saturating_sub(1))
                 .map(|position| position.index)
                 .collect();
-            let next_position = compact_positions.get(&parent_key).copied().unwrap_or(0) + 1;
+            let joined = extension
+                .positions
+                .last()
+                .is_some_and(|position| position.join_position.is_some());
+            let next_position = if joined {
+                produced.len() + 1
+            } else {
+                compact_positions.get(&parent_key).copied().unwrap_or(0) + 1
+            };
             let mut output_positions = candidate_positions.clone();
-            if !extension.positions.is_empty()
-                && let Some(position) = output_positions.last_mut()
-            {
-                position.index = next_position;
-            }
+            renumber_extension(&mut output_positions, next_position);
             if let Some(instance) = produce_item(
                 graph,
                 scope,
@@ -475,7 +477,7 @@ fn eval_scope(
                 &output_positions,
                 true,
             )? {
-                if !extension.positions.is_empty() {
+                if !joined && !extension.positions.is_empty() {
                     compact_positions.insert(parent_key, next_position);
                 }
                 produced.push(instance);
@@ -484,6 +486,17 @@ fn eval_scope(
     }
 
     finalize_scope_output(scope, produced)
+}
+
+fn renumber_extension(positions: &mut [PositionFrame], index: usize) {
+    let Some(position) = positions.last_mut() else {
+        return;
+    };
+    if let Some((_, join_index)) = &mut position.join_position {
+        *join_index = index;
+    } else {
+        position.index = index;
+    }
 }
 
 fn eval_item_count(
@@ -611,87 +624,6 @@ fn passes_filter(
     }
 }
 
-/// Walks `path` from `base`, branching (and pushing one context frame) each
-/// time it crosses a repeating element -- whether mid-path or, if `path` is
-/// exhausted and the final value is itself repeating (e.g. `path` is empty
-/// and `base` is a CSV file's rows), at the very end. Returns one extension
-/// (the new frames to push, innermost last) per produced item. Repeating
-/// frames also retain their collection path and 1-based source position.
-fn walk<'a>(
-    base: &'a Instance,
-    path: &[String],
-    prefix: &[String],
-    acc: &[&'a Instance],
-    positions: &[PositionFrame],
-) -> Vec<WalkExtension<'a>> {
-    match path.split_first() {
-        None => match base {
-            Instance::Repeated(items) => items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| {
-                    let mut next_instances = acc.to_vec();
-                    next_instances.push(item);
-                    let mut next_positions = positions.to_vec();
-                    next_positions.push(PositionFrame {
-                        collection: prefix.to_vec(),
-                        index: index + 1,
-                        grouped: false,
-                    });
-                    WalkExtension {
-                        instances: next_instances,
-                        positions: next_positions,
-                    }
-                })
-                .collect(),
-            _ => {
-                let mut next_instances = acc.to_vec();
-                next_instances.push(base);
-                vec![WalkExtension {
-                    instances: next_instances,
-                    positions: positions.to_vec(),
-                }]
-            }
-        },
-        Some((segment, rest)) => {
-            let mut collection_path = prefix.to_vec();
-            collection_path.push(segment.clone());
-            match base.field(segment) {
-                None => Vec::new(),
-                Some(Instance::Repeated(items)) => items
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(index, item)| {
-                        let mut next_instances = acc.to_vec();
-                        next_instances.push(item);
-                        let mut next_positions = positions.to_vec();
-                        next_positions.push(PositionFrame {
-                            collection: collection_path.clone(),
-                            index: index + 1,
-                            grouped: false,
-                        });
-                        if rest.is_empty() {
-                            vec![WalkExtension {
-                                instances: next_instances,
-                                positions: next_positions,
-                            }]
-                        } else {
-                            walk(
-                                item,
-                                rest,
-                                &collection_path,
-                                &next_instances,
-                                &next_positions,
-                            )
-                        }
-                    })
-                    .collect(),
-                Some(other) => walk(other, rest, &collection_path, acc, positions),
-            }
-        }
-    }
-}
-
 fn eval_expr(
     graph: &Graph,
     node_id: NodeId,
@@ -721,6 +653,28 @@ fn eval_expr(
             })
         }
         Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
+        Node::JoinField {
+            join,
+            collection,
+            path,
+        } => resolve_join_scalar(context, positions, *join, collection, path).ok_or_else(|| {
+            EngineError::MissingSourceField(format!(
+                "join {}:{}/{}",
+                join.get(),
+                collection.join("/"),
+                path.join("/")
+            ))
+        }),
+        Node::JoinPosition { join } => positions
+            .iter()
+            .rev()
+            .find_map(|position| {
+                position
+                    .join_position
+                    .filter(|(owner, _)| owner == join)
+                    .map(|(_, index)| Value::Int(index as i64))
+            })
+            .ok_or(EngineError::MissingJoinContext { join: *join }),
         Node::Const { value } => Ok(value.clone()),
         Node::RuntimeValue { value } => context
             .first()
@@ -799,6 +753,8 @@ fn eval_expr(
                         collection: collection.clone(),
                         index: item_index + 1,
                         grouped: false,
+                        join: None,
+                        join_position: None,
                     });
                     eval_expr(
                         graph,
@@ -1172,14 +1128,38 @@ fn resolve_scalar_in_frame(
         position.collection == frame
             || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
     })?;
+    let instance = context_for_position(context, positions, position_index)?;
+    resolve_scalar(&[instance], path)
+}
+
+fn resolve_join_scalar(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    join: JoinId,
+    collection: &[String],
+    path: &[String],
+) -> Option<Value> {
+    let position_index = positions
+        .iter()
+        .rposition(|position| position.join == Some(join) && position.collection == collection)?;
+    let instance = context_for_position(context, positions, position_index)?;
+    field_scalar(instance, path).cloned()
+}
+
+fn context_for_position<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    position_index: usize,
+) -> Option<&'a Instance> {
     let wrapper_count = positions.iter().filter(|position| position.grouped).count();
     let context_offset = context.len().checked_sub(positions.len() + wrapper_count)?;
     let preceding_wrappers = positions[..=position_index]
         .iter()
         .filter(|position| position.grouped)
         .count();
-    let instance = *context.get(context_offset + position_index + preceding_wrappers)?;
-    resolve_scalar(&[instance], path)
+    context
+        .get(context_offset + position_index + preceding_wrappers)
+        .copied()
 }
 
 #[cfg(test)]
@@ -1196,5 +1176,7 @@ mod group_blocks_tests;
 mod group_starting_tests;
 #[cfg(test)]
 mod iteration_output_tests;
+#[cfg(test)]
+mod join_tests;
 #[cfg(test)]
 mod sequence_exists_tests;

@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use mapping::{Binding, IterationOutput, NodeId, Scope, SequenceExpr};
+use mapping::{
+    Binding, IterationOutput, JoinId, JoinPlan, NodeId, Scope, ScopeIteration, SequenceExpr,
+};
 
 #[derive(Clone)]
 pub(super) struct TargetLeaf {
@@ -92,7 +94,7 @@ impl ScopeBuilder {
         self.anchors
             .insert(target_path.to_vec(), source_abs.to_vec());
         let scope = self.ensure_scope(target_path);
-        scope.source = Some(relative);
+        scope.set_source(Some(relative));
         scope.filter = nodes.filter;
         scope.group_by = nodes.group_by;
         scope.group_starting_with = nodes.group_starting_with;
@@ -111,11 +113,28 @@ impl ScopeBuilder {
         output: IterationOutput,
     ) {
         let scope = self.ensure_scope(target_path);
-        scope.sequence = Some(sequence);
+        scope.set_sequence(Some(sequence));
         scope.filter = nodes.filter;
         scope.group_by = nodes.group_by;
         scope.group_starting_with = nodes.group_starting_with;
         scope.group_into_blocks = nodes.group_into_blocks;
+        scope.sort_by = nodes.sort_by;
+        scope.sort_descending = nodes.sort_descending;
+        scope.take = nodes.take;
+        scope.iteration_output = output;
+    }
+
+    pub(super) fn add_join(
+        &mut self,
+        target_path: &[String],
+        id: JoinId,
+        plan: JoinPlan,
+        nodes: IterationNodes,
+        output: IterationOutput,
+    ) {
+        let scope = self.ensure_scope(target_path);
+        scope.iteration = ScopeIteration::InnerJoin { id, plan };
+        scope.filter = nodes.filter;
         scope.sort_by = nodes.sort_by;
         scope.sort_descending = nodes.sort_descending;
         scope.take = nodes.take;

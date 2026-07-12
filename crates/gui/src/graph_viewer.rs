@@ -275,6 +275,8 @@ impl GraphViewer<'_> {
             } => expression.iter().chain(arg).nth(idx).copied(),
             Node::SourceField { .. }
             | Node::Position { .. }
+            | Node::JoinField { .. }
+            | Node::JoinPosition { .. }
             | Node::Const { .. }
             | Node::RuntimeValue { .. } => None,
         }
@@ -334,6 +336,8 @@ impl GraphViewer<'_> {
             match node {
                 Node::SourceField { .. }
                 | Node::Position { .. }
+                | Node::JoinField { .. }
+                | Node::JoinPosition { .. }
                 | Node::Const { .. }
                 | Node::RuntimeValue { .. } => Vec::new(),
                 Node::Call { args, .. } => args.clone(),
@@ -383,7 +387,7 @@ impl GraphViewer<'_> {
             if scope.take == Some(needle) {
                 found.insert(format!("{label} take count"));
             }
-            if let Some(sequence) = &scope.sequence {
+            if let Some(sequence) = scope.sequence() {
                 if sequence.inputs().contains(&needle) {
                     found.insert(format!("{label} sequence input"));
                 }
@@ -468,6 +472,8 @@ impl GraphViewer<'_> {
         match node {
             Node::SourceField { .. }
             | Node::Position { .. }
+            | Node::JoinField { .. }
+            | Node::JoinPosition { .. }
             | Node::Const { .. }
             | Node::RuntimeValue { .. } => 0,
             Node::Call { args, .. } => args.len(),
@@ -488,6 +494,8 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::SourceField { .. }
         | Node::Position { .. }
+        | Node::JoinField { .. }
+        | Node::JoinPosition { .. }
         | Node::Const { .. }
         | Node::RuntimeValue { .. } => Vec::new(),
         Node::Call { args, .. } => args.clone(),
@@ -527,6 +535,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Some(Node::Position { collection }) => {
                     format!("Position: {}", collection.join("/"))
+                }
+                Some(Node::JoinField {
+                    join,
+                    collection,
+                    path,
+                }) => {
+                    let mut display = collection.clone();
+                    display.extend(path.iter().cloned());
+                    format!("Join field #{}: {}", join.get(), display.join("/"))
+                }
+                Some(Node::JoinPosition { join }) => {
+                    format!("Join position #{}", join.get())
                 }
                 Some(Node::Const { value }) => {
                     format!("Const: {}", crate::value_editor::display_string(value))
@@ -650,6 +670,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         ui.id().with("position_collection"),
                         collection,
                     );
+                }
+                Node::JoinField {
+                    join,
+                    collection,
+                    path,
+                } => {
+                    let mut display = collection.clone();
+                    display.extend(path.iter().cloned());
+                    ui.label(format!("#{} {}", join.get(), display.join("/")))
+                        .on_hover_text("field projected from an imported inner join");
+                }
+                Node::JoinPosition { join } => {
+                    ui.label(format!("#{}", join.get()))
+                        .on_hover_text("flattened inner-join position");
                 }
                 Node::Const { value } => show_value_editor(ui, value),
                 Node::RuntimeValue { value } => {
