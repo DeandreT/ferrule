@@ -272,15 +272,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         let node_kind = schema_node_at(&target.schema, target_path);
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
-                if copy_all_targets.contains(&inpkey)
-                    && udf::structured::accept_target(
-                        target,
-                        target_path,
-                        node,
-                        inpkey,
-                        from,
-                        &builder,
-                    )
+                if udf::structured::accept_target(target, target_path, node, inpkey, from, &builder)
                 {
                     structured_udf_targets.push((target_path.clone(), from));
                     continue;
@@ -312,6 +304,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             )),
         }
     }
+    udf::structured::prepare_target_frames(&structured_udf_targets, &mut builder);
     generated_occurrence::infer(target, &mut builder, &mut iterations);
     iterations.sort_by_key(|iteration| iteration.target_path.len());
     for iteration in &iterations {
@@ -356,6 +349,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &mut builder,
         &mut scope_builder,
     );
+    let structured_udf_paths = structured_udf_targets
+        .iter()
+        .map(|(path, _)| path.clone())
+        .collect::<Vec<_>>();
     udf::structured::build_targets(
         structured_udf_targets,
         target,
@@ -371,13 +368,21 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &mut scope_builder,
     );
     for (target, from) in bindings {
-        if skipped_iteration_paths
+        let target_path = target.path();
+        if structured_udf_paths
             .iter()
-            .any(|path| target.path().starts_with(path))
+            .any(|path| target_path.starts_with(path))
+            && builder.is_structured_recipe(from)
         {
             continue;
         }
-        let Some(node) = builder.binding_node(from, &target.path()) else {
+        if skipped_iteration_paths
+            .iter()
+            .any(|path| target_path.starts_with(path))
+        {
+            continue;
+        }
+        let Some(node) = builder.binding_node(from, &target_path) else {
             continue;
         };
         scope_builder.add_binding(target, node);
