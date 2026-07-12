@@ -494,9 +494,22 @@ fn collect_sequence(
 fn is_repeating(el: &Node) -> bool {
     match el.attribute("maxOccurs") {
         Some("unbounded") => true,
-        Some(n) => n.parse::<u32>().is_ok_and(|v| v > 1),
+        Some(value) => non_negative_integer_exceeds_one(value),
         None => false,
     }
+}
+
+fn non_negative_integer_exceeds_one(value: &str) -> bool {
+    let digits = value.strip_prefix('+').unwrap_or(value);
+    if digits.is_empty() || !digits.bytes().all(|digit| digit.is_ascii_digit()) {
+        return false;
+    }
+    let significant = digits.trim_start_matches('0');
+    significant.len() > 1
+        || significant
+            .as_bytes()
+            .first()
+            .is_some_and(|digit| *digit > b'1')
 }
 
 fn xsd_type_name(ty: &ScalarType) -> &'static str {
@@ -613,6 +626,16 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
 mod tests {
     use super::*;
     use ir::SchemaKind;
+
+    #[test]
+    fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
+        for value in ["2", "0002", "+2", "4294967296"] {
+            assert!(non_negative_integer_exceeds_one(value), "{value}");
+        }
+        for value in ["", "+", "0", "1", "0001", "-2", "two"] {
+            assert!(!non_negative_integer_exceeds_one(value), "{value}");
+        }
+    }
 
     #[test]
     fn imports_nested_repeating_groups() {
