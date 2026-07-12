@@ -142,7 +142,7 @@ fn late_dynamic_resolution_failure_leaves_root_scope_unchanged() {
             && warning.contains("computed item property value input is not connected")
     }));
     let root = &imported.project.root;
-    assert!(root.source.is_none());
+    assert!(root.source().is_none());
     assert!(root.group_by.is_none());
     assert!(!root.merge_dynamic_fields);
     assert!(root.dynamic_bindings.is_empty());
@@ -164,7 +164,7 @@ fn group_starting_control_rejects_computed_json_properties() {
             && warning.contains("support only plain iteration and one outer group-by")
     }));
     let root = &imported.project.root;
-    assert!(root.source.is_none());
+    assert!(root.source().is_none());
     assert!(root.group_starting_with.is_none());
     assert!(!root.merge_dynamic_fields);
     assert!(root.dynamic_children.is_empty());

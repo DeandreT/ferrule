@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
-use mapping::IterationOutput;
+use mapping::{IterationOutput, JoinId};
 
 use super::function::{aggregate_op, produces_scalar};
 use super::graph::GraphBuilder;
@@ -20,6 +20,7 @@ pub(super) struct TargetIteration {
     pub(super) feed: u32,
     pub(super) output: IterationOutput,
     pub(super) projects_whole_group: bool,
+    pub(super) join: Option<JoinId>,
 }
 
 pub(super) struct TargetConnection<'a> {
@@ -37,6 +38,7 @@ impl TargetIteration {
             feed,
             output: IterationOutput::Repeated,
             projects_whole_group: false,
+            join: None,
         }
     }
 }
@@ -55,6 +57,38 @@ pub(super) fn classify_target_connection(
         feed,
         copy_all_targets,
     } = connection;
+    match builder.classify_join_iteration(feed, target_path) {
+        super::join::IterationFeed::Join(join) => {
+            if target.format == ComponentFormat::Xml
+                && target_path.is_empty()
+                && !target_node.repeating
+            {
+                builder.rejected_join_paths.insert(target_path.to_vec());
+                if builder.warned_join_controls.insert(join) {
+                    builder.warnings.push(
+                        "join cannot iterate a non-repeating XML document root; iteration skipped"
+                            .to_string(),
+                    );
+                }
+                return;
+            }
+            let output = if target_path.is_empty() || target_node.repeating {
+                IterationOutput::Repeated
+            } else {
+                IterationOutput::MappedSequence
+            };
+            iterations.push(TargetIteration {
+                target_path: target_path.to_vec(),
+                feed,
+                output,
+                projects_whole_group: false,
+                join: Some(join),
+            });
+            return;
+        }
+        super::join::IterationFeed::Rejected => return,
+        super::join::IterationFeed::Ordinary => {}
+    }
     let structural_feeds =
         connected_structural_feeds(target, target_path, builder, copy_all_targets);
     let Some(connection_role) = structural_feeds.get(&feed) else {
@@ -109,6 +143,7 @@ pub(super) fn classify_target_connection(
                 feed,
                 output: IterationOutput::First,
                 projects_whole_group: false,
+                join: None,
             });
         } else if copy_all
             && exact_group_source
@@ -157,6 +192,7 @@ pub(super) fn classify_target_connection(
             feed,
             output: IterationOutput::MappedSequence,
             projects_whole_group: copy_all,
+            join: None,
         });
     } else if !has_connected_descendant(target, target_path, builder) {
         if copy_all && exact_group_source {

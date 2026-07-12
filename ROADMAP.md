@@ -21,7 +21,8 @@ clean-room interoperability, and extensible adapters.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   bounded existential reduction over generated scalar sequences,
-  stable sorting, item limits, conditionals, value maps, lookups, positions, seven
+  stable sorting, item limits, conditionals, value maps, lookups,
+  duplicate-preserving multi-source inner equijoins, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
   structural group projection, mapped and computed XML occurrence sequences,
   contiguous boundary-driven grouping, and 45 scalar built-ins.
@@ -44,12 +45,12 @@ clean-room interoperability, and extensible adapters.
 | Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
 | Other formats | None | XLSX, Protobuf, then demand-driven XBRL/PDF support |
-| Dataflow | One primary source plus named lookup sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
+| Dataflow | One primary source plus named lookup/join sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor | Blank-project authoring, undo/layout, schema wizards, auto-connect, preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | Best-effort common XML/JSON/CSV/SQLite subset | Executable common profile plus actionable repair workflow |
+| `.mfd` | Executable common subset including structured inner equijoins | Executable common profile plus actionable repair workflow |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams
@@ -83,7 +84,10 @@ distinct from absent values, and inclusive ranges accept exact integral decimal
 inputs.
 High-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
-conversion.
+conversion. Core kind-32 joins lower to typed left-deep plans with composite equality
+keys, duplicate-preserving execution, projected fields, flattened positions, and
+filter/sort/item-limit controls. Nested non-repeating target projections reuse the
+owning tuple, while rejected join shapes suppress redundant downstream warnings.
 
 - Normalize legacy and namespace-indexed XML entry encodings.
 - Add first-class generated sequences: `distinct-values`, `tokenize`,
@@ -253,12 +257,14 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 409 (408 executable plus the ignored local-sample survey).
-- `.mfd` survey: 96/120 import, 55 warning-free.
+- Workspace tests: 465 (464 executable plus the ignored local-sample survey).
+- `.mfd` survey: 97/120 import, 57 warning-free.
 - Unsupported-function warnings: 2 (`auto-number` and `sleep`) across the
   expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
-- Non-repeating structural-group warnings: 6 across the expanded importable set.
+- Generic unsupported binding/iteration warnings: 22/11 across the expanded
+  importable set, down from 32/13 before structured join import.
+- Non-repeating structural-group warnings: 5 across the expanded importable set.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
   warnings, runtime failures, and invalid command usage.
 - CLI run paths: explicit flags override project-relative `source_path` and

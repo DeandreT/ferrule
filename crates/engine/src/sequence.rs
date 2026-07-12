@@ -88,6 +88,8 @@ pub(super) fn eval_sequence_exists(
             collection: Vec::new(),
             index: index + 1,
             grouped: false,
+            join: None,
+            join_position: None,
         });
         match eval_expr(
             graph,

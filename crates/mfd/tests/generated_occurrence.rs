@@ -127,7 +127,7 @@ fn computed_descendants_generate_mapped_text_occurrences_per_outer_item() {
         price_scope.iteration_output,
         IterationOutput::MappedSequence
     );
-    assert!(price_scope.sequence.is_some());
+    assert!(price_scope.sequence().is_some());
 
     let source = format_xml::from_str(
         "<Source><Record><Label>A</Label><Base>10</Base></Record><Record><Label>B</Label><Base>20</Base></Record></Source>",

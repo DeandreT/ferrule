@@ -72,8 +72,7 @@ fn group_by_partitions_iterated_items() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -84,8 +83,7 @@ fn group_by_partitions_iterated_items() {
             bindings: vec![],
             children: vec![Scope {
                 target_field: "Year".into(),
-                source: Some(vec!["Row".into()]),
-                sequence: None,
+                iteration: mapping::ScopeIteration::Source(vec!["Row".into()]),
                 filter: None,
                 group_by: Some(0),
                 group_starting_with: None,
@@ -201,8 +199,7 @@ fn filter_removes_candidates_before_grouping() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -213,8 +210,7 @@ fn filter_removes_candidates_before_grouping() {
             bindings: vec![],
             children: vec![Scope {
                 target_field: "Row".into(),
-                source: Some(vec!["Item".into()]),
-                sequence: None,
+                iteration: mapping::ScopeIteration::Source(vec!["Item".into()]),
                 filter: Some(3),
                 group_by: Some(0),
                 group_starting_with: None,
@@ -332,8 +328,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -344,8 +339,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
             bindings: vec![],
             children: vec![Scope {
                 target_field: "OrderOut".into(),
-                source: Some(vec!["Order".into()]),
-                sequence: None,
+                iteration: mapping::ScopeIteration::Source(vec!["Order".into()]),
                 filter: None,
                 group_by: None,
                 group_starting_with: None,
@@ -356,8 +350,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
                 bindings: vec![],
                 children: vec![Scope {
                     target_field: "CategoryOut".into(),
-                    source: Some(vec!["Items".into(), "Item".into()]),
-                    sequence: None,
+                    iteration: mapping::ScopeIteration::Source(vec!["Items".into(), "Item".into()]),
                     filter: None,
                     group_by: Some(0),
                     group_starting_with: None,
@@ -574,8 +567,7 @@ fn aggregates_reduce_collections_in_context() {
         graph,
         root: Scope {
             target_field: String::new(),
-            source: None,
-            sequence: None,
+            iteration: mapping::ScopeIteration::None,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -589,8 +581,7 @@ fn aggregates_reduce_collections_in_context() {
             }],
             children: vec![Scope {
                 target_field: "Order".into(),
-                source: Some(vec!["Order".into()]),
-                sequence: None,
+                iteration: mapping::ScopeIteration::Source(vec!["Order".into()]),
                 filter: None,
                 group_by: None,
                 group_starting_with: None,
@@ -744,10 +735,10 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
         root: Scope {
             children: vec![Scope {
                 target_field: "Row".into(),
-                source: Some(vec!["Row".into()]),
+                iteration: mapping::ScopeIteration::Source(vec!["Row".into()]),
                 children: vec![Scope {
                     target_field: "Token".into(),
-                    sequence: Some(SequenceExpr::Tokenize {
+                    iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Tokenize {
                         input: 0,
                         delimiter: 1,
                         item: 2,
@@ -773,8 +764,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
     let mut invalid = project.clone();
     invalid.root.children.push(Scope {
         target_field: "Duplicate".into(),
-        source: Some(Vec::new()),
-        sequence: Some(SequenceExpr::Tokenize {
+        iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Tokenize {
             input: 0,
             delimiter: 1,
             item: 2,
@@ -783,7 +773,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
     });
     invalid.root.children.push(Scope {
         target_field: "Missing".into(),
-        sequence: Some(SequenceExpr::TokenizeByLength {
+        iteration: mapping::ScopeIteration::Sequence(SequenceExpr::TokenizeByLength {
             input: 999,
             length: 998,
             item: 997,
@@ -792,7 +782,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
     });
     invalid.root.children.push(Scope {
         target_field: "WrongItem".into(),
-        sequence: Some(SequenceExpr::Tokenize {
+        iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Tokenize {
             input: 0,
             delimiter: 1,
             item: 3,
@@ -804,11 +794,6 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
         issue
             .message
             .contains("each generated sequence requires a unique item node")
-    }));
-    assert!(issues.iter().any(|issue| {
-        issue
-            .message
-            .contains("source path and generated sequence are mutually exclusive")
     }));
     assert!(
         issues
@@ -911,7 +896,7 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
         extra_sources: Vec::new(),
         graph,
         root: Scope {
-            sequence: Some(SequenceExpr::Tokenize {
+            iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Tokenize {
                 input: 0,
                 delimiter: 1,
                 item: 2,
@@ -1014,11 +999,11 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
         root: Scope {
             children: vec![Scope {
                 target_field: "Row".into(),
-                source: Some(vec!["Row".into()]),
+                iteration: mapping::ScopeIteration::Source(vec!["Row".into()]),
                 children: vec![
                     Scope {
                         target_field: "Bounded".into(),
-                        sequence: Some(SequenceExpr::Generate {
+                        iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Generate {
                             from: Some(0),
                             to: 1,
                             item: 2,
@@ -1041,7 +1026,7 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
                     },
                     Scope {
                         target_field: "Default".into(),
-                        sequence: Some(SequenceExpr::Generate {
+                        iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Generate {
                             from: None,
                             to: 1,
                             item: 3,
@@ -1120,7 +1105,7 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
 
     let mut invalid = project;
     let Some(SequenceExpr::Generate { from, to, .. }) =
-        &mut invalid.root.children[0].children[0].sequence
+        invalid.root.children[0].children[0].sequence_mut()
     else {
         unreachable!()
     };

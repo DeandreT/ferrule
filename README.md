@@ -28,13 +28,15 @@ A project file (plain JSON) holds four things:
   leaves, where any node can be `repeating`
 - a **graph** of value nodes: read a source field, hold a constant, call a built-in
   function (string/math/comparison/boolean), branch with `if`, translate through a
-  `value_map` table, or join against another source with `lookup`
+  `value_map` table, look up one matching secondary row, or project fields from a
+  duplicate-preserving inner join
 - a **scope tree** that drives iteration: connecting a scope to a repeating source path
   loops over it (a path may cross several repeating levels at once, flattening nested
   repetition), `filter` drops items, and field references fall back outward through
   enclosing scopes so parent-level values broadcast into child rows; scopes can also
   generate scalar sequences with `tokenize`, `tokenize-by-length`, and
-  inclusive integer ranges (capped at 1,000,000 materialized items per scope)
+  inclusive integer ranges (capped at 1,000,000 materialized items per scope), or
+  iterate a typed multi-source equijoin
 - optional **extra sources** — named secondary inputs (reference data) that any scope or
   lookup can address by name
 
@@ -49,12 +51,15 @@ single-table SQLite database components (schemas introspected from the reference
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
 filter-, group-by-, distinct-values-, tokenizer-, and generated-range-driven iteration
-import directly; `string` and decimal-safe `format-number` conversion are supported;
+import directly. Core kind-32 inner equijoins import with duplicate-preserving tuple
+order, composite keys, projected fields, position, and filter/sort/item-limit controls;
+`string` and decimal-safe `format-number` conversion are supported;
 everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
-writes the same subset back out as `.mfd` plus generated XSD / JSON Schema files,
+writes the exportable subset back out as `.mfd` plus generated XSD / JSON Schema files,
 picking each side's component kind from the project's instance paths. Designs built
-on namespaces, `xsi:type` polymorphism, multi-table database wiring, or other
+on namespaces, `xsi:type` polymorphism, correlated/keyless joins, join export,
+multi-table database wiring, or other
 endpoints (Excel/FlexText/EDI-config components) are not converted yet.
 
 ```sh

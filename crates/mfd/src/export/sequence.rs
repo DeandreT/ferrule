@@ -7,7 +7,7 @@ pub(super) struct SequenceExistsPins {
 }
 
 pub(super) fn collect_scope_sequences<'a>(scope: &'a Scope, sequences: &mut Vec<&'a SequenceExpr>) {
-    if let Some(sequence) = &scope.sequence {
+    if let Some(sequence) = scope.sequence() {
         sequences.push(sequence);
     }
     for child in &scope.children {

@@ -106,7 +106,7 @@ fn project() -> Project {
         root: Scope {
             children: vec![Scope {
                 target_field: "Group".into(),
-                source: Some(vec!["Rows".into()]),
+                iteration: mapping::ScopeIteration::Source(vec!["Rows".into()]),
                 filter: Some(7),
                 group_starting_with: Some(2),
                 bindings: vec![

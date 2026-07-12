@@ -68,7 +68,7 @@ fn project(target: SchemaNode) -> Project {
         ]),
     };
     let people = Scope {
-        source: Some(vec!["Person".into()]),
+        iteration: mapping::ScopeIteration::Source(vec!["Person".into()]),
         dynamic_bindings: vec![
             DynamicBinding { key: 1, value: 2 },
             DynamicBinding { key: 3, value: 4 },
@@ -76,7 +76,7 @@ fn project(target: SchemaNode) -> Project {
         ..Scope::default()
     };
     let root = Scope {
-        source: Some(Vec::new()),
+        iteration: mapping::ScopeIteration::Source(Vec::new()),
         dynamic_children: vec![DynamicChild {
             key: 0,
             scope: people,
@@ -190,7 +190,7 @@ fn rejects_duplicate_non_string_and_fixed_colliding_dynamic_keys() {
 #[test]
 fn validation_rejects_invalid_dynamic_scope_combinations() {
     let mut project = project(SchemaNode::group("closed", Vec::new()));
-    project.root.source = None;
+    project.root.set_source(None);
     project.root.dynamic_children[0].key = 88;
     project.root.bindings.push(mapping::Binding {
         target_field: "fixed".into(),

@@ -16,6 +16,7 @@ use crate::MfdError;
 mod artifact;
 mod function;
 mod mapped_sequence;
+mod position;
 mod schema;
 mod sequence;
 #[cfg(test)]
@@ -25,6 +26,7 @@ use function::{
     aggregate_component_name, constant_parts, function_library, unmap_function_name, value_text,
 };
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
+use position::connect_position_roots;
 use schema::{
     KeyAlloc, PortMatch, PortTree, Side, SideFormat, db_datasource_name, render_schema_component,
     side_format, xml_escape,
@@ -106,6 +108,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         );
     }
     let mut sequence_exists_pins = Vec::new();
+    let mut warned_joins = BTreeSet::new();
     for (&id, node) in &project.graph.nodes {
         match node {
             Node::SourceField { path, frame } => {
@@ -151,6 +154,14 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
                      \t\t\t\t</component>\n"
                 );
+            }
+            Node::JoinField { join, .. } | Node::JoinPosition { join } => {
+                if warned_joins.insert(*join) {
+                    warnings.push(format!(
+                        "inner join {} is not exported; its iteration and node connections are skipped",
+                        join.get()
+                    ));
+                }
             }
             Node::Lookup {
                 collection,
@@ -875,97 +886,6 @@ fn append_scope_controls(
     from
 }
 
-fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::Call { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        Node::Lookup { matches, .. } => vec![*matches],
-        // The reducer's predicate has its own generated-item context and is
-        // connected explicitly when the filter/exists chain is emitted.
-        // Its sequence arguments still execute in the enclosing scope.
-        Node::SequenceExists { sequence, .. } => sequence.inputs(),
-        Node::Aggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-        Node::SourceField { .. }
-        | Node::Position { .. }
-        | Node::Const { .. }
-        | Node::RuntimeValue { .. } => Vec::new(),
-    }
-}
-
-fn position_nodes_for_roots(
-    roots: impl IntoIterator<Item = NodeId>,
-    graph: &Graph,
-) -> std::collections::BTreeSet<NodeId> {
-    let mut pending: Vec<NodeId> = roots.into_iter().collect();
-    let mut visited = std::collections::BTreeSet::new();
-    let mut positions = std::collections::BTreeSet::new();
-    while let Some(id) = pending.pop() {
-        if !visited.insert(id) {
-            continue;
-        }
-        match graph.nodes.get(&id) {
-            Some(Node::Position { .. }) => {
-                positions.insert(id);
-            }
-            Some(node) => pending.extend(graph_node_inputs(node)),
-            None => {}
-        }
-    }
-    positions
-}
-
-#[allow(clippy::too_many_arguments)]
-fn connect_position_roots(
-    roots: impl IntoIterator<Item = NodeId>,
-    source_collection: Option<&[String]>,
-    allow_empty: bool,
-    from: u32,
-    graph: &Graph,
-    position_inputs: &BTreeMap<NodeId, u32>,
-    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
-    edges: &mut Vec<(u32, u32)>,
-    warnings: &mut Vec<String>,
-) {
-    let referenced = position_nodes_for_roots(roots, graph);
-    for id in referenced {
-        let Some(&input) = position_inputs.get(&id) else {
-            continue;
-        };
-        let Some(Node::Position { collection }) = graph.nodes.get(&id) else {
-            continue;
-        };
-        let matches_scope = if collection.is_empty() {
-            allow_empty
-        } else {
-            source_collection.is_some_and(|source| source.ends_with(collection))
-        };
-        if !matches_scope {
-            continue;
-        }
-        match position_contexts.get(&id).copied() {
-            None => {
-                position_contexts.insert(id, Some(from));
-                edges.push((from, input));
-            }
-            Some(Some(existing)) if existing != from => {
-                warnings.push(format!(
-                    "position node {id} is used in multiple iteration stages or scopes; \
-                     its first context connection was kept"
-                ));
-                position_contexts.insert(id, None);
-            }
-            Some(_) => {}
-        }
-    }
-}
-
 fn descendant_binding_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
     roots.extend(scope.bindings.iter().map(|binding| binding.node));
     for child in &scope.children {
@@ -1040,7 +960,22 @@ fn collect_scope_edges(
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all);
     let anchor_len = anchor.len();
-    if let Some(sequence) = &scope.sequence {
+    if let Some((join, _)) = scope.join() {
+        let has_join_node = graph.nodes.values().any(|node| {
+            matches!(
+                node,
+                Node::JoinField { join: owner, .. } | Node::JoinPosition { join: owner }
+                    if *owner == join
+            )
+        });
+        if !has_join_node {
+            warnings.push(format!(
+                "scope `{}` uses inner join {}; its iteration wire is not exported",
+                chain.join("/"),
+                join.get()
+            ));
+        }
+    } else if let Some(sequence) = scope.sequence() {
         if chain.is_empty() && !target_root_iterable {
             warnings.push(
                 "the root scope generates rows but the target document is not row/array \
@@ -1090,13 +1025,13 @@ fn collect_scope_edges(
                 )),
             }
         }
-    } else if scope.source.is_some() && chain.is_empty() && !target_root_iterable {
+    } else if scope.source().is_some() && chain.is_empty() && !target_root_iterable {
         warnings.push(
             "the root scope iterates rows but the target document is not row/array \
              shaped in MapForce terms; the iteration wire is skipped"
                 .to_string(),
         );
-    } else if let Some(source) = &scope.source {
+    } else if let Some(source) = scope.source() {
         let mut abs = anchor.clone();
         abs.extend(source.iter().cloned());
         let structural_source = mapped_plan
@@ -1156,6 +1091,11 @@ fn collect_scope_edges(
             target_ports.key_for_abs(&leaf),
         ) {
             (Some(&from), Some(to)) => edges.push((from, to)),
+            (None, _)
+                if matches!(
+                    graph.nodes.get(&binding.node),
+                    Some(Node::JoinField { .. } | Node::JoinPosition { .. })
+                ) => {}
             (None, _) => warnings.push(format!(
                 "binding `{}` references an unexported node; skipped",
                 leaf.join("/")

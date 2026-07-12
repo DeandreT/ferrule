@@ -94,7 +94,7 @@ impl DynamicJsonTarget {
             .ok_or_else(|| "computed property collection has no source collection".to_string())?;
         let outer_source = self.normalize_source(builder, outer_source)?;
         let outer_abs = builder.context_path(&outer_source);
-        candidate.source = Some(outer_abs.clone());
+        candidate.set_source(Some(outer_abs.clone()));
         candidate.group_by = outer_control
             .group_key
             .and_then(|key| builder.value_node(key));
@@ -124,7 +124,7 @@ impl DynamicJsonTarget {
         };
         let relative = item_abs[relative_start..].to_vec();
         let mut item_scope = Scope {
-            source: Some(relative),
+            iteration: mapping::ScopeIteration::Source(relative),
             ..Scope::default()
         };
         for field in &self.fields {
@@ -227,8 +227,7 @@ impl DynamicJsonTarget {
 }
 
 fn root_is_unconfigured(root: &Scope) -> bool {
-    root.source.is_none()
-        && root.sequence.is_none()
+    !root.iterates()
         && root.filter.is_none()
         && root.group_by.is_none()
         && root.group_starting_with.is_none()
@@ -393,7 +392,7 @@ mod tests {
     fn configured_root_controls_are_not_available_for_dynamic_lowering() {
         let mut root = Scope::default();
         assert!(root_is_unconfigured(&root));
-        root.source = Some(Vec::new());
+        root.set_source(Some(Vec::new()));
         assert!(!root_is_unconfigured(&root));
 
         let root = Scope {
