@@ -22,7 +22,7 @@ clean-room interoperability, and extensible adapters.
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
-  structural group projection, and 41 scalar built-ins.
+  structural group projection, mapped XML occurrence sequences, and 41 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
@@ -62,7 +62,9 @@ are implemented. Generated scopes export sort/filter/group/take controls and
 stage-correct positions. Compatible JSON object alternatives can drive exact
 derived XML type output, database WHERE/ORDER controls lower into runtime scopes,
 static and foreign-key-correlated queries recover executable SQLite sources,
-computed JSON targets and plain structural group copies lower exactly, and
+embedded correlated catalog queries recover executable relational sources,
+computed JSON targets, plain structural group copies, and filtered XML occurrence
+sequences lower exactly, and
 high-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
 conversion.
