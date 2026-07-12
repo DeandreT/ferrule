@@ -195,7 +195,10 @@ impl GraphViewer<'_> {
             Node::Aggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).nth(idx).copied(),
-            Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => None,
+            Node::SourceField { .. }
+            | Node::Position { .. }
+            | Node::Const { .. }
+            | Node::RuntimeValue { .. } => None,
         }
     }
 
@@ -251,7 +254,10 @@ impl GraphViewer<'_> {
     fn references_to(&self, needle: NodeId) -> Vec<String> {
         fn graph_inputs(node: &Node) -> Vec<NodeId> {
             match node {
-                Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
+                Node::SourceField { .. }
+                | Node::Position { .. }
+                | Node::Const { .. }
+                | Node::RuntimeValue { .. } => Vec::new(),
                 Node::Call { args, .. } => args.clone(),
                 Node::If {
                     condition,
@@ -367,7 +373,10 @@ impl GraphViewer<'_> {
 
     fn input_count(node: &Node) -> usize {
         match node {
-            Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => 0,
+            Node::SourceField { .. }
+            | Node::Position { .. }
+            | Node::Const { .. }
+            | Node::RuntimeValue { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } => 1,
@@ -380,7 +389,10 @@ impl GraphViewer<'_> {
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
-        Node::SourceField { .. } | Node::Position { .. } | Node::Const { .. } => Vec::new(),
+        Node::SourceField { .. }
+        | Node::Position { .. }
+        | Node::Const { .. }
+        | Node::RuntimeValue { .. } => Vec::new(),
         Node::Call { args, .. } => args.clone(),
         Node::If {
             condition,
@@ -418,6 +430,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::Const { value }) => {
                     format!("Const: {}", crate::value_editor::display_string(value))
                 }
+                Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
                 Some(Node::Call { function, .. }) => format!("Call: {function}"),
                 Some(Node::If { .. }) => "If".to_string(),
                 Some(Node::ValueMap { .. }) => "Value Map".to_string(),
@@ -532,6 +545,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     );
                 }
                 Node::Const { value } => show_value_editor(ui, value),
+                Node::RuntimeValue { value } => {
+                    ui.label(format!("{value:?}"));
+                }
                 Node::Call { function, args } => {
                     egui::ComboBox::from_id_salt(ui.id().with("builtin"))
                         .selected_text(function.as_str())
