@@ -71,6 +71,7 @@ pub(super) fn classify_target_connection(
         && resolved.db_where_component.is_none()
         && !resolved.has_filter
         && !resolved.has_key_grouping
+        && !resolved.has_start_grouping
         && !resolved.has_block_grouping
         && resolved.distinct_key.is_none()
         && resolved.order_issue.is_none()

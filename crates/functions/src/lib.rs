@@ -593,6 +593,10 @@ fn value_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b),
         (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)),
         (Value::String(a), Value::String(b)) => Some(a.cmp(b)),
+        (Value::String(_), Value::Null | Value::XmlNil(_))
+        | (Value::Null | Value::XmlNil(_), Value::String(_)) => None,
+        (Value::String(a), b) => Some(a.as_str().cmp(scalar_text(b).as_str())),
+        (a, Value::String(b)) => Some(scalar_text(a).as_str().cmp(b.as_str())),
         (Value::Bool(a), Value::Bool(b)) => Some(a.cmp(b)),
         _ => None,
     }
@@ -691,7 +695,7 @@ mod tests {
     }
 
     #[test]
-    fn comparisons_coerce_int_and_float() {
+    fn comparisons_use_numeric_widening_and_mixed_string_lexical_order() {
         assert_eq!(
             call("greater_or_equal", &[Value::Int(65), Value::Int(60)]).unwrap(),
             Value::Bool(true)
@@ -706,6 +710,14 @@ mod tests {
                 &[Value::String("a".into()), Value::String("b".into())]
             )
             .unwrap(),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            call("equal", &[Value::String("2008".into()), Value::Int(2008)]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            call("less_than", &[Value::Int(4), Value::String("12".into())]).unwrap(),
             Value::Bool(false)
         );
     }
