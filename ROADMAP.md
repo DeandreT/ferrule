@@ -26,7 +26,7 @@ clean-room interoperability, and extensible adapters.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 96/120 local MapForce 2026 samples import; 47 import without
+- `.mfd` survey: 96/120 local MapForce 2026 samples import; 48 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -65,6 +65,7 @@ stage-correct positions. Compatible JSON object alternatives can drive exact
 derived XML type output, database WHERE/ORDER controls lower into runtime scopes,
 static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
+standalone max-one queries preserve empty/single document-root cardinality,
 computed JSON targets, plain structural group copies, and filtered XML occurrence
 sequences lower exactly, and
 high-value date/time/duration/missing-value functions execute natively. Non-representable
@@ -239,8 +240,8 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 367 (366 executable plus the ignored local-sample survey).
-- `.mfd` survey: 96/120 import, 47 warning-free.
+- Workspace tests: 375 (374 executable plus the ignored local-sample survey).
+- `.mfd` survey: 96/120 import, 48 warning-free.
 - Unsupported-function warnings: 12 across the expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
 - Non-repeating structural-group warnings: 8 across the expanded importable set.
