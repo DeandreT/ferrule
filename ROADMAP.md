@@ -23,7 +23,7 @@ clean-room interoperability, and extensible adapters.
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
   structural group projection, mapped and computed XML occurrence sequences, and
-  41 scalar built-ins.
+  44 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
@@ -43,7 +43,7 @@ clean-room interoperability, and extensible adapters.
 | Other formats | None | XLSX, Protobuf, then demand-driven XBRL/PDF support |
 | Dataflow | One primary source plus named lookup sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
-| Execution | Native interpreter, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
+| Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor | Blank-project authoring, undo/layout, schema wizards, auto-connect, preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
 | `.mfd` | Best-effort common XML/JSON/CSV/SQLite subset | Executable common profile plus actionable repair workflow |
@@ -65,9 +65,11 @@ derived XML type output, database WHERE/ORDER controls lower into runtime scopes
 static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
-structured lookup UDFs lower to named secondary-source lookups, computed JSON
-targets, plain structural group copies, and filtered or generated XML occurrence
-sequences lower exactly, and inclusive ranges accept exact integral decimal inputs.
+structured lookup UDFs lower to named secondary-source lookups or zero-to-many
+constructed records, mapping-path functions use explicit host context, computed
+JSON targets, plain structural group copies, and filtered or generated XML
+occurrence sequences lower exactly, and inclusive ranges accept exact integral
+decimal inputs.
 High-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
 conversion.
