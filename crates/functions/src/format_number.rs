@@ -67,22 +67,8 @@ pub(super) fn format_number(args: &[Value]) -> Result<Value, FunctionError> {
         .map(|part| NumberPicture::parse(part, decimal_point, grouping_separator))
         .collect::<Result<_, _>>()?;
 
-    let negative = match value {
-        Value::Int(value) => value.is_negative(),
-        Value::Float(value) if value.is_finite() => value.is_sign_negative(),
-        Value::Float(_) => {
-            return Err(FunctionError::InvalidArgument {
-                function: "format_number",
-                message: "requires a finite number",
-            });
-        }
-        other => {
-            return Err(FunctionError::TypeMismatch {
-                function: "format_number",
-                got: other.type_name(),
-            });
-        }
-    };
+    let number = DecimalValue::try_from(value)?;
+    let negative = number.is_negative();
     let has_negative_subformat = pictures.len() == 2;
     let picture = if negative && has_negative_subformat {
         &pictures[1]
@@ -90,7 +76,7 @@ pub(super) fn format_number(args: &[Value]) -> Result<Value, FunctionError> {
         &pictures[0]
     };
     let (integer, mut fraction) = render_decimal(
-        value,
+        number,
         picture.multiplier_digits,
         picture.max_fraction_digits,
     );
@@ -121,6 +107,47 @@ pub(super) fn format_number(args: &[Value]) -> Result<Value, FunctionError> {
     }
     output.push_str(picture.suffix);
     Ok(Value::String(output))
+}
+
+#[derive(Clone, Copy)]
+enum DecimalValue {
+    Int(i64),
+    Float(f64),
+}
+
+impl DecimalValue {
+    fn is_negative(self) -> bool {
+        match self {
+            Self::Int(value) => value.is_negative(),
+            Self::Float(value) => value.is_sign_negative(),
+        }
+    }
+
+    fn magnitude(self) -> String {
+        match self {
+            Self::Int(value) => value.unsigned_abs().to_string(),
+            Self::Float(value) => value.abs().to_string(),
+        }
+    }
+}
+
+impl TryFrom<&Value> for DecimalValue {
+    type Error = FunctionError;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int(value) => Ok(Self::Int(*value)),
+            Value::Float(value) if value.is_finite() => Ok(Self::Float(*value)),
+            Value::Float(_) => Err(FunctionError::InvalidArgument {
+                function: "format_number",
+                message: "requires a finite number",
+            }),
+            other => Err(FunctionError::TypeMismatch {
+                function: "format_number",
+                got: other.type_name(),
+            }),
+        }
+    }
 }
 
 struct NumberPicture<'a> {
@@ -155,7 +182,10 @@ impl<'a> NumberPicture<'a> {
                 matches!(c, '0' | '#') || *c == decimal_point || *c == grouping_separator
             })
             .map(|(index, c)| index + c.len_utf8())
-            .expect("a first picture character implies a last one");
+            .ok_or(FunctionError::InvalidArgument {
+                function: "format_number",
+                message: "format must contain a digit placeholder",
+            })?;
         let prefix = &subformat[..first];
         let suffix = &subformat[last..];
         let body = &subformat[first..last];
@@ -259,15 +289,11 @@ fn parse_grouping(picture: &str, separator: char) -> Result<Option<usize>, Funct
 }
 
 fn render_decimal(
-    value: &Value,
+    value: DecimalValue,
     multiplier_digits: usize,
     fraction_digits: usize,
 ) -> (String, String) {
-    let magnitude = match value {
-        Value::Int(value) => value.unsigned_abs().to_string(),
-        Value::Float(value) => value.abs().to_string(),
-        _ => unreachable!("format_number checks its numeric argument"),
-    };
+    let magnitude = value.magnitude();
     let (mantissa, exponent) = magnitude
         .split_once(['e', 'E'])
         .map_or((magnitude.as_str(), 0), |(mantissa, exponent)| {
@@ -331,13 +357,13 @@ fn increment_decimal(digits: &mut String) {
     for digit in bytes.iter_mut().rev() {
         if *digit < b'9' {
             *digit += 1;
-            *digits = String::from_utf8(bytes).expect("decimal digits are ASCII");
+            *digits = bytes.into_iter().map(char::from).collect();
             return;
         }
         *digit = b'0';
     }
     bytes.insert(0, b'1');
-    *digits = String::from_utf8(bytes).expect("decimal digits are ASCII");
+    *digits = bytes.into_iter().map(char::from).collect();
 }
 
 fn single_char(value: &Value, name: &'static str) -> Result<char, FunctionError> {
