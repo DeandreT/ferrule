@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{DynamicBinding, DynamicChild, Graph, Node, Project, Scope};
+use mapping::{DynamicBinding, DynamicChild, Graph, IterationOutput, Node, Project, Scope};
 
 use super::{EngineError, run, validate};
 
@@ -211,6 +211,37 @@ fn validation_rejects_invalid_dynamic_scope_combinations() {
             "{messages:#?}"
         );
     }
+}
+
+#[test]
+fn mapped_sequences_cannot_populate_dynamic_properties() {
+    let mut dynamic_project = project(open_target(Vec::new()));
+    dynamic_project.root.dynamic_children[0]
+        .scope
+        .iteration_output = IterationOutput::MappedSequence;
+    let issues = validate(&dynamic_project);
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("mapped-sequence output cannot populate a computed target property")
+    }));
+    assert_eq!(
+        run(
+            &dynamic_project,
+            &Instance::Repeated(vec![department("Engineering", &[("Ada", "Manager")],)]),
+        ),
+        Err(EngineError::MappedSequenceDynamicTarget)
+    );
+
+    let mut merged = project(open_target(Vec::new()));
+    merged.root.iteration_output = IterationOutput::MappedSequence;
+    assert_eq!(
+        run(
+            &merged,
+            &Instance::Repeated(vec![department("Engineering", &[("Ada", "Manager")],)]),
+        ),
+        Err(EngineError::ConflictingIterationOutput)
+    );
 }
 
 #[test]

@@ -18,13 +18,14 @@ pub(super) fn finalize_scope_output(
             .ok_or(EngineError::FilteredNonRepeatingScope);
     }
     if scope.merge_dynamic_fields {
-        if scope.iteration_output == IterationOutput::First {
+        if scope.iteration_output != IterationOutput::Repeated {
             return Err(EngineError::ConflictingIterationOutput);
         }
         return merge_dynamic_fragments(produced);
     }
     match scope.iteration_output {
         IterationOutput::Repeated => Ok(Instance::Repeated(produced)),
+        IterationOutput::MappedSequence => Ok(Instance::MappedSequence(produced)),
         IterationOutput::First => Ok(produced
             .into_iter()
             .next()

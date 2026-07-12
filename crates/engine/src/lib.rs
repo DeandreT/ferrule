@@ -46,8 +46,10 @@ pub enum EngineError {
     InvalidDynamicPropertyFragment,
     #[error("first-item output requires an iterating scope")]
     FirstOutputWithoutIteration,
-    #[error("first-item output cannot be combined with dynamic object merging")]
+    #[error("dynamic object merging requires repeated iteration output")]
     ConflictingIterationOutput,
+    #[error("mapped-sequence output cannot populate a computed target property")]
+    MappedSequenceDynamicTarget,
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error("{function:?} aggregate overflowed the integer range")]
@@ -200,7 +202,7 @@ fn eval_scope(
         .map(|node| eval_item_count(graph, node, context, positions))
         .transpose()?;
     let take = match scope.iteration_output {
-        IterationOutput::Repeated => take,
+        IterationOutput::Repeated | IterationOutput::MappedSequence => take,
         IterationOutput::First => Some(take.unwrap_or(1).min(1)),
     };
     let grouping = match (scope.group_by, scope.group_into_blocks) {
@@ -586,6 +588,9 @@ fn produce_item(
         insert_target_field(&mut fields, child.target_field.clone(), child_instance)?;
     }
     for child in &scope.dynamic_children {
+        if child.scope.iteration_output == IterationOutput::MappedSequence {
+            return Err(EngineError::MappedSequenceDynamicTarget);
+        }
         let key = eval_dynamic_key(graph, child.key, context, output_positions)?;
         let child_target = target.and_then(ir::SchemaNode::dynamic_fields);
         let child_instance =

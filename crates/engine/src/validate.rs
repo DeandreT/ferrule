@@ -428,6 +428,33 @@ fn validate_scope(
             "first-item output cannot be combined with dynamic object merge",
         ));
     }
+    if scope.iteration_output == IterationOutput::MappedSequence && !iterates {
+        issues.push(ValidationIssue::new(
+            &location,
+            "mapped-sequence output requires an iterated source",
+        ));
+    }
+    if scope.iteration_output == IterationOutput::MappedSequence && path.is_empty() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "mapped-sequence output is not valid for the project root scope",
+        ));
+    }
+    if scope.iteration_output == IterationOutput::MappedSequence && scope.merge_dynamic_fields {
+        issues.push(ValidationIssue::new(
+            &location,
+            "mapped-sequence output cannot be combined with dynamic object merge",
+        ));
+    }
+    if scope.iteration_output == IterationOutput::MappedSequence
+        && target
+            .is_some_and(|node| node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        issues.push(ValidationIssue::new(
+            &location,
+            "mapped-sequence output requires a non-repeating target group schema",
+        ));
+    }
     if scope.iteration_output == IterationOutput::First
         && target
             .is_some_and(|node| node.repeating || !matches!(node.kind, SchemaKind::Group { .. }))
@@ -595,6 +622,12 @@ fn validate_scope(
             issues.push(ValidationIssue::new(
                 &location,
                 format!("dynamic child key references missing node {}", child.key),
+            ));
+        }
+        if child.scope.iteration_output == IterationOutput::MappedSequence {
+            issues.push(ValidationIssue::new(
+                &location,
+                "mapped-sequence output cannot populate a computed target property",
             ));
         }
         if let Some(dynamic_target) = dynamic_target {

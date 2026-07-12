@@ -310,6 +310,7 @@ fn instance_type_name(instance: &Instance) -> &'static str {
         Instance::Scalar(value) => value.type_name(),
         Instance::Group(_) => "group",
         Instance::Repeated(_) => "repeated",
+        Instance::MappedSequence(_) => "mapped sequence",
     }
 }
 
@@ -487,6 +488,23 @@ mod tests {
             }
         ));
         assert!(!path.exists());
+
+        let error = write(
+            &path,
+            &schema(),
+            &[Instance::MappedSequence(Vec::new())],
+            None,
+            true,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            CsvFormatError::RowShape {
+                row: 0,
+                got: "mapped sequence"
+            }
+        ));
+        assert!(!path.exists());
     }
 
     #[test]
@@ -520,6 +538,24 @@ mod tests {
                 field,
                 expected: ScalarType::Int,
                 got: "group",
+            } if field == "age"
+        ));
+
+        let mapped = Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            ("age".into(), Instance::MappedSequence(Vec::new())),
+        ]);
+        let error = write(&path, &schema(), &[mapped], None, false).unwrap_err();
+        assert!(matches!(
+            error,
+            CsvFormatError::ValueType {
+                row: 0,
+                field,
+                expected: ScalarType::Int,
+                got: "mapped sequence",
             } if field == "age"
         ));
         assert!(!path.exists());

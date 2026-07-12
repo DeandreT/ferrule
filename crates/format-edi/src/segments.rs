@@ -546,6 +546,7 @@ fn instance_shape_error(
         Instance::Scalar(_) => "a scalar",
         Instance::Group(_) => "a group",
         Instance::Repeated(_) => "repeating values",
+        Instance::MappedSequence(_) => "a mapped sequence",
     };
     EdiFormatError::InstanceShape {
         name: schema.name.clone(),
