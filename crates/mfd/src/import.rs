@@ -15,6 +15,15 @@ use mapping::{
 
 use crate::MfdError;
 
+mod function;
+
+use function::{
+    FnComponent, aggregate_op, is_distinct_values as is_distinct_values_component,
+    is_filter as is_filter_component, is_first_items as is_first_items_component,
+    is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
+    map_name as map_function_name, parse_constant, read as read_fn_component,
+};
+
 pub struct Imported {
     pub project: Project,
     pub warnings: Vec<String>,
@@ -106,27 +115,33 @@ fn note_iteration_control_order(
     *nearest_downstream = Some(nearest_downstream.map_or(upstream, |rank| rank.min(upstream)));
 }
 
-/// One function component's extracted facts.
-type ValueMapData = (Vec<(String, String)>, Option<String>);
-
-struct FnComponent {
-    library: String,
-    name: String,
-    kind: u32,
-    /// Input pins in `pos` order; `None` for declared-but-keyless pins.
-    inputs: Vec<Option<u32>>,
-    /// Output pin keys in `pos` order.
-    outputs: Vec<u32>,
-    constant: Option<(String, String)>,
-    valuemap: Option<ValueMapData>,
-    sort_descending: Option<bool>,
-}
-
 struct IntermediateFeed {
     feed: u32,
     suffix: Vec<String>,
     control: Option<u32>,
     projections: BTreeMap<Vec<String>, u32>,
+}
+
+#[derive(Clone)]
+struct TargetLeaf {
+    chain: Vec<String>,
+    field: String,
+}
+
+impl TargetLeaf {
+    fn from_path(path: &[String]) -> Option<Self> {
+        let (field, chain) = path.split_last()?;
+        Some(Self {
+            chain: chain.to_vec(),
+            field: field.clone(),
+        })
+    }
+
+    fn path(&self) -> Vec<String> {
+        let mut path = self.chain.clone();
+        path.push(self.field.clone());
+        path
+    }
 }
 
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
@@ -347,7 +362,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 }
                 iterations.push((target_path.clone(), from));
             }
-            Some(_) => bindings.push((target_path.clone(), from)),
+            Some(_) => match TargetLeaf::from_path(target_path) {
+                Some(target) => bindings.push((target, from)),
+                None => builder.warnings.push(
+                    "connection into a scalar document root is not supported; binding skipped"
+                        .to_string(),
+                ),
+            },
             None => builder.warnings.push(format!(
                 "target port path `{}` not found in schema",
                 target_path.join("/")
@@ -393,7 +414,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         }
     }
     let connected_bindings: BTreeSet<Vec<String>> =
-        bindings.iter().map(|(path, _)| path.clone()).collect();
+        bindings.iter().map(|(target, _)| target.path()).collect();
     for (target_path, from) in iterations {
         let feed = builder.resolve_iteration_feed(from);
         if let Some(issue) = feed.order_issue {
@@ -479,8 +500,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 }
                 let mut source_leaf = source_abs.clone();
                 source_leaf.extend(relative);
-                if let Some(node) = builder.primary_source_field(&source_leaf) {
-                    scope_builder.add_binding(&target_leaf, node);
+                if let (Some(target), Some(node)) = (
+                    TargetLeaf::from_path(&target_leaf),
+                    builder.primary_source_field(&source_leaf),
+                ) {
+                    scope_builder.add_binding(target, node);
                 }
             }
         }
@@ -505,20 +529,22 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             {
                 continue;
             }
-            if let Some(node) = builder.value_node(*value_feed) {
-                scope_builder.add_binding(&target_leaf, node);
+            if let Some(node) = builder.value_node(*value_feed)
+                && let Some(target) = TargetLeaf::from_path(&target_leaf)
+            {
+                scope_builder.add_binding(target, node);
             }
         }
     }
-    for (target_path, from) in bindings {
+    for (target, from) in bindings {
         let Some(node) = builder.value_node(from) else {
             builder.warnings.push(format!(
                 "binding for `{}` comes from an unsupported feed; skipped",
-                target_path.join("/")
+                target.path().join("/")
             ));
             continue;
         };
-        scope_builder.add_binding(&target_path, node);
+        scope_builder.add_binding(target, node);
     }
 
     let mut extra_sources = Vec::new();
@@ -1326,86 +1352,6 @@ fn read_db_component(
     })
 }
 
-fn read_fn_component(component: &roxmltree::Node) -> FnComponent {
-    let library = component
-        .attribute("library")
-        .unwrap_or_default()
-        .to_string();
-    let name = component.attribute("name").unwrap_or_default().to_string();
-    let kind = parse_u32(component.attribute("kind")).unwrap_or(0);
-    let pins = |tag: &str| -> Vec<Option<u32>> {
-        component
-            .children()
-            .find(|n| n.is_element() && n.tag_name().name() == tag)
-            .map(|pins| {
-                pins.children()
-                    .filter(|n| n.is_element() && n.tag_name().name() == "datapoint")
-                    .map(|d| parse_u32(d.attribute("key")))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    let inputs = pins("sources");
-    let outputs = pins("targets").into_iter().flatten().collect();
-
-    let data = component
-        .children()
-        .find(|n| n.is_element() && n.tag_name().name() == "data");
-    let constant = data
-        .and_then(|d| {
-            d.children()
-                .find(|n| n.is_element() && n.tag_name().name() == "constant")
-        })
-        .map(|c| {
-            (
-                c.attribute("value").unwrap_or_default().to_string(),
-                c.attribute("datatype").unwrap_or_default().to_string(),
-            )
-        });
-    let valuemap = data
-        .and_then(|d| {
-            d.children()
-                .find(|n| n.is_element() && n.tag_name().name() == "valuemap")
-        })
-        .map(|vm| {
-            let table = vm
-                .descendants()
-                .filter(|n| n.has_tag_name("entry"))
-                .map(|e| {
-                    (
-                        e.attribute("from").unwrap_or_default().to_string(),
-                        e.attribute("to").unwrap_or_default().to_string(),
-                    )
-                })
-                .collect();
-            let default = vm
-                .descendants()
-                .find(|n| n.has_tag_name("result"))
-                .and_then(|r| r.attribute("defaultValue"))
-                .map(str::to_string)
-                .filter(|_| vm.attribute("defaultValueMode") == Some("custom"));
-            (table, default)
-        });
-    let sort_descending = data
-        .and_then(|data| data.descendants().find(|node| node.has_tag_name("sort")))
-        .map(|sort| {
-            sort.descendants()
-                .find(|node| node.has_tag_name("key"))
-                .is_some_and(|key| key.attribute("direction") == Some("descending"))
-        });
-
-    FnComponent {
-        library,
-        name,
-        kind,
-        inputs,
-        outputs,
-        constant,
-        valuemap,
-        sort_descending,
-    }
-}
-
 fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
     let mut node = schema;
     for segment in path {
@@ -1437,35 +1383,6 @@ fn collect_matching_scalar_paths(
         }
         _ => {}
     }
-}
-
-fn is_filter_component(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 3
-}
-
-fn is_input_component(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 6
-}
-
-fn is_sort_component(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 30 && component.sort_descending.is_some()
-}
-
-fn is_first_items_component(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 5 && component.name == "first-items"
-}
-
-fn is_distinct_values_component(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 5 && component.name == "distinct-values"
-}
-
-fn is_sequence_producer(component: &FnComponent) -> bool {
-    component.library == "core"
-        && component.kind == 5
-        && matches!(
-            component.name.as_str(),
-            "tokenize" | "tokenize-by-length" | "generate-sequence"
-        )
 }
 
 struct GraphBuilder<'a> {
@@ -2218,28 +2135,6 @@ impl GraphBuilder<'_> {
     }
 }
 
-fn parse_constant(value: &str, datatype: &str) -> Value {
-    match datatype {
-        "integer" | "int" | "long" => value.parse().map(Value::Int).unwrap_or(Value::Null),
-        "decimal" | "double" | "float" => value.parse().map(Value::Float).unwrap_or(Value::Null),
-        "boolean" => value.parse().map(Value::Bool).unwrap_or(Value::Null),
-        _ => Value::String(value.to_string()),
-    }
-}
-
-fn aggregate_op(name: &str) -> Option<AggregateOp> {
-    Some(match name {
-        "count" => AggregateOp::Count,
-        "sum" => AggregateOp::Sum,
-        "avg" => AggregateOp::Avg,
-        "min" => AggregateOp::Min,
-        "max" => AggregateOp::Max,
-        "string-join" => AggregateOp::Join,
-        "item-at" => AggregateOp::ItemAt,
-        _ => return None,
-    })
-}
-
 /// Splits an absolute source path at its innermost repeating node: the
 /// collection is everything up to and including it, the value the rest.
 /// With no repeating node the collection is empty -- flat-rows sources
@@ -2278,44 +2173,6 @@ fn compatible_collection(schema: &SchemaNode, paths: &[Vec<String>]) -> Option<V
         .iter()
         .all(|path| deepest.starts_with(path))
         .then_some(deepest)
-}
-
-fn map_function_name(name: &str) -> Option<&'static str> {
-    Some(match name {
-        "concat" => "concat",
-        "add" => "add",
-        "subtract" => "subtract",
-        "multiply" => "multiply",
-        "divide" => "divide",
-        "equal" => "equal",
-        "not-equal" => "not_equal",
-        "greater" => "greater_than",
-        "less" => "less_than",
-        "greater-equal" | "greater-or-equal" | "equal-or-greater" => "greater_or_equal",
-        "less-equal" | "less-or-equal" | "equal-or-less" => "less_or_equal",
-        "logical-and" => "and",
-        "logical-or" => "or",
-        "logical-not" => "not",
-        "string-length" => "length",
-        "contains" => "contains",
-        "starts-with" => "starts_with",
-        "upper-case" => "upper",
-        "lower-case" => "lower",
-        "string" => "string",
-        "format-number" => "format_number",
-        "trim" => "trim",
-        "left-trim" => "left_trim",
-        "right-trim" => "right_trim",
-        "pad-string-left" => "pad_string_left",
-        "pad-string-right" => "pad_string_right",
-        "substring" => "substring",
-        "substring-before" => "substring_before",
-        "substring-after" => "substring_after",
-        "exists" => "exists",
-        "round" | "round-precision" => "round",
-        "date-from-datetime" => "date_from_datetime",
-        _ => return None,
-    })
 }
 
 /// Builds the scope tree from iteration and binding connections. `anchors`
@@ -2406,11 +2263,10 @@ impl ScopeBuilder {
         scope.take = nodes.take;
     }
 
-    fn add_binding(&mut self, target_path: &[String], node: NodeId) {
-        let (field, chain) = target_path.split_last().expect("leaf path is never empty");
-        let scope = self.ensure_scope(chain);
+    fn add_binding(&mut self, target: TargetLeaf, node: NodeId) {
+        let scope = self.ensure_scope(&target.chain);
         scope.bindings.push(Binding {
-            target_field: field.clone(),
+            target_field: target.field,
             node,
         });
     }
@@ -2418,7 +2274,7 @@ impl ScopeBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::{instance_root_segments, map_function_name, normalize_xml_entry_name};
+    use super::{instance_root_segments, normalize_xml_entry_name};
 
     #[test]
     fn instance_root_paths_do_not_split_namespace_uris() {
@@ -2440,11 +2296,5 @@ mod tests {
         assert_eq!(normalize_xml_entry_name("12:@type"), ("type", true));
         assert_eq!(normalize_xml_entry_name("Person"), ("Person", false));
         assert_eq!(normalize_xml_entry_name("ns:Person"), ("ns:Person", false));
-    }
-
-    #[test]
-    fn scalar_function_names_use_canonical_ir_spelling() {
-        assert_eq!(map_function_name("string"), Some("string"));
-        assert_eq!(map_function_name("format-number"), Some("format_number"));
     }
 }

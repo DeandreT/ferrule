@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Company" library="xml" uid="2" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Company"><entry name="Staff"><entry name="Age" outkey="10"/></entry></entry></entry></entry></root>
+            <document schema="people-source.xsd" inputinstance="people.xml" instanceroot="{}Company"/>
+          </data>
+        </component>
+        <component name="Output" library="xml" uid="3" kind="14">
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="FileInstance"><entry name="document"><entry name="Output" inpkey="20"/></entry></entry></root>
+            <document schema="scalar-root-target.xsd" instanceroot="{}Output"/>
+          </data>
+        </component>
+      </children>
+    </structure>
+    <connections><edge from="10" to="20"/></connections>
+  </component>
+</mapping>
