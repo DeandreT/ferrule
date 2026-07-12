@@ -28,6 +28,24 @@ pub enum DbFormatError {
         expected: ScalarType,
         got: &'static str,
     },
+    #[error("column `{column}`: cannot read SQLite {got} as {expected:?}")]
+    CellType {
+        column: String,
+        expected: ScalarType,
+        got: &'static str,
+    },
+    #[error(
+        "existing column `{column}` has {affinity} affinity (declared as `{declared}`), which \
+         cannot preserve {expected:?} values"
+    )]
+    ColumnAffinity {
+        column: String,
+        expected: ScalarType,
+        declared: String,
+        affinity: &'static str,
+    },
+    #[error("existing table has no column named `{0}`")]
+    MissingColumn(String),
 }
 
 fn columns_of(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatError> {
@@ -70,18 +88,53 @@ pub fn introspect(db_path: &Path, table: &str) -> Result<SchemaNode, DbFormatErr
     Ok(SchemaNode::group(table, children).repeating())
 }
 
-/// Maps a SQLite declared column type to a [`ScalarType`], following
-/// SQLite's own affinity rules (substring matching on the declared type).
-fn map_decl_type(decl_type: &str) -> ScalarType {
-    let upper = decl_type.to_uppercase();
-    if upper.contains("BOOL") {
-        ScalarType::Bool
-    } else if upper.contains("INT") {
-        ScalarType::Int
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SqliteAffinity {
+    Integer,
+    Text,
+    Blob,
+    Real,
+    Numeric,
+}
+
+impl SqliteAffinity {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Integer => "INTEGER",
+            Self::Text => "TEXT",
+            Self::Blob => "BLOB",
+            Self::Real => "REAL",
+            Self::Numeric => "NUMERIC",
+        }
+    }
+}
+
+/// Applies SQLite's declared-type affinity rules in their documented order.
+fn sqlite_affinity(decl_type: &str) -> SqliteAffinity {
+    let upper = decl_type.to_ascii_uppercase();
+    if upper.contains("INT") {
+        SqliteAffinity::Integer
+    } else if upper.contains("CHAR") || upper.contains("CLOB") || upper.contains("TEXT") {
+        SqliteAffinity::Text
+    } else if upper.is_empty() || upper.contains("BLOB") {
+        SqliteAffinity::Blob
     } else if upper.contains("REAL") || upper.contains("FLOA") || upper.contains("DOUB") {
-        ScalarType::Float
+        SqliteAffinity::Real
     } else {
-        ScalarType::String
+        SqliteAffinity::Numeric
+    }
+}
+
+/// Maps a SQLite declared column type to the closest [`ScalarType`].
+fn map_decl_type(decl_type: &str) -> ScalarType {
+    if decl_type.to_ascii_uppercase().contains("BOOL") {
+        ScalarType::Bool
+    } else {
+        match sqlite_affinity(decl_type) {
+            SqliteAffinity::Integer => ScalarType::Int,
+            SqliteAffinity::Real | SqliteAffinity::Numeric => ScalarType::Float,
+            SqliteAffinity::Text | SqliteAffinity::Blob => ScalarType::String,
+        }
     }
 }
 
@@ -94,8 +147,9 @@ fn column_sql_type(ty: ScalarType) -> &'static str {
     }
 }
 
-/// Reads every row of the table named by `schema` (in rowid order) into one
-/// [`Instance::Group`] per row.
+/// Reads every row of the table named by `schema` into one [`Instance::Group`]
+/// per row. Rowid tables are read in rowid order; tables without a rowid use
+/// SQLite's unspecified natural order.
 pub fn read(db_path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, DbFormatError> {
     let columns = columns_of(schema)?;
     let conn = Connection::open(db_path)?;
@@ -104,16 +158,27 @@ pub fn read(db_path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, DbForm
         .map(|(name, _)| quote(name))
         .collect::<Vec<_>>()
         .join(", ");
+    let order = if conn
+        .prepare(&format!(
+            "SELECT rowid FROM {} LIMIT 0",
+            quote(&schema.name)
+        ))
+        .is_ok()
+    {
+        " ORDER BY rowid"
+    } else {
+        ""
+    };
     let mut stmt = conn.prepare(&format!(
-        "SELECT {column_list} FROM {}",
-        quote(&schema.name)
+        "SELECT {column_list} FROM {}{order}",
+        quote(&schema.name),
     ))?;
     let mut out = Vec::new();
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
         let mut fields = Vec::with_capacity(columns.len());
         for (i, (name, ty)) in columns.iter().enumerate() {
-            let value = read_value(row.get_ref(i)?, *ty);
+            let value = read_value(name, row.get_ref(i)?, *ty)?;
             fields.push((name.to_string(), Instance::Scalar(value)));
         }
         out.push(Instance::Group(fields));
@@ -124,17 +189,45 @@ pub fn read(db_path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, DbForm
 /// Converts a SQLite value to an ir [`Value`], guided by the declared
 /// scalar type (SQLite is dynamically typed, so stored values may need
 /// widening -- e.g. an INTEGER cell in a REAL column).
-fn read_value(value: ValueRef, ty: ScalarType) -> Value {
+fn read_value(column: &str, value: ValueRef, ty: ScalarType) -> Result<Value, DbFormatError> {
+    let incompatible = |got| DbFormatError::CellType {
+        column: column.to_string(),
+        expected: ty,
+        got,
+    };
     match (ty, value) {
-        (_, ValueRef::Null) => Value::Null,
-        (ScalarType::Bool, ValueRef::Integer(i)) => Value::Bool(i != 0),
-        (ScalarType::Int, ValueRef::Integer(i)) => Value::Int(i),
-        (ScalarType::Float, ValueRef::Integer(i)) => Value::Float(i as f64),
-        (ScalarType::Float, ValueRef::Real(f)) => Value::Float(f),
-        (_, ValueRef::Integer(i)) => Value::String(i.to_string()),
-        (_, ValueRef::Real(f)) => Value::String(f.to_string()),
-        (_, ValueRef::Text(t)) => Value::String(String::from_utf8_lossy(t).into_owned()),
-        (_, ValueRef::Blob(_)) => Value::Null,
+        (_, ValueRef::Null) => Ok(Value::Null),
+        (ScalarType::Bool, ValueRef::Integer(0)) => Ok(Value::Bool(false)),
+        (ScalarType::Bool, ValueRef::Integer(1)) => Ok(Value::Bool(true)),
+        (ScalarType::Int, ValueRef::Integer(i)) => Ok(Value::Int(i)),
+        (ScalarType::Float, ValueRef::Integer(i)) => exact_f64(i)
+            .map(Value::Float)
+            .ok_or_else(|| incompatible("integer outside the exact f64 range")),
+        (ScalarType::Float, ValueRef::Real(f)) if f.is_finite() => Ok(Value::Float(f)),
+        (ScalarType::String, ValueRef::Text(text)) => std::str::from_utf8(text)
+            .map(|text| Value::String(text.to_string()))
+            .map_err(|_| incompatible("non-UTF-8 text")),
+        (_, other) => Err(incompatible(sqlite_type_name(other))),
+    }
+}
+
+fn exact_f64(value: i64) -> Option<f64> {
+    let magnitude = value.unsigned_abs();
+    if magnitude == 0 {
+        return Some(0.0);
+    }
+    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
+    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
+}
+
+fn sqlite_type_name(value: ValueRef) -> &'static str {
+    match value {
+        ValueRef::Null => "null",
+        ValueRef::Integer(_) => "integer",
+        ValueRef::Real(value) if value.is_finite() => "real",
+        ValueRef::Real(_) => "non-finite real",
+        ValueRef::Text(_) => "text",
+        ValueRef::Blob(_) => "blob",
     }
 }
 
@@ -150,15 +243,17 @@ pub fn write(db_path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(
         .map(|(name, ty)| format!("{} {}", quote(name), column_sql_type(*ty)))
         .collect::<Vec<_>>()
         .join(", ");
-    conn.execute(
-        &format!(
-            "CREATE TABLE IF NOT EXISTS {} ({column_defs})",
-            quote(&schema.name)
-        ),
-        [],
-    )?;
-
     let tx = conn.transaction()?;
+    let existing_columns = declared_columns(&tx, &schema.name)?;
+    if existing_columns.is_empty() {
+        tx.execute(
+            &format!("CREATE TABLE {} ({column_defs})", quote(&schema.name)),
+            [],
+        )?;
+    } else {
+        validate_column_affinities(&existing_columns, &columns)?;
+    }
+
     tx.execute(&format!("DELETE FROM {}", quote(&schema.name)), [])?;
     let column_list = columns
         .iter()
@@ -185,19 +280,78 @@ pub fn write(db_path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(
     Ok(())
 }
 
+fn declared_columns(
+    conn: &Connection,
+    table: &str,
+) -> Result<Vec<(String, String)>, DbFormatError> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", quote(table)))?;
+    Ok(stmt
+        .query_map([], |row| Ok((row.get("name")?, row.get("type")?)))?
+        .collect::<Result<_, _>>()?)
+}
+
+fn validate_column_affinities(
+    declared: &[(String, String)],
+    columns: &[(&str, ScalarType)],
+) -> Result<(), DbFormatError> {
+    for (name, ty) in columns {
+        let (_, decl_type) = declared
+            .iter()
+            .find(|(declared_name, _)| declared_name.eq_ignore_ascii_case(name))
+            .ok_or_else(|| DbFormatError::MissingColumn((*name).to_string()))?;
+        let affinity = sqlite_affinity(decl_type);
+        if !affinity_preserves(*ty, affinity) {
+            return Err(DbFormatError::ColumnAffinity {
+                column: (*name).to_string(),
+                expected: *ty,
+                declared: decl_type.clone(),
+                affinity: affinity.name(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Whether binding the scalar's native SQLite storage class can survive the
+/// column affinity and still be accepted by `read_value`.
+fn affinity_preserves(ty: ScalarType, affinity: SqliteAffinity) -> bool {
+    match ty {
+        ScalarType::Int | ScalarType::Bool => matches!(
+            affinity,
+            SqliteAffinity::Integer | SqliteAffinity::Numeric | SqliteAffinity::Blob
+        ),
+        ScalarType::Float => affinity != SqliteAffinity::Text,
+        ScalarType::String => matches!(affinity, SqliteAffinity::Text | SqliteAffinity::Blob),
+    }
+}
+
 fn to_sql_value(
     column: &str,
     ty: ScalarType,
     value: Option<&Value>,
 ) -> Result<rusqlite::types::Value, DbFormatError> {
     use rusqlite::types::Value as Sql;
-    match value {
-        None | Some(Value::Null) => Ok(Sql::Null),
-        Some(Value::Int(i)) => Ok(Sql::Integer(*i)),
-        Some(Value::Float(f)) => Ok(Sql::Real(*f)),
-        Some(Value::Bool(b)) => Ok(Sql::Integer(i64::from(*b))),
-        Some(Value::String(s)) if ty == ScalarType::String => Ok(Sql::Text(s.clone())),
-        Some(other) => Err(DbFormatError::ValueType {
+    match (ty, value) {
+        (_, None | Some(Value::Null)) => Ok(Sql::Null),
+        (ScalarType::Int, Some(Value::Int(i))) => Ok(Sql::Integer(*i)),
+        (ScalarType::Float, Some(Value::Float(f))) if f.is_finite() => Ok(Sql::Real(*f)),
+        (ScalarType::Float, Some(Value::Float(_))) => Err(DbFormatError::ValueType {
+            column: column.to_string(),
+            expected: ty,
+            got: "non-finite float",
+        }),
+        (ScalarType::Float, Some(Value::Int(i))) => {
+            exact_f64(*i)
+                .map(Sql::Real)
+                .ok_or_else(|| DbFormatError::ValueType {
+                    column: column.to_string(),
+                    expected: ty,
+                    got: "int outside the exact f64 range",
+                })
+        }
+        (ScalarType::Bool, Some(Value::Bool(b))) => Ok(Sql::Integer(i64::from(*b))),
+        (ScalarType::String, Some(Value::String(s))) => Ok(Sql::Text(s.clone())),
+        (_, Some(other)) => Err(DbFormatError::ValueType {
             column: column.to_string(),
             expected: ty,
             got: other.type_name(),
@@ -263,5 +417,287 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert_eq!(introspected, schema());
         assert!(matches!(missing, DbFormatError::NoSuchTable(t) if t == "nope"));
+    }
+
+    #[test]
+    fn read_rejects_dynamic_cells_that_violate_the_declared_schema() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_dynamic_types_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "typed",
+            vec![
+                SchemaNode::scalar("age", ScalarType::Int),
+                SchemaNode::scalar("payload", ScalarType::String),
+                SchemaNode::scalar("member", ScalarType::Bool),
+            ],
+        )
+        .repeating();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE typed (age INTEGER, payload TEXT, member BOOLEAN); \
+             INSERT INTO typed VALUES (1.5, 'ok', 1);",
+        )
+        .unwrap();
+        drop(conn);
+
+        assert!(matches!(
+            read(&path, &schema),
+            Err(DbFormatError::CellType {
+                column,
+                expected: ScalarType::Int,
+                got: "real"
+            }) if column == "age"
+        ));
+
+        let conn = Connection::open(&path).unwrap();
+        conn.execute("UPDATE typed SET age = 1, payload = x'00FF'", [])
+            .unwrap();
+        drop(conn);
+        assert!(matches!(
+            read(&path, &schema),
+            Err(DbFormatError::CellType {
+                column,
+                expected: ScalarType::String,
+                got: "blob"
+            }) if column == "payload"
+        ));
+
+        let conn = Connection::open(&path).unwrap();
+        conn.execute("UPDATE typed SET payload = 'ok', member = 2", [])
+            .unwrap();
+        drop(conn);
+        let error = read(&path, &schema).unwrap_err();
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            error,
+            DbFormatError::CellType {
+                column,
+                expected: ScalarType::Bool,
+                got: "integer"
+            } if column == "member"
+        ));
+    }
+
+    #[test]
+    fn write_enforces_declared_types_and_exact_integer_widening() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_write_types_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "metrics",
+            vec![
+                SchemaNode::scalar("score", ScalarType::Float),
+                SchemaNode::scalar("member", ScalarType::Bool),
+            ],
+        )
+        .repeating();
+        let row = |score, member| {
+            Instance::Group(vec![
+                ("score".into(), Instance::Scalar(score)),
+                ("member".into(), Instance::Scalar(member)),
+            ])
+        };
+
+        write(&path, &schema, &[row(Value::Int(42), Value::Bool(true))]).unwrap();
+        let rows = read(&path, &schema).unwrap();
+        assert_eq!(
+            rows[0].field("score").and_then(Instance::as_scalar),
+            Some(&Value::Float(42.0))
+        );
+        assert_eq!(exact_f64(i64::MIN), Some(i64::MIN as f64));
+
+        let mismatch = write(&path, &schema, &[row(Value::Float(1.0), Value::Int(1))]).unwrap_err();
+        assert!(matches!(
+            mismatch,
+            DbFormatError::ValueType {
+                column,
+                expected: ScalarType::Bool,
+                got: "int"
+            } if column == "member"
+        ));
+
+        let precision_loss = write(
+            &path,
+            &schema,
+            &[row(Value::Int((1_i64 << 53) + 1), Value::Bool(false))],
+        )
+        .unwrap_err();
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(
+            precision_loss,
+            DbFormatError::ValueType {
+                column,
+                expected: ScalarType::Float,
+                got: "int outside the exact f64 range"
+            } if column == "score"
+        ));
+    }
+
+    #[test]
+    fn read_orders_rows_by_rowid() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_row_order_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "ordered",
+            vec![SchemaNode::scalar("name", ScalarType::String)],
+        )
+        .repeating();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE ordered (name TEXT); \
+             INSERT INTO ordered(rowid, name) VALUES (10, 'ten'), (2, 'two'), (7, 'seven');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let names: Vec<_> = read(&path, &schema)
+            .unwrap()
+            .into_iter()
+            .map(|row| row.field("name").unwrap().as_scalar().unwrap().clone())
+            .collect();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(
+            names,
+            vec![
+                Value::String("two".into()),
+                Value::String("seven".into()),
+                Value::String("ten".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn read_supports_tables_without_rowid() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_without_rowid_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "keyed",
+            vec![
+                SchemaNode::scalar("group_id", ScalarType::Int),
+                SchemaNode::scalar("item_id", ScalarType::Int),
+                SchemaNode::scalar("name", ScalarType::String),
+            ],
+        )
+        .repeating();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE keyed (\
+                 group_id INTEGER NOT NULL, \
+                 item_id INTEGER NOT NULL, \
+                 name TEXT, \
+                 PRIMARY KEY (group_id, item_id)\
+             ) WITHOUT ROWID; \
+             INSERT INTO keyed VALUES (2, 1, 'second'), (1, 1, 'first');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let mut names: Vec<_> = read(&path, &schema)
+            .unwrap()
+            .into_iter()
+            .map(|row| row.field("name").unwrap().as_scalar().unwrap().clone())
+            .collect();
+        std::fs::remove_file(&path).unwrap();
+        names.sort_by_key(|value| match value {
+            Value::String(text) => text.clone(),
+            other => panic!("expected a string, got {other:?}"),
+        });
+        assert_eq!(
+            names,
+            vec![
+                Value::String("first".into()),
+                Value::String("second".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn write_rejects_incompatible_existing_affinity_before_replacing_rows() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_existing_affinity_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "metrics",
+            vec![SchemaNode::scalar("score", ScalarType::Float)],
+        )
+        .repeating();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE metrics (score TEXT); INSERT INTO metrics VALUES ('old');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let rows = [Instance::Group(vec![(
+            "score".into(),
+            Instance::Scalar(Value::Float(1.5)),
+        )])];
+        let error = write(&path, &schema, &rows).unwrap_err();
+        assert!(matches!(
+            error,
+            DbFormatError::ColumnAffinity {
+                column,
+                expected: ScalarType::Float,
+                declared,
+                affinity: "TEXT",
+            } if column == "score" && declared == "TEXT"
+        ));
+
+        let conn = Connection::open(&path).unwrap();
+        let preserved: String = conn
+            .query_row("SELECT score FROM metrics", [], |row| row.get(0))
+            .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(preserved, "old");
+    }
+
+    #[test]
+    fn failed_first_write_does_not_leave_a_table() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_atomic_create_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "metrics",
+            vec![SchemaNode::scalar("score", ScalarType::Int)],
+        )
+        .repeating();
+        let rows = [Instance::Group(vec![(
+            "score".into(),
+            Instance::Scalar(Value::String("not an integer".into())),
+        )])];
+
+        assert!(matches!(
+            write(&path, &schema, &rows),
+            Err(DbFormatError::ValueType {
+                column,
+                expected: ScalarType::Int,
+                got: "string",
+            }) if column == "score"
+        ));
+        let conn = Connection::open(&path).unwrap();
+        let table_count: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_schema WHERE type = 'table' AND name = 'metrics'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(table_count, 0);
     }
 }
