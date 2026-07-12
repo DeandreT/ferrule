@@ -440,6 +440,7 @@ fn instance_type_name(instance: &Instance) -> &'static str {
         Instance::Scalar(value) => value.type_name(),
         Instance::Group(_) => "group",
         Instance::Repeated(_) => "repeated",
+        Instance::MappedSequence(_) => "mapped sequence",
     }
 }
 
@@ -882,8 +883,30 @@ mod tests {
             Err(DbFormatError::RowShape { row: 0, got: "int" })
         ));
         assert!(matches!(
+            write(&path, &schema, &[Instance::MappedSequence(Vec::new())]),
+            Err(DbFormatError::RowShape {
+                row: 0,
+                got: "mapped sequence"
+            })
+        ));
+        assert!(matches!(
             write(&path, &schema, &[Instance::Group(Vec::new())]),
             Err(DbFormatError::MissingField { row: 0, column }) if column == "score"
+        ));
+        assert!(matches!(
+            write(
+                &path,
+                &schema,
+                &[Instance::Group(vec![(
+                    "score".into(),
+                    Instance::MappedSequence(Vec::new()),
+                )])],
+            ),
+            Err(DbFormatError::ValueType {
+                column,
+                expected: ScalarType::Int,
+                got: "mapped sequence",
+            }) if column == "score"
         ));
         assert!(matches!(
             write(

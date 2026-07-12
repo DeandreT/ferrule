@@ -448,6 +448,7 @@ fn instance_type_name(instance: &Instance) -> &'static str {
         Instance::Scalar(value) => value.type_name(),
         Instance::Group(_) => "object",
         Instance::Repeated(_) => "array",
+        Instance::MappedSequence(_) => "mapped sequence",
     }
 }
 
@@ -822,5 +823,26 @@ mod tests {
                 got: "object"
             } if name == "Field"
         ));
+
+        for mapped in [
+            Instance::MappedSequence(Vec::new()),
+            Instance::Group(vec![("Field".into(), Instance::MappedSequence(Vec::new()))]),
+        ] {
+            let (schema, instance) = match mapped {
+                Instance::Group(_) => (
+                    SchemaNode::group("Root", vec![SchemaNode::scalar("Field", ScalarType::Bool)]),
+                    mapped,
+                ),
+                _ => (SchemaNode::scalar("Field", ScalarType::Bool), mapped),
+            };
+            let error = write_node(&schema, &instance).unwrap_err();
+            assert!(matches!(
+                error,
+                JsonFormatError::Shape {
+                    got: "mapped sequence",
+                    ..
+                }
+            ));
+        }
     }
 }

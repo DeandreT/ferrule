@@ -6,6 +6,10 @@ use mapping::{Binding, Graph, IterationOutput, Node, Project, Scope};
 use super::{EngineError, run, validate};
 
 fn project() -> Project {
+    project_with_output(IterationOutput::First)
+}
+
+fn project_with_output(iteration_output: IterationOutput) -> Project {
     let person = SchemaNode::group(
         "Person",
         vec![
@@ -55,7 +59,7 @@ fn project() -> Project {
             (
                 2,
                 Node::Const {
-                    value: Value::Int(1),
+                    value: Value::Int(2),
                 },
             ),
             (
@@ -77,7 +81,7 @@ fn project() -> Project {
         source: Some(vec!["Person".into()]),
         filter: Some(1),
         take: Some(2),
-        iteration_output: IterationOutput::First,
+        iteration_output,
         bindings: vec![
             Binding {
                 target_field: "Name".into(),
@@ -215,6 +219,108 @@ fn validation_rejects_invalid_first_output_cardinality() {
         run(&without_iteration, &Instance::Group(Vec::new())),
         Err(EngineError::FirstOutputWithoutIteration)
     );
+}
+
+#[test]
+fn mapped_sequence_preserves_zero_one_or_many_ordered_items() {
+    let project = project_with_output(IterationOutput::MappedSequence);
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let cases = [
+        (vec![person("discarded", false)], Vec::<&str>::new()),
+        (vec![person("one", true)], vec!["one"]),
+        (
+            vec![person("first", true), person("second", true)],
+            vec!["first", "second"],
+        ),
+    ];
+
+    for (people, expected) in cases {
+        let source = Instance::Group(vec![(
+            "Department".into(),
+            Instance::Repeated(vec![department(people)]),
+        )]);
+        let output = run(&project, &source).unwrap();
+        let departments = output
+            .field("Department")
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        let selected = departments[0]
+            .field("Selected")
+            .and_then(Instance::as_mapped_sequence)
+            .unwrap();
+        let names = selected
+            .iter()
+            .filter_map(|item| item.field("Name").and_then(Instance::as_scalar))
+            .collect::<Vec<_>>();
+        let expected = expected
+            .into_iter()
+            .map(|name| Value::String(name.into()))
+            .collect::<Vec<_>>();
+        assert_eq!(names, expected.iter().collect::<Vec<_>>());
+    }
+}
+
+#[test]
+fn validation_rejects_invalid_mapped_sequence_scopes_and_targets() {
+    let mut root = project_with_output(IterationOutput::MappedSequence);
+    root.root.source = Some(vec!["Department".into()]);
+    root.root.iteration_output = IterationOutput::MappedSequence;
+    let issues = validate(&root);
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("mapped-sequence output is not valid for the project root scope")
+    }));
+
+    let mut repeating_target = project_with_output(IterationOutput::MappedSequence);
+    let SchemaKind::Group { children, .. } = &mut repeating_target.target.kind else {
+        panic!("test target must be a group");
+    };
+    let SchemaKind::Group { children, .. } = &mut children[0].kind else {
+        panic!("Department must be a group");
+    };
+    children[1].repeating = true;
+    let issues = validate(&repeating_target);
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("mapped-sequence output requires a non-repeating target group schema")
+    }));
+
+    let mut scalar_target = project_with_output(IterationOutput::MappedSequence);
+    let SchemaKind::Group { children, .. } = &mut scalar_target.target.kind else {
+        panic!("test target must be a group");
+    };
+    let SchemaKind::Group { children, .. } = &mut children[0].kind else {
+        panic!("Department must be a group");
+    };
+    children[1].kind = SchemaKind::Scalar {
+        ty: ScalarType::String,
+    };
+    let issues = validate(&scalar_target);
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("mapped-sequence output requires a non-repeating target group schema")
+    }));
+
+    let mut without_iteration = project_with_output(IterationOutput::MappedSequence);
+    without_iteration.root.children[0].children[0].source = None;
+    let issues = validate(&without_iteration);
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("mapped-sequence output requires an iterated source")
+    }));
+
+    let mut dynamic_merge = project_with_output(IterationOutput::MappedSequence);
+    dynamic_merge.root.children[0].children[0].merge_dynamic_fields = true;
+    let issues = validate(&dynamic_merge);
+    assert!(issues.iter().any(|issue| {
+        issue
+            .message
+            .contains("mapped-sequence output cannot be combined with dynamic object merge")
+    }));
 }
 
 #[test]
