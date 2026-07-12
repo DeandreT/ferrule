@@ -41,6 +41,7 @@ pub struct Segment {
 /// Separators used when serializing; `release` (EDIFACT's `?`) escapes the
 /// other separators inside component text, and `repetition` (X12 5010's
 /// `^`) joins the occurrences of a `repeating` element.
+#[derive(Clone, Copy)]
 pub(crate) struct WriteOptions {
     pub element: char,
     pub component: char,
@@ -112,7 +113,7 @@ pub(crate) fn root_trigger(schema: &SchemaNode) -> Result<&str, EdiFormatError> 
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(schema.name.clone()))?;
             Ok(&trigger_of(first)?.name)
         }
-        Shape::Segment(_) => unreachable!("the root is always classified as a container"),
+        Shape::Segment(_) => Err(EdiFormatError::UnsupportedSchema(schema.name.clone())),
     }
 }
 
@@ -322,8 +323,18 @@ fn read_segment(
 ) -> Result<Instance, EdiFormatError> {
     let segment = cursor
         .peek()
-        .expect("caller checked the trigger before consuming");
-    debug_assert_eq!(segment.id, node.name);
+        .ok_or_else(|| EdiFormatError::UnexpectedSegment {
+            index: cursor.pos,
+            expected: describe_trigger(node),
+            found: "end of interchange".to_string(),
+        })?;
+    if segment.id != node.name {
+        return Err(EdiFormatError::UnexpectedSegment {
+            index: cursor.pos,
+            expected: describe_trigger(node),
+            found: segment.id.clone(),
+        });
+    }
     static EMPTY_REPEATS: Vec<Vec<String>> = Vec::new();
     static EMPTY_COMPONENTS: Vec<String> = Vec::new();
     let mut fields = Vec::with_capacity(element_schemas.len());
@@ -376,7 +387,10 @@ fn read_one_repeat(
             let mut parts = Vec::with_capacity(component_schemas.len());
             for (j, component_schema) in component_schemas.iter().enumerate() {
                 let SchemaKind::Scalar { ty } = component_schema.kind else {
-                    unreachable!("shape_of validated composite children are scalars");
+                    return Err(EdiFormatError::UnsupportedSchema(format!(
+                        "{}/{}",
+                        element_schema.name, component_schema.name
+                    )));
                 };
                 let raw = components.get(j).map_or("", String::as_str);
                 parts.push((
@@ -442,7 +456,27 @@ fn write_node(
         Shape::Segment(element_schemas) => {
             let mut elements = element_schemas
                 .iter()
-                .map(|e| write_element(e, instance.field(&e.name), opts))
+                .enumerate()
+                .map(|(index, element)| {
+                    validate_isa_separator(
+                        &node.name,
+                        index,
+                        element,
+                        instance.field(&element.name),
+                        opts,
+                    )?;
+                    let allowed_reserved = match (node.name.as_str(), index) {
+                        ("ISA", 10) => opts.repetition,
+                        ("ISA", 15) => Some(opts.component),
+                        _ => None,
+                    };
+                    write_element(
+                        element,
+                        instance.field(&element.name),
+                        opts,
+                        allowed_reserved,
+                    )
+                })
                 .collect::<Result<Vec<String>, _>>()?;
             if node.name != "ISA" {
                 while elements.last().is_some_and(String::is_empty) {
@@ -468,10 +502,50 @@ fn write_node(
     Ok(())
 }
 
+fn validate_isa_separator(
+    segment: &str,
+    index: usize,
+    schema: &SchemaNode,
+    instance: Option<&Instance>,
+    opts: &WriteOptions,
+) -> Result<(), EdiFormatError> {
+    if segment != "ISA" {
+        return Ok(());
+    }
+    let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar));
+    let expected = match index {
+        10 => {
+            let mut chars = text.chars();
+            let Some(found) = chars.next() else {
+                return Ok(());
+            };
+            // In pre-5010 X12, ISA11 is an alphanumeric standards ID rather
+            // than a repetition separator.
+            if chars.next().is_some() || found.is_alphanumeric() {
+                return Ok(());
+            }
+            opts.repetition
+        }
+        15 => Some(opts.component),
+        _ => return Ok(()),
+    };
+    if let Some(expected) = expected
+        && text != expected.to_string()
+    {
+        return Err(EdiFormatError::EnvelopeSeparatorMismatch {
+            element: schema.name.clone(),
+            expected,
+            found: text,
+        });
+    }
+    Ok(())
+}
+
 fn write_element(
     schema: &SchemaNode,
     instance: Option<&Instance>,
     opts: &WriteOptions,
+    allowed_reserved: Option<char>,
 ) -> Result<String, EdiFormatError> {
     if let Some(Instance::Repeated(items)) = instance {
         let Some(repetition) = opts.repetition else {
@@ -482,22 +556,25 @@ fn write_element(
         };
         let repeats = items
             .iter()
-            .map(|item| write_one_repeat(schema, Some(item), opts))
-            .collect::<Vec<_>>();
+            .map(|item| write_one_repeat(schema, Some(item), opts, allowed_reserved))
+            .collect::<Result<Vec<_>, _>>()?;
         return Ok(repeats.join(&repetition.to_string()));
     }
-    Ok(write_one_repeat(schema, instance, opts))
+    write_one_repeat(schema, instance, opts, allowed_reserved)
 }
 
 fn write_one_repeat(
     schema: &SchemaNode,
     instance: Option<&Instance>,
     opts: &WriteOptions,
-) -> String {
+    allowed_reserved: Option<char>,
+) -> Result<String, EdiFormatError> {
     match &schema.kind {
         SchemaKind::Scalar { .. } => escape(
             &scalar_or_fixed(schema, instance.and_then(Instance::as_scalar)),
+            &schema.name,
             opts,
+            allowed_reserved,
         ),
         SchemaKind::Group { children } => {
             let mut components: Vec<String> = children
@@ -510,14 +587,16 @@ fn write_one_repeat(
                                 .and_then(|i| i.field(&c.name))
                                 .and_then(Instance::as_scalar),
                         ),
+                        &c.name,
                         opts,
+                        None,
                     )
                 })
-                .collect();
+                .collect::<Result<_, _>>()?;
             while components.last().is_some_and(String::is_empty) {
                 components.pop();
             }
-            components.join(&opts.component.to_string())
+            Ok(components.join(&opts.component.to_string()))
         }
     }
 }
@@ -535,18 +614,42 @@ fn scalar_or_fixed(schema: &SchemaNode, value: Option<&Value>) -> String {
     text
 }
 
-fn escape(text: &str, opts: &WriteOptions) -> String {
+fn escape(
+    text: &str,
+    element: &str,
+    opts: &WriteOptions,
+    allowed_reserved: Option<char>,
+) -> Result<String, EdiFormatError> {
     let Some(release) = opts.release else {
-        return text.to_string();
+        if text.chars().count() == 1 && text.chars().next() == allowed_reserved {
+            return Ok(text.to_string());
+        }
+        if let Some(delimiter) = text.chars().find(|character| {
+            *character == opts.element
+                || *character == opts.component
+                || *character == opts.terminator
+                || opts.repetition == Some(*character)
+        }) {
+            return Err(EdiFormatError::UnescapableDelimiter {
+                element: element.to_string(),
+                delimiter,
+            });
+        }
+        return Ok(text.to_string());
     };
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
-        if c == release || c == opts.element || c == opts.component || c == opts.terminator {
+        if c == release
+            || c == opts.element
+            || c == opts.component
+            || c == opts.terminator
+            || opts.repetition == Some(c)
+        {
             out.push(release);
         }
         out.push(c);
     }
-    out
+    Ok(out)
 }
 
 fn format_value(value: Option<&Value>) -> String {
