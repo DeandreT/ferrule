@@ -62,6 +62,7 @@ fn evaluates_a_function_call_over_source_fields() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "full_name".into(),
                 node: 3,
@@ -115,6 +116,7 @@ fn missing_source_field_is_reported() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
                 node: 0,
@@ -157,6 +159,7 @@ fn self_referential_node_is_a_cycle() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
                 node: 0,
@@ -231,6 +234,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![
                 Binding {
                     target_field: "cust".into(),
@@ -360,6 +364,7 @@ fn if_only_evaluates_the_taken_branch() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
                 node: 3,
@@ -417,6 +422,7 @@ fn value_map_falls_back_to_default_on_miss() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
                 node: 1,
@@ -483,6 +489,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![
                 Binding {
                     target_field: "age".into(),
@@ -661,6 +668,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "City".into(),
                 node: 0,
@@ -733,6 +741,7 @@ fn lookup_joins_rows_against_an_extra_source() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![
                 Binding {
                     target_field: "customer_id".into(),
@@ -817,6 +826,7 @@ fn scope_source_path_reaches_an_extra_source() {
             sort_by: None,
             sort_descending: false,
             take: None,
+            iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "name".into(),
                 node: 0,
