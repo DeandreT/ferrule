@@ -83,6 +83,9 @@ pub(super) fn classify_target_connection(
         .flatten()
         .and_then(|source| builder.schema_node(&source))
         .is_some_and(|source| !source.repeating && matches!(source.kind, SchemaKind::Group { .. }));
+    let max_one_database_source = builder
+        .iteration_source_path(&resolved)
+        .is_some_and(|source| builder.db_query_is_at_most_one(&source));
     if target_path.is_empty() {
         // Document-root connectors normally carry structural context only.
         // Treat one as a copy request only for an exact plain group feed.
@@ -95,6 +98,17 @@ pub(super) fn classify_target_connection(
                 "copy-all document connection also has connected descendants; mapping skipped"
                     .to_string(),
             );
+        } else if target.format == ComponentFormat::Xml
+            && max_one_database_source
+            && matches!(target_node.kind, SchemaKind::Group { .. })
+            && has_connected_descendant(target, target_path, builder)
+        {
+            iterations.push(TargetIteration {
+                target_path: target_path.to_vec(),
+                feed,
+                output: IterationOutput::First,
+                projects_whole_group: false,
+            });
         } else if copy_all
             && exact_group_source
             && !has_connected_descendant(target, target_path, builder)

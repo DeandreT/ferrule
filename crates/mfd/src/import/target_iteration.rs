@@ -53,11 +53,12 @@ fn build_one(
         return;
     }
     let existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
-    let (mut filter, database_sort, database_descending) = match builder.apply_db_controls(
-        feed.db_where_component,
-        source_path.as_ref(),
-        existing_filter,
-    ) {
+    let (mut filter, database_sort, database_descending, query_at_most_one) = match builder
+        .apply_db_controls(
+            feed.db_where_component,
+            source_path.as_ref(),
+            existing_filter,
+        ) {
         Ok(nodes) => nodes,
         Err(error) => {
             builder.warnings.push(error.warning(&target_path));
@@ -65,6 +66,24 @@ fn build_one(
             return;
         }
     };
+    if query_at_most_one
+        && (feed.db_where_component.is_some()
+            || feed.has_filter
+            || feed.has_key_grouping
+            || feed.has_block_grouping
+            || feed.distinct_key.is_some()
+            || feed.has_sort
+            || feed.take_expr.is_some()
+            || feed.take_default_one
+            || feed.order_issue.is_some())
+    {
+        builder.warnings.push(format!(
+            "database LIMIT 1 feeding `{}` is followed by sequence controls whose order cannot be represented exactly; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
+        return;
+    }
     let distinct = feed.distinct_key.and_then(|key| builder.value_node(key));
     let group = feed
         .group_key
@@ -100,16 +119,21 @@ fn build_one(
         return;
     }
     let sort = ordinary_sort.or(database_sort);
-    let take = feed
-        .take_expr
-        .and_then(|key| builder.value_node(key))
-        .or_else(|| {
-            feed.take_default_one.then(|| {
-                builder.alloc(Node::Const {
-                    value: Value::Int(1),
+    let take = if query_at_most_one {
+        Some(builder.alloc(Node::Const {
+            value: Value::Int(1),
+        }))
+    } else {
+        feed.take_expr
+            .and_then(|key| builder.value_node(key))
+            .or_else(|| {
+                feed.take_default_one.then(|| {
+                    builder.alloc(Node::Const {
+                        value: Value::Int(1),
+                    })
                 })
             })
-        });
+    };
     let nodes = IterationNodes {
         filter,
         group_by: group,

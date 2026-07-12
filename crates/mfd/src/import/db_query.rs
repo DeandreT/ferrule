@@ -11,8 +11,10 @@ use super::source::SourcePath;
 
 mod catalog;
 mod correlated;
+mod sql;
 
 pub(super) use catalog::read_embedded_catalog;
+use sql::{Parser, valid_identifier};
 
 #[derive(Clone)]
 pub(super) struct DbQuery {
@@ -20,6 +22,24 @@ pub(super) struct DbQuery {
     collection: Vec<String>,
     predicates: Vec<QueryPredicate>,
     order: Option<QueryOrder>,
+    cardinality: QueryCardinality,
+}
+
+#[cfg(test)]
+pub(super) fn at_most_one_query_for_test(collection: Vec<String>) -> DbQuery {
+    DbQuery {
+        name: "query".to_string(),
+        collection,
+        predicates: Vec::new(),
+        order: None,
+        cardinality: QueryCardinality::AtMostOne,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum QueryCardinality {
+    Many,
+    AtMostOne,
 }
 
 #[derive(Clone)]
@@ -54,9 +74,15 @@ struct QueryOrder {
 
 struct ParsedQuery {
     table: String,
-    columns: Vec<String>,
+    projection: QueryProjection,
     predicates: Vec<ParsedPredicate>,
     order: Option<QueryOrder>,
+    cardinality: QueryCardinality,
+}
+
+enum QueryProjection {
+    All,
+    Columns(Vec<String>),
 }
 
 struct ParsedPredicate {
@@ -180,6 +206,39 @@ pub(super) fn read_component(
             "query name encodes a correlation but no relation metadata matches it".to_string(),
         );
     }
+    read_uncorrelated_component(component, mfd_path, &connection, query_name, false)
+}
+
+pub(super) fn read_inline_component(
+    component: &roxmltree::Node<'_, '_>,
+    mapping: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    query_name: &str,
+) -> Result<SchemaComponent, String> {
+    let connection = query_connection(mapping, query_name)?;
+    if !connection
+        .attribute("database_kind")
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("SQLite"))
+        || !connection
+            .attribute("import_kind")
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("SQLite"))
+    {
+        return Err("only SQLite query datasources are supported".to_string());
+    }
+    if has_query_relation(&connection, query_name) {
+        return Err("standalone inline queries cannot participate in a relation".to_string());
+    }
+    read_uncorrelated_component(component, mfd_path, &connection, query_name, true)
+}
+
+fn read_uncorrelated_component(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    connection: &roxmltree::Node<'_, '_>,
+    query_name: &str,
+    inline: bool,
+) -> Result<SchemaComponent, String> {
+    let name = component.attribute("name").unwrap_or_default();
     let local_view = connection
         .descendants()
         .filter(|node| {
@@ -200,7 +259,6 @@ pub(super) fn read_component(
         .attribute("SQL")
         .ok_or_else(|| "query definition has no SQL text".to_string())?;
     let parsed = Parser::new(sql)?.parse()?;
-    ensure_unique_names("SQL projection", &parsed.columns)?;
 
     let declared_parameters = read_parameter_types(local_view)?;
     let parameter_keys = read_parameter_keys(component)?;
@@ -249,13 +307,13 @@ pub(super) fn read_component(
     }
     let physical = format_db::introspect(&db_path, &parsed.table)
         .map_err(|error| format!("could not introspect table `{}` ({error})", parsed.table))?;
-    let schema = query_schema(
-        &physical,
-        &parsed.columns,
-        &predicates,
-        parsed.order.as_ref(),
-    )?;
-    let ports = read_output_ports(component, &parsed.columns, &schema)?;
+    let columns = projection_columns(&parsed.projection, &physical)?;
+    let schema = query_schema(&physical, &columns, &predicates, parsed.order.as_ref())?;
+    let ports = if inline {
+        read_inline_output_ports(component, &columns, &schema)?
+    } else {
+        read_output_ports(component, &columns, &schema)?
+    };
     let data_root = component
         .children()
         .find(|node| node.has_tag_name("data"))
@@ -278,10 +336,11 @@ pub(super) fn read_component(
         input_keys,
         output_keys,
         db_queries: vec![DbQuery {
-            name: name.to_string(),
+            name: query_name.to_string(),
             collection: Vec::new(),
             predicates,
             order: parsed.order,
+            cardinality: parsed.cardinality,
         }],
         dynamic_json: None,
     })
@@ -425,6 +484,31 @@ fn query_schema(
     Ok(SchemaNode::group(physical.name.clone(), projected).repeating())
 }
 
+fn projection_columns(
+    projection: &QueryProjection,
+    physical: &SchemaNode,
+) -> Result<Vec<String>, String> {
+    match projection {
+        QueryProjection::Columns(columns) => {
+            ensure_unique_names("SQL projection", columns)?;
+            Ok(columns.clone())
+        }
+        QueryProjection::All => match &physical.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .map(|column| match column.kind {
+                    SchemaKind::Scalar { .. } if !column.repeating => Ok(column.name.clone()),
+                    _ => Err(format!(
+                        "table `{}` contains a non-scalar column that cannot be expanded from `*`",
+                        physical.name
+                    )),
+                })
+                .collect(),
+            SchemaKind::Scalar { .. } => Err("introspected query table is not a group".to_string()),
+        },
+    }
+}
+
 fn read_output_ports(
     component: &roxmltree::Node<'_, '_>,
     selected: &[String],
@@ -491,6 +575,87 @@ fn read_output_ports(
     Ok(ports)
 }
 
+fn read_inline_output_ports(
+    component: &roxmltree::Node<'_, '_>,
+    selected: &[String],
+    schema: &SchemaNode,
+) -> Result<BTreeMap<u32, Vec<String>>, String> {
+    let active = component
+        .descendants()
+        .filter(|entry| {
+            entry.has_tag_name("entry")
+                && entry.attribute("type") == Some("routine")
+                && entry.attribute("outkey").is_some()
+        })
+        .collect::<Vec<_>>();
+    let [routine] = active.as_slice() else {
+        return Err("inline query must expose exactly one collection output".to_string());
+    };
+    if component.descendants().any(|entry| {
+        entry.has_tag_name("entry")
+            && entry.attribute("outkey").is_some()
+            && entry != *routine
+            && !entry.ancestors().any(|ancestor| ancestor == *routine)
+    }) {
+        return Err("inline query contains outputs outside its result collection".to_string());
+    }
+    let tables = routine
+        .children()
+        .filter(|entry| entry.has_tag_name("entry") && entry.attribute("type") == Some("table"))
+        .collect::<Vec<_>>();
+    let [table] = tables.as_slice() else {
+        return Err("inline query result must contain exactly one table entry".to_string());
+    };
+    let columns = table
+        .children()
+        .filter(|entry| entry.has_tag_name("entry"))
+        .collect::<Vec<_>>();
+    if columns.iter().any(|entry| {
+        entry.children().any(|child| child.has_tag_name("entry"))
+            || entry
+                .attribute("type")
+                .is_some_and(|kind| kind != "attribute")
+    }) {
+        return Err("inline query result contains unsupported nested entries".to_string());
+    }
+    let mut ports = BTreeMap::new();
+    let collection_key = parse_u32(routine.attribute("outkey"))
+        .ok_or_else(|| "inline query collection has an invalid output key".to_string())?;
+    ports.insert(collection_key, Vec::new());
+    let mut output_names = BTreeSet::new();
+    for entry in columns {
+        let name = entry.attribute("name").unwrap_or_default();
+        let key = parse_u32(entry.attribute("outkey"))
+            .ok_or_else(|| format!("inline query output `{name}` has an invalid key"))?;
+        if !output_names.insert(name.to_ascii_lowercase()) {
+            return Err(format!(
+                "inline query result exposes output `{name}` more than once ignoring ASCII case"
+            ));
+        }
+        let canonical = match &schema.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .find(|child| child.name.eq_ignore_ascii_case(name)),
+            SchemaKind::Scalar { .. } => None,
+        }
+        .map(|child| child.name.clone())
+        .ok_or_else(|| format!("inline query output `{name}` is not in the typed schema"))?;
+        if ports.insert(key, vec![canonical]).is_some() {
+            return Err(format!(
+                "inline query output key `{key}` is used more than once"
+            ));
+        }
+    }
+    let selected_names = selected
+        .iter()
+        .map(|name| name.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    if output_names != selected_names {
+        return Err("SQL projection does not match the inline query outputs".to_string());
+    }
+    Ok(ports)
+}
+
 fn is_output_leaf(node: &roxmltree::Node<'_, '_>) -> bool {
     node.has_tag_name("entry")
         && node.attribute("type") == Some("attribute")
@@ -542,8 +707,8 @@ impl GraphBuilder<'_> {
         db_where: Option<usize>,
         source_path: Option<&SourcePath>,
         existing_filter: Option<NodeId>,
-    ) -> Result<(Option<NodeId>, Option<NodeId>, bool), DbControlError> {
-        let (query_filter, query_sort, query_descending) = self
+    ) -> Result<(Option<NodeId>, Option<NodeId>, bool, bool), DbControlError> {
+        let (query_filter, query_sort, query_descending, query_at_most_one) = self
             .apply_db_query(source_path, existing_filter)
             .map_err(DbControlError::Query)?;
         let (filter, where_sort, where_descending) = self
@@ -567,6 +732,7 @@ impl GraphBuilder<'_> {
             } else {
                 where_descending
             },
+            query_at_most_one,
         ))
     }
 
@@ -574,12 +740,12 @@ impl GraphBuilder<'_> {
         &mut self,
         source_path: Option<&SourcePath>,
         existing_filter: Option<NodeId>,
-    ) -> Result<(Option<NodeId>, Option<NodeId>, bool), String> {
+    ) -> Result<(Option<NodeId>, Option<NodeId>, bool, bool), String> {
         let Some(source_path) = source_path else {
-            return Ok((existing_filter, None, false));
+            return Ok((existing_filter, None, false, false));
         };
         let Some(source) = self.sources.get(source_path.source) else {
-            return Ok((existing_filter, None, false));
+            return Ok((existing_filter, None, false, false));
         };
         let mut filter = existing_filter;
         let queries = source
@@ -590,12 +756,15 @@ impl GraphBuilder<'_> {
             .collect::<Vec<_>>();
         let mut sort = None;
         let mut descending = false;
+        let mut at_most_one = false;
         for query in queries {
             // A flattened multi-hop iteration retains every parent frame. Parent
             // predicates therefore evaluate identically for each child, and one
             // parent sort remains a stable ordering by that parent value.
             let mut collection = source_path.clone();
-            collection.path = query.collection;
+            collection.path = query.collection.clone();
+            at_most_one |= query.collection == source_path.path
+                && query.cardinality == QueryCardinality::AtMostOne;
             for predicate in query.predicates {
                 if matches!(predicate.operand, QueryOperand::Correlated) {
                     continue;
@@ -629,7 +798,13 @@ impl GraphBuilder<'_> {
                 descending = direction;
             }
         }
-        Ok((filter, sort, descending))
+        Ok((filter, sort, descending, at_most_one))
+    }
+
+    pub(super) fn db_query_is_at_most_one(&self, source_path: &SourcePath) -> bool {
+        self.sources
+            .get(source_path.source)
+            .is_some_and(|source| source_query_is_at_most_one(source, &source_path.path))
     }
 
     fn query_predicate_node(
@@ -742,6 +917,13 @@ impl GraphBuilder<'_> {
     }
 }
 
+pub(super) fn source_query_is_at_most_one(source: &SchemaComponent, path: &[String]) -> bool {
+    source
+        .db_queries
+        .iter()
+        .any(|query| query.collection == path && query.cardinality == QueryCardinality::AtMostOne)
+}
+
 fn coerce_value(value: Value, ty: ScalarType) -> Result<Value, String> {
     match (value, ty) {
         (Value::String(value), ScalarType::String) => Ok(Value::String(value)),
@@ -769,242 +951,6 @@ fn coerce_value(value: Value, ty: ScalarType) -> Result<Value, String> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum Token {
-    Word(String),
-    String(String),
-    Number(String),
-    Parameter(String),
-    Comma,
-    Equal,
-    Semicolon,
-}
-
-struct Parser {
-    tokens: Vec<Token>,
-    position: usize,
-}
-
-impl Parser {
-    fn new(sql: &str) -> Result<Self, String> {
-        Ok(Self {
-            tokens: tokenize(sql)?,
-            position: 0,
-        })
-    }
-
-    fn parse(mut self) -> Result<ParsedQuery, String> {
-        self.keyword("SELECT")?;
-        let mut columns = vec![self.identifier()?];
-        while self.take(&Token::Comma) {
-            columns.push(self.identifier()?);
-        }
-        ensure_unique_names("SQL projection", &columns)?;
-        self.keyword("FROM")?;
-        let table = self.identifier()?;
-        let mut predicates = Vec::new();
-        if self.take_keyword("WHERE") {
-            loop {
-                let column = self.identifier()?;
-                let operator = if self.take(&Token::Equal) {
-                    QueryOperator::Equal
-                } else if self.take_keyword("LIKE") {
-                    QueryOperator::Like
-                } else {
-                    return Err("query predicates must use `=` or `LIKE`".to_string());
-                };
-                let operand = match self.next() {
-                    Some(Token::Parameter(name)) => ParsedOperand::Parameter(name),
-                    Some(Token::String(value)) => ParsedOperand::Literal(Value::String(value)),
-                    Some(Token::Number(value)) => ParsedOperand::Literal(parse_number(&value)?),
-                    _ => {
-                        return Err(
-                            "query predicate operands must be named parameters or literals"
-                                .to_string(),
-                        );
-                    }
-                };
-                predicates.push(ParsedPredicate {
-                    column,
-                    operator,
-                    operand,
-                });
-                if !self.take_keyword("AND") {
-                    break;
-                }
-            }
-        }
-        let order = if self.take_keyword("ORDER") {
-            self.keyword("BY")?;
-            let column = self.identifier()?;
-            let descending = if self.take_keyword("DESC") {
-                true
-            } else {
-                self.take_keyword("ASC");
-                false
-            };
-            Some(QueryOrder { column, descending })
-        } else {
-            None
-        };
-        self.take(&Token::Semicolon);
-        if self.position != self.tokens.len() {
-            return Err(
-                "only a single-table SELECT with conjunction predicates is supported".to_string(),
-            );
-        }
-        Ok(ParsedQuery {
-            table,
-            columns,
-            predicates,
-            order,
-        })
-    }
-
-    fn identifier(&mut self) -> Result<String, String> {
-        match self.next() {
-            Some(Token::Word(word)) if valid_identifier(&word) => Ok(word),
-            _ => Err("expected a simple SQL identifier".to_string()),
-        }
-    }
-
-    fn keyword(&mut self, expected: &str) -> Result<(), String> {
-        self.take_keyword(expected)
-            .then_some(())
-            .ok_or_else(|| format!("expected SQL keyword `{expected}`"))
-    }
-
-    fn take_keyword(&mut self, expected: &str) -> bool {
-        let matches = self.tokens.get(self.position).is_some_and(
-            |token| matches!(token, Token::Word(word) if word.eq_ignore_ascii_case(expected)),
-        );
-        if matches {
-            self.position += 1;
-        }
-        matches
-    }
-
-    fn take(&mut self, expected: &Token) -> bool {
-        if self.tokens.get(self.position) == Some(expected) {
-            self.position += 1;
-            true
-        } else {
-            false
-        }
-    }
-
-    fn next(&mut self) -> Option<Token> {
-        let token = self.tokens.get(self.position).cloned();
-        self.position += usize::from(token.is_some());
-        token
-    }
-}
-
-fn tokenize(sql: &str) -> Result<Vec<Token>, String> {
-    let chars = sql.chars().collect::<Vec<_>>();
-    let mut tokens = Vec::new();
-    let mut index = 0;
-    while index < chars.len() {
-        match chars[index] {
-            character if character.is_ascii_whitespace() => index += 1,
-            ',' => {
-                tokens.push(Token::Comma);
-                index += 1;
-            }
-            '=' => {
-                tokens.push(Token::Equal);
-                index += 1;
-            }
-            ';' => {
-                tokens.push(Token::Semicolon);
-                index += 1;
-            }
-            '"' => {
-                let (value, next) = quoted(&chars, index + 1, '"')?;
-                tokens.push(Token::Word(value));
-                index = next;
-            }
-            '\'' => {
-                let (value, next) = quoted(&chars, index + 1, '\'')?;
-                tokens.push(Token::String(value));
-                index = next;
-            }
-            ':' => {
-                let (value, next) = bare(&chars, index + 1);
-                if !valid_identifier(&value) {
-                    return Err("query contains an invalid named parameter".to_string());
-                }
-                tokens.push(Token::Parameter(value));
-                index = next;
-            }
-            character if character.is_ascii_digit() || matches!(character, '+' | '-') => {
-                let start = index;
-                index += 1;
-                while index < chars.len()
-                    && (chars[index].is_ascii_digit()
-                        || matches!(chars[index], '.' | 'e' | 'E' | '+' | '-'))
-                {
-                    index += 1;
-                }
-                tokens.push(Token::Number(chars[start..index].iter().collect()));
-            }
-            character if character == '_' || character.is_ascii_alphabetic() => {
-                let (value, next) = bare(&chars, index);
-                tokens.push(Token::Word(value));
-                index = next;
-            }
-            character => {
-                return Err(format!(
-                    "unsupported SQL token `{character}`; joins, expressions, and comments are not accepted"
-                ));
-            }
-        }
-    }
-    Ok(tokens)
-}
-
-fn quoted(chars: &[char], mut index: usize, quote: char) -> Result<(String, usize), String> {
-    let mut value = String::new();
-    while index < chars.len() {
-        if chars[index] == quote {
-            if chars.get(index + 1) == Some(&quote) {
-                value.push(quote);
-                index += 2;
-            } else {
-                return Ok((value, index + 1));
-            }
-        } else {
-            value.push(chars[index]);
-            index += 1;
-        }
-    }
-    Err("unterminated quoted SQL value".to_string())
-}
-
-fn bare(chars: &[char], mut index: usize) -> (String, usize) {
-    let start = index;
-    while index < chars.len() && (chars[index] == '_' || chars[index].is_ascii_alphanumeric()) {
-        index += 1;
-    }
-    (chars[start..index].iter().collect(), index)
-}
-
-fn valid_identifier(identifier: &str) -> bool {
-    let mut bytes = identifier.bytes();
-    bytes
-        .next()
-        .is_some_and(|byte| byte == b'_' || byte.is_ascii_alphabetic())
-        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
-}
-
-fn parse_number(number: &str) -> Result<Value, String> {
-    number
-        .parse::<i64>()
-        .map(Value::Int)
-        .or_else(|_| number.parse::<f64>().map(Value::Float))
-        .map_err(|_| format!("invalid numeric SQL literal `{number}`"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1017,8 +963,31 @@ mod tests {
         .and_then(Parser::parse)
         .unwrap();
         assert_eq!(parsed.table, "Person");
-        assert_eq!(parsed.columns, ["First", "Title"]);
+        assert!(matches!(
+            parsed.projection,
+            QueryProjection::Columns(columns) if columns == ["First", "Title"]
+        ));
         assert_eq!(parsed.predicates.len(), 2);
+    }
+
+    #[test]
+    fn parses_all_columns_and_exact_limit_one() {
+        let parsed = Parser::new("SELECT * FROM Articles ORDER BY Price DESC LIMIT 1")
+            .and_then(Parser::parse)
+            .unwrap();
+        assert!(matches!(parsed.projection, QueryProjection::All));
+        assert_eq!(parsed.cardinality, QueryCardinality::AtMostOne);
+    }
+
+    #[test]
+    fn rejects_other_limits_offsets_and_dynamic_limits() {
+        for sql in [
+            "SELECT * FROM Articles LIMIT 2",
+            "SELECT * FROM Articles LIMIT :count",
+            "SELECT * FROM Articles LIMIT 1 OFFSET 0",
+        ] {
+            assert!(Parser::new(sql).and_then(Parser::parse).is_err(), "{sql}");
+        }
     }
 
     #[test]

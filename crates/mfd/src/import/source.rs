@@ -58,9 +58,14 @@ pub(super) fn primary_index(
                     .any(|key| edge_from.contains_key(key));
             let mapped_group_drives_repetition =
                 mapped_xml_group && group_below_repetition(&source.schema, source_path);
+            let max_one_query_drives_root = mapped_xml_group
+                && super::db_query::source_query_is_at_most_one(source, source_path);
             if source.input_instance.is_some()
                 && !has_dynamic_input
-                && (row_root || repeating_group || mapped_group_drives_repetition)
+                && (row_root
+                    || repeating_group
+                    || mapped_group_drives_repetition
+                    || max_one_query_drives_root)
             {
                 scores[index] += 1;
             }
@@ -482,6 +487,55 @@ mod tests {
 
         assert_eq!(
             primary_index(&[&fallback, &mapped], &target, &edges, &[filter]),
+            1
+        );
+    }
+
+    #[test]
+    fn max_one_database_query_driving_xml_root_selects_primary() {
+        let fallback = component(
+            "fallback",
+            SchemaNode::group(
+                "Fallback",
+                vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+            ),
+            (1, vec!["Value"]),
+        );
+        let mut query = component(
+            "query",
+            SchemaNode::group(
+                "Articles",
+                vec![SchemaNode::scalar("Name", ir::ScalarType::String)],
+            )
+            .repeating(),
+            (7, Vec::new()),
+        );
+        query.format = ComponentFormat::Db;
+        query.input_instance = Some("articles.sqlite".to_string());
+        query.db_queries = vec![super::super::db_query::at_most_one_query_for_test(
+            Vec::new(),
+        )];
+        let mut target = component(
+            "target",
+            SchemaNode::group(
+                "Article",
+                vec![SchemaNode::scalar("Name", ir::ScalarType::String)],
+            ),
+            (90, Vec::new()),
+        );
+        target.input_instance = None;
+        target.output_instance = Some("target.xml".to_string());
+        target.is_source = false;
+        target.input_keys = BTreeSet::from([90]);
+        target.output_keys.clear();
+
+        assert_eq!(
+            primary_index(
+                &[&fallback, &query],
+                &target,
+                &BTreeMap::from([(90, 7)]),
+                &[]
+            ),
             1
         );
     }

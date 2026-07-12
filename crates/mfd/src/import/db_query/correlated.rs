@@ -5,9 +5,9 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::FormatOptions;
 
 use super::{
-    DbQuery, ParsedOperand, ParsedQuery, Parser, QueryOperand, QueryOperator, QueryOrder,
-    QueryPredicate, ensure_unique_names, query_schema, read_parameter_keys, read_parameter_types,
-    same_query_identity,
+    DbQuery, ParsedOperand, ParsedQuery, Parser, QueryCardinality, QueryOperand, QueryOperator,
+    QueryOrder, QueryPredicate, QueryProjection, ensure_unique_names, query_schema,
+    read_parameter_keys, read_parameter_types, same_query_identity,
 };
 use crate::import::schema::{ComponentFormat, SchemaComponent, entry_key_sets, parse_u32};
 
@@ -27,6 +27,13 @@ struct QueryPlan {
     order: Option<QueryOrder>,
     correlated_type: Option<ScalarType>,
     correlated_column: Option<String>,
+}
+
+struct ResolvedQuery {
+    table: String,
+    columns: Vec<String>,
+    predicates: Vec<super::ParsedPredicate>,
+    order: Option<QueryOrder>,
 }
 
 pub(super) struct CatalogRoutine<'a, 'input> {
@@ -205,6 +212,7 @@ fn read_correlated_component(
             collection: parent_path,
             predicates: parent.predicates,
             order: parent.order,
+            cardinality: QueryCardinality::Many,
         });
     }
     queries.push(DbQuery {
@@ -212,6 +220,7 @@ fn read_correlated_component(
         collection: child_path,
         predicates: child.predicates,
         order: child.order,
+        cardinality: QueryCardinality::Many,
     });
     Ok(SchemaComponent {
         name: component.attribute("name").unwrap_or_default().to_string(),
@@ -333,21 +342,48 @@ fn read_query_plan(
             .ok_or_else(|| format!("query `{name}` has no SQL text"))?,
     )?
     .parse()?;
-    ensure_unique_names("SQL projection", &parsed.columns)?;
+    let ParsedQuery {
+        table,
+        projection,
+        predicates,
+        order,
+        cardinality,
+    } = parsed;
+    let columns = match projection {
+        QueryProjection::Columns(columns) => columns,
+        QueryProjection::All => {
+            return Err("`SELECT *` is supported only for standalone queries".to_string());
+        }
+    };
+    ensure_unique_names("SQL projection", &columns)?;
+    if cardinality != QueryCardinality::Many {
+        return Err("SQL LIMIT is supported only for standalone queries".to_string());
+    }
     let declarations = read_parameter_types(view)?;
-    build_plan(name, parsed, &declarations, parameter_keys, correlated)
+    build_plan(
+        name,
+        ResolvedQuery {
+            table,
+            columns,
+            predicates,
+            order,
+        },
+        &declarations,
+        parameter_keys,
+        correlated,
+    )
 }
 
 fn build_plan(
     name: &str,
-    parsed: ParsedQuery,
+    query: ResolvedQuery,
     declarations: &BTreeMap<String, ScalarType>,
     parameter_keys: &BTreeMap<String, u32>,
     correlated: Option<&str>,
 ) -> Result<QueryPlan, String> {
     let mut correlated_type = None;
     let mut correlated_column = None;
-    let predicates = parsed
+    let predicates = query
         .predicates
         .into_iter()
         .map(|predicate| {
@@ -390,10 +426,10 @@ fn build_plan(
     }
     Ok(QueryPlan {
         name: name.to_string(),
-        table: parsed.table,
-        selected: parsed.columns,
+        table: query.table,
+        selected: query.columns,
         predicates,
-        order: parsed.order,
+        order: query.order,
         correlated_type,
         correlated_column,
     })
