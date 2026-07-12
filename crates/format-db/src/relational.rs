@@ -77,6 +77,41 @@ pub(super) fn read_instance(
     Ok(Instance::Group(fields))
 }
 
+pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(), DbFormatError> {
+    let conn = Connection::open(db_path)?;
+    if schema.repeating {
+        let physical_table = physical_table_name(&schema.name)?;
+        build_table_plan(&conn, schema, physical_table)?;
+        return Ok(());
+    }
+
+    let SchemaKind::Group { children } = &schema.kind else {
+        return Err(invalid_schema(schema, "database root must be a group"));
+    };
+    if children.is_empty() {
+        return Err(invalid_schema(
+            schema,
+            "composite database root must contain at least one table",
+        ));
+    }
+    for table in children {
+        if !table.repeating || !matches!(table.kind, SchemaKind::Group { .. }) {
+            return Err(invalid_schema(
+                table,
+                "composite database children must be repeating table groups",
+            ));
+        }
+        if table.name.contains('|') {
+            return Err(invalid_schema(
+                table,
+                "top-level table names cannot contain a relationship join column",
+            ));
+        }
+        build_table_plan(&conn, table, &table.name)?;
+    }
+    Ok(())
+}
+
 fn is_flat_table(schema: &SchemaNode) -> bool {
     matches!(
         &schema.kind,

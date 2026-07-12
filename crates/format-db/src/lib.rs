@@ -229,6 +229,15 @@ pub fn read_instance(db_path: &Path, schema: &SchemaNode) -> Result<Instance, Db
     relational::read_instance(db_path, schema)
 }
 
+/// Validates a relational database schema against SQLite's foreign-key
+/// metadata without reading any table rows.
+pub fn validate_relational_schema(
+    db_path: &Path,
+    schema: &SchemaNode,
+) -> Result<(), DbFormatError> {
+    relational::validate_schema(db_path, schema)
+}
+
 /// Converts a SQLite value to an ir [`Value`], guided by the declared
 /// scalar type (SQLite is dynamically typed, so stored values may need
 /// widening -- e.g. an INTEGER cell in a REAL column).
