@@ -206,6 +206,11 @@ pub struct Scope {
     /// for a source-backed or generated iteration.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_by: Option<NodeId>,
+    /// Partitions iterated items into contiguous groups of this many members.
+    /// The expression is evaluated once in the parent context and must produce
+    /// a positive item count. Mutually exclusive with [`Scope::group_by`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_into_blocks: Option<NodeId>,
     /// Sort key evaluated once per candidate item. Incomparable values keep
     /// their source order.
     #[serde(default, skip_serializing_if = "Option::is_none")]

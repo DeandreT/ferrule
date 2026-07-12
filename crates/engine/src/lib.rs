@@ -25,6 +25,10 @@ pub enum EngineError {
     NotABool { node: NodeId, found: &'static str },
     #[error("node {node}: expected an item count, got {found}")]
     NotAnItemCount { node: NodeId, found: &'static str },
+    #[error("node {node}: group block size must be greater than zero")]
+    InvalidBlockSize { node: NodeId },
+    #[error("a scope cannot combine group-by with group-into-blocks")]
+    ConflictingGroupingModes,
     #[error("node {node}: value-map lookup missed and there's no default")]
     ValueMapMiss { node: NodeId },
     #[error("a scope with `filter` but no `source` filtered out its only item")]
@@ -73,7 +77,7 @@ struct WalkExtension<'a> {
 }
 
 struct GroupBucket {
-    key: Value,
+    key: Option<Value>,
     members: Vec<Instance>,
     intermediate_frames: Vec<Instance>,
     positions: Vec<PositionFrame>,
@@ -84,6 +88,12 @@ struct OwnedGroup {
     intermediate_frames: Vec<Instance>,
     members: Instance,
     positions: Vec<PositionFrame>,
+}
+
+#[derive(Clone, Copy)]
+enum GroupingMode {
+    By(NodeId),
+    IntoBlocks(usize),
 }
 
 fn eval_scope(
@@ -167,9 +177,18 @@ fn eval_scope(
         .take
         .map(|node| eval_item_count(graph, node, context, positions))
         .transpose()?;
+    let grouping = match (scope.group_by, scope.group_into_blocks) {
+        (Some(_), Some(_)) => return Err(EngineError::ConflictingGroupingModes),
+        (Some(node), None) => Some(GroupingMode::By(node)),
+        (None, Some(node)) => Some(GroupingMode::IntoBlocks(eval_block_size(
+            graph, node, context, positions,
+        )?)),
+        (None, None) => None,
+    };
     let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
-    if let Some(key_node) = scope.group_by {
-        // Partition the iterated items by their key, in first-seen order.
+    if let Some(grouping) = grouping {
+        // Partition key groups in first-seen order and block groups in
+        // contiguous source order. Both become the same grouped frame below.
         let mut groups: Vec<GroupBucket> = Vec::new();
         for extension in &extensions {
             let mut item_context = context.to_vec();
@@ -179,20 +198,31 @@ fn eval_scope(
             if !passes_filter(graph, scope.filter, &item_context, &item_positions)? {
                 continue;
             }
-            let mut in_progress = HashSet::new();
-            let key = eval_expr(
-                graph,
-                key_node,
-                &item_context,
-                &item_positions,
-                &mut in_progress,
-            )?;
             let member = (*extension
                 .instances
                 .last()
                 .expect("extensions are never empty"))
             .clone();
-            match groups.iter_mut().find(|group| group.key == key) {
+            let key = match grouping {
+                GroupingMode::By(key_node) => {
+                    let mut in_progress = HashSet::new();
+                    Some(eval_expr(
+                        graph,
+                        key_node,
+                        &item_context,
+                        &item_positions,
+                        &mut in_progress,
+                    )?)
+                }
+                GroupingMode::IntoBlocks(_) => None,
+            };
+            let existing = match grouping {
+                GroupingMode::By(_) => groups.iter_mut().find(|group| group.key == key),
+                GroupingMode::IntoBlocks(size) => {
+                    groups.last_mut().filter(|group| group.members.len() < size)
+                }
+            };
+            match existing {
                 Some(group) => group.members.push(member),
                 None => groups.push(GroupBucket {
                     key,
@@ -461,6 +491,19 @@ fn eval_item_count(
             node,
             found: value.type_name(),
         })
+}
+
+fn eval_block_size(
+    graph: &Graph,
+    node: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<usize, EngineError> {
+    let size = eval_item_count(graph, node, context, positions)?;
+    if size == 0 {
+        return Err(EngineError::InvalidBlockSize { node });
+    }
+    Ok(size)
 }
 
 /// Evaluates one iteration item: the filter (`None` when it drops the
@@ -1079,3 +1122,5 @@ mod aggregate_tests;
 mod collection_tests;
 #[cfg(test)]
 mod core_tests;
+#[cfg(test)]
+mod group_blocks_tests;
