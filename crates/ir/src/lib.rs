@@ -123,6 +123,10 @@ pub enum SchemaKind {
         /// merged `children` projection. Empty for ordinary groups.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         alternatives: Vec<GroupAlternative>,
+        /// Schema shared by computed object fields whose names are supplied
+        /// at mapping run time. Closed groups leave this unset.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dynamic: Option<Box<SchemaNode>>,
     },
 }
 
@@ -161,7 +165,38 @@ impl SchemaNode {
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
+                dynamic: None,
             },
+        }
+    }
+
+    /// Declares a homogeneous computed-field value schema for this group.
+    /// Object alternatives and open fields are intentionally exclusive: an
+    /// open object cannot be matched to one closed alternative exactly.
+    pub fn with_dynamic_fields(mut self, value: SchemaNode) -> Option<Self> {
+        self.set_dynamic_fields(Some(value)).then_some(self)
+    }
+
+    pub fn set_dynamic_fields(&mut self, value: Option<SchemaNode>) -> bool {
+        let SchemaKind::Group {
+            alternatives,
+            dynamic,
+            ..
+        } = &mut self.kind
+        else {
+            return false;
+        };
+        if value.is_some() && !alternatives.is_empty() {
+            return false;
+        }
+        *dynamic = value.map(Box::new);
+        true
+    }
+
+    pub fn dynamic_fields(&self) -> Option<&SchemaNode> {
+        match &self.kind {
+            SchemaKind::Group { dynamic, .. } => dynamic.as_deref(),
+            SchemaKind::Scalar { .. } => None,
         }
     }
 
@@ -175,11 +210,12 @@ impl SchemaNode {
         let SchemaKind::Group {
             children,
             alternatives: target,
+            dynamic,
         } = &mut self.kind
         else {
             return false;
         };
-        if !valid_group_alternatives(children, &alternatives) {
+        if dynamic.is_some() || !valid_group_alternatives(children, &alternatives) {
             return false;
         }
         *target = alternatives;
@@ -192,7 +228,11 @@ impl SchemaNode {
             SchemaKind::Group {
                 children,
                 alternatives,
-            } => alternatives.is_empty() || valid_group_alternatives(children, alternatives),
+                dynamic,
+            } => {
+                (alternatives.is_empty() || dynamic.is_none())
+                    && (alternatives.is_empty() || valid_group_alternatives(children, alternatives))
+            }
             SchemaKind::Scalar { .. } => true,
         }
     }
@@ -406,6 +446,41 @@ mod tests {
           }]}
         }"#;
         assert!(serde_json::from_str::<SchemaNode>(invalid_json).is_err());
+    }
+
+    #[test]
+    fn dynamic_group_metadata_is_typed_exclusive_and_serde_defaulted() {
+        let value = SchemaNode::scalar("value", ScalarType::String);
+        let open = SchemaNode::group("Object", Vec::new())
+            .with_dynamic_fields(value.clone())
+            .unwrap();
+        assert_eq!(open.dynamic_fields(), Some(&value));
+
+        let encoded = serde_json::to_string(&open).unwrap();
+        assert!(encoded.contains("\"dynamic\""));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded).unwrap(), open);
+
+        let closed: SchemaNode =
+            serde_json::from_str(r#"{"name":"Object","kind":{"kind":"group","children":[]}}"#)
+                .unwrap();
+        assert!(closed.dynamic_fields().is_none());
+
+        let alternatives = vec![
+            GroupAlternative {
+                name: "one".into(),
+                members: Vec::new(),
+                required: Vec::new(),
+            },
+            GroupAlternative {
+                name: "two".into(),
+                members: Vec::new(),
+                required: Vec::new(),
+            },
+        ];
+        let alternative = SchemaNode::group("Object", Vec::new())
+            .with_alternatives(alternatives)
+            .unwrap();
+        assert!(alternative.with_dynamic_fields(value).is_none());
     }
 
     #[test]
