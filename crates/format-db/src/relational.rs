@@ -46,7 +46,7 @@ pub(super) fn read_instance(
         return Ok(Instance::Repeated(rows));
     }
 
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(invalid_schema(schema, "database root must be a group"));
     };
     if children.is_empty() {
@@ -85,7 +85,7 @@ pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(),
         return Ok(());
     }
 
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(invalid_schema(schema, "database root must be a group"));
     };
     if children.is_empty() {
@@ -115,7 +115,7 @@ pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(),
 fn is_flat_table(schema: &SchemaNode) -> bool {
     matches!(
         &schema.kind,
-        SchemaKind::Group { children }
+        SchemaKind::Group { children, .. }
             if children
                 .iter()
                 .all(|child| matches!(child.kind, SchemaKind::Scalar { .. }) && !child.repeating)
@@ -130,7 +130,7 @@ fn build_table_plan<'a>(
     if !schema.repeating {
         return Err(invalid_schema(schema, "table groups must be repeating"));
     }
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(invalid_schema(schema, "table must be a group"));
     };
 
@@ -159,7 +159,7 @@ fn read_table(
     plan: &TablePlan<'_>,
     constraint: Option<(&str, &SqlValue)>,
 ) -> Result<Vec<Instance>, DbFormatError> {
-    let SchemaKind::Group { children } = &plan.schema.kind else {
+    let SchemaKind::Group { children, .. } = &plan.schema.kind else {
         return Err(invalid_schema(plan.schema, "table must be a group"));
     };
     let selected = selected_columns(&plan.scalar_columns, &plan.relations);
@@ -235,7 +235,7 @@ fn read_table(
 }
 
 fn columns_of_relational(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatError> {
-    let SchemaKind::Group { children } = &schema.kind else {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(invalid_schema(schema, "table must be a group"));
     };
     children

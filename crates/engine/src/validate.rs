@@ -30,6 +30,26 @@ impl fmt::Display for ValidationIssue {
 /// names, and cycles without reading input data or evaluating expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
+    validate_schema(
+        "source schema",
+        &project.source,
+        &mut Vec::new(),
+        &mut issues,
+    );
+    validate_schema(
+        "target schema",
+        &project.target,
+        &mut Vec::new(),
+        &mut issues,
+    );
+    for source in &project.extra_sources {
+        validate_schema(
+            &format!("extra source `{}` schema", source.name),
+            &source.schema,
+            &mut Vec::new(),
+            &mut issues,
+        );
+    }
     validate_graph(project, &mut issues);
     validate_cycles(&project.graph, &mut issues);
     validate_scope(
@@ -40,6 +60,35 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         &mut issues,
     );
     issues
+}
+
+fn validate_schema(
+    root: &str,
+    schema: &SchemaNode,
+    path: &mut Vec<String>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if !schema.alternatives_are_valid() {
+        let suffix = if path.is_empty() {
+            String::new()
+        } else {
+            format!(" at `{}`", path.join("/"))
+        };
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "group alternative metadata{suffix} has duplicate or unknown names, members, or required fields"
+            ),
+        ));
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return;
+    };
+    for child in children {
+        path.push(child.name.clone());
+        validate_schema(root, child, path, issues);
+        path.pop();
+    }
 }
 
 fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
@@ -491,7 +540,7 @@ fn any_schema_path(
         return true;
     }
     match &schema.kind {
-        SchemaKind::Group { children } => children
+        SchemaKind::Group { children, .. } => children
             .iter()
             .any(|child| any_schema_path(child, path, predicate)),
         SchemaKind::Scalar { .. } => false,
@@ -570,6 +619,25 @@ mod tests {
         );
 
         assert!(validate(&project).is_empty());
+    }
+
+    #[test]
+    fn rejects_inconsistent_deserialized_group_alternatives() {
+        let mut project = valid_project();
+        let SchemaKind::Group { alternatives, .. } = &mut project.target.kind else {
+            panic!("test target must be a group");
+        };
+        *alternatives = vec![ir::GroupAlternative {
+            name: "broken".into(),
+            members: vec!["missing".into()],
+            required: vec!["missing".into()],
+        }];
+
+        let issues = validate(&project);
+        assert!(issues.iter().any(|issue| {
+            issue.location == "target schema"
+                && issue.message.contains("group alternative metadata")
+        }));
     }
 
     #[test]

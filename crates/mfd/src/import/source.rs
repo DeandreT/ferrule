@@ -5,8 +5,8 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::NodeId;
 
 use super::function::{
-    FnComponent, is_distinct_values, is_filter, is_first_items, is_group_into_blocks, is_input,
-    is_sort,
+    FnComponent, is_db_where, is_distinct_values, is_filter, is_first_items, is_group_into_blocks,
+    is_input, is_sort,
 };
 use super::graph::GraphBuilder;
 use super::iteration::{IterationFeed, split_at_innermost_repeating};
@@ -86,6 +86,7 @@ fn iteration_source_feed(
             && component.name == "group-by"
             && component.outputs.first() == Some(&feed);
         if !(is_filter(component)
+            || is_db_where(component)
             || is_sort(component)
             || is_first_items(component)
             || is_group_into_blocks(component)
@@ -112,7 +113,7 @@ fn iteration_source_feed(
 pub(super) fn runtime_names(sources: &[&SchemaComponent]) -> Vec<String> {
     let mut used = BTreeSet::new();
     if let Some(primary) = sources.first()
-        && let SchemaKind::Group { children } = &primary.schema.kind
+        && let SchemaKind::Group { children, .. } = &primary.schema.kind
     {
         used.extend(children.iter().map(|child| child.name.clone()));
     }
@@ -297,6 +298,7 @@ impl GraphBuilder<'_> {
             let &idx = self.fn_by_output.get(&feed)?;
             let component = &self.fn_components[idx];
             let passes_nodes = is_filter(component)
+                || is_db_where(component)
                 || is_sort(component)
                 || is_first_items(component)
                 || is_group_into_blocks(component)
@@ -368,6 +370,7 @@ mod tests {
                 constant: None,
                 valuemap: None,
                 sort_descending,
+                db_where: None,
             });
             upstream = output;
         }

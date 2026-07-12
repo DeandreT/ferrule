@@ -276,7 +276,7 @@ fn csv_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
 /// repetition (db tables repeat by convention).
 fn flat_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
     match &schema.kind {
-        SchemaKind::Group { children } => children
+        SchemaKind::Group { children, .. } => children
             .iter()
             .map(|c| match &c.kind {
                 SchemaKind::Scalar { ty } if !c.repeating && !c.attribute => {
@@ -334,7 +334,7 @@ impl PortTree {
             keys: &mut KeyAlloc,
             by_abs: &mut BTreeMap<Vec<String>, u32>,
         ) {
-            if let SchemaKind::Group { children } = &node.kind {
+            if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children {
                     path.push(child.name.clone());
                     if child.text {
@@ -405,7 +405,7 @@ impl PortTree {
             by_abs: &BTreeMap<Vec<String>, u32>,
             out: &mut String,
         ) {
-            if let SchemaKind::Group { children } = &node.kind {
+            if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children.iter().filter(|child| !child.text) {
                     path.push(child.name.clone());
                     let pad = "\t".repeat(indent);
@@ -497,7 +497,7 @@ impl PortTree {
                     json_type_name(*ty)
                 );
             }
-            SchemaKind::Group { children } => {
+            SchemaKind::Group { children, .. } => {
                 let _ = writeln!(
                     out,
                     "{pad}<entry name=\"object\" {attr}=\"{key}\" expanded=\"1\">"

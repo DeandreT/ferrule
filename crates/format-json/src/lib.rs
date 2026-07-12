@@ -29,6 +29,12 @@ pub enum JsonFormatError {
         expected: &'static str,
         got: &'static str,
     },
+    #[error("JSON Schema union `{name}` is not representable: {reason}")]
+    UnsupportedSchemaUnion { name: String, reason: String },
+    #[error("object `{name}` matches no declared schema alternative")]
+    NoMatchingAlternative { name: String },
+    #[error("object `{name}` matches more than one declared schema alternative")]
+    AmbiguousAlternative { name: String },
 }
 
 fn json_type_name(value: &serde_json::Value) -> &'static str {
@@ -74,7 +80,10 @@ fn read_repeated(
 fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     match &schema.kind {
         SchemaKind::Scalar { ty } => Ok(Instance::Scalar(read_scalar(value, *ty, &schema.name)?)),
-        SchemaKind::Group { children } => {
+        SchemaKind::Group {
+            children,
+            alternatives,
+        } => {
             let serde_json::Value::Object(fields) = value else {
                 return Err(JsonFormatError::Shape {
                     name: schema.name.clone(),
@@ -82,6 +91,13 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     got: json_type_name(value),
                 });
             };
+            validate_alternative_fields(
+                schema,
+                alternatives,
+                fields
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), !value.is_null())),
+            )?;
             let mut out = Vec::with_capacity(children.len());
             for child in children {
                 match fields.get(&child.name) {
@@ -205,7 +221,13 @@ fn write_single_node(
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             write_scalar(value, *ty, &schema.name)
         }
-        (SchemaKind::Group { children }, Instance::Group(fields)) => {
+        (
+            SchemaKind::Group {
+                children,
+                alternatives,
+            },
+            Instance::Group(fields),
+        ) => {
             let mut out = serde_json::Map::with_capacity(fields.len());
             for child_schema in children {
                 if let Some((_, child_instance)) =
@@ -225,6 +247,11 @@ fn write_single_node(
                     );
                 }
             }
+            validate_alternative_fields(
+                schema,
+                alternatives,
+                out.keys().map(|name| (name.as_str(), true)),
+            )?;
             Ok(serde_json::Value::Object(out))
         }
         (SchemaKind::Scalar { ty }, other) => Err(write_shape_error(
@@ -237,6 +264,38 @@ fn write_single_node(
             "object",
             instance_type_name(other),
         )),
+    }
+}
+
+fn validate_alternative_fields<'a>(
+    schema: &SchemaNode,
+    alternatives: &[ir::GroupAlternative],
+    fields: impl IntoIterator<Item = (&'a str, bool)>,
+) -> Result<(), JsonFormatError> {
+    if alternatives.is_empty() {
+        return Ok(());
+    }
+    let fields: Vec<(&str, bool)> = fields.into_iter().collect();
+    let matches = alternatives
+        .iter()
+        .filter(|alternative| {
+            alternative
+                .required
+                .iter()
+                .all(|required| fields.contains(&(required.as_str(), true)))
+                && fields
+                    .iter()
+                    .all(|(field, _)| alternative.members.iter().any(|member| member == field))
+        })
+        .count();
+    match matches {
+        1 => Ok(()),
+        0 => Err(JsonFormatError::NoMatchingAlternative {
+            name: schema.name.clone(),
+        }),
+        _ => Err(JsonFormatError::AmbiguousAlternative {
+            name: schema.name.clone(),
+        }),
     }
 }
 
@@ -355,6 +414,62 @@ mod tests {
                 .repeating(),
             ],
         )
+    }
+
+    fn alternative_schema() -> SchemaNode {
+        SchemaNode::group(
+            "Address",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar("state", ScalarType::String),
+                SchemaNode::scalar("postcode", ScalarType::String),
+            ],
+        )
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "domestic".into(),
+                members: vec!["name".into(), "state".into()],
+                required: vec!["name".into(), "state".into()],
+            },
+            ir::GroupAlternative {
+                name: "international".into(),
+                members: vec!["name".into(), "postcode".into()],
+                required: vec!["name".into(), "postcode".into()],
+            },
+        ])
+        .unwrap()
+    }
+
+    #[test]
+    fn object_alternatives_validate_and_preserve_each_projection() {
+        let schema = alternative_schema();
+        for value in [
+            serde_json::json!({"name": "A", "state": "WA"}),
+            serde_json::json!({"name": "B", "postcode": "SW1"}),
+        ] {
+            let instance = read_node(&value, &schema).unwrap();
+            assert_eq!(write_node(&schema, &instance).unwrap(), value);
+        }
+        assert!(matches!(
+            read_node(&serde_json::json!({"name": "A"}), &schema),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+        assert!(matches!(
+            read_node(
+                &serde_json::json!({"name": "A", "state": "WA", "postcode": "SW1"}),
+                &schema
+            ),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+        for invalid in [
+            serde_json::json!({"name": "A", "state": null}),
+            serde_json::json!({"name": "A", "state": "WA", "extra": true}),
+        ] {
+            assert!(matches!(
+                read_node(&invalid, &schema),
+                Err(JsonFormatError::NoMatchingAlternative { .. })
+            ));
+        }
     }
 
     #[test]

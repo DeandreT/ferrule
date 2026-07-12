@@ -1,0 +1,6 @@
+{
+  "Rows": [
+    { "address": { "name": "Ada", "state": "WA" } },
+    { "address": { "name": "Lin", "postcode": "SW1" } }
+  ]
+}
