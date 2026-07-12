@@ -10,8 +10,10 @@
 //! (recursive references and include cycles degrade safely); `xs:choice`
 //! and `xs:all` import as if they were sequences (every branch becomes a
 //! child -- ferrule has no exclusivity concept). `xs:simpleContent` becomes
-//! a `#text` scalar plus attribute scalars. It does not support unions,
-//! `xs:any`, or remote schema URLs -- that's the "lite" in the name.
+//! a `#text` scalar plus attribute scalars. Repeating `xs:sequence` particles
+//! with more than one element member are rejected because flattening them
+//! would lose tuple association. It does not support unions, `xs:any`, or
+//! remote schema URLs -- that's the "lite" in the name.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -31,6 +33,7 @@ struct ActiveDeclaration {
 #[derive(Default)]
 struct ParseState {
     active: Vec<ActiveDeclaration>,
+    unsupported_particle: Option<XmlFormatError>,
 }
 
 impl ParseState {
@@ -49,6 +52,21 @@ impl ParseState {
 
     fn leave(&mut self) {
         self.active.pop();
+    }
+
+    fn reject_repeating_particle(&mut self, compositor: &str, element_count: usize) {
+        self.unsupported_particle
+            .get_or_insert(XmlFormatError::UnsupportedRepeatingParticle {
+                compositor: compositor.to_string(),
+                element_count,
+            });
+    }
+
+    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+        match self.unsupported_particle {
+            Some(error) => Err(error),
+            None => Ok(schema),
+        }
     }
 }
 
@@ -74,12 +92,9 @@ pub fn import_root(
             && root.is_none_or(|r| n.attribute("name") == Some(r))
     });
     if let Some(root_element) = root_element {
-        return Ok(parse_element(
-            &root_element,
-            &schema_el,
-            path,
-            &mut ParseState::default(),
-        ));
+        let mut state = ParseState::default();
+        let schema = parse_element(&root_element, &schema_el, path, &mut state);
+        return state.finish(schema);
     }
 
     // An included schema contributes its declarations to the including
@@ -92,12 +107,9 @@ pub fn import_root(
         let external_doc = roxmltree::Document::parse(&external_text)?;
         let external_schema = external_doc.root_element();
         if let Some(root_element) = top_level(&external_schema, "element", root) {
-            return Ok(parse_element(
-                &root_element,
-                &external_schema,
-                &external_path,
-                &mut ParseState::default(),
-            ));
+            let mut state = ParseState::default();
+            let schema = parse_element(&root_element, &external_schema, &external_path, &mut state);
+            return state.finish(schema);
         }
     }
 
@@ -469,7 +481,20 @@ fn collect_sequence(
     state: &mut ParseState,
     out: &mut Vec<SchemaNode>,
 ) {
+    if is_disabled_particle(sequence) {
+        return;
+    }
+    if sequence.tag_name().name() == "sequence" && is_repeating(sequence) {
+        let element_count = particle_element_count(sequence);
+        if element_count > 1 {
+            state.reject_repeating_particle(sequence.tag_name().name(), element_count);
+            return;
+        }
+    }
     for child in sequence.children().filter(|n| n.is_element()) {
+        if is_disabled_particle(&child) {
+            continue;
+        }
         match child.tag_name().name() {
             "element" => {
                 let mut node = parse_element(&child, schema_el, schema_path, state);
@@ -489,6 +514,38 @@ fn collect_sequence(
             _ => {}
         }
     }
+}
+
+/// Counts element particles without descending into an element's own type.
+/// A repeating compositor is losslessly flattenable only when this is one:
+/// otherwise the IR would turn its associated tuple into independent arrays.
+fn particle_element_count(particle: &Node) -> usize {
+    if is_disabled_particle(particle) {
+        return 0;
+    }
+    particle
+        .children()
+        .filter(|node| node.is_element())
+        .map(|child| {
+            if is_disabled_particle(&child) {
+                return 0;
+            }
+            match child.tag_name().name() {
+                "element" => 1,
+                "sequence" | "choice" | "all" => particle_element_count(&child),
+                _ => 0,
+            }
+        })
+        .sum()
+}
+
+fn is_disabled_particle(particle: &Node) -> bool {
+    particle.attribute("maxOccurs").is_some_and(|value| {
+        let digits = value.strip_prefix('+').unwrap_or(value);
+        !digits.is_empty()
+            && digits.bytes().all(|digit| digit.is_ascii_digit())
+            && digits.bytes().all(|digit| digit == b'0')
+    })
 }
 
 fn is_repeating(el: &Node) -> bool {
@@ -534,17 +591,76 @@ fn map_xsd_type(ty: &str) -> ScalarType {
 
 /// Renders a [`SchemaNode`] as XSD text -- the inverse of [`import`],
 /// producing the same `xs:element`/`xs:complexType`/`xs:sequence` subset it
-/// reads (repeating nodes get `maxOccurs="unbounded"`).
-pub fn export(schema: &SchemaNode) -> String {
+/// reads (repeating nodes get `maxOccurs="unbounded"`). Returns an error when
+/// XML role flags describe mixed content or another shape this subset cannot
+/// preserve.
+pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
+    validate_export_node(schema, true)?;
     let mut out = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">\n",
     );
-    write_element(schema, 1, &mut out);
+    write_element(schema, 1, &mut out)?;
     out.push_str("</xs:schema>\n");
-    out
+    Ok(out)
 }
 
-fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
+fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlFormatError> {
+    if node.attribute && node.text {
+        return Err(XmlFormatError::ConflictingSchemaRoles {
+            node: node.name.clone(),
+        });
+    }
+    let role = if node.attribute {
+        Some("attribute")
+    } else if node.text {
+        Some("text")
+    } else {
+        None
+    };
+    if let Some(role) = role {
+        if is_root {
+            return Err(XmlFormatError::UnsupportedSchemaRole {
+                node: node.name.clone(),
+                role,
+                kind: "document root",
+            });
+        }
+        if matches!(node.kind, ir::SchemaKind::Group { .. }) {
+            return Err(XmlFormatError::UnsupportedSchemaRole {
+                node: node.name.clone(),
+                role,
+                kind: "group",
+            });
+        }
+        if node.repeating {
+            return Err(XmlFormatError::RepeatingSchemaRole {
+                node: node.name.clone(),
+                role,
+            });
+        }
+    }
+    let ir::SchemaKind::Group { children } = &node.kind else {
+        return Ok(());
+    };
+    for child in children {
+        validate_export_node(child, false)?;
+    }
+    let text_count = children.iter().filter(|child| child.text).count();
+    if text_count > 1 {
+        return Err(XmlFormatError::MultipleTextFields {
+            group: node.name.clone(),
+            count: text_count,
+        });
+    }
+    if text_count == 1 && children.iter().any(|child| !child.attribute && !child.text) {
+        return Err(XmlFormatError::MixedContent {
+            group: node.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
     let occurs = if node.repeating {
         " minOccurs=\"0\" maxOccurs=\"unbounded\""
@@ -562,12 +678,9 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
         ir::SchemaKind::Group { children } => {
             // XSD requires attributes after the content model, so partition
             // on the fly; only scalar children can be attributes.
-            let (attrs, elements): (Vec<_>, Vec<_>) = children
-                .iter()
-                .partition(|c| c.attribute && matches!(c.kind, ir::SchemaKind::Scalar { .. }));
-            let text = elements
-                .iter()
-                .find(|child| child.text && matches!(child.kind, ir::SchemaKind::Scalar { .. }));
+            let (attrs, elements): (Vec<_>, Vec<_>) =
+                children.iter().partition(|child| child.attribute);
+            let text = elements.iter().find(|child| child.text);
             let nested_elements: Vec<_> = elements
                 .iter()
                 .filter(|child| !child.text)
@@ -577,7 +690,11 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
                 && nested_elements.is_empty()
             {
                 let ir::SchemaKind::Scalar { ty } = &text.kind else {
-                    unreachable!("text child checked as Scalar");
+                    return Err(XmlFormatError::UnsupportedSchemaRole {
+                        node: text.name.clone(),
+                        role: "text",
+                        kind: "group",
+                    });
                 };
                 out.push_str(&format!(
                     "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:simpleContent>\n{pad}      <xs:extension base=\"{}\">\n",
@@ -586,7 +703,11 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
                 ));
                 for attr in attrs {
                     let ir::SchemaKind::Scalar { ty } = &attr.kind else {
-                        unreachable!("partitioned on Scalar");
+                        return Err(XmlFormatError::UnsupportedSchemaRole {
+                            node: attr.name.clone(),
+                            role: "attribute",
+                            kind: "group",
+                        });
                     };
                     out.push_str(&format!(
                         "{pad}        <xs:attribute name=\"{}\" type=\"{}\"/>\n",
@@ -597,19 +718,23 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
                 out.push_str(&format!(
                     "{pad}      </xs:extension>\n{pad}    </xs:simpleContent>\n{pad}  </xs:complexType>\n{pad}</xs:element>\n"
                 ));
-                return;
+                return Ok(());
             }
             out.push_str(&format!(
                 "{pad}<xs:element name=\"{}\"{occurs}>\n{pad}  <xs:complexType>\n{pad}    <xs:sequence>\n",
                 node.name
             ));
             for child in nested_elements {
-                write_element(child, depth + 3, out);
+                write_element(child, depth + 3, out)?;
             }
             out.push_str(&format!("{pad}    </xs:sequence>\n"));
             for attr in attrs {
                 let ir::SchemaKind::Scalar { ty } = &attr.kind else {
-                    unreachable!("partitioned on Scalar");
+                    return Err(XmlFormatError::UnsupportedSchemaRole {
+                        node: attr.name.clone(),
+                        role: "attribute",
+                        kind: "group",
+                    });
                 };
                 out.push_str(&format!(
                     "{pad}    <xs:attribute name=\"{}\" type=\"{}\"/>\n",
@@ -620,531 +745,9 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) {
             out.push_str(&format!("{pad}  </xs:complexType>\n{pad}</xs:element>\n"));
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use ir::SchemaKind;
-
-    #[test]
-    fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
-        for value in ["2", "0002", "+2", "4294967296"] {
-            assert!(non_negative_integer_exceeds_one(value), "{value}");
-        }
-        for value in ["", "+", "0", "1", "0001", "-2", "two"] {
-            assert!(!non_negative_integer_exceeds_one(value), "{value}");
-        }
-    }
-
-    #[test]
-    fn imports_nested_repeating_groups() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("ferrule_xsd_test_{}.xsd", std::process::id()));
-        std::fs::write(
-            &path,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:element name="Orders">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="Date" type="xs:date"/>
-        <xs:sequence minOccurs="0" maxOccurs="unbounded">
-          <xs:element name="Order">
-            <xs:complexType>
-              <xs:sequence>
-                <xs:element name="Order_ID" type="xs:string"/>
-                <xs:element name="Items">
-                  <xs:complexType>
-                    <xs:sequence maxOccurs="unbounded">
-                      <xs:element name="Item">
-                        <xs:complexType>
-                          <xs:sequence>
-                            <xs:element name="Price" type="xs:decimal"/>
-                          </xs:sequence>
-                        </xs:complexType>
-                      </xs:element>
-                    </xs:sequence>
-                  </xs:complexType>
-                </xs:element>
-              </xs:sequence>
-            </xs:complexType>
-          </xs:element>
-        </xs:sequence>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-
-        assert_eq!(schema.name, "Orders");
-        assert!(!schema.repeating);
-
-        let date = schema.child("Date").unwrap();
-        assert!(!date.repeating);
-        assert!(matches!(
-            date.kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-
-        let order = schema.child("Order").unwrap();
-        assert!(order.repeating);
-
-        let item = order.child("Items").unwrap().child("Item").unwrap();
-        assert!(item.repeating);
-        let price = item.child("Price").unwrap();
-        assert!(matches!(
-            price.kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Float
-            }
-        ));
-    }
-
-    #[test]
-    fn resolves_top_level_element_refs_and_degrades_cycles() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("ferrule_xsd_ref_test_{}.xsd", std::process::id()));
-        std::fs::write(
-            &path,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:element name="Company">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="Name" type="xs:string"/>
-        <xs:element ref="Office" minOccurs="0" maxOccurs="unbounded"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-  <xs:element name="Office">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="City" type="xs:string"/>
-        <xs:element ref="Office" minOccurs="0"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import_root(&path, Some("Company")).unwrap();
-        std::fs::remove_file(&path).unwrap();
-
-        let office = schema.child("Office").unwrap();
-        assert!(office.repeating);
-        assert!(matches!(
-            office.child("City").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-        // The self-reference inside Office degrades to a string scalar.
-        assert!(matches!(
-            office.child("Office").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-    }
-
-    #[test]
-    fn resolves_named_types_extensions_and_choices() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_xsd_named_types_test_{}.xsd",
-            std::process::id()
-        ));
-        std::fs::write(
-            &path,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:element name="Order">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="Item" type="LineType" minOccurs="0" maxOccurs="unbounded"/>
-        <xs:choice>
-          <xs:element name="Pickup" type="xs:string"/>
-          <xs:element name="Delivery" type="AddressType"/>
-        </xs:choice>
-        <xs:element name="Priority" type="PriorityType"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-  <xs:complexType name="LineType">
-    <xs:complexContent>
-      <xs:extension base="BaseLineType">
-        <xs:sequence>
-          <xs:element name="Qty" type="xs:int"/>
-        </xs:sequence>
-        <xs:attribute name="unit" type="xs:string"/>
-      </xs:extension>
-    </xs:complexContent>
-  </xs:complexType>
-  <xs:complexType name="BaseLineType">
-    <xs:sequence>
-      <xs:element name="Sku" type="xs:string"/>
-    </xs:sequence>
-  </xs:complexType>
-  <xs:complexType name="AddressType">
-    <xs:sequence>
-      <xs:element name="City" type="xs:string"/>
-    </xs:sequence>
-  </xs:complexType>
-  <xs:simpleType name="PriorityType">
-    <xs:restriction base="xs:integer">
-      <xs:maxInclusive value="5"/>
-    </xs:restriction>
-  </xs:simpleType>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-
-        // Named type with a complexContent extension: base children first,
-        // then the extension's own element and attribute.
-        let item = schema.child("Item").unwrap();
-        assert!(item.repeating);
-        assert_eq!(
-            item.child("Sku").map(|c| c.attribute),
-            Some(false),
-            "base type child"
-        );
-        assert!(matches!(
-            item.child("Qty").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Int
-            }
-        ));
-        assert!(item.child("unit").unwrap().attribute);
-
-        // Both choice branches import as children.
-        assert!(schema.child("Pickup").is_some());
-        assert!(schema.child("Delivery").unwrap().child("City").is_some());
-
-        // Named simpleType resolves to its restriction base.
-        assert!(matches!(
-            schema.child("Priority").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Int
-            }
-        ));
-    }
-
-    #[test]
-    fn resolves_declarations_across_includes_with_cycles() {
-        let dir =
-            std::env::temp_dir().join(format!("ferrule_xsd_include_test_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let main = dir.join("main.xsd");
-        let shared = dir.join("shared.xsd");
-
-        std::fs::write(
-            &shared,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:include schemaLocation="main.xsd"/>
-  <xs:complexType name="BaseLineType">
-    <xs:sequence>
-      <xs:element name="Sku" type="xs:string"/>
-    </xs:sequence>
-  </xs:complexType>
-  <xs:simpleType name="PriorityType">
-    <xs:restriction base="xs:integer"/>
-  </xs:simpleType>
-  <xs:element name="SharedNote" type="xs:string"/>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            &main,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:include schemaLocation="shared.xsd"/>
-  <xs:element name="Order">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="Item" type="LineType" maxOccurs="unbounded"/>
-        <xs:element ref="SharedNote"/>
-        <xs:element name="Priority" type="PriorityType"/>
-        <xs:element name="Unknown" type="MissingType"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-  <xs:complexType name="LineType">
-    <xs:complexContent>
-      <xs:extension base="BaseLineType">
-        <xs:sequence>
-          <xs:element name="Qty" type="xs:int"/>
-        </xs:sequence>
-      </xs:extension>
-    </xs:complexContent>
-  </xs:complexType>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import(&main).unwrap();
-        let included_root = import_root(&main, Some("SharedNote")).unwrap();
-        std::fs::remove_dir_all(&dir).unwrap();
-
-        let item = schema.child("Item").unwrap();
-        assert!(item.repeating);
-        assert!(item.child("Sku").is_some());
-        assert!(matches!(
-            item.child("Qty").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Int
-            }
-        ));
-        assert!(matches!(
-            schema.child("SharedNote").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-        assert_eq!(included_root.name, "SharedNote");
-        assert!(matches!(
-            schema.child("Priority").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Int
-            }
-        ));
-        // A declaration missing from an include cycle still degrades instead
-        // of recursing forever.
-        assert!(matches!(
-            schema.child("Unknown").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-    }
-
-    #[test]
-    fn resolves_namespace_qualified_imports() {
-        let dir =
-            std::env::temp_dir().join(format!("ferrule_xsd_import_test_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let main = dir.join("orders.xsd");
-        let shared = dir.join("customers.xsd");
-
-        std::fs::write(
-            &shared,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:customer="urn:ferrule:test:customers"
-           targetNamespace="urn:ferrule:test:customers">
-  <xs:complexType name="CustomerType">
-    <xs:sequence>
-      <xs:element name="Name" type="xs:string"/>
-      <xs:element name="Number" type="xs:int"/>
-    </xs:sequence>
-  </xs:complexType>
-  <xs:element name="BillingAddress">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="City" type="xs:string"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            &main,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-           xmlns:customer="urn:ferrule:test:customers"
-           targetNamespace="urn:ferrule:test:orders">
-  <xs:import namespace="urn:ferrule:test:customers" schemaLocation="customers.xsd"/>
-  <xs:element name="Order">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="Customer" type="customer:CustomerType"/>
-        <xs:element ref="customer:BillingAddress"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import_root(&main, Some("Order")).unwrap();
-        std::fs::remove_dir_all(&dir).unwrap();
-
-        let customer = schema.child("Customer").unwrap();
-        assert!(customer.child("Name").is_some());
-        assert!(matches!(
-            customer.child("Number").unwrap().kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Int
-            }
-        ));
-        assert!(
-            schema
-                .child("BillingAddress")
-                .unwrap()
-                .child("City")
-                .is_some()
-        );
-    }
-
-    #[test]
-    fn imports_attributes_as_flagged_scalars() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!("ferrule_xsd_attr_test_{}.xsd", std::process::id()));
-        std::fs::write(
-            &path,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:element name="Books">
-    <xs:complexType>
-      <xs:sequence maxOccurs="unbounded">
-        <xs:element name="Book">
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="Title" type="xs:string"/>
-            </xs:sequence>
-            <xs:attribute name="isbn" type="xs:string"/>
-            <xs:attribute name="pages" type="xs:int"/>
-            <xs:attribute name="draft" type="xs:string" use="prohibited"/>
-          </xs:complexType>
-        </xs:element>
-      </xs:sequence>
-      <xs:attribute name="count" type="xs:int"/>
-    </xs:complexType>
-  </xs:element>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-
-        let count = schema.child("count").unwrap();
-        assert!(count.attribute);
-        assert!(matches!(
-            count.kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Int
-            }
-        ));
-
-        let book = schema.child("Book").unwrap();
-        assert!(book.repeating);
-        let isbn = book.child("isbn").unwrap();
-        assert!(isbn.attribute);
-        assert!(book.child("pages").unwrap().attribute);
-        assert!(!book.child("Title").unwrap().attribute);
-        assert!(book.child("draft").is_none());
-    }
-
-    #[test]
-    fn imports_simple_content_as_text_plus_attributes() {
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xsd_simple_content_test_{}.xsd",
-            std::process::id()
-        ));
-        std::fs::write(
-            &path,
-            r#"<?xml version="1.0"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:element name="Catalog">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="Price">
-          <xs:complexType>
-            <xs:simpleContent>
-              <xs:extension base="xs:decimal">
-                <xs:attribute name="currency" type="xs:string"/>
-              </xs:extension>
-            </xs:simpleContent>
-          </xs:complexType>
-        </xs:element>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-</xs:schema>
-"#,
-        )
-        .unwrap();
-
-        let schema = import(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-
-        let price = schema.child("Price").unwrap();
-        let text = price.child(XML_TEXT_FIELD).unwrap();
-        assert!(text.text);
-        assert!(matches!(
-            text.kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::Float
-            }
-        ));
-        let currency = price.child("currency").unwrap();
-        assert!(currency.attribute);
-        assert!(matches!(
-            currency.kind,
-            SchemaKind::Scalar {
-                ty: ScalarType::String
-            }
-        ));
-    }
-
-    #[test]
-    fn export_then_import_roundtrips() {
-        let schema = SchemaNode::group(
-            "Orders",
-            vec![
-                SchemaNode::scalar("Date", ScalarType::String),
-                SchemaNode::group(
-                    "Order",
-                    vec![
-                        SchemaNode::scalar("Qty", ScalarType::Int),
-                        SchemaNode::scalar("Price", ScalarType::Float),
-                        SchemaNode::scalar("Rush", ScalarType::Bool),
-                        // Import collects attributes after elements, so the
-                        // hand-built schema lists them last for equality.
-                        SchemaNode::scalar("id", ScalarType::String).attribute(),
-                    ],
-                )
-                .repeating(),
-                SchemaNode::group(
-                    "Price",
-                    vec![
-                        SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::Float).text(),
-                        SchemaNode::scalar("currency", ScalarType::String).attribute(),
-                    ],
-                ),
-            ],
-        );
-        let text = export(&schema);
-        let path = std::env::temp_dir().join(format!(
-            "ferrule_xsd_export_test_{}.xsd",
-            std::process::id()
-        ));
-        std::fs::write(&path, text).unwrap();
-        let imported = import(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(imported, schema);
-    }
-}
+#[path = "xsd_tests.rs"]
+mod tests;

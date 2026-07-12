@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use ir::{Instance, ScalarType, SchemaKind, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TEXT_FIELD};
 use mapping::{Node, SequenceExpr};
 
 #[path = "import/sequence_controls.rs"]
@@ -967,4 +967,106 @@ fn scalar_document_root_binding_warns_instead_of_panicking() {
     );
     assert!(imported.project.root.bindings.is_empty());
     assert!(imported.project.graph.nodes.is_empty());
+}
+
+#[test]
+fn failed_export_preserves_existing_design_and_schema_artifacts() {
+    let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
+    let dir = TempDir::new("atomic_export");
+    let design = dir.0.join("atomic.mfd");
+    mfd::export(&project, &design).unwrap();
+
+    let source_schema = dir.0.join("atomic-source.xsd");
+    let target_schema = dir.0.join("atomic-target.xsd");
+    let before = [
+        std::fs::read(&design).unwrap(),
+        std::fs::read(&source_schema).unwrap(),
+        std::fs::read(&target_schema).unwrap(),
+    ];
+
+    project.source.name = "ChangedSource".into();
+    project.target_path = Some("invalid.csv".into());
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message))
+            if message.contains("target side maps to a csv file")
+    ));
+
+    assert_eq!(std::fs::read(&design).unwrap(), before[0]);
+    assert_eq!(std::fs::read(&source_schema).unwrap(), before[1]);
+    assert_eq!(std::fs::read(&target_schema).unwrap(), before[2]);
+}
+
+#[test]
+fn invalid_xml_schema_roles_do_not_publish_export_artifacts() {
+    let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            SchemaNode::scalar("Child", ScalarType::String),
+        ],
+    );
+    let dir = TempDir::new("invalid_schema_export");
+    let design = dir.0.join("invalid.mfd");
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::SchemaExport(
+            format_xml::XmlFormatError::MixedContent { .. }
+        ))
+    ));
+    assert!(!design.exists());
+    assert!(!dir.0.join("invalid-source.xsd").exists());
+    assert!(!dir.0.join("invalid-target.xsd").exists());
+}
+
+#[test]
+fn failed_design_write_does_not_replace_schema_siblings() {
+    let project = mfd::import(&fixture("people.mfd")).unwrap().project;
+    let dir = TempDir::new("blocked_design_export");
+    let design = dir.0.join("blocked.mfd");
+    std::fs::create_dir(&design).unwrap();
+    let source_schema = dir.0.join("blocked-source.xsd");
+    let target_schema = dir.0.join("blocked-target.xsd");
+    std::fs::write(&source_schema, "old source").unwrap();
+    std::fs::write(&target_schema, "old target").unwrap();
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Io(_))
+    ));
+    assert_eq!(
+        std::fs::read_to_string(source_schema).unwrap(),
+        "old source"
+    );
+    assert_eq!(
+        std::fs::read_to_string(target_schema).unwrap(),
+        "old target"
+    );
+}
+
+#[test]
+fn blocked_schema_destination_does_not_publish_other_artifacts() {
+    let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
+    let dir = TempDir::new("blocked_schema_export");
+    let design = dir.0.join("blocked-schema.mfd");
+    mfd::export(&project, &design).unwrap();
+
+    let source_schema = dir.0.join("blocked-schema-source.xsd");
+    let target_schema = dir.0.join("blocked-schema-target.xsd");
+    let old_design = std::fs::read(&design).unwrap();
+    let old_source = std::fs::read(&source_schema).unwrap();
+    std::fs::remove_file(&target_schema).unwrap();
+    std::fs::create_dir(&target_schema).unwrap();
+    project.source.name = "ChangedSource".into();
+    project.target.name = "ChangedTarget".into();
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Io(error)) if error.kind() == std::io::ErrorKind::IsADirectory
+    ));
+    assert_eq!(std::fs::read(&design).unwrap(), old_design);
+    assert_eq!(std::fs::read(&source_schema).unwrap(), old_source);
+    assert!(target_schema.is_dir());
 }

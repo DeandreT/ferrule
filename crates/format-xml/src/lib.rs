@@ -44,6 +44,27 @@ pub enum XmlFormatError {
     UnexpectedField { group: String, field: String },
     #[error("element `{group}` has duplicate field `{field}`")]
     DuplicateField { group: String, field: String },
+    #[error(
+        "repeating xs:{compositor} with {element_count} element members cannot preserve tuple association"
+    )]
+    UnsupportedRepeatingParticle {
+        compositor: String,
+        element_count: usize,
+    },
+    #[error("schema node `{node}` cannot be both XML text and an attribute")]
+    ConflictingSchemaRoles { node: String },
+    #[error("schema {kind} `{node}` cannot be serialized as XML {role}")]
+    UnsupportedSchemaRole {
+        node: String,
+        role: &'static str,
+        kind: &'static str,
+    },
+    #[error("schema {role} `{node}` cannot repeat")]
+    RepeatingSchemaRole { node: String, role: &'static str },
+    #[error("schema group `{group}` has {count} XML text fields; at most one is supported")]
+    MultipleTextFields { group: String, count: usize },
+    #[error("schema group `{group}` mixes XML text with child elements")]
+    MixedContent { group: String },
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
