@@ -28,6 +28,22 @@ pub enum XmlFormatError {
         ty: ScalarType,
         value: String,
     },
+    #[error("element `{name}` expected {expected}, got {got}")]
+    Shape {
+        name: String,
+        expected: &'static str,
+        got: &'static str,
+    },
+    #[error("element `{name}` expected {expected:?}, got {got}")]
+    ValueType {
+        name: String,
+        expected: ScalarType,
+        got: &'static str,
+    },
+    #[error("element `{group}` has unexpected field `{field}`")]
+    UnexpectedField { group: String, field: String },
+    #[error("element `{group}` has duplicate field `{field}`")]
+    DuplicateField { group: String, field: String },
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
@@ -54,7 +70,7 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatEr
 fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
-            let text = el.text().unwrap_or("").trim();
+            let text = el.text().unwrap_or("");
             Ok(Instance::Scalar(parse_scalar(&schema.name, *ty, text)?))
         }
         SchemaKind::Group { children } => {
@@ -68,7 +84,7 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
                             let SchemaKind::Scalar { ty } = child.kind else {
                                 return Err(XmlFormatError::MissingElement(child.name.clone()));
                             };
-                            parse_scalar(&child.name, ty, text.trim())?
+                            parse_scalar(&child.name, ty, text)?
                         }
                         None => Value::Null,
                     };
@@ -77,7 +93,7 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
                     let SchemaKind::Scalar { ty } = child.kind else {
                         return Err(XmlFormatError::MissingElement(child.name.clone()));
                     };
-                    let text = el.text().unwrap_or("").trim();
+                    let text = el.text().unwrap_or("");
                     let value = parse_scalar(&child.name, ty, text)?;
                     fields.push((child.name.clone(), Instance::Scalar(value)));
                 } else if child.repeating {
@@ -119,9 +135,15 @@ fn parse_scalar(name: &str, ty: ScalarType, text: &str) -> Result<Value, XmlForm
     };
     Ok(match ty {
         ScalarType::String => Value::String(text.to_string()),
-        ScalarType::Int => Value::Int(text.parse().map_err(|_| bad())?),
-        ScalarType::Float => Value::Float(text.parse().map_err(|_| bad())?),
-        ScalarType::Bool => Value::Bool(text.parse().map_err(|_| bad())?),
+        ScalarType::Int => Value::Int(text.trim().parse().map_err(|_| bad())?),
+        ScalarType::Float => {
+            let value = text.trim().parse::<f64>().map_err(|_| bad())?;
+            if !value.is_finite() {
+                return Err(bad());
+            }
+            Value::Float(value)
+        }
+        ScalarType::Bool => Value::Bool(text.trim().parse().map_err(|_| bad())?),
     })
 }
 
@@ -140,7 +162,7 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Xml
         Some("UTF-8"),
         None,
     )))?;
-    write_node(&mut writer, schema, instance)?;
+    write_node(&mut writer, schema, instance, true)?;
     let bytes = writer.into_inner().into_inner();
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -149,72 +171,195 @@ fn write_node<W: std::io::Write>(
     writer: &mut Writer<W>,
     schema: &SchemaNode,
     instance: &Instance,
+    is_root: bool,
 ) -> Result<(), XmlFormatError> {
-    match instance {
-        Instance::Repeated(items) => {
-            for item in items {
-                write_node(writer, schema, item)?;
-            }
-            Ok(())
+    if schema.repeating && !is_root {
+        let Instance::Repeated(items) = instance else {
+            return Err(shape_error(schema, "repeating elements", instance));
+        };
+        for item in items {
+            write_single_node(writer, schema, item)?;
         }
-        Instance::Scalar(value) => {
+        return Ok(());
+    }
+    if matches!(instance, Instance::Repeated(_)) {
+        let expected = if is_root {
+            "one document root"
+        } else {
+            "one element"
+        };
+        return Err(shape_error(schema, expected, instance));
+    }
+    write_single_node(writer, schema, instance)
+}
+
+fn write_single_node<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), XmlFormatError> {
+    match (&schema.kind, instance) {
+        (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             writer.write_event(Event::Start(BytesStart::new(schema.name.clone())))?;
-            writer.write_event(Event::Text(BytesText::new(&format_scalar(value))))?;
+            let text = format_scalar(&schema.name, *ty, value)?;
+            writer.write_event(Event::Text(BytesText::new(&text)))?;
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
         }
-        Instance::Group(fields) => {
+        (SchemaKind::Group { children }, Instance::Group(fields)) => {
+            validate_group_fields(schema, children, fields)?;
             let mut start = BytesStart::new(schema.name.clone());
-            if let SchemaKind::Group { children } = &schema.kind {
-                for child_schema in children.iter().filter(|c| c.attribute) {
-                    if let Some((_, Instance::Scalar(value))) =
-                        fields.iter().find(|(n, _)| n == &child_schema.name)
-                        && !matches!(value, Value::Null)
-                    {
-                        start.push_attribute((
-                            child_schema.name.as_str(),
-                            format_scalar(value).as_str(),
+            for child_schema in children.iter().filter(|child| child.attribute) {
+                if let Some((_, child_instance)) =
+                    fields.iter().find(|(name, _)| name == &child_schema.name)
+                {
+                    let Instance::Scalar(value) = child_instance else {
+                        return Err(shape_error(
+                            child_schema,
+                            "an attribute scalar",
+                            child_instance,
                         ));
+                    };
+                    if !matches!(value, Value::Null) {
+                        let SchemaKind::Scalar { ty } = child_schema.kind else {
+                            return Err(shape_error(
+                                child_schema,
+                                "an attribute scalar",
+                                child_instance,
+                            ));
+                        };
+                        let text = format_scalar(&child_schema.name, ty, value)?;
+                        start.push_attribute((child_schema.name.as_str(), text.as_str()));
                     }
                 }
             }
             writer.write_event(Event::Start(start))?;
-            if let SchemaKind::Group { children } = &schema.kind {
-                for child_schema in children.iter().filter(|c| c.text) {
-                    if let Some((_, Instance::Scalar(value))) =
-                        fields.iter().find(|(n, _)| n == &child_schema.name)
-                        && !matches!(value, Value::Null)
-                    {
-                        writer.write_event(Event::Text(BytesText::new(&format_scalar(value))))?;
+            for child_schema in children.iter().filter(|child| child.text) {
+                if let Some((_, child_instance)) =
+                    fields.iter().find(|(name, _)| name == &child_schema.name)
+                {
+                    let Instance::Scalar(value) = child_instance else {
+                        return Err(shape_error(child_schema, "a text scalar", child_instance));
+                    };
+                    if !matches!(value, Value::Null) {
+                        let SchemaKind::Scalar { ty } = child_schema.kind else {
+                            return Err(shape_error(child_schema, "a text scalar", child_instance));
+                        };
+                        let text = format_scalar(&child_schema.name, ty, value)?;
+                        writer.write_event(Event::Text(BytesText::new(&text)))?;
                     }
                 }
-                for child_schema in children.iter().filter(|c| !c.attribute && !c.text) {
-                    if let Some((_, child_instance)) =
-                        fields.iter().find(|(n, _)| n == &child_schema.name)
+            }
+            for child_schema in children
+                .iter()
+                .filter(|child| !child.attribute && !child.text)
+            {
+                if let Some((_, child_instance)) =
+                    fields.iter().find(|(name, _)| name == &child_schema.name)
+                {
+                    // A Null scalar is an absent element, not an empty one
+                    // (mirrors the reader's treatment).
+                    if !child_schema.repeating
+                        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
+                        && matches!(child_instance, Instance::Scalar(Value::Null))
                     {
-                        // A Null scalar is an absent element, not an empty
-                        // one (mirrors the reader's treatment).
-                        if matches!(child_instance, Instance::Scalar(Value::Null)) {
-                            continue;
-                        }
-                        write_node(writer, child_schema, child_instance)?;
+                        continue;
                     }
+                    write_node(writer, child_schema, child_instance, false)?;
                 }
             }
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
         }
+        (SchemaKind::Scalar { .. }, other) => Err(shape_error(schema, "a scalar", other)),
+        (SchemaKind::Group { .. }, other) => Err(shape_error(schema, "an element group", other)),
     }
 }
 
-fn format_scalar(value: &Value) -> String {
-    match value {
-        Value::Null => String::new(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::String(s) => s.clone(),
+fn validate_group_fields(
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    fields: &[(String, Instance)],
+) -> Result<(), XmlFormatError> {
+    for (index, (name, _)) in fields.iter().enumerate() {
+        if !children.iter().any(|child| child.name == *name) {
+            return Err(XmlFormatError::UnexpectedField {
+                group: schema.name.clone(),
+                field: name.clone(),
+            });
+        }
+        if fields[..index].iter().any(|(previous, _)| previous == name) {
+            return Err(XmlFormatError::DuplicateField {
+                group: schema.name.clone(),
+                field: name.clone(),
+            });
+        }
     }
+    Ok(())
+}
+
+fn shape_error(schema: &SchemaNode, expected: &'static str, instance: &Instance) -> XmlFormatError {
+    let got = match instance {
+        Instance::Scalar(_) => "a scalar",
+        Instance::Group(_) => "an element group",
+        Instance::Repeated(_) => "repeating elements",
+    };
+    XmlFormatError::Shape {
+        name: schema.name.clone(),
+        expected,
+        got,
+    }
+}
+
+fn format_scalar(name: &str, ty: ScalarType, value: &Value) -> Result<String, XmlFormatError> {
+    let incompatible = |got| XmlFormatError::ValueType {
+        name: name.to_string(),
+        expected: ty,
+        got,
+    };
+    match (ty, value) {
+        (_, Value::Null) => Err(incompatible("null")),
+        (ScalarType::String, Value::Bool(value)) => Ok(value.to_string()),
+        (ScalarType::String, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::String, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
+        (ScalarType::String, Value::Float(_)) => Err(incompatible("non-finite float")),
+        (ScalarType::String, Value::String(value)) => Ok(value.clone()),
+        (ScalarType::Int, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::Int, Value::String(value)) => value
+            .trim()
+            .parse::<i64>()
+            .map(|value| value.to_string())
+            .map_err(|_| incompatible("string")),
+        (ScalarType::Float, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
+        (ScalarType::Float, Value::Float(_)) => Err(incompatible("non-finite float")),
+        (ScalarType::Float, Value::Int(value)) if exact_f64(*value).is_some() => {
+            Ok(value.to_string())
+        }
+        (ScalarType::Float, Value::Int(_)) => Err(incompatible("int outside the exact f64 range")),
+        (ScalarType::Float, Value::String(value)) => value
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(|value| value.to_string())
+            .ok_or_else(|| incompatible("string")),
+        (ScalarType::Bool, Value::Bool(value)) => Ok(value.to_string()),
+        (ScalarType::Bool, Value::String(value)) => value
+            .trim()
+            .parse::<bool>()
+            .map(|value| value.to_string())
+            .map_err(|_| incompatible("string")),
+        (_, other) => Err(incompatible(other.type_name())),
+    }
+}
+
+fn exact_f64(value: i64) -> Option<f64> {
+    let magnitude = value.unsigned_abs();
+    if magnitude == 0 {
+        return Some(0.0);
+    }
+    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
+    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
 }
 
 #[cfg(test)]
@@ -328,6 +473,137 @@ mod tests {
         let read_back = read(&path, &schema).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn strings_preserve_whitespace_while_typed_values_accept_it() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("code", ScalarType::String).attribute(),
+                SchemaNode::scalar("Label", ScalarType::String),
+                SchemaNode::scalar("Count", ScalarType::Int),
+            ],
+        );
+        let instance = from_str(
+            "<Root code=\"  A  \"><Label>  padded  </Label><Count> 42 </Count></Root>",
+            &schema,
+        )
+        .unwrap();
+
+        assert_eq!(
+            instance.field("code").and_then(Instance::as_scalar),
+            Some(&Value::String("  A  ".into()))
+        );
+        assert_eq!(
+            instance.field("Label").and_then(Instance::as_scalar),
+            Some(&Value::String("  padded  ".into()))
+        );
+        assert_eq!(
+            instance.field("Count").and_then(Instance::as_scalar),
+            Some(&Value::Int(42))
+        );
+
+        let rendered = to_string(&schema, &instance).unwrap();
+        assert_eq!(from_str(&rendered, &schema).unwrap(), instance);
+    }
+
+    #[test]
+    fn writer_rejects_instance_shapes_that_cannot_form_one_document() {
+        let repeated_root = Instance::Repeated(vec![
+            Instance::Group(Vec::new()),
+            Instance::Group(Vec::new()),
+        ]);
+        assert!(matches!(
+            to_string(&schema(), &repeated_root),
+            Err(XmlFormatError::Shape {
+                ref name,
+                expected: "one document root",
+                got: "repeating elements",
+            }) if name == "Root"
+        ));
+
+        let malformed_child = Instance::Group(vec![("Name".into(), Instance::Group(Vec::new()))]);
+        assert!(matches!(
+            to_string(&schema(), &malformed_child),
+            Err(XmlFormatError::Shape {
+                ref name,
+                expected: "a scalar",
+                got: "an element group",
+            }) if name == "Name"
+        ));
+    }
+
+    #[test]
+    fn writer_rejects_incompatible_scalar_values() {
+        let int_schema = SchemaNode::scalar("Count", ScalarType::Int);
+        assert!(matches!(
+            to_string(
+                &int_schema,
+                &Instance::Scalar(Value::String("not an integer".into())),
+            ),
+            Err(XmlFormatError::ValueType {
+                ref name,
+                expected: ScalarType::Int,
+                got: "string",
+            }) if name == "Count"
+        ));
+
+        let schema = SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Count", ScalarType::Int).repeating()],
+        );
+        let instance = Instance::Group(vec![(
+            "Count".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::Null)]),
+        )]);
+        assert!(matches!(
+            to_string(&schema, &instance),
+            Err(XmlFormatError::ValueType {
+                ref name,
+                expected: ScalarType::Int,
+                got: "null",
+            }) if name == "Count"
+        ));
+
+        let float_schema = SchemaNode::scalar("Number", ScalarType::Float);
+        for value in ["NaN", "inf", "1e999"] {
+            assert!(matches!(
+                from_str(&format!("<Number>{value}</Number>"), &float_schema),
+                Err(XmlFormatError::ScalarParse {
+                    ref name,
+                    ty: ScalarType::Float,
+                    ..
+                }) if name == "Number"
+            ));
+        }
+    }
+
+    #[test]
+    fn writer_rejects_unexpected_and_duplicate_group_fields() {
+        let unexpected = Instance::Group(vec![(
+            "Extra".into(),
+            Instance::Scalar(Value::String("lost".into())),
+        )]);
+        assert!(matches!(
+            to_string(&schema(), &unexpected),
+            Err(XmlFormatError::UnexpectedField {
+                ref group,
+                ref field,
+            }) if group == "Root" && field == "Extra"
+        ));
+
+        let duplicate = Instance::Group(vec![
+            ("Name".into(), Instance::Scalar(Value::String("A".into()))),
+            ("Name".into(), Instance::Scalar(Value::String("B".into()))),
+        ]);
+        assert!(matches!(
+            to_string(&schema(), &duplicate),
+            Err(XmlFormatError::DuplicateField {
+                ref group,
+                ref field,
+            }) if group == "Root" && field == "Name"
+        ));
     }
 
     #[test]
