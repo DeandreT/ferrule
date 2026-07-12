@@ -22,7 +22,8 @@ clean-room interoperability, and extensible adapters.
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
-  structural group projection, mapped XML occurrence sequences, and 41 scalar built-ins.
+  structural group projection, mapped and computed XML occurrence sequences, and
+  41 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
@@ -64,9 +65,10 @@ derived XML type output, database WHERE/ORDER controls lower into runtime scopes
 static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
-computed JSON targets, plain structural group copies, and filtered XML occurrence
-sequences lower exactly, and
-high-value date/time/duration/missing-value functions execute natively. Non-representable
+structured lookup UDFs lower to named secondary-source lookups, computed JSON
+targets, plain structural group copies, and filtered or generated XML occurrence
+sequences lower exactly, and inclusive ranges accept exact integral decimal inputs.
+High-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
 conversion.
 
