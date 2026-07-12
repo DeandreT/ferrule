@@ -1,6 +1,168 @@
 use super::*;
 
 #[test]
+fn group_into_blocks_imports_executes_and_roundtrips() {
+    let imported = mfd::import(&fixture("group-blocks.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let block = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Block")
+        .unwrap();
+    assert!(block.group_by.is_none());
+    let size = block.group_into_blocks.unwrap();
+    assert!(matches!(
+        imported.project.graph.nodes[&size],
+        Node::Const {
+            value: Value::Int(2)
+        }
+    ));
+
+    let source = format_xml::read(&fixture("group-blocks.xml"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let blocks = output
+        .field("Block")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(scalar(&blocks[0], "First"), Value::String("alpha".into()));
+    assert_eq!(scalar(&blocks[0], "Count"), Value::Int(2));
+    assert_eq!(scalar(&blocks[1], "First"), Value::String("gamma".into()));
+    assert_eq!(scalar(&blocks[1], "Count"), Value::Int(1));
+
+    let dir = TempDir::new("group_blocks");
+    let out = dir.0.join("group-blocks.mfd");
+    let warnings = mfd::export(&imported.project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"group-into-blocks\"").count(), 1);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(
+        reimported.project.root.children[0]
+            .group_into_blocks
+            .is_some()
+    );
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
+}
+
+#[test]
+fn malformed_group_block_sizes_skip_the_affected_iteration() {
+    let original = std::fs::read_to_string(fixture("group-blocks.mfd")).unwrap();
+    let variants = [
+        (
+            "missing",
+            original.replace("      <edge from=\"30\" to=\"32\"/>\n", ""),
+        ),
+        (
+            "dangling",
+            original.replace("from=\"30\" to=\"32\"", "from=\"999\" to=\"32\""),
+        ),
+    ];
+    for (name, design) in variants {
+        let dir = TempDir::new(&format!("group_blocks_{name}"));
+        for schema in ["group-blocks-source.xsd", "group-blocks-target.xsd"] {
+            std::fs::copy(fixture(schema), dir.0.join(schema)).unwrap();
+        }
+        let path = dir.0.join("group-blocks.mfd");
+        std::fs::write(&path, design).unwrap();
+        let imported = mfd::import(&path).unwrap();
+        assert_eq!(
+            imported.warnings.len(),
+            1,
+            "{name}: {:?}",
+            imported.warnings
+        );
+        assert!(
+            imported.warnings[0].contains(
+                "group-into-blocks feeding `Block` has a missing or unsupported block-size; iteration skipped"
+            ),
+            "{name}: {:?}",
+            imported.warnings
+        );
+        assert!(
+            imported.project.root.children.is_empty(),
+            "{name}: skipped iteration left a singular target scope"
+        );
+    }
+}
+
+#[test]
+fn group_block_and_take_counts_export_parent_position_dependencies() {
+    let mut project = mfd::import(&fixture("group-blocks.mfd")).unwrap().project;
+    let next = project.graph.nodes.keys().next_back().copied().unwrap() + 1;
+    let block_position = next;
+    let block_size = next + 1;
+    let take_position = next + 2;
+    let take_count = next + 3;
+    project.graph.nodes.extend([
+        (
+            block_position,
+            Node::Position {
+                collection: vec!["Row".into()],
+            },
+        ),
+        (
+            block_size,
+            Node::Call {
+                function: "add".into(),
+                args: vec![block_position, 0],
+            },
+        ),
+        (
+            take_position,
+            Node::Position {
+                collection: vec!["Row".into()],
+            },
+        ),
+        (
+            take_count,
+            Node::Call {
+                function: "add".into(),
+                args: vec![take_position, 0],
+            },
+        ),
+    ]);
+    let block = &mut project.root.children[0];
+    block.group_into_blocks = Some(block_size);
+    block.take = Some(take_count);
+
+    let dir = TempDir::new("group_block_position_export");
+    let out = dir.0.join("group-block-position.mfd");
+    let warnings = mfd::export(&project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(out).unwrap();
+    let doc = roxmltree::Document::parse(&exported).unwrap();
+    let position_inputs: Vec<&str> = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("component") && node.attribute("name") == Some("position"))
+        .filter_map(|component| {
+            component
+                .children()
+                .find(|node| node.has_tag_name("sources"))
+                .and_then(|sources| {
+                    sources
+                        .children()
+                        .find(|node| node.has_tag_name("datapoint"))
+                })
+                .and_then(|input| input.attribute("key"))
+        })
+        .collect();
+    assert_eq!(position_inputs.len(), 2);
+    for input in position_inputs {
+        assert!(
+            doc.descendants().any(|node| {
+                node.has_tag_name("edge") && node.attribute("vertexkey") == Some(input)
+            }),
+            "position input {input} has no parent-context edge\n{exported}"
+        );
+    }
+}
+
+#[test]
 fn distinct_values_imports_as_stable_sequence_and_roundtrips() {
     let imported = mfd::import(&fixture("distinct.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

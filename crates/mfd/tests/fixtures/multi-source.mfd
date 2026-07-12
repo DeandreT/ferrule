@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="30">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <structure>
+      <children>
+        <component name="document" library="xml" uid="2" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Alpha">
+              <entry name="RowsA" outkey="10"><entry name="Name" outkey="11"/></entry>
+              <entry name="RowsB" outkey="12"><entry name="Name" outkey="13"/></entry>
+            </entry></entry></entry></root>
+            <document schema="multi-source.xsd" inputinstance="alpha.xml" instanceroot="{}Alpha"/>
+          </data>
+        </component>
+        <component name="document" library="xml" uid="3" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Beta">
+              <entry name="Rows" outkey="20"><entry name="Name" outkey="21"/></entry>
+            </entry></entry></entry></root>
+            <document schema="multi-source.xsd" inputinstance="beta.xml" instanceroot="{}Beta"/>
+          </data>
+        </component>
+        <component name="document" library="xml" uid="4" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Output">
+              <entry name="AOne" inpkey="110"><entry name="Name" inpkey="111"/></entry>
+              <entry name="ATwo" inpkey="112"><entry name="Name" inpkey="113"/></entry>
+              <entry name="B" inpkey="120"><entry name="Name" inpkey="121"/></entry>
+            </entry></entry></entry></root>
+            <document schema="multi-source.xsd" outputinstance="output.xml" instanceroot="{}Output"/>
+          </data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="110"/></edges></vertex>
+        <vertex vertexkey="11"><edges><edge vertexkey="111"/></edges></vertex>
+        <vertex vertexkey="12"><edges><edge vertexkey="112"/></edges></vertex>
+        <vertex vertexkey="13"><edges><edge vertexkey="113"/></edges></vertex>
+        <vertex vertexkey="20"><edges><edge vertexkey="120"/></edges></vertex>
+        <vertex vertexkey="21"><edges><edge vertexkey="121"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+</mapping>

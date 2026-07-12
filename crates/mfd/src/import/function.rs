@@ -115,6 +115,10 @@ pub(super) fn is_first_items(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "first-items"
 }
 
+pub(super) fn is_group_into_blocks(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 5 && component.name == "group-into-blocks"
+}
+
 pub(super) fn is_distinct_values(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "distinct-values"
 }

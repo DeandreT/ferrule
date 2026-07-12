@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, SchemaNode, Value};
+use ir::{SchemaKind, Value};
 use mapping::{AggregateOp, Graph, NamedSource, Node, NodeId, Project, Scope, SequenceExpr};
 
 use crate::MfdError;
@@ -17,13 +17,15 @@ mod graph;
 mod iteration;
 mod schema;
 mod scope;
+mod source;
 mod udf;
 
 use function::{
     aggregate_op, is_distinct_values as is_distinct_values_component,
     is_filter as is_filter_component, is_first_items as is_first_items_component,
-    is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
-    map_name as map_function_name, parse_constant, read as read_fn_component,
+    is_group_into_blocks, is_input as is_input_component, is_sequence_producer,
+    is_sort as is_sort_component, map_name as map_function_name, parse_constant,
+    read as read_fn_component,
 };
 use graph::{GraphBuilder, read_edges};
 use iteration::{
@@ -36,6 +38,7 @@ use schema::{
     read_schema_component, schema_node_at,
 };
 use scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use source::{SourcePath, primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};
 
 pub struct Imported {
@@ -153,7 +156,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
     let edge_from = read_edges(&structure, Some(&wrapper));
 
-    let sources: Vec<&SchemaComponent> = schema_components
+    let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
         .filter(|c| !c.is_variable && c.is_source)
         .collect();
@@ -174,7 +177,6 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             )
         })
     };
-    let primary = sources.first().ok_or_else(|| unsupported("source"))?;
     let default_target = targets
         .iter()
         .copied()
@@ -195,6 +197,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             target.name
         ));
     }
+    if sources.is_empty() {
+        return Err(unsupported("source"));
+    }
+    let primary_source = primary_index(&sources, target, &edge_from, &fn_components);
+    sources.swap(0, primary_source);
+    let source_names = runtime_names(&sources);
+    let primary = sources[0];
 
     let mut builder = GraphBuilder {
         graph: Graph::default(),
@@ -206,6 +215,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         source_fields: BTreeMap::new(),
         edge_from: &edge_from,
         sources: &sources,
+        source_names: &source_names,
         intermediates: &intermediates,
         fn_components: &fn_components,
         fn_by_output: BTreeMap::new(),
@@ -295,8 +305,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         if let Some(idx) = feed.sequence_component {
             builder.sequence_scope_components.insert(idx);
         }
-        if let Some(abs) = builder.iteration_source_path(&feed) {
-            builder.note_framed_prefixes(&abs);
+        if let Some(source_path) = builder.iteration_source_path(&feed) {
+            builder.note_framed_prefixes(&source_path);
         }
     }
     // Materialize aggregates first so computed sequence functions are built
@@ -315,6 +325,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             || is_input_component(fc)
             || is_sort_component(fc)
             || is_first_items_component(fc)
+            || is_group_into_blocks(fc)
             || is_distinct_values_component(fc)
             || is_sequence_producer(fc)
             || fc.name == "group-by"
@@ -325,6 +336,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     }
     let connected_bindings: BTreeSet<Vec<String>> =
         bindings.iter().map(|(target, _)| target.path()).collect();
+    let mut skipped_iteration_paths = Vec::new();
     for (target_path, from) in iterations {
         let feed = builder.resolve_iteration_feed(from);
         if let Some(issue) = feed.order_issue {
@@ -333,11 +345,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 target_path.join("/")
             ));
         }
-        let source_abs = builder.iteration_source_path(&feed);
+        let source_path = builder.iteration_source_path(&feed);
         let sequence = feed
             .sequence_component
             .and_then(|idx| builder.sequence_expr(idx));
-        if source_abs.is_none() && sequence.is_none() {
+        if source_path.is_none() && sequence.is_none() {
             builder.warnings.push(format!(
                 "iteration into `{}` comes from an unsupported feed; skipped",
                 target_path.join("/")
@@ -350,6 +362,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             .group_key
             .and_then(|key| builder.value_node(key))
             .or(distinct_node);
+        let resolved_block_size = feed.block_size.and_then(|key| builder.value_node(key));
+        if feed.has_block_grouping && resolved_block_size.is_none() {
+            builder.warnings.push(format!(
+                "group-into-blocks feeding `{}` has a missing or unsupported block-size; iteration skipped",
+                target_path.join("/")
+            ));
+            skipped_iteration_paths.push(target_path);
+            continue;
+        }
+        let block_size_node = resolved_block_size.filter(|_| group_node.is_none());
         if let Some(distinct_node) = distinct_node {
             let exists = builder.alloc(Node::Call {
                 function: "exists".into(),
@@ -377,19 +399,20 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         let nodes = IterationNodes {
             filter: filter_node,
             group_by: group_node,
+            group_into_blocks: block_size_node,
             sort_by: sort_node,
             sort_descending: feed.sort_descending,
             take: take_node,
         };
         if let Some(sequence) = sequence {
             scope_builder.add_sequence(&target_path, sequence, nodes);
-        } else if let Some(source_abs) = &source_abs {
-            scope_builder.add_iteration(&target_path, source_abs, nodes);
+        } else if let Some(source_path) = &source_path {
+            scope_builder.add_iteration(&target_path, &builder.context_path(source_path), nodes);
         }
         if feed.projects_whole_group
-            && let Some(source_abs) = &source_abs
+            && let Some(source_path) = &source_path
             && let (Some(source_group), Some(target_group)) = (
-                schema_node_at(&primary.schema, source_abs),
+                builder.schema_node(source_path),
                 schema_node_at(&target.schema, &target_path),
             )
         {
@@ -408,11 +431,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 {
                     continue;
                 }
-                let mut source_leaf = source_abs.clone();
-                source_leaf.extend(relative);
+                let mut source_leaf = source_path.clone();
+                source_leaf.path.extend(relative);
                 if let (Some(target), Some(node)) = (
                     TargetLeaf::from_path(&target_leaf),
-                    builder.primary_source_field(&source_leaf),
+                    builder.source_field_at(&source_leaf),
                 ) {
                     scope_builder.add_binding(target, node);
                 }
@@ -447,6 +470,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         }
     }
     for (target, from) in bindings {
+        if skipped_iteration_paths
+            .iter()
+            .any(|path| target.path().starts_with(path))
+        {
+            continue;
+        }
         let Some(node) = builder.value_node(from) else {
             builder.warnings.push(format!(
                 "binding for `{}` comes from an unsupported feed; skipped",
@@ -458,14 +487,26 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     }
 
     let mut extra_sources = Vec::new();
-    for extra in sources.iter().skip(1) {
-        builder.warnings.push(format!(
-            "extra source `{}` imported as a named source; cross-source \
-             connections usually need manual lookup/scope fixes",
-            extra.name
-        ));
+    for (index, extra) in sources.iter().enumerate().skip(1) {
+        let has_dynamic_input = extra
+            .input_keys
+            .iter()
+            .any(|key| edge_from.contains_key(key));
+        if has_dynamic_input {
+            builder.warnings.push(format!(
+                "extra source `{}` has a connected run-time input; the stored instance path is \
+                 used until dynamic sources are supported",
+                source_names[index]
+            ));
+        } else if extra.input_instance.is_none() {
+            builder.warnings.push(format!(
+                "extra source `{}` has no input instance path; the imported project needs one \
+                 before it can run",
+                source_names[index]
+            ));
+        }
         extra_sources.push(NamedSource {
-            name: extra.name.clone(),
+            name: source_names[index].clone(),
             path: extra.input_instance.clone().unwrap_or_default(),
             schema: extra.schema.clone(),
             options: extra.options.clone(),
@@ -493,64 +534,6 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 }
 
 impl GraphBuilder<'_> {
-    fn primary_source_field(&mut self, abs: &[String]) -> Option<NodeId> {
-        let schema = &self.sources.first()?.schema;
-        let path = self.suffix_after_framed(schema, abs);
-        let frame = self.frame_for_field(schema, abs);
-        Some(self.source_field(frame, path))
-    }
-
-    /// Marks every repeating level along an iterated absolute source path
-    /// as getting a run-time context frame.
-    fn note_framed_prefixes(&mut self, abs: &[String]) {
-        let Some(source) = self.sources.first() else {
-            return;
-        };
-        let mut node = &source.schema;
-        for (i, segment) in abs.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
-                break;
-            };
-            if child.repeating {
-                self.framed.insert(abs[..=i].to_vec());
-            }
-            node = child;
-        }
-    }
-
-    /// Path segments after the innermost framed (scope-iterated) repeating
-    /// ancestor -- what a `SourceField` must hold so it resolves against
-    /// the enclosing scopes' iteration frames.
-    fn suffix_after_framed(&self, schema: &SchemaNode, abs: &[String]) -> Vec<String> {
-        let mut node = schema;
-        let mut suffix_start = 0;
-        for (i, segment) in abs.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
-                break;
-            };
-            if child.repeating && self.framed.contains(&abs[..=i]) {
-                suffix_start = i + 1;
-            }
-            node = child;
-        }
-        abs[suffix_start..].to_vec()
-    }
-
-    fn frame_for_field(&self, schema: &SchemaNode, abs: &[String]) -> Option<Vec<String>> {
-        let mut node = schema;
-        let mut frame = None;
-        for (i, segment) in abs.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
-                break;
-            };
-            if child.repeating && self.framed.contains(&abs[..=i]) {
-                frame = Some(abs[..=i].to_vec());
-            }
-            node = child;
-        }
-        frame
-    }
-
     /// Resolves one output of a variable schema component to the connected
     /// input that supplies it plus the output's path below that input. An
     /// Connected descendant inputs are returned as scalar projections so a
@@ -606,14 +589,10 @@ impl GraphBuilder<'_> {
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
             if let Some(abs) = source.ports.get(&key).cloned() {
-                if idx == 0 {
-                    return self.primary_source_field(&abs);
-                }
-                // Extra sources are addressed by name from the outermost
-                // context frame.
-                let mut path = vec![self.sources[idx].name.clone()];
-                path.extend(abs);
-                return Some(self.source_field(None, path));
+                return self.source_field_at(&SourcePath {
+                    source: idx,
+                    path: abs,
+                });
             }
         }
         // A transparent output of a variable schema component?
@@ -621,9 +600,9 @@ impl GraphBuilder<'_> {
             if intermediate.suffix.is_empty() {
                 return self.value_node(intermediate.feed);
             }
-            let mut abs = self.sequence_source_path(intermediate.feed)?;
-            abs.extend(intermediate.suffix);
-            return self.primary_source_field(&abs);
+            let mut source_path = self.sequence_source_path(intermediate.feed)?;
+            source_path.path.extend(intermediate.suffix);
+            return self.source_field_at(&source_path);
         }
         if let Some(&(call_idx, component_id)) = self.udf_by_output.get(&key) {
             return self.udf_output_node(key, call_idx, component_id);
@@ -660,6 +639,11 @@ impl GraphBuilder<'_> {
             return Some(self.sequence_item(idx));
         }
         if is_first_items_component(&self.fn_components[idx]) {
+            return self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.value_node(feed));
+        }
+        if is_group_into_blocks(&self.fn_components[idx]) {
             return self
                 .input_feed(idx, 0)
                 .and_then(|feed| self.value_node(feed));
@@ -805,38 +789,33 @@ impl GraphBuilder<'_> {
     /// resolves to a source entry.
     fn aggregate_node(&mut self, op: AggregateOp, idx: usize) -> Option<Node> {
         let fc = &self.fn_components[idx];
-        let source_schema = self.sources.first()?.schema.clone();
         let sequence_feed = self.input_feed(idx, 1).or_else(|| {
             (fc.inputs.len() == 1)
                 .then(|| self.input_feed(idx, 0))
                 .flatten()
         })?;
 
-        let (collection_abs, value, expression) =
-            if let Some(path) = self.sequence_source_path(sequence_feed) {
-                let (collection, value) = split_at_innermost_repeating(&source_schema, &path);
-                (collection, value, None)
+        let (collection_source, collection_abs, value, expression) =
+            if let Some(source_path) = self.sequence_source_path(sequence_feed) {
+                let schema = &self.sources.get(source_path.source)?.schema;
+                let (collection, value) = split_at_innermost_repeating(schema, &source_path.path);
+                (source_path.source, collection, value, None)
             } else {
+                let source_schema = self.sources.first()?.schema.clone();
                 let mut dependencies = self.sequence_dependency_paths(sequence_feed);
                 if let Some(context) = self
                     .input_feed(idx, 0)
                     .and_then(|feed| self.sequence_source_path(feed))
+                    .filter(|path| path.source == 0)
                 {
-                    dependencies.push(context);
+                    dependencies.push(context.path);
                 }
                 let collection = compatible_collection(&source_schema, &dependencies)?;
                 let expression = self.value_node_in_collection(sequence_feed, &collection)?;
-                (collection, Vec::new(), Some(expression))
+                (0, collection, Vec::new(), Some(expression))
             };
 
-        let collection = match collection_abs.split_last() {
-            Some((last, prefix)) => {
-                let mut relative = self.suffix_after_framed(&source_schema, prefix);
-                relative.push(last.clone());
-                relative
-            }
-            None => Vec::new(),
-        };
+        let collection = self.collection_path(collection_source, &collection_abs)?;
         let arg = self
             .input_feed(idx, 2)
             .and_then(|feed| self.value_node(feed));
@@ -897,24 +876,18 @@ impl GraphBuilder<'_> {
     }
 
     fn position_collection(&self, idx: usize) -> Vec<String> {
-        let Some(source) = self.sources.first() else {
-            return Vec::new();
-        };
-        let Some(path) = self
+        let Some(source_path) = self
             .input_feed(idx, 0)
             .and_then(|feed| self.sequence_source_path(feed))
         else {
             return Vec::new();
         };
-        let collection_abs = split_at_innermost_repeating(&source.schema, &path).0;
-        match collection_abs.split_last() {
-            Some((last, prefix)) => {
-                let mut relative = self.suffix_after_framed(&source.schema, prefix);
-                relative.push(last.clone());
-                relative
-            }
-            None => Vec::new(),
-        }
+        let Some(source) = self.sources.get(source_path.source) else {
+            return Vec::new();
+        };
+        let collection_abs = split_at_innermost_repeating(&source.schema, &source_path.path).0;
+        self.collection_path(source_path.source, &collection_abs)
+            .unwrap_or_default()
     }
 
     /// The feed of pin `pos` on function component `idx`, if connected.
@@ -949,6 +922,8 @@ impl GraphBuilder<'_> {
     fn resolve_iteration_feed_inner(&self, mut from: u32, depth: usize) -> IterationFeed {
         let mut filter_expr = None;
         let mut group_key = None;
+        let mut block_size = None;
+        let mut has_block_grouping = false;
         let mut distinct_key = None;
         let mut order_issue = None;
         let mut nearest_control = None;
@@ -971,6 +946,17 @@ impl GraphBuilder<'_> {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
                     filter_expr = filter_expr.or(control.filter_expr);
                     group_key = group_key.or(control.group_key);
+                    if (group_key.is_some() || distinct_key.is_some())
+                        && control.block_size.is_some()
+                        || block_size.is_some()
+                            && (control.group_key.is_some() || control.distinct_key.is_some())
+                    {
+                        order_issue.get_or_insert(
+                            "combines group-into-blocks with another grouping control, which cannot be represented exactly",
+                        );
+                    }
+                    block_size = block_size.or(control.block_size);
+                    has_block_grouping |= control.has_block_grouping;
                     distinct_key = distinct_key.or(control.distinct_key);
                     order_issue = order_issue.or(control.order_issue);
                     if sort_expr.is_none() && control.sort_expr.is_some() {
@@ -1024,9 +1010,27 @@ impl GraphBuilder<'_> {
                 // the first member inside each group. Grouped scope frames
                 // already expose that member to scalar bindings, so an
                 // outer item limit would incorrectly truncate the groups.
-                if group_key.is_none() && take_expr.is_none() && !take_default_one {
+                if group_key.is_none()
+                    && block_size.is_none()
+                    && take_expr.is_none()
+                    && !take_default_one
+                {
                     take_expr = self.input_feed(idx, 1);
                     take_default_one = take_expr.is_none();
+                }
+                from = nodes_feed;
+            } else if is_group_into_blocks(fc) {
+                has_block_grouping = true;
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
+                if group_key.is_some() || distinct_key.is_some() {
+                    order_issue.get_or_insert(
+                        "combines group-into-blocks with another grouping control, which cannot be represented exactly",
+                    );
+                } else {
+                    block_size = block_size.or_else(|| self.input_feed(idx, 1));
                 }
                 from = nodes_feed;
             } else if is_distinct_values_component(fc) {
@@ -1039,6 +1043,8 @@ impl GraphBuilder<'_> {
                     Some("filter")
                 } else if group_key.is_some() {
                     Some("group-by")
+                } else if block_size.is_some() {
+                    Some("group-into-blocks")
                 } else if distinct_key.is_some() {
                     Some("another distinct-values")
                 } else {
@@ -1049,6 +1055,7 @@ impl GraphBuilder<'_> {
                         "sort" => "applies distinct-values before sort, which cannot be represented exactly",
                         "filter" => "applies distinct-values before filter, which cannot be represented exactly",
                         "group-by" => "applies distinct-values before group-by, which cannot be represented exactly",
+                        "group-into-blocks" => "applies distinct-values before group-into-blocks, which cannot be represented exactly",
                         _ => "chains multiple distinct-values components, which cannot be represented exactly",
                     });
                 }
@@ -1066,7 +1073,13 @@ impl GraphBuilder<'_> {
                                 "applies group-by before distinct-values, which cannot be represented exactly",
                             );
                         }
-                        group_key = group_key.or_else(|| self.input_feed(idx, 1));
+                        if block_size.is_some() {
+                            order_issue.get_or_insert(
+                                "combines group-into-blocks with another grouping control, which cannot be represented exactly",
+                            );
+                        } else {
+                            group_key = group_key.or_else(|| self.input_feed(idx, 1));
+                        }
                         from = nodes_feed;
                     }
                     _ => break,
@@ -1079,6 +1092,8 @@ impl GraphBuilder<'_> {
             source_suffix,
             filter_expr,
             group_key,
+            block_size,
+            has_block_grouping,
             distinct_key,
             order_issue,
             sort_expr,
@@ -1087,53 +1102,6 @@ impl GraphBuilder<'_> {
             take_default_one,
             projects_whole_group,
             projections,
-        }
-    }
-
-    /// Follows supported sequence pass-throughs to the primary-source entry
-    /// a sequence connection ultimately reads, for aggregates.
-    fn sequence_source_path(&self, mut feed: u32) -> Option<Vec<String>> {
-        let mut suffix = Vec::new();
-        for _ in 0..12 {
-            if let Some(abs) = self.sources.first()?.ports.get(&feed) {
-                let mut path = abs.clone();
-                path.extend(suffix);
-                return Some(path);
-            }
-            if let Some(intermediate) = self.intermediate_feed(feed) {
-                let mut intermediate_suffix = intermediate.suffix;
-                intermediate_suffix.extend(suffix);
-                suffix = intermediate_suffix;
-                feed = intermediate.feed;
-                continue;
-            }
-            let &idx = self.fn_by_output.get(&feed)?;
-            let fc = &self.fn_components[idx];
-            if is_filter_component(fc) || is_sort_component(fc) || is_first_items_component(fc) {
-                feed = self.input_feed(idx, 0)?;
-            } else {
-                match fc.name.as_str() {
-                    "group-by" if fc.outputs.first() == Some(&feed) => {
-                        feed = self.input_feed(idx, 0)?;
-                    }
-                    _ => return None,
-                }
-            }
-        }
-        None
-    }
-
-    fn iteration_source_path(&self, feed: &IterationFeed) -> Option<Vec<String>> {
-        if feed.sequence_component.is_some() {
-            return None;
-        }
-        let mut path = self.source_abs_path(feed.source_key)?;
-        path.extend(feed.source_suffix.iter().cloned());
-        if feed.distinct_key.is_some() {
-            let schema = &self.sources.first()?.schema;
-            Some(split_at_innermost_repeating(schema, &path).0)
-        } else {
-            Some(path)
         }
     }
 
@@ -1177,11 +1145,5 @@ impl GraphBuilder<'_> {
             }
             _ => return None,
         })
-    }
-
-    /// The absolute source path behind output-port `key` on the primary
-    /// source, if that is what it is.
-    fn source_abs_path(&self, key: u32) -> Option<Vec<String>> {
-        self.sources.first()?.ports.get(&key).cloned()
     }
 }

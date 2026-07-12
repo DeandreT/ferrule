@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TEXT_FIELD};
 use mapping::{Node, SequenceExpr};
 
+#[path = "import/multi_source.rs"]
+mod multi_source;
 #[path = "import/sequence_controls.rs"]
 mod sequence_controls;
 #[path = "import/udf.rs"]

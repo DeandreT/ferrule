@@ -16,6 +16,11 @@ pub(super) struct IterationFeed {
     pub(super) filter_expr: Option<u32>,
     /// The group-by's key expression key, if a group-by was crossed.
     pub(super) group_key: Option<u32>,
+    /// The block-size expression key, if group-into-blocks was crossed.
+    pub(super) block_size: Option<u32>,
+    /// Whether the chain contains group-into-blocks, including a component
+    /// whose required size pin is absent or cannot be resolved.
+    pub(super) has_block_grouping: bool,
     /// Scalar sequence feeding a distinct-values component. It becomes the
     /// grouping key while iteration retains the owning source item.
     pub(super) distinct_key: Option<u32>,
