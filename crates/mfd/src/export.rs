@@ -1085,6 +1085,8 @@ fn unmap_function_name(name: &str) -> String {
         "substring_after" => "substring-after",
         "date_from_datetime" => "date-from-datetime",
         "time_from_datetime" => "time-from-datetime",
+        "datetime_from_date_and_time" => "datetime-from-date-and-time",
+        "datetime_from_parts" => "datetime-from-parts",
         "parse_date" => "parse-date",
         "parse_datetime" => "parse-dateTime",
         "parse_time" => "parse-time",
@@ -1097,8 +1099,13 @@ fn unmap_function_name(name: &str) -> String {
 
 fn function_library(name: &str) -> &'static str {
     match name {
-        "left_trim" | "right_trim" | "pad_string_left" | "pad_string_right"
-        | "time_from_datetime" => "lang",
+        "left_trim"
+        | "right_trim"
+        | "pad_string_left"
+        | "pad_string_right"
+        | "time_from_datetime"
+        | "datetime_from_date_and_time"
+        | "datetime_from_parts" => "lang",
         _ => "core",
     }
 }
@@ -1121,6 +1128,16 @@ mod tests {
             "time-from-datetime"
         );
         assert_eq!(function_library("time_from_datetime"), "lang");
+        assert_eq!(
+            unmap_function_name("datetime_from_date_and_time"),
+            "datetime-from-date-and-time"
+        );
+        assert_eq!(function_library("datetime_from_date_and_time"), "lang");
+        assert_eq!(
+            unmap_function_name("datetime_from_parts"),
+            "datetime-from-parts"
+        );
+        assert_eq!(function_library("datetime_from_parts"), "lang");
         assert_eq!(unmap_function_name("parse_date"), "parse-date");
         assert_eq!(unmap_function_name("parse_datetime"), "parse-dateTime");
         assert_eq!(

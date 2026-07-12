@@ -323,6 +323,8 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "round" | "round-precision" => "round",
         "date-from-datetime" => "date_from_datetime",
         "time-from-datetime" => "time_from_datetime",
+        "datetime-from-date-and-time" => "datetime_from_date_and_time",
+        "datetime-from-parts" => "datetime_from_parts",
         "parse-date" => "parse_date",
         "parse-dateTime" => "parse_datetime",
         "parse-time" => "parse_time",
@@ -340,6 +342,11 @@ mod tests {
         assert_eq!(map_name("string"), Some("string"));
         assert_eq!(map_name("format-number"), Some("format_number"));
         assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
+        assert_eq!(
+            map_name("datetime-from-date-and-time"),
+            Some("datetime_from_date_and_time")
+        );
+        assert_eq!(map_name("datetime-from-parts"), Some("datetime_from_parts"));
         assert_eq!(map_name("parse-date"), Some("parse_date"));
         assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
