@@ -243,6 +243,16 @@ pub(super) fn is_db_function_component(component: &roxmltree::Node<'_, '_>) -> b
             && component.attribute("name") == Some("substitute-null")
 }
 
+pub(super) fn produces_scalar(component: &FnComponent) -> bool {
+    component.name == "constant"
+        || matches!(
+            component.name.as_str(),
+            "if-else" | "value-map" | "position"
+        )
+        || component.kind == 5 && aggregate_op(&component.name).is_some()
+        || map_name(&component.name).is_some()
+}
+
 pub(super) fn is_input(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 6
 }

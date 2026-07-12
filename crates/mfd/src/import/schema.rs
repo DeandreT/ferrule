@@ -4,6 +4,10 @@ use std::path::Path;
 use ir::{SchemaKind, SchemaNode};
 use mapping::FormatOptions;
 
+mod xml_ports;
+
+use xml_ports::normalize_xml_text_ports;
+
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ComponentFormat {
     Xml,
@@ -214,18 +218,6 @@ fn instance_root_segments(root: &str) -> Vec<String> {
         .filter(|segment| !segment.is_empty())
         .map(str::to_string)
         .collect()
-}
-
-/// MapForce puts a simple-content value on its parent element's port. The
-/// ferrule schema stores that scalar as a `#text` child, so normalize the
-/// port path once at component import and let the graph/scope builders use
-/// ordinary scalar paths afterward.
-fn normalize_xml_text_ports(schema: &SchemaNode, ports: &mut BTreeMap<u32, Vec<String>>) {
-    for path in ports.values_mut() {
-        if let Some(text) = schema_node_at(schema, path).and_then(SchemaNode::text_child) {
-            path.push(text.name.clone());
-        }
-    }
 }
 
 pub(super) fn note_skipped_library(skipped: &mut Vec<String>, label: &str) {

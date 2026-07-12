@@ -1,8 +1,16 @@
-use ir::{SchemaKind, SchemaNode};
+use std::collections::BTreeSet;
 
+use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
+
+use super::function::{aggregate_op, produces_scalar};
 use super::graph::GraphBuilder;
 use super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
 use super::scope::{ScopeBuilder, TargetLeaf};
+
+pub(super) enum Projection {
+    Group(Vec<String>, u32),
+    Text(Vec<String>, u32),
+}
 
 pub(super) fn classify_target_connection(
     target: &SchemaComponent,
@@ -11,7 +19,7 @@ pub(super) fn classify_target_connection(
     feed: u32,
     builder: &mut GraphBuilder<'_>,
     iterations: &mut Vec<(Vec<String>, u32)>,
-    projections: &mut Vec<(Vec<String>, u32)>,
+    projections: &mut Vec<Projection>,
 ) {
     let resolved = builder.resolve_iteration_feed(feed);
     let plain_feed = resolved.sequence_component.is_none()
@@ -38,15 +46,20 @@ pub(super) fn classify_target_connection(
         if row_shaped {
             iterations.push((target_path.to_vec(), feed));
         } else if exact_group_source && !has_connected_descendant(target, target_path, builder) {
-            projections.push((target_path.to_vec(), feed));
+            projections.push(Projection::Group(target_path.to_vec(), feed));
         }
         return;
     }
     if target_node.repeating {
         iterations.push((target_path.to_vec(), feed));
+    } else if is_xml_text_group(target, target_node)
+        && !text_is_connected(target, target_path, builder)
+        && is_scalar_feed(builder, feed)
+    {
+        projections.push(Projection::Text(target_path.to_vec(), feed));
     } else if !has_connected_descendant(target, target_path, builder) {
         if exact_group_source {
-            projections.push((target_path.to_vec(), feed));
+            projections.push(Projection::Group(target_path.to_vec(), feed));
         } else {
             builder.warnings.push(format!(
                 "connection into non-repeating group `{}` ignored",
@@ -54,6 +67,77 @@ pub(super) fn classify_target_connection(
             ));
         }
     }
+}
+
+fn is_xml_text_group(target: &SchemaComponent, node: &SchemaNode) -> bool {
+    target.format == ComponentFormat::Xml
+        && node
+            .child(XML_TEXT_FIELD)
+            .is_some_and(|text| !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. }))
+}
+
+fn text_is_connected(
+    target: &SchemaComponent,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+) -> bool {
+    let mut text_path = target_path.to_vec();
+    text_path.push(XML_TEXT_FIELD.to_string());
+    target
+        .ports
+        .iter()
+        .any(|(key, path)| *path == text_path && builder.edge_from.contains_key(key))
+}
+
+fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
+    fn visit(builder: &GraphBuilder<'_>, feed: u32, visiting: &mut BTreeSet<u32>) -> bool {
+        if !visiting.insert(feed) {
+            return false;
+        }
+        let scalar = builder.sources.iter().any(|source| {
+            source.ports.get(&feed).is_some_and(|path| {
+                !matches!(source.format, ComponentFormat::Csv | ComponentFormat::Db)
+                    && scalar_schema_path(&source.schema, path)
+            })
+        }) || builder.fn_by_output.get(&feed).is_some_and(|index| {
+            let component = &builder.fn_components[*index];
+            if !produces_scalar(component) {
+                return false;
+            }
+            if component.name == "constant"
+                || component.name == "position"
+                || component.kind == 5 && aggregate_op(&component.name).is_some()
+            {
+                return true;
+            }
+            component.inputs.iter().flatten().all(|input| {
+                builder
+                    .edge_from
+                    .get(input)
+                    .is_none_or(|upstream| visit(builder, *upstream, visiting))
+            })
+        });
+        visiting.remove(&feed);
+        scalar
+    }
+    visit(builder, feed, &mut BTreeSet::new())
+}
+
+fn scalar_schema_path(schema: &SchemaNode, path: &[String]) -> bool {
+    if schema.repeating {
+        return false;
+    }
+    let mut node = schema;
+    for segment in path {
+        let Some(child) = node.child(segment) else {
+            return false;
+        };
+        if child.repeating {
+            return false;
+        }
+        node = child;
+    }
+    matches!(node.kind, SchemaKind::Scalar { .. })
 }
 
 fn has_connected_descendant(
@@ -69,13 +153,32 @@ fn has_connected_descendant(
 }
 
 pub(super) fn build(
-    projections: Vec<(Vec<String>, u32)>,
+    projections: Vec<Projection>,
     target: &SchemaComponent,
     skipped_iterations: &[Vec<String>],
     builder: &mut GraphBuilder<'_>,
     scopes: &mut ScopeBuilder,
 ) {
-    for (target_path, feed) in projections {
+    for projection in projections {
+        let (target_path, feed) = match projection {
+            Projection::Group(target_path, feed) => (target_path, feed),
+            Projection::Text(target_path, feed) => {
+                if skipped_iterations
+                    .iter()
+                    .any(|skipped| target_path.starts_with(skipped))
+                {
+                    continue;
+                }
+                let mut text_path = target_path.clone();
+                text_path.push(XML_TEXT_FIELD.to_string());
+                if let Some(target) = TargetLeaf::from_path(&text_path)
+                    && let Some(node) = builder.binding_node(feed, &text_path)
+                {
+                    scopes.add_binding(target, node);
+                }
+                continue;
+            }
+        };
         if skipped_iterations
             .iter()
             .any(|skipped| target_path.starts_with(skipped))
