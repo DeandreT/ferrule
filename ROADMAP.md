@@ -23,7 +23,7 @@ clean-room interoperability, and extensible adapters.
   stable sorting, item limits, conditionals, value maps, lookups, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
   structural group projection, mapped and computed XML occurrence sequences, and
-  44 scalar built-ins.
+  45 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
@@ -35,7 +35,7 @@ clean-room interoperability, and extensible adapters.
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, includes/imports, attributes, simple content, selected derived-type output | Namespace identity, derived-type input identity, `xsi:nil`, wildcards, mixed content |
+| XML | XSD subset, includes/imports, attributes, simple content, `xsi:nil`, selected derived-type output | Namespace identity, derived-type input identity, wildcards, mixed content |
 | JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`, typed dynamic properties | General union/composition schemas, mixed arrays, unconstrained dynamic values |
 | Flat files | Delimited CSV | Fixed length, reusable structured-text/FlexText-style layouts |
 | Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
@@ -68,9 +68,9 @@ standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
 constructed records, mapping-path and stable per-run clock values use explicit
 host context, computed JSON targets, plain structural group copies, and filtered
-or generated XML
-occurrence sequences lower exactly, and inclusive ranges accept exact integral
-decimal inputs.
+or generated XML occurrence sequences lower exactly. Repeating copy-all groups
+retain their scalar descendants, `xsi:nil` remains distinct from absent values,
+and inclusive ranges accept exact integral decimal inputs.
 High-value date/time/duration/missing-value functions execute natively. Non-representable
 operator order produces an actionable warning instead of silently claiming exact
 conversion.
@@ -80,7 +80,7 @@ conversion.
   `tokenize-by-length`, `generate-sequence`, and sequence slicing.
 - Expand high-value conversion, date/time, math, and node functions.
 - Import static generic XML type selections and inline graph-backed UDFs.
-- Complete namespace, `xsi:nil`, and JSON union semantics.
+- Complete namespace and JSON union semantics.
 - Keep every fixture self-authored; use vendor samples only as black-box
   behavioral references.
 
