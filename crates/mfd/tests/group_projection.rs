@@ -224,3 +224,66 @@ fn mixed_group_projection_copies_scalars_and_warns_about_repeating_children() {
     assert_eq!(wrapper.bindings.len(), 1);
     assert_eq!(wrapper.bindings[0].target_field, "Label");
 }
+
+#[test]
+fn scalar_group_port_populates_xml_text_alongside_an_explicit_attribute() {
+    let dir = TempDir::new();
+    write(
+        &dir.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    );
+    write(
+        &dir.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Description"><xs:complexType mixed="true"><xs:sequence><xs:element name="Bold" type="xs:string" minOccurs="0"/></xs:sequence><xs:attribute name="code" type="xs:string"/></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    );
+    write(&dir.0.join("source.xml"), "<Source><Code>A</Code></Source>");
+    write(
+        &dir.0.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Code" outkey="11"/></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="constant" library="core" kind="2"><targets><datapoint key="10"/></targets><data><constant value="promoted" datatype="string"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Description" inpkey="20"><entry name="code" type="attribute" inpkey="21"/></entry></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    );
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let source = format_xml::read(&dir.0.join("source.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let description = target.field("Description").unwrap();
+    assert_eq!(
+        scalar(description, ir::XML_TEXT_FIELD),
+        &Value::String("promoted".into())
+    );
+    assert_eq!(scalar(description, "code"), &Value::String("A".into()));
+    let output = format_xml::to_string(&imported.project.target, &target).unwrap();
+    assert!(
+        output.contains("<Description code=\"A\">promoted</Description>"),
+        "{output}"
+    );
+}
+
+#[test]
+fn structured_group_feed_is_not_lowered_to_xml_text() {
+    let dir = TempDir::new();
+    write(
+        &dir.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Record" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    );
+    write(
+        &dir.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Description"><xs:complexType mixed="true"><xs:sequence><xs:element name="Bold" type="xs:string" minOccurs="0"/></xs:sequence><xs:attribute name="code" type="xs:string"/></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    );
+    write(
+        &dir.0.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Record" outkey="10"><entry name="Value"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Description" inpkey="20"/></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    );
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(imported.warnings[0].contains("group `Description` ignored"));
+    assert!(imported.project.root.children.is_empty());
+}
