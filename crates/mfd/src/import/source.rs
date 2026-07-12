@@ -39,20 +39,28 @@ pub(super) fn primary_index(
         let row_root = target_path.is_empty()
             && (matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
                 || target.format == ComponentFormat::Json && target_node.repeating);
-        if !(row_root
-            || target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. }))
-        {
+        let repeating_group =
+            target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. });
+        let mapped_xml_group = target.format == ComponentFormat::Xml
+            && !target_node.repeating
+            && matches!(target_node.kind, SchemaKind::Group { .. });
+        if !(row_root || repeating_group || mapped_xml_group) {
             continue;
         }
         for (index, source) in sources.iter().enumerate() {
+            let Some(source_path) = source.ports.get(&feed) else {
+                continue;
+            };
             let has_dynamic_input = source.db_queries.is_empty()
                 && source
                     .input_keys
                     .iter()
                     .any(|key| edge_from.contains_key(key));
+            let mapped_group_drives_repetition =
+                mapped_xml_group && group_below_repetition(&source.schema, source_path);
             if source.input_instance.is_some()
                 && !has_dynamic_input
-                && source.ports.contains_key(&feed)
+                && (row_root || repeating_group || mapped_group_drives_repetition)
             {
                 scores[index] += 1;
             }
@@ -64,6 +72,19 @@ pub(super) fn primary_index(
         .max_by_key(|(index, score)| (**score, std::cmp::Reverse(*index)))
         .filter(|(_, score)| **score > 0)
         .map_or(0, |(index, _)| index)
+}
+
+fn group_below_repetition(schema: &SchemaNode, path: &[String]) -> bool {
+    let mut node = schema;
+    let mut has_repeating_ancestor = false;
+    for segment in path {
+        has_repeating_ancestor |= node.repeating;
+        let Some(child) = node.child(segment) else {
+            return false;
+        };
+        node = child;
+    }
+    has_repeating_ancestor && !node.repeating && matches!(node.kind, SchemaKind::Group { .. })
 }
 
 /// Follows sequence controls through their node-sequence input. This mirrors
@@ -381,6 +402,89 @@ impl GraphBuilder<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn component(name: &str, schema: SchemaNode, port: (u32, Vec<&str>)) -> SchemaComponent {
+        SchemaComponent {
+            name: name.to_string(),
+            format: ComponentFormat::Xml,
+            schema,
+            input_instance: Some(format!("{name}.xml")),
+            output_instance: None,
+            options: mapping::FormatOptions::default(),
+            is_source: true,
+            is_default_output: false,
+            is_variable: false,
+            compute_when_key: None,
+            ports: BTreeMap::from([(port.0, port.1.into_iter().map(str::to_string).collect())]),
+            input_keys: BTreeSet::new(),
+            output_keys: BTreeSet::from([port.0]),
+            db_queries: Vec::new(),
+            dynamic_json: None,
+        }
+    }
+
+    #[test]
+    fn mapped_group_below_repetition_selects_primary_through_filter() {
+        let fallback = component(
+            "fallback",
+            SchemaNode::group(
+                "Fallback",
+                vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+            ),
+            (1, vec!["Value"]),
+        );
+        let mapped = component(
+            "mapped",
+            SchemaNode::group(
+                "Source",
+                vec![
+                    SchemaNode::group(
+                        "Rows",
+                        vec![SchemaNode::group(
+                            "Details",
+                            vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+                        )],
+                    )
+                    .repeating(),
+                ],
+            ),
+            (7, vec!["Rows", "Details"]),
+        );
+        let mut target = component(
+            "target",
+            SchemaNode::group(
+                "Target",
+                vec![SchemaNode::group(
+                    "Details",
+                    vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+                )],
+            ),
+            (90, vec!["Details"]),
+        );
+        target.input_instance = None;
+        target.output_instance = Some("target.xml".to_string());
+        target.is_source = false;
+        target.input_keys = BTreeSet::from([90]);
+        target.output_keys.clear();
+
+        let filter = FnComponent {
+            library: "core".to_string(),
+            name: "filter".to_string(),
+            kind: 3,
+            inputs: vec![Some(80)],
+            outputs: vec![81],
+            constant: None,
+            valuemap: None,
+            sort_descending: None,
+            db_where: None,
+        };
+        let edges = BTreeMap::from([(80, 7), (90, 81)]);
+
+        assert_eq!(
+            primary_index(&[&fallback, &mapped], &target, &edges, &[filter]),
+            1
+        );
+    }
 
     #[test]
     fn iteration_source_tracing_crosses_every_supported_control() {

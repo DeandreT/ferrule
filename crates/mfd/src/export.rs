@@ -5,19 +5,24 @@
 //! `.csv`/`.txt` a csv text component, everything else (including no path
 //! at all) an XML component.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ir::Value;
 use mapping::{Graph, Node, NodeId, Project, Scope, SequenceExpr};
 
 use crate::MfdError;
 
+mod function;
+mod mapped_sequence;
 mod schema;
 
+use function::{
+    aggregate_component_name, constant_parts, function_library, unmap_function_name, value_text,
+};
+use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
 use schema::{
     KeyAlloc, PortMatch, PortTree, Side, SideFormat, db_datasource_name, render_schema_component,
     side_format, xml_escape,
@@ -28,12 +33,6 @@ use schema::{
 /// component family needs one. Returns warnings for the parts that have no
 /// `.mfd` representation and were skipped.
 pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
-    if scope_has_dynamic_mapping(&project.root) {
-        return Err(MfdError::Unsupported(
-            "computed JSON property mappings do not yet have a lossless MapForce export"
-                .to_string(),
-        ));
-    }
     let mut warnings = Vec::new();
 
     if !project.extra_sources.is_empty() {
@@ -45,6 +44,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     let source_format = side_format(&project.source_path);
     let target_format = side_format(&project.target_path);
+    let mapped_scope_plans = preflight_mapped_sequences(project, target_format)?;
 
     let mut keys = KeyAlloc { next: 1 };
     let source_ports = PortTree::build(&project.source, &mut keys);
@@ -56,6 +56,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut position_inputs: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
     let mut edges: Vec<(u32, u32)> = Vec::new();
+    let mut structural_edges = BTreeSet::new();
     let mut uid = 100u32;
     let mut sequence_inputs = Vec::new();
     let mut sequences = Vec::new();
@@ -355,6 +356,9 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         &mut filter_components,
         &mut edges,
         &mut warnings,
+        false,
+        &mut structural_edges,
+        &mapped_scope_plans,
     );
     for (id, input) in &position_inputs {
         if !position_contexts.contains_key(id) {
@@ -432,8 +436,10 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     out.push_str(&source_component.xml);
     out.push_str(&target_component.xml);
     out.push_str(&components);
-    out.push_str(
-        "\t\t\t</children>\n\t\t\t<graph directed=\"1\">\n\t\t\t\t<edges/>\n\t\t\t\t<vertices>\n",
+    let (structural_edge_keys, edge_metadata) = render_edge_metadata(&structural_edges, &mut keys);
+    let _ = write!(
+        out,
+        "\t\t\t</children>\n\t\t\t<graph directed=\"1\">\n{edge_metadata}\t\t\t\t<vertices>\n"
     );
     let mut by_from: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
     for (from, to) in edges {
@@ -445,7 +451,14 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
             "\t\t\t\t\t<vertex vertexkey=\"{from}\">\n\t\t\t\t\t\t<edges>\n"
         );
         for to in tos {
-            let _ = writeln!(out, "\t\t\t\t\t\t\t<edge vertexkey=\"{to}\"/>");
+            if let Some(edge_key) = structural_edge_keys.get(&(from, to)) {
+                let _ = writeln!(
+                    out,
+                    "\t\t\t\t\t\t\t<edge vertexkey=\"{to}\" edgekey=\"{edge_key}\"/>"
+                );
+            } else {
+                let _ = writeln!(out, "\t\t\t\t\t\t\t<edge vertexkey=\"{to}\"/>");
+            }
         }
         out.push_str("\t\t\t\t\t\t</edges>\n\t\t\t\t\t</vertex>\n");
     }
@@ -465,13 +478,6 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     artifacts.push((path.to_path_buf(), out));
     write_artifacts(artifacts)?;
     Ok(warnings)
-}
-
-fn scope_has_dynamic_mapping(scope: &Scope) -> bool {
-    scope.merge_dynamic_fields
-        || !scope.dynamic_bindings.is_empty()
-        || !scope.dynamic_children.is_empty()
-        || scope.children.iter().any(scope_has_dynamic_mapping)
 }
 
 static TEMP_ARTIFACT_ID: AtomicU64 = AtomicU64::new(0);
@@ -911,7 +917,13 @@ fn collect_scope_edges(
     filter_components: &mut String,
     edges: &mut Vec<(u32, u32)>,
     warnings: &mut Vec<String>,
+    suppress_mapped_bindings: bool,
+    structural_edges: &mut BTreeSet<(u32, u32)>,
+    mapped_scope_plans: &ScopePlans,
 ) {
+    let mapped_plan = mapped_scope_plans.get(chain);
+    let suppress_mapped_bindings =
+        suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all);
     let anchor_len = anchor.len();
     if let Some(sequence) = &scope.sequence {
         if chain.is_empty() && !target_root_iterable {
@@ -972,8 +984,11 @@ fn collect_scope_edges(
     } else if let Some(source) = &scope.source {
         let mut abs = anchor.clone();
         abs.extend(source.iter().cloned());
+        let structural_source = mapped_plan
+            .map(|plan| plan.source_group.as_slice())
+            .unwrap_or(&abs);
         match (
-            source_ports.key_for_abs(&abs),
+            source_ports.key_for_abs(structural_source),
             target_ports.key_for_abs(chain),
         ) {
             (Some(from), Some(to)) => {
@@ -1003,6 +1018,9 @@ fn collect_scope_edges(
                     warnings,
                 );
                 edges.push((from, to));
+                if mapped_plan.is_some_and(|plan| plan.copy_all) {
+                    structural_edges.insert((from, to));
+                }
                 *anchor = abs;
             }
             _ => warnings.push(format!(
@@ -1013,6 +1031,9 @@ fn collect_scope_edges(
         }
     }
     for binding in &scope.bindings {
+        if suppress_mapped_bindings {
+            continue;
+        }
         let mut leaf = chain.clone();
         leaf.push(binding.target_field.clone());
         match (
@@ -1048,94 +1069,21 @@ fn collect_scope_edges(
             filter_components,
             edges,
             warnings,
+            suppress_mapped_bindings,
+            structural_edges,
+            mapped_scope_plans,
         );
         chain.pop();
     }
     anchor.truncate(anchor_len);
 }
 
-fn aggregate_component_name(op: mapping::AggregateOp) -> &'static str {
-    use mapping::AggregateOp;
-    match op {
-        AggregateOp::Count => "count",
-        AggregateOp::Sum => "sum",
-        AggregateOp::Avg => "avg",
-        AggregateOp::Min => "min",
-        AggregateOp::Max => "max",
-        AggregateOp::Join => "string-join",
-        AggregateOp::ItemAt => "item-at",
-    }
-}
-
-fn constant_parts(value: &Value) -> (String, &'static str) {
-    match value {
-        Value::Null => (String::new(), "string"),
-        Value::Bool(b) => (b.to_string(), "boolean"),
-        Value::Int(i) => (i.to_string(), "integer"),
-        Value::Float(f) => (f.to_string(), "decimal"),
-        Value::String(s) => (s.clone(), "string"),
-    }
-}
-
-fn value_text(value: &Value) -> String {
-    constant_parts(value).0
-}
-
-fn unmap_function_name(name: &str) -> String {
-    match name {
-        "not_equal" => "not-equal",
-        "greater_than" => "greater",
-        "less_than" => "less",
-        "greater_or_equal" => "greater-equal",
-        "less_or_equal" => "less-equal",
-        "and" => "logical-and",
-        "or" => "logical-or",
-        "not" => "logical-not",
-        "length" => "string-length",
-        "starts_with" => "starts-with",
-        "upper" => "upper-case",
-        "lower" => "lower-case",
-        "left_trim" => "left-trim",
-        "right_trim" => "right-trim",
-        "pad_string_left" => "pad-string-left",
-        "pad_string_right" => "pad-string-right",
-        "substring_before" => "substring-before",
-        "substring_after" => "substring-after",
-        "date_from_datetime" => "date-from-datetime",
-        "time_from_datetime" => "time-from-datetime",
-        "datetime_from_date_and_time" => "datetime-from-date-and-time",
-        "datetime_from_parts" => "datetime-from-parts",
-        "datetime_add" => "datetime-add",
-        "parse_date" => "parse-date",
-        "parse_datetime" => "parse-dateTime",
-        "parse_time" => "parse-time",
-        "substitute_missing" => "substitute-missing",
-        "format_number" => "format-number",
-        other => other,
-    }
-    .to_string()
-}
-
-fn function_library(name: &str) -> &'static str {
-    match name {
-        "left_trim"
-        | "right_trim"
-        | "pad_string_left"
-        | "pad_string_right"
-        | "time_from_datetime"
-        | "datetime_from_date_and_time"
-        | "datetime_from_parts" => "lang",
-        "datetime_add" => "lang",
-        _ => "core",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use ir::{ScalarType, SchemaNode};
 
+    use super::function::{function_library, unmap_function_name};
     use super::schema::{KeyAlloc, PortMatch, PortTree};
-    use super::{function_library, unmap_function_name};
 
     #[test]
     fn canonical_scalar_names_export_as_mapforce_core_functions() {
