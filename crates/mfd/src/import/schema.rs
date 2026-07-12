@@ -838,6 +838,13 @@ pub(super) fn read_db_component(
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     let name = component.attribute("name").unwrap_or_default().to_string();
+    match super::db_query::read_embedded_catalog(component, mapping_el, mfd_path) {
+        Ok(Some(catalog)) => return Some(catalog),
+        Ok(None) => {}
+        Err(reason) => warnings.push(format!(
+            "database component `{name}` has an unsupported inline query: {reason}; parent table fields were imported"
+        )),
+    }
     if component.attribute("kind") == Some("28") {
         return match super::db_query::read_component(component, mapping_el, mfd_path) {
             Ok(query) => Some(query),
