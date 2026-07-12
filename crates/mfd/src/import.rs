@@ -12,6 +12,8 @@ use mapping::{AggregateOp, Graph, NamedSource, Node, NodeId, Project, Scope, Seq
 
 use crate::MfdError;
 
+mod alternatives;
+mod db_where;
 mod function;
 mod graph;
 mod iteration;
@@ -21,11 +23,11 @@ mod source;
 mod udf;
 
 use function::{
-    aggregate_op, is_distinct_values as is_distinct_values_component,
-    is_filter as is_filter_component, is_first_items as is_first_items_component,
-    is_group_into_blocks, is_input as is_input_component, is_sequence_producer,
-    is_sort as is_sort_component, map_name as map_function_name, parse_constant,
-    read as read_fn_component,
+    aggregate_op, is_db_where as is_db_where_component,
+    is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
+    is_first_items as is_first_items_component, is_group_into_blocks,
+    is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
+    map_name as map_function_name, parse_constant, read as read_fn_component,
 };
 use graph::{GraphBuilder, read_edges};
 use iteration::{
@@ -119,6 +121,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                              not supported yet (only csv and edi text components import)"
                         ));
                     }
+                }
+                "db" if component.attribute("kind") == Some("21") => {
+                    fn_components.push(read_fn_component(&component));
                 }
                 "db" => match read_db_component(&component, &mapping_el, path, &mut warnings) {
                     Some(sc) => schema_components.push(sc),
@@ -322,6 +327,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     for (i, fc) in fn_components.iter().enumerate() {
         if !(fc.outputs.is_empty()
             || is_filter_component(fc)
+            || is_db_where_component(fc)
             || is_input_component(fc)
             || is_sort_component(fc)
             || is_first_items_component(fc)
@@ -356,7 +362,27 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             ));
             continue;
         }
-        let mut filter_node = feed.filter_expr.and_then(|key| builder.value_node(key));
+        let existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
+        let db_where_name = feed
+            .db_where_component
+            .and_then(|index| builder.fn_components.get(index))
+            .map(|component| component.name.clone());
+        let (mut filter_node, db_sort_node, db_sort_descending) = match builder.apply_db_where(
+            feed.db_where_component,
+            source_path.as_ref(),
+            existing_filter,
+        ) {
+            Ok(nodes) => nodes,
+            Err(reason) => {
+                builder.warnings.push(format!(
+                    "database where/order component `{}` is unsupported: {reason}; iteration into `{}` skipped",
+                    db_where_name.as_deref().unwrap_or("unknown"),
+                    target_path.join("/")
+                ));
+                skipped_iteration_paths.push(target_path);
+                continue;
+            }
+        };
         let distinct_node = feed.distinct_key.and_then(|key| builder.value_node(key));
         let group_node = feed
             .group_key
@@ -385,7 +411,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 None => exists,
             });
         }
-        let sort_node = feed.sort_expr.and_then(|key| builder.value_node(key));
+        let ordinary_sort_node = feed.sort_expr.and_then(|key| builder.value_node(key));
+        if ordinary_sort_node.is_some() && db_sort_node.is_some() {
+            builder.warn_conflicting_db_sort(&target_path);
+            skipped_iteration_paths.push(target_path);
+            continue;
+        }
+        let sort_node = ordinary_sort_node.or(db_sort_node);
         let take_node = feed
             .take_expr
             .and_then(|key| builder.value_node(key))
@@ -401,7 +433,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             group_by: group_node,
             group_into_blocks: block_size_node,
             sort_by: sort_node,
-            sort_descending: feed.sort_descending,
+            sort_descending: ordinary_sort_node
+                .map(|_| feed.sort_descending)
+                .unwrap_or(db_sort_descending),
             take: take_node,
         };
         if let Some(sequence) = sequence {
@@ -613,6 +647,10 @@ impl GraphBuilder<'_> {
             // A filter feeding a value position is pass-through of its
             // node input for our purposes; treat the value as whatever
             // feeds the filter's first input.
+            let feed = self.input_feed(idx, 0)?;
+            return self.value_node(feed);
+        }
+        if is_db_where_component(&self.fn_components[idx]) {
             let feed = self.input_feed(idx, 0)?;
             return self.value_node(feed);
         }
@@ -935,6 +973,7 @@ impl GraphBuilder<'_> {
         let mut projections = BTreeMap::new();
         let mut source_suffix = Vec::new();
         let mut sequence_component = None;
+        let mut db_where_component = None;
         // Chains are short; the bound only guards against odd cycles.
         for _ in 0..12 {
             if let Some(intermediate) = self.intermediate_feed(from) {
@@ -979,6 +1018,17 @@ impl GraphBuilder<'_> {
             if is_sequence_producer(fc) {
                 sequence_component = Some(idx);
                 break;
+            } else if is_db_where_component(fc) {
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    db_where_component = Some(idx);
+                    break;
+                };
+                if db_where_component.replace(idx).is_some() {
+                    order_issue.get_or_insert(
+                        "chains multiple database where/order controls, which cannot be represented exactly",
+                    );
+                }
+                from = nodes_feed;
             } else if is_filter_component(fc) {
                 let Some(node_feed) = self.input_feed(idx, 0) else {
                     break;
@@ -1089,6 +1139,7 @@ impl GraphBuilder<'_> {
         IterationFeed {
             source_key: from,
             sequence_component,
+            db_where_component,
             source_suffix,
             filter_expr,
             group_key,

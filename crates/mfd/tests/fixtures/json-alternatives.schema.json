@@ -1,0 +1,40 @@
+{
+  "title": "Addresses",
+  "type": "object",
+  "properties": {
+    "Rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "object",
+            "oneOf": [
+              { "$ref": "#/definitions/domestic" },
+              { "$ref": "#/definitions/international" }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "domestic": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "state": { "type": "string" }
+      },
+      "required": ["name", "state"]
+    },
+    "international": {
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "postcode": { "type": "string" }
+      },
+      "required": ["name", "postcode"]
+    }
+  }
+}

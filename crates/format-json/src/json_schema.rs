@@ -7,7 +7,7 @@
 //! `additionalProperties`, or validation keywords -- the same "lite" scope
 //! as the XSD importer.
 
-use ir::{ScalarType, SchemaKind, SchemaNode};
+use ir::{GroupAlternative, ScalarType, SchemaKind, SchemaNode};
 
 use crate::JsonFormatError;
 
@@ -29,7 +29,7 @@ pub fn import(path: &std::path::Path) -> Result<SchemaNode, JsonFormatError> {
                 .and_then(|t| t.as_str())
         })
         .unwrap_or("root");
-    Ok(parse(name, &value, &value, &mut Vec::new()))
+    parse(name, &value, &value, &mut Vec::new())
 }
 
 /// Resolves a document-local JSON pointer ref (`#/definitions/office`).
@@ -43,19 +43,25 @@ fn parse(
     schema: &serde_json::Value,
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
-) -> SchemaNode {
+) -> Result<SchemaNode, JsonFormatError> {
+    if schema.get("anyOf").is_some() {
+        return Err(unsupported_union(name, "anyOf is not supported"));
+    }
     if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
         // Cyclic and external (non-`#/...`) refs degrade to string scalars.
         if active_refs.iter().any(|a| a == r) {
-            return SchemaNode::scalar(name, ScalarType::String);
+            return Ok(SchemaNode::scalar(name, ScalarType::String));
         }
         let Some(resolved) = resolve_ref(doc, r) else {
-            return SchemaNode::scalar(name, ScalarType::String);
+            return Ok(SchemaNode::scalar(name, ScalarType::String));
         };
         active_refs.push(r.to_string());
         let node = parse(name, resolved, doc, active_refs);
         active_refs.pop();
         return node;
+    }
+    if let Some(alternatives) = schema.get("oneOf") {
+        return parse_object_alternatives(name, schema, alternatives, doc, active_refs);
     }
     // Nullable unions like ["string", "null"] use the first real type.
     let ty = match schema.get("type") {
@@ -67,30 +73,155 @@ fn parse(
     };
     match ty {
         Some("object") => {
-            let children = schema
-                .get("properties")
-                .and_then(|p| p.as_object())
-                .map(|props| {
-                    props
-                        .iter()
-                        .map(|(child_name, child_schema)| {
-                            parse(child_name, child_schema, doc, active_refs)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            SchemaNode::group(name, children)
+            let children = parse_properties(schema, doc, active_refs)?;
+            Ok(SchemaNode::group(name, children))
         }
         Some("array") => {
             let Some(items) = schema.get("items") else {
-                return SchemaNode::scalar(name, ScalarType::String).repeating();
+                return Ok(SchemaNode::scalar(name, ScalarType::String).repeating());
             };
-            parse(name, items, doc, active_refs).repeating()
+            Ok(parse(name, items, doc, active_refs)?.repeating())
         }
-        Some("integer") => SchemaNode::scalar(name, ScalarType::Int),
-        Some("number") => SchemaNode::scalar(name, ScalarType::Float),
-        Some("boolean") => SchemaNode::scalar(name, ScalarType::Bool),
-        _ => SchemaNode::scalar(name, ScalarType::String),
+        Some("integer") => Ok(SchemaNode::scalar(name, ScalarType::Int)),
+        Some("number") => Ok(SchemaNode::scalar(name, ScalarType::Float)),
+        Some("boolean") => Ok(SchemaNode::scalar(name, ScalarType::Bool)),
+        _ if schema.get("properties").is_some() => {
+            let children = parse_properties(schema, doc, active_refs)?;
+            Ok(SchemaNode::group(name, children))
+        }
+        _ => Ok(SchemaNode::scalar(name, ScalarType::String)),
+    }
+}
+
+fn parse_properties(
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Vec<SchemaNode>, JsonFormatError> {
+    schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .map(|properties| {
+            properties
+                .iter()
+                .map(|(child_name, child_schema)| parse(child_name, child_schema, doc, active_refs))
+                .collect()
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
+}
+
+fn parse_object_alternatives(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<SchemaNode, JsonFormatError> {
+    let alternatives = alternatives
+        .as_array()
+        .filter(|alternatives| alternatives.len() >= 2)
+        .ok_or_else(|| unsupported_union(name, "oneOf must contain at least two alternatives"))?;
+    let base_children = parse_properties(schema, doc, active_refs)?;
+    let base_required = required_names(schema);
+    let mut merged = base_children.clone();
+    let mut metadata = Vec::with_capacity(alternatives.len());
+    for (index, alternative_schema) in alternatives.iter().enumerate() {
+        let resolved = alternative_schema
+            .get("$ref")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|reference| resolve_ref(doc, reference))
+            .unwrap_or(alternative_schema);
+        let alternative_name = resolved
+            .get("title")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .or_else(|| {
+                alternative_schema
+                    .get("$ref")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|reference| reference.rsplit('/').next())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| format!("oneOf{index}"));
+        let parsed = parse(&alternative_name, alternative_schema, doc, active_refs)?;
+        let SchemaKind::Group {
+            children: variant_children,
+            ..
+        } = parsed.kind
+        else {
+            return Err(unsupported_union(
+                name,
+                "only object alternatives are supported",
+            ));
+        };
+        if resolved.get("additionalProperties") != Some(&serde_json::Value::Bool(false)) {
+            return Err(unsupported_union(
+                name,
+                "object alternatives must declare additionalProperties false",
+            ));
+        }
+        let mut members: Vec<String> = base_children
+            .iter()
+            .map(|child| child.name.clone())
+            .collect();
+        for child in variant_children {
+            if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
+                if existing != &child {
+                    return Err(unsupported_union(
+                        name,
+                        &format!(
+                            "field `{}` has incompatible schemas across alternatives",
+                            child.name
+                        ),
+                    ));
+                }
+            } else {
+                merged.push(child.clone());
+            }
+            if !members.contains(&child.name) {
+                members.push(child.name);
+            }
+        }
+        let mut required = base_required.clone();
+        for field in required_names(resolved) {
+            if !required.contains(&field) {
+                required.push(field);
+            }
+        }
+        if metadata.iter().any(|previous: &GroupAlternative| {
+            previous.members == members && previous.required == required
+        }) {
+            return Err(unsupported_union(
+                name,
+                "alternatives are not distinguishable by supported object fields and requirements",
+            ));
+        }
+        metadata.push(GroupAlternative {
+            name: alternative_name,
+            members,
+            required,
+        });
+    }
+    SchemaNode::group(name, merged)
+        .with_alternatives(metadata)
+        .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
+}
+
+fn required_names(schema: &serde_json::Value) -> Vec<String> {
+    schema
+        .get("required")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn unsupported_union(name: &str, reason: &str) -> JsonFormatError {
+    JsonFormatError::UnsupportedSchemaUnion {
+        name: name.to_string(),
+        reason: reason.to_string(),
     }
 }
 
@@ -129,8 +260,41 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
             };
             out.insert("type".into(), name.into());
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group {
+            children,
+            alternatives,
+        } => {
             out.insert("type".into(), "object".into());
+            if !alternatives.is_empty() {
+                let variants = alternatives
+                    .iter()
+                    .map(|alternative| {
+                        let mut variant = serde_json::Map::new();
+                        variant.insert("title".into(), alternative.name.clone().into());
+                        variant.insert("type".into(), "object".into());
+                        variant.insert("additionalProperties".into(), false.into());
+                        let mut properties = serde_json::Map::new();
+                        for member in &alternative.members {
+                            if let Some(child) = children.iter().find(|child| child.name == *member)
+                            {
+                                let mut property = serde_json::Map::new();
+                                render(child, &mut property);
+                                properties.insert(
+                                    child.name.clone(),
+                                    serde_json::Value::Object(property),
+                                );
+                            }
+                        }
+                        variant.insert("properties".into(), properties.into());
+                        if !alternative.required.is_empty() {
+                            variant.insert("required".into(), alternative.required.clone().into());
+                        }
+                        serde_json::Value::Object(variant)
+                    })
+                    .collect();
+                out.insert("oneOf".into(), serde_json::Value::Array(variants));
+                return;
+            }
             let mut props = serde_json::Map::new();
             for child in children {
                 let mut prop = serde_json::Map::new();
@@ -147,6 +311,10 @@ mod tests {
     use super::*;
 
     fn import_str(text: &str) -> SchemaNode {
+        import_str_result(text).unwrap()
+    }
+
+    fn import_str_result(text: &str) -> Result<SchemaNode, JsonFormatError> {
         let dir = std::env::temp_dir();
         let path = dir.join(format!(
             "ferrule_json_schema_test_{}_{}.json",
@@ -154,9 +322,110 @@ mod tests {
             text.len()
         ));
         std::fs::write(&path, text).unwrap();
-        let schema = import(&path).unwrap();
+        let schema = import(&path);
         std::fs::remove_file(&path).unwrap();
         schema
+    }
+
+    #[test]
+    fn compatible_object_one_of_preserves_and_roundtrips_alternatives() {
+        let schema = import_str(
+            r##"{
+  "title": "Address",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/domestic" },
+    { "$ref": "#/definitions/international" }
+  ],
+  "definitions": {
+    "domestic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "state"],
+      "properties": {
+        "name": { "type": "string" },
+        "state": { "type": "string" }
+      }
+    },
+    "international": {
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "postcode": { "type": "string" }
+      },
+      "required": ["name", "postcode"]
+    }
+  }
+}"##,
+        );
+        let SchemaKind::Group {
+            children,
+            alternatives,
+        } = &schema.kind
+        else {
+            panic!("oneOf should import as a group projection");
+        };
+        assert_eq!(
+            children
+                .iter()
+                .map(|child| child.name.as_str())
+                .collect::<Vec<_>>(),
+            ["name", "state", "postcode"]
+        );
+        assert_eq!(
+            alternatives
+                .iter()
+                .map(|alternative| alternative.name.as_str())
+                .collect::<Vec<_>>(),
+            ["domestic", "international"]
+        );
+
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_json_schema_one_of_roundtrip_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, export(&schema)).unwrap();
+        let roundtrip = import(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(roundtrip, schema);
+    }
+
+    #[test]
+    fn incompatible_and_scalar_one_of_are_rejected() {
+        let incompatible = import_str_result(
+            r#"{
+  "title": "Bad",
+  "oneOf": [
+    { "type": "object", "additionalProperties": false, "properties": { "value": { "type": "string" } } },
+    { "type": "object", "additionalProperties": false, "properties": { "value": { "type": "integer" } } }
+  ]
+}"#,
+        )
+        .unwrap_err();
+        assert!(incompatible.to_string().contains("incompatible schemas"));
+
+        let scalar = import_str_result(
+            r#"{
+  "title": "Scalar",
+  "oneOf": [{ "type": "string" }, { "type": "integer" }]
+}"#,
+        )
+        .unwrap_err();
+        assert!(scalar.to_string().contains("only object alternatives"));
+
+        let discriminator = import_str_result(
+            r#"{
+  "title": "Discriminator",
+  "oneOf": [
+    { "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": { "kind": { "const": "a" } } },
+    { "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": { "kind": { "const": "b" } } }
+  ]
+}"#,
+        )
+        .unwrap_err();
+        assert!(discriminator.to_string().contains("not distinguishable"));
     }
 
     #[test]

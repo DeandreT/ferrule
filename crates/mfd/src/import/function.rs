@@ -1,10 +1,41 @@
-use ir::Value;
+use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
 use super::schema::parse_u32;
 
 /// One function component's extracted facts.
 pub(super) type ValueMapData = (Vec<(String, String)>, Option<String>);
+
+#[derive(Clone)]
+pub(super) enum DbWhereComponent {
+    Supported(DbWhere),
+    Unsupported(String),
+}
+
+#[derive(Clone)]
+pub(super) struct DbWhere {
+    pub(super) predicate: DbPredicate,
+    pub(super) order: Option<DbOrder>,
+    pub(super) parameter_type: ScalarType,
+}
+
+#[derive(Clone)]
+pub(super) struct DbPredicate {
+    pub(super) column: Vec<String>,
+    pub(super) operator: DbPredicateOperator,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum DbPredicateOperator {
+    Equal,
+    Like,
+}
+
+#[derive(Clone)]
+pub(super) struct DbOrder {
+    pub(super) column: Vec<String>,
+    pub(super) descending: bool,
+}
 
 pub(super) struct FnComponent {
     pub(super) library: String,
@@ -17,6 +48,7 @@ pub(super) struct FnComponent {
     pub(super) constant: Option<(String, String)>,
     pub(super) valuemap: Option<ValueMapData>,
     pub(super) sort_descending: Option<bool>,
+    pub(super) db_where: Option<DbWhereComponent>,
 }
 
 pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
@@ -39,7 +71,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
             .unwrap_or_default()
     };
     let inputs = pins("sources");
-    let outputs = pins("targets").into_iter().flatten().collect();
+    let outputs: Vec<u32> = pins("targets").into_iter().flatten().collect();
 
     let data = component
         .children()
@@ -86,6 +118,8 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .find(|node| node.has_tag_name("key"))
                 .is_some_and(|key| key.attribute("direction") == Some("descending"))
         });
+    let db_where =
+        (library == "db" && kind == 21).then(|| parse_db_where(component, &inputs, &outputs));
 
     FnComponent {
         library,
@@ -96,11 +130,111 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         constant,
         valuemap,
         sort_descending,
+        db_where,
     }
+}
+
+fn parse_db_where(
+    component: &roxmltree::Node,
+    inputs: &[Option<u32>],
+    outputs: &[u32],
+) -> DbWhereComponent {
+    let parse = || -> Result<DbWhere, &'static str> {
+        if inputs.len() != 2 || inputs.iter().any(Option::is_none) || outputs.len() != 1 {
+            return Err("expected one collection input, one parameter input, and one output");
+        }
+        let where_node = component
+            .descendants()
+            .find(|node| node.has_tag_name("where"))
+            .ok_or("missing where metadata")?;
+        let parameters = where_node
+            .descendants()
+            .filter(|node| node.has_tag_name("parameter"))
+            .collect::<Vec<_>>();
+        let [parameter] = parameters.as_slice() else {
+            return Err("expected exactly one declared parameter");
+        };
+        let parameter_name = parameter
+            .attribute("name")
+            .filter(|name| valid_identifier_segment(name))
+            .ok_or("parameter name is not a safe SQL identifier")?;
+        let parameter_type = match parameter.attribute("type").unwrap_or_default() {
+            "string" | "text" => ScalarType::String,
+            _ => return Err("only string parameters are supported in database where controls"),
+        };
+
+        let condition = where_node
+            .attribute("condition")
+            .ok_or("missing where condition")?;
+        let tokens = condition.split_ascii_whitespace().collect::<Vec<_>>();
+        let [column, operator, bound] = tokens.as_slice() else {
+            return Err("condition must be `Identifier (=|LIKE) :Parameter`");
+        };
+        let column =
+            parse_identifier(column).ok_or("condition column is not a safe SQL identifier")?;
+        let operator = if *operator == "=" {
+            DbPredicateOperator::Equal
+        } else if operator.eq_ignore_ascii_case("LIKE") {
+            DbPredicateOperator::Like
+        } else {
+            return Err("condition operator must be `=` or `LIKE`");
+        };
+        if bound.strip_prefix(':') != Some(parameter_name) {
+            return Err("condition parameter does not match its declaration");
+        }
+
+        let order = where_node
+            .attribute("order")
+            .filter(|order| !order.trim().is_empty())
+            .map(parse_db_order)
+            .transpose()?;
+        Ok(DbWhere {
+            predicate: DbPredicate { column, operator },
+            order,
+            parameter_type,
+        })
+    };
+    match parse() {
+        Ok(where_control) => DbWhereComponent::Supported(where_control),
+        Err(reason) => DbWhereComponent::Unsupported(reason.to_string()),
+    }
+}
+
+fn parse_db_order(order: &str) -> Result<DbOrder, &'static str> {
+    let tokens = order.split_ascii_whitespace().collect::<Vec<_>>();
+    let (column, descending) = match tokens.as_slice() {
+        [column] => (*column, false),
+        [column, direction] if direction.eq_ignore_ascii_case("ASC") => (*column, false),
+        [column, direction] if direction.eq_ignore_ascii_case("DESC") => (*column, true),
+        _ => return Err("order must contain one identifier with optional ASC or DESC"),
+    };
+    let column = parse_identifier(column).ok_or("order column is not a safe SQL identifier")?;
+    Ok(DbOrder { column, descending })
+}
+
+fn parse_identifier(identifier: &str) -> Option<Vec<String>> {
+    let segments = identifier.split('.').collect::<Vec<_>>();
+    (!segments.is_empty()
+        && segments
+            .iter()
+            .all(|segment| valid_identifier_segment(segment)))
+    .then(|| segments.into_iter().map(str::to_string).collect())
+}
+
+fn valid_identifier_segment(segment: &str) -> bool {
+    let mut bytes = segment.bytes();
+    bytes
+        .next()
+        .is_some_and(|first| first == b'_' || first.is_ascii_alphabetic())
+        && bytes.all(|byte| byte == b'_' || byte.is_ascii_alphanumeric())
 }
 
 pub(super) fn is_filter(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 3
+}
+
+pub(super) fn is_db_where(component: &FnComponent) -> bool {
+    component.library == "db" && component.kind == 21 && component.db_where.is_some()
 }
 
 pub(super) fn is_input(component: &FnComponent) -> bool {
@@ -188,6 +322,11 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "exists" => "exists",
         "round" | "round-precision" => "round",
         "date-from-datetime" => "date_from_datetime",
+        "time-from-datetime" => "time_from_datetime",
+        "parse-date" => "parse_date",
+        "parse-dateTime" => "parse_datetime",
+        "parse-time" => "parse_time",
+        "substitute-missing" => "substitute_missing",
         _ => return None,
     })
 }
@@ -200,5 +339,9 @@ mod tests {
     fn scalar_names_use_canonical_ir_spelling() {
         assert_eq!(map_name("string"), Some("string"));
         assert_eq!(map_name("format-number"), Some("format_number"));
+        assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
+        assert_eq!(map_name("parse-date"), Some("parse_date"));
+        assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));
+        assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
     }
 }

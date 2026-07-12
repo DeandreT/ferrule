@@ -44,6 +44,10 @@ pub enum XmlFormatError {
     UnexpectedField { group: String, field: String },
     #[error("element `{group}` has duplicate field `{field}`")]
     DuplicateField { group: String, field: String },
+    #[error("element `{name}` matches no declared schema alternative")]
+    NoMatchingAlternative { name: String },
+    #[error("element `{name}` matches more than one declared schema alternative")]
+    AmbiguousAlternative { name: String },
     #[error(
         "repeating xs:{compositor} with {element_count} element members cannot preserve tuple association"
     )]
@@ -65,6 +69,12 @@ pub enum XmlFormatError {
     MultipleTextFields { group: String, count: usize },
     #[error("schema group `{group}` mixes XML text with child elements")]
     MixedContent { group: String },
+    #[error("schema group `{group}` has alternatives that XSD export cannot preserve")]
+    UnsupportedGroupAlternatives { group: String },
+    #[error(
+        "schema group `{group}` has alternatives whose xsi:type identity XML input cannot preserve"
+    )]
+    UnsupportedAlternativeRead { group: String },
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
@@ -94,7 +104,15 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
             let text = el.text().unwrap_or("");
             Ok(Instance::Scalar(parse_scalar(&schema.name, *ty, text)?))
         }
-        SchemaKind::Group { children } => {
+        SchemaKind::Group {
+            children,
+            alternatives,
+        } => {
+            if !alternatives.is_empty() {
+                return Err(XmlFormatError::UnsupportedAlternativeRead {
+                    group: schema.name.clone(),
+                });
+            }
             let mut fields = Vec::with_capacity(children.len());
             for child in children {
                 if child.attribute {
@@ -227,9 +245,27 @@ fn write_single_node<W: std::io::Write>(
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
         }
-        (SchemaKind::Group { children }, Instance::Group(fields)) => {
+        (
+            SchemaKind::Group {
+                children,
+                alternatives,
+            },
+            Instance::Group(fields),
+        ) => {
             validate_group_fields(schema, children, fields)?;
             let mut start = BytesStart::new(schema.name.clone());
+            if let Some(alternative) = select_group_alternative(schema, alternatives, fields)? {
+                start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
+                let (namespace, local) = split_expanded_name(&alternative.name);
+                let type_name = match namespace {
+                    Some(namespace) => {
+                        start.push_attribute(("xmlns:ft", namespace));
+                        format!("ft:{local}")
+                    }
+                    None => local.to_string(),
+                };
+                start.push_attribute(("xsi:type", type_name.as_str()));
+            }
             for child_schema in children.iter().filter(|child| child.attribute) {
                 if let Some((_, child_instance)) =
                     fields.iter().find(|(name, _)| name == &child_schema.name)
@@ -297,6 +333,52 @@ fn write_single_node<W: std::io::Write>(
     }
 }
 
+fn select_group_alternative<'a>(
+    schema: &SchemaNode,
+    alternatives: &'a [ir::GroupAlternative],
+    fields: &[(String, Instance)],
+) -> Result<Option<&'a ir::GroupAlternative>, XmlFormatError> {
+    if alternatives.is_empty() {
+        return Ok(None);
+    }
+    let populated: Vec<&str> = fields
+        .iter()
+        .filter(|(_, instance)| instance_has_value(instance))
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let mut matches = alternatives.iter().filter(|alternative| {
+        populated
+            .iter()
+            .all(|field| alternative.members.iter().any(|member| member == field))
+    });
+    let Some(selected) = matches.next() else {
+        return Err(XmlFormatError::NoMatchingAlternative {
+            name: schema.name.clone(),
+        });
+    };
+    if matches.next().is_some() {
+        return Err(XmlFormatError::AmbiguousAlternative {
+            name: schema.name.clone(),
+        });
+    }
+    Ok(Some(selected))
+}
+
+fn instance_has_value(instance: &Instance) -> bool {
+    match instance {
+        Instance::Scalar(Value::Null) => false,
+        Instance::Scalar(_) => true,
+        Instance::Group(fields) => fields.iter().any(|(_, value)| instance_has_value(value)),
+        Instance::Repeated(items) => items.iter().any(instance_has_value),
+    }
+}
+
+fn split_expanded_name(name: &str) -> (Option<&str>, &str) {
+    name.strip_prefix('{')
+        .and_then(|name| name.split_once('}'))
+        .map_or((None, name), |(namespace, local)| (Some(namespace), local))
+}
+
 fn validate_group_fields(
     schema: &SchemaNode,
     children: &[SchemaNode],
@@ -346,6 +428,9 @@ fn format_scalar(name: &str, ty: ScalarType, value: &Value) -> Result<String, Xm
         (ScalarType::String, Value::Float(_)) => Err(incompatible("non-finite float")),
         (ScalarType::String, Value::String(value)) => Ok(value.clone()),
         (ScalarType::Int, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::Int, Value::Float(value)) => integral_i64(*value)
+            .map(|value| value.to_string())
+            .ok_or_else(|| incompatible("non-integral float")),
         (ScalarType::Int, Value::String(value)) => value
             .trim()
             .parse::<i64>()
@@ -381,6 +466,14 @@ fn exact_f64(value: i64) -> Option<f64> {
     }
     let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
     (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
+}
+
+fn integral_i64(value: f64) -> Option<i64> {
+    (value.is_finite()
+        && value.fract() == 0.0
+        && value >= i64::MIN as f64
+        && value < -(i64::MIN as f64))
+        .then_some(value as i64)
 }
 
 #[cfg(test)]
@@ -692,6 +785,50 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert!(!text.contains("Nick"), "{text}");
+    }
+
+    #[test]
+    fn group_alternatives_emit_selected_xsi_type_and_integral_float() {
+        let address = SchemaNode::group(
+            "Address",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar("state", ScalarType::String),
+                SchemaNode::scalar("zip", ScalarType::Int),
+                SchemaNode::scalar("postcode", ScalarType::String),
+            ],
+        )
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "{urn:ferrule:test}Domestic".into(),
+                members: vec!["name".into(), "state".into(), "zip".into()],
+                required: Vec::new(),
+            },
+            ir::GroupAlternative {
+                name: "{urn:ferrule:test}International".into(),
+                members: vec!["name".into(), "postcode".into()],
+                required: Vec::new(),
+            },
+        ])
+        .unwrap();
+        assert!(matches!(
+            from_str("<Address><name>Ada</name></Address>", &address),
+            Err(XmlFormatError::UnsupportedAlternativeRead { .. })
+        ));
+        let schema = SchemaNode::group("Root", vec![address]);
+        let instance = Instance::Group(vec![(
+            "Address".into(),
+            Instance::Group(vec![
+                ("name".into(), Instance::Scalar(Value::String("Ada".into()))),
+                ("state".into(), Instance::Scalar(Value::String("WA".into()))),
+                ("zip".into(), Instance::Scalar(Value::Float(98101.0))),
+                ("postcode".into(), Instance::Scalar(Value::Null)),
+            ]),
+        )]);
+        let xml = to_string(&schema, &instance).unwrap();
+        assert!(xml.contains("xsi:type=\"ft:Domestic\""), "{xml}");
+        assert!(xml.contains("xmlns:ft=\"urn:ferrule:test\""), "{xml}");
+        assert!(xml.contains("<zip>98101</zip>"), "{xml}");
     }
 
     #[test]

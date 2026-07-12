@@ -1001,6 +1001,9 @@ fn compare_int_float(integer: i64, float: f64) -> std::cmp::Ordering {
 
 fn value_ordering(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
     match (left, right) {
+        (Value::Null, Value::Null) => Some(std::cmp::Ordering::Equal),
+        (Value::Null, _) => Some(std::cmp::Ordering::Less),
+        (_, Value::Null) => Some(std::cmp::Ordering::Greater),
         (Value::Int(left), Value::Int(right)) => Some(left.cmp(right)),
         (Value::Float(left), Value::Float(right)) => left.partial_cmp(right),
         (Value::Int(left), Value::Float(right)) if right.is_finite() => {
