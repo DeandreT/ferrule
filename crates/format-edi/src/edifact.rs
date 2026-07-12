@@ -276,7 +276,201 @@ mod tests {
             write(&path, &schema, &instance),
             Err(EdiFormatError::NonFiniteFloat { ref element }) if element == "01"
         ));
+
+        let incompatible = Instance::Group(vec![
+            ("UNB".into(), Instance::Group(Vec::new())),
+            (
+                "MEA".into(),
+                Instance::Group(vec![(
+                    "01".into(),
+                    Instance::Scalar(Value::String("not a number".into())),
+                )]),
+            ),
+        ]);
+        assert!(matches!(
+            write(&path, &schema, &incompatible),
+            Err(EdiFormatError::ValueType {
+                ref element,
+                expected: ScalarType::Float,
+                got: "string",
+            }) if element == "01"
+        ));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn typed_fixed_values_preserve_their_lexical_form() {
+        let schema = SchemaNode::group(
+            "EDIFACT",
+            vec![
+                segment("UNB", vec![]),
+                segment(
+                    "QTY",
+                    vec![SchemaNode::scalar("01", ScalarType::Int).fixed("01")],
+                ),
+            ],
+        );
+        let instance = Instance::Group(vec![
+            ("UNB".into(), Instance::Group(Vec::new())),
+            ("QTY".into(), Instance::Group(Vec::new())),
+        ]);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_edifact_fixed_lexical_{}",
+            std::process::id()
+        ));
+        let roundtrip_path = std::env::temp_dir().join(format!(
+            "ferrule_edifact_fixed_lexical_roundtrip_{}",
+            std::process::id()
+        ));
+
+        write(&path, &schema, &instance).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("QTY+01'"), "{text}");
+        let read_back = read(&path, &schema, false).unwrap();
+        assert_eq!(
+            read_back
+                .field("QTY")
+                .and_then(|segment| segment.field("01"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::Int(1))
+        );
+
+        write(&roundtrip_path, &schema, &read_back).unwrap();
+        let roundtrip = std::fs::read_to_string(&roundtrip_path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        std::fs::remove_file(roundtrip_path).unwrap();
+        assert!(roundtrip.contains("QTY+01'"), "{roundtrip}");
+    }
+
+    #[test]
+    fn conflicting_typed_fixed_values_are_rejected_before_write() {
+        let schema = SchemaNode::group(
+            "EDIFACT",
+            vec![
+                segment("UNB", vec![]),
+                segment(
+                    "QTY",
+                    vec![SchemaNode::scalar("01", ScalarType::Int).fixed("01")],
+                ),
+            ],
+        );
+        let instance = Instance::Group(vec![
+            ("UNB".into(), Instance::Group(Vec::new())),
+            (
+                "QTY".into(),
+                Instance::Group(vec![("01".into(), Instance::Scalar(Value::Int(2)))]),
+            ),
+        ]);
+        let path = write_temp("fixed_mismatch_preserves_destination", "sentinel");
+
+        assert!(matches!(
+            write(&path, &schema, &instance),
+            Err(EdiFormatError::FixedValueMismatch {
+                ref element,
+                ref expected,
+                ref found,
+            }) if element == "01" && expected == "01" && found == "2"
+        ));
+        let contents = std::fs::read_to_string(&path);
+        assert!(matches!(contents, Ok(ref text) if text == "sentinel"));
+        let _ = std::fs::remove_file(path);
+    }
+
+    fn validation_schema() -> SchemaNode {
+        SchemaNode::group(
+            "EDIFACT",
+            vec![
+                segment("UNB", vec![scalar("01", ScalarType::String)]),
+                SchemaNode::group(
+                    "Line",
+                    vec![segment("LIN", vec![scalar("01", ScalarType::String)])],
+                )
+                .repeating(),
+            ],
+        )
+    }
+
+    #[test]
+    fn writer_rejects_instance_kind_and_cardinality_mismatches() {
+        let schema = validation_schema();
+        let wrong_scalar = Instance::Group(vec![(
+            "UNB".into(),
+            Instance::Group(vec![("01".into(), Instance::Group(Vec::new()))]),
+        )]);
+        assert!(matches!(
+            write_segments(&schema, &wrong_scalar, &WRITE_OPTIONS),
+            Err(EdiFormatError::InstanceShape {
+                ref name,
+                expected: "a scalar",
+                got: "a group",
+            }) if name == "01"
+        ));
+
+        let repeated_non_repeating = Instance::Group(vec![(
+            "UNB".into(),
+            Instance::Repeated(vec![Instance::Group(Vec::new())]),
+        )]);
+        assert!(matches!(
+            write_segments(&schema, &repeated_non_repeating, &WRITE_OPTIONS),
+            Err(EdiFormatError::InstanceShape {
+                ref name,
+                expected: "one value",
+                got: "repeating values",
+            }) if name == "UNB"
+        ));
+
+        let non_repeated_repeating =
+            Instance::Group(vec![("Line".into(), Instance::Group(Vec::new()))]);
+        assert!(matches!(
+            write_segments(&schema, &non_repeated_repeating, &WRITE_OPTIONS),
+            Err(EdiFormatError::InstanceShape {
+                ref name,
+                expected: "repeating values",
+                got: "a group",
+            }) if name == "Line"
+        ));
+    }
+
+    #[test]
+    fn writer_rejects_unexpected_and_duplicate_fields() {
+        let schema = validation_schema();
+        let unexpected = Instance::Group(vec![("UNZ".into(), Instance::Group(Vec::new()))]);
+        assert!(matches!(
+            write_segments(&schema, &unexpected, &WRITE_OPTIONS),
+            Err(EdiFormatError::UnexpectedField {
+                ref group,
+                ref field,
+            }) if group == "EDIFACT" && field == "UNZ"
+        ));
+
+        let duplicate = Instance::Group(vec![
+            ("UNB".into(), Instance::Group(Vec::new())),
+            ("UNB".into(), Instance::Group(Vec::new())),
+        ]);
+        assert!(matches!(
+            write_segments(&schema, &duplicate, &WRITE_OPTIONS),
+            Err(EdiFormatError::DuplicateField {
+                ref group,
+                ref field,
+            }) if group == "EDIFACT" && field == "UNB"
+        ));
+    }
+
+    #[test]
+    fn validation_failure_does_not_truncate_an_existing_destination() {
+        let path = write_temp("shape_preserves_destination", "sentinel");
+        let malformed = Instance::Group(vec![(
+            "UNB".into(),
+            Instance::Repeated(vec![Instance::Group(Vec::new())]),
+        )]);
+
+        assert!(matches!(
+            write(&path, &validation_schema(), &malformed),
+            Err(EdiFormatError::InstanceShape { ref name, .. }) if name == "UNB"
+        ));
+        let contents = std::fs::read_to_string(&path);
+        assert!(matches!(contents, Ok(ref text) if text == "sentinel"));
+        let _ = std::fs::remove_file(path);
     }
 
     fn orders_schema() -> SchemaNode {
