@@ -7,7 +7,9 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::path::Path;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::Value;
 use mapping::{Graph, Node, NodeId, Project, Scope, SequenceExpr};
@@ -17,8 +19,8 @@ use crate::MfdError;
 mod schema;
 
 use schema::{
-    KeyAlloc, PortTree, Side, SideFormat, db_datasource_name, schema_component_xml, side_format,
-    xml_escape,
+    KeyAlloc, PortMatch, PortTree, Side, SideFormat, db_datasource_name, render_schema_component,
+    side_format, xml_escape,
 };
 
 /// Writes `project` as a MapForce design at `path`, plus generated schema
@@ -96,13 +98,25 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 }
                 let mut absolute = frame.clone().unwrap_or_default();
                 absolute.extend(path.iter().cloned());
-                match source_ports.key_for_suffix(&absolute) {
-                    Some(key) => {
+                let port_match = if frame.is_some() {
+                    source_ports
+                        .key_for_abs(&absolute)
+                        .map_or(PortMatch::Missing, PortMatch::Unique)
+                } else {
+                    source_ports.match_suffix(&absolute)
+                };
+                match port_match {
+                    PortMatch::Unique(key) => {
                         node_out_key.insert(id, key);
                     }
-                    None => warnings.push(format!(
+                    PortMatch::Missing => warnings.push(format!(
                         "source field `{}` matches no source leaf; its connections \
                          are skipped",
+                        absolute.join("/")
+                    )),
+                    PortMatch::Ambiguous => warnings.push(format!(
+                        "source field `{}` matches multiple source leaves; its connections \
+                         are skipped until it has an explicit frame",
                         absolute.join("/")
                     )),
                 }
@@ -141,13 +155,24 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                     // entry; computed sequences wire their graph expression.
                     let mut sequence = collection.clone();
                     sequence.extend(value.iter().cloned());
-                    let Some(sequence_key) = source_ports.key_for_suffix(&sequence) else {
-                        warnings.push(format!(
-                            "aggregate over `{}` matches no source entry; its \
+                    let sequence_key = match source_ports.match_suffix(&sequence) {
+                        PortMatch::Unique(key) => key,
+                        PortMatch::Missing => {
+                            warnings.push(format!(
+                                "aggregate over `{}` matches no source entry; its \
                              connections are skipped",
-                            sequence.join("/")
-                        ));
-                        continue;
+                                sequence.join("/")
+                            ));
+                            continue;
+                        }
+                        PortMatch::Ambiguous => {
+                            warnings.push(format!(
+                                "aggregate over `{}` matches multiple source entries; its \
+                                 connections are skipped",
+                                sequence.join("/")
+                            ));
+                            continue;
+                        }
                     };
                     edges.push((sequence_key, in_sequence));
                 }
@@ -375,7 +400,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
          \t\t<structure>\n\
          \t\t\t<children>\n"
     );
-    out.push_str(&schema_component_xml(
+    let source_component = render_schema_component(
         &project.source,
         source_format,
         &source_ports,
@@ -383,8 +408,8 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         project.source_path.as_deref(),
         &project.source_options,
         path,
-    )?);
-    out.push_str(&schema_component_xml(
+    )?;
+    let target_component = render_schema_component(
         &project.target,
         target_format,
         &target_ports,
@@ -392,7 +417,9 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         project.target_path.as_deref(),
         &project.target_options,
         path,
-    )?);
+    )?;
+    out.push_str(&source_component.xml);
+    out.push_str(&target_component.xml);
     out.push_str(&components);
     out.push_str(
         "\t\t\t</children>\n\t\t\t<graph directed=\"1\">\n\t\t\t\t<edges/>\n\t\t\t\t<vertices>\n",
@@ -415,8 +442,91 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         "\t\t\t\t</vertices>\n\t\t\t</graph>\n\t\t</structure>\n\t</component>\n</mapping>\n",
     );
 
-    std::fs::write(path, out)?;
+    let mut artifacts = Vec::new();
+    for sibling in [source_component.sibling, target_component.sibling]
+        .into_iter()
+        .flatten()
+    {
+        artifacts.push((sibling.path, sibling.contents));
+    }
+    // Publish the design last so it never references schema siblings that
+    // have not reached their final paths.
+    artifacts.push((path.to_path_buf(), out));
+    write_artifacts(artifacts)?;
     Ok(warnings)
+}
+
+static TEMP_ARTIFACT_ID: AtomicU64 = AtomicU64::new(0);
+
+struct StagedArtifact {
+    temporary: PathBuf,
+    destination: PathBuf,
+}
+
+impl Drop for StagedArtifact {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.temporary);
+    }
+}
+
+fn write_artifacts(artifacts: Vec<(PathBuf, String)>) -> io::Result<()> {
+    for (destination, _) in &artifacts {
+        match std::fs::symlink_metadata(destination) {
+            Ok(metadata) if metadata.file_type().is_dir() => {
+                return Err(io::Error::new(
+                    io::ErrorKind::IsADirectory,
+                    format!(
+                        "artifact destination is a directory: {}",
+                        destination.display()
+                    ),
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+
+    let mut staged = Vec::with_capacity(artifacts.len());
+    for (destination, contents) in artifacts {
+        let artifact = stage_artifact(destination, contents.as_bytes())?;
+        staged.push(artifact);
+    }
+    for artifact in &staged {
+        std::fs::rename(&artifact.temporary, &artifact.destination)?;
+    }
+    Ok(())
+}
+
+fn stage_artifact(destination: PathBuf, contents: &[u8]) -> io::Result<StagedArtifact> {
+    let parent = destination.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("mapping");
+    loop {
+        let id = TEMP_ARTIFACT_ID.fetch_add(1, Ordering::Relaxed);
+        let temporary = parent.join(format!(
+            ".{file_name}.ferrule-{}-{id}.tmp",
+            std::process::id()
+        ));
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary);
+        let mut file = match file {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        let artifact = StagedArtifact {
+            temporary,
+            destination,
+        };
+        std::io::Write::write_all(&mut file, contents)?;
+        file.sync_all()?;
+        return Ok(artifact);
+    }
 }
 
 fn collect_sequences<'a>(scope: &'a Scope, sequences: &mut Vec<&'a SequenceExpr>) {
@@ -942,6 +1052,9 @@ fn function_library(name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use ir::{ScalarType, SchemaNode};
+
+    use super::schema::{KeyAlloc, PortMatch, PortTree};
     use super::{function_library, unmap_function_name};
 
     #[test]
@@ -950,5 +1063,28 @@ mod tests {
         assert_eq!(unmap_function_name("format_number"), "format-number");
         assert_eq!(function_library("string"), "core");
         assert_eq!(function_library("format_number"), "core");
+    }
+
+    #[test]
+    fn suffix_matching_rejects_ambiguous_source_leaves() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::group("Customer", vec![SchemaNode::scalar("Id", ScalarType::Int)]),
+                SchemaNode::group("Order", vec![SchemaNode::scalar("Id", ScalarType::Int)]),
+            ],
+        );
+        let mut keys = KeyAlloc { next: 1 };
+        let ports = PortTree::build(&schema, &mut keys);
+
+        assert!(matches!(
+            ports.match_suffix(&["Id".to_string()]),
+            PortMatch::Ambiguous
+        ));
+        assert!(matches!(
+            ports.match_suffix(&["Customer".to_string(), "Id".to_string()]),
+            PortMatch::Unique(_)
+        ));
+        assert!(matches!(ports.match_suffix(&[]), PortMatch::Unique(_)));
     }
 }
