@@ -30,7 +30,8 @@ pub(super) struct SchemaComponent {
     pub(super) ports: BTreeMap<u32, Vec<String>>,
     pub(super) input_keys: BTreeSet<u32>,
     pub(super) output_keys: BTreeSet<u32>,
-    pub(super) db_query: Option<super::db_query::DbQuery>,
+    pub(super) db_queries: Vec<super::db_query::DbQuery>,
+    pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
 }
 
 pub(super) fn parse_u32(attr: Option<&str>) -> Option<u32> {
@@ -186,7 +187,8 @@ pub(super) fn read_schema_component(
         ports,
         input_keys,
         output_keys,
-        db_query: None,
+        db_queries: Vec::new(),
+        dynamic_json: None,
     })
 }
 
@@ -250,10 +252,7 @@ fn record_entry_keys(
     }
 }
 
-/// Reads a json component: schema from the referenced JSON Schema file
-/// (entry tree as fallback), ports normalized so only `json-property`
-/// entries contribute path segments -- which lines the paths up with the
-/// property/array shapes `json_schema::import` produces.
+/// Reads a JSON component and normalizes structural entry wrappers away.
 pub(super) fn read_json_component(
     component: &roxmltree::Node,
     mfd_path: &Path,
@@ -291,6 +290,15 @@ pub(super) fn read_json_component(
         ));
     }
 
+    let dynamic_json = match super::dynamic_json::read_target(&entry) {
+        Ok(target) => target,
+        Err(reason) => {
+            warnings.push(format!(
+                "dynamic JSON target `{name}` is unsupported: {reason}"
+            ));
+            None
+        }
+    };
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
     let mut in_count = 0usize;
@@ -303,13 +311,16 @@ pub(super) fn read_json_component(
         &mut in_count,
         warnings,
     );
+    if let Some(target) = &dynamic_json {
+        in_count += target.input_count();
+    }
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
 
     // Schema: prefer the referenced JSON Schema (types + repeating info).
-    let schema = json_el
+    let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
         .and_then(|rel| {
             let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
@@ -333,6 +344,14 @@ pub(super) fn read_json_component(
             }
             json_entry_value_schema(&name, &entry)
         });
+    if let Some(target) = &dynamic_json
+        && !target.attach_schema(&mut schema)
+    {
+        warnings.push(format!(
+            "dynamic JSON target `{name}` is unsupported: open fields cannot be combined with JSON alternatives"
+        ));
+        return None;
+    }
 
     Some(SchemaComponent {
         name,
@@ -352,15 +371,12 @@ pub(super) fn read_json_component(
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
-        db_query: None,
+        db_queries: Vec::new(),
+        dynamic_json,
     })
 }
 
-/// Walks a json component's entry tree. Only `json-property` entries push
-/// a path segment; structural entries (`object`, `array`, `item`, type
-/// leaves) are transparent, so a port lands on the path of the property
-/// that contains it -- matching the [`SchemaNode`] tree, where a repeating
-/// property carries its array's shape directly.
+/// Maps JSON property ports to schema paths; structural wrappers are transparent.
 fn collect_json_ports(
     entry: &roxmltree::Node,
     path: &mut Vec<String>,
@@ -375,6 +391,15 @@ fn collect_json_ports(
     {
         match child.attribute("type") {
             Some("json-property") => {
+                if child.attribute("inpkey").is_some()
+                    && child.children().any(|entry| {
+                        entry.has_tag_name("entry")
+                            && entry.attribute("type") == Some("json-propertyname")
+                            && entry.attribute("inpkey").is_some()
+                    })
+                {
+                    continue;
+                }
                 path.push(child.attribute("name").unwrap_or_default().to_string());
                 record_entry_keys(&child, path, ports, out_count, in_count);
                 collect_json_ports(&child, path, ports, out_count, in_count, warnings);
@@ -583,7 +608,8 @@ pub(super) fn read_csv_component(
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
-        db_query: None,
+        db_queries: Vec::new(),
+        dynamic_json: None,
     })
 }
 
@@ -671,7 +697,8 @@ pub(super) fn read_edi_component(
         ports,
         input_keys,
         output_keys,
-        db_query: None,
+        db_queries: Vec::new(),
+        dynamic_json: None,
     })
 }
 
@@ -1004,7 +1031,8 @@ pub(super) fn read_db_component(
         ports,
         input_keys,
         output_keys,
-        db_query: None,
+        db_queries: Vec::new(),
+        dynamic_json: None,
     })
 }
 

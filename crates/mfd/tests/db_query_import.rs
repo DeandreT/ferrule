@@ -179,3 +179,189 @@ fn query_output_casing_is_canonicalized_to_the_sqlite_schema() {
         )
     );
 }
+
+fn prepare_relational_database(dir: &Path) {
+    let connection = Connection::open(dir.join("company.sqlite")).unwrap();
+    connection
+        .execute_batch(
+            "PRAGMA foreign_keys = ON; \
+             CREATE TABLE Office (PrimaryKey INTEGER PRIMARY KEY, Name TEXT); \
+             CREATE TABLE Department (PrimaryKey INTEGER PRIMARY KEY, ForeignKey INTEGER REFERENCES Office(PrimaryKey), Name TEXT); \
+             CREATE TABLE Person (PrimaryKey INTEGER PRIMARY KEY, ForeignKey INTEGER REFERENCES Department(PrimaryKey), First TEXT, Title TEXT); \
+             INSERT INTO Office VALUES (1, 'West'), (2, 'East'); \
+             INSERT INTO Department VALUES (10, 1, 'Engineering'), (11, 1, 'Sales'), (20, 2, 'Support'); \
+             INSERT INTO Person VALUES \
+               (1, 10, 'Ada', 'Manager'), (2, 10, 'Linus', 'Engineer'), \
+               (3, 11, 'Grace', 'Senior Manager'), (4, 20, 'Edsger', 'Manager');",
+        )
+        .unwrap();
+}
+
+fn run_csv_names(project: &mapping::Project, db: &Path, fields: &[&str]) -> Vec<Vec<String>> {
+    let source = format_db::read_instance(db, &project.source).unwrap();
+    engine::run(project, &source)
+        .unwrap()
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            fields
+                .iter()
+                .map(|field| {
+                    row.field(field)
+                        .and_then(Instance::as_scalar)
+                        .and_then(|value| match value {
+                            Value::String(value) => Some(value.clone()),
+                            _ => None,
+                        })
+                        .unwrap()
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn nested_query_correlation_preserves_parent_fields_and_controls() {
+    let dir = TempDir::new();
+    prepare_relational_database(&dir.0);
+    let design = dir.0.join("selected-office.mfd");
+    let text = r#"<mapping version="26"><resources><datasources><datasource name="company">
+      <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="company.sqlite" name="company">
+        <LocalViewStorage>
+          <LocalViewElement SQL="SELECT &quot;PrimaryKey&quot;, &quot;ForeignKey&quot;, &quot;Name&quot; FROM &quot;Department&quot;">
+            <PathElement Name="main" Kind="Database"/><PathElement Name="DepartmentByOffice" Kind="Select Statement"/>
+          </LocalViewElement>
+          <LocalViewElement SQL="SELECT &quot;PrimaryKey&quot;, &quot;ForeignKey&quot;, &quot;First&quot;, &quot;Title&quot; FROM &quot;Person&quot; WHERE &quot;ForeignKey&quot; = :DepartmentID AND &quot;Title&quot; LIKE '%Manager%'">
+            <PathElement Name="main" Kind="Database"/><PathElement Name="ManagersByDepartment" Kind="Select Statement"/>
+            <Parameters><Parameter name="DepartmentID" type="integer"/></Parameters>
+          </LocalViewElement>
+        </LocalViewStorage>
+        <LocalRelationsStorage><LocalRelationElement name="department-managers">
+          <SourceTable><PathElement Name="main" Kind="Database"/><PathElement Name="ManagersByDepartment" Kind="Select Statement"/></SourceTable>
+          <SourceColumns><Column name="DepartmentID" kind="Parameter"/></SourceColumns>
+          <DestinationTable><PathElement Name="main" Kind="Database"/><PathElement Name="DepartmentByOffice" Kind="Select Statement"/></DestinationTable>
+          <DestinationColumns><Column name="PrimaryKey" kind="Column"/></DestinationColumns>
+        </LocalRelationElement></LocalRelationsStorage>
+      </database_connection></datasource></datasources></resources>
+      <component name="map" uid="1"><structure><children>
+        <component name="constant" library="core" uid="2" kind="2"><targets><datapoint key="10"/></targets><data><constant value="1" datatype="decimal"/></data></component>
+        <component name="OfficeID" library="core" uid="3" kind="6"><sources><datapoint key="11"/></sources><targets><datapoint key="12"/></targets><data><input datatype="integer"/></data></component>
+        <component name="catalog" library="db" uid="4" kind="15"><data><root><entry name="document"><entry name="DepartmentByOffice" type="routine" outkey="20"/></entry></root><database ref="company"><data><selections><selection><PathElement Name="main" Kind="Database"/><PathElement Name="DepartmentByOffice" Kind="Select Statement"/></selection><selection><PathElement Name="main" Kind="Database"/><PathElement Name="ManagersByDepartment" Kind="Select Statement"/></selection></selections></data></database></data></component>
+        <component name="DepartmentByOffice" library="db" uid="5" kind="28"><data>
+          <root><entry name="procedure" inpkey="21"/><entry name="DepartmentByOffice"><entry name="OfficeID" type="attribute" inpkey="22"/></entry></root>
+          <root><entry name="DepartmentByOffice"><entry name="DepartmentByOffice">
+            <entry name="Name" type="attribute" outkey="30"/>
+            <entry name="ManagersByDepartment" outkey="31"><entry name="ManagersByDepartment"><entry name="First" type="attribute" outkey="32"/><entry name="Title" type="attribute" outkey="33"/></entry></entry>
+          </entry></entry></root>
+        </data></component>
+        <component name="rows" library="text" uid="6" kind="16"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="40"><entry name="Department" inpkey="41"/><entry name="First" inpkey="42"/><entry name="Title" inpkey="43"/></entry></entry></entry></root><text type="csv" outputinstance="out.csv"><settings separator="," firstrownames="true"><names block="Rows"><field0 name="Department" type="string"/><field1 name="First" type="string"/><field2 name="Title" type="string"/></names></settings></text></data></component>
+      </children><graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="11"/></edges></vertex><vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex><vertex vertexkey="20"><edges><edge vertexkey="21"/></edges></vertex>
+        <vertex vertexkey="31"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="41"/></edges></vertex><vertex vertexkey="32"><edges><edge vertexkey="42"/></edges></vertex><vertex vertexkey="33"><edges><edge vertexkey="43"/></edges></vertex>
+      </vertices></graph></structure></component></mapping>"#;
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let department = imported.project.source.child("Department").unwrap();
+    assert!(department.child("Person|ForeignKey").is_some());
+    assert!(imported.project.source.child("department").is_none());
+    assert_eq!(
+        run_csv_names(
+            &imported.project,
+            &dir.0.join("company.sqlite"),
+            &["Department", "First", "Title"]
+        ),
+        [
+            ["Engineering", "Ada", "Manager"],
+            ["Sales", "Grace", "Senior Manager"],
+            ["Support", "Edsger", "Manager"]
+        ]
+    );
+
+    let controlled = text.replace(
+        "FROM &quot;Department&quot;\"",
+        "FROM &quot;Department&quot; WHERE &quot;Name&quot; LIKE '%Engineering%'\"",
+    );
+    std::fs::write(&design, controlled).unwrap();
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        run_csv_names(
+            &imported.project,
+            &dir.0.join("company.sqlite"),
+            &["Department", "First", "Title"]
+        ),
+        [["Engineering", "Ada", "Manager"]]
+    );
+}
+
+#[test]
+fn table_parent_correlation_uses_relation_key_and_static_child_parameter() {
+    let dir = TempDir::new();
+    prepare_relational_database(&dir.0);
+    let design = dir.0.join("employees-by-title.mfd");
+    let text = r#"<mapping version="26"><resources><datasources><datasource name="company">
+      <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="company.sqlite" name="company">
+        <LocalViewStorage><LocalViewElement SQL="SELECT &quot;first&quot;, &quot;title&quot; FROM &quot;person&quot; WHERE &quot;foreignkey&quot; = :DepartmentID AND &quot;title&quot; LIKE :patternForTitle"><PathElement Name="main" Kind="Database"/><PathElement Name="PersonsByDepartmentAndTitle" Kind="Select Statement"/><Parameters><Parameter name="DepartmentID" type="integer"/><Parameter name="patternForTitle" type="text"/></Parameters></LocalViewElement></LocalViewStorage>
+        <LocalRelationsStorage><LocalRelationElement name="department-persons"><SourceTable><PathElement Name="main" Kind="Database"/><PathElement Name="PersonsByDepartmentAndTitle" Kind="Select Statement"/></SourceTable><SourceColumns><Column name="DepartmentID" kind="Parameter"/></SourceColumns><DestinationTable><PathElement Name="main" Kind="Database"/><PathElement Name="department" Kind="Table"/></DestinationTable><DestinationColumns><Column name="primarykey" kind="Column"/></DestinationColumns></LocalRelationElement></LocalRelationsStorage>
+      </database_connection></datasource></datasources></resources>
+      <component name="map" uid="1"><structure><children>
+        <component name="constant" library="core" uid="2" kind="2"><targets><datapoint key="10"/></targets><data><constant value="%Engineer%" datatype="string"/></data></component>
+        <component name="pattern" library="core" uid="3" kind="6"><sources><datapoint key="11"/></sources><targets><datapoint key="12"/></targets><data><input datatype="string"/></data></component>
+        <component name="catalog" library="db" uid="4" kind="15"><data><root><entry name="document"><entry name="dEpArTmEnT" type="table"><entry name="nAmE" outkey="20"/><entry name="PersonsByDepartmentAndTitle|DepartmentID" type="routine" outkey="21"/></entry></entry></root><database ref="company"><data><selections><selection><PathElement Name="main" Kind="Database"/><PathElement Name="PersonsByDepartmentAndTitle" Kind="Select Statement"/></selection><selection><PathElement Name="main" Kind="Database"/><PathElement Name="department" Kind="Table"/></selection></selections></data></database></data></component>
+        <component name="PersonsByDepartmentAndTitle|DepartmentID" library="db" uid="5" kind="28"><data><root><entry name="procedure" inpkey="22"/><entry name="PersonsByDepartmentAndTitle"><entry name="patternForTitle" type="attribute" inpkey="23"/></entry></root><root><entry name="PersonsByDepartmentAndTitle" outkey="30"><entry name="PersonsByDepartmentAndTitle"><entry name="First" type="attribute" outkey="31"/><entry name="Title" type="attribute" outkey="32"/></entry></entry></root></data></component>
+        <component name="rows" library="text" uid="6" kind="16"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="40"><entry name="Department" inpkey="41"/><entry name="First" inpkey="42"/></entry></entry></entry></root><text type="csv" outputinstance="out.csv"><settings separator="," firstrownames="true"><names block="Rows"><field0 name="Department" type="string"/><field1 name="First" type="string"/></names></settings></text></data></component>
+      </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="11"/></edges></vertex><vertex vertexkey="12"><edges><edge vertexkey="23"/></edges></vertex><vertex vertexkey="21"><edges><edge vertexkey="22"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="20"><edges><edge vertexkey="41"/></edges></vertex><vertex vertexkey="31"><edges><edge vertexkey="42"/></edges></vertex></vertices></graph></structure></component></mapping>"#;
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let department = imported.project.source.child("Department").unwrap();
+    assert!(department.child("Person|ForeignKey").is_some());
+    assert!(imported.project.source.child("department").is_none());
+    assert_eq!(
+        run_csv_names(
+            &imported.project,
+            &dir.0.join("company.sqlite"),
+            &["Department", "First"]
+        ),
+        [["Engineering", "Linus"]]
+    );
+}
+
+#[test]
+fn reverse_correlation_uses_the_parent_side_foreign_key_column() {
+    let dir = TempDir::new();
+    prepare_relational_database(&dir.0);
+    let design = dir.0.join("offices-by-department.mfd");
+    let text = r#"<mapping version="26"><resources><datasources><datasource name="company">
+      <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="company.sqlite" name="company">
+        <LocalViewStorage><LocalViewElement SQL="SELECT &quot;PrimaryKey&quot;, &quot;Name&quot; FROM &quot;Office&quot; WHERE &quot;PrimaryKey&quot; = :OfficeID"><PathElement Name="main" Kind="Database"/><PathElement Name="OfficesByDepartment" Kind="Select Statement"/><Parameters><Parameter name="OfficeID" type="integer"/></Parameters></LocalViewElement></LocalViewStorage>
+        <LocalRelationsStorage><LocalRelationElement name="department-office"><SourceTable><PathElement Name="main" Kind="Database"/><PathElement Name="OfficesByDepartment" Kind="Select Statement"/></SourceTable><SourceColumns><Column name="OfficeID" kind="Parameter"/></SourceColumns><DestinationTable><PathElement Name="main" Kind="Database"/><PathElement Name="Department" Kind="Table"/></DestinationTable><DestinationColumns><Column name="ForeignKey" kind="Column"/></DestinationColumns></LocalRelationElement></LocalRelationsStorage>
+      </database_connection></datasource></datasources></resources>
+      <component name="map" uid="1"><structure><children>
+        <component name="catalog" library="db" uid="4" kind="15"><data><root><entry name="document"><entry name="Department" type="table"><entry name="Name" outkey="20"/><entry name="OfficesByDepartment|OfficeID" type="routine" outkey="21"/></entry></entry></root><database ref="company"><data><selections><selection><PathElement Name="main" Kind="Database"/><PathElement Name="OfficesByDepartment" Kind="Select Statement"/></selection><selection><PathElement Name="main" Kind="Database"/><PathElement Name="Department" Kind="Table"/></selection></selections></data></database></data></component>
+        <component name="OfficesByDepartment|OfficeID" library="db" uid="5" kind="28"><data><root><entry name="procedure" inpkey="22"/></root><root><entry name="OfficesByDepartment" outkey="30"><entry name="OfficesByDepartment"><entry name="PrimaryKey" type="attribute" outkey="31"/><entry name="Name" type="attribute" outkey="32"/></entry></entry></root></data></component>
+        <component name="rows" library="text" uid="6" kind="16"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="40"><entry name="Department" inpkey="41"/><entry name="Office" inpkey="42"/></entry></entry></entry></root><text type="csv" outputinstance="out.csv"><settings separator="," firstrownames="true"><names block="Rows"><field0 name="Department" type="string"/><field1 name="Office" type="string"/></names></settings></text></data></component>
+      </children><graph><vertices><vertex vertexkey="21"><edges><edge vertexkey="22"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="20"><edges><edge vertexkey="41"/></edges></vertex><vertex vertexkey="32"><edges><edge vertexkey="42"/></edges></vertex></vertices></graph></structure></component></mapping>"#;
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let department = imported.project.source.child("Department").unwrap();
+    assert!(department.child("Office|ForeignKey").is_some());
+    assert_eq!(
+        run_csv_names(
+            &imported.project,
+            &dir.0.join("company.sqlite"),
+            &["Department", "Office"]
+        ),
+        [
+            ["Engineering", "West"],
+            ["Sales", "West"],
+            ["Support", "East"]
+        ]
+    );
+}

@@ -16,8 +16,12 @@ pub(super) struct IterationFeed {
     pub(super) source_suffix: Vec<String>,
     /// The filter's boolean expression key, if a filter was crossed.
     pub(super) filter_expr: Option<u32>,
+    /// Whether a filter was crossed, including one with a missing condition.
+    pub(super) has_filter: bool,
     /// The group-by's key expression key, if a group-by was crossed.
     pub(super) group_key: Option<u32>,
+    /// Whether a key-based group operation was crossed.
+    pub(super) has_key_grouping: bool,
     /// The block-size expression key, if group-into-blocks was crossed.
     pub(super) block_size: Option<u32>,
     /// Whether the chain contains group-into-blocks, including a component
@@ -31,6 +35,8 @@ pub(super) struct IterationFeed {
     pub(super) order_issue: Option<&'static str>,
     /// A sort key expression and direction crossed by the sequence.
     pub(super) sort_expr: Option<u32>,
+    /// Whether a sort was crossed, including one with a missing key.
+    pub(super) has_sort: bool,
     pub(super) sort_descending: bool,
     /// A connected first-items count, or an absent count meaning the
     /// function's default of one item.

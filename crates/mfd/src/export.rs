@@ -28,6 +28,12 @@ use schema::{
 /// component family needs one. Returns warnings for the parts that have no
 /// `.mfd` representation and were skipped.
 pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
+    if scope_has_dynamic_mapping(&project.root) {
+        return Err(MfdError::Unsupported(
+            "computed JSON property mappings do not yet have a lossless MapForce export"
+                .to_string(),
+        ));
+    }
     let mut warnings = Vec::new();
 
     if !project.extra_sources.is_empty() {
@@ -220,13 +226,18 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 uid += 1;
                 let name = unmap_function_name(function);
                 let library = function_library(function);
+                let growable = if function == "datetime_add" {
+                    " growable=\"1\" growablebasename=\"duration\""
+                } else {
+                    ""
+                };
                 let mut pins = String::new();
                 for (pos, key) in ins.iter().enumerate() {
                     let _ = write!(pins, "<datapoint pos=\"{pos}\" key=\"{key}\"/>");
                 }
                 let _ = write!(
                     components,
-                    "\t\t\t\t<component name=\"{}\" library=\"{library}\" uid=\"{uid}\" kind=\"5\">\n\
+                    "\t\t\t\t<component name=\"{}\" library=\"{library}\" uid=\"{uid}\" kind=\"5\"{growable}>\n\
                      \t\t\t\t\t<sources>{pins}</sources>\n\
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
@@ -454,6 +465,13 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     artifacts.push((path.to_path_buf(), out));
     write_artifacts(artifacts)?;
     Ok(warnings)
+}
+
+fn scope_has_dynamic_mapping(scope: &Scope) -> bool {
+    scope.merge_dynamic_fields
+        || !scope.dynamic_bindings.is_empty()
+        || !scope.dynamic_children.is_empty()
+        || scope.children.iter().any(scope_has_dynamic_mapping)
 }
 
 static TEMP_ARTIFACT_ID: AtomicU64 = AtomicU64::new(0);
@@ -1087,6 +1105,7 @@ fn unmap_function_name(name: &str) -> String {
         "time_from_datetime" => "time-from-datetime",
         "datetime_from_date_and_time" => "datetime-from-date-and-time",
         "datetime_from_parts" => "datetime-from-parts",
+        "datetime_add" => "datetime-add",
         "parse_date" => "parse-date",
         "parse_datetime" => "parse-dateTime",
         "parse_time" => "parse-time",
@@ -1106,6 +1125,7 @@ fn function_library(name: &str) -> &'static str {
         | "time_from_datetime"
         | "datetime_from_date_and_time"
         | "datetime_from_parts" => "lang",
+        "datetime_add" => "lang",
         _ => "core",
     }
 }
@@ -1138,6 +1158,8 @@ mod tests {
             "datetime-from-parts"
         );
         assert_eq!(function_library("datetime_from_parts"), "lang");
+        assert_eq!(unmap_function_name("datetime_add"), "datetime-add");
+        assert_eq!(function_library("datetime_add"), "lang");
         assert_eq!(unmap_function_name("parse_date"), "parse-date");
         assert_eq!(unmap_function_name("parse_datetime"), "parse-dateTime");
         assert_eq!(

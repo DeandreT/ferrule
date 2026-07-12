@@ -4,7 +4,7 @@ use ir::{Instance, ScalarType, SchemaKind, SchemaNode};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params};
 
-use super::{DbFormatError, quote, read, read_value};
+use super::{DbFormatError, ForeignKeyRelation, ForeignKeySide, quote, read, read_value};
 
 struct TablePlan<'a> {
     schema: &'a SchemaNode,
@@ -110,6 +110,58 @@ pub(super) fn validate_schema(db_path: &Path, schema: &SchemaNode) -> Result<(),
         build_table_plan(&conn, table, &table.name)?;
     }
     Ok(())
+}
+
+pub(super) fn resolve_foreign_key_relation(
+    db_path: &Path,
+    parent_table: &str,
+    parent_column: &str,
+    child_table: &str,
+    child_column: &str,
+) -> Result<ForeignKeyRelation, DbFormatError> {
+    let conn = Connection::open(db_path)?;
+    let mut matches = Vec::new();
+    matches.extend(
+        foreign_keys(&conn, child_table)?
+            .into_iter()
+            .filter(|key| {
+                key.from.eq_ignore_ascii_case(child_column)
+                    && key.table.eq_ignore_ascii_case(parent_table)
+                    && key.to.eq_ignore_ascii_case(parent_column)
+            })
+            .map(|key| ForeignKeyRelation {
+                side: ForeignKeySide::Child,
+                join_column: key.from,
+            }),
+    );
+    matches.extend(
+        foreign_keys(&conn, parent_table)?
+            .into_iter()
+            .filter(|key| {
+                key.from.eq_ignore_ascii_case(parent_column)
+                    && key.table.eq_ignore_ascii_case(child_table)
+                    && key.to.eq_ignore_ascii_case(child_column)
+            })
+            .map(|key| ForeignKeyRelation {
+                side: ForeignKeySide::Parent,
+                join_column: key.from,
+            }),
+    );
+    match matches.as_slice() {
+        [relation] => Ok(relation.clone()),
+        [] => Err(DbFormatError::MissingForeignKeyEndpoints {
+            parent_table: parent_table.to_string(),
+            parent_column: parent_column.to_string(),
+            child_table: child_table.to_string(),
+            child_column: child_column.to_string(),
+        }),
+        _ => Err(DbFormatError::AmbiguousForeignKeyEndpoints {
+            parent_table: parent_table.to_string(),
+            parent_column: parent_column.to_string(),
+            child_table: child_table.to_string(),
+            child_column: child_column.to_string(),
+        }),
+    }
 }
 
 fn is_flat_table(schema: &SchemaNode) -> bool {

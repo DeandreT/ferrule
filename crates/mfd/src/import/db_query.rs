@@ -9,9 +9,12 @@ use super::function::{FnComponent, is_input, parse_constant};
 use super::schema::{ComponentFormat, SchemaComponent, entry_key_sets, parse_u32};
 use super::source::SourcePath;
 
+mod correlated;
+
 #[derive(Clone)]
 pub(super) struct DbQuery {
     name: String,
+    collection: Vec<String>,
     predicates: Vec<QueryPredicate>,
     order: Option<QueryOrder>,
 }
@@ -37,6 +40,7 @@ enum QueryOperand {
         ty: ScalarType,
     },
     Literal(Value),
+    Correlated,
 }
 
 #[derive(Clone)]
@@ -87,28 +91,65 @@ pub(super) fn is_routine_catalog(
     component: &roxmltree::Node<'_, '_>,
     siblings: &roxmltree::Node<'_, '_>,
 ) -> bool {
-    if component.attribute("kind") != Some("15")
-        || component
-            .descendants()
-            .any(|node| node.has_tag_name("entry") && node.attribute("type") == Some("table"))
-    {
+    if component.attribute("kind") != Some("15") {
         return false;
     }
     let routines = component
         .descendants()
         .filter(|node| node.has_tag_name("entry") && node.attribute("type") == Some("routine"))
-        .filter_map(|entry| entry.attribute("name"))
-        .collect::<BTreeSet<_>>();
-    !routines.is_empty()
-        && siblings.children().any(|sibling| {
+        .collect::<Vec<_>>();
+    let queries = siblings
+        .children()
+        .filter(|sibling| {
             sibling.has_tag_name("component")
                 && sibling.attribute("library") == Some("db")
                 && sibling.attribute("kind") == Some("28")
-                && sibling
-                    .attribute("name")
-                    .and_then(|name| name.split('|').next())
-                    .is_some_and(|name| routines.contains(name))
         })
+        .filter_map(|query| query.attribute("name"))
+        .collect::<Vec<_>>();
+    let matched = |routine: &roxmltree::Node<'_, '_>| {
+        routine.attribute("name").is_some_and(|routine| {
+            queries
+                .iter()
+                .any(|query| same_query_identity(routine, query))
+        })
+    };
+    if routines.is_empty() || routines.iter().any(|routine| !matched(routine)) {
+        return false;
+    }
+    component
+        .descendants()
+        .filter(|node| node.has_tag_name("entry") && node.attribute("type") == Some("table"))
+        .all(|table| {
+            routines.iter().any(|routine| {
+                matched(routine) && routine.ancestors().any(|ancestor| ancestor == table)
+            })
+        })
+}
+
+pub(super) fn same_query_identity(left: &str, right: &str) -> bool {
+    let Some((left_base, left_parameter)) = query_identity(left) else {
+        return false;
+    };
+    let Some((right_base, right_parameter)) = query_identity(right) else {
+        return false;
+    };
+    left_base == right_base
+        && (left_parameter == right_parameter
+            || left_parameter.is_none()
+            || right_parameter.is_none())
+}
+
+fn query_identity(name: &str) -> Option<(&str, Option<&str>)> {
+    match name.split_once('|') {
+        None if !name.is_empty() => Some((name, None)),
+        Some((base, parameter))
+            if !base.is_empty() && !parameter.is_empty() && !parameter.contains('|') =>
+        {
+            Some((base, Some(parameter)))
+        }
+        _ => None,
+    }
 }
 
 pub(super) fn read_component(
@@ -117,13 +158,8 @@ pub(super) fn read_component(
     mfd_path: &Path,
 ) -> Result<SchemaComponent, String> {
     let name = component.attribute("name").unwrap_or_default();
-    if name.contains('|') {
-        return Err(
-            "correlated query parameters are not supported; the query was not flattened"
-                .to_string(),
-        );
-    }
-    let connection = query_connection(mapping, name)?;
+    let query_name = name.split('|').next().unwrap_or_default();
+    let connection = query_connection(mapping, query_name)?;
     if !connection
         .attribute("database_kind")
         .is_some_and(|kind| kind.eq_ignore_ascii_case("SQLite"))
@@ -133,10 +169,12 @@ pub(super) fn read_component(
     {
         return Err("only SQLite query datasources are supported".to_string());
     }
-    if has_query_relation(&connection, name) {
+    if has_query_relation(&connection, query_name) {
+        return correlated::read_component(component, mapping, mfd_path, &connection, query_name);
+    }
+    if name.contains('|') {
         return Err(
-            "query participates in datasource relation metadata; correlated queries are not supported"
-                .to_string(),
+            "query name encodes a correlation but no relation metadata matches it".to_string(),
         );
     }
     let local_view = connection
@@ -146,13 +184,13 @@ pub(super) fn read_component(
                 && node.descendants().any(|path| {
                     path.has_tag_name("PathElement")
                         && path.attribute("Kind") == Some("Select Statement")
-                        && path.attribute("Name") == Some(name)
+                        && path.attribute("Name") == Some(query_name)
                 })
         })
         .collect::<Vec<_>>();
     let [local_view] = local_view.as_slice() else {
         return Err(format!(
-            "expected exactly one datasource query definition named `{name}`"
+            "expected exactly one datasource query definition named `{query_name}`"
         ));
     };
     let sql = local_view
@@ -236,11 +274,13 @@ pub(super) fn read_component(
         ports,
         input_keys,
         output_keys,
-        db_query: Some(DbQuery {
+        db_queries: vec![DbQuery {
             name: name.to_string(),
+            collection: Vec::new(),
             predicates,
             order: parsed.order,
-        }),
+        }],
+        dynamic_json: None,
     })
 }
 
@@ -473,7 +513,7 @@ impl GraphBuilder<'_> {
             .iter()
             .enumerate()
             .find(|(_, component)| component.ports.contains_key(&key))
-            && component.db_query.is_some()
+            && !component.db_queries.is_empty()
             && !self.query_scope_sources.contains(&source)
         {
             if self.warned_unscoped_queries.insert(source) {
@@ -535,37 +575,57 @@ impl GraphBuilder<'_> {
         let Some(source_path) = source_path else {
             return Ok((existing_filter, None, false));
         };
-        let Some(query) = self
-            .sources
-            .get(source_path.source)
-            .and_then(|source| source.db_query.clone())
-        else {
+        let Some(source) = self.sources.get(source_path.source) else {
             return Ok((existing_filter, None, false));
         };
         let mut filter = existing_filter;
-        for predicate in query.predicates {
-            let node = self.query_predicate_node(source_path, predicate)?;
-            filter = Some(match filter {
-                Some(existing) => self.alloc(Node::Call {
-                    function: "and".to_string(),
-                    args: vec![existing, node],
-                }),
-                None => node,
-            });
-        }
-        let (sort, descending) = match query.order {
-            Some(order) => {
-                let (node, ty) = self.db_column_node(source_path, &[order.column])?;
-                if ty == ScalarType::String {
-                    return Err(
+        let queries = source
+            .db_queries
+            .iter()
+            .filter(|query| source_path.path.starts_with(&query.collection))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut sort = None;
+        let mut descending = false;
+        for query in queries {
+            // A flattened multi-hop iteration retains every parent frame. Parent
+            // predicates therefore evaluate identically for each child, and one
+            // parent sort remains a stable ordering by that parent value.
+            let mut collection = source_path.clone();
+            collection.path = query.collection;
+            for predicate in query.predicates {
+                if matches!(predicate.operand, QueryOperand::Correlated) {
+                    continue;
+                }
+                let node = self.query_predicate_node(&collection, predicate)?;
+                filter = Some(match filter {
+                    Some(existing) => self.alloc(Node::Call {
+                        function: "and".to_string(),
+                        args: vec![existing, node],
+                    }),
+                    None => node,
+                });
+            }
+            let query_sort = match query.order {
+                Some(order) => {
+                    let (node, ty) = self.db_column_node(&collection, &[order.column])?;
+                    if ty == ScalarType::String {
+                        return Err(
                         "text ORDER BY collation cannot be established from SQLite schema metadata"
                             .to_string(),
                     );
+                    }
+                    Some((node, order.descending))
                 }
-                (Some(node), order.descending)
+                None => None,
+            };
+            if let Some((node, direction)) = query_sort {
+                if sort.replace(node).is_some() {
+                    return Err("multiple query ORDER clauses apply to one iteration".to_string());
+                }
+                descending = direction;
             }
-            None => (None, false),
-        };
+        }
         Ok((filter, sort, descending))
     }
 
@@ -586,13 +646,19 @@ impl GraphBuilder<'_> {
                     return Err(format!(
                         "query `{}` parameter `:{name}` type {ty:?} does not match column type {column_type:?}",
                         self.sources[source_path.source]
-                            .db_query
-                            .as_ref()
+                            .db_queries
+                            .iter()
+                            .find(|query| query.collection == source_path.path)
                             .map_or("unknown", |query| query.name.as_str())
                     ));
                 }
                 let value = self.static_query_parameter(input_key, 0)?;
                 coerce_value(value, ty)?
+            }
+            QueryOperand::Correlated => {
+                return Err(
+                    "correlated predicate was not absorbed by the relational source".to_string(),
+                );
             }
         };
         if matches!(predicate.operator, QueryOperator::Like) && column_type != ScalarType::String {
@@ -1026,5 +1092,27 @@ mod tests {
             .find(|node| node.attribute("kind") == Some("15"))
             .unwrap();
         assert!(is_routine_catalog(&catalog, &with_query.root_element()));
+
+        let mixed = roxmltree::Document::parse(
+            r#"<children><component library="db" kind="15"><entry name="TableA" type="table"><entry name="Q" type="routine"/></entry><entry name="Unrelated" type="table"/></component><component name="Q|Param" library="db" kind="28"/></children>"#,
+        )
+        .unwrap();
+        let catalog = mixed
+            .root_element()
+            .children()
+            .find(|node| node.attribute("kind") == Some("15"))
+            .unwrap();
+        assert!(!is_routine_catalog(&catalog, &mixed.root_element()));
+    }
+
+    #[test]
+    fn query_identity_matches_only_typed_base_and_parameter_forms() {
+        assert!(same_query_identity("Q", "Q|Parameter"));
+        assert!(same_query_identity("Q|Parameter", "Q"));
+        assert!(same_query_identity("Q|Parameter", "Q|Parameter"));
+        assert!(!same_query_identity("Q|First", "Q|Second"));
+        assert!(!same_query_identity("QExtra", "Q"));
+        assert!(!same_query_identity("Q|", "Q"));
+        assert!(!same_query_identity("Q|P|Extra", "Q|P"));
     }
 }

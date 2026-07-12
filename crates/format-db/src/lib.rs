@@ -10,8 +10,8 @@
 use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
-use rusqlite::Connection;
 use rusqlite::types::ValueRef;
+use rusqlite::{Connection, OptionalExtension};
 use thiserror::Error;
 
 mod relational;
@@ -77,6 +77,36 @@ pub enum DbFormatError {
         child_table: String,
         join_column: String,
     },
+    #[error(
+        "no foreign key connects `{parent_table}`.`{parent_column}` to `{child_table}`.`{child_column}`"
+    )]
+    MissingForeignKeyEndpoints {
+        parent_table: String,
+        parent_column: String,
+        child_table: String,
+        child_column: String,
+    },
+    #[error(
+        "multiple foreign keys connect `{parent_table}`.`{parent_column}` to `{child_table}`.`{child_column}`"
+    )]
+    AmbiguousForeignKeyEndpoints {
+        parent_table: String,
+        parent_column: String,
+        child_table: String,
+        child_column: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForeignKeySide {
+    Parent,
+    Child,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForeignKeyRelation {
+    pub side: ForeignKeySide,
+    pub join_column: String,
 }
 
 fn columns_of(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatError> {
@@ -101,7 +131,15 @@ fn quote(ident: &str) -> String {
 /// named after the table.
 pub fn introspect(db_path: &Path, table: &str) -> Result<SchemaNode, DbFormatError> {
     let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", quote(table)))?;
+    let canonical: Option<String> = conn
+        .query_row(
+            "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = ?1 COLLATE NOCASE",
+            [table],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let canonical = canonical.ok_or_else(|| DbFormatError::NoSuchTable(table.to_string()))?;
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", quote(&canonical)))?;
     let columns = stmt
         .query_map([], |row| {
             let name: String = row.get("name")?;
@@ -116,7 +154,7 @@ pub fn introspect(db_path: &Path, table: &str) -> Result<SchemaNode, DbFormatErr
         .into_iter()
         .map(|(name, decl_type)| SchemaNode::scalar(name, map_decl_type(&decl_type)))
         .collect();
-    Ok(SchemaNode::group(table, children).repeating())
+    Ok(SchemaNode::group(canonical, children).repeating())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,6 +274,24 @@ pub fn validate_relational_schema(
     schema: &SchemaNode,
 ) -> Result<(), DbFormatError> {
     relational::validate_schema(db_path, schema)
+}
+
+/// Resolves one exact relationship endpoint pair against SQLite metadata.
+/// The returned join column is the column on the table that owns the FK.
+pub fn resolve_foreign_key_relation(
+    db_path: &Path,
+    parent_table: &str,
+    parent_column: &str,
+    child_table: &str,
+    child_column: &str,
+) -> Result<ForeignKeyRelation, DbFormatError> {
+    relational::resolve_foreign_key_relation(
+        db_path,
+        parent_table,
+        parent_column,
+        child_table,
+        child_column,
+    )
 }
 
 /// Converts a SQLite value to an ir [`Value`], guided by the declared

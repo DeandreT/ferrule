@@ -66,7 +66,7 @@ impl ScopeBuilder {
 
     /// The nearest enclosing anchor for a chain, if any iteration exists
     /// above it.
-    fn enclosing_anchor(&self, chain: &[String]) -> Vec<String> {
+    pub(super) fn enclosing_anchor(&self, chain: &[String]) -> Vec<String> {
         for len in (0..chain.len()).rev() {
             if let Some(anchor) = self.anchors.get(&chain[..len]) {
                 return anchor.clone();
