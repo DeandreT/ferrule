@@ -1,6 +1,10 @@
 use super::*;
 use ir::SchemaNode;
-use mapping::Binding;
+use mapping::{Binding, SequenceExpr};
+
+use crate::sequence::{
+    MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length,
+};
 
 fn graph_from(nodes: Vec<(NodeId, Node)>) -> Graph {
     Graph {

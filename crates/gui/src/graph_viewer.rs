@@ -20,6 +20,68 @@ use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 
+fn sequence_input_at(sequence: &mapping::SequenceExpr, index: usize) -> Option<NodeId> {
+    sequence.inputs().get(index).copied()
+}
+
+fn set_sequence_input(sequence: &mut mapping::SequenceExpr, index: usize, node: NodeId) {
+    match sequence {
+        mapping::SequenceExpr::Tokenize {
+            input, delimiter, ..
+        } => match index {
+            0 => *input = node,
+            1 => *delimiter = node,
+            _ => {}
+        },
+        mapping::SequenceExpr::TokenizeByLength { input, length, .. } => match index {
+            0 => *input = node,
+            1 => *length = node,
+            _ => {}
+        },
+        mapping::SequenceExpr::Generate {
+            from: Some(from),
+            to,
+            ..
+        } => match index {
+            0 => *from = node,
+            1 => *to = node,
+            _ => {}
+        },
+        mapping::SequenceExpr::Generate { from: None, to, .. } => {
+            if index == 0 {
+                *to = node;
+            }
+        }
+    }
+}
+
+fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
+    match sequence {
+        mapping::SequenceExpr::Tokenize { .. } => "tokenize",
+        mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        mapping::SequenceExpr::Generate { .. } => "generate-sequence",
+    }
+}
+
+fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> &'static str {
+    if index == sequence.inputs().len() {
+        return "predicate";
+    }
+    match sequence {
+        mapping::SequenceExpr::Tokenize { .. } => ["input", "delimiter"]
+            .get(index)
+            .copied()
+            .unwrap_or("input"),
+        mapping::SequenceExpr::TokenizeByLength { .. } => {
+            ["input", "length"].get(index).copied().unwrap_or("input")
+        }
+        mapping::SequenceExpr::Generate { from: Some(_), .. } => {
+            ["from", "to"].get(index).copied().unwrap_or("input")
+        }
+        mapping::SequenceExpr::Generate { from: None, .. } => "to",
+    }
+}
+
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
     pub root_scope: &'a mut Scope,
@@ -168,6 +230,17 @@ impl GraphViewer<'_> {
                 },
                 Node::ValueMap { input, .. } => *input = from_id,
                 Node::Lookup { matches, .. } => *matches = from_id,
+                Node::SequenceExists {
+                    sequence,
+                    predicate,
+                } => {
+                    let sequence_inputs = sequence.inputs().len();
+                    if idx < sequence_inputs {
+                        set_sequence_input(sequence, idx, from_id);
+                    } else if idx == sequence_inputs {
+                        *predicate = from_id;
+                    }
+                }
                 Node::Aggregate {
                     expression, arg, ..
                 } => {
@@ -192,6 +265,11 @@ impl GraphViewer<'_> {
             } => [*condition, *then, *else_].get(idx).copied(),
             Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
             Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
+            Node::SequenceExists {
+                sequence,
+                predicate,
+            } => sequence_input_at(sequence, idx)
+                .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
             Node::Aggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).nth(idx).copied(),
@@ -266,6 +344,10 @@ impl GraphViewer<'_> {
                 } => vec![*condition, *then, *else_],
                 Node::ValueMap { input, .. } => vec![*input],
                 Node::Lookup { matches, .. } => vec![*matches],
+                Node::SequenceExists {
+                    sequence,
+                    predicate,
+                } => sequence.inputs().into_iter().chain([*predicate]).collect(),
                 Node::Aggregate {
                     expression, arg, ..
                 } => expression.iter().chain(arg).copied().collect(),
@@ -325,6 +407,11 @@ impl GraphViewer<'_> {
         for (&owner, node) in &self.graph.nodes {
             if owner != needle && graph_inputs(node).contains(&needle) {
                 found.insert(format!("graph node {owner}"));
+            }
+            if owner != needle
+                && matches!(node, Node::SequenceExists { sequence, .. } if sequence.item() == needle)
+            {
+                found.insert(format!("graph node {owner} sequence item"));
             }
         }
         scope_references(self.root_scope, &mut Vec::new(), needle, &mut found);
@@ -386,6 +473,10 @@ impl GraphViewer<'_> {
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } => 1,
+            Node::SequenceExists {
+                sequence,
+                predicate: _,
+            } => sequence.inputs().len() + 1,
             Node::Aggregate {
                 expression, arg, ..
             } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
@@ -407,6 +498,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence.inputs().into_iter().chain([*predicate]).collect(),
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
@@ -442,6 +537,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::ValueMap { .. }) => "Value Map".to_string(),
                 Some(Node::Lookup { collection, .. }) => {
                     format!("Lookup: {}", collection.join("/"))
+                }
+                Some(Node::SequenceExists { sequence, .. }) => {
+                    format!("Exists: {}", sequence_label(sequence))
                 }
                 Some(Node::Aggregate {
                     function,
@@ -496,6 +594,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                     Some(Node::ValueMap { .. }) => "input".to_string(),
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
+                    Some(Node::SequenceExists { sequence, .. }) => {
+                        sequence_pin_label(sequence, idx).to_string()
+                    }
                     Some(Node::Aggregate { expression, .. })
                         if expression.is_some() && idx == 0 =>
                     {
@@ -609,6 +710,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             ui.end_row();
                         });
                     });
+                }
+                Node::SequenceExists { sequence, .. } => {
+                    ui.label(format!("any {} item matches", sequence_label(sequence)));
                 }
                 Node::Aggregate {
                     function,

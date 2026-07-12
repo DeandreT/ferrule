@@ -25,6 +25,7 @@ mod group_projection;
 mod iteration;
 mod schema;
 mod scope;
+mod sequence_scalar;
 mod source;
 mod target_iteration;
 mod udf;
@@ -226,7 +227,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         fn_nodes: BTreeMap::new(),
         sequence_items: BTreeMap::new(),
         sequence_scope_components: BTreeSet::new(),
+        sequence_predicate_components: BTreeSet::new(),
         warned_sequence_uses: BTreeSet::new(),
+        warned_scalar_filters: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         query_scope_sources: BTreeSet::new(),
         warned_unscoped_queries: BTreeSet::new(),
@@ -319,6 +322,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // Build computed aggregate sequences in their per-item frame first.
     for (i, fc) in fn_components.iter().enumerate() {
         if fc.kind == 5 && aggregate_op(&fc.name).is_some() {
+            builder.fn_node(i);
+        }
+    }
+    // Existential sequence consumers must claim their producer before a
+    // predicate node independently encounters the producer's scalar port.
+    for (i, fc) in fn_components.iter().enumerate() {
+        if fc.kind == 5 && fc.name == "exists" {
             builder.fn_node(i);
         }
     }
@@ -519,6 +529,9 @@ impl GraphBuilder<'_> {
         // A function output?
         let idx = *self.fn_by_output.get(&key)?;
         if is_filter_component(&self.fn_components[idx]) {
+            if let Some(node) = self.scalar_filter_lookup_node(idx) {
+                return Some(node);
+            }
             // A filter feeding a value position is pass-through of its
             // node input for our purposes; treat the value as whatever
             // feeds the filter's first input.
@@ -541,7 +554,8 @@ impl GraphBuilder<'_> {
                 .and_then(|feed| self.value_node(feed));
         }
         if is_sequence_producer(&self.fn_components[idx]) {
-            if !self.sequence_scope_components.contains(&idx)
+            if !(self.sequence_scope_components.contains(&idx)
+                || self.sequence_predicate_components.contains(&idx))
                 && self.warned_sequence_uses.insert(idx)
             {
                 self.warnings.push(format!(
@@ -596,6 +610,14 @@ impl GraphBuilder<'_> {
         // Aggregates take a sequence connection, not scalar arguments, so
         // they must not materialize their feeds as SourceFields.
         let name = self.fn_components[idx].name.clone();
+        if name == "exists"
+            && self.fn_components[idx].library == "core"
+            && self.fn_components[idx].kind == 5
+            && let Some(node) = self.sequence_exists_node(idx)
+        {
+            self.graph.nodes.insert(id, node);
+            return id;
+        }
         if let Some(op) = aggregate_op(&name).filter(|_| self.fn_components[idx].kind == 5) {
             let node = match self.aggregate_node(op, idx) {
                 Some(node) => node,
@@ -1133,10 +1155,10 @@ impl GraphBuilder<'_> {
             "tokenize" => {
                 let input = self
                     .input_feed(idx, 0)
-                    .and_then(|feed| self.value_node(feed))?;
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
                 let delimiter = self
                     .input_feed(idx, 1)
-                    .and_then(|feed| self.value_node(feed))?;
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
                 SequenceExpr::Tokenize {
                     input,
                     delimiter,
@@ -1146,10 +1168,10 @@ impl GraphBuilder<'_> {
             "tokenize-by-length" => {
                 let input = self
                     .input_feed(idx, 0)
-                    .and_then(|feed| self.value_node(feed))?;
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
                 let length = self
                     .input_feed(idx, 1)
-                    .and_then(|feed| self.value_node(feed))?;
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
                 SequenceExpr::TokenizeByLength {
                     input,
                     length,
@@ -1159,10 +1181,10 @@ impl GraphBuilder<'_> {
             "generate-sequence" => {
                 let from = self
                     .input_feed(idx, 0)
-                    .and_then(|feed| self.value_node(feed));
+                    .and_then(|feed| self.sequence_scalar_input(feed));
                 let to = self
                     .input_feed(idx, 1)
-                    .and_then(|feed| self.value_node(feed))?;
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
                 SequenceExpr::Generate { from, to, item }
             }
             _ => return None,

@@ -13,23 +13,39 @@ pub(super) fn eval_sequence(
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<Vec<Value>, EngineError> {
+    let mut in_progress = HashSet::new();
+    eval_sequence_in_progress(graph, sequence, context, positions, &mut in_progress)
+}
+
+pub(super) fn eval_sequence_in_progress(
+    graph: &Graph,
+    sequence: &SequenceExpr,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Vec<Value>, EngineError> {
     match sequence {
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions)? else {
+            let Some(input) = eval_sequence_arg(graph, *input, context, positions, in_progress)?
+            else {
                 return Ok(Vec::new());
             };
-            let Some(delimiter) = eval_sequence_arg(graph, *delimiter, context, positions)? else {
+            let Some(delimiter) =
+                eval_sequence_arg(graph, *delimiter, context, positions, in_progress)?
+            else {
                 return Ok(Vec::new());
             };
             tokenize(input, delimiter)
         }
         SequenceExpr::TokenizeByLength { input, length, .. } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions)? else {
+            let Some(input) = eval_sequence_arg(graph, *input, context, positions, in_progress)?
+            else {
                 return Ok(Vec::new());
             };
-            let Some(length) = eval_sequence_arg(graph, *length, context, positions)? else {
+            let Some(length) = eval_sequence_arg(graph, *length, context, positions, in_progress)?
+            else {
                 return Ok(Vec::new());
             };
             tokenize_by_length(input, length)
@@ -37,14 +53,16 @@ pub(super) fn eval_sequence(
         SequenceExpr::Generate { from, to, .. } => {
             let from = match from {
                 Some(node) => {
-                    let Some(value) = eval_sequence_arg(graph, *node, context, positions)? else {
+                    let Some(value) =
+                        eval_sequence_arg(graph, *node, context, positions, in_progress)?
+                    else {
                         return Ok(Vec::new());
                     };
                     Some(value)
                 }
                 None => None,
             };
-            let Some(to) = eval_sequence_arg(graph, *to, context, positions)? else {
+            let Some(to) = eval_sequence_arg(graph, *to, context, positions, in_progress)? else {
                 return Ok(Vec::new());
             };
             generate_sequence(from, to)
@@ -52,14 +70,53 @@ pub(super) fn eval_sequence(
     }
 }
 
+pub(super) fn eval_sequence_exists(
+    graph: &Graph,
+    sequence: &SequenceExpr,
+    predicate: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let values = eval_sequence_in_progress(graph, sequence, context, positions, in_progress)?;
+    for (index, value) in values.into_iter().enumerate() {
+        let item = Instance::Scalar(value);
+        let mut item_context = context.to_vec();
+        item_context.push(&item);
+        let mut item_positions = positions.to_vec();
+        item_positions.push(PositionFrame {
+            collection: Vec::new(),
+            index: index + 1,
+            grouped: false,
+        });
+        match eval_expr(
+            graph,
+            predicate,
+            &item_context,
+            &item_positions,
+            in_progress,
+        )? {
+            Value::Bool(true) => return Ok(Value::Bool(true)),
+            Value::Bool(false) => {}
+            other => {
+                return Err(EngineError::NotABool {
+                    node: predicate,
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+    Ok(Value::Bool(false))
+}
+
 fn eval_sequence_arg(
     graph: &Graph,
     node: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
 ) -> Result<Option<Value>, EngineError> {
-    let mut in_progress = HashSet::new();
-    let value = eval_expr(graph, node, context, positions, &mut in_progress)?;
+    let value = eval_expr(graph, node, context, positions, in_progress)?;
     Ok((value != Value::Null).then_some(value))
 }
 

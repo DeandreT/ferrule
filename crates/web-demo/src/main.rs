@@ -183,6 +183,34 @@ fn flat_bindings(scope: &Scope, prefix: &str, out: &mut Vec<(String, NodeId)>) {
     }
 }
 
+fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
+    match sequence {
+        mapping::SequenceExpr::Tokenize { .. } => "tokenize",
+        mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        mapping::SequenceExpr::Generate { .. } => "generate-sequence",
+    }
+}
+
+fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String {
+    if index == sequence.inputs().len() {
+        return "predicate".to_string();
+    }
+    match sequence {
+        mapping::SequenceExpr::Tokenize { .. } => ["input", "delimiter"]
+            .get(index)
+            .copied()
+            .unwrap_or("input"),
+        mapping::SequenceExpr::TokenizeByLength { .. } => {
+            ["input", "length"].get(index).copied().unwrap_or("input")
+        }
+        mapping::SequenceExpr::Generate { from: Some(_), .. } => {
+            ["from", "to"].get(index).copied().unwrap_or("input")
+        }
+        mapping::SequenceExpr::Generate { from: None, .. } => "to",
+    }
+    .to_string()
+}
+
 /// The wired inputs a graph node has (pin order).
 fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
@@ -197,6 +225,15 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
             else_,
         } => vec![Some(*condition), Some(*then), Some(*else_)],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![Some(*input)],
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence
+            .inputs()
+            .into_iter()
+            .map(Some)
+            .chain([Some(*predicate)])
+            .collect(),
         Node::Aggregate {
             expression, arg, ..
         } => vec![*expression, *arg],
@@ -213,6 +250,9 @@ fn node_title(node: &Node) -> String {
         Node::If { .. } => "if".to_string(),
         Node::ValueMap { .. } => "value-map".to_string(),
         Node::Lookup { collection, .. } => format!("lookup · {}", collection.join("/")),
+        Node::SequenceExists { sequence, .. } => {
+            format!("exists · {}", sequence_label(sequence))
+        }
         Node::Aggregate {
             function,
             collection,
@@ -327,6 +367,10 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
             CanvasNode::Graph(id) => match self.graph.nodes.get(id) {
                 Some(Node::Aggregate { .. }) => ["expr", "sep"][pin.id.input.min(1)].to_string(),
                 Some(Node::If { .. }) => ["cond", "then", "else"][pin.id.input.min(2)].to_string(),
+                Some(Node::SequenceExists {
+                    sequence,
+                    predicate: _,
+                }) => sequence_pin_label(sequence, pin.id.input),
                 _ => format!("arg {}", pin.id.input),
             },
         };

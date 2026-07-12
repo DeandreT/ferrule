@@ -84,6 +84,13 @@ pub enum Node {
         matches: NodeId,
         value: Vec<String>,
     },
+    /// Returns whether any item produced by `sequence` satisfies `predicate`.
+    /// The sequence's item node is an owned empty-path `SourceField` that is
+    /// available only while evaluating the predicate.
+    SequenceExists {
+        sequence: SequenceExpr,
+        predicate: NodeId,
+    },
     /// Reduces a repeating collection to one scalar. `collection` is
     /// resolved with the same outward fallback as `Lookup`; `value` picks
     /// the scalar inside each item (empty = the item itself, for collections
@@ -435,5 +442,35 @@ mod tests {
         assert!(encoded.contains(r#""iteration_output":"mapped_sequence""#));
         let decoded: Scope = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded.iteration_output, IterationOutput::MappedSequence);
+    }
+
+    #[test]
+    fn sequence_exists_roundtrips() {
+        let node = Node::SequenceExists {
+            sequence: SequenceExpr::TokenizeByLength {
+                input: 1,
+                length: 2,
+                item: 3,
+            },
+            predicate: 4,
+        };
+        let encoded = serde_json::to_string(&node).unwrap();
+        let decoded: Node = serde_json::from_str(&encoded).unwrap();
+        let Node::SequenceExists {
+            sequence,
+            predicate,
+        } = decoded
+        else {
+            panic!("expected sequence-exists node");
+        };
+        assert!(matches!(
+            sequence,
+            SequenceExpr::TokenizeByLength {
+                input: 1,
+                length: 2,
+                item: 3
+            }
+        ));
+        assert_eq!(predicate, 4);
     }
 }

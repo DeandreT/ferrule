@@ -261,6 +261,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             else_,
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence.inputs().into_iter().chain([*predicate]).collect(),
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
