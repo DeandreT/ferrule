@@ -48,6 +48,14 @@ pub enum XmlFormatError {
     NoMatchingAlternative { name: String },
     #[error("element `{name}` matches more than one declared schema alternative")]
     AmbiguousAlternative { name: String },
+    #[error("element `{name}` uses xsi:nil but its schema is not nillable")]
+    UnexpectedXmlNil { name: String },
+    #[error("element `{name}` with xsi:nil cannot contain a value")]
+    XmlNilWithContent { name: String },
+    #[error("nilled group element `{name}` cannot be represented yet")]
+    UnsupportedXmlNilGroup { name: String },
+    #[error("element `{name}` has invalid xsi:nil value `{value}`")]
+    InvalidXmlNil { name: String, value: String },
     #[error(
         "repeating xs:{compositor} with {element_count} element members cannot preserve tuple association"
     )]
@@ -99,8 +107,12 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatEr
 }
 
 fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+    let xml_nil = has_xml_nil(el, schema)?;
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
+            if xml_nil {
+                return Ok(Instance::Scalar(Value::xml_nil()));
+            }
             let text = el.text().unwrap_or("");
             Ok(Instance::Scalar(parse_scalar(&schema.name, *ty, text)?))
         }
@@ -109,6 +121,11 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
             alternatives,
             ..
         } => {
+            if xml_nil {
+                return Err(XmlFormatError::UnsupportedXmlNilGroup {
+                    name: schema.name.clone(),
+                });
+            }
             if !alternatives.is_empty() {
                 return Err(XmlFormatError::UnsupportedAlternativeRead {
                     group: schema.name.clone(),
@@ -165,6 +182,43 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
             Ok(Instance::Group(fields))
         }
     }
+}
+
+fn has_xml_nil(
+    element: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+) -> Result<bool, XmlFormatError> {
+    const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    let Some(value) = element.attribute((XSI, "nil")) else {
+        return Ok(false);
+    };
+    let is_nil = match value {
+        "true" | "1" => true,
+        "false" | "0" => false,
+        _ => {
+            return Err(XmlFormatError::InvalidXmlNil {
+                name: schema.name.clone(),
+                value: value.to_string(),
+            });
+        }
+    };
+    if !is_nil {
+        return Ok(false);
+    }
+    if !schema.nillable {
+        return Err(XmlFormatError::UnexpectedXmlNil {
+            name: schema.name.clone(),
+        });
+    }
+    if element
+        .children()
+        .any(|child| child.is_element() || child.text().is_some_and(|text| !text.trim().is_empty()))
+    {
+        return Err(XmlFormatError::XmlNilWithContent {
+            name: schema.name.clone(),
+        });
+    }
+    Ok(true)
 }
 
 fn parse_scalar(name: &str, ty: ScalarType, text: &str) -> Result<Value, XmlFormatError> {
@@ -254,6 +308,18 @@ fn write_single_node<W: std::io::Write>(
 ) -> Result<(), XmlFormatError> {
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
+            if value.is_xml_nil() {
+                if !schema.nillable {
+                    return Err(XmlFormatError::UnexpectedXmlNil {
+                        name: schema.name.clone(),
+                    });
+                }
+                let mut start = BytesStart::new(schema.name.clone());
+                start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
+                start.push_attribute(("xsi:nil", "true"));
+                writer.write_event(Event::Empty(start))?;
+                return Ok(());
+            }
             writer.write_event(Event::Start(BytesStart::new(schema.name.clone())))?;
             let text = format_scalar(&schema.name, *ty, value)?;
             writer.write_event(Event::Text(BytesText::new(&text)))?;
@@ -383,6 +449,7 @@ fn select_group_alternative<'a>(
 fn instance_has_value(instance: &Instance) -> bool {
     match instance {
         Instance::Scalar(Value::Null) => false,
+        Instance::Scalar(Value::XmlNil(_)) => true,
         Instance::Scalar(_) => true,
         Instance::Group(fields) => fields.iter().any(|(_, value)| instance_has_value(value)),
         Instance::Repeated(items) => items.iter().any(instance_has_value),
@@ -940,5 +1007,64 @@ mod tests {
         let err = read(&path, &schema()).unwrap_err();
         std::fs::remove_file(&path).unwrap();
         assert!(matches!(err, XmlFormatError::UnexpectedRoot { .. }));
+    }
+
+    #[test]
+    fn xml_nil_is_distinct_from_absent_and_empty_elements() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Nil", ScalarType::String).nillable(),
+                SchemaNode::scalar("Empty", ScalarType::String).nillable(),
+                SchemaNode::scalar("Absent", ScalarType::String).nillable(),
+            ],
+        );
+        let instance = from_str(
+            r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Nil xsi:nil="true"/><Empty/></Root>"#,
+            &schema,
+        )
+        .unwrap();
+        assert_eq!(
+            instance.field("Nil").and_then(Instance::as_scalar),
+            Some(&Value::xml_nil())
+        );
+        assert_eq!(
+            instance.field("Empty").and_then(Instance::as_scalar),
+            Some(&Value::String(String::new()))
+        );
+        assert_eq!(
+            instance.field("Absent").and_then(Instance::as_scalar),
+            Some(&Value::Null)
+        );
+
+        let xml = to_string(&schema, &instance).unwrap();
+        assert!(
+            xml.contains(
+                r#"<Nil xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>"#
+            ),
+            "{xml}"
+        );
+        assert!(xml.contains("<Empty></Empty>"), "{xml}");
+        assert!(!xml.contains("Absent"), "{xml}");
+    }
+
+    #[test]
+    fn xml_nil_requires_nillable_schema_and_no_content() {
+        let plain = SchemaNode::scalar("Value", ScalarType::String);
+        assert!(matches!(
+            from_str(
+                r#"<Value xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>"#,
+                &plain,
+            ),
+            Err(XmlFormatError::UnexpectedXmlNil { .. })
+        ));
+        let nillable = plain.nillable();
+        assert!(matches!(
+            from_str(
+                r#"<Value xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true">text</Value>"#,
+                &nillable,
+            ),
+            Err(XmlFormatError::XmlNilWithContent { .. })
+        ));
     }
 }

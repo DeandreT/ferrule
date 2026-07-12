@@ -204,6 +204,18 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                     aggregate_component_name(*function)
                 );
             }
+            Node::Const { value } if value.is_xml_nil() => {
+                let out = keys.next();
+                node_out_key.insert(id, out);
+                uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"set-xsi-nil\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+            }
             Node::Const { value } => {
                 let out = keys.next();
                 node_out_key.insert(id, out);
