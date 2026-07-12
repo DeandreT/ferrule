@@ -99,7 +99,7 @@ impl GraphBuilder<'_> {
         Ok((predicate, sort, descending))
     }
 
-    fn db_column_node(
+    pub(super) fn db_column_node(
         &mut self,
         source_path: &SourcePath,
         identifier: &[String],

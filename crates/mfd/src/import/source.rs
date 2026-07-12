@@ -45,10 +45,11 @@ pub(super) fn primary_index(
             continue;
         }
         for (index, source) in sources.iter().enumerate() {
-            let has_dynamic_input = source
-                .input_keys
-                .iter()
-                .any(|key| edge_from.contains_key(key));
+            let has_dynamic_input = source.db_query.is_none()
+                && source
+                    .input_keys
+                    .iter()
+                    .any(|key| edge_from.contains_key(key));
             if source.input_instance.is_some()
                 && !has_dynamic_input
                 && source.ports.contains_key(&feed)
@@ -212,6 +213,9 @@ impl GraphBuilder<'_> {
         let Some(source) = self.sources.get(source_path.source) else {
             return;
         };
+        if source.db_query.is_some() {
+            self.query_scope_sources.insert(source_path.source);
+        }
         if source_path.source > 0 && source_path.path.is_empty() {
             self.framed
                 .insert(self.context_prefix(source_path.source, &[]));

@@ -30,13 +30,14 @@ pub(super) struct SchemaComponent {
     pub(super) ports: BTreeMap<u32, Vec<String>>,
     pub(super) input_keys: BTreeSet<u32>,
     pub(super) output_keys: BTreeSet<u32>,
+    pub(super) db_query: Option<super::db_query::DbQuery>,
 }
 
 pub(super) fn parse_u32(attr: Option<&str>) -> Option<u32> {
     attr.and_then(|a| a.parse().ok())
 }
 
-fn entry_key_sets(root: &roxmltree::Node) -> (BTreeSet<u32>, BTreeSet<u32>) {
+pub(super) fn entry_key_sets(root: &roxmltree::Node) -> (BTreeSet<u32>, BTreeSet<u32>) {
     let mut inputs = BTreeSet::new();
     let mut outputs = BTreeSet::new();
     for entry in root.descendants().filter(|node| node.has_tag_name("entry")) {
@@ -185,6 +186,7 @@ pub(super) fn read_schema_component(
         ports,
         input_keys,
         output_keys,
+        db_query: None,
     })
 }
 
@@ -350,6 +352,7 @@ pub(super) fn read_json_component(
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
+        db_query: None,
     })
 }
 
@@ -580,6 +583,7 @@ pub(super) fn read_csv_component(
         ports,
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
+        db_query: None,
     })
 }
 
@@ -667,6 +671,7 @@ pub(super) fn read_edi_component(
         ports,
         input_keys,
         output_keys,
+        db_query: None,
     })
 }
 
@@ -815,10 +820,15 @@ pub(super) fn read_db_component(
 ) -> Option<SchemaComponent> {
     let name = component.attribute("name").unwrap_or_default().to_string();
     if component.attribute("kind") == Some("28") {
-        warnings.push(format!(
-            "skipped database query component `{name}`: SQL query components are not supported yet"
-        ));
-        return None;
+        return match super::db_query::read_component(component, mapping_el, mfd_path) {
+            Ok(query) => Some(query),
+            Err(reason) => {
+                warnings.push(format!(
+                    "skipped database query component `{name}`: {reason}"
+                ));
+                None
+            }
+        };
     }
     let data = component
         .children()
@@ -994,6 +1004,7 @@ pub(super) fn read_db_component(
         ports,
         input_keys,
         output_keys,
+        db_query: None,
     })
 }
 
