@@ -237,6 +237,12 @@ pub(super) fn is_db_where(component: &FnComponent) -> bool {
     component.library == "db" && component.kind == 21 && component.db_where.is_some()
 }
 
+pub(super) fn is_db_function_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("kind") == Some("21")
+        || component.attribute("kind") == Some("5")
+            && component.attribute("name") == Some("substitute-null")
+}
+
 pub(super) fn is_input(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 6
 }
@@ -329,7 +335,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "parse-date" => "parse_date",
         "parse-dateTime" => "parse_datetime",
         "parse-time" => "parse_time",
-        "substitute-missing" => "substitute_missing",
+        "substitute-missing" | "substitute-null" => "substitute_missing",
         _ => return None,
     })
 }
@@ -352,5 +358,6 @@ mod tests {
         assert_eq!(map_name("parse-date"), Some("parse_date"));
         assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
+        assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
     }
 }
