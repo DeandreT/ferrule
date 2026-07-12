@@ -477,6 +477,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
             sequence: None,
             filter: None,
             group_by: None,
+            group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
             take: None,
