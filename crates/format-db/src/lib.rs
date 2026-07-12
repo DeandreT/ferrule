@@ -14,6 +14,11 @@ use rusqlite::Connection;
 use rusqlite::types::ValueRef;
 use thiserror::Error;
 
+mod relational;
+
+#[cfg(test)]
+mod relational_tests;
+
 #[derive(Debug, Error)]
 pub enum DbFormatError {
     #[error("sqlite error: {0}")]
@@ -54,6 +59,24 @@ pub enum DbFormatError {
     },
     #[error("existing table has no column named `{0}`")]
     MissingColumn(String),
+    #[error("relational schema node `{node}` is invalid: {reason}")]
+    InvalidRelationalSchema { node: String, reason: &'static str },
+    #[error(
+        "no foreign-key relation connects `{parent_table}` to `{child_table}` through join column `{join_column}`"
+    )]
+    MissingForeignKeyRelation {
+        parent_table: String,
+        child_table: String,
+        join_column: String,
+    },
+    #[error(
+        "multiple foreign-key relations connect `{parent_table}` to `{child_table}` through join column `{join_column}`"
+    )]
+    AmbiguousForeignKeyRelation {
+        parent_table: String,
+        child_table: String,
+        join_column: String,
+    },
 }
 
 fn columns_of(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatError> {
@@ -192,6 +215,18 @@ pub fn read(db_path: &Path, schema: &SchemaNode) -> Result<Vec<Instance>, DbForm
         out.push(Instance::Group(fields));
     }
     Ok(out)
+}
+
+/// Reads either a conventional single-table schema or a relational database
+/// schema into its complete instance shape.
+///
+/// A single table is a repeating group, as accepted by [`read`]. A composite
+/// database root is a non-repeating group whose children are repeating table
+/// groups. Tables may contain repeating relationship groups named
+/// `PhysicalTable|JoinColumn`; the relationship direction and referenced key
+/// are resolved from SQLite's foreign-key metadata.
+pub fn read_instance(db_path: &Path, schema: &SchemaNode) -> Result<Instance, DbFormatError> {
+    relational::read_instance(db_path, schema)
 }
 
 /// Converts a SQLite value to an ir [`Value`], guided by the declared
