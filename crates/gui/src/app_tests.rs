@@ -530,3 +530,112 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
     expected.sort_by_key(|w| format!("{w:?}"));
     assert_eq!(wires, expected);
 }
+
+#[test]
+fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
+    let source = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::group("A", vec![SchemaNode::scalar("Id", ScalarType::String)]).repeating(),
+            SchemaNode::group("B", vec![SchemaNode::scalar("Id", ScalarType::String)]).repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::scalar("AId", ScalarType::String),
+            SchemaNode::scalar("BId", ScalarType::String),
+        ],
+    );
+    let mut graph = Graph::default();
+    graph.nodes.insert(
+        0,
+        Node::SourceField {
+            frame: Some(vec!["A".into()]),
+            path: vec!["Id".into()],
+        },
+    );
+    graph.nodes.insert(
+        1,
+        Node::SourceField {
+            frame: Some(vec!["B".into()]),
+            path: vec!["Id".into()],
+        },
+    );
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![
+                Binding {
+                    target_field: "AId".into(),
+                    node: 0,
+                },
+                Binding {
+                    target_field: "BId".into(),
+                    node: 1,
+                },
+            ],
+            ..Scope::default()
+        },
+    };
+
+    let snarl = build_snarl(&project);
+    assert_eq!(snarl.nodes().count(), 2, "both source fields stay hidden");
+    let mut wires: Vec<_> = snarl
+        .wires()
+        .map(|(output, input)| (output.output, input.input))
+        .collect();
+    wires.sort_unstable();
+    assert_eq!(wires, vec![(0, 0), (1, 1)]);
+}
+
+#[test]
+fn build_snarl_only_hides_legacy_frameless_fields_with_unique_suffixes() {
+    let project = |source| {
+        let target = SchemaNode::group("root", vec![SchemaNode::scalar("out", ScalarType::String)]);
+        let mut graph = Graph::default();
+        graph.nodes.insert(
+            0,
+            Node::SourceField {
+                frame: None,
+                path: vec!["Id".into()],
+            },
+        );
+        Project {
+            source,
+            target,
+            source_path: None,
+            target_path: None,
+            source_options: Default::default(),
+            target_options: Default::default(),
+            extra_sources: Vec::new(),
+            graph,
+            root: Scope {
+                bindings: vec![Binding {
+                    target_field: "out".into(),
+                    node: 0,
+                }],
+                ..Scope::default()
+            },
+        }
+    };
+    let group = |name| {
+        SchemaNode::group(name, vec![SchemaNode::scalar("Id", ScalarType::String)]).repeating()
+    };
+
+    let unique = build_snarl(&project(SchemaNode::group("root", vec![group("A")])));
+    assert_eq!(unique.nodes().count(), 2);
+
+    let ambiguous = build_snarl(&project(SchemaNode::group(
+        "root",
+        vec![group("A"), group("B")],
+    )));
+    assert!(ambiguous.nodes().any(|node| *node == CanvasNode::Graph(0)));
+}

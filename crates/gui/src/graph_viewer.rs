@@ -132,25 +132,18 @@ impl GraphViewer<'_> {
         result
     }
 
-    /// Reuses an existing `SourceField` with this exact path, or creates
-    /// one. These nodes are the hidden backing of Source-pin wires.
-    fn source_field_for(&mut self, path: &[String]) -> NodeId {
+    /// Reuses an existing `SourceField` with this exact frame and relative
+    /// path, or creates one. These nodes back Source-pin wires.
+    fn source_field_for(&mut self, frame: Option<Vec<String>>, path: Vec<String>) -> NodeId {
         let existing = self.graph.nodes.iter().find_map(|(id, node)| match node {
-            Node::SourceField {
-                path: p,
-                frame: None,
-            } if p == path => Some(*id),
+            Node::SourceField { path: p, frame: f } if p == &path && f == &frame => Some(*id),
             _ => None,
         });
         existing.unwrap_or_else(|| {
             let id = self.fresh_id();
-            self.graph.nodes.insert(
-                id,
-                Node::SourceField {
-                    path: path.to_vec(),
-                    frame: None,
-                },
-            );
+            self.graph
+                .nodes
+                .insert(id, Node::SourceField { path, frame });
             id
         })
     }
@@ -751,8 +744,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 let Some(leaf) = self.source_leaves.get(from.id.output) else {
                     return;
                 };
-                let path = leaf.path.clone();
-                let field = self.source_field_for(&path);
+                // The graph retains independent ownership after this pin
+                // catalog is rebuilt on the next UI frame.
+                let field = self.source_field_for(leaf.frame.clone(), leaf.path.clone());
                 self.set_input(to_id, to.id.input, field);
                 true
             }
@@ -763,8 +757,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 ) else {
                     return;
                 };
-                let path = source_leaf.path.clone();
-                let field = self.source_field_for(&path);
+                let field =
+                    self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
                 self.set_binding(&target_leaf, field)
             }
             (CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id), CanvasNode::Target) => {
