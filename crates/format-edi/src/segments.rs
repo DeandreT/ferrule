@@ -440,9 +440,94 @@ pub(crate) fn write_segments(
     instance: &Instance,
     opts: &WriteOptions,
 ) -> Result<String, EdiFormatError> {
+    validate_instance_shape(schema, instance)?;
     let mut out = String::new();
     write_node(schema, instance, opts, &mut out, true)?;
     Ok(out)
+}
+
+pub(crate) fn validate_instance_shape(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), EdiFormatError> {
+    if schema.repeating {
+        let Instance::Repeated(items) = instance else {
+            return Err(instance_shape_error(schema, "repeating values", instance));
+        };
+        for item in items {
+            validate_single_instance(schema, item)?;
+        }
+        return Ok(());
+    }
+    if matches!(instance, Instance::Repeated(_)) {
+        return Err(instance_shape_error(schema, "one value", instance));
+    }
+    validate_single_instance(schema, instance)
+}
+
+fn validate_single_instance(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), EdiFormatError> {
+    match &schema.kind {
+        SchemaKind::Scalar { .. } => {
+            let Instance::Scalar(value) = instance else {
+                return Err(instance_shape_error(schema, "a scalar", instance));
+            };
+            scalar_or_fixed(schema, Some(value)).map(|_| ())
+        }
+        SchemaKind::Group { children } => {
+            let Instance::Group(fields) = instance else {
+                return Err(instance_shape_error(schema, "a group", instance));
+            };
+            validate_group_fields(schema, children, fields)?;
+            for child in children {
+                if let Some((_, value)) = fields.iter().find(|(name, _)| name == &child.name) {
+                    validate_instance_shape(child, value)?;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_group_fields(
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    fields: &[(String, Instance)],
+) -> Result<(), EdiFormatError> {
+    for (index, (name, _)) in fields.iter().enumerate() {
+        if !children.iter().any(|child| child.name == *name) {
+            return Err(EdiFormatError::UnexpectedField {
+                group: schema.name.clone(),
+                field: name.clone(),
+            });
+        }
+        if fields[..index].iter().any(|(previous, _)| previous == name) {
+            return Err(EdiFormatError::DuplicateField {
+                group: schema.name.clone(),
+                field: name.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn instance_shape_error(
+    schema: &SchemaNode,
+    expected: &'static str,
+    instance: &Instance,
+) -> EdiFormatError {
+    let got = match instance {
+        Instance::Scalar(_) => "a scalar",
+        Instance::Group(_) => "a group",
+        Instance::Repeated(_) => "repeating values",
+    };
+    EdiFormatError::InstanceShape {
+        name: schema.name.clone(),
+        expected,
+        got,
+    }
 }
 
 fn write_node(
@@ -605,13 +690,50 @@ fn write_one_repeat(
 /// the schema's `fixed` value when the instance doesn't provide one -- so
 /// qualifier elements need no explicit bindings in a mapping.
 fn scalar_or_fixed(schema: &SchemaNode, value: Option<&Value>) -> Result<String, EdiFormatError> {
-    let text = format_value(&schema.name, value)?;
-    if text.is_empty()
-        && let Some(fixed) = &schema.fixed
-    {
+    let missing = value.is_none_or(|value| {
+        matches!(value, Value::Null) || matches!(value, Value::String(text) if text.is_empty())
+    });
+    let Some(fixed) = &schema.fixed else {
+        if missing {
+            return Ok(String::new());
+        }
+        let Some(value) = value else {
+            return Ok(String::new());
+        };
+        return format_value(schema, value);
+    };
+
+    let normalized_fixed = format_value(schema, &Value::String(fixed.clone()))?;
+    if missing {
         return Ok(fixed.clone());
     }
-    Ok(text)
+    let Some(value) = value else {
+        return Ok(fixed.clone());
+    };
+    let normalized_value = format_value(schema, value)?;
+    if semantically_equal(schema, &normalized_fixed, &normalized_value) {
+        Ok(fixed.clone())
+    } else {
+        Err(EdiFormatError::FixedValueMismatch {
+            element: schema.name.clone(),
+            expected: fixed.clone(),
+            found: normalized_value,
+        })
+    }
+}
+
+fn semantically_equal(schema: &SchemaNode, left: &str, right: &str) -> bool {
+    match schema.kind {
+        SchemaKind::Scalar {
+            ty: ScalarType::Float,
+        } => left
+            .parse::<f64>()
+            .ok()
+            .zip(right.parse::<f64>().ok())
+            .is_some_and(|(left, right)| left == right),
+        SchemaKind::Scalar { .. } => left == right,
+        SchemaKind::Group { .. } => false,
+    }
 }
 
 fn escape(
@@ -652,15 +774,60 @@ fn escape(
     Ok(out)
 }
 
-fn format_value(element: &str, value: Option<&Value>) -> Result<String, EdiFormatError> {
-    match value {
-        None | Some(Value::Null) => Ok(String::new()),
-        Some(Value::Bool(b)) => Ok(b.to_string()),
-        Some(Value::Int(i)) => Ok(i.to_string()),
-        Some(Value::Float(f)) if f.is_finite() => Ok(f.to_string()),
-        Some(Value::Float(_)) => Err(EdiFormatError::NonFiniteFloat {
-            element: element.to_string(),
+fn format_value(schema: &SchemaNode, value: &Value) -> Result<String, EdiFormatError> {
+    let SchemaKind::Scalar { ty } = schema.kind else {
+        return Err(EdiFormatError::UnsupportedSchema(schema.name.clone()));
+    };
+    let incompatible = |got| EdiFormatError::ValueType {
+        element: schema.name.clone(),
+        expected: ty,
+        got,
+    };
+    match (ty, value) {
+        (_, Value::Null) => Ok(String::new()),
+        (ScalarType::String, Value::Bool(value)) => Ok(value.to_string()),
+        (ScalarType::String, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::String, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
+        (ScalarType::String, Value::Float(_)) => Err(EdiFormatError::NonFiniteFloat {
+            element: schema.name.clone(),
         }),
-        Some(Value::String(s)) => Ok(s.clone()),
+        (ScalarType::String, Value::String(value)) => Ok(value.clone()),
+        (ScalarType::Int, Value::Int(value)) => Ok(value.to_string()),
+        (ScalarType::Int, Value::String(value)) => value
+            .trim()
+            .parse::<i64>()
+            .map(|value| value.to_string())
+            .map_err(|_| incompatible("string")),
+        (ScalarType::Float, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),
+        (ScalarType::Float, Value::Float(_)) => Err(EdiFormatError::NonFiniteFloat {
+            element: schema.name.clone(),
+        }),
+        (ScalarType::Float, Value::Int(value)) if exact_f64(*value).is_some() => {
+            Ok(value.to_string())
+        }
+        (ScalarType::Float, Value::Int(_)) => Err(incompatible("int outside the exact f64 range")),
+        (ScalarType::Float, Value::String(value)) => value
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(|value| value.to_string())
+            .ok_or_else(|| incompatible("string")),
+        (ScalarType::Bool, Value::Bool(value)) => Ok(value.to_string()),
+        (ScalarType::Bool, Value::String(value)) => value
+            .trim()
+            .parse::<bool>()
+            .map(|value| value.to_string())
+            .map_err(|_| incompatible("string")),
+        (_, other) => Err(incompatible(other.type_name())),
     }
+}
+
+fn exact_f64(value: i64) -> Option<f64> {
+    let magnitude = value.unsigned_abs();
+    if magnitude == 0 {
+        return Some(0.0);
+    }
+    let significant_bits = u64::BITS - magnitude.leading_zeros() - magnitude.trailing_zeros();
+    (significant_bits <= f64::MANTISSA_DIGITS).then_some(value as f64)
 }

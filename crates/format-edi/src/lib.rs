@@ -57,6 +57,28 @@ pub enum EdiFormatError {
     },
     #[error("element `{element}` cannot serialize a non-finite float")]
     NonFiniteFloat { element: String },
+    #[error("element `{element}` expected {expected:?}, got {got}")]
+    ValueType {
+        element: String,
+        expected: ScalarType,
+        got: &'static str,
+    },
+    #[error("element `{element}` must equal fixed value `{expected}`, got `{found}`")]
+    FixedValueMismatch {
+        element: String,
+        expected: String,
+        found: String,
+    },
+    #[error("EDI node `{name}` expected {expected}, got {got}")]
+    InstanceShape {
+        name: String,
+        expected: &'static str,
+        got: &'static str,
+    },
+    #[error("EDI group `{group}` has unexpected field `{field}`")]
+    UnexpectedField { group: String, field: String },
+    #[error("EDI group `{group}` has duplicate field `{field}`")]
+    DuplicateField { group: String, field: String },
     #[error(
         "unsupported schema shape at `{0}`: a group named like a segment ID holds \
          scalars/composites, any other group is a loop/container of groups"

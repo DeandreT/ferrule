@@ -14,7 +14,9 @@ use std::path::Path;
 use ir::{Instance, SchemaKind, SchemaNode, Value};
 
 use crate::EdiFormatError;
-use crate::segments::{Segment, WriteOptions, read_segments, write_segments};
+use crate::segments::{
+    Segment, WriteOptions, read_segments, validate_instance_shape, write_segments,
+};
 
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '*',
@@ -153,6 +155,7 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
 
 /// Writes an [`Instance`] tree shaped by `schema` as X12.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
+    validate_instance_shape(schema, instance)?;
     let options = write_options(schema, instance)?;
     let out = write_segments(schema, instance, &options)?;
     std::fs::write(path, out)?;
@@ -685,6 +688,62 @@ SV3*AD:D4341*450~
         std::fs::remove_file(&out_path).unwrap();
 
         assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn writer_validates_shape_before_inspecting_envelope_values() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_x12_invalid_shape_out_{}.edi",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        assert!(matches!(
+            write(&path, &po_schema(), &Instance::Scalar(Value::Null)),
+            Err(EdiFormatError::InstanceShape {
+                ref name,
+                expected: "a group",
+                got: "a scalar",
+            }) if name == "X12"
+        ));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn fixed_envelope_conflicts_precede_separator_inference() {
+        let isa_elements = (1..=16)
+            .map(|index| {
+                let element = SchemaNode::scalar(index.to_string(), ScalarType::String);
+                if index == 12 {
+                    element.fixed("00401")
+                } else {
+                    element
+                }
+            })
+            .collect();
+        let schema = SchemaNode::group("X12", vec![SchemaNode::group("ISA", isa_elements)]);
+        let instance = Instance::Group(vec![(
+            "ISA".into(),
+            Instance::Group(vec![
+                ("11".into(), Instance::Scalar(Value::String("U".into()))),
+                ("12".into(), Instance::Scalar(Value::String("00501".into()))),
+            ]),
+        )]);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_x12_fixed_envelope_conflict_{}.edi",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        assert!(matches!(
+            write(&path, &schema, &instance),
+            Err(EdiFormatError::FixedValueMismatch {
+                ref element,
+                ref expected,
+                ref found,
+            }) if element == "12" && expected == "00401" && found == "00501"
+        ));
+        assert!(!path.exists());
     }
 
     #[test]
