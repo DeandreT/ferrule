@@ -68,8 +68,9 @@ static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
-constructed records, mapping-path functions use explicit host context, computed
-JSON targets, plain structural group copies, and filtered or generated XML
+constructed records, mapping-path and stable per-run clock values use explicit
+host context, computed JSON targets, plain structural group copies, and filtered
+or generated XML
 occurrence sequences lower exactly, and inclusive ranges accept exact integral
 decimal inputs.
 High-value date/time/duration/missing-value functions execute natively. Non-representable
@@ -244,9 +245,9 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 393 (392 executable plus the ignored local-sample survey).
+- Workspace tests: 396 (395 executable plus the ignored local-sample survey).
 - `.mfd` survey: 96/120 import, 53 warning-free.
-- Unsupported-function warnings: 7 across the expanded importable set.
+- Unsupported-function warnings: 5 across the expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
 - Non-repeating structural-group warnings: 6 across the expanded importable set.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
