@@ -240,8 +240,9 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
 }
 
 /// Reads any supported instance file (format picked by extension) into an
-/// [`Instance`], shaped by `schema`. Flat-rows formats (CSV, database)
-/// arrive wrapped in [`Instance::Repeated`].
+/// [`Instance`], shaped by `schema`. CSV and single-table database inputs
+/// arrive wrapped in [`Instance::Repeated`]; a composite database schema
+/// produces its grouped table shape directly.
 fn read_instance(
     path: &Path,
     schema: &SchemaNode,
@@ -262,11 +263,8 @@ fn read_instance(
             .with_context(|| format!("reading input {}", path.display()))?,
         "json" => format_json::read(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
-        "db" | "sqlite" | "sqlite3" => {
-            let rows = format_db::read(path, schema)
-                .with_context(|| format!("reading input {}", path.display()))?;
-            Instance::Repeated(rows)
-        }
+        "db" | "sqlite" | "sqlite3" => format_db::read_instance(path, schema)
+            .with_context(|| format!("reading input {}", path.display()))?,
         "edi" | "x12" | "edifact" => {
             let read = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => format_edi::x12::read,
