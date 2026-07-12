@@ -6,7 +6,9 @@
 //! components (resolvable XSDs incl. local includes/imports, attributes,
 //! simple-content values, and element refs), JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
-//! fallback), CSV text components (inline delimiter/header settings),
+//! fallback), CSV text components (inline delimiter/header settings), and EDI
+//! text component graphs (entry-tree fallback, explicitly non-executable
+//! until a positional EDI schema is supplied),
 //! single-table SQLite database components (schema introspected from the
 //! referenced database when reachable), the common core functions,
 //! aggregates (count/sum/avg/min/max/string-join/item-at, converted to

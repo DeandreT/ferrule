@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="messages" library="text" uid="2" kind="16">
+          <properties/>
+          <data>
+            <root>
+              <header><namespaces/></header>
+              <entry name="FileInstance">
+                <entry name="document">
+                  <entry name="GroupFHS">
+                    <entry name="Message_ADT" outkey="10">
+                      <entry name="MSH"><entry name="MSH-3" outkey="11"/></entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <text type="edi" kind="EDIHL7" inputinstance="messages.hl7"/>
+          </data>
+        </component>
+        <component name="result" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces/></header>
+              <entry name="Result"><entry name="Sender" inpkey="20"/></entry>
+            </root>
+            <document outputinstance="result.xml"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

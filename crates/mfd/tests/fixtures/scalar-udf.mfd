@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="16">
+  <component name="main">
+    <structure>
+      <children>
+        <component name="Names" library="xml" uid="1" kind="14">
+          <data>
+            <root><entry name="Names"><entry name="Person" outkey="10"><entry name="Full" outkey="11"/></entry></entry></root>
+            <document schema="udf-source.xsd" inputinstance="udf.xml" instanceroot="{}Names"/>
+          </data>
+        </component>
+        <component name="split-name" library="user" uid="2" kind="19">
+          <data>
+            <root><entry name="Full" inpkey="20" componentid="100"/></root>
+            <root rootindex="1">
+              <entry name="First" outkey="21" componentid="101"/>
+              <entry name="Last" outkey="22" componentid="102"/>
+            </root>
+          </data>
+        </component>
+        <component name="Contacts" library="xml" uid="3" kind="14">
+          <data>
+            <root><entry name="Contacts"><entry name="Contact" inpkey="30"><entry name="First" inpkey="31"/><entry name="Last" inpkey="32"/></entry></entry></root>
+            <document schema="udf-target.xsd" instanceroot="{}Contacts"/>
+          </data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>
+        <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+        <vertex vertexkey="21"><edges><edge vertexkey="31"/></edges></vertex>
+        <vertex vertexkey="22"><edges><edge vertexkey="32"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+  <component name="split-name" library="user" inline="1">
+    <structure>
+      <children>
+        <component name="Full" library="core" uid="100" kind="6">
+          <targets><datapoint pos="0" key="1000"/></targets>
+          <data><input datatype="string"/></data>
+        </component>
+        <component name="separator" library="core" uid="103" kind="2">
+          <targets><datapoint pos="0" key="1001"/></targets>
+          <data><constant value=" " datatype="string"/></data>
+        </component>
+        <component name="substring-before" library="core" uid="104" kind="5">
+          <sources><datapoint pos="0" key="1002"/><datapoint pos="1" key="1003"/></sources>
+          <targets><datapoint pos="0" key="1004"/></targets>
+        </component>
+        <component name="substring-after" library="core" uid="105" kind="5">
+          <sources><datapoint pos="0" key="1005"/><datapoint pos="1" key="1006"/></sources>
+          <targets><datapoint pos="0" key="1007"/></targets>
+        </component>
+        <component name="First" library="core" uid="101" kind="7">
+          <sources><datapoint pos="0" key="1008"/></sources>
+          <data><output datatype="string"/></data>
+        </component>
+        <component name="Last" library="core" uid="102" kind="7">
+          <sources><datapoint pos="0" key="1009"/></sources>
+          <data><output datatype="string"/></data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="1000"><edges><edge vertexkey="1002"/><edge vertexkey="1005"/></edges></vertex>
+        <vertex vertexkey="1001"><edges><edge vertexkey="1003"/><edge vertexkey="1006"/></edges></vertex>
+        <vertex vertexkey="1004"><edges><edge vertexkey="1008"/></edges></vertex>
+        <vertex vertexkey="1007"><edges><edge vertexkey="1009"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+</mapping>
