@@ -28,7 +28,7 @@ clean-room interoperability, and extensible adapters.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 96/120 local MapForce 2026 samples import; 55 import without
+- `.mfd` survey: 97/120 local MapForce 2026 samples import; 57 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -71,9 +71,11 @@ standalone max-one queries preserve empty/single document-root cardinality,
 structured lookup UDFs lower to named secondary-source lookups or zero-to-many
 constructed records, while filtered sequence-parameter UDFs can construct one
 flat aggregate record. Filtered tokenizer sequences lower to executable existential
-reducers, and selected sibling values lower to round-trippable lookups. Mapping-path
-and stable per-run clock values use explicit
-host context, computed JSON targets, plain structural group copies, and filtered
+reducers, and selected sibling values lower to round-trippable lookups. Static XML
+catalogs inside scalar lookup UDFs become named lookup sources, while designs with
+only core output parameters synthesize an executable typed target. Mapping-path and
+stable per-run clock values use explicit host context, computed JSON targets, plain
+structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
 Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
