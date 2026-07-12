@@ -37,6 +37,25 @@ pub enum EdiFormatError {
         value: String,
     },
     #[error(
+        "element `{element}` contains reserved delimiter `{delimiter}`, but this EDI dialect \
+         has no release character"
+    )]
+    UnescapableDelimiter { element: String, delimiter: char },
+    #[error(
+        "ISA element `{element}` declares separator `{found}`, but the writer uses `{expected}`"
+    )]
+    EnvelopeSeparatorMismatch {
+        element: String,
+        expected: char,
+        found: String,
+    },
+    #[error("ISA element `{element}` has invalid value `{value}`: {reason}")]
+    InvalidEnvelopeElement {
+        element: String,
+        value: String,
+        reason: &'static str,
+    },
+    #[error(
         "unsupported schema shape at `{0}`: a group named like a segment ID holds \
          scalars/composites, any other group is a loop/container of groups"
     )]
@@ -58,5 +77,37 @@ pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
         other => Err(EdiFormatError::UnsupportedSchema(format!(
             "schema must start with ISA (X12) or UNB (EDIFACT), found `{other}`"
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn malformed_root_and_nested_composite_schemas_return_errors() {
+        let scalar_root = SchemaNode::scalar("ISA", ScalarType::String);
+        assert!(matches!(
+            dialect_of(&scalar_root),
+            Err(EdiFormatError::UnsupportedSchema(_))
+        ));
+
+        let nested_composite = SchemaNode::group(
+            "X12",
+            vec![SchemaNode::group(
+                "ISA",
+                vec![SchemaNode::group(
+                    "element",
+                    vec![SchemaNode::group(
+                        "nested",
+                        vec![SchemaNode::scalar("value", ScalarType::String)],
+                    )],
+                )],
+            )],
+        );
+        assert!(matches!(
+            dialect_of(&nested_composite),
+            Err(EdiFormatError::UnsupportedSchema(_))
+        ));
     }
 }
