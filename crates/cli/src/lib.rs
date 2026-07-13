@@ -1,5 +1,5 @@
 //! Headless runner: loads a mapping project and runs it against an input
-//! file (CSV, XML, JSON, SQLite, or X12 EDI, chosen by extension) to
+//! file (CSV, XLSX, XML, JSON, SQLite, or X12 EDI, chosen by extension) to
 //! produce an output file. Split out from `main.rs` so it's testable
 //! without shelling out to the built binary.
 //!
@@ -99,6 +99,22 @@ pub fn run_project_with_paths(
                 &project.target,
                 rows,
                 project.target_options.delimiter,
+                project.target_options.has_header_row.unwrap_or(true),
+            )
+            .with_context(|| format!("writing output {}", output_path.display()))?;
+            rows.len()
+        }
+        "xlsx" => {
+            let rows = target_instance
+                .as_repeated()
+                .context("mapping did not produce a repeating row set for an XLSX output")?;
+            format_xlsx::write(
+                &output_path,
+                &project.target,
+                rows,
+                project.target_options.xlsx_sheet.as_deref(),
+                project.target_options.xlsx_start_row.unwrap_or(1),
+                &project.target_options.xlsx_columns,
                 project.target_options.has_header_row.unwrap_or(true),
             )
             .with_context(|| format!("writing output {}", output_path.display()))?;
@@ -254,7 +270,7 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
 }
 
 /// Reads any supported instance file (format picked by extension) into an
-/// [`Instance`], shaped by `schema`. CSV and single-table database inputs
+/// [`Instance`], shaped by `schema`. CSV, XLSX, and single-table database inputs
 /// arrive wrapped in [`Instance::Repeated`]; a composite database schema
 /// produces its grouped table shape directly.
 fn read_instance(
@@ -268,6 +284,18 @@ fn read_instance(
                 path,
                 schema,
                 options.delimiter,
+                options.has_header_row.unwrap_or(true),
+            )
+            .with_context(|| format!("reading input {}", path.display()))?;
+            Instance::Repeated(rows)
+        }
+        "xlsx" => {
+            let rows = format_xlsx::read(
+                path,
+                schema,
+                options.xlsx_sheet.as_deref(),
+                options.xlsx_start_row.unwrap_or(1),
+                &options.xlsx_columns,
                 options.has_header_row.unwrap_or(true),
             )
             .with_context(|| format!("reading input {}", path.display()))?;

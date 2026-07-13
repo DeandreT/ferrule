@@ -434,6 +434,17 @@ pub struct FormatOptions {
     /// JSON document.
     #[serde(default, skip_serializing_if = "is_false")]
     pub json_lines: bool,
+    /// XLSX: worksheet name. The first sheet is used when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xlsx_sheet: Option<String>,
+    /// XLSX: one-based row where the table starts (default 1). When a
+    /// header is enabled, this is the header row and data begins below it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xlsx_start_row: Option<u32>,
+    /// XLSX: one-based worksheet columns aligned with the schema fields.
+    /// Empty means consecutive columns starting at A.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xlsx_columns: Vec<u32>,
 }
 
 #[cfg(test)]
@@ -458,6 +469,28 @@ mod tests {
         assert!(encoded.contains("\"json_lines\":true"));
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
         assert!(decoded.json_lines);
+    }
+
+    #[test]
+    fn xlsx_layout_options_default_empty_and_roundtrip() {
+        let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
+        assert!(defaults.xlsx_sheet.is_none());
+        assert!(defaults.xlsx_start_row.is_none());
+        assert!(defaults.xlsx_columns.is_empty());
+
+        let options = FormatOptions {
+            has_header_row: Some(false),
+            xlsx_sheet: Some("Revenue".into()),
+            xlsx_start_row: Some(5),
+            xlsx_columns: vec![2, 4, 7],
+            ..FormatOptions::default()
+        };
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.has_header_row, Some(false));
+        assert_eq!(decoded.xlsx_sheet.as_deref(), Some("Revenue"));
+        assert_eq!(decoded.xlsx_start_row, Some(5));
+        assert_eq!(decoded.xlsx_columns, vec![2, 4, 7]);
     }
 
     fn join_plan() -> JoinPlan {

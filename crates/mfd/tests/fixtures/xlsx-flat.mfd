@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Scores" library="xlsx" uid="2" kind="26">
+					<properties/>
+					<data>
+						<root>
+							<header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header>
+							<entry name="FileInstance" ns="1" expanded="1">
+								<entry name="document" ns="1" expanded="1">
+									<entry name="Workbook" expanded="1">
+										<entry name="Worksheet" expanded="1">
+											<condition>
+												<expression>
+													<function name="equal-ignorecase" library="xlsx">
+														<expression><attribute name="Name"/></expression>
+														<expression><constant value="Data"/></expression>
+													</function>
+												</expression>
+											</condition>
+											<ranges><range id="1" start="2"/></ranges>
+											<entry name="Row" outkey="10" enabletitlerow="1" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="1" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="11" annotation="Name" datatype="string">
+													<condition><expression><function name="logical-and" library="core">
+														<expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="2" datatype="long"/></expression></function></expression>
+														<expression><function name="equal" library="core"><expression><attribute name="t"/></expression><expression><constant value="s"/></expression></function></expression>
+													</function></expression></condition>
+												</entry>
+												<entry name="Cell" outkey="12" annotation="Age" datatype="integer">
+													<condition><expression><function name="logical-and" library="core">
+														<expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="4" datatype="long"/></expression></function></expression>
+														<expression><function name="equal" library="core"><expression><attribute name="t"/></expression><expression><constant value="n"/></expression></function></expression>
+													</function></expression></condition>
+												</entry>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<wsdl/>
+						<excel inputinstance="scores.xlsx"/>
+					</data>
+				</component>
+				<component name="People" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="People" expanded="1">
+										<entry name="Person" inpkey="20" expanded="1">
+											<entry name="Name" inpkey="21"/>
+											<entry name="Age" inpkey="22"/>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="people-target.xsd" instanceroot="{}People"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+					<vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+					<vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

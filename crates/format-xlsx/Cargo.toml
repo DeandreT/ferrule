@@ -1,0 +1,13 @@
+[package]
+name = "format-xlsx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Flat worksheet row read/write for Excel XLSX workbooks"
+
+[dependencies]
+ir = { workspace = true }
+calamine = { workspace = true }
+rust_xlsxwriter = { workspace = true }
+thiserror = { workspace = true }

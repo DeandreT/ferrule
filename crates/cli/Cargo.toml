@@ -15,6 +15,7 @@ ir = { workspace = true }
 mapping = { workspace = true }
 engine = { workspace = true }
 format-csv = { workspace = true }
+format-xlsx = { workspace = true }
 format-xml = { workspace = true }
 format-json = { workspace = true }
 format-db = { workspace = true }

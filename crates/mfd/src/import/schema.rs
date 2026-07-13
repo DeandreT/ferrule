@@ -6,17 +6,26 @@ use mapping::FormatOptions;
 
 mod csv;
 mod generic_xml;
+mod xlsx;
 mod xml_ports;
 
 use csv::select_block as select_csv_block;
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
 use xml_ports::normalize_xml_text_ports;
 
+pub(super) fn read_xlsx_component(
+    component: &roxmltree::Node<'_, '_>,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    xlsx::read(component, warnings)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ComponentFormat {
     Xml,
     Json,
     Csv,
+    Xlsx,
     Edi,
     Db,
 }

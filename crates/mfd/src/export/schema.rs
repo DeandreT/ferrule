@@ -9,12 +9,16 @@ use mapping::FormatOptions;
 
 use crate::MfdError;
 
+const XLSX_MAX_ROW: u32 = 1_048_576;
+const XLSX_MAX_COLUMN: u32 = 16_384;
+
 /// Which MapForce component family a mapping side exports as.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SideFormat {
     Xml,
     Json,
     Csv,
+    Xlsx,
     Db,
 }
 
@@ -27,6 +31,7 @@ pub(super) fn side_format(instance_path: &Option<String>) -> SideFormat {
     match ext.as_deref() {
         Some("json") | Some("jsonl") | Some("ndjson") => SideFormat::Json,
         Some("csv") | Some("txt") => SideFormat::Csv,
+        Some("xlsx") => SideFormat::Xlsx,
         Some("db") | Some("sqlite") | Some("sqlite3") => SideFormat::Db,
         _ => SideFormat::Xml,
     }
@@ -268,6 +273,77 @@ pub(super) fn render_schema_component(
                 xml_escape(&schema.name),
             );
         }
+        SideFormat::Xlsx => {
+            let fields = csv_fields(schema).ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "the {side_name} side maps to an XLSX worksheet but its schema is \
+                     not a flat group of scalar fields"
+                ))
+            })?;
+            let row_key = ports.required_key_for_abs(&[], "XLSX row")?;
+            let start_row = options.xlsx_start_row.unwrap_or(1);
+            if !(1..=XLSX_MAX_ROW).contains(&start_row) {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} XLSX start row must be between 1 and {XLSX_MAX_ROW}"
+                )));
+            }
+            let columns = xlsx_columns(fields.len(), &options.xlsx_columns, side_name)?;
+            let sheet = options
+                .xlsx_sheet
+                .as_deref()
+                .filter(|sheet| !sheet.is_empty())
+                .unwrap_or("Sheet1");
+            let row_header_attr = if options.has_header_row.unwrap_or(true) {
+                " enabletitlerow=\"1\""
+            } else {
+                ""
+            };
+            let mut cells = String::new();
+            for ((name, ty), column) in fields.iter().zip(columns) {
+                let key = ports.required_key_for_abs(&[(*name).to_string()], "XLSX cell")?;
+                let (datatype, storage_type) = xlsx_type_name(*ty);
+                let _ = write!(
+                    cells,
+                    "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" {attr}=\"{key}\" annotation=\"{}\" datatype=\"{datatype}\">\n\
+                     \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"logical-and\" library=\"core\">\n\
+                     \t\t\t\t\t\t\t\t\t\t\t\t\t<expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"n\"/></expression><expression><constant value=\"{column}\" datatype=\"long\"/></expression></function></expression>\n\
+                     \t\t\t\t\t\t\t\t\t\t\t\t\t<expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"t\"/></expression><expression><constant value=\"{storage_type}\"/></expression></function></expression>\n\
+                     \t\t\t\t\t\t\t\t\t\t\t\t</function></expression></condition>\n\
+                     \t\t\t\t\t\t\t\t\t\t\t</entry>\n",
+                    xml_escape(name),
+                );
+            }
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{}\" library=\"xlsx\" uid=\"{uid}\" kind=\"26\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" ns=\"1\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" ns=\"1\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t\t<entry name=\"Workbook\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t\t\t<entry name=\"Worksheet\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"equal-ignorecase\" library=\"xlsx\"><expression><attribute name=\"Name\"/></expression><expression><constant value=\"{}\"/></expression></function></expression></condition>\n\
+                 \t\t\t\t\t\t\t\t\t\t\t<ranges><range id=\"1\" start=\"{start_row}\"/></ranges>\n\
+                 \t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" expanded=\"1\" displayselectionmode=\"selection\"><entry name=\"Cell\" datatype=\"string\"/></entry>\n\
+                 \t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" {attr}=\"{row_key}\" expanded=\"1\"{row_header_attr}>\n\
+                 \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"1\" datatype=\"long\"/></expression></function></expression></condition>\n\
+                 \t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" displayselectionmode=\"selection\" datatype=\"string\"/>\n\
+                 {cells}\
+                 \t\t\t\t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<excel{instance}/>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(&schema.name),
+                xml_escape(sheet),
+            );
+        }
     }
     Ok(RenderedSchemaComponent { xml: out, sibling })
 }
@@ -304,6 +380,49 @@ fn csv_type_name(ty: ScalarType) -> &'static str {
         ScalarType::Int => "integer",
         ScalarType::Float => "number",
         ScalarType::Bool => "boolean",
+    }
+}
+
+fn xlsx_columns(
+    field_count: usize,
+    configured: &[u32],
+    side_name: &str,
+) -> Result<Vec<u32>, MfdError> {
+    let columns = if configured.is_empty() {
+        let count = u32::try_from(field_count).map_err(|_| {
+            MfdError::Unsupported(format!(
+                "the {side_name} XLSX schema declares too many columns"
+            ))
+        })?;
+        (1..=count).collect::<Vec<_>>()
+    } else {
+        if configured.len() != field_count {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} XLSX layout has {} column selector(s) for {field_count} field(s)",
+                configured.len()
+            )));
+        }
+        configured.to_vec()
+    };
+    let mut unique = std::collections::BTreeSet::new();
+    if columns
+        .iter()
+        .any(|column| !(1..=XLSX_MAX_COLUMN).contains(column) || !unique.insert(*column))
+    {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} XLSX column selectors must be unique numbers between 1 and \
+             {XLSX_MAX_COLUMN}"
+        )));
+    }
+    Ok(columns)
+}
+
+fn xlsx_type_name(ty: ScalarType) -> (&'static str, &'static str) {
+    match ty {
+        ScalarType::String => ("string", "s"),
+        ScalarType::Int => ("long", "n"),
+        ScalarType::Float => ("double", "n"),
+        ScalarType::Bool => ("boolean", "b"),
     }
 }
 

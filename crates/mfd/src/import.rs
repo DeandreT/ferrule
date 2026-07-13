@@ -46,7 +46,8 @@ use iteration::{
 };
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
-    read_edi_component, read_json_component, read_schema_component, schema_node_at,
+    read_edi_component, read_json_component, read_schema_component, read_xlsx_component,
+    schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -101,6 +102,15 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     Some(sc) => schema_components.push(sc),
                     None => warnings.push(format!("skipped json component `{name}`")),
                 },
+                "xlsx" if component.attribute("kind") == Some("26") => {
+                    match read_xlsx_component(&component, &mut warnings) {
+                        Some(sc) => schema_components.push(sc),
+                        None => {
+                            note_skipped_library(&mut skipped_libraries, "xlsx");
+                            warnings.push(format!("skipped xlsx component `{name}`"));
+                        }
+                    }
+                }
                 "text" => {
                     let text_el = component
                         .children()
@@ -172,7 +182,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         } else {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
-                                 (only xml/json/csv/edi/db, scalar user-defined functions, and \
+                                 (only xml/json/csv/edi/db/xlsx, scalar user-defined functions, and \
                                  core/lang function components and supported XPath 2 functions import)"
                             ));
                         }
