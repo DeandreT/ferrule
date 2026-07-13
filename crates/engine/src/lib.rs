@@ -1,5 +1,4 @@
-//! Interprets a mapping graph against a source instance to produce a target
-//! instance.
+//! Interprets a mapping graph against a source instance to produce a target instance.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -22,7 +21,10 @@ use context::runtime_field;
 use dynamic_target::{eval_dynamic_key, insert_target_field};
 use grouping::GroupingMode;
 use iteration_output::finalize_scope_output;
-use join::{execute as execute_join, extensions as join_extensions};
+use join::{
+    AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate,
+    execute as execute_join, extensions as join_extensions,
+};
 use sequence::{eval_sequence, eval_sequence_exists};
 use source_iteration::{PositionFrame, WalkExtension, walk};
 
@@ -240,9 +242,8 @@ fn eval_scope(
                 instances: Vec::new(),
                 positions: Vec::new(),
             }],
-            // The frame to iterate from is the innermost one that has the
-            // path's first field -- so a nested scope can still iterate an
-            // extra source (outermost frame) by name.
+            // Use the innermost frame with the path's first field, while
+            // allowing nested scopes to iterate an extra source by name.
             Some(path) => context
                 .iter()
                 .rev()
@@ -326,8 +327,7 @@ fn eval_scope(
     };
     let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
     if let Some(grouping) = grouping {
-        // Partition key groups in first-seen order and block groups in
-        // contiguous source order. Both become the same grouped frame below.
+        // Key and block groups both become the same grouped frame below.
         let mut groups: Vec<GroupBucket> = Vec::new();
         for extension in &extensions {
             let mut item_context = context.to_vec();
@@ -740,8 +740,7 @@ fn eval_expr(
             expression,
             arg,
         } => {
-            // An unresolvable collection aggregates as empty rather than
-            // erroring -- absent repeating data is normal instance data.
+            // Absent repeating data aggregates as an empty collection.
             let items = resolve_repeated(context, collection).unwrap_or(&[]);
             let mut values = Vec::with_capacity(items.len());
             for (item_index, item) in items.iter().enumerate() {
@@ -776,6 +775,25 @@ fn eval_expr(
             };
             aggregate(*function, items.len(), &values, arg_value)
         }
+        Node::JoinAggregate {
+            function,
+            join,
+            plan,
+            expression,
+            arg,
+        } => eval_join_aggregate(
+            graph,
+            JoinAggregateInput {
+                function: *function,
+                join: *join,
+                plan,
+                expression: *expression,
+                arg: *arg,
+            },
+            context,
+            positions,
+            in_progress,
+        ),
     };
 
     in_progress.remove(&node_id);

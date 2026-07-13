@@ -84,8 +84,11 @@ High-value date/time/duration/missing-value functions execute natively. Non-repr
 operator order produces an actionable warning instead of silently claiming exact
 conversion. Core kind-32 joins lower to typed left-deep plans with composite equality
 keys, duplicate-preserving execution, projected fields, flattened positions, and
-filter/sort/item-limit controls. Nested non-repeating target projections reuse the
-owning tuple, while rejected join shapes suppress redundant downstream warnings.
+filter/sort/item-limit controls. Naked joined tuples can be counted or reduced through
+a computed scalar expression, including aggregate-only joins with an independent root
+plan. Nested non-repeating target projections reuse the owning tuple, while rejected
+join shapes suppress redundant downstream warnings. Canonical export round-trips
+root-context joins whose collections all belong to the primary source.
 
 - Normalize legacy and namespace-indexed XML entry encodings.
 - Add first-class generated sequences: `distinct-values`, `tokenize`,

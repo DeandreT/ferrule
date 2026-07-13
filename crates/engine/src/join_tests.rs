@@ -496,6 +496,182 @@ fn runtime_rejects_grouping_a_join_scope() {
     );
 }
 
+#[test]
+fn join_aggregates_reduce_naked_duplicate_tuples_and_empty_results() {
+    let plan = join_plan();
+    let graph = Graph {
+        nodes: [
+            (
+                0,
+                Node::JoinField {
+                    join: JoinId::new(7),
+                    collection: vec!["A".into()],
+                    path: vec!["amount".into()],
+                },
+            ),
+            (
+                1,
+                Node::JoinField {
+                    join: JoinId::new(7),
+                    collection: vec!["B".into()],
+                    path: vec!["price".into()],
+                },
+            ),
+            (
+                2,
+                Node::Call {
+                    function: "multiply".into(),
+                    args: vec![0, 1],
+                },
+            ),
+            (
+                3,
+                Node::JoinAggregate {
+                    function: mapping::AggregateOp::Sum,
+                    join: JoinId::new(7),
+                    plan: plan.clone(),
+                    expression: Some(2),
+                    arg: None,
+                },
+            ),
+            (
+                4,
+                Node::JoinAggregate {
+                    function: mapping::AggregateOp::Count,
+                    join: JoinId::new(7),
+                    plan: plan.clone(),
+                    expression: None,
+                    arg: None,
+                },
+            ),
+            (
+                5,
+                Node::SourceField {
+                    path: vec!["Separator".into()],
+                    frame: None,
+                },
+            ),
+            (
+                6,
+                Node::JoinAggregate {
+                    function: mapping::AggregateOp::Join,
+                    join: JoinId::new(7),
+                    plan,
+                    expression: Some(0),
+                    arg: Some(5),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    };
+    let project = Project {
+        source: validation_source_with_values(),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::scalar("Sum", ScalarType::Int),
+                SchemaNode::scalar("Count", ScalarType::Int),
+                SchemaNode::scalar("Joined", ScalarType::String),
+            ],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![
+                Binding {
+                    target_field: "Sum".into(),
+                    node: 3,
+                },
+                Binding {
+                    target_field: "Count".into(),
+                    node: 4,
+                },
+                Binding {
+                    target_field: "Joined".into(),
+                    node: 6,
+                },
+            ],
+            ..Scope::default()
+        },
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let source = Instance::Group(vec![
+        (
+            "Separator".into(),
+            Instance::Scalar(Value::String("|".into())),
+        ),
+        (
+            "A".into(),
+            repeated(vec![
+                record(&[("id", Value::Int(1)), ("amount", Value::Int(2))]),
+                record(&[("id", Value::Int(1)), ("amount", Value::Int(3))]),
+                record(&[("id", Value::Null), ("amount", Value::Int(99))]),
+            ]),
+        ),
+        (
+            "B".into(),
+            repeated(vec![
+                record(&[("aid", Value::Int(1)), ("price", Value::Int(10))]),
+                record(&[("aid", Value::Int(1)), ("price", Value::Int(20))]),
+                record(&[("aid", Value::Null), ("price", Value::Int(99))]),
+            ]),
+        ),
+    ]);
+
+    let output = run(&project, &source).unwrap();
+    assert_eq!(scalar(&output, "Sum"), &Value::Int(150));
+    assert_eq!(scalar(&output, "Count"), &Value::Int(4));
+    assert_eq!(scalar(&output, "Joined"), &Value::String("2|2|3|3".into()));
+
+    let empty = Instance::Group(vec![
+        (
+            "Separator".into(),
+            Instance::Scalar(Value::String("|".into())),
+        ),
+        (
+            "A".into(),
+            repeated(vec![record(&[
+                ("id", Value::Int(1)),
+                ("amount", Value::Int(2)),
+            ])]),
+        ),
+        ("B".into(), repeated(Vec::new())),
+    ]);
+    let output = run(&project, &empty).unwrap();
+    assert_eq!(scalar(&output, "Sum"), &Value::Int(0));
+    assert_eq!(scalar(&output, "Count"), &Value::Int(0));
+}
+
+fn validation_source_with_values() -> SchemaNode {
+    SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::scalar("Separator", ScalarType::String),
+            SchemaNode::group(
+                "A",
+                vec![
+                    SchemaNode::scalar("id", ScalarType::Int),
+                    SchemaNode::scalar("amount", ScalarType::Int),
+                ],
+            )
+            .repeating(),
+            SchemaNode::group(
+                "B",
+                vec![
+                    SchemaNode::scalar("aid", ScalarType::Int),
+                    SchemaNode::scalar("price", ScalarType::Int),
+                ],
+            )
+            .repeating(),
+        ],
+    )
+}
+
 fn validation_source() -> SchemaNode {
     SchemaNode::group(
         "Source",
@@ -703,5 +879,127 @@ fn validation_enforces_join_dominance_and_terminal_collections() {
         messages
             .iter()
             .any(|message| message.contains("join field node 0 references inactive join 7"))
+    );
+}
+
+#[test]
+fn validation_scopes_join_aggregate_expression_but_not_argument() {
+    let plan = join_plan();
+    let mut project = Project {
+        source: validation_source_with_values(),
+        target: SchemaNode::group("Target", vec![SchemaNode::scalar("Value", ScalarType::Int)]),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph: Graph {
+            nodes: [
+                (
+                    0,
+                    Node::JoinField {
+                        join: JoinId::new(7),
+                        collection: vec!["A".into()],
+                        path: vec!["amount".into()],
+                    },
+                ),
+                (
+                    1,
+                    Node::Const {
+                        value: Value::String(",".into()),
+                    },
+                ),
+                (
+                    2,
+                    Node::JoinAggregate {
+                        function: mapping::AggregateOp::Sum,
+                        join: JoinId::new(7),
+                        plan,
+                        expression: Some(0),
+                        arg: Some(1),
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        },
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "Value".into(),
+                node: 2,
+            }],
+            ..Scope::default()
+        },
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    project.graph.nodes.insert(
+        1,
+        Node::JoinField {
+            join: JoinId::new(7),
+            collection: vec!["B".into()],
+            path: vec!["price".into()],
+        },
+    );
+    let messages: Vec<_> = validate(&project)
+        .into_iter()
+        .map(|issue| issue.message)
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("join field node 1 references inactive join 7"))
+    );
+
+    let Some(Node::JoinAggregate { expression, .. }) = project.graph.nodes.get_mut(&2) else {
+        panic!("expected join aggregate");
+    };
+    *expression = Some(3);
+    project.graph.nodes.insert(
+        3,
+        Node::JoinField {
+            join: JoinId::new(99),
+            collection: vec!["A".into()],
+            path: vec!["amount".into()],
+        },
+    );
+    let messages: Vec<_> = validate(&project)
+        .into_iter()
+        .map(|issue| issue.message)
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("join field node 3 references inactive join 99"))
+    );
+
+    let invalid_plan = JoinPlan::new(
+        JoinSource::new(vec!["A".into()]),
+        JoinSource::new(vec!["B".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["A".into()],
+            vec!["missing".into()],
+            vec!["aid".into()],
+        )),
+    )
+    .unwrap();
+    project.graph.nodes.insert(
+        2,
+        Node::JoinAggregate {
+            function: mapping::AggregateOp::Sum,
+            join: JoinId::new(7),
+            plan: invalid_plan,
+            expression: Some(0),
+            arg: None,
+        },
+    );
+    let messages: Vec<_> = validate(&project)
+        .into_iter()
+        .map(|issue| issue.message)
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("join left key `missing`"))
     );
 }

@@ -243,6 +243,9 @@ impl GraphViewer<'_> {
                 }
                 Node::Aggregate {
                     expression, arg, ..
+                }
+                | Node::JoinAggregate {
+                    expression, arg, ..
                 } => {
                     if expression.is_some() && idx == 0 {
                         *expression = Some(from_id);
@@ -271,6 +274,9 @@ impl GraphViewer<'_> {
             } => sequence_input_at(sequence, idx)
                 .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
             Node::Aggregate {
+                expression, arg, ..
+            }
+            | Node::JoinAggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).nth(idx).copied(),
             Node::SourceField { .. }
@@ -353,6 +359,9 @@ impl GraphViewer<'_> {
                     predicate,
                 } => sequence.inputs().into_iter().chain([*predicate]).collect(),
                 Node::Aggregate {
+                    expression, arg, ..
+                }
+                | Node::JoinAggregate {
                     expression, arg, ..
                 } => expression.iter().chain(arg).copied().collect(),
             }
@@ -485,6 +494,9 @@ impl GraphViewer<'_> {
             } => sequence.inputs().len() + 1,
             Node::Aggregate {
                 expression, arg, ..
+            }
+            | Node::JoinAggregate {
+                expression, arg, ..
             } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
         }
     }
@@ -511,6 +523,9 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             predicate,
         } => sequence.inputs().into_iter().chain([*predicate]).collect(),
         Node::Aggregate {
+            expression, arg, ..
+        }
+        | Node::JoinAggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
     }
@@ -576,6 +591,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     let target = expression.map_or_else(|| path.join("/"), |_| "computed".into());
                     format!("{op}: {target}")
                 }
+                Some(Node::JoinAggregate {
+                    function,
+                    join,
+                    expression,
+                    ..
+                }) => {
+                    let op = format!("{function:?}").to_lowercase();
+                    let target = if expression.is_some() {
+                        "computed "
+                    } else {
+                        ""
+                    };
+                    format!("{op}: {target}join #{}", join.get())
+                }
                 None => "<missing>".to_string(),
             },
         }
@@ -617,12 +646,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::SequenceExists { sequence, .. }) => {
                         sequence_pin_label(sequence, idx).to_string()
                     }
-                    Some(Node::Aggregate { expression, .. })
-                        if expression.is_some() && idx == 0 =>
-                    {
-                        "values".to_string()
-                    }
-                    Some(Node::Aggregate { .. }) => "arg".to_string(),
+                    Some(
+                        Node::Aggregate { expression, .. } | Node::JoinAggregate { expression, .. },
+                    ) if expression.is_some() && idx == 0 => "values".to_string(),
+                    Some(Node::Aggregate { .. } | Node::JoinAggregate { .. }) => "arg".to_string(),
                     _ => String::new(),
                 }
             }
@@ -806,6 +833,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             }
                         }
                     });
+                }
+                Node::JoinAggregate {
+                    function,
+                    join,
+                    expression,
+                    ..
+                } => {
+                    let op = format!("{function:?}").to_lowercase();
+                    ui.label(format!("{op} over join #{}", join.get()))
+                        .on_hover_text(if expression.is_some() {
+                            "computed expression evaluated once per joined tuple"
+                        } else {
+                            "aggregate evaluated over joined tuples"
+                        });
                 }
             }
         }

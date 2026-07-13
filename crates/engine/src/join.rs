@@ -1,12 +1,22 @@
+use std::collections::HashSet;
+
 use ir::{Instance, Value};
-use mapping::{JoinConditions, JoinId, JoinPlan, JoinSource};
+use mapping::{AggregateOp, Graph, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId};
 
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
-use super::{EngineError, field_scalar};
+use super::{EngineError, aggregate, eval_expr, field_scalar};
 
 pub(super) struct JoinedRow<'a> {
     instances: Vec<&'a Instance>,
     positions: Vec<PositionFrame>,
+}
+
+pub(super) struct AggregateInput<'a> {
+    pub(super) function: AggregateOp,
+    pub(super) join: JoinId,
+    pub(super) plan: &'a JoinPlan,
+    pub(super) expression: Option<NodeId>,
+    pub(super) arg: Option<NodeId>,
 }
 
 pub(super) fn execute<'a>(
@@ -53,6 +63,42 @@ pub(super) fn extensions<'a>(rows: &[JoinedRow<'a>]) -> Vec<WalkExtension<'a>> {
             positions: row.positions.clone(),
         })
         .collect()
+}
+
+pub(super) fn eval_aggregate(
+    graph: &Graph,
+    input: AggregateInput<'_>,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let rows = execute(context, input.join, input.plan)?;
+    let extensions = extensions(&rows);
+    let mut values = Vec::with_capacity(extensions.len());
+    for extension in &extensions {
+        let value = match input.expression {
+            Some(expression) => {
+                let mut item_context = context.to_vec();
+                item_context.extend(extension.instances.iter().copied());
+                let mut item_positions = positions.to_vec();
+                item_positions.extend(extension.positions.iter().cloned());
+                eval_expr(
+                    graph,
+                    expression,
+                    &item_context,
+                    &item_positions,
+                    in_progress,
+                )?
+            }
+            None => Value::Null,
+        };
+        values.push(value);
+    }
+    let arg = input
+        .arg
+        .map(|arg| eval_expr(graph, arg, context, positions, in_progress))
+        .transpose()?;
+    aggregate(input.function, extensions.len(), &values, arg)
 }
 
 fn source_rows<'a>(
