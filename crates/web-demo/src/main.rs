@@ -236,6 +236,9 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
             .collect(),
         Node::Aggregate {
             expression, arg, ..
+        }
+        | Node::JoinAggregate {
+            expression, arg, ..
         } => vec![*expression, *arg],
     }
 }
@@ -273,6 +276,10 @@ fn node_title(node: &Node) -> String {
             path.extend(value.iter().cloned());
             let op = format!("{function:?}").to_lowercase();
             format!("{op} · {}", path.join("/"))
+        }
+        Node::JoinAggregate { function, join, .. } => {
+            let op = format!("{function:?}").to_lowercase();
+            format!("{op} · join {}", join.get())
         }
     }
 }
@@ -375,7 +382,9 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
                 .map(|(label, _)| label.clone())
                 .unwrap_or_default(),
             CanvasNode::Graph(id) => match self.graph.nodes.get(id) {
-                Some(Node::Aggregate { .. }) => ["expr", "sep"][pin.id.input.min(1)].to_string(),
+                Some(Node::Aggregate { .. } | Node::JoinAggregate { .. }) => {
+                    ["expr", "arg"][pin.id.input.min(1)].to_string()
+                }
                 Some(Node::If { .. }) => ["cond", "then", "else"][pin.id.input.min(2)].to_string(),
                 Some(Node::SequenceExists {
                     sequence,

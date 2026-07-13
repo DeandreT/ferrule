@@ -126,9 +126,22 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arg: Option<NodeId>,
     },
+    /// Reduces the tuples produced by a naked inner join. The plan is
+    /// evaluated in the aggregate's parent context; `expression`, when set,
+    /// is evaluated once per joined tuple with that join's fields and
+    /// position active. `arg` remains a parent-context expression.
+    JoinAggregate {
+        function: AggregateOp,
+        join: JoinId,
+        plan: JoinPlan,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression: Option<NodeId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        arg: Option<NodeId>,
+    },
 }
 
-/// The reduction an [`Node::Aggregate`] applies over its collection.
+/// A reduction applied by [`Node::Aggregate`] or [`Node::JoinAggregate`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AggregateOp {
@@ -631,6 +644,27 @@ mod tests {
                     if join == JoinId::new(44)
             ));
         }
+
+        let aggregate = Node::JoinAggregate {
+            function: AggregateOp::Sum,
+            join: id,
+            plan: join_plan(),
+            expression: Some(7),
+            arg: None,
+        };
+        let encoded = serde_json::to_string(&aggregate).unwrap();
+        assert!(encoded.contains(r#""kind":"join_aggregate""#));
+        let decoded: Node = serde_json::from_str(&encoded).unwrap();
+        assert!(matches!(
+            decoded,
+            Node::JoinAggregate {
+                function: AggregateOp::Sum,
+                join,
+                expression: Some(7),
+                arg: None,
+                ..
+            } if join == JoinId::new(44)
+        ));
     }
 
     #[test]

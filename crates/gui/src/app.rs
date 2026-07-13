@@ -269,6 +269,9 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => sequence.inputs().into_iter().chain([*predicate]).collect(),
         Node::Aggregate {
             expression, arg, ..
+        }
+        | Node::JoinAggregate {
+            expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
     }
 }
