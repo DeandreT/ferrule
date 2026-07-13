@@ -6,7 +6,7 @@ impl FerruleApp {
     }
 
     pub(super) fn stage_mapping_schema(&mut self, side: SchemaSide, path: PathBuf) {
-        match import_schema(&path) {
+        match crate::new_mapping::import_schema(&path) {
             Ok(schema) => {
                 let imported = crate::new_mapping::ImportedSchema { path, schema };
                 let Some(setup) = self.new_mapping_setup.as_mut() else {
@@ -148,17 +148,4 @@ enum NewMappingAction {
     Choose(SchemaSide),
     Cancel,
     Create,
-}
-
-fn import_schema(path: &std::path::Path) -> anyhow::Result<SchemaNode> {
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase);
-    let json = match extension.as_deref() {
-        Some("xsd") => cli::import_xsd(path)?,
-        Some("json") => cli::import_json_schema(path)?,
-        _ => anyhow::bail!("schema must be an XSD or JSON Schema file"),
-    };
-    Ok(serde_json::from_str(&json)?)
 }

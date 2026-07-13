@@ -9,7 +9,6 @@
 use std::path::PathBuf;
 
 use egui_snarl::{InPinId, OutPinId, Snarl};
-use ir::SchemaNode;
 use mapping::{Graph, Node, NodeId, Project, Scope};
 use serde::{Deserialize, Serialize};
 
@@ -18,18 +17,23 @@ use crate::canvas::{
 };
 use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
 use crate::document::DocumentLocation;
+use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
 use crate::graph_viewer::GraphViewer;
 use crate::layout_store::{project_fingerprint, read_layout, write_layout};
-use crate::new_mapping::{NewMappingSetup, SchemaSide};
+use crate::new_mapping::{NewMappingSetup, SchemaSide, blank_project};
 use crate::path_picker::SourcePathCatalog;
 use crate::schema_tree::show_schema_tree;
 use crate::scope_editor::{
-    ScopePath, binding_target_fields, scope_at_mut, scope_target_chain, show_scope_editor,
-    show_scope_tree,
+    ScopePath, available_static_child_scopes, binding_target_fields, create_static_child_scope,
+    remove_child_scope, scope_at_mut, scope_target_chain, show_scope_editor, show_scope_tree,
 };
 
+#[path = "app_extra_sources.rs"]
+mod extra_source_ui;
 #[path = "app_new_mapping.rs"]
 mod new_mapping_ui;
+#[path = "app_scopes.rs"]
+mod scope_ui;
 #[path = "app_workspace.rs"]
 mod workspace_ui;
 
@@ -91,6 +95,8 @@ pub struct FerruleApp {
     saved_editor: Option<String>,
     snarl: Snarl<CanvasNode>,
     canvas_view_generation: u64,
+    show_source_panel: bool,
+    show_inspector_panel: bool,
     document: DocumentLocation,
     input_path: String,
     output_path: String,
@@ -98,6 +104,8 @@ pub struct FerruleApp {
     status: String,
     diagnostics: Diagnostics,
     new_mapping_setup: Option<NewMappingSetup>,
+    extra_source_draft: Option<ExtraSourceDraft>,
+    pending_extra_source_removal: Option<usize>,
     /// Native file dialog receiver; the dialog runs outside the UI thread.
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
     pending_destructive_action: Option<DestructiveAction>,
@@ -124,6 +132,8 @@ enum DialogKind {
     ExportMfd,
     BrowseSourceSchema,
     BrowseTargetSchema,
+    BrowseExtraSourceSchema,
+    BrowseExtraSourceInstance,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,6 +160,8 @@ impl Default for FerruleApp {
             saved_editor: Some(snapshot.clone()),
             snarl,
             canvas_view_generation: 0,
+            show_source_panel: true,
+            show_inspector_panel: true,
             document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
             output_path: String::new(),
@@ -157,6 +169,8 @@ impl Default for FerruleApp {
             status: String::new(),
             diagnostics: Diagnostics::default(),
             new_mapping_setup: Some(NewMappingSetup::default()),
+            extra_source_draft: None,
+            pending_extra_source_removal: None,
             pending_dialog: None,
             pending_destructive_action: None,
             pending_save_continuation: None,
@@ -221,20 +235,6 @@ impl CanvasLayout {
     fn matches_project(&self, project: &Project) -> bool {
         self.version == LAYOUT_VERSION
             && self.project_fingerprint.as_deref() == Some(project_fingerprint(project).as_str())
-    }
-}
-
-fn blank_project() -> Project {
-    Project {
-        source: SchemaNode::group("root", vec![]),
-        target: SchemaNode::group("root", vec![]),
-        source_path: None,
-        target_path: None,
-        source_options: Default::default(),
-        target_options: Default::default(),
-        extra_sources: Vec::new(),
-        graph: Graph::default(),
-        root: Scope::default(),
     }
 }
 
@@ -867,6 +867,14 @@ impl FerruleApp {
             DialogKind::BrowseTargetSchema => {
                 self.stage_mapping_schema(SchemaSide::Target, PathBuf::from(path));
             }
+            DialogKind::BrowseExtraSourceSchema => {
+                self.stage_extra_source_schema(PathBuf::from(path));
+            }
+            DialogKind::BrowseExtraSourceInstance => {
+                if let Some(draft) = &mut self.extra_source_draft {
+                    draft.instance_path = path;
+                }
+            }
             DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
                 Ok(imported) => {
                     self.snarl = build_snarl(&imported.project);
@@ -988,7 +996,9 @@ impl eframe::App for FerruleApp {
         }
         let project_editing_enabled = self.pending_dialog.is_none()
             && self.pending_destructive_action.is_none()
-            && self.new_mapping_setup.is_none();
+            && self.new_mapping_setup.is_none()
+            && self.extra_source_draft.is_none()
+            && self.pending_extra_source_removal.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -1042,61 +1052,98 @@ impl eframe::App for FerruleApp {
                 .show(ui, |ui| self.diagnostics.show(ui));
         }
 
-        egui::Panel::left("source_schema").show(ui, |ui| {
-            ui.strong("Source schema");
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                show_schema_tree(ui, &self.project.source);
-                for extra in &self.project.extra_sources {
-                    ui.separator();
-                    ui.strong(format!("Extra: {}", extra.name));
-                    show_schema_tree(ui, &extra.schema);
-                }
-            });
-        });
-
-        egui::Panel::right("target_schema_and_scopes").show(ui, |ui| {
-            ui.add_enabled_ui(project_editing_enabled, |ui| {
-                ui.strong("Target schema");
-                egui::ScrollArea::vertical()
-                    .max_height(200.0)
-                    .show(ui, |ui| {
-                        show_schema_tree(ui, &self.project.target);
-                    });
-
-                ui.separator();
-                ui.strong("Scopes");
-                egui::ScrollArea::vertical()
-                    .id_salt("scope_tree_scroll")
-                    .max_height(200.0)
-                    .show(ui, |ui| {
-                        if let Some(new_selection) =
-                            show_scope_tree(ui, &self.project.root, &self.selected_scope)
+        if self.show_source_panel {
+            egui::Panel::left("source_schema")
+                .default_size(220.0)
+                .min_size(150.0)
+                .max_size(420.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong("Source schema");
+                        if ui
+                            .add_enabled(project_editing_enabled, egui::Button::new("Add source"))
+                            .clicked()
                         {
-                            self.selected_scope = new_selection;
+                            self.begin_extra_source();
                         }
                     });
-
-                ui.separator();
-                egui::ScrollArea::vertical()
-                    .id_salt("scope_editor_scroll")
-                    .show(ui, |ui| {
-                        let nested = !self.selected_scope.is_empty();
-                        let target_chain =
-                            scope_target_chain(&self.project.root, &self.selected_scope);
-                        let target_fields =
-                            binding_target_fields(&self.project.target, &target_chain);
-                        let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
-                        show_scope_editor(
-                            ui,
-                            scope,
-                            &self.project.graph,
-                            &source_paths,
-                            &target_fields,
-                            nested,
-                        );
+                    let mut remove = None;
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        show_schema_tree(ui, &self.project.source);
+                        for (index, extra) in self.project.extra_sources.iter().enumerate() {
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                ui.strong(format!("Extra: {}", extra.name));
+                                if ui
+                                    .add_enabled(
+                                        project_editing_enabled,
+                                        egui::Button::new("Remove").small(),
+                                    )
+                                    .clicked()
+                                {
+                                    remove = Some(index);
+                                }
+                            });
+                            show_schema_tree(ui, &extra.schema);
+                        }
                     });
-            });
-        });
+                    if let Some(index) = remove {
+                        self.pending_extra_source_removal = Some(index);
+                    }
+                });
+        }
+
+        if self.show_inspector_panel {
+            egui::Panel::right("target_schema_and_scopes")
+                .default_size(300.0)
+                .min_size(220.0)
+                .max_size(480.0)
+                .show(ui, |ui| {
+                    ui.add_enabled_ui(project_editing_enabled, |ui| {
+                        ui.strong("Target schema");
+                        egui::ScrollArea::vertical()
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                show_schema_tree(ui, &self.project.target);
+                            });
+
+                        ui.separator();
+                        ui.strong("Scopes");
+                        egui::ScrollArea::vertical()
+                            .id_salt("scope_tree_scroll")
+                            .max_height(200.0)
+                            .show(ui, |ui| {
+                                if let Some(new_selection) =
+                                    show_scope_tree(ui, &self.project.root, &self.selected_scope)
+                                {
+                                    self.selected_scope = new_selection;
+                                }
+                            });
+                        self.show_scope_controls(ui);
+
+                        ui.separator();
+                        egui::ScrollArea::vertical()
+                            .id_salt("scope_editor_scroll")
+                            .show(ui, |ui| {
+                                let nested = !self.selected_scope.is_empty();
+                                let target_chain =
+                                    scope_target_chain(&self.project.root, &self.selected_scope);
+                                let target_fields =
+                                    binding_target_fields(&self.project.target, &target_chain);
+                                let scope =
+                                    scope_at_mut(&mut self.project.root, &self.selected_scope);
+                                show_scope_editor(
+                                    ui,
+                                    scope,
+                                    &self.project.graph,
+                                    &source_paths,
+                                    &target_fields,
+                                    nested,
+                                );
+                            });
+                    });
+                });
+        }
 
         egui::CentralPanel::default().show(ui, |ui| {
             ui.add_enabled_ui(project_editing_enabled, |ui| {
@@ -1125,6 +1172,8 @@ impl eframe::App for FerruleApp {
 
         self.show_unsaved_confirmation(ui.ctx());
         self.show_new_mapping_setup(ui.ctx());
+        self.show_extra_source_setup(ui.ctx());
+        self.show_extra_source_removal_confirmation(ui.ctx());
         if let Some(repaint_after) =
             self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {

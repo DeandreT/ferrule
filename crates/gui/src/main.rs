@@ -3,6 +3,7 @@ mod canvas;
 mod canvas_keyboard;
 mod diagnostics;
 mod document;
+mod extra_sources;
 mod graph_viewer;
 mod layout_store;
 mod new_mapping;

@@ -12,6 +12,87 @@ use crate::path_picker::SourcePathCatalog;
 /// Path of child-indices from the project root to the scope being edited.
 pub type ScopePath = Vec<usize>;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticChildScopeCandidate {
+    pub target_field: String,
+    pub repeating: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScopeTreeError {
+    InvalidScopePath(ScopePath),
+    TargetScopeMissing(Vec<String>),
+    TargetScopeNotGroup(Vec<String>),
+    TargetChildMissing {
+        parent: Vec<String>,
+        target_field: String,
+    },
+    TargetChildNotGroup {
+        parent: Vec<String>,
+        target_field: String,
+    },
+    TargetChildAlreadyRepresented {
+        parent: Vec<String>,
+        target_field: String,
+    },
+    CannotRemoveRoot,
+}
+
+impl std::fmt::Display for ScopeTreeError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn path_label(path: &[String]) -> String {
+            if path.is_empty() {
+                "root".to_string()
+            } else {
+                path.join("/")
+            }
+        }
+
+        match self {
+            Self::InvalidScopePath(path) => write!(formatter, "invalid scope path {path:?}"),
+            Self::TargetScopeMissing(path) => write!(
+                formatter,
+                "target scope {} does not exist in the target schema",
+                path_label(path)
+            ),
+            Self::TargetScopeNotGroup(path) => write!(
+                formatter,
+                "target scope {} is not a group",
+                path_label(path)
+            ),
+            Self::TargetChildMissing {
+                parent,
+                target_field,
+            } => write!(
+                formatter,
+                "target group {} has no child named {target_field}",
+                path_label(parent)
+            ),
+            Self::TargetChildNotGroup {
+                parent,
+                target_field,
+            } => write!(
+                formatter,
+                "target child {}/{} is not a group",
+                path_label(parent),
+                target_field
+            ),
+            Self::TargetChildAlreadyRepresented {
+                parent,
+                target_field,
+            } => write!(
+                formatter,
+                "target child {}/{} already has a scope",
+                path_label(parent),
+                target_field
+            ),
+            Self::CannotRemoveRoot => formatter.write_str("the root scope cannot be removed"),
+        }
+    }
+}
+
+impl std::error::Error for ScopeTreeError {}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GroupingMode {
     None,
@@ -72,6 +153,137 @@ pub fn scope_at_mut<'a>(root: &'a mut Scope, path: &[usize]) -> &'a mut Scope {
         scope = &mut scope.children[i];
     }
     scope
+}
+
+fn scope_at<'a>(root: &'a Scope, path: &[usize]) -> Option<&'a Scope> {
+    let mut scope = root;
+    for &index in path {
+        scope = scope.children.get(index)?;
+    }
+    Some(scope)
+}
+
+fn scope_at_checked_mut<'a>(root: &'a mut Scope, path: &[usize]) -> Option<&'a mut Scope> {
+    let Some((index, rest)) = path.split_first() else {
+        return Some(root);
+    };
+    scope_at_checked_mut(root.children.get_mut(*index)?, rest)
+}
+
+fn target_scope_for_path<'a>(
+    root: &Scope,
+    target: &'a SchemaNode,
+    path: &[usize],
+) -> Result<(&'a SchemaNode, Vec<String>), ScopeTreeError> {
+    let mut scope = root;
+    let mut target_scope = target;
+    let mut target_chain = Vec::new();
+    for &index in path {
+        let child = scope
+            .children
+            .get(index)
+            .ok_or_else(|| ScopeTreeError::InvalidScopePath(path.to_vec()))?;
+        target_chain.push(child.target_field.clone());
+        target_scope = target_scope
+            .child(&child.target_field)
+            .ok_or_else(|| ScopeTreeError::TargetScopeMissing(target_chain.clone()))?;
+        if !matches!(target_scope.kind, SchemaKind::Group { .. }) {
+            return Err(ScopeTreeError::TargetScopeNotGroup(target_chain));
+        }
+        scope = child;
+    }
+    if !matches!(target_scope.kind, SchemaKind::Group { .. }) {
+        return Err(ScopeTreeError::TargetScopeNotGroup(target_chain));
+    }
+    Ok((target_scope, target_chain))
+}
+
+pub fn available_static_child_scopes(
+    root: &Scope,
+    target: &SchemaNode,
+    parent_path: &[usize],
+) -> Result<Vec<StaticChildScopeCandidate>, ScopeTreeError> {
+    let parent = scope_at(root, parent_path)
+        .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
+    let (target_parent, _) = target_scope_for_path(root, target, parent_path)?;
+    let SchemaKind::Group { children, .. } = &target_parent.kind else {
+        return Ok(Vec::new());
+    };
+    Ok(children
+        .iter()
+        .filter(|child| matches!(child.kind, SchemaKind::Group { .. }))
+        .filter(|child| {
+            !parent
+                .children
+                .iter()
+                .any(|scope| scope.target_field == child.name)
+        })
+        .map(|child| StaticChildScopeCandidate {
+            target_field: child.name.clone(),
+            repeating: child.repeating,
+        })
+        .collect())
+}
+
+pub fn create_static_child_scope(
+    root: &mut Scope,
+    target: &SchemaNode,
+    parent_path: &[usize],
+    target_field: &str,
+) -> Result<ScopePath, ScopeTreeError> {
+    let parent = scope_at(root, parent_path)
+        .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
+    let (target_parent, target_chain) = target_scope_for_path(root, target, parent_path)?;
+    if parent
+        .children
+        .iter()
+        .any(|scope| scope.target_field == target_field)
+    {
+        return Err(ScopeTreeError::TargetChildAlreadyRepresented {
+            parent: target_chain,
+            target_field: target_field.to_string(),
+        });
+    }
+    let target_child =
+        target_parent
+            .child(target_field)
+            .ok_or_else(|| ScopeTreeError::TargetChildMissing {
+                parent: target_chain.clone(),
+                target_field: target_field.to_string(),
+            })?;
+    if !matches!(target_child.kind, SchemaKind::Group { .. }) {
+        return Err(ScopeTreeError::TargetChildNotGroup {
+            parent: target_chain,
+            target_field: target_field.to_string(),
+        });
+    }
+
+    let parent = scope_at_checked_mut(root, parent_path)
+        .ok_or_else(|| ScopeTreeError::InvalidScopePath(parent_path.to_vec()))?;
+    let index = parent.children.len();
+    parent.children.push(Scope {
+        target_field: target_field.to_string(),
+        ..Scope::default()
+    });
+    let mut created = parent_path.to_vec();
+    created.push(index);
+    Ok(created)
+}
+
+pub fn remove_child_scope(
+    root: &mut Scope,
+    selected_path: &[usize],
+) -> Result<ScopePath, ScopeTreeError> {
+    let Some((&child_index, parent_path)) = selected_path.split_last() else {
+        return Err(ScopeTreeError::CannotRemoveRoot);
+    };
+    let parent = scope_at_checked_mut(root, parent_path)
+        .ok_or_else(|| ScopeTreeError::InvalidScopePath(selected_path.to_vec()))?;
+    if child_index >= parent.children.len() {
+        return Err(ScopeTreeError::InvalidScopePath(selected_path.to_vec()));
+    }
+    parent.children.remove(child_index);
+    Ok(parent_path.to_vec())
 }
 
 pub fn scope_target_chain(root: &Scope, path: &[usize]) -> Vec<String> {
@@ -466,6 +678,172 @@ fn display_path(path: &[String]) -> String {
 mod tests {
     use super::*;
     use ir::Value;
+
+    fn scope_management_target() -> SchemaNode {
+        SchemaNode::group(
+            "root",
+            vec![
+                SchemaNode::scalar("Id", ir::ScalarType::Int),
+                SchemaNode::group(
+                    "Orders",
+                    vec![
+                        SchemaNode::scalar("Number", ir::ScalarType::String),
+                        SchemaNode::group(
+                            "Lines",
+                            vec![SchemaNode::scalar("Sku", ir::ScalarType::String)],
+                        )
+                        .repeating(),
+                    ],
+                ),
+                SchemaNode::group(
+                    "Customer",
+                    vec![SchemaNode::scalar("Name", ir::ScalarType::String)],
+                ),
+            ],
+        )
+    }
+
+    #[test]
+    fn static_child_candidates_are_unrepresented_target_groups() {
+        let root = Scope {
+            children: vec![Scope {
+                target_field: "Orders".into(),
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        };
+        let target = scope_management_target();
+
+        assert_eq!(
+            available_static_child_scopes(&root, &target, &[]),
+            Ok(vec![StaticChildScopeCandidate {
+                target_field: "Customer".into(),
+                repeating: false,
+            }])
+        );
+        assert_eq!(
+            available_static_child_scopes(&root, &target, &[0]),
+            Ok(vec![StaticChildScopeCandidate {
+                target_field: "Lines".into(),
+                repeating: true,
+            }])
+        );
+        assert_eq!(
+            available_static_child_scopes(&root, &target, &[7]),
+            Err(ScopeTreeError::InvalidScopePath(vec![7]))
+        );
+
+        let missing_target = Scope {
+            children: vec![Scope {
+                target_field: "Missing".into(),
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        };
+        assert_eq!(
+            available_static_child_scopes(&missing_target, &target, &[0]),
+            Err(ScopeTreeError::TargetScopeMissing(vec!["Missing".into()]))
+        );
+        let scalar_target = Scope {
+            children: vec![Scope {
+                target_field: "Id".into(),
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        };
+        assert_eq!(
+            available_static_child_scopes(&scalar_target, &target, &[0]),
+            Err(ScopeTreeError::TargetScopeNotGroup(vec!["Id".into()]))
+        );
+    }
+
+    #[test]
+    fn creating_static_children_validates_schema_and_duplicates() {
+        let mut root = Scope {
+            children: vec![Scope {
+                target_field: "Orders".into(),
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        };
+        let target = scope_management_target();
+
+        assert_eq!(
+            create_static_child_scope(&mut root, &target, &[0], "Lines"),
+            Ok(vec![0, 0])
+        );
+        let created = &root.children[0].children[0];
+        assert_eq!(created.target_field, "Lines");
+        assert!(!created.iterates());
+        assert!(created.bindings.is_empty());
+        assert_eq!(
+            create_static_child_scope(&mut root, &target, &[0], "Lines"),
+            Err(ScopeTreeError::TargetChildAlreadyRepresented {
+                parent: vec!["Orders".into()],
+                target_field: "Lines".into(),
+            })
+        );
+        assert_eq!(root.children[0].children.len(), 1);
+        assert_eq!(
+            create_static_child_scope(&mut root, &target, &[], "Id"),
+            Err(ScopeTreeError::TargetChildNotGroup {
+                parent: Vec::new(),
+                target_field: "Id".into(),
+            })
+        );
+        assert_eq!(
+            create_static_child_scope(&mut root, &target, &[], "Missing"),
+            Err(ScopeTreeError::TargetChildMissing {
+                parent: Vec::new(),
+                target_field: "Missing".into(),
+            })
+        );
+        assert_eq!(
+            create_static_child_scope(&mut root, &target, &[9], "Lines"),
+            Err(ScopeTreeError::InvalidScopePath(vec![9]))
+        );
+    }
+
+    #[test]
+    fn removing_a_child_returns_its_parent_and_protects_root() {
+        let mut root = Scope {
+            children: vec![
+                Scope {
+                    target_field: "Orders".into(),
+                    children: vec![
+                        Scope {
+                            target_field: "Lines".into(),
+                            ..Scope::default()
+                        },
+                        Scope {
+                            target_field: "Summary".into(),
+                            ..Scope::default()
+                        },
+                    ],
+                    ..Scope::default()
+                },
+                Scope {
+                    target_field: "Customer".into(),
+                    ..Scope::default()
+                },
+            ],
+            ..Scope::default()
+        };
+
+        assert_eq!(
+            remove_child_scope(&mut root, &[]),
+            Err(ScopeTreeError::CannotRemoveRoot)
+        );
+        assert_eq!(root.children.len(), 2);
+        assert_eq!(remove_child_scope(&mut root, &[0, 0]), Ok(vec![0]));
+        assert_eq!(root.children[0].children.len(), 1);
+        assert_eq!(root.children[0].children[0].target_field, "Summary");
+        assert_eq!(
+            remove_child_scope(&mut root, &[3]),
+            Err(ScopeTreeError::InvalidScopePath(vec![3]))
+        );
+        assert_eq!(root.children.len(), 2);
+    }
 
     #[test]
     fn scope_references_default_to_an_existing_node_only() {

@@ -155,6 +155,15 @@ impl FerruleApp {
                         self.fit_canvas();
                         ui.close();
                     }
+                    ui.separator();
+                    if ui.button("Add extra source...").clicked() {
+                        self.begin_extra_source();
+                        ui.close();
+                    }
+                });
+                ui.menu_button("View", |ui| {
+                    ui.checkbox(&mut self.show_source_panel, "Source schema");
+                    ui.checkbox(&mut self.show_inspector_panel, "Inspector");
                 });
             });
             ui.separator();
