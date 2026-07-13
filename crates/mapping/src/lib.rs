@@ -430,11 +430,35 @@ pub struct FormatOptions {
     /// CSV: whether the file's first row is a header (default true).
     #[serde(default)]
     pub has_header_row: Option<bool>,
+    /// JSON: read and write one root value per line instead of one enclosing
+    /// JSON document.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub json_lines: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
+        let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
+        assert!(!defaults.json_lines);
+        assert!(
+            !serde_json::to_string(&defaults)
+                .unwrap()
+                .contains("json_lines")
+        );
+
+        let options = FormatOptions {
+            json_lines: true,
+            ..FormatOptions::default()
+        };
+        let encoded = serde_json::to_string(&options).unwrap();
+        assert!(encoded.contains("\"json_lines\":true"));
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert!(decoded.json_lines);
+    }
 
     fn join_plan() -> JoinPlan {
         let orders = JoinSource::new(vec!["orders".into()]);
