@@ -3940,9 +3940,13 @@ dependencies = [
  "egui",
  "egui-snarl",
  "engine",
+ "format-csv",
+ "format-json",
  "format-xml",
  "ir",
+ "js-sys",
  "mapping",
+ "serde_json",
  "wasm-bindgen-futures",
  "web-sys",
 ]
