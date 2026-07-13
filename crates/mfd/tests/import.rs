@@ -990,6 +990,23 @@ fn generic_functions_drop_trailing_optional_pins_but_preserve_interior_defaults(
 }
 
 #[test]
+fn mapped_xpath2_scalar_function_imports_and_runs() {
+    let imported = mfd::import(&fixture("xpath2-upper.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let source = format_xml::read(&fixture("people.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let people = target
+        .field("Person")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+
+    assert_eq!(people.len(), 2);
+    assert_eq!(scalar(&people[0], "Name"), Value::String("ALICE".into()));
+    assert_eq!(scalar(&people[1], "Name"), Value::String("BO".into()));
+}
+
+#[test]
 fn scalar_document_root_binding_warns_instead_of_panicking() {
     let imported = mfd::import(&fixture("scalar-root-target.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
