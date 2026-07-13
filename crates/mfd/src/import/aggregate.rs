@@ -31,15 +31,23 @@ impl GraphBuilder<'_> {
         idx: usize,
     ) -> Result<Option<Node>, String> {
         let input_count = self.fn_components[idx].inputs.len();
-        let sequence_feed = self.input_feed(idx, 1).or_else(|| {
-            (input_count == 1)
-                .then(|| self.input_feed(idx, 0))
-                .flatten()
-        });
+        let two_pin_item_at = op == AggregateOp::ItemAt
+            && input_count == 2
+            && self.input_feed(idx, 0).is_some()
+            && self.input_feed(idx, 1).is_some();
+        let sequence_feed = if two_pin_item_at {
+            self.input_feed(idx, 0)
+        } else {
+            self.input_feed(idx, 1).or_else(|| {
+                (input_count == 1)
+                    .then(|| self.input_feed(idx, 0))
+                    .flatten()
+            })
+        };
         let Some(sequence_feed) = sequence_feed else {
             return Ok(None);
         };
-        let arg_feed = self.input_feed(idx, 2);
+        let arg_feed = self.input_feed(idx, if two_pin_item_at { 1 } else { 2 });
         if arg_feed.is_some_and(|feed| self.join_dependency_any(feed)) {
             return Err("aggregate argument depends on a joined tuple".to_string());
         }

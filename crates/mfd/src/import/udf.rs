@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::{SchemaKind, Value};
+use ir::{ScalarType, SchemaKind, Value};
 use mapping::{Graph, Node, NodeId};
 
 use super::function::{FnComponent, map_name, parse_constant, read as read_function};
@@ -24,6 +24,7 @@ pub(super) enum ScalarExpr {
     },
     ValueMap {
         input: Box<ScalarExpr>,
+        input_type: Option<ScalarType>,
         table: Vec<(Value, Value)>,
         default: Option<Value>,
     },
@@ -663,14 +664,12 @@ impl DefinitionContext<'_> {
                 else_: Box::new(input(2, active)?),
             }),
             (_, 23) => {
-                let (table, default) = function.valuemap.clone().unwrap_or_default();
+                let valuemap = function.valuemap.clone().unwrap_or_default();
                 Ok(ScalarExpr::ValueMap {
                     input: Box::new(input(0, active)?),
-                    table: table
-                        .into_iter()
-                        .map(|(from, to)| (Value::String(from), Value::String(to)))
-                        .collect(),
-                    default: default.map(Value::String),
+                    input_type: valuemap.input_type,
+                    table: valuemap.table,
+                    default: valuemap.default,
                 })
             }
             (name, _) => {
@@ -875,6 +874,7 @@ fn instantiate(
         }
         ScalarExpr::ValueMap {
             input,
+            input_type,
             table,
             default,
         } => {
@@ -884,6 +884,7 @@ fn instantiate(
                 next_id,
                 Node::ValueMap {
                     input,
+                    input_type: *input_type,
                     table: table.clone(),
                     default: default.clone(),
                 },

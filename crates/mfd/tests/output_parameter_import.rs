@@ -61,6 +61,33 @@ fn mapping(outputs: &str) -> String {
     )
 }
 
+fn item_at_mapping(pins: &str) -> String {
+    format!(
+        r#"<mapping version="26"><component name="map"><structure><children>
+        <component name="source" library="xml" kind="14"><data>
+          <root><entry name="Source"><entry name="Item"><entry name="Price" outkey="2"/></entry></entry></root>
+          <document schema="source.xsd" inputinstance="source.xml" instanceroot="{{}}Source"/>
+        </data></component>
+        <component name="constant" library="core" kind="2">
+          <targets><datapoint pos="0" key="5"/></targets>
+          <data><constant value="2" datatype="integer"/></data>
+        </component>
+        <component name="item-at" library="core" kind="5">
+          <sources>{pins}</sources>
+          <targets><datapoint pos="0" key="7"/></targets>
+        </component>
+        <component name="selected" library="core" kind="7">
+          <sources><datapoint pos="0" key="6"/></sources>
+          <data><output datatype="integer"/><parameter usageKind="output" name="selected"/></data>
+        </component>
+      </children><graph><vertices>
+        <vertex vertexkey="2"><edges><edge vertexkey="3"/></edges></vertex>
+        <vertex vertexkey="5"><edges><edge vertexkey="4"/></edges></vertex>
+        <vertex vertexkey="7"><edges><edge vertexkey="6"/></edges></vertex>
+      </vertices></graph></structure></component></mapping>"#
+    )
+}
+
 fn setup(design: &str) -> TempDir {
     let dir = TempDir::new();
     std::fs::write(
@@ -148,6 +175,46 @@ fn connected_output_parameter_becomes_an_executable_typed_target() {
         target.field("total").and_then(Instance::as_scalar),
         Some(&Value::Int(22))
     );
+}
+
+#[test]
+fn item_at_accepts_two_data_pins_and_canonical_three_pins() {
+    for pins in [
+        r#"<datapoint pos="0" key="3"/><datapoint pos="1" key="4"/>"#,
+        r#"<datapoint pos="0"/><datapoint pos="1" key="3"/><datapoint pos="2" key="4"/>"#,
+    ] {
+        let dir = setup(&item_at_mapping(pins));
+        let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+        let binding = imported
+            .project
+            .root
+            .bindings
+            .iter()
+            .find(|binding| binding.target_field == "selected")
+            .unwrap();
+        assert!(matches!(
+            imported.project.graph.nodes.get(&binding.node),
+            Some(Node::Aggregate {
+                function: AggregateOp::ItemAt,
+                collection,
+                value,
+                arg: Some(_),
+                ..
+            }) if collection == &["Item"] && value == &["Price"]
+        ));
+
+        let source = Instance::Group(vec![(
+            "Item".into(),
+            Instance::Repeated(vec![item(2, 5), item(4, 3)]),
+        )]);
+        let target = engine::run(&imported.project, &source).unwrap();
+        assert_eq!(
+            target.field("selected").and_then(Instance::as_scalar),
+            Some(&Value::Int(3))
+        );
+    }
 }
 
 #[test]

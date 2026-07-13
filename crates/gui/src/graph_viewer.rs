@@ -1113,6 +1113,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         if ui.button("Value map").clicked() {
             self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::ValueMap {
                 input: inputs[0],
+                input_type: None,
                 table: vec![],
                 default: None,
             });

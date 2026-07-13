@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use ir::{SchemaNode, Value};
+use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
 mod iteration;
@@ -86,6 +86,10 @@ pub enum Node {
     /// its paired value, falling back to `default` if there's no match.
     ValueMap {
         input: NodeId,
+        /// Scalar type MapForce applies to the input before matching. Native
+        /// ferrule maps leave this unset and compare the input as-is.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input_type: Option<ScalarType>,
         table: Vec<(Value, Value)>,
         default: Option<Value>,
     },

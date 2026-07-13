@@ -3,8 +3,13 @@ use mapping::AggregateOp;
 
 use super::schema::parse_u32;
 
-/// One function component's extracted facts.
-pub(super) type ValueMapData = (Vec<(String, String)>, Option<String>);
+/// Typed lookup data declared by a MapForce value-map component.
+#[derive(Clone, Default)]
+pub(super) struct ValueMapData {
+    pub(super) table: Vec<(Value, Value)>,
+    pub(super) default: Option<Value>,
+    pub(super) input_type: Option<ScalarType>,
+}
 
 #[derive(Clone)]
 pub(super) enum DbWhereComponent {
@@ -114,13 +119,31 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .find(|n| n.is_element() && n.tag_name().name() == "valuemap")
         })
         .map(|vm| {
+            let input_type = vm
+                .descendants()
+                .find(|node| node.has_tag_name("input"))
+                .and_then(|node| node.attribute("type"))
+                .map(parse_scalar_type)
+                .or(Some(ScalarType::String));
+            let result_type = vm
+                .descendants()
+                .find(|node| node.has_tag_name("result"))
+                .and_then(|node| node.attribute("type"))
+                .map(parse_scalar_type)
+                .unwrap_or(ScalarType::String);
             let table = vm
                 .descendants()
                 .filter(|n| n.has_tag_name("entry"))
                 .map(|e| {
                     (
-                        e.attribute("from").unwrap_or_default().to_string(),
-                        e.attribute("to").unwrap_or_default().to_string(),
+                        parse_constant(
+                            e.attribute("from").unwrap_or_default(),
+                            scalar_type_name(input_type.unwrap_or(ScalarType::String)),
+                        ),
+                        parse_constant(
+                            e.attribute("to").unwrap_or_default(),
+                            scalar_type_name(result_type),
+                        ),
                     )
                 })
                 .collect();
@@ -128,9 +151,13 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .descendants()
                 .find(|n| n.has_tag_name("result"))
                 .and_then(|r| r.attribute("defaultValue"))
-                .map(str::to_string)
+                .map(|value| parse_constant(value, scalar_type_name(result_type)))
                 .filter(|_| vm.attribute("defaultValueMode") == Some("custom"));
-            (table, default)
+            ValueMapData {
+                table,
+                default,
+                input_type,
+            }
         });
     let sort_descending = data
         .and_then(|data| data.descendants().find(|node| node.has_tag_name("sort")))
@@ -318,8 +345,30 @@ pub(super) fn parse_constant(value: &str, datatype: &str) -> Value {
     match datatype {
         "integer" | "int" | "long" => value.parse().map(Value::Int).unwrap_or(Value::Null),
         "decimal" | "double" | "float" => value.parse().map(Value::Float).unwrap_or(Value::Null),
-        "boolean" => value.parse().map(Value::Bool).unwrap_or(Value::Null),
+        "boolean" => match value {
+            "true" | "1" => Value::Bool(true),
+            "false" | "0" => Value::Bool(false),
+            _ => Value::Null,
+        },
         _ => Value::String(value.to_string()),
+    }
+}
+
+fn parse_scalar_type(datatype: &str) -> ScalarType {
+    match datatype {
+        "integer" | "int" | "long" => ScalarType::Int,
+        "decimal" | "double" | "float" | "number" => ScalarType::Float,
+        "boolean" => ScalarType::Bool,
+        _ => ScalarType::String,
+    }
+}
+
+fn scalar_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "decimal",
+        ScalarType::Bool => "boolean",
     }
 }
 
@@ -374,6 +423,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "exists" => "exists",
         "round" | "round-precision" => "round",
         "date-from-datetime" => "date_from_datetime",
+        "month-from-datetime" => "month_from_datetime",
         "time-from-datetime" => "time_from_datetime",
         "datetime-from-date-and-time" => "datetime_from_date_and_time",
         "datetime-from-parts" => "datetime_from_parts",
@@ -389,6 +439,8 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use ir::{ScalarType, Value};
+
     use super::{map_name, read};
 
     #[test]
@@ -396,6 +448,7 @@ mod tests {
         assert_eq!(map_name("string"), Some("string"));
         assert_eq!(map_name("format-number"), Some("format_number"));
         assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
+        assert_eq!(map_name("month-from-datetime"), Some("month_from_datetime"));
         assert_eq!(
             map_name("datetime-from-date-and-time"),
             Some("datetime_from_date_and_time")
@@ -422,5 +475,26 @@ mod tests {
         assert_eq!(component.inputs, vec![Some(1), Some(2)]);
         assert_eq!(component.output_pins, vec![None, Some(9)]);
         assert_eq!(component.outputs, vec![9]);
+    }
+
+    #[test]
+    fn value_map_data_preserves_declared_scalar_types() {
+        let document = roxmltree::Document::parse(
+            r#"<component name="value-map" library="core" kind="23">
+                <sources><datapoint pos="0" key="1"/></sources>
+                <targets><datapoint pos="0" key="2"/></targets>
+                <data><valuemap defaultValueMode="custom">
+                    <valuemapTable><entry from="7" to="1"/></valuemapTable>
+                    <input name="input" type="integer"/>
+                    <result name="result" type="boolean" defaultValue="0"/>
+                </valuemap></data>
+            </component>"#,
+        )
+        .unwrap();
+
+        let value_map = read(&document.root_element()).valuemap.unwrap();
+        assert_eq!(value_map.input_type, Some(ScalarType::Int));
+        assert_eq!(value_map.table, vec![(Value::Int(7), Value::Bool(true))]);
+        assert_eq!(value_map.default, Some(Value::Bool(false)));
     }
 }

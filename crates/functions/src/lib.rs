@@ -3,7 +3,7 @@
 //!
 //! Covers the string/math/comparison/boolean core plus the scalar helpers
 //! MapForce designs lean on (substring family, exists, round, ISO
-//! date-from-datetime); more built-ins land alongside the formats/semantics
+//! date/time component extraction); more built-ins land alongside the formats/semantics
 //! that need them. Aggregates (count/sum/...) are not here: they reduce
 //! collections in scope context, so they live in the engine as
 //! `mapping::Node::Aggregate`.
@@ -79,6 +79,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "exists",
     "round",
     "date_from_datetime",
+    "month_from_datetime",
     "time_from_datetime",
     "datetime_from_date_and_time",
     "datetime_from_parts",
@@ -141,6 +142,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "exists" => exists(args),
         "round" => round(args),
         "date_from_datetime" => date_from_datetime(args),
+        "month_from_datetime" => month_from_datetime(args),
         "time_from_datetime" => datetime::time_from_datetime(args),
         "datetime_from_date_and_time" => datetime::datetime_from_date_and_time(args),
         "datetime_from_parts" => datetime::datetime_from_parts(args),
@@ -574,6 +576,50 @@ fn date_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
             got: args.len(),
         }),
     }
+}
+
+/// The local month component of an ISO date or dateTime, without timezone adjustment.
+fn month_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "month_from_datetime";
+    let value = match args {
+        [Value::Null] => return Ok(Value::Null),
+        [Value::String(value)] => value,
+        [other] => {
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: other.type_name(),
+            });
+        }
+        _ => {
+            return Err(FunctionError::ArityMismatch {
+                function: FUNCTION,
+                expected: 1,
+                got: args.len(),
+            });
+        }
+    };
+    let (date, time) = value
+        .split_once('T')
+        .map_or((value.as_str(), None), |(date, time)| (date, Some(time)));
+    datetime::validate_iso_date(date, FUNCTION)?;
+    if let Some(time) = time {
+        datetime::validate_iso_time(time, FUNCTION)?;
+    }
+    let year_end = date
+        .len()
+        .checked_sub(6)
+        .ok_or(FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "requires a valid ISO date or dateTime",
+        })?;
+    let month = date
+        .get(year_end + 1..date.len() - 3)
+        .and_then(|month| month.parse::<i64>().ok())
+        .ok_or(FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "requires a valid ISO date or dateTime",
+        })?;
+    Ok(Value::Int(month))
 }
 
 fn substitute_missing(args: &[Value]) -> Result<Value, FunctionError> {
@@ -1192,6 +1238,32 @@ mod tests {
             call("date_from_datetime", &[Value::String("2024-03-01".into())]).unwrap(),
             Value::String("2024-03-01".into())
         );
+    }
+
+    #[test]
+    fn month_from_datetime_returns_the_validated_local_month() {
+        for (value, month) in [
+            ("1999-12-31T19:20:00-05:00", 12),
+            ("2000-01-01T00:00:00Z", 1),
+            ("-0004-02-29T23:59:59.5+14:00", 2),
+            ("2019-07-01", 7),
+        ] {
+            assert_eq!(
+                call("month_from_datetime", &[Value::String(value.into())]).unwrap(),
+                Value::Int(month)
+            );
+        }
+        assert_eq!(
+            call("month_from_datetime", &[Value::Null]).unwrap(),
+            Value::Null
+        );
+        for value in [
+            "2000-13-01T00:00:00",
+            "2001-02-29T00:00:00",
+            "2000-01-01T24:00:00",
+        ] {
+            assert!(call("month_from_datetime", &[Value::String(value.into())]).is_err());
+        }
     }
 
     #[test]

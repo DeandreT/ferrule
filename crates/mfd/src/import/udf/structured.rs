@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, Value};
+use ir::{ScalarType, SchemaKind, Value};
 use mapping::{AggregateOp, IterationOutput, Node, SequenceExpr};
 
 use super::{Call, Definition, OutputExpr};
@@ -45,6 +45,7 @@ enum Expr {
     },
     ValueMap {
         input: Box<Expr>,
+        input_type: Option<ScalarType>,
         table: Vec<(Value, Value)>,
         default: Option<Value>,
     },
@@ -587,14 +588,12 @@ impl ExprContext<'_> {
                 else_: Box::new(input(2, active)?),
             }),
             (_, 23) => {
-                let (table, default) = function.valuemap.clone().unwrap_or_default();
+                let valuemap = function.valuemap.clone().unwrap_or_default();
                 Ok(Expr::ValueMap {
                     input: Box::new(input(0, active)?),
-                    table: table
-                        .into_iter()
-                        .map(|(from, to)| (Value::String(from), Value::String(to)))
-                        .collect(),
-                    default: default.map(Value::String),
+                    input_type: valuemap.input_type,
+                    table: valuemap.table,
+                    default: valuemap.default,
                 })
             }
             (_, 3 | 6) => {
@@ -1008,12 +1007,14 @@ fn instantiate(
         }
         Expr::ValueMap {
             input,
+            input_type,
             table,
             default,
         } => {
             let input = instantiate(input, collection, parameters, sequence_filter, builder)?;
             builder.alloc(Node::ValueMap {
                 input,
+                input_type: *input_type,
                 table: table.clone(),
                 default: default.clone(),
             })
