@@ -109,6 +109,13 @@ pub struct ForeignKeyRelation {
     pub join_column: String,
 }
 
+/// The exact scalar columns equated by one relational table edge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ForeignKeyColumns {
+    pub parent_column: String,
+    pub child_column: String,
+}
+
 fn columns_of(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, DbFormatError> {
     match &schema.kind {
         SchemaKind::Group { children, .. } => children
@@ -274,6 +281,20 @@ pub fn validate_relational_schema(
     schema: &SchemaNode,
 ) -> Result<(), DbFormatError> {
     relational::validate_schema(db_path, schema)
+}
+
+/// Resolves the columns joined by one `ChildTable|JoinColumn` relationship.
+///
+/// `join_column` is the column encoded in the relationship name. It may be
+/// owned by either table; SQLite metadata determines the direction. Missing
+/// or ambiguous relationships are rejected rather than guessed.
+pub fn resolve_foreign_key_columns(
+    db_path: &Path,
+    parent_table: &str,
+    child_table: &str,
+    join_column: &str,
+) -> Result<ForeignKeyColumns, DbFormatError> {
+    relational::resolve_foreign_key_columns(db_path, parent_table, child_table, join_column)
 }
 
 /// Resolves one exact relationship endpoint pair against SQLite metadata.

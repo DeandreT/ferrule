@@ -215,6 +215,9 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
                     );
                 }
             }
+            Node::JoinAggregate { join, plan, .. } => {
+                super::validate_join::validate_plan(project, *join, plan, &location, issues)
+            }
             _ => {}
         }
     }
@@ -481,6 +484,13 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             .chain([("predicate".to_string(), *predicate)])
             .collect(),
         Node::Aggregate {
+            expression, arg, ..
+        } => expression
+            .iter()
+            .map(|&id| ("value expression".to_string(), id))
+            .chain(arg.iter().map(|&id| ("argument".to_string(), id)))
+            .collect(),
+        Node::JoinAggregate {
             expression, arg, ..
         } => expression
             .iter()

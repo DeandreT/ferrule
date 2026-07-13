@@ -366,6 +366,7 @@ fn node_kind_label(node: &mapping::Node) -> &'static str {
         mapping::Node::Lookup { .. } => "lookup",
         mapping::Node::SequenceExists { .. } => "sequence_exists",
         mapping::Node::Aggregate { .. } => "aggregate",
+        mapping::Node::JoinAggregate { .. } => "join_aggregate",
     }
 }
 

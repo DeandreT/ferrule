@@ -8,12 +8,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{SchemaKind, Value};
-use mapping::{
-    AggregateOp, Graph, NamedSource, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr,
-};
+use mapping::{Graph, NamedSource, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
 
 use crate::MfdError;
 
+mod aggregate;
 mod alternatives;
 mod db_query;
 mod db_where;
@@ -43,8 +42,7 @@ use function::{
 };
 use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use iteration::{
-    IntermediateFeed, IterationFeed, compatible_collection, note_iteration_control_order,
-    split_at_innermost_repeating,
+    IntermediateFeed, IterationFeed, note_iteration_control_order, split_at_innermost_repeating,
 };
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
@@ -232,7 +230,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     sources.swap(0, primary_source);
     let source_names = runtime_names(&sources);
     let primary = sources[0];
-    let joins = pending_joins.resolve(&edge_from, &sources, &mut warnings);
+    let joins = pending_joins.resolve(&edge_from, &sources, &source_names, &mut warnings);
 
     let mut builder = GraphBuilder {
         graph: Graph::default(),
@@ -610,21 +608,17 @@ impl GraphBuilder<'_> {
         }
         if let Some(op) = aggregate_op(&name).filter(|_| self.fn_components[idx].kind == 5) {
             let node = match self.aggregate_node(op, idx) {
-                Some(node) => node,
-                None => {
-                    self.warnings.push(format!(
-                        "aggregate `{name}` has an unresolvable sequence input; \
-                         imported as a plain call and will fail at run time until \
-                         replaced"
-                    ));
-                    let args = (0..self.fn_components[idx].inputs.len().max(1))
-                        .map(|_| self.const_null())
-                        .collect();
-                    Node::Call {
-                        function: name,
-                        args,
-                    }
-                }
+                Ok(Some(node)) => node,
+                Ok(None) => self.unsupported_aggregate_call(
+                    &name,
+                    idx,
+                    "has an unresolvable sequence input",
+                ),
+                Err(reason) => self.unsupported_aggregate_call(
+                    &name,
+                    idx,
+                    &format!("cannot import its sequence: {reason}"),
+                ),
             };
             self.graph.nodes.insert(id, node);
             return id;
@@ -751,99 +745,6 @@ impl GraphBuilder<'_> {
             .ok()
             .filter(|value| !matches!(value, Value::Float(value) if !value.is_finite()))?;
         Some(self.alloc(Node::Const { value }))
-    }
-
-    /// Converts an aggregate function component into a [`Node::Aggregate`].
-    /// The connected inputs split into source-entry feeds (sequence and,
-    /// optionally, an explicit parent-context before it) and scalar feeds
-    /// (join's separator, item-at's position). `None` when no input
-    /// resolves to a source entry.
-    fn aggregate_node(&mut self, op: AggregateOp, idx: usize) -> Option<Node> {
-        let fc = &self.fn_components[idx];
-        let sequence_feed = self.input_feed(idx, 1).or_else(|| {
-            (fc.inputs.len() == 1)
-                .then(|| self.input_feed(idx, 0))
-                .flatten()
-        })?;
-
-        let (collection_source, collection_abs, value, expression) =
-            if let Some(source_path) = self.sequence_source_path(sequence_feed) {
-                let schema = &self.sources.get(source_path.source)?.schema;
-                let (collection, value) = split_at_innermost_repeating(schema, &source_path.path);
-                (source_path.source, collection, value, None)
-            } else {
-                let source_schema = self.sources.first()?.schema.clone();
-                let mut dependencies = self.sequence_dependency_paths(sequence_feed);
-                if let Some(context) = self
-                    .input_feed(idx, 0)
-                    .and_then(|feed| self.sequence_source_path(feed))
-                    .filter(|path| path.source == 0)
-                {
-                    dependencies.push(context.path);
-                }
-                let collection = compatible_collection(&source_schema, &dependencies)?;
-                let expression = self.value_node_in_collection(sequence_feed, &collection)?;
-                (0, collection, Vec::new(), Some(expression))
-            };
-
-        let collection = self.collection_path(collection_source, &collection_abs)?;
-        let arg = self
-            .input_feed(idx, 2)
-            .and_then(|feed| self.value_node(feed));
-        Some(Node::Aggregate {
-            function: op,
-            collection,
-            value,
-            expression,
-            arg,
-        })
-    }
-
-    /// Source leaves used by a computed sequence expression. Aggregating
-    /// that expression iterates the deepest collection shared by the leaves;
-    /// outer leaves broadcast through the engine's normal context fallback.
-    fn sequence_dependency_paths(&self, feed: u32) -> Vec<Vec<String>> {
-        fn visit(
-            builder: &GraphBuilder<'_>,
-            feed: u32,
-            visited: &mut std::collections::BTreeSet<u32>,
-            paths: &mut Vec<Vec<String>>,
-        ) {
-            if !visited.insert(feed) {
-                return;
-            }
-            if let Some(path) = builder
-                .sources
-                .first()
-                .and_then(|source| source.ports.get(&feed))
-            {
-                paths.push(path.clone());
-                return;
-            }
-            let Some(&idx) = builder.fn_by_output.get(&feed) else {
-                return;
-            };
-            let component = &builder.fn_components[idx];
-            if aggregate_op(&component.name).is_some() && component.kind == 5
-                || is_distinct_values_component(component)
-            {
-                return;
-            }
-            for key in component.inputs.iter().flatten() {
-                if let Some(&input_feed) = builder.edge_from.get(key) {
-                    visit(builder, input_feed, visited, paths);
-                }
-            }
-        }
-
-        let mut paths = Vec::new();
-        visit(
-            self,
-            feed,
-            &mut std::collections::BTreeSet::new(),
-            &mut paths,
-        );
-        paths
     }
 
     fn position_collection(&self, idx: usize) -> Vec<String> {

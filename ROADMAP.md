@@ -86,8 +86,11 @@ High-value date/time/duration/missing-value functions execute natively. Non-repr
 operator order produces an actionable warning instead of silently claiming exact
 conversion. Core kind-32 joins lower to typed left-deep plans with composite equality
 keys, duplicate-preserving execution, projected fields, flattened positions, and
-filter/sort/item-limit controls. Nested non-repeating target projections reuse the
-owning tuple, while rejected join shapes suppress redundant downstream warnings.
+filter/sort/item-limit controls. Naked joined tuples can be counted or reduced through
+a computed scalar expression, including aggregate-only joins with an independent root
+plan. Nested non-repeating target projections reuse the owning tuple, while rejected
+join shapes suppress redundant downstream warnings. Canonical export round-trips
+root-context joins whose collections all belong to the primary source.
 
 - Normalize legacy and namespace-indexed XML entry encodings.
 - Add first-class generated sequences: `distinct-values`, `tokenize`,
@@ -257,13 +260,14 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 465 (464 executable plus the ignored local-sample survey).
+- Workspace tests: 479 (478 executable plus the ignored local-sample survey).
 - `.mfd` survey: 97/120 import, 57 warning-free.
 - Unsupported-function warnings: 2 (`auto-number` and `sleep`) across the
   expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
 - Generic unsupported binding/iteration warnings: 22/11 across the expanded
   importable set, down from 32/13 before structured join import.
+- Unresolvable aggregate warnings: 2, down from 4 after joined-tuple reduction.
 - Non-repeating structural-group warnings: 5 across the expanded importable set.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
   warnings, runtime failures, and invalid command usage.

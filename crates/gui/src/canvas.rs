@@ -178,6 +178,9 @@ pub fn layered_layout(
             } => sequence.inputs().into_iter().chain([*predicate]).collect(),
             mapping::Node::Aggregate {
                 expression, arg, ..
+            }
+            | mapping::Node::JoinAggregate {
+                expression, arg, ..
             } => expression.iter().chain(arg).copied().collect(),
         }
     }

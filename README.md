@@ -52,14 +52,16 @@ database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
 filter-, group-by-, distinct-values-, tokenizer-, and generated-range-driven iteration
 import directly. Core kind-32 inner equijoins import with duplicate-preserving tuple
-order, composite keys, projected fields, position, and filter/sort/item-limit controls;
+order, composite keys, projected fields, position, filter/sort/item-limit controls,
+and count or computed scalar aggregates over the joined tuples;
 `string` and decimal-safe `format-number` conversion are supported;
 everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
 writes the exportable subset back out as `.mfd` plus generated XSD / JSON Schema files,
-picking each side's component kind from the project's instance paths. Designs built
-on namespaces, `xsi:type` polymorphism, correlated/keyless joins, join export,
-multi-table database wiring, or other
+picking each side's component kind from the project's instance paths. Canonical
+structured-join export covers root-context collections inside the primary source.
+Designs built on namespaces, `xsi:type` polymorphism, correlated/keyless joins,
+multi-source or nested join export, joined aggregate export, multi-table database wiring, or other
 endpoints (Excel/FlexText/EDI-config components) are not converted yet.
 
 ```sh

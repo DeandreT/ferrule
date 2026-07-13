@@ -1,7 +1,10 @@
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use rusqlite::Connection;
 
-use super::{DbFormatError, ForeignKeySide, read_instance, resolve_foreign_key_relation};
+use super::{
+    DbFormatError, ForeignKeySide, read_instance, resolve_foreign_key_columns,
+    resolve_foreign_key_relation,
+};
 
 fn test_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -222,6 +225,101 @@ fn rejects_a_relation_that_matches_both_directions() {
 
     let error = read_instance(&path, &schema).unwrap_err();
     std::fs::remove_file(&path).unwrap();
+    assert!(matches!(
+        error,
+        DbFormatError::AmbiguousForeignKeyRelation {
+            parent_table,
+            child_table,
+            join_column,
+        } if parent_table == "parents" && child_table == "children" && join_column == "link_id"
+    ));
+}
+
+#[test]
+fn resolves_columns_when_the_child_owns_the_foreign_key() {
+    let path = test_path("child_owned_columns");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE parents (id INTEGER PRIMARY KEY); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER, \
+             FOREIGN KEY(parent_id) REFERENCES parents(id));",
+    )
+    .unwrap();
+    drop(conn);
+
+    let columns = resolve_foreign_key_columns(&path, "parents", "children", "parent_id").unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(columns.parent_column, "id");
+    assert_eq!(columns.child_column, "parent_id");
+}
+
+#[test]
+fn resolves_columns_when_the_parent_owns_the_foreign_key() {
+    let path = test_path("parent_owned_columns");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE groups (id INTEGER PRIMARY KEY); \
+         CREATE TABLE users (id INTEGER PRIMARY KEY, group_id INTEGER, \
+             FOREIGN KEY(group_id) REFERENCES groups(id));",
+    )
+    .unwrap();
+    drop(conn);
+
+    let columns = resolve_foreign_key_columns(&path, "users", "groups", "group_id").unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(columns.parent_column, "group_id");
+    assert_eq!(columns.child_column, "id");
+}
+
+#[test]
+fn column_resolution_rejects_a_missing_relation() {
+    let path = test_path("missing_columns");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE parents (id INTEGER PRIMARY KEY); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER);",
+    )
+    .unwrap();
+    drop(conn);
+
+    let error = resolve_foreign_key_columns(&path, "parents", "children", "parent_id").unwrap_err();
+    std::fs::remove_file(&path).unwrap();
+
+    assert!(matches!(
+        error,
+        DbFormatError::MissingForeignKeyRelation {
+            parent_table,
+            child_table,
+            join_column,
+        } if parent_table == "parents" && child_table == "children" && join_column == "parent_id"
+    ));
+}
+
+#[test]
+fn column_resolution_rejects_relations_in_both_directions() {
+    let path = test_path("ambiguous_columns");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE parents (id INTEGER PRIMARY KEY, link_id INTEGER, \
+             FOREIGN KEY(link_id) REFERENCES children(id)); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, link_id INTEGER, \
+             FOREIGN KEY(link_id) REFERENCES parents(id));",
+    )
+    .unwrap();
+    drop(conn);
+
+    let error = resolve_foreign_key_columns(&path, "parents", "children", "link_id").unwrap_err();
+    std::fs::remove_file(&path).unwrap();
+
     assert!(matches!(
         error,
         DbFormatError::AmbiguousForeignKeyRelation {

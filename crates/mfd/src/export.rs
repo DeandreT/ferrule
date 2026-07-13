@@ -1,20 +1,17 @@
-//! `mapping::Project` -> `.mfd` conversion for the supported subset, plus
-//! generated schema files (XSD / JSON Schema) next to the design so
-//! MapForce can resolve them. The component family per side follows the
-//! project's instance-path extension: `.json` becomes a json component,
-//! `.csv`/`.txt` a csv text component, everything else (including no path
-//! at all) an XML component.
+//! `mapping::Project` -> `.mfd` conversion for the supported subset, with
+//! generated schemas and component families selected from instance paths.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-use mapping::{Graph, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
+use mapping::{Graph, JoinId, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
 
 use crate::MfdError;
 
 mod artifact;
 mod function;
+mod join;
 mod mapped_sequence;
 mod position;
 mod schema;
@@ -26,17 +23,15 @@ use function::{
     aggregate_component_name, constant_parts, function_library, unmap_function_name, value_text,
 };
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
-use position::connect_position_roots;
+use position::{connect_join_position_roots, connect_position_roots, render_component};
 use schema::{
     KeyAlloc, PortMatch, PortTree, Side, SideFormat, db_datasource_name, render_schema_component,
     side_format, xml_escape,
 };
 use sequence::{SequenceExistsPins, collect_scope_sequences};
 
-/// Writes `project` as a MapForce design at `path`, plus generated schema
-/// siblings (`<stem>-source.xsd` / `.schema.json`, dito target) where the
-/// component family needs one. Returns warnings for the parts that have no
-/// `.mfd` representation and were skipped.
+/// Writes a MapForce design and generated schema siblings, returning warnings
+/// for project features that have no export representation.
 pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut warnings = Vec::new();
 
@@ -49,13 +44,14 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     let source_format = side_format(&project.source_path);
     let target_format = side_format(&project.target_path);
+    let target_root_iterable = matches!(target_format, SideFormat::Csv | SideFormat::Db)
+        || (target_format == SideFormat::Json && project.target.repeating);
     let mapped_scope_plans = preflight_mapped_sequences(project, target_format)?;
 
     let mut keys = KeyAlloc { next: 1 };
     let source_ports = PortTree::build(&project.source, &mut keys);
     let target_ports = PortTree::build(&project.target, &mut keys);
 
-    // Output key for each mapping node we can represent.
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
     let mut position_inputs: BTreeMap<NodeId, u32> = BTreeMap::new();
@@ -63,6 +59,18 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut edges: Vec<(u32, u32)> = Vec::new();
     let mut structural_edges = BTreeSet::new();
     let mut uid = 100u32;
+    let joins = join::render(join::RenderJoinArgs {
+        project,
+        source_ports: &source_ports,
+        target_ports: &target_ports,
+        target_root_iterable,
+        keys: &mut keys,
+        uid: &mut uid,
+        node_out_key: &mut node_out_key,
+        components: &mut components,
+        edges: &mut edges,
+        warnings: &mut warnings,
+    });
     let mut sequence_inputs = Vec::new();
     let mut sequences = Vec::new();
     collect_scope_sequences(&project.root, &mut sequences);
@@ -108,8 +116,10 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         );
     }
     let mut sequence_exists_pins = Vec::new();
-    let mut warned_joins = BTreeSet::new();
     for (&id, node) in &project.graph.nodes {
+        if joins.node_blocked(id) {
+            continue;
+        }
         match node {
             Node::SourceField { path, frame } => {
                 if node_out_key.contains_key(&id) {
@@ -141,28 +151,17 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 }
             }
             Node::Position { .. } => {
-                let input = keys.next();
-                let out = keys.next();
+                let (input, out) = render_component(&mut keys, &mut uid, &mut components);
                 node_out_key.insert(id, out);
                 position_inputs.insert(id, input);
-                uid += 1;
-                let _ = write!(
-                    components,
-                    "\t\t\t\t<component name=\"position\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{input}\"/></sources>\n\
-                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
-                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                     \t\t\t\t</component>\n"
-                );
             }
-            Node::JoinField { join, .. } | Node::JoinPosition { join } => {
-                if warned_joins.insert(*join) {
-                    warnings.push(format!(
-                        "inner join {} is not exported; its iteration and node connections are skipped",
-                        join.get()
-                    ));
-                }
+            Node::JoinPosition { join } if joins.supports(*join) => {
+                let (input, out) = render_component(&mut keys, &mut uid, &mut components);
+                node_out_key.insert(id, out);
+                position_inputs.insert(id, input);
             }
+            Node::JoinField { .. } | Node::JoinPosition { .. } => {}
+            Node::JoinAggregate { .. } => {}
             Node::Lookup {
                 collection,
                 key,
@@ -272,8 +271,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 if expression.is_some() {
                     dynamic_inputs.push(in_sequence);
                 } else {
-                    // A path-selected sequence wires straight to its source
-                    // entry; computed sequences wire their graph expression.
+                    // Path sequences wire to their source; computed ones use their expression.
                     let mut sequence = collection.clone();
                     sequence.extend(value.iter().cloned());
                     let sequence_key = match source_ports.match_suffix(&sequence) {
@@ -479,10 +477,6 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         }
     }
 
-    // A root-scope iteration is only representable when the target side
-    // has a row/array-shaped document root to connect to.
-    let target_root_iterable = matches!(target_format, SideFormat::Csv | SideFormat::Db)
-        || (target_format == SideFormat::Json && project.target.repeating);
     let mut filter_components = String::new();
     let mut position_contexts: BTreeMap<NodeId, Option<u32>> = BTreeMap::new();
     for pins in sequence_exists_pins {
@@ -524,6 +518,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         false,
         &mut structural_edges,
         &mapped_scope_plans,
+        &joins,
     );
     for (id, input) in &position_inputs {
         if !position_contexts.contains_key(id) {
@@ -534,8 +529,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     }
     components.push_str(&filter_components);
 
-    // Database sides register their connection as a mapping-level
-    // datasource, which the components reference by name.
+    // Database components reference a mapping-level datasource.
     let mut datasources: Vec<(String, String)> = Vec::new();
     for (format, instance) in [
         (source_format, project.source_path.as_deref()),
@@ -638,11 +632,49 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     {
         artifacts.push((sibling.path, sibling.contents));
     }
-    // Publish the design last so it never references schema siblings that
-    // have not reached their final paths.
+    // Publish the design after its schema siblings reach their final paths.
     artifacts.push((path.to_path_buf(), out));
     write_artifacts(artifacts)?;
     Ok(warnings)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn connect_scope_position_roots(
+    roots: impl IntoIterator<Item = NodeId>,
+    source_collection: Option<&[String]>,
+    join: Option<JoinId>,
+    allow_empty: bool,
+    from: u32,
+    graph: &Graph,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+) {
+    let roots = roots.into_iter().collect::<Vec<_>>();
+    connect_position_roots(
+        roots.iter().copied(),
+        source_collection,
+        allow_empty,
+        from,
+        graph,
+        position_inputs,
+        position_contexts,
+        edges,
+        warnings,
+    );
+    if let Some(join) = join {
+        connect_join_position_roots(
+            roots.iter().copied(),
+            join,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -650,6 +682,7 @@ fn append_scope_controls(
     scope: &Scope,
     chain: &[String],
     source_collection: Option<&[String]>,
+    join: Option<JoinId>,
     graph: &Graph,
     node_out_key: &BTreeMap<NodeId, u32>,
     position_inputs: &BTreeMap<NodeId, u32>,
@@ -662,9 +695,10 @@ fn append_scope_controls(
     mut from: u32,
 ) -> u32 {
     if let Some(sort_by) = scope.sort_by {
-        connect_position_roots(
+        connect_scope_position_roots(
             [sort_by],
             source_collection,
+            join,
             true,
             from,
             graph,
@@ -704,9 +738,10 @@ fn append_scope_controls(
         }
     }
     if let Some(filter) = scope.filter {
-        connect_position_roots(
+        connect_scope_position_roots(
             [filter],
             source_collection,
+            join,
             true,
             from,
             graph,
@@ -740,9 +775,10 @@ fn append_scope_controls(
         }
     }
     if let Some(group_by) = scope.group_by {
-        connect_position_roots(
+        connect_scope_position_roots(
             [group_by],
             source_collection,
+            join,
             true,
             from,
             graph,
@@ -776,9 +812,10 @@ fn append_scope_controls(
         }
     }
     if let Some(predicate) = scope.group_starting_with {
-        connect_position_roots(
+        connect_scope_position_roots(
             [predicate],
             source_collection,
+            join,
             true,
             from,
             graph,
@@ -812,9 +849,10 @@ fn append_scope_controls(
         }
     }
     if let Some(block_size) = scope.group_into_blocks {
-        connect_position_roots(
+        connect_scope_position_roots(
             [block_size],
             source_collection,
+            join,
             true,
             from,
             graph,
@@ -848,9 +886,10 @@ fn append_scope_controls(
         }
     }
     if let Some(take) = scope.take {
-        connect_position_roots(
+        connect_scope_position_roots(
             [take],
             source_collection,
+            join,
             true,
             from,
             graph,
@@ -897,6 +936,7 @@ fn descendant_binding_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
 fn connect_binding_positions(
     scope: &Scope,
     source_collection: Option<&[String]>,
+    join: Option<JoinId>,
     from: u32,
     graph: &Graph,
     position_inputs: &BTreeMap<NodeId, u32>,
@@ -904,9 +944,10 @@ fn connect_binding_positions(
     edges: &mut Vec<(u32, u32)>,
     warnings: &mut Vec<String>,
 ) {
-    connect_position_roots(
+    connect_scope_position_roots(
         scope.bindings.iter().map(|binding| binding.node),
         source_collection,
+        join,
         true,
         from,
         graph,
@@ -916,15 +957,15 @@ fn connect_binding_positions(
         warnings,
     );
 
-    // A nested binding can explicitly request an outer named collection.
-    // Empty-path positions remain owned by the nested scope itself.
+    // Named collections can be outer-owned; empty paths stay nested-owned.
     let mut descendant_roots = Vec::new();
     for child in &scope.children {
         descendant_binding_roots(child, &mut descendant_roots);
     }
-    connect_position_roots(
+    connect_scope_position_roots(
         descendant_roots,
         source_collection,
+        join,
         false,
         from,
         graph,
@@ -955,25 +996,42 @@ fn collect_scope_edges(
     suppress_mapped_bindings: bool,
     structural_edges: &mut BTreeSet<(u32, u32)>,
     mapped_scope_plans: &ScopePlans,
+    joins: &join::JoinExports,
 ) {
     let mapped_plan = mapped_scope_plans.get(chain);
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all);
     let anchor_len = anchor.len();
     if let Some((join, _)) = scope.join() {
-        let has_join_node = graph.nodes.values().any(|node| {
-            matches!(
-                node,
-                Node::JoinField { join: owner, .. } | Node::JoinPosition { join: owner }
-                    if *owner == join
-            )
-        });
-        if !has_join_node {
-            warnings.push(format!(
-                "scope `{}` uses inner join {}; its iteration wire is not exported",
-                chain.join("/"),
-                join.get()
-            ));
+        if let (Some(from), Some(to)) = (joins.row_output(join), target_ports.key_for_abs(chain)) {
+            let from = append_scope_controls(
+                scope,
+                chain,
+                None,
+                Some(join),
+                graph,
+                node_out_key,
+                position_inputs,
+                position_contexts,
+                keys,
+                uid,
+                filter_components,
+                edges,
+                warnings,
+                from,
+            );
+            connect_binding_positions(
+                scope,
+                None,
+                Some(join),
+                from,
+                graph,
+                position_inputs,
+                position_contexts,
+                edges,
+                warnings,
+            );
+            edges.push((from, to));
         }
     } else if let Some(sequence) = scope.sequence() {
         if chain.is_empty() && !target_root_iterable {
@@ -992,6 +1050,7 @@ fn collect_scope_edges(
                         scope,
                         chain,
                         None,
+                        None,
                         graph,
                         node_out_key,
                         position_inputs,
@@ -1005,6 +1064,7 @@ fn collect_scope_edges(
                     );
                     connect_binding_positions(
                         scope,
+                        None,
                         None,
                         from,
                         graph,
@@ -1046,6 +1106,7 @@ fn collect_scope_edges(
                     scope,
                     chain,
                     Some(&abs),
+                    None,
                     graph,
                     node_out_key,
                     position_inputs,
@@ -1060,6 +1121,7 @@ fn collect_scope_edges(
                 connect_binding_positions(
                     scope,
                     Some(&abs),
+                    None,
                     from,
                     graph,
                     position_inputs,
@@ -1091,6 +1153,7 @@ fn collect_scope_edges(
             target_ports.key_for_abs(&leaf),
         ) {
             (Some(&from), Some(to)) => edges.push((from, to)),
+            (None, _) if joins.node_blocked(binding.node) => {}
             (None, _)
                 if matches!(
                     graph.nodes.get(&binding.node),
@@ -1127,6 +1190,7 @@ fn collect_scope_edges(
             suppress_mapped_bindings,
             structural_edges,
             mapped_scope_plans,
+            joins,
         );
         chain.pop();
     }

@@ -4,7 +4,9 @@ use ir::{Instance, ScalarType, SchemaKind, SchemaNode};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params};
 
-use super::{DbFormatError, ForeignKeyRelation, ForeignKeySide, quote, read, read_value};
+use super::{
+    DbFormatError, ForeignKeyColumns, ForeignKeyRelation, ForeignKeySide, quote, read, read_value,
+};
 
 struct TablePlan<'a> {
     schema: &'a SchemaNode,
@@ -162,6 +164,16 @@ pub(super) fn resolve_foreign_key_relation(
             child_column: child_column.to_string(),
         }),
     }
+}
+
+pub(super) fn resolve_foreign_key_columns(
+    db_path: &Path,
+    parent_table: &str,
+    child_table: &str,
+    join_column: &str,
+) -> Result<ForeignKeyColumns, DbFormatError> {
+    let conn = Connection::open(db_path)?;
+    relation_columns(&conn, parent_table, child_table, join_column)
 }
 
 fn is_flat_table(schema: &SchemaNode) -> bool {
@@ -348,6 +360,21 @@ fn resolve_relation<'a>(
         ));
     }
 
+    let columns = relation_columns(conn, parent_table, child_table, join_column)?;
+    let child = build_table_plan(conn, schema, child_table)?;
+    Ok(Relation {
+        child: Box::new(child),
+        parent_key: columns.parent_column,
+        child_key: columns.child_column,
+    })
+}
+
+fn relation_columns(
+    conn: &Connection,
+    parent_table: &str,
+    child_table: &str,
+    join_column: &str,
+) -> Result<ForeignKeyColumns, DbFormatError> {
     let child_foreign_keys = foreign_keys(conn, child_table)?;
     let parent_foreign_keys = foreign_keys(conn, parent_table)?;
     let mut candidates = Vec::new();
@@ -365,7 +392,7 @@ fn resolve_relation<'a>(
         }
     }
 
-    let (parent_key, child_key) = match candidates.as_slice() {
+    let (parent_column, child_column) = match candidates.as_slice() {
         [] => {
             return Err(DbFormatError::MissingForeignKeyRelation {
                 parent_table: parent_table.to_string(),
@@ -382,11 +409,9 @@ fn resolve_relation<'a>(
             });
         }
     };
-    let child = build_table_plan(conn, schema, child_table)?;
-    Ok(Relation {
-        child: Box::new(child),
-        parent_key,
-        child_key,
+    Ok(ForeignKeyColumns {
+        parent_column,
+        child_column,
     })
 }
 

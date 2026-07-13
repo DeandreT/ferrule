@@ -86,10 +86,30 @@ pub(super) fn validate_roots(
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    validate_roots_inner(
+        graph,
+        roots,
+        active_joins,
+        location,
+        project,
+        issues,
+        &mut BTreeSet::new(),
+    );
+}
+
+fn validate_roots_inner(
+    graph: &Graph,
+    roots: impl IntoIterator<Item = NodeId>,
+    active_joins: &[(JoinId, Vec<Vec<String>>)],
+    location: &str,
+    project: &Project,
+    issues: &mut Vec<ValidationIssue>,
+    ancestors: &mut BTreeSet<NodeId>,
+) {
     let mut pending: Vec<_> = roots.into_iter().collect();
     let mut visited = BTreeSet::new();
     while let Some(id) = pending.pop() {
-        if !visited.insert(id) {
+        if ancestors.contains(&id) || !visited.insert(id) {
             continue;
         }
         let Some(node) = graph.nodes.get(&id) else {
@@ -137,6 +157,35 @@ pub(super) fn validate_roots(
                         join.get()
                     ),
                 ));
+            }
+            Node::JoinAggregate {
+                join,
+                plan,
+                expression,
+                arg,
+                ..
+            } => {
+                pending.extend(arg);
+                if let Some(expression) = expression {
+                    let mut local_joins = active_joins.to_vec();
+                    local_joins.push((
+                        *join,
+                        plan.sources()
+                            .map(|source| source.collection().to_vec())
+                            .collect(),
+                    ));
+                    ancestors.insert(id);
+                    validate_roots_inner(
+                        graph,
+                        [*expression],
+                        &local_joins,
+                        location,
+                        project,
+                        issues,
+                        ancestors,
+                    );
+                    ancestors.remove(&id);
+                }
             }
             _ => pending.extend(node_inputs(node).into_iter().map(|(_, input)| input)),
         }

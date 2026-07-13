@@ -163,6 +163,7 @@ pub(super) struct Registry {
 struct ResolvedJoin {
     parsed: ParsedJoin,
     inputs: Vec<ResolvedInput>,
+    root: PlannedJoin,
     planned: Option<PlannedJoin>,
     target_path: Option<Vec<String>>,
 }
@@ -211,6 +212,7 @@ impl PendingJoins {
         self,
         edge_from: &BTreeMap<u32, u32>,
         sources: &[&SchemaComponent],
+        source_names: &[String],
         warnings: &mut Vec<String>,
     ) -> Registry {
         let mut registry = Registry {
@@ -229,7 +231,7 @@ impl PendingJoins {
                 ));
                 continue;
             }
-            match resolve_join(&pending, edge_from, sources) {
+            match resolve_join(&pending, edge_from, sources, source_names) {
                 Ok(resolved) => registry.insert(pending.id, resolved),
                 Err(reason) => {
                     registry.reject(&pending.parsed);
@@ -336,27 +338,7 @@ impl Registry {
             })
             .collect::<Result<Vec<_>, String>>()?;
         let planned = join.parsed.to_plan(&collections)?;
-        for output in &planned.outputs {
-            let input = join
-                .inputs
-                .get(output.input_index)
-                .ok_or("join output references an unknown input")?;
-            let mut absolute = input.path.clone();
-            absolute.extend(output.path.iter().cloned());
-            if !output.path.is_empty()
-                && !sources
-                    .get(input.source)
-                    .and_then(|source| schema_node_at(&source.schema, &absolute))
-                    .is_some_and(|node| {
-                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                    })
-            {
-                return Err(format!(
-                    "output port {} does not project a scalar descendant",
-                    output.port
-                ));
-            }
-        }
+        validate_outputs(&planned, &join.inputs, sources)?;
         join.target_path = Some(target_path.to_vec());
         join.planned = Some(planned);
         Ok(PreparedIteration::Owner)
@@ -366,8 +348,23 @@ impl Registry {
         self.joins.get(&id)?.planned.as_ref()
     }
 
+    fn activate_root_plan(&mut self, id: JoinId) -> Option<JoinPlan> {
+        let join = self.joins.get_mut(&id)?;
+        if let Some(planned) = &join.planned
+            && planned.plan != join.root.plan
+        {
+            return None;
+        }
+        join.planned.get_or_insert_with(|| join.root.clone());
+        Some(join.root.plan.clone())
+    }
+
     fn field(&self, port: u32) -> Option<&ResolvedField> {
         self.field_outputs.get(&port)
+    }
+
+    fn field_join(&self, port: u32) -> Option<JoinId> {
+        self.field(port).map(|field| field.join)
     }
 }
 
@@ -452,6 +449,137 @@ impl GraphBuilder<'_> {
 
     pub(super) fn join_plan(&self, id: JoinId) -> Option<JoinPlan> {
         self.joins.planned(id).map(|join| join.plan.clone())
+    }
+
+    /// Resolves a naked joined tuple sequence, or a scalar expression whose
+    /// dynamic leaves all belong to one root-context join. Sequence controls
+    /// and physical source leaves deliberately stop provenance so aggregates
+    /// cannot silently broaden or change their iteration context.
+    pub(super) fn join_aggregate_sequence(
+        &mut self,
+        feed: u32,
+    ) -> Result<Option<(JoinId, JoinPlan, Option<NodeId>)>, String> {
+        if let Some(join) = self.joins.row_join(feed) {
+            let plan = self.joins.activate_root_plan(join).ok_or_else(|| {
+                "joined sequence is owned by an incompatible nested context".to_string()
+            })?;
+            return Ok(Some((join, plan, None)));
+        }
+
+        fn merge(owner: &mut Option<JoinId>, candidate: JoinId) -> Result<(), ()> {
+            match *owner {
+                Some(existing) if existing != candidate => Err(()),
+                Some(_) => Ok(()),
+                None => {
+                    *owner = Some(candidate);
+                    Ok(())
+                }
+            }
+        }
+
+        fn visit(
+            builder: &GraphBuilder<'_>,
+            port: u32,
+            visiting: &mut BTreeSet<u32>,
+            visited: &mut BTreeSet<u32>,
+            owner: &mut Option<JoinId>,
+        ) -> Result<(), ()> {
+            if visited.contains(&port) {
+                return Ok(());
+            }
+            if !visiting.insert(port) {
+                return Err(());
+            }
+            let result = if let Some(join) = builder.joins.row_join(port) {
+                merge(owner, join)
+            } else if let Some(join) = builder.joins.field_join(port) {
+                merge(owner, join)
+            } else if builder.joins.output_rejected(port)
+                || builder.source_abs_path(port).is_some()
+                || builder.intermediate_feed(port).is_some()
+                || builder.udf_by_output.contains_key(&port)
+            {
+                Err(())
+            } else {
+                let &index = builder.fn_by_output.get(&port).ok_or(())?;
+                let component = &builder.fn_components[index];
+                if !super::function::produces_scalar(component)
+                    || super::function::aggregate_op(&component.name).is_some()
+                {
+                    return Err(());
+                }
+                for input in component.inputs.iter().flatten() {
+                    if let Some(&upstream) = builder.edge_from.get(input) {
+                        visit(builder, upstream, visiting, visited, owner)?;
+                    }
+                }
+                Ok(())
+            };
+            visiting.remove(&port);
+            if result.is_ok() {
+                visited.insert(port);
+            }
+            result
+        }
+
+        let joined_dependency = self.join_dependency_any(feed);
+        let mut owner = None;
+        if visit(
+            self,
+            feed,
+            &mut BTreeSet::new(),
+            &mut BTreeSet::new(),
+            &mut owner,
+        )
+        .is_err()
+        {
+            return if joined_dependency {
+                Err(
+                    "sequence expression mixes joined tuples with an unsupported context"
+                        .to_string(),
+                )
+            } else {
+                Ok(None)
+            };
+        }
+        let Some(join) = owner else {
+            return Ok(None);
+        };
+        let plan = self.joins.activate_root_plan(join).ok_or_else(|| {
+            "joined sequence is owned by an incompatible nested context".to_string()
+        })?;
+        let expression = self
+            .value_node(feed)
+            .ok_or_else(|| "joined sequence expression cannot be materialized".to_string())?;
+        Ok(Some((join, plan, Some(expression))))
+    }
+
+    pub(super) fn join_dependency_any(&self, port: u32) -> bool {
+        fn visit(builder: &GraphBuilder<'_>, port: u32, visited: &mut BTreeSet<u32>) -> bool {
+            if !visited.insert(port) {
+                return false;
+            }
+            if builder.joins.row_join(port).is_some()
+                || builder.joins.field_join(port).is_some()
+                || builder.joins.output_rejected(port)
+            {
+                return true;
+            }
+            if let Some(intermediate) = builder.intermediate_feed(port) {
+                return visit(builder, intermediate.feed, visited);
+            }
+            let Some(&component) = builder.fn_by_output.get(&port) else {
+                return false;
+            };
+            builder.fn_components[component]
+                .inputs
+                .iter()
+                .flatten()
+                .filter_map(|input| builder.edge_from.get(input).copied())
+                .any(|feed| visit(builder, feed, visited))
+        }
+
+        visit(self, port, &mut BTreeSet::new())
     }
 
     pub(super) fn join_dependency_rejected(&self, port: u32) -> bool {
@@ -553,6 +681,7 @@ fn resolve_join(
     pending: &PendingJoin,
     edge_from: &BTreeMap<u32, u32>,
     sources: &[&SchemaComponent],
+    source_names: &[String],
 ) -> Result<ResolvedJoin, String> {
     let mut inputs = Vec::with_capacity(pending.parsed.inputs.len());
     for input in &pending.parsed.inputs {
@@ -605,12 +734,60 @@ fn resolve_join(
             }
         }
     }
+    let collections = inputs
+        .iter()
+        .map(|input| {
+            let mut collection = if input.source == 0 {
+                Vec::new()
+            } else {
+                vec![
+                    source_names
+                        .get(input.source)
+                        .cloned()
+                        .ok_or("join source has no runtime name")?,
+                ]
+            };
+            collection.extend(input.path.iter().cloned());
+            Ok(collection)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let root = pending.parsed.to_plan(&collections)?;
+    validate_outputs(&root, &inputs, sources)?;
     Ok(ResolvedJoin {
         parsed: pending.parsed.clone(),
         inputs,
+        root,
         planned: None,
         target_path: None,
     })
+}
+
+fn validate_outputs(
+    planned: &PlannedJoin,
+    inputs: &[ResolvedInput],
+    sources: &[&SchemaComponent],
+) -> Result<(), String> {
+    for output in &planned.outputs {
+        let input = inputs
+            .get(output.input_index)
+            .ok_or("join output references an unknown input")?;
+        let mut absolute = input.path.clone();
+        absolute.extend(output.path.iter().cloned());
+        if !output.path.is_empty()
+            && !sources
+                .get(input.source)
+                .and_then(|source| schema_node_at(&source.schema, &absolute))
+                .is_some_and(|node| {
+                    !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                })
+        {
+            return Err(format!(
+                "output port {} does not project a scalar descendant",
+                output.port
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn declared_output_ports(component: XmlNode<'_, '_>) -> (BTreeSet<u32>, BTreeSet<u32>) {
@@ -963,122 +1140,5 @@ fn optional_port(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const TWO_WAY: &str = include_str!("../../tests/fixtures/join-two-way.mfd");
-    const THREE_WAY: &str = include_str!("../../tests/fixtures/join-three-way.mfd");
-    const MALFORMED: &str = include_str!("../../tests/fixtures/join-malformed.mfd");
-
-    fn parse_fixture(text: &str) -> Result<ParsedJoin, String> {
-        let document = roxmltree::Document::parse(text).map_err(|error| error.to_string())?;
-        let component = document
-            .descendants()
-            .find(|node| node.has_tag_name("component") && node.attribute("kind") == Some("32"))
-            .ok_or("fixture has no join component")?;
-        parse(&component)
-    }
-
-    #[test]
-    fn parses_two_way_join_ports_outputs_and_paths() {
-        let join = parse_fixture(TWO_WAY).unwrap();
-        assert_eq!(join.tuple_output, Some(90));
-        assert_eq!(join.inputs.len(), 2);
-        assert_eq!(
-            join.inputs[0],
-            JoinInput {
-                index: 0,
-                name: "Left".to_string(),
-                input_port: 10,
-                outputs: vec![
-                    JoinOutput {
-                        port: 11,
-                        path: Vec::new(),
-                    },
-                    JoinOutput {
-                        port: 12,
-                        path: vec!["Label".to_string()],
-                    },
-                ],
-            }
-        );
-        assert_eq!(join.equalities.len(), 1);
-        assert_eq!(join.equalities[0].first.input_index, 0);
-        assert_eq!(join.equalities[0].first.path, ["Id"]);
-        assert_eq!(join.equalities[0].second.input_index, 1);
-        assert_eq!(join.equalities[0].second.path, ["Code"]);
-
-        let planned = join
-            .to_plan(&[vec!["Orders".into()], vec!["Catalog".into()]])
-            .unwrap();
-        assert_eq!(planned.plan.sources().count(), 2);
-        assert_eq!(planned.plan.stages().count(), 1);
-        assert!(planned.outputs.iter().any(|output| {
-            output.port == 12 && output.collection == ["Orders"] && output.path == ["Label"]
-        }));
-    }
-
-    #[test]
-    fn parses_three_way_join_with_explicit_later_input_indices() {
-        let join = parse_fixture(THREE_WAY).unwrap();
-        assert_eq!(join.inputs.len(), 3);
-        assert_eq!(join.equalities.len(), 2);
-        assert_eq!(
-            join.equalities
-                .iter()
-                .map(|equality| (equality.first.input_index, equality.second.input_index))
-                .collect::<Vec<_>>(),
-            [(0, 1), (1, 2)]
-        );
-        let planned = join
-            .to_plan(&[
-                vec!["Office".into()],
-                vec!["Department".into()],
-                vec!["Person".into()],
-            ])
-            .unwrap();
-        assert_eq!(planned.plan.sources().count(), 3);
-        assert_eq!(planned.plan.stages().count(), 2);
-    }
-
-    #[test]
-    fn rejects_noncontiguous_input_fixture() {
-        let error = parse_fixture(MALFORMED).unwrap_err();
-        assert!(error.contains("contiguous from 0"), "{error}");
-    }
-
-    #[test]
-    fn rejects_ambiguous_or_unsupported_join_metadata() {
-        for (text, expected) in [
-            (
-                TWO_WAY.replace(
-                    "<joinkeys><keypair>",
-                    "<joinkeys><keypair><first-key path-id=\"1\" input-index=\"0\"/><second-key path-id=\"2\" input-index=\"0\"/></keypair><keypair>",
-                ),
-                "distinct inputs",
-            ),
-            (
-                TWO_WAY.replace("<second-key path-id=\"2\"/>", "<second-key path-id=\"2\" input-index=\"2\"/>"),
-                "out of range",
-            ),
-            (
-                TWO_WAY.replace(
-                    "<joinkeys><keypair><first-key path-id=\"1\"/><second-key path-id=\"2\"/></keypair></joinkeys>",
-                    "<joinkeys/>",
-                ),
-                "at least one equality",
-            ),
-            (
-                TWO_WAY.replace("<condition/>", "<condition><expression/></condition>"),
-                "custom key-path conditions",
-            ),
-            (
-                TWO_WAY.replace("outkey=\"2\"", "outkey=\"1\""),
-                "repeats key path id",
-            ),
-        ] {
-            let error = parse_fixture(&text).unwrap_err();
-            assert!(error.contains(expected), "expected `{expected}`, got `{error}`");
-        }
-    }
-}
+#[path = "join_tests.rs"]
+mod tests;
