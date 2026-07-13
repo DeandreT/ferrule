@@ -1,6 +1,6 @@
 use super::*;
 use crate::layout_store::layout_path;
-use ir::ScalarType;
+use ir::{ScalarType, SchemaNode};
 use mapping::Binding;
 
 fn canvas_position(snarl: &Snarl<CanvasNode>, wanted: CanvasNode) -> egui::Pos2 {
