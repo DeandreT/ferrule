@@ -13,6 +13,8 @@ use crate::import::schema::{
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::source::SourcePath;
 
+mod record;
+
 #[derive(Clone)]
 pub(super) struct Recipe {
     source: RecipeSource,
@@ -23,6 +25,7 @@ pub(super) struct Recipe {
 #[derive(Clone, Copy)]
 enum RecipeSource {
     Catalog { port: u32 },
+    RecordParameter { component_id: u32 },
     SequenceParameter { component_id: u32 },
 }
 
@@ -92,6 +95,21 @@ pub(super) fn read(
         && is_sequence_parameter(catalog_node)
     {
         return read_aggregate_record(
+            &structure,
+            &children,
+            catalog_node,
+            output_node,
+            &catalog,
+            &output,
+            schema_warnings,
+        );
+    }
+    if catalog.is_source
+        && catalog.input_instance.is_none()
+        && !output.is_source
+        && record::is_input_parameter(catalog_node)
+    {
+        return record::read(
             &structure,
             &children,
             catalog_node,
@@ -460,6 +478,17 @@ fn flat_group_fields(schema: &ir::SchemaNode) -> bool {
 }
 
 fn parameter_outputs(functions: &[FnComponent], ids: &[u32]) -> Result<BTreeMap<u32, u32>, String> {
+    let parameters = scalar_parameter_outputs(functions, ids)?;
+    if parameters.is_empty() {
+        return Err("structured lookup has no scalar parameters".to_string());
+    }
+    Ok(parameters)
+}
+
+fn scalar_parameter_outputs(
+    functions: &[FnComponent],
+    ids: &[u32],
+) -> Result<BTreeMap<u32, u32>, String> {
     let mut parameters = BTreeMap::new();
     for (index, function) in functions
         .iter()
@@ -473,9 +502,6 @@ fn parameter_outputs(functions: &[FnComponent], ids: &[u32]) -> Result<BTreeMap<
             ));
         };
         parameters.insert(*output, ids[index]);
-    }
-    if parameters.is_empty() {
-        return Err("structured lookup has no scalar parameters".to_string());
     }
     Ok(parameters)
 }
@@ -627,7 +653,7 @@ pub(in crate::import) fn accept_target(
         return false;
     }
     match recipe.source {
-        RecipeSource::Catalog { .. } => {
+        RecipeSource::Catalog { .. } | RecipeSource::RecordParameter { .. } => {
             !target_node.repeating
                 && target.ports.iter().all(|(key, path)| {
                     path.len() <= target_path.len()
@@ -718,6 +744,16 @@ fn build_target(
             &call_inputs,
             &recipe,
             port,
+        ),
+        RecipeSource::RecordParameter { component_id } => record::build_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &call_inputs,
+            &structured_inputs,
+            &recipe,
+            component_id,
         ),
         RecipeSource::SequenceParameter { component_id } => build_aggregate_target(
             target_path,
