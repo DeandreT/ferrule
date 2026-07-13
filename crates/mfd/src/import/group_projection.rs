@@ -124,8 +124,10 @@ pub(super) fn classify_target_connection(
     if target_path.is_empty() {
         // Document-root connectors normally carry structural context only.
         // Treat one as a copy request only for an exact plain group feed.
-        let row_shaped = matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
-            || (target.format == ComponentFormat::Json && target_node.repeating);
+        let row_shaped = matches!(
+            target.format,
+            ComponentFormat::Csv | ComponentFormat::Xlsx | ComponentFormat::Db
+        ) || (target.format == ComponentFormat::Json && target_node.repeating);
         if row_shaped {
             iterations.push(TargetIteration::repeated(target_path, feed));
         } else if copy_all && has_connected_descendant(target, target_path, builder) {
@@ -282,7 +284,8 @@ fn is_group_sequence_path(
         return false;
     };
     let mut node = &source.schema;
-    let mut repeats = node.repeating || source.format == ComponentFormat::Csv;
+    let mut repeats =
+        node.repeating || matches!(source.format, ComponentFormat::Csv | ComponentFormat::Xlsx);
     for segment in &source_path.path {
         let Some(child) = node.child(segment) else {
             return false;
@@ -343,8 +346,10 @@ fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
         }
         let scalar = builder.sources.iter().any(|source| {
             source.ports.get(&feed).is_some_and(|path| {
-                !matches!(source.format, ComponentFormat::Csv | ComponentFormat::Db)
-                    && scalar_schema_path(&source.schema, path)
+                !matches!(
+                    source.format,
+                    ComponentFormat::Csv | ComponentFormat::Xlsx | ComponentFormat::Db
+                ) && scalar_schema_path(&source.schema, path)
             })
         }) || builder.fn_by_output.get(&feed).is_some_and(|index| {
             let component = &builder.fn_components[*index];

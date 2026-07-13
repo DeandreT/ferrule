@@ -176,10 +176,10 @@ pub(super) fn missing_error(
         );
     }
     MfdError::Unsupported(if skipped_libraries.is_empty() {
-        format!("no importable {side} component (xml/json/csv/edi/db) found in this design")
+        format!("no importable {side} component (xml/json/csv/edi/db/xlsx) found in this design")
     } else {
         format!(
-            "no importable {side} component (xml/json/csv/edi/db) found; this design uses {} components, which ferrule cannot import yet",
+            "no importable {side} component (xml/json/csv/edi/db/xlsx) found; this design uses {} components, which ferrule cannot import yet",
             skipped_libraries.join("/")
         )
     })

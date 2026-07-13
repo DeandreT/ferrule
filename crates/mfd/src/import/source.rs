@@ -37,8 +37,10 @@ pub(super) fn primary_index(
             continue;
         };
         let row_root = target_path.is_empty()
-            && (matches!(target.format, ComponentFormat::Csv | ComponentFormat::Db)
-                || target.format == ComponentFormat::Json && target_node.repeating);
+            && (matches!(
+                target.format,
+                ComponentFormat::Csv | ComponentFormat::Xlsx | ComponentFormat::Db
+            ) || target.format == ComponentFormat::Json && target_node.repeating);
         let repeating_group =
             target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. });
         let mapped_xml_group = target.format == ComponentFormat::Xml

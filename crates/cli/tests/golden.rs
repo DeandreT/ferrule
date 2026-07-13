@@ -20,6 +20,99 @@ fn simple_name_and_age_mapping() {
     assert_eq!(actual, expected);
 }
 
+#[test]
+fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
+    use ir::{Instance, Value};
+
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut project: mapping::Project =
+        serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
+            .unwrap();
+    project.source_options.xlsx_sheet = Some("People".into());
+    project.source_options.xlsx_start_row = Some(3);
+    project.source_options.xlsx_columns = vec![2, 4, 6];
+    project.target_options.xlsx_sheet = Some("Results".into());
+    project.target_options.xlsx_start_row = Some(2);
+    project.target_options.xlsx_columns = vec![1, 3];
+
+    let source_rows = vec![
+        Instance::Group(vec![
+            (
+                "first_name".into(),
+                Instance::Scalar(Value::String("Jane".into())),
+            ),
+            (
+                "last_name".into(),
+                Instance::Scalar(Value::String("Doe".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(29))),
+        ]),
+        Instance::Group(vec![
+            (
+                "first_name".into(),
+                Instance::Scalar(Value::String("John".into())),
+            ),
+            (
+                "last_name".into(),
+                Instance::Scalar(Value::String("Smith".into())),
+            ),
+            ("age".into(), Instance::Scalar(Value::Int(41))),
+        ]),
+    ];
+    let expected = vec![
+        Instance::Group(vec![
+            (
+                "full_name".into(),
+                Instance::Scalar(Value::String("Jane Doe".into())),
+            ),
+            ("age_next_year".into(), Instance::Scalar(Value::Int(30))),
+        ]),
+        Instance::Group(vec![
+            (
+                "full_name".into(),
+                Instance::Scalar(Value::String("John Smith".into())),
+            ),
+            ("age_next_year".into(), Instance::Scalar(Value::Int(42))),
+        ]),
+    ];
+
+    let tag = format!("xlsx_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}_input.xlsx"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}_output.xlsx"));
+    for path in [&project_path, &input_path, &output_path] {
+        std::fs::remove_file(path).ok();
+    }
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+    format_xlsx::write(
+        &input_path,
+        &project.source,
+        &source_rows,
+        project.source_options.xlsx_sheet.as_deref(),
+        project.source_options.xlsx_start_row.unwrap(),
+        &project.source_options.xlsx_columns,
+        true,
+    )
+    .unwrap();
+
+    let written = cli::run_project(&project_path, &input_path, &output_path).unwrap();
+    let actual = format_xlsx::read(
+        &output_path,
+        &project.target,
+        project.target_options.xlsx_sheet.as_deref(),
+        project.target_options.xlsx_start_row.unwrap(),
+        &project.target_options.xlsx_columns,
+        true,
+    )
+    .unwrap();
+    for path in [project_path, input_path, output_path] {
+        std::fs::remove_file(path).unwrap();
+    }
+
+    assert_eq!(written, 2);
+    assert_eq!(actual, expected);
+}
+
 /// Flattens a real-world nested XML document (Orders -> repeating Order ->
 /// repeating Item) into a flat CSV of order lines, broadcasting the
 /// enclosing Order's fields (Order_ID, Cust_Name) into every Item row and
