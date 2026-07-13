@@ -11,10 +11,14 @@ ir = { workspace = true }
 mapping = { workspace = true }
 engine = { workspace = true }
 format-xml = { workspace = true }
+format-json = { workspace = true }
+format-csv = { workspace = true }
+serde_json = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }
 egui-snarl = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement"] }
+web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "Document", "Element", "HtmlAnchorElement", "HtmlCanvasElement", "HtmlElement", "Node", "Url", "Window"] }

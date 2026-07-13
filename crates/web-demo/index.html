@@ -13,8 +13,8 @@
       padding: 0;
       height: 100%;
       overflow: hidden;
-      background: #16130f;
-      color: #e8e0d4;
+      background: #121416;
+      color: #e5e7eb;
       font-family: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
     }
     #demo_canvas {
@@ -37,12 +37,12 @@
       width: 42px;
       height: 42px;
       border-radius: 50%;
-      border: 4px solid #3a3126;
-      border-top-color: #d98e32;
+      border: 4px solid #374151;
+      border-top-color: #22c55e;
       animation: spin 0.9s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .loader p { color: #9c8f7c; font-size: 14px; }
+    .loader p { color: #9ca3af; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -52,17 +52,13 @@
   </div>
   <canvas id="demo_canvas"></canvas>
   <script type="module">
-    // Hide the loader once the wasm module has painted a frame.
-    const observer = new MutationObserver(() => {});
-    setTimeout(() => {
-      const el = document.getElementById("loader");
-      const hide = () => el && el.remove();
-      // eframe takes over the canvas; give it a beat, then remove.
-      const check = setInterval(() => {
-        const c = document.getElementById("demo_canvas");
-        if (c && c.width > 0) { hide(); clearInterval(check); }
-      }, 250);
-    }, 500);
+    const check = setInterval(() => {
+      const canvas = document.getElementById("demo_canvas");
+      if (canvas?.dataset.ferruleReady === "true") {
+        document.getElementById("loader")?.remove();
+        clearInterval(check);
+      }
+    }, 250);
   </script>
 </body>
 </html>

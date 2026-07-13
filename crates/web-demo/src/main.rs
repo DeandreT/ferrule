@@ -1,14 +1,16 @@
 //! Browser playground for ferrule: a small eframe app around the real
 //! `mapping` + `engine` crates, compiled to WebAssembly for the website
-//! (and runnable natively for local testing). It ships one built-in
-//! project -- the orders/aggregates example -- with an editable source
-//! document, a read-only node canvas, editable constants, and live output.
+//! (and runnable natively for local testing). The browser editor supports
+//! project JSON, XML/JSON/CSV instance text, validation, and live execution.
 
 use eframe::egui;
 use egui_snarl::ui::{PinInfo, SnarlViewer, SnarlWidget};
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Project, Scope, ScopeIteration};
+use web_demo::browser_download::download_utf8_text;
+use web_demo::project_document::{self, ProjectDocumentError};
+use web_demo::runtime::{self, DataFormat};
 
 const SAMPLE_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Orders>
@@ -286,14 +288,26 @@ fn node_title(node: &Node) -> String {
 
 /// Builds the canvas: hand-placed nodes plus wires for function arguments
 /// and target bindings.
-fn build_snarl(project: &Project, bindings: &[(String, NodeId)]) -> Snarl<CanvasNode> {
+fn build_snarl(
+    project: &Project,
+    bindings: &[(String, NodeId)],
+    compact: bool,
+) -> Snarl<CanvasNode> {
     let mut snarl = Snarl::new();
     let mut positions: std::collections::BTreeMap<NodeId, egui::Pos2> = Default::default();
-    positions.insert(0, egui::pos2(20.0, 30.0));
-    positions.insert(1, egui::pos2(20.0, 120.0));
-    positions.insert(2, egui::pos2(180.0, 80.0));
-    positions.insert(3, egui::pos2(180.0, 175.0));
-    positions.insert(4, egui::pos2(180.0, 250.0));
+    if compact {
+        positions.insert(0, egui::pos2(20.0, 30.0));
+        positions.insert(1, egui::pos2(20.0, 120.0));
+        positions.insert(2, egui::pos2(220.0, 30.0));
+        positions.insert(3, egui::pos2(220.0, 145.0));
+        positions.insert(4, egui::pos2(220.0, 260.0));
+    } else {
+        positions.insert(0, egui::pos2(20.0, 30.0));
+        positions.insert(1, egui::pos2(20.0, 120.0));
+        positions.insert(2, egui::pos2(180.0, 80.0));
+        positions.insert(3, egui::pos2(180.0, 175.0));
+        positions.insert(4, egui::pos2(180.0, 250.0));
+    }
 
     let mut snarl_ids = std::collections::BTreeMap::new();
     for &id in project.graph.nodes.keys() {
@@ -303,7 +317,12 @@ fn build_snarl(project: &Project, bindings: &[(String, NodeId)]) -> Snarl<Canvas
             .unwrap_or(egui::pos2(120.0, 60.0 + 90.0 * id as f32));
         snarl_ids.insert(id, snarl.insert_node(pos, CanvasNode::Graph(id)));
     }
-    let target = snarl.insert_node(egui::pos2(360.0, 60.0), CanvasNode::Target);
+    let target_position = if compact {
+        egui::pos2(120.0, 390.0)
+    } else {
+        egui::pos2(330.0, 60.0)
+    };
+    let target = snarl.insert_node(target_position, CanvasNode::Target);
 
     for (&id, node) in &project.graph.nodes {
         for (input, feed) in node_inputs(node).into_iter().enumerate() {
@@ -339,7 +358,8 @@ fn build_snarl(project: &Project, bindings: &[(String, NodeId)]) -> Snarl<Canvas
 struct DemoViewer<'a> {
     graph: &'a mut Graph,
     bindings: &'a [(String, NodeId)],
-    dirty: &'a mut bool,
+    run_pending: &'a mut bool,
+    project_changed: &'a mut bool,
 }
 
 impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
@@ -417,11 +437,20 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
                 .changed()
             {
                 *value = Value::String(text);
-                *self.dirty = true;
+                *self.run_pending = true;
+                *self.project_changed = true;
             }
         }
         PinInfo::circle()
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkspaceView {
+    Input,
+    Mapping,
+    Output,
+    Project,
 }
 
 struct DemoApp {
@@ -429,8 +458,18 @@ struct DemoApp {
     bindings: Vec<(String, NodeId)>,
     snarl: Snarl<CanvasNode>,
     source_text: String,
+    source_format: DataFormat,
+    target_format: DataFormat,
     output: String,
-    dirty: bool,
+    project_json: String,
+    status: String,
+    diagnostic: Option<String>,
+    active_view: WorkspaceView,
+    live_run: bool,
+    run_pending: bool,
+    project_changed: bool,
+    canvas_view_generation: u64,
+    canvas_compact: bool,
 }
 
 impl DemoApp {
@@ -438,96 +477,367 @@ impl DemoApp {
         let project = demo_project();
         let mut bindings = Vec::new();
         flat_bindings(&project.root, "", &mut bindings);
-        let snarl = build_snarl(&project, &bindings);
+        let snarl = build_snarl(&project, &bindings, false);
+        let (project_json, diagnostic) = match project_document::to_json(&project) {
+            Ok(json) => (json, None),
+            Err(error) => (String::new(), Some(error.to_string())),
+        };
         Self {
             project,
             bindings,
             snarl,
             source_text: SAMPLE_XML.to_string(),
+            source_format: DataFormat::Xml,
+            target_format: DataFormat::Xml,
             output: String::new(),
-            dirty: true,
+            project_json,
+            status: "Ready".to_string(),
+            diagnostic,
+            active_view: WorkspaceView::Mapping,
+            live_run: true,
+            run_pending: true,
+            project_changed: false,
+            canvas_view_generation: 0,
+            canvas_compact: false,
         }
     }
 
     fn run(&mut self) {
-        self.output = format_xml::from_str(&self.source_text, &self.project.source)
-            .map_err(|e| e.to_string())
-            .and_then(|source| engine::run(&self.project, &source).map_err(|e| e.to_string()))
-            .and_then(|target| {
-                format_xml::to_string(&self.project.target, &target).map_err(|e| e.to_string())
-            })
-            .unwrap_or_else(|error| format!("error: {error}"));
+        self.run_pending = false;
+        match runtime::run(
+            &self.project,
+            &self.source_text,
+            self.source_format,
+            self.target_format,
+        ) {
+            Ok(output) => {
+                self.output = output;
+                self.status = "Mapping completed".to_string();
+                self.diagnostic = None;
+            }
+            Err(error) => {
+                self.status = "Run failed".to_string();
+                self.diagnostic = Some(error.to_string());
+            }
+        }
+    }
+
+    fn validate(&mut self) {
+        let issues = engine::validate(&self.project);
+        if issues.is_empty() {
+            self.status = "Project is valid".to_string();
+            self.diagnostic = None;
+        } else {
+            self.status = format!("{} validation issue(s)", issues.len());
+            self.diagnostic = Some(
+                issues
+                    .into_iter()
+                    .map(|issue| issue.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+        }
+    }
+
+    fn apply_project_json(&mut self) {
+        match project_document::parse_and_validate(&self.project_json) {
+            Ok(project) => {
+                let mut bindings = Vec::new();
+                flat_bindings(&project.root, "", &mut bindings);
+                self.snarl = build_snarl(&project, &bindings, self.canvas_compact);
+                self.project = project;
+                self.bindings = bindings;
+                self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+                self.project_changed = false;
+                self.run_pending = true;
+                self.status = "Project applied".to_string();
+                self.diagnostic = None;
+                self.active_view = WorkspaceView::Mapping;
+            }
+            Err(error) => {
+                self.status = "Project not applied".to_string();
+                self.diagnostic = Some(project_document_error(&error));
+            }
+        }
+    }
+
+    fn sync_project_json(&mut self) {
+        match project_document::to_json(&self.project) {
+            Ok(json) => self.project_json = json,
+            Err(error) => {
+                self.status = "Project serialization failed".to_string();
+                self.diagnostic = Some(error.to_string());
+            }
+        }
+    }
+
+    fn download_project(&mut self) {
+        match download_utf8_text("ferrule-project.json", &self.project_json) {
+            Ok(()) => self.status = "Project download started".to_string(),
+            Err(error) => {
+                self.status = "Project download failed".to_string();
+                self.diagnostic = Some(error.to_string());
+            }
+        }
+    }
+
+    fn download_output(&mut self) {
+        let filename = format!("mapped-output.{}", format_extension(self.target_format));
+        match download_utf8_text(&filename, &self.output) {
+            Ok(()) => self.status = "Output download started".to_string(),
+            Err(error) => {
+                self.status = "Output download failed".to_string();
+                self.diagnostic = Some(error.to_string());
+            }
+        }
+    }
+
+    fn accept_dropped_project(&mut self, ctx: &egui::Context) {
+        let dropped = ctx.input(|input| input.raw.dropped_files.clone());
+        for file in dropped {
+            let text = file
+                .bytes
+                .map(|bytes| String::from_utf8(bytes.to_vec()).map_err(|error| error.to_string()))
+                .or_else(|| file.path.as_deref().and_then(read_native_drop));
+            let Some(text) = text else {
+                continue;
+            };
+            match text {
+                Ok(text) => {
+                    self.project_json = text;
+                    self.apply_project_json();
+                }
+                Err(error) => {
+                    self.status = "Project drop failed".to_string();
+                    self.diagnostic = Some(error);
+                }
+            }
+            break;
+        }
+    }
+
+    fn show_top_bar(&mut self, ui: &mut egui::Ui, compact: bool) {
+        egui::Panel::top("top").show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.strong("ferrule");
+                let views: &[(WorkspaceView, &str)] = if compact {
+                    &[
+                        (WorkspaceView::Input, "Input"),
+                        (WorkspaceView::Mapping, "Mapping"),
+                        (WorkspaceView::Output, "Output"),
+                        (WorkspaceView::Project, "Project"),
+                    ]
+                } else {
+                    &[
+                        (WorkspaceView::Mapping, "Mapping"),
+                        (WorkspaceView::Project, "Project"),
+                    ]
+                };
+                for &(view, label) in views {
+                    ui.selectable_value(&mut self.active_view, view, label);
+                }
+                ui.separator();
+                if ui.button("Run").clicked() {
+                    self.run();
+                }
+                ui.checkbox(&mut self.live_run, "Live");
+                if ui.button("Validate").clicked() {
+                    self.validate();
+                }
+                if ui.button("Reset").clicked() {
+                    *self = Self::new();
+                }
+                if ui.button("Fit").clicked() {
+                    self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+                }
+                ui.hyperlink_to("GitHub", "https://github.com/DeandreT/ferrule");
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Input format");
+                if format_picker(ui, "source_format", &mut self.source_format) {
+                    self.run_pending = true;
+                }
+                ui.label("Output format");
+                if format_picker(ui, "target_format", &mut self.target_format) {
+                    self.run_pending = true;
+                }
+                if ui.button("Download output").clicked() {
+                    self.download_output();
+                }
+                ui.separator();
+                ui.label(&self.status);
+            });
+        });
+    }
+
+    fn show_input(&mut self, ui: &mut egui::Ui) {
+        ui.strong(format!("Input ({})", self.source_format));
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            if ui
+                .add(
+                    egui::TextEdit::multiline(&mut self.source_text)
+                        .code_editor()
+                        .desired_width(f32::INFINITY)
+                        .desired_rows(28),
+                )
+                .changed()
+            {
+                self.run_pending = true;
+            }
+        });
+    }
+
+    fn show_output(&mut self, ui: &mut egui::Ui) {
+        ui.strong(format!("Output ({})", self.target_format));
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            let mut text = self.output.as_str();
+            ui.add(
+                egui::TextEdit::multiline(&mut text)
+                    .code_editor()
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(28),
+            );
+        });
+    }
+
+    fn show_project(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.strong("Project JSON");
+            if ui.button("Apply").clicked() {
+                self.apply_project_json();
+            }
+            if ui.button("Download").clicked() {
+                self.download_project();
+            }
+        });
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut self.project_json)
+                    .code_editor()
+                    .desired_width(f32::INFINITY)
+                    .desired_rows(30),
+            );
+        });
+    }
+
+    fn show_mapping(&mut self, ui: &mut egui::Ui) {
+        let mut viewer = DemoViewer {
+            graph: &mut self.project.graph,
+            bindings: &self.bindings,
+            run_pending: &mut self.run_pending,
+            project_changed: &mut self.project_changed,
+        };
+        SnarlWidget::new()
+            .id(egui::Id::new((
+                "web_mapping_canvas",
+                self.canvas_view_generation,
+            )))
+            .show(&mut self.snarl, &mut viewer, ui);
     }
 }
 
 impl eframe::App for DemoApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.accept_dropped_project(ui.ctx());
+        let compact = ui.available_width() < 900.0;
+        if compact != self.canvas_compact {
+            self.canvas_compact = compact;
+            self.snarl = build_snarl(&self.project, &self.bindings, compact);
+            self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+        }
+        if !compact
+            && matches!(
+                self.active_view,
+                WorkspaceView::Input | WorkspaceView::Output
+            )
         {
-            egui::Panel::top("top").show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading("ferrule playground");
-                    ui.label("— the real mapping engine, running in your browser");
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.hyperlink_to("GitHub", "https://github.com/DeandreT/ferrule");
-                        if ui.button("Reset").clicked() {
-                            *self = DemoApp::new();
-                        }
-                    });
-                });
-                ui.label(
-                    "Edit the source XML (left) or the const separator on the canvas — \
-                     the output (right) re-runs live. Wires feed function arguments and \
-                     target fields; aggregate nodes name the collection they reduce.",
-                );
-            });
+            self.active_view = WorkspaceView::Mapping;
+        }
+        self.show_top_bar(ui, compact);
 
-            egui::Panel::left("source").show(ui, |ui| {
-                ui.set_min_width(280.0);
-                ui.strong("Source · Orders.xml (editable)");
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    if ui
-                        .add(
-                            egui::TextEdit::multiline(&mut self.source_text)
-                                .code_editor()
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(24),
-                        )
-                        .changed()
-                    {
-                        self.dirty = true;
-                    }
+        if let Some(diagnostic) = &self.diagnostic {
+            egui::Panel::bottom("diagnostic")
+                .resizable(true)
+                .default_size(80.0)
+                .show(ui, |ui| {
+                    ui.strong("Diagnostics");
+                    egui::ScrollArea::vertical().show(ui, |ui| ui.monospace(diagnostic));
                 });
-            });
-
-            egui::Panel::right("output").show(ui, |ui| {
-                ui.set_min_width(280.0);
-                ui.strong("Output · Summary.xml");
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut text = self.output.as_str();
-                    ui.add(
-                        egui::TextEdit::multiline(&mut text)
-                            .code_editor()
-                            .desired_width(f32::INFINITY)
-                            .desired_rows(24),
-                    );
-                });
-            });
-
-            egui::CentralPanel::default().show(ui, |ui| {
-                let mut viewer = DemoViewer {
-                    graph: &mut self.project.graph,
-                    bindings: &self.bindings,
-                    dirty: &mut self.dirty,
-                };
-                SnarlWidget::new().show(&mut self.snarl, &mut viewer, ui);
-            });
         }
 
-        if self.dirty {
-            self.dirty = false;
+        if compact {
+            egui::CentralPanel::default().show(ui, |ui| match self.active_view {
+                WorkspaceView::Input => self.show_input(ui),
+                WorkspaceView::Mapping => self.show_mapping(ui),
+                WorkspaceView::Output => self.show_output(ui),
+                WorkspaceView::Project => self.show_project(ui),
+            });
+        } else if self.active_view == WorkspaceView::Project {
+            egui::CentralPanel::default().show(ui, |ui| self.show_project(ui));
+        } else {
+            egui::Panel::left("source")
+                .default_size(300.0)
+                .min_size(220.0)
+                .max_size(420.0)
+                .show(ui, |ui| self.show_input(ui));
+            egui::Panel::right("output")
+                .default_size(300.0)
+                .min_size(220.0)
+                .max_size(420.0)
+                .show(ui, |ui| self.show_output(ui));
+            egui::CentralPanel::default().show(ui, |ui| self.show_mapping(ui));
+        }
+
+        if self.project_changed {
+            self.project_changed = false;
+            self.sync_project_json();
+        }
+        if self.run_pending && self.live_run {
             self.run();
         }
     }
+}
+
+fn format_picker(ui: &mut egui::Ui, id: &str, format: &mut DataFormat) -> bool {
+    let before = *format;
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(format.to_string())
+        .show_ui(ui, |ui| {
+            for choice in [DataFormat::Xml, DataFormat::Json, DataFormat::Csv] {
+                ui.selectable_value(format, choice, choice.to_string());
+            }
+        });
+    *format != before
+}
+
+fn format_extension(format: DataFormat) -> &'static str {
+    match format {
+        DataFormat::Xml => "xml",
+        DataFormat::Json => "json",
+        DataFormat::Csv => "csv",
+    }
+}
+
+fn project_document_error(error: &ProjectDocumentError) -> String {
+    match error {
+        ProjectDocumentError::Validation(issues) => issues
+            .iter()
+            .map(|issue| issue.to_string())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        ProjectDocumentError::Serialize(_) | ProjectDocumentError::Parse(_) => error.to_string(),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_native_drop(path: &std::path::Path) -> Option<Result<String, String>> {
+    (!path.as_os_str().is_empty())
+        .then(|| std::fs::read_to_string(path).map_err(|error| error.to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn read_native_drop(_path: &std::path::Path) -> Option<Result<String, String>> {
+    None
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -544,23 +854,25 @@ fn main() {
     use eframe::wasm_bindgen::JsCast as _;
 
     wasm_bindgen_futures::spawn_local(async {
-        let document = web_sys::window()
-            .expect("no window")
-            .document()
-            .expect("no document");
-        let canvas = document
-            .get_element_by_id("demo_canvas")
-            .expect("no #demo_canvas element")
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .expect("#demo_canvas is not a canvas");
-        eframe::WebRunner::new()
+        let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+            return;
+        };
+        let Some(element) = document.get_element_by_id("demo_canvas") else {
+            return;
+        };
+        let Ok(canvas) = element.dyn_into::<web_sys::HtmlCanvasElement>() else {
+            return;
+        };
+        let started = eframe::WebRunner::new()
             .start(
-                canvas,
+                canvas.clone(),
                 eframe::WebOptions::default(),
                 Box::new(|_cc| Ok(Box::new(DemoApp::new()))),
             )
-            .await
-            .expect("failed to start eframe");
+            .await;
+        if started.is_ok() {
+            let _ = canvas.set_attribute("data-ferrule-ready", "true");
+        }
     });
 }
 
