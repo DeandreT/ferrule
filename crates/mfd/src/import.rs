@@ -695,14 +695,12 @@ impl GraphBuilder<'_> {
                 else_: input_or_null(self, 2),
             },
             ("value-map", _) => {
-                let (table, default) = fc.valuemap.clone().unwrap_or_default();
+                let value_map = fc.valuemap.clone().unwrap_or_default();
                 Node::ValueMap {
                     input: input_or_null(self, 0),
-                    table: table
-                        .into_iter()
-                        .map(|(f, t)| (Value::String(f), Value::String(t)))
-                        .collect(),
-                    default: default.map(Value::String),
+                    input_type: value_map.input_type,
+                    table: value_map.table,
+                    default: value_map.default,
                 }
             }
             (name, _) => {

@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, Value};
 use mapping::{Graph, IterationOutput, JoinId, Node, NodeId, Project, RuntimeValue, Scope};
 use thiserror::Error;
 
@@ -703,10 +703,14 @@ fn eval_expr(
         },
         Node::ValueMap {
             input,
+            input_type,
             table,
             default,
         } => {
             let value = eval_expr(graph, *input, context, positions, in_progress)?;
+            let value = input_type
+                .and_then(|ty| coerce_value_map_input(&value, ty))
+                .unwrap_or(value);
             table
                 .iter()
                 .find(|(from, _)| *from == value)
@@ -798,6 +802,45 @@ fn eval_expr(
 
     in_progress.remove(&node_id);
     result
+}
+
+fn coerce_value_map_input(value: &Value, ty: ScalarType) -> Option<Value> {
+    match (ty, value) {
+        (_, Value::Null) => Some(Value::Null),
+        (_, Value::XmlNil(value)) => Some(Value::XmlNil(*value)),
+        (ScalarType::String, Value::String(value)) => Some(Value::String(value.clone())),
+        (ScalarType::String, Value::Bool(value)) => Some(Value::String(value.to_string())),
+        (ScalarType::String, Value::Int(value)) => Some(Value::String(value.to_string())),
+        (ScalarType::String, Value::Float(value)) if value.is_finite() => {
+            Some(Value::String(value.to_string()))
+        }
+        (ScalarType::String, Value::Float(_)) => None,
+        (ScalarType::Int, Value::Int(value)) => Some(Value::Int(*value)),
+        (ScalarType::Int, Value::Float(value))
+            if value.is_finite()
+                && value.fract() == 0.0
+                && *value >= i64::MIN as f64
+                && *value < -(i64::MIN as f64) =>
+        {
+            Some(Value::Int(*value as i64))
+        }
+        (ScalarType::Int, Value::String(value)) => value.trim().parse().ok().map(Value::Int),
+        (ScalarType::Float, Value::Float(value)) if value.is_finite() => Some(Value::Float(*value)),
+        (ScalarType::Float, Value::Int(value)) => Some(Value::Float(*value as f64)),
+        (ScalarType::Float, Value::String(value)) => value
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(Value::Float),
+        (ScalarType::Bool, Value::Bool(value)) => Some(Value::Bool(*value)),
+        (ScalarType::Bool, Value::String(value)) => match value.trim() {
+            "true" | "1" => Some(Value::Bool(true)),
+            "false" | "0" => Some(Value::Bool(false)),
+            _ => None,
+        },
+        (ScalarType::Int | ScalarType::Float | ScalarType::Bool, _) => None,
+    }
 }
 
 fn position(positions: &[PositionFrame], collection: &[String]) -> usize {
