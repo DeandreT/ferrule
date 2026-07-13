@@ -3,6 +3,12 @@ use ir::Value;
 use crate::FunctionError;
 
 const INVALID_PICTURE: &str = "requires a value matching a supported date/time picture";
+const EDIFACT_DATETIME_INVALID: &str =
+    "requires a value matching its UN/EDIFACT 2379 date/time format code";
+const EDIFACT_DATETIME_UNSUPPORTED: &str =
+    "supports UN/EDIFACT 2379 codes 102, 203, 204, 205, 303, and 304";
+const EDIFACT_ZONE_UNSUPPORTED: &str =
+    "supports UTC, GMT, EST, EDT, CST, CDT, MST, MDT, PST, and PDT named zones";
 
 #[derive(Clone, Copy)]
 enum Field {
@@ -76,6 +82,121 @@ pub(super) fn parse_time(args: &[Value]) -> Result<Value, FunctionError> {
     let mut output = format!("{hour:02}:{minute:02}:{second:02}");
     append_time_suffix(&mut output, &parsed);
     Ok(Value::String(output))
+}
+
+pub(super) fn edifact_to_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "edifact_to_datetime";
+    let (value, code) = match args {
+        [Value::String(value), Value::String(code)] => (value.as_str(), code.as_str()),
+        [first, second] => {
+            let bad = if matches!(first, Value::String(_)) {
+                second
+            } else {
+                first
+            };
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: bad.type_name(),
+            });
+        }
+        _ => {
+            return Err(FunctionError::ArityMismatch {
+                function: FUNCTION,
+                expected: 2,
+                got: args.len(),
+            });
+        }
+    };
+    if !value.is_ascii() {
+        return edifact_datetime_invalid();
+    }
+
+    let (base_len, has_seconds, zone) = match code {
+        "102" if value.len() == 8 => (8, false, String::new()),
+        "203" if value.len() == 12 => (12, false, String::new()),
+        "204" if value.len() == 14 => (14, true, String::new()),
+        "205" => {
+            if value.len() != 17 {
+                return edifact_datetime_invalid();
+            }
+            (12, false, numeric_edifact_zone(&value[12..])?)
+        }
+        "303" => {
+            if value.len() != 15 {
+                return edifact_datetime_invalid();
+            }
+            (12, false, named_edifact_zone(&value[12..])?.to_string())
+        }
+        "304" => {
+            if value.len() != 17 {
+                return edifact_datetime_invalid();
+            }
+            (14, true, named_edifact_zone(&value[14..])?.to_string())
+        }
+        "102" | "203" | "204" => return edifact_datetime_invalid(),
+        _ => {
+            return Err(FunctionError::InvalidArgument {
+                function: FUNCTION,
+                message: EDIFACT_DATETIME_UNSUPPORTED,
+            });
+        }
+    };
+    if value.len() < base_len {
+        return edifact_datetime_invalid();
+    }
+    let base = &value[..base_len];
+    if !base.bytes().all(|byte| byte.is_ascii_digit()) {
+        return edifact_datetime_invalid();
+    }
+    let date = format!("{}-{}-{}", &base[..4], &base[4..6], &base[6..8]);
+    validate_iso_date(&date, FUNCTION)?;
+    let time = if base_len == 8 {
+        "00:00:00".to_string()
+    } else {
+        let seconds = if has_seconds { &base[12..14] } else { "00" };
+        format!("{}:{}:{seconds}", &base[8..10], &base[10..12])
+    };
+    validate_iso_time(&format!("{time}{zone}"), FUNCTION)?;
+    Ok(Value::String(format!("{date}T{time}{zone}")))
+}
+
+fn numeric_edifact_zone(zone: &str) -> Result<String, FunctionError> {
+    if zone.len() != 5
+        || !matches!(zone.as_bytes().first(), Some(b'+') | Some(b'-'))
+        || !zone[1..].bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return edifact_datetime_invalid();
+    }
+    if &zone[1..] == "0000" {
+        return Ok("Z".to_string());
+    }
+    Ok(format!("{}{}:{}", &zone[..1], &zone[1..3], &zone[3..]))
+}
+
+fn named_edifact_zone(zone: &str) -> Result<&'static str, FunctionError> {
+    const FUNCTION: &str = "edifact_to_datetime";
+    match zone {
+        "UTC" | "GMT" => Ok("Z"),
+        "EST" => Ok("-05:00"),
+        "EDT" => Ok("-04:00"),
+        "CST" => Ok("-06:00"),
+        "CDT" => Ok("-05:00"),
+        "MST" => Ok("-07:00"),
+        "MDT" => Ok("-06:00"),
+        "PST" => Ok("-08:00"),
+        "PDT" => Ok("-07:00"),
+        _ => Err(FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: EDIFACT_ZONE_UNSUPPORTED,
+        }),
+    }
+}
+
+fn edifact_datetime_invalid<T>() -> Result<T, FunctionError> {
+    Err(FunctionError::InvalidArgument {
+        function: "edifact_to_datetime",
+        message: EDIFACT_DATETIME_INVALID,
+    })
 }
 
 pub(super) fn time_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
@@ -855,6 +976,36 @@ mod tests {
             parse_datetime(&[text("20110620"), text("[Y,4-4][M,2-2][D,2-2]")]).unwrap(),
             text("2011-06-20T00:00:00")
         );
+    }
+
+    #[test]
+    fn converts_supported_edifact_2379_datetime_codes() {
+        for (value, code, expected) in [
+            ("20240229", "102", "2024-02-29T00:00:00"),
+            ("202402291305", "203", "2024-02-29T13:05:00"),
+            ("20240229130547", "204", "2024-02-29T13:05:47"),
+            ("202402291305+0530", "205", "2024-02-29T13:05:00+05:30"),
+            ("202402291305PDT", "303", "2024-02-29T13:05:00-07:00"),
+            ("20240229130547UTC", "304", "2024-02-29T13:05:47Z"),
+        ] {
+            assert_eq!(
+                edifact_to_datetime(&[text(value), text(code)]).unwrap(),
+                text(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_or_invalid_edifact_datetime_values() {
+        let unsupported = edifact_to_datetime(&[text("2402291305"), text("201")])
+            .unwrap_err()
+            .to_string();
+        assert!(unsupported.contains("supports UN/EDIFACT 2379 codes"));
+        assert!(edifact_to_datetime(&[text("202302291305"), text("203")]).is_err());
+        let zone = edifact_to_datetime(&[text("202402291305XYZ"), text("303")])
+            .unwrap_err()
+            .to_string();
+        assert!(zone.contains("supports UTC, GMT"));
     }
 
     #[test]
