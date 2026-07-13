@@ -60,6 +60,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "parse_date" => "parse-date",
         "parse_datetime" => "parse-dateTime",
         "parse_time" => "parse-time",
+        "edifact_to_datetime" => "to-datetime",
         "substitute_missing" => "substitute-missing",
         "format_number" => "format-number",
         other => other,
@@ -77,6 +78,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "datetime_from_date_and_time"
         | "datetime_from_parts"
         | "datetime_add" => "lang",
+        "edifact_to_datetime" => "edifact",
         _ => "core",
     }
 }

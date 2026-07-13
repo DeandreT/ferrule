@@ -59,7 +59,10 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         .attribute("library")
         .unwrap_or_default()
         .to_string();
-    let name = component.attribute("name").unwrap_or_default().to_string();
+    let mut name = component.attribute("name").unwrap_or_default().to_string();
+    if library == "edifact" && name == "to-datetime" {
+        name = "edifact-to-datetime".to_string();
+    }
     let kind = parse_u32(component.attribute("kind")).unwrap_or(0);
     let pins = |tag: &str| -> Vec<Option<u32>> {
         component
@@ -378,6 +381,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "parse-date" => "parse_date",
         "parse-dateTime" => "parse_datetime",
         "parse-time" => "parse_time",
+        "edifact-to-datetime" => "edifact_to_datetime",
         "substitute-missing" | "substitute-null" => "substitute_missing",
         _ => return None,
     })
@@ -400,6 +404,7 @@ mod tests {
         assert_eq!(map_name("datetime-add"), Some("datetime_add"));
         assert_eq!(map_name("parse-date"), Some("parse_date"));
         assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));
+        assert_eq!(map_name("edifact-to-datetime"), Some("edifact_to_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
         assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
     }
