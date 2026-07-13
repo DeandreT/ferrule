@@ -55,7 +55,15 @@ fn json_type_name(value: &serde_json::Value) -> &'static str {
 /// Reads a JSON file into an [`Instance`] tree shaped by `schema`.
 pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     let text = std::fs::read_to_string(path)?;
-    let value: serde_json::Value = serde_json::from_str(&text)?;
+    from_str(&text, schema)
+}
+
+/// Reads JSON text into an [`Instance`] tree shaped by `schema`.
+///
+/// This is the in-memory equivalent of [`read`], suitable for hosts without
+/// filesystem access such as WebAssembly applications.
+pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let value: serde_json::Value = serde_json::from_str(text)?;
     if schema.repeating {
         read_repeated(&value, schema)
     } else {
@@ -213,6 +221,15 @@ fn read_scalar(
 /// Writes an [`Instance`] tree shaped by `schema` to a pretty-printed JSON
 /// file.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), JsonFormatError> {
+    std::fs::write(path, to_string(schema, instance)?)?;
+    Ok(())
+}
+
+/// Writes an [`Instance`] tree shaped by `schema` as pretty-printed JSON.
+///
+/// The returned document ends with a newline, matching [`write`]. This is
+/// the in-memory counterpart used by hosts without filesystem access.
+pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
     // A root scope can produce flat rows even though the row schema itself
     // is not repeating (the same convention used by CSV). Preserve that
     // established JSON-output shape while keeping nested nodes
@@ -227,8 +244,7 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     };
     let mut text = serde_json::to_string_pretty(&value)?;
     text.push('\n');
-    std::fs::write(path, text)?;
-    Ok(())
+    Ok(text)
 }
 
 fn write_node(
@@ -577,13 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn write_then_read_roundtrips_nested_repeating_groups() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_format_json_test_{}.json",
-            std::process::id()
-        ));
-
+    fn text_io_roundtrips_nested_repeating_groups() {
         let tag = |v: &str, w: f64| {
             Instance::Group(vec![
                 ("Value".into(), Instance::Scalar(Value::String(v.into()))),
@@ -601,11 +611,50 @@ mod tests {
             ),
         ]);
 
-        write(&path, &schema(), &instance).unwrap();
-        let read_back = read(&path, &schema()).unwrap();
-        std::fs::remove_file(&path).unwrap();
+        let text = to_string(&schema(), &instance).unwrap();
+        let read_back = from_str(&text, &schema()).unwrap();
 
+        assert!(text.ends_with('\n'));
         assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn text_io_supports_repeating_roots() {
+        let schema = SchemaNode::scalar("Value", ScalarType::Int).repeating();
+        let instance = Instance::Repeated(vec![
+            Instance::Scalar(Value::Int(1)),
+            Instance::Scalar(Value::Int(2)),
+        ]);
+
+        let text = to_string(&schema, &instance).unwrap();
+
+        assert_eq!(from_str(&text, &schema).unwrap(), instance);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text).unwrap(),
+            serde_json::json!([1, 2])
+        );
+    }
+
+    #[test]
+    fn to_string_preserves_flat_rows_for_a_non_repeating_root() {
+        let schema = SchemaNode::group("Row", vec![SchemaNode::scalar("Name", ScalarType::String)]);
+        let rows = Instance::Repeated(vec![
+            Instance::Group(vec![(
+                "Name".into(),
+                Instance::Scalar(Value::String("first".into())),
+            )]),
+            Instance::Group(vec![(
+                "Name".into(),
+                Instance::Scalar(Value::String("second".into())),
+            )]),
+        ]);
+
+        let text = to_string(&schema, &rows).unwrap();
+
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text).unwrap(),
+            serde_json::json!([{"Name": "first"}, {"Name": "second"}])
+        );
     }
 
     #[test]
