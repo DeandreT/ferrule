@@ -1,5 +1,4 @@
-//! The ferrule-gui app: source/target schema panes, a scope editor, and
-//! the mapping canvas.
+//! The ferrule-gui app: schema panes, scope editor, and mapping canvas.
 //!
 //! The canvas carries the visual-mapper interaction: the Source and Target
 //! schemas are endpoint nodes whose pins are their scalar leaves, so a
@@ -17,18 +16,30 @@ use serde::{Deserialize, Serialize};
 use crate::canvas::{
     CanvasNode, SourceLeaf, TargetLeaf, layered_layout, source_leaves, target_leaves,
 };
+use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
+use crate::document::DocumentLocation;
 use crate::graph_viewer::GraphViewer;
+use crate::layout_store::{project_fingerprint, read_layout, write_layout};
+use crate::new_mapping::{NewMappingSetup, SchemaSide};
 use crate::path_picker::SourcePathCatalog;
 use crate::schema_tree::show_schema_tree;
-use crate::scope_editor::{ScopePath, scope_at_mut, show_scope_editor, show_scope_tree};
+use crate::scope_editor::{
+    ScopePath, binding_target_fields, scope_at_mut, scope_target_chain, show_scope_editor,
+    show_scope_tree,
+};
+
+#[path = "app_new_mapping.rs"]
+mod new_mapping_ui;
+#[path = "app_workspace.rs"]
+mod workspace_ui;
 
 const HISTORY_LIMIT: usize = 100;
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
-const LAYOUT_VERSION: u32 = 1;
+pub(super) const LAYOUT_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct CanvasLayout {
-    version: u32,
+pub(super) struct CanvasLayout {
+    pub(super) version: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     project_fingerprint: Option<String>,
     nodes: Vec<CanvasNodeLayout>,
@@ -79,15 +90,18 @@ pub struct FerruleApp {
     /// imported projects that have never been saved as ferrule JSON.
     saved_editor: Option<String>,
     snarl: Snarl<CanvasNode>,
-    project_path: String,
+    canvas_view_generation: u64,
+    document: DocumentLocation,
     input_path: String,
     output_path: String,
     selected_scope: ScopePath,
     status: String,
-    /// An in-flight native file dialog, running on its own thread so a
-    /// missing portal backend can never freeze the UI.
+    diagnostics: Diagnostics,
+    new_mapping_setup: Option<NewMappingSetup>,
+    /// Native file dialog receiver; the dialog runs outside the UI thread.
     pending_dialog: Option<(DialogKind, std::sync::mpsc::Receiver<Option<String>>)>,
     pending_destructive_action: Option<DestructiveAction>,
+    pending_save_continuation: Option<SaveContinuation>,
     allow_close: bool,
     history_editor: String,
     undo_history: Vec<String>,
@@ -108,15 +122,22 @@ enum DialogKind {
     BrowseOutput,
     ImportMfd,
     ExportMfd,
+    BrowseSourceSchema,
+    BrowseTargetSchema,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum DestructiveAction {
     OpenProject,
-    LoadProject,
     NewProject,
     ImportMfd,
     Close,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SaveContinuation {
+    Destructive(DestructiveAction),
+    Run,
 }
 
 impl Default for FerruleApp {
@@ -128,13 +149,17 @@ impl Default for FerruleApp {
             project,
             saved_editor: Some(snapshot.clone()),
             snarl,
-            project_path: "project.json".to_string(),
+            canvas_view_generation: 0,
+            document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
             output_path: String::new(),
             selected_scope: Vec::new(),
             status: String::new(),
+            diagnostics: Diagnostics::default(),
+            new_mapping_setup: Some(NewMappingSetup::default()),
             pending_dialog: None,
             pending_destructive_action: None,
+            pending_save_continuation: None,
             allow_close: false,
             history_editor: snapshot,
             undo_history: Vec::new(),
@@ -192,46 +217,11 @@ impl CanvasLayout {
             }
         }
     }
-}
 
-fn project_fingerprint(project: &Project) -> String {
-    let json = serde_json::to_vec(project).expect("Project serialization cannot fail");
-    let hash = json.into_iter().fold(0xcbf29ce484222325_u64, |hash, byte| {
-        (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3)
-    });
-    format!("{hash:016x}")
-}
-
-fn layout_path(project_path: &str) -> PathBuf {
-    let mut path = PathBuf::from(project_path);
-    path.set_extension("layout.json");
-    path
-}
-
-fn read_layout(project_path: &str) -> anyhow::Result<Option<CanvasLayout>> {
-    let path = layout_path(project_path);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.into()),
-    };
-    let layout: CanvasLayout = serde_json::from_str(&text)?;
-    anyhow::ensure!(
-        layout.version == LAYOUT_VERSION,
-        "unsupported canvas layout version {}",
-        layout.version
-    );
-    Ok(Some(layout))
-}
-
-fn write_layout(
-    project_path: &str,
-    project: &Project,
-    snarl: &Snarl<CanvasNode>,
-) -> anyhow::Result<()> {
-    let json = serde_json::to_string_pretty(&CanvasLayout::capture(project, snarl))?;
-    std::fs::write(layout_path(project_path), json)?;
-    Ok(())
+    fn matches_project(&self, project: &Project) -> bool {
+        self.version == LAYOUT_VERSION
+            && self.project_fingerprint.as_deref() == Some(project_fingerprint(project).as_str())
+    }
 }
 
 fn blank_project() -> Project {
@@ -331,6 +321,7 @@ fn build_snarl_with_layout(
     project: &Project,
     saved_layout: Option<&CanvasLayout>,
 ) -> Snarl<CanvasNode> {
+    let saved_layout = saved_layout.filter(|layout| layout.matches_project(project));
     let source_pins = source_leaves(&project.source);
     let target_pins = target_leaves(&project.target);
 
@@ -378,9 +369,7 @@ fn build_snarl_with_layout(
     );
     let hidden_set: std::collections::BTreeSet<NodeId> = hidden.keys().copied().collect();
     let layout = layered_layout(&project.graph, &hidden_set, &binding_order);
-    let fingerprint = project_fingerprint(project);
     let placeholders: std::collections::BTreeSet<NodeId> = saved_layout
-        .filter(|layout| layout.project_fingerprint.as_deref() == Some(fingerprint.as_str()))
         .into_iter()
         .flat_map(|layout| &layout.nodes)
         .filter_map(|entry| match entry.node {
@@ -649,15 +638,17 @@ impl FerruleApp {
                     pick_file("ferrule project", &["json"]),
                 ));
             }
-            DestructiveAction::LoadProject => self.load_project(),
             DestructiveAction::NewProject => {
                 self.project = blank_project();
                 self.snarl = build_snarl(&self.project);
-                self.project_path = "project.json".to_string();
+                self.reset_canvas_view();
+                self.document = DocumentLocation::untitled("project.json");
                 self.selected_scope.clear();
                 self.mark_clean();
                 self.rebase_history();
+                self.diagnostics.clear();
                 self.status = "new project".to_string();
+                self.begin_new_mapping();
             }
             DestructiveAction::ImportMfd => {
                 self.pending_dialog = Some((
@@ -684,7 +675,7 @@ impl FerruleApp {
             .show(ctx, |ui| {
                 ui.label(format!(
                     "Save changes to {} before continuing?",
-                    self.project_path
+                    self.document.display_path()
                 ));
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
@@ -700,14 +691,9 @@ impl FerruleApp {
             });
 
         match choice {
-            Some(true) => match self.save_project() {
-                Ok(issues) => {
-                    self.status = Self::saved_status(&self.project_path, &issues);
-                    self.pending_destructive_action = None;
-                    self.perform_destructive_action(action, ctx);
-                }
-                Err(error) => self.status = format!("failed to save: {error}"),
-            },
+            Some(true) => {
+                self.save_with_continuation(Some(SaveContinuation::Destructive(action)), ctx)
+            }
             Some(false) => {
                 self.pending_destructive_action = None;
                 self.perform_destructive_action(action, ctx);
@@ -716,38 +702,53 @@ impl FerruleApp {
         }
     }
 
-    fn load_project(&mut self) {
-        match std::fs::read_to_string(&self.project_path).and_then(|text| {
+    fn load_project_from(&mut self, path: &std::path::Path) {
+        match std::fs::read_to_string(path).and_then(|text| {
             serde_json::from_str::<Project>(&text).map_err(|e| std::io::Error::other(e.to_string()))
         }) {
             Ok(project) => {
-                let (layout, layout_warning) = match read_layout(&self.project_path) {
+                let (layout, layout_warning) = match read_layout(path) {
                     Ok(layout) => (layout, None),
                     Err(error) => (None, Some(error.to_string())),
                 };
                 self.snarl = build_snarl_with_layout(&project, layout.as_ref());
+                self.reset_canvas_view();
                 self.project = project;
+                self.document = DocumentLocation::saved(path);
                 self.selected_scope.clear();
                 self.mark_clean();
                 self.rebase_history();
-                self.status = layout_warning.map_or_else(
-                    || format!("loaded {}", self.project_path),
-                    |warning| {
-                        format!(
-                            "loaded {} with default canvas layout: {warning}",
-                            self.project_path
-                        )
-                    },
-                );
+                let validation = cli::validate(&self.project);
+                let mut diagnostics = validation
+                    .into_iter()
+                    .map(|issue| Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: issue.to_string(),
+                    })
+                    .collect::<Vec<_>>();
+                diagnostics.extend(layout_warning.map(|warning| Diagnostic {
+                    level: DiagnosticLevel::Warning,
+                    message: format!("using default canvas layout: {warning}"),
+                }));
+                if diagnostics.is_empty() {
+                    self.diagnostics.clear();
+                } else {
+                    self.diagnostics.replace("Loaded project", diagnostics);
+                }
+                self.status = format!("loaded {}", path.display());
             }
-            Err(e) => self.status = format!("failed to load: {e}"),
+            Err(error) => {
+                self.status = format!("failed to load {}", path.display());
+                self.diagnostics.error("Open failed", error.to_string());
+            }
         }
     }
 
-    fn save_project(&mut self) -> anyhow::Result<Vec<String>> {
+    fn save_document_to(&mut self, path: &std::path::Path) -> anyhow::Result<Vec<String>> {
         let json = serde_json::to_string_pretty(&self.project)?;
-        std::fs::write(&self.project_path, json)?;
-        write_layout(&self.project_path, &self.project, &self.snarl)?;
+        std::fs::write(path, json)?;
+        write_layout(path, &CanvasLayout::capture(&self.project, &self.snarl))?;
+        self.document = DocumentLocation::saved(path);
         self.mark_clean();
         Ok(cli::validate(&self.project)
             .into_iter()
@@ -755,20 +756,70 @@ impl FerruleApp {
             .collect())
     }
 
-    fn saved_status(path: &str, issues: &[String]) -> String {
+    fn saved_status(path: &std::path::Path, issues: &[String]) -> String {
         if issues.is_empty() {
-            format!("saved {path}")
+            format!("saved {}", path.display())
         } else {
             format!(
-                "saved {path} with {} validation issue(s): {}",
-                issues.len(),
-                issues[0]
+                "saved {} with {} validation issue(s)",
+                path.display(),
+                issues.len()
             )
         }
     }
 
+    fn start_save_as(&mut self, continuation: Option<SaveContinuation>) {
+        self.pending_save_continuation = continuation;
+        self.pending_dialog = Some((
+            DialogKind::SaveProjectAs,
+            save_file("ferrule project", &["json"], &self.document.display_path()),
+        ));
+    }
+
+    fn save_with_continuation(
+        &mut self,
+        continuation: Option<SaveContinuation>,
+        ctx: &egui::Context,
+    ) {
+        let Some(path) = self.document.saved_path().map(std::path::Path::to_path_buf) else {
+            self.pending_destructive_action = None;
+            self.start_save_as(continuation);
+            return;
+        };
+        match self.save_document_to(&path) {
+            Ok(issues) => {
+                self.status = Self::saved_status(&path, &issues);
+                if issues.is_empty() {
+                    self.diagnostics.clear();
+                } else {
+                    self.diagnostics.validation(issues);
+                }
+                self.pending_destructive_action = None;
+                self.complete_save_continuation(continuation, ctx);
+            }
+            Err(error) => {
+                self.status = format!("failed to save {}", path.display());
+                self.diagnostics.error("Save failed", error.to_string());
+            }
+        }
+    }
+
+    fn complete_save_continuation(
+        &mut self,
+        continuation: Option<SaveContinuation>,
+        ctx: &egui::Context,
+    ) {
+        match continuation {
+            Some(SaveContinuation::Destructive(action)) => {
+                self.perform_destructive_action(action, ctx)
+            }
+            Some(SaveContinuation::Run) => self.run_saved(),
+            None => {}
+        }
+    }
+
     /// Applies the result of a finished file dialog, if any.
-    fn poll_dialog(&mut self) {
+    fn poll_dialog(&mut self, ctx: &egui::Context) {
         let Some((kind, rx)) = &self.pending_dialog else {
             return;
         };
@@ -780,95 +831,154 @@ impl FerruleApp {
         };
         self.pending_dialog = None;
         let Some(path) = result else {
+            if kind == DialogKind::SaveProjectAs {
+                self.pending_save_continuation = None;
+            }
             return; // cancelled or no dialog backend
         };
         match kind {
             DialogKind::OpenProject => {
-                self.project_path = path;
-                self.load_project();
+                self.load_project_from(std::path::Path::new(&path));
             }
             DialogKind::SaveProjectAs => {
-                self.project_path = path;
-                match self.save_project() {
+                let continuation = self.pending_save_continuation.take();
+                let path = PathBuf::from(path);
+                match self.save_document_to(&path) {
                     Ok(issues) => {
-                        self.status = Self::saved_status(&self.project_path, &issues);
+                        self.status = Self::saved_status(&path, &issues);
+                        if issues.is_empty() {
+                            self.diagnostics.clear();
+                        } else {
+                            self.diagnostics.validation(issues);
+                        }
+                        self.complete_save_continuation(continuation, ctx);
                     }
-                    Err(e) => self.status = format!("failed to save: {e}"),
+                    Err(error) => {
+                        self.status = format!("failed to save {}", path.display());
+                        self.diagnostics.error("Save failed", error.to_string());
+                    }
                 }
             }
             DialogKind::BrowseInput => self.input_path = path,
             DialogKind::BrowseOutput => self.output_path = path,
+            DialogKind::BrowseSourceSchema => {
+                self.stage_mapping_schema(SchemaSide::Source, PathBuf::from(path));
+            }
+            DialogKind::BrowseTargetSchema => {
+                self.stage_mapping_schema(SchemaSide::Target, PathBuf::from(path));
+            }
             DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
                 Ok(imported) => {
                     self.snarl = build_snarl(&imported.project);
+                    self.reset_canvas_view();
                     self.project = imported.project;
                     self.saved_editor = None;
                     self.selected_scope.clear();
                     self.rebase_history();
-                    self.project_path = std::path::Path::new(&path)
-                        .with_extension("json")
-                        .display()
-                        .to_string();
+                    self.document = DocumentLocation::untitled(
+                        std::path::Path::new(&path).with_extension("json"),
+                    );
+                    let validation = cli::validate(&self.project);
+                    let mut diagnostics = imported
+                        .warnings
+                        .iter()
+                        .cloned()
+                        .map(|message| Diagnostic {
+                            level: DiagnosticLevel::Warning,
+                            message,
+                        })
+                        .collect::<Vec<_>>();
+                    diagnostics.extend(validation.into_iter().map(|issue| Diagnostic {
+                        level: DiagnosticLevel::Error,
+                        message: issue.to_string(),
+                    }));
+                    if diagnostics.is_empty() {
+                        self.diagnostics.clear();
+                    } else {
+                        self.diagnostics.replace("MFD import", diagnostics);
+                    }
                     self.status = if imported.warnings.is_empty() {
                         format!("imported {path}")
                     } else {
                         format!(
-                            "imported {path} with {} warning(s): {}",
-                            imported.warnings.len(),
-                            imported.warnings.join(" | ")
+                            "imported {path} with {} warning(s)",
+                            imported.warnings.len()
                         )
                     };
                 }
-                Err(e) => self.status = format!("import failed: {e}"),
+                Err(error) => {
+                    self.status = format!("failed to import {path}");
+                    self.diagnostics
+                        .error("MFD import failed", error.to_string());
+                }
             },
             DialogKind::ExportMfd => {
                 match mfd::export(&self.project, std::path::Path::new(&path)) {
                     Ok(warnings) if warnings.is_empty() => {
                         self.status = format!("exported {path}");
+                        self.diagnostics.clear();
                     }
                     Ok(warnings) => {
-                        self.status = format!(
-                            "exported {path} with {} warning(s): {}",
-                            warnings.len(),
-                            warnings.join(" | ")
-                        );
+                        self.status = format!("exported {path} with {} warning(s)", warnings.len());
+                        self.diagnostics.warnings("MFD export", warnings);
                     }
-                    Err(e) => self.status = format!("export failed: {e}"),
+                    Err(error) => {
+                        self.status = format!("failed to export {path}");
+                        self.diagnostics
+                            .error("MFD export failed", error.to_string());
+                    }
                 }
             }
         }
     }
 
-    fn run(&mut self) {
-        match self.save_project() {
-            Ok(issues) if issues.is_empty() => {}
-            Ok(issues) => {
-                self.status = format!(
-                    "run blocked by {} validation issue(s): {}",
-                    issues.len(),
-                    issues[0]
-                );
-                return;
-            }
-            Err(e) => {
-                self.status = format!("failed to save before running: {e}");
-                return;
-            }
+    fn run(&mut self, ctx: &egui::Context) {
+        let issues = cli::validate(&self.project);
+        if !issues.is_empty() {
+            self.status = format!("run blocked by {} validation issue(s)", issues.len());
+            self.diagnostics.validation(issues);
+            return;
         }
-        match cli::run_project(
-            std::path::Path::new(&self.project_path),
-            &PathBuf::from(&self.input_path),
-            &PathBuf::from(&self.output_path),
+        self.diagnostics.clear();
+        self.save_with_continuation(Some(SaveContinuation::Run), ctx);
+    }
+
+    fn run_saved(&mut self) {
+        let Some(project_path) = self.document.saved_path() else {
+            self.diagnostics
+                .error("Run failed", "project has no saved file");
+            return;
+        };
+        let input_path = nonempty_path(&self.input_path);
+        let output_path = nonempty_path(&self.output_path);
+        match cli::run_project_with_paths(
+            project_path,
+            input_path.as_deref(),
+            output_path.as_deref(),
         ) {
-            Ok(rows) => self.status = format!("wrote {rows} record(s) to {}", self.output_path),
-            Err(e) => self.status = format!("run failed: {e}"),
+            Ok(outcome) => {
+                self.status = format!(
+                    "wrote {} record(s) to {}",
+                    outcome.records_written,
+                    outcome.output_path.display()
+                );
+                self.diagnostics.clear();
+            }
+            Err(error) => {
+                self.status = "run failed".to_string();
+                self.diagnostics.error("Run failed", error.to_string());
+            }
         }
     }
 }
 
+fn nonempty_path(value: &str) -> Option<PathBuf> {
+    (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()))
+}
+
 impl eframe::App for FerruleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.poll_dialog();
+        self.poll_dialog(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         if close_requested && !self.allow_close && self.is_dirty() {
             ui.ctx()
@@ -876,8 +986,9 @@ impl eframe::App for FerruleApp {
             self.pending_destructive_action
                 .get_or_insert(DestructiveAction::Close);
         }
-        let project_editing_enabled =
-            self.pending_dialog.is_none() && self.pending_destructive_action.is_none();
+        let project_editing_enabled = self.pending_dialog.is_none()
+            && self.pending_destructive_action.is_none()
+            && self.new_mapping_setup.is_none();
         let undo_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::Z);
         let redo_shortcut = egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
@@ -921,125 +1032,15 @@ impl eframe::App for FerruleApp {
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         egui::Panel::top("top_panel").show(ui, |ui| {
-            ui.add_enabled_ui(project_editing_enabled, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            self.can_undo(),
-                            egui::Button::new("<").min_size(egui::vec2(28.0, 28.0)),
-                        )
-                        .on_hover_text(format!(
-                            "Undo ({})",
-                            ui.ctx().format_shortcut(&undo_shortcut)
-                        ))
-                        .clicked()
-                    {
-                        self.undo_project();
-                    }
-                    if ui
-                        .add_enabled(
-                            !self.redo_history.is_empty(),
-                            egui::Button::new(">").min_size(egui::vec2(28.0, 28.0)),
-                        )
-                        .on_hover_text(format!(
-                            "Redo ({})",
-                            ui.ctx().format_shortcut(&redo_shortcut)
-                        ))
-                        .clicked()
-                    {
-                        self.redo_project();
-                    }
-                    ui.separator();
-                    ui.label("project:");
-                    ui.text_edit_singleline(&mut self.project_path);
-                    if ui.button("Open\u{2026}").clicked()
-                        && let Some(action) =
-                            self.request_destructive_action(DestructiveAction::OpenProject)
-                    {
-                        self.perform_destructive_action(action, ui.ctx());
-                    }
-                    if ui.button("Load").clicked()
-                        && let Some(action) =
-                            self.request_destructive_action(DestructiveAction::LoadProject)
-                    {
-                        self.perform_destructive_action(action, ui.ctx());
-                    }
-                    if ui.button("Save").clicked() {
-                        match self.save_project() {
-                            Ok(issues) => {
-                                self.status = Self::saved_status(&self.project_path, &issues);
-                            }
-                            Err(e) => self.status = format!("failed to save: {e}"),
-                        }
-                    }
-                    if ui.button("Save As\u{2026}").clicked() {
-                        self.pending_dialog = Some((
-                            DialogKind::SaveProjectAs,
-                            save_file("ferrule project", &["json"], &self.project_path),
-                        ));
-                    }
-                    if ui.button("New").clicked()
-                        && let Some(action) =
-                            self.request_destructive_action(DestructiveAction::NewProject)
-                    {
-                        self.perform_destructive_action(action, ui.ctx());
-                    }
-                    if ui.button("Import MFD\u{2026}").clicked()
-                        && let Some(action) =
-                            self.request_destructive_action(DestructiveAction::ImportMfd)
-                    {
-                        self.perform_destructive_action(action, ui.ctx());
-                    }
-                    if ui.button("Export MFD\u{2026}").clicked() {
-                        self.pending_dialog = Some((
-                            DialogKind::ExportMfd,
-                            save_file("MapForce design", &["mfd"], &self.project_path),
-                        ));
-                    }
-                });
-            });
-            ui.add_enabled_ui(project_editing_enabled, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("input:");
-                    ui.text_edit_singleline(&mut self.input_path);
-                    if ui.button("Browse\u{2026}").clicked() {
-                        self.pending_dialog = Some((
-                            DialogKind::BrowseInput,
-                            pick_file(
-                                "input data",
-                                &[
-                                    "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
-                                ],
-                            ),
-                        ));
-                    }
-                    ui.label("output:");
-                    ui.text_edit_singleline(&mut self.output_path);
-                    if ui.button("Browse\u{2026}").clicked() {
-                        self.pending_dialog = Some((
-                            DialogKind::BrowseOutput,
-                            save_file(
-                                "output data",
-                                &[
-                                    "csv", "xml", "json", "db", "sqlite", "edi", "x12", "edifact",
-                                ],
-                                &self.output_path,
-                            ),
-                        ));
-                    }
-                    if ui.button("Run").clicked() {
-                        self.run();
-                    }
-                    if ui.button("Arrange").clicked() {
-                        self.snarl = arrange_snarl(&self.project, &self.snarl);
-                        self.status = "canvas re-arranged".to_string();
-                    }
-                });
-            });
-            if !self.status.is_empty() {
-                ui.label(&self.status);
-            }
+            self.show_command_bar(ui, project_editing_enabled, &undo_shortcut, &redo_shortcut);
         });
+
+        if !self.diagnostics.is_empty() {
+            egui::Panel::bottom("diagnostics_panel")
+                .resizable(true)
+                .default_size(120.0)
+                .show(ui, |ui| self.diagnostics.show(ui));
+        }
 
         egui::Panel::left("source_schema").show(ui, |ui| {
             ui.strong("Source schema");
@@ -1080,8 +1081,19 @@ impl eframe::App for FerruleApp {
                     .id_salt("scope_editor_scroll")
                     .show(ui, |ui| {
                         let nested = !self.selected_scope.is_empty();
+                        let target_chain =
+                            scope_target_chain(&self.project.root, &self.selected_scope);
+                        let target_fields =
+                            binding_target_fields(&self.project.target, &target_chain);
                         let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
-                        show_scope_editor(ui, scope, &self.project.graph, &source_paths, nested);
+                        show_scope_editor(
+                            ui,
+                            scope,
+                            &self.project.graph,
+                            &source_paths,
+                            &target_fields,
+                            nested,
+                        );
                     });
             });
         });
@@ -1098,24 +1110,28 @@ impl eframe::App for FerruleApp {
                     source_paths: &source_paths,
                     error: None,
                 };
-                egui_snarl::ui::SnarlWidget::new().show(&mut self.snarl, &mut viewer, ui);
+                crate::canvas_keyboard::show(
+                    &mut self.snarl,
+                    &mut viewer,
+                    self.canvas_view_generation,
+                    ui,
+                );
                 if let Some(error) = viewer.error {
-                    self.status = error;
+                    self.status = "graph edit failed".to_string();
+                    self.diagnostics.error("Graph edit failed", error);
                 }
             });
         });
 
         self.show_unsaved_confirmation(ui.ctx());
+        self.show_new_mapping_setup(ui.ctx());
         if let Some(repaint_after) =
             self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {
             ui.ctx().request_repaint_after(repaint_after);
         }
         let marker = if self.is_dirty() { " *" } else { "" };
-        let name = std::path::Path::new(&self.project_path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&self.project_path);
+        let name = self.document.display_name();
         ui.ctx()
             .send_viewport_cmd(egui::ViewportCommand::Title(format!(
                 "{name}{marker} - ferrule"

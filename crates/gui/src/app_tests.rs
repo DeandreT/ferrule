@@ -1,4 +1,5 @@
 use super::*;
+use crate::layout_store::layout_path;
 use ir::ScalarType;
 use mapping::Binding;
 
@@ -45,19 +46,20 @@ fn canvas_layout_saves_alongside_backward_compatible_project_json() {
         CanvasNode::Graph(7),
         egui::pos2(517.0, 233.0),
     );
-    app.project_path = project_path.display().to_string();
-    app.save_project().expect("project and layout save");
+    app.document = DocumentLocation::saved(project_path.clone());
+    app.save_document_to(&project_path)
+        .expect("project and layout save");
 
     let project_json = std::fs::read_to_string(&project_path).expect("project was written");
     serde_json::from_str::<Project>(&project_json).expect("project JSON remains unchanged");
     assert!(!project_json.contains("\"layout\""));
-    assert!(layout_path(&app.project_path).is_file());
+    assert!(layout_path(&project_path).is_file());
 
     let mut loaded = FerruleApp {
-        project_path: app.project_path.clone(),
+        document: DocumentLocation::saved(project_path.clone()),
         ..Default::default()
     };
-    loaded.load_project();
+    loaded.load_project_from(&project_path);
     assert_eq!(
         canvas_position(&loaded.snarl, CanvasNode::Source),
         egui::pos2(73.0, 91.0)
@@ -105,14 +107,15 @@ fn layout_sidecar_restores_placeholder_identity_and_wiring() {
         },
     );
     app.snarl = snarl;
-    app.project_path = project_path.display().to_string();
-    app.save_project().expect("project and layout save");
+    app.document = DocumentLocation::saved(project_path.clone());
+    app.save_document_to(&project_path)
+        .expect("project and layout save");
 
     let mut loaded = FerruleApp {
-        project_path: app.project_path.clone(),
+        document: DocumentLocation::saved(project_path.clone()),
         ..Default::default()
     };
-    loaded.load_project();
+    loaded.load_project_from(&project_path);
     assert_eq!(
         canvas_position(&loaded.snarl, CanvasNode::Placeholder(0)),
         egui::pos2(180.0, 210.0)
@@ -132,7 +135,7 @@ fn layout_sidecar_restores_placeholder_identity_and_wiring() {
 }
 
 #[test]
-fn stale_layout_cannot_reclassify_a_project_node_as_a_placeholder() {
+fn stale_layout_cannot_reclassify_or_reposition_nodes() {
     let project_path = temporary_project_path("stale-placeholder-layout");
     let mut app = FerruleApp::default();
     app.project.graph.nodes.insert(
@@ -141,14 +144,27 @@ fn stale_layout_cannot_reclassify_a_project_node_as_a_placeholder() {
             value: ir::Value::Null,
         },
     );
+    app.project.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::Int(1),
+        },
+    );
     app.snarl = build_snarl(&app.project);
     for node in app.snarl.nodes_mut() {
         if *node == CanvasNode::Graph(0) {
             *node = CanvasNode::Placeholder(0);
         }
     }
-    app.project_path = project_path.display().to_string();
-    app.save_project().expect("project and layout save");
+    move_canvas_node(&mut app.snarl, CanvasNode::Source, egui::pos2(901.0, 733.0));
+    move_canvas_node(
+        &mut app.snarl,
+        CanvasNode::Graph(1),
+        egui::pos2(1201.0, 833.0),
+    );
+    app.document = DocumentLocation::saved(project_path.clone());
+    app.save_document_to(&project_path)
+        .expect("project and layout save");
 
     app.project.graph.nodes.insert(
         0,
@@ -156,6 +172,15 @@ fn stale_layout_cannot_reclassify_a_project_node_as_a_placeholder() {
             value: ir::Value::String("intentional null replacement".into()),
         },
     );
+    app.project.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: ir::Value::Int(2),
+        },
+    );
+    let default_layout = build_snarl(&app.project);
+    let expected_source = canvas_position(&default_layout, CanvasNode::Source);
+    let expected_graph = canvas_position(&default_layout, CanvasNode::Graph(1));
     std::fs::write(
         &project_path,
         serde_json::to_string_pretty(&app.project).expect("project serializes"),
@@ -163,10 +188,10 @@ fn stale_layout_cannot_reclassify_a_project_node_as_a_placeholder() {
     .expect("replacement project is written without touching its layout");
 
     let mut loaded = FerruleApp {
-        project_path: app.project_path.clone(),
+        document: DocumentLocation::saved(project_path.clone()),
         ..Default::default()
     };
-    loaded.load_project();
+    loaded.load_project_from(&project_path);
     assert!(
         loaded
             .snarl
@@ -178,6 +203,14 @@ fn stale_layout_cannot_reclassify_a_project_node_as_a_placeholder() {
             .snarl
             .nodes()
             .any(|node| *node == CanvasNode::Placeholder(0))
+    );
+    assert_eq!(
+        canvas_position(&loaded.snarl, CanvasNode::Source),
+        expected_source
+    );
+    assert_eq!(
+        canvas_position(&loaded.snarl, CanvasNode::Graph(1)),
+        expected_graph
     );
 
     std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
@@ -195,15 +228,15 @@ fn project_without_layout_sidecar_uses_default_layout() {
     .expect("legacy project is written");
 
     let mut app = FerruleApp {
-        project_path: project_path.display().to_string(),
+        document: DocumentLocation::saved(project_path.clone()),
         ..Default::default()
     };
-    app.load_project();
+    app.load_project_from(&project_path);
     assert_eq!(
         canvas_position(&app.snarl, CanvasNode::Source),
         egui::pos2(0.0, 0.0)
     );
-    assert_eq!(app.status, format!("loaded {}", app.project_path));
+    assert_eq!(app.status, format!("loaded {}", project_path.display()));
     assert!(!app.is_dirty());
 
     std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
@@ -307,6 +340,127 @@ fn destructive_actions_wait_for_confirmation_when_dirty() {
         app.pending_destructive_action,
         Some(DestructiveAction::OpenProject)
     );
+}
+
+#[test]
+fn failed_open_preserves_the_current_document_and_dirty_state() {
+    let old_path = temporary_project_path("failed-open-current");
+    let invalid_path = old_path.with_file_name("invalid.json");
+    std::fs::write(&invalid_path, "not json").expect("invalid project is written");
+    let mut app = FerruleApp {
+        document: DocumentLocation::saved(old_path.clone()),
+        ..Default::default()
+    };
+    app.project.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: ir::Value::String("unsaved".into()),
+        },
+    );
+    assert!(app.is_dirty());
+
+    app.load_project_from(&invalid_path);
+
+    assert_eq!(app.document, DocumentLocation::saved(old_path.clone()));
+    assert!(app.project.graph.nodes.contains_key(&7));
+    assert!(app.is_dirty());
+    assert_eq!(app.diagnostics.items().len(), 1);
+    std::fs::remove_dir_all(old_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
+}
+
+#[test]
+fn failed_save_does_not_change_the_document_association() {
+    let old_path = temporary_project_path("failed-save-current");
+    let directory = old_path.parent().expect("project has parent").to_path_buf();
+    let mut app = FerruleApp {
+        document: DocumentLocation::saved(old_path.clone()),
+        ..Default::default()
+    };
+    app.project.graph.nodes.insert(
+        8,
+        Node::Const {
+            value: ir::Value::Null,
+        },
+    );
+
+    assert!(app.save_document_to(&directory).is_err());
+    assert_eq!(app.document, DocumentLocation::saved(old_path.clone()));
+    assert!(app.is_dirty());
+    std::fs::remove_dir_all(&directory).expect("temporary test directory is removed");
+}
+
+#[test]
+fn invalid_run_does_not_save_or_clear_dirty_state() {
+    let project_path = temporary_project_path("invalid-run");
+    let mut app = FerruleApp::default();
+    app.save_document_to(&project_path)
+        .expect("baseline project is saved");
+    let saved = std::fs::read_to_string(&project_path).expect("baseline project is readable");
+    app.project.root.bindings.push(Binding {
+        target_field: "missing".into(),
+        node: 999,
+    });
+
+    app.run(&egui::Context::default());
+
+    assert_eq!(
+        std::fs::read_to_string(&project_path).expect("project remains readable"),
+        saved
+    );
+    assert!(app.is_dirty());
+    assert!(!app.diagnostics.items().is_empty());
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
+}
+
+#[test]
+fn blank_run_paths_fall_back_to_stored_project_paths() {
+    let project_path = temporary_project_path("stored-run-paths");
+    let directory = project_path.parent().expect("project has parent");
+    std::fs::write(directory.join("input.xml"), "<root/>").expect("input instance is written");
+    let mut app = FerruleApp::default();
+    app.project.source_path = Some("input.xml".into());
+    app.project.target_path = Some("output.xml".into());
+    app.save_document_to(&project_path)
+        .expect("project with stored paths is saved");
+    app.input_path.clear();
+    app.output_path.clear();
+
+    app.run(&egui::Context::default());
+
+    assert!(directory.join("output.xml").is_file(), "{}", app.status);
+    assert!(app.diagnostics.is_empty(), "{}", app.status);
+    std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
+}
+
+#[test]
+fn successful_save_resumes_a_destructive_continuation() {
+    let project_path = temporary_project_path("save-continuation");
+    let mut app = FerruleApp::default();
+    app.save_document_to(&project_path)
+        .expect("baseline project is saved");
+    app.project.graph.nodes.insert(
+        9,
+        Node::Const {
+            value: ir::Value::Null,
+        },
+    );
+
+    app.save_with_continuation(
+        Some(SaveContinuation::Destructive(DestructiveAction::NewProject)),
+        &egui::Context::default(),
+    );
+
+    assert!(app.project.graph.nodes.is_empty());
+    assert!(app.document.saved_path().is_none());
+    let saved: Project = serde_json::from_str(
+        &std::fs::read_to_string(&project_path).expect("saved project is readable"),
+    )
+    .expect("saved project parses");
+    assert!(saved.graph.nodes.contains_key(&9));
+    std::fs::remove_dir_all(project_path.parent().expect("project has parent"))
+        .expect("temporary test directory is removed");
 }
 
 #[test]
@@ -631,4 +785,49 @@ fn build_snarl_only_hides_legacy_frameless_fields_with_unique_suffixes() {
         vec![group("A"), group("B")],
     )));
     assert!(ambiguous.nodes().any(|node| *node == CanvasNode::Graph(0)));
+}
+
+#[test]
+fn new_mapping_stages_both_schemas_before_replacing_the_project() {
+    let project_path = temporary_project_path("new-mapping");
+    let directory = project_path.parent().expect("project has parent");
+    let source_path = directory.join("source.xsd");
+    let target_path = directory.join("target.schema.json");
+    std::fs::write(
+        &source_path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="SourceRoot">
+    <xs:complexType><xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+    </xs:sequence></xs:complexType>
+  </xs:element>
+</xs:schema>"#,
+    )
+    .expect("source schema is written");
+    std::fs::write(
+        &target_path,
+        r#"{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TargetRoot",
+  "type": "object",
+  "properties": { "Label": { "type": "string" } }
+}"#,
+    )
+    .expect("target schema is written");
+
+    let mut app = FerruleApp::default();
+    app.stage_mapping_schema(SchemaSide::Source, source_path);
+    assert_eq!(app.project.source.name, "root");
+    app.stage_mapping_schema(SchemaSide::Target, target_path);
+    assert_eq!(app.project.target.name, "root");
+
+    app.finish_new_mapping();
+
+    assert_eq!(app.project.source.name, "SourceRoot");
+    assert_eq!(app.project.target.name, "TargetRoot");
+    assert!(app.new_mapping_setup.is_none());
+    assert!(app.is_dirty());
+    assert_eq!(app.snarl.nodes().count(), 2);
+
+    std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
 }

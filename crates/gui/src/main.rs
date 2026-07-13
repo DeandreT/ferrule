@@ -1,6 +1,11 @@
 mod app;
 mod canvas;
+mod canvas_keyboard;
+mod diagnostics;
+mod document;
 mod graph_viewer;
+mod layout_store;
+mod new_mapping;
 mod path_picker;
 mod schema_tree;
 mod scope_editor;
