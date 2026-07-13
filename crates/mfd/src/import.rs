@@ -148,6 +148,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     pending_joins.read(component, &mut warnings);
                 }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
+                "edifact" if name == "to-datetime" => {
+                    fn_components.push(read_fn_component(&component));
+                }
                 "xpath2" if map_function_name(&name).is_some() => {
                     fn_components.push(read_fn_component(&component));
                 }
