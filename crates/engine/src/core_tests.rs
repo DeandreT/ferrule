@@ -492,6 +492,7 @@ fn value_map_falls_back_to_default_on_miss() {
             1,
             Node::ValueMap {
                 input: 0,
+                input_type: None,
                 table: vec![(
                     Value::String("BD".into()),
                     Value::String("Balance Due".into()),
@@ -534,6 +535,63 @@ fn value_map_falls_back_to_default_on_miss() {
     assert_eq!(
         target.field("out").and_then(Instance::as_scalar),
         Some(&Value::String("Original".into()))
+    );
+}
+
+#[test]
+fn value_map_coerces_input_to_its_declared_type() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        ),
+        (
+            1,
+            Node::ValueMap {
+                input: 0,
+                input_type: Some(ScalarType::String),
+                table: vec![(Value::String("1".into()), Value::String("January".into()))],
+                default: None,
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph,
+        root: Scope {
+            target_field: String::new(),
+            iteration: mapping::ScopeIteration::None,
+            filter: None,
+            group_by: None,
+            group_starting_with: None,
+            group_into_blocks: None,
+            sort_by: None,
+            sort_descending: false,
+            take: None,
+            iteration_output: Default::default(),
+            bindings: vec![Binding {
+                target_field: "out".into(),
+                node: 1,
+            }],
+            dynamic_bindings: Vec::new(),
+            children: vec![],
+            dynamic_children: Vec::new(),
+            merge_dynamic_fields: false,
+        },
+    };
+
+    let target = run(&project, &Instance::Group(vec![])).unwrap();
+    assert_eq!(
+        target.field("out").and_then(Instance::as_scalar),
+        Some(&Value::String("January".into()))
     );
 }
 

@@ -1,4 +1,4 @@
-use ir::Value;
+use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
 pub(super) fn aggregate_component_name(op: AggregateOp) -> &'static str {
@@ -28,6 +28,25 @@ pub(super) fn value_text(value: &Value) -> String {
     constant_parts(value).0
 }
 
+pub(super) fn scalar_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "decimal",
+        ScalarType::Bool => "boolean",
+    }
+}
+
+pub(super) fn value_scalar_type(value: &Value) -> Option<ScalarType> {
+    match value {
+        Value::Null | Value::XmlNil(_) => None,
+        Value::Bool(_) => Some(ScalarType::Bool),
+        Value::Int(_) => Some(ScalarType::Int),
+        Value::Float(_) => Some(ScalarType::Float),
+        Value::String(_) => Some(ScalarType::String),
+    }
+}
+
 pub(super) fn unmap_function_name(name: &str) -> String {
     match name {
         "not_equal" => "not-equal",
@@ -53,6 +72,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "resolve_filepath" => "resolve-filepath",
         "is_xml_nil" => "is-xsi-nil",
         "date_from_datetime" => "date-from-datetime",
+        "month_from_datetime" => "month-from-datetime",
         "time_from_datetime" => "time-from-datetime",
         "datetime_from_date_and_time" => "datetime-from-date-and-time",
         "datetime_from_parts" => "datetime-from-parts",
@@ -74,6 +94,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "right_trim"
         | "pad_string_left"
         | "pad_string_right"
+        | "month_from_datetime"
         | "time_from_datetime"
         | "datetime_from_date_and_time"
         | "datetime_from_parts"

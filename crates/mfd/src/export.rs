@@ -20,7 +20,8 @@ mod sequence;
 mod tests;
 
 use function::{
-    aggregate_component_name, constant_parts, function_library, unmap_function_name, value_text,
+    aggregate_component_name, constant_parts, function_library, scalar_type_name,
+    unmap_function_name, value_scalar_type, value_text,
 };
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
 use position::{connect_join_position_roots, connect_position_roots, render_component};
@@ -405,7 +406,12 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                     ins[0], ins[1], ins[2]
                 );
             }
-            Node::ValueMap { table, default, .. } => {
+            Node::ValueMap {
+                input_type,
+                table,
+                default,
+                ..
+            } => {
                 let input = keys.next();
                 let out = keys.next();
                 node_out_key.insert(id, out);
@@ -429,6 +435,13 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 } else {
                     ""
                 };
+                let input_type = scalar_type_name(input_type.unwrap_or(ir::ScalarType::String));
+                let result_type = table
+                    .iter()
+                    .find_map(|(_, value)| value_scalar_type(value))
+                    .or_else(|| default.as_ref().and_then(value_scalar_type))
+                    .map(scalar_type_name)
+                    .unwrap_or("string");
                 let _ = write!(
                     components,
                     "\t\t\t\t<component name=\"value-map\" library=\"core\" uid=\"{uid}\" kind=\"23\">\n\
@@ -436,7 +449,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
                      \t\t\t\t\t<data><valuemap{mode}><valuemapTable>{rows}</valuemapTable>\
-                     <input name=\"input\" type=\"string\"/><result name=\"result\" type=\"string\"{default_attr}/></valuemap></data>\n\
+                     <input name=\"input\" type=\"{input_type}\"/><result name=\"result\" type=\"{result_type}\"{default_attr}/></valuemap></data>\n\
                      \t\t\t\t</component>\n"
                 );
             }
