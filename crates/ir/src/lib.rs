@@ -13,6 +13,14 @@ use serde::{Deserialize, Serialize};
 /// Instance-field name used for an XML element's simple text content.
 pub const XML_TEXT_FIELD: &str = "#text";
 
+/// Virtual repeating group used to expose arbitrary direct XML child
+/// elements while retaining their document order.
+pub const XML_ELEMENTS_FIELD: &str = "element()";
+
+/// Synthetic fields available on items in [`XML_ELEMENTS_FIELD`].
+pub const XML_LOCAL_NAME_FIELD: &str = "LocalName";
+pub const XML_NODE_NAME_FIELD: &str = "NodeName";
+
 /// The scalar types a field can hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

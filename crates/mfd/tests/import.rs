@@ -109,6 +109,39 @@ fn imported_project_runs() {
 }
 
 #[test]
+fn generic_xml_elements_preserve_runtime_names_and_document_order() {
+    let imported = mfd::import(&fixture("generic-elements.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let source_elements = imported
+        .project
+        .source
+        .child("Items")
+        .and_then(|items| items.child(ir::XML_ELEMENTS_FIELD))
+        .unwrap();
+    assert!(source_elements.repeating);
+    assert!(source_elements.child(ir::XML_LOCAL_NAME_FIELD).is_some());
+    assert!(source_elements.child("Label").is_some());
+
+    let target_elements = imported
+        .project
+        .target
+        .child("Values")
+        .and_then(|values| values.child(ir::XML_ELEMENTS_FIELD))
+        .unwrap();
+    assert!(target_elements.repeating);
+    assert!(target_elements.child(ir::XML_TEXT_FIELD).unwrap().text);
+
+    let source =
+        format_xml::read(&fixture("generic-elements.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let xml = format_xml::to_string(&imported.project.target, &target).unwrap();
+    assert!(xml.contains("<Alpha>first</Alpha>"), "{xml}");
+    assert!(xml.contains("<Beta>second</Beta>"), "{xml}");
+    assert!(xml.find("<Alpha>") < xml.find("<Beta>"), "{xml}");
+}
+
+#[test]
 fn xsd_includes_supply_component_schemas_and_the_project_runs() {
     let imported = mfd::import(&fixture("includes.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -1004,6 +1037,27 @@ fn mapped_xpath2_scalar_function_imports_and_runs() {
     assert_eq!(people.len(), 2);
     assert_eq!(scalar(&people[0], "Name"), Value::String("ALICE".into()));
     assert_eq!(scalar(&people[1], "Name"), Value::String("BO".into()));
+}
+
+#[test]
+fn json_lines_format_option_survives_mfd_export_and_reimport() {
+    let mut project = mfd::import(&fixture("people.mfd")).unwrap().project;
+    project.target_path = Some("people.jsonl".into());
+    let dir = TempDir::new("json_lines");
+    let design = dir.0.join("mapping.mfd");
+
+    let warnings = mfd::export(&project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let text = std::fs::read_to_string(&design).unwrap();
+    assert!(text.contains("jsonlines=\"1\""), "{text}");
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(reimported.project.target_options.json_lines);
+    assert_eq!(
+        reimported.project.target_path.as_deref(),
+        Some("people.jsonl")
+    );
 }
 
 #[test]

@@ -74,7 +74,12 @@ pub fn parse_source(
             })
         }
         DataFormat::Json => {
-            format_json::from_str(text, &project.source).map_err(|error| RuntimeError::Parse {
+            let parsed = if project.source_options.json_lines {
+                format_json::from_lines(text, &project.source)
+            } else {
+                format_json::from_str(text, &project.source)
+            };
+            parsed.map_err(|error| RuntimeError::Parse {
                 format,
                 message: error.to_string(),
             })
@@ -107,12 +112,17 @@ pub fn serialize_target(
                 message: error.to_string(),
             }
         }),
-        DataFormat::Json => format_json::to_string(&project.target, target).map_err(|error| {
-            RuntimeError::Serialize {
+        DataFormat::Json => {
+            let serialized = if project.target_options.json_lines {
+                format_json::to_lines(&project.target, target)
+            } else {
+                format_json::to_string(&project.target, target)
+            };
+            serialized.map_err(|error| RuntimeError::Serialize {
                 format,
                 message: error.to_string(),
-            }
-        }),
+            })
+        }
         DataFormat::Csv => {
             let rows = target
                 .as_repeated()
@@ -232,6 +242,26 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&output).unwrap(),
             serde_json::json!({"name": "Ada", "age": 37})
+        );
+    }
+
+    #[test]
+    fn json_lines_options_apply_to_browser_input_and_output() {
+        let mut project = scalar_project(true);
+        project.source_options.json_lines = true;
+        project.target_options.json_lines = true;
+
+        let output = run(
+            &project,
+            "{\"name\":\"Ada\",\"age\":37}\n{\"name\":\"Grace\",\"age\":42}\n",
+            DataFormat::Json,
+            DataFormat::Json,
+        )
+        .unwrap();
+
+        assert_eq!(
+            output,
+            "{\"name\":\"Ada\",\"age\":37}\n{\"name\":\"Grace\",\"age\":42}\n"
         );
     }
 

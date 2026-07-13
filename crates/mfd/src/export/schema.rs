@@ -25,7 +25,7 @@ pub(super) fn side_format(instance_path: &Option<String>) -> SideFormat {
         .and_then(|e| e.to_str())
         .map(str::to_lowercase);
     match ext.as_deref() {
-        Some("json") => SideFormat::Json,
+        Some("json") | Some("jsonl") | Some("ndjson") => SideFormat::Json,
         Some("csv") | Some("txt") => SideFormat::Csv,
         Some("db") | Some("sqlite") | Some("sqlite3") => SideFormat::Db,
         _ => SideFormat::Xml,
@@ -135,6 +135,14 @@ pub(super) fn render_schema_component(
         }
         SideFormat::Json => {
             let schema_file = format!("{stem}-{side_name}.schema.json");
+            let json_lines = options.json_lines
+                || instance_path
+                    .and_then(|path| Path::new(path).extension())
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| {
+                        extension.eq_ignore_ascii_case("jsonl")
+                            || extension.eq_ignore_ascii_case("ndjson")
+                    });
             sibling = Some(GeneratedSibling {
                 path: dir.join(&schema_file),
                 contents: format_json::json_schema::export(schema),
@@ -154,12 +162,13 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
-                 \t\t\t\t\t\t<json schema=\"{}\"{instance}/>\n\
+                 \t\t\t\t\t\t<json schema=\"{}\"{instance}{json_lines}/>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(&schema.name),
                 ports.json_entries_xml(schema, attr, 10),
                 xml_escape(&schema_file),
+                json_lines = if json_lines { " jsonlines=\"1\"" } else { "" },
             );
         }
         SideFormat::Db => {

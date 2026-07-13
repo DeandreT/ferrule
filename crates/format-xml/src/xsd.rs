@@ -18,7 +18,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use ir::{ScalarType, SchemaNode, XML_TEXT_FIELD};
+use ir::{ScalarType, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use roxmltree::Node;
 
 use crate::XmlFormatError;
@@ -718,6 +718,17 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
             group: node.name.clone(),
         });
     }
+    if node.name == XML_ELEMENTS_FIELD {
+        return if node.repeating {
+            Ok(())
+        } else {
+            Err(XmlFormatError::UnsupportedSchemaRole {
+                node: node.name.clone(),
+                role: "generic elements",
+                kind: "non-repeating group",
+            })
+        };
+    }
     for child in children {
         validate_export_node(child, false)?;
     }
@@ -738,6 +749,12 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
 
 fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
+    if node.name == XML_ELEMENTS_FIELD {
+        out.push_str(&format!(
+            "{pad}<xs:any minOccurs=\"0\" maxOccurs=\"unbounded\" processContents=\"lax\"/>\n"
+        ));
+        return Ok(());
+    }
     let occurs = if node.repeating {
         " minOccurs=\"0\" maxOccurs=\"unbounded\""
     } else {

@@ -107,6 +107,38 @@ fn explicit_paths_override_project_defaults() {
 }
 
 #[test]
+fn json_lines_extensions_run_as_repeated_json_documents() {
+    let dir = test_dir("json_lines");
+    std::fs::write(
+        dir.join("input.jsonl"),
+        "{\"first_name\":\"Jane\",\"last_name\":\"Doe\",\"age\":29}\n\
+         {\"first_name\":\"John\",\"last_name\":\"Smith\",\"age\":41}\n",
+    )
+    .unwrap();
+    let project = write_project(
+        &dir,
+        &project_with_paths(Some("input.jsonl"), Some("output.ndjson")),
+    );
+
+    let output = ferrule(&dir, &["run", "--project", project.to_str().unwrap()]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let lines = std::fs::read_to_string(dir.join("output.ndjson")).unwrap();
+    let values = lines
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(values.len(), 2);
+    assert_eq!(values[0]["full_name"], "Jane Doe");
+    assert_eq!(values[1]["age_next_year"], 42);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn missing_input_default_reports_how_to_configure_it() {
     let dir = test_dir("missing_input");
     let project = write_project(&dir, &project_with_paths(None, Some("output.csv")));

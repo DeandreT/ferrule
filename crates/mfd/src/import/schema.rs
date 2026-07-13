@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, SchemaNode};
+use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::FormatOptions;
 
 mod csv;
+mod generic_xml;
 mod xml_ports;
 
 use csv::select_block as select_csv_block;
+use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
 use xml_ports::normalize_xml_text_ports;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -115,7 +117,6 @@ pub(super) fn read_schema_component(
         &mut ports,
         &mut out_count,
         &mut in_count,
-        warnings,
     );
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
@@ -166,6 +167,7 @@ pub(super) fn read_schema_component(
         let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
         super::alternatives::merge_conditioned_xml_types(&entry, &mut schema, &xsd_path, warnings);
     }
+    merge_generic_xml_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);
 
     Some(SchemaComponent {
@@ -277,12 +279,7 @@ pub(super) fn read_json_component(
             .find(|n| n.is_element() && n.tag_name().name() == "entry")?;
     }
 
-    if json_el.is_some_and(|j| j.attribute("jsonlines") == Some("1")) {
-        warnings.push(format!(
-            "component `{name}` uses JSON Lines; ferrule reads/writes it as \
-             regular JSON, so instances need converting"
-        ));
-    }
+    let json_lines = json_el.is_some_and(|json| json.attribute("jsonlines") == Some("1"));
 
     let dynamic_json = match super::dynamic_json::read_target(&entry) {
         Ok(target) => target,
@@ -357,7 +354,10 @@ pub(super) fn read_json_component(
         output_instance: json_el
             .and_then(|j| j.attribute("outputinstance"))
             .map(str::to_string),
-        options: FormatOptions::default(),
+        options: FormatOptions {
+            json_lines,
+            ..FormatOptions::default()
+        },
         is_source,
         is_default_output: is_default_output(component),
         is_variable: false,
@@ -646,7 +646,6 @@ pub(super) fn read_edi_component(
         &mut ports,
         &mut out_count,
         &mut in_count,
-        warnings,
     );
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
@@ -739,7 +738,6 @@ fn collect_entry_ports(
     ports: &mut BTreeMap<u32, Vec<String>>,
     out_count: &mut usize,
     in_count: &mut usize,
-    warnings: &mut Vec<String>,
 ) {
     for child in entry
         .children()
@@ -747,16 +745,10 @@ fn collect_entry_ports(
     {
         let raw_name = child.attribute("name").unwrap_or_default();
         let (name, _) = normalize_xml_entry_name(raw_name);
-        if name == "element()" || child.attribute("type") == Some("xml-type") {
-            if name == "element()" {
-                warnings.push(
-                    "generic element() entries are not supported; subtree skipped".to_string(),
-                );
-                continue;
-            }
+        if child.attribute("type") == Some("xml-type") && name != XML_TEXT_FIELD {
             // xml-type entries are transparent type wrappers: descend
             // without extending the path.
-            collect_entry_ports(&child, path, ports, out_count, in_count, warnings);
+            collect_entry_ports(&child, path, ports, out_count, in_count);
             continue;
         }
         path.push(name.to_string());
@@ -768,7 +760,7 @@ fn collect_entry_ports(
             *in_count += 1;
             ports.insert(key, path.clone());
         }
-        collect_entry_ports(&child, path, ports, out_count, in_count, warnings);
+        collect_entry_ports(&child, path, ports, out_count, in_count);
         path.pop();
     }
 }
@@ -779,16 +771,15 @@ fn collect_entry_ports(
 fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
     let raw_name = entry.attribute("name").unwrap_or("root");
     let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
+    if name == XML_ELEMENTS_FIELD {
+        return generic_entry_schema(entry);
+    }
     if legacy_attribute || entry.attribute("type") == Some("attribute") {
         return SchemaNode::scalar(name, ir::ScalarType::String).attribute();
     }
     let children: Vec<SchemaNode> = entry
         .children()
-        .filter(|n| {
-            n.is_element()
-                && n.tag_name().name() == "entry"
-                && n.attribute("name") != Some("element()")
-        })
+        .filter(|n| n.is_element() && n.tag_name().name() == "entry")
         .map(|c| entry_tree_schema(&c))
         .collect();
     if children.is_empty() {
@@ -1164,28 +1155,4 @@ pub(super) fn collect_matching_scalar_paths(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{instance_root_segments, normalize_xml_entry_name};
-
-    #[test]
-    fn instance_root_paths_do_not_split_namespace_uris() {
-        assert_eq!(
-            instance_root_segments(
-                "{http://example.com/people}People/{http://example.com/people}Person"
-            ),
-            ["People", "Person"]
-        );
-        assert_eq!(
-            instance_root_segments("{}People/{}Person"),
-            ["People", "Person"]
-        );
-    }
-
-    #[test]
-    fn indexed_xml_entry_names_are_normalized_without_touching_qnames() {
-        assert_eq!(normalize_xml_entry_name("0:Person"), ("Person", false));
-        assert_eq!(normalize_xml_entry_name("12:@type"), ("type", true));
-        assert_eq!(normalize_xml_entry_name("Person"), ("Person", false));
-        assert_eq!(normalize_xml_entry_name("ns:Person"), ("ns:Person", false));
-    }
-}
+mod tests;

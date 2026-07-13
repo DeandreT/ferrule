@@ -109,9 +109,15 @@ pub fn run_project_with_paths(
                 .with_context(|| format!("writing output {}", output_path.display()))?;
             1
         }
-        "json" => {
-            format_json::write(&output_path, &project.target, &target_instance)
-                .with_context(|| format!("writing output {}", output_path.display()))?;
+        "json" | "jsonl" | "ndjson" => {
+            let json_lines = project.target_options.json_lines
+                || matches!(extension_of(&output_path)?.as_str(), "jsonl" | "ndjson");
+            if json_lines {
+                format_json::write_lines(&output_path, &project.target, &target_instance)
+            } else {
+                format_json::write(&output_path, &project.target, &target_instance)
+            }
+            .with_context(|| format!("writing output {}", output_path.display()))?;
             target_instance.as_repeated().map_or(1, <[Instance]>::len)
         }
         "db" | "sqlite" | "sqlite3" => {
@@ -269,8 +275,16 @@ fn read_instance(
         }
         "xml" => format_xml::read(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
-        "json" => format_json::read(path, schema)
-            .with_context(|| format!("reading input {}", path.display()))?,
+        "json" | "jsonl" | "ndjson" => {
+            let json_lines =
+                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
+            if json_lines {
+                format_json::read_lines(path, schema)
+            } else {
+                format_json::read(path, schema)
+            }
+            .with_context(|| format!("reading input {}", path.display()))?
+        }
         "db" | "sqlite" | "sqlite3" => format_db::read_instance(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
         "edi" | "x12" | "edifact" => {
