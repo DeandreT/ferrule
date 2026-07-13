@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26">
+  <component name="map">
+    <structure>
+      <children>
+        <component name="Company" library="xml" kind="14">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Company"><entry name="Staff" outkey="10"><entry name="First" outkey="11"/></entry></entry></entry></entry></root>
+            <document schema="people-source.xsd" inputinstance="people.xml" instanceroot="{}Company"/>
+          </data>
+        </component>
+        <component name="upper-case" library="xpath2" kind="5">
+          <sources><datapoint pos="0" key="30"/></sources>
+          <targets><datapoint pos="0" key="31"/></targets>
+        </component>
+        <component name="People" library="xml" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="People"><entry name="Person" inpkey="20"><entry name="Name" inpkey="21"/></entry></entry></entry></entry></root>
+            <document schema="people-target.xsd" instanceroot="{}People"/>
+          </data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+        <vertex vertexkey="11"><edges><edge vertexkey="30"/></edges></vertex>
+        <vertex vertexkey="31"><edges><edge vertexkey="21"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+</mapping>

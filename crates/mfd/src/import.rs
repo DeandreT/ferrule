@@ -148,6 +148,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     pending_joins.read(component, &mut warnings);
                 }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
+                "xpath2" if map_function_name(&name).is_some() => {
+                    fn_components.push(read_fn_component(&component));
+                }
                 other => {
                     if let Some(definition) = udf_registry.supported(other, &name) {
                         if let Some(shape) = udf_registry.definition(definition) {
@@ -167,7 +170,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
                                  (only xml/json/csv/edi/db, scalar user-defined functions, and \
-                                 core/lang function components import)"
+                                 core/lang function components and supported XPath 2 functions import)"
                             ));
                         }
                     }
