@@ -387,6 +387,15 @@ impl GraphBuilder<'_> {
         }
         let mut source_path = self.source_abs_path(feed.source_key)?;
         source_path.path.extend(feed.source_suffix.iter().cloned());
+        if self.sources.get(source_path.source).is_some_and(|source| {
+            source.format == ComponentFormat::Xlsx && !source.options.xlsx_rows.is_empty()
+        }) {
+            // A transposed worksheet's driver Cell port carries both its
+            // scalar value and the physical column sequence. Runtime rows
+            // are already normalized records, so iteration owns the flat
+            // record root while scalar expressions retain the field path.
+            source_path.path.clear();
+        }
         if feed.distinct_key.is_some() {
             let schema = &self.sources.get(source_path.source)?.schema;
             source_path.path = split_at_innermost_repeating(schema, &source_path.path).0;

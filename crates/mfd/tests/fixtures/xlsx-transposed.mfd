@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="Ledger" library="xlsx" uid="2" kind="26">
+					<properties/>
+					<data>
+						<root>
+							<header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header>
+							<entry name="FileInstance" ns="1" expanded="1">
+								<entry name="document" ns="1" expanded="1">
+									<entry name="Workbook" expanded="1">
+										<entry name="Worksheet" expanded="1">
+											<condition><expression><function name="equal-ignorecase" library="xlsx">
+												<expression><attribute name="Name"/></expression>
+												<expression><constant value="Quarterly"/></expression>
+											</function></expression></condition>
+											<ranges>
+												<range id="7" start="3" count="1"/>
+												<range id="9" start="7" count="1"/>
+											</ranges>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="7" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="101" annotation="Category" datatype="string" expanded="1">
+													<entry name="n" type="attribute" outkey="103"/>
+												</entry>
+											</entry>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="9" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="102" datatype="integer"/>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<wsdl/>
+						<excel inputinstance="ledger.xlsx"/>
+					</data>
+				</component>
+				<component name="item-at" library="core" uid="3" kind="5">
+					<properties/>
+					<sources>
+						<datapoint pos="0" key="301"/>
+						<datapoint pos="1" key="302"/>
+					</sources>
+					<targets><datapoint pos="0" key="303"/></targets>
+				</component>
+				<component name="Rows" library="text" uid="4" kind="16">
+					<properties XSLTDefaultOutput="1"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Rows" inpkey="200" expanded="1">
+										<entry name="Category" inpkey="201"/>
+										<entry name="Amount" inpkey="202"/>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<text type="csv" outputinstance="ledger.csv" encoding="1000">
+							<settings separator="," quote="&quot;" firstrownames="true" removeempty="true">
+								<names root="LedgerRows" block="Rows">
+									<field0 name="Category" type="string"/>
+									<field1 name="Amount" type="integer"/>
+								</names>
+							</settings>
+						</text>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="101"><edges><edge vertexkey="200"/><edge vertexkey="201"/></edges></vertex>
+					<vertex vertexkey="102"><edges><edge vertexkey="301"/></edges></vertex>
+					<vertex vertexkey="103"><edges><edge vertexkey="302"/></edges></vertex>
+					<vertex vertexkey="303"><edges><edge vertexkey="202"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

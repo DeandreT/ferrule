@@ -113,6 +113,101 @@ fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
     assert_eq!(actual, expected);
 }
 
+#[test]
+fn transposed_xlsx_target_is_rejected_explicitly() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut project: mapping::Project =
+        serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
+            .unwrap();
+    project.target_options.xlsx_rows = vec![1, 2];
+
+    let tag = format!("xlsx_transposed_target_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+
+    let error =
+        cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
+    std::fs::remove_file(project_path).unwrap();
+    std::fs::remove_file(output_path).ok();
+
+    assert!(
+        error
+            .to_string()
+            .contains("transposed XLSX output is not supported")
+    );
+}
+
+#[test]
+fn imported_transposed_xlsx_source_executes_to_csv() {
+    use ir::{Instance, ScalarType, SchemaNode, Value};
+
+    let design =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures/xlsx-transposed.mfd");
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let workbook_schema = SchemaNode::group(
+        "physical-rows",
+        vec![
+            SchemaNode::scalar("A", ScalarType::String),
+            SchemaNode::scalar("B", ScalarType::String),
+            SchemaNode::scalar("C", ScalarType::String),
+        ],
+    );
+    let populated = |left: &str, middle: &str, right: &str| {
+        Instance::Group(vec![
+            ("A".into(), Instance::Scalar(Value::String(left.into()))),
+            ("B".into(), Instance::Scalar(Value::String(middle.into()))),
+            ("C".into(), Instance::Scalar(Value::String(right.into()))),
+        ])
+    };
+    let empty = || {
+        Instance::Group(
+            ["A", "B", "C"]
+                .into_iter()
+                .map(|field| (field.into(), Instance::Scalar(Value::Null)))
+                .collect(),
+        )
+    };
+    let rows = vec![
+        populated("Header", "Food", "Travel"),
+        empty(),
+        empty(),
+        empty(),
+        populated("0", "12", "34"),
+    ];
+
+    let tag = format!("xlsx_transposed_source_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    std::fs::write(
+        &project_path,
+        serde_json::to_vec(&imported.project).unwrap(),
+    )
+    .unwrap();
+    format_xlsx::write(
+        &input_path,
+        &workbook_schema,
+        &rows,
+        Some("Quarterly"),
+        3,
+        &[],
+        false,
+    )
+    .unwrap();
+
+    let written = cli::run_project(&project_path, &input_path, &output_path).unwrap();
+    let actual = std::fs::read_to_string(&output_path).unwrap();
+    for path in [project_path, input_path, output_path] {
+        std::fs::remove_file(path).unwrap();
+    }
+
+    assert_eq!(written, 3);
+    assert_eq!(actual, "Category,Amount\nHeader,0\nFood,12\nTravel,34\n");
+}
+
 /// Flattens a real-world nested XML document (Orders -> repeating Order ->
 /// repeating Item) into a flat CSV of order lines, broadcasting the
 /// enclosing Order's fields (Order_ID, Cust_Name) into every Item row and

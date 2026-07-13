@@ -105,6 +105,9 @@ pub fn run_project_with_paths(
             rows.len()
         }
         "xlsx" => {
+            if !project.target_options.xlsx_rows.is_empty() {
+                anyhow::bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
+            }
             let rows = target_instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for an XLSX output")?;
@@ -290,14 +293,23 @@ fn read_instance(
             Instance::Repeated(rows)
         }
         "xlsx" => {
-            let rows = format_xlsx::read(
-                path,
-                schema,
-                options.xlsx_sheet.as_deref(),
-                options.xlsx_start_row.unwrap_or(1),
-                &options.xlsx_columns,
-                options.has_header_row.unwrap_or(true),
-            )
+            let rows = if options.xlsx_rows.is_empty() {
+                format_xlsx::read(
+                    path,
+                    schema,
+                    options.xlsx_sheet.as_deref(),
+                    options.xlsx_start_row.unwrap_or(1),
+                    &options.xlsx_columns,
+                    options.has_header_row.unwrap_or(true),
+                )
+            } else {
+                format_xlsx::read_transposed(
+                    path,
+                    schema,
+                    options.xlsx_sheet.as_deref(),
+                    &options.xlsx_rows,
+                )
+            }
             .with_context(|| format!("reading input {}", path.display()))?;
             Instance::Repeated(rows)
         }

@@ -449,6 +449,10 @@ pub struct FormatOptions {
     /// Empty means consecutive columns starting at A.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xlsx_columns: Vec<u32>,
+    /// XLSX: one-based worksheet rows to transpose into schema fields.
+    /// Empty selects the ordinary row-oriented table layout.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xlsx_rows: Vec<u32>,
 }
 
 #[cfg(test)]
@@ -481,12 +485,19 @@ mod tests {
         assert!(defaults.xlsx_sheet.is_none());
         assert!(defaults.xlsx_start_row.is_none());
         assert!(defaults.xlsx_columns.is_empty());
+        assert!(defaults.xlsx_rows.is_empty());
+        assert!(
+            !serde_json::to_string(&defaults)
+                .unwrap()
+                .contains("xlsx_rows")
+        );
 
         let options = FormatOptions {
             has_header_row: Some(false),
             xlsx_sheet: Some("Revenue".into()),
             xlsx_start_row: Some(5),
             xlsx_columns: vec![2, 4, 7],
+            xlsx_rows: vec![1, 3, 5],
             ..FormatOptions::default()
         };
         let encoded = serde_json::to_string(&options).unwrap();
@@ -495,6 +506,7 @@ mod tests {
         assert_eq!(decoded.xlsx_sheet.as_deref(), Some("Revenue"));
         assert_eq!(decoded.xlsx_start_row, Some(5));
         assert_eq!(decoded.xlsx_columns, vec![2, 4, 7]);
+        assert_eq!(decoded.xlsx_rows, vec![1, 3, 5]);
     }
 
     fn join_plan() -> JoinPlan {

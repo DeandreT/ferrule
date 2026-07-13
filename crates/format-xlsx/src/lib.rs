@@ -7,7 +7,7 @@
 use std::io::Cursor;
 use std::path::Path;
 
-use calamine::{Data, Reader, Xlsx};
+use calamine::{Data, Range, Reader, Xlsx};
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use rust_xlsxwriter::{Workbook, Worksheet};
 use thiserror::Error;
@@ -30,6 +30,8 @@ pub enum XlsxFormatError {
     InvalidCoordinate,
     #[error("expected {expected} column selector(s), got {got}")]
     ColumnCount { expected: usize, got: usize },
+    #[error("expected {expected} row selector(s), got {got}")]
+    RowCount { expected: usize, got: usize },
     #[error("row {row}: column `{field}` expected {expected:?}, got `{value}`")]
     Parse {
         row: u32,
@@ -57,6 +59,13 @@ pub enum XlsxFormatError {
 const MAX_EXACT_F64_INTEGER: i64 = 1_i64 << f64::MANTISSA_DIGITS;
 const MAX_WORKSHEET_ROW: u32 = 1_048_576;
 const MAX_WORKSHEET_COLUMN: u32 = 16_384;
+
+#[derive(Debug)]
+struct TransposedField<'a> {
+    name: &'a str,
+    ty: ScalarType,
+    row: Option<u32>,
+}
 
 fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, XlsxFormatError> {
     if schema.repeating {
@@ -135,19 +144,7 @@ pub fn from_bytes(
     }
     let fields = row_fields(schema)?;
     let columns = column_indexes(fields.len(), columns)?;
-    let mut workbook = Xlsx::new(Cursor::new(bytes))?;
-    let sheet = match sheet {
-        Some(sheet) => sheet.to_string(),
-        None => workbook
-            .sheet_names()
-            .first()
-            .cloned()
-            .ok_or(XlsxFormatError::NoWorksheets)?,
-    };
-    if !workbook.sheet_names().iter().any(|name| name == &sheet) {
-        return Err(XlsxFormatError::MissingWorksheet(sheet));
-    }
-    let range = workbook.worksheet_range(&sheet)?;
+    let range = worksheet_range(bytes, sheet)?;
     let Some((last_row, _)) = range.end() else {
         return Ok(Vec::new());
     };
@@ -176,6 +173,146 @@ pub fn from_bytes(
         rows.push(Instance::Group(values));
     }
     Ok(rows)
+}
+
+/// Reads selected worksheet rows as fields and aligned columns as records.
+///
+/// Each ordinary scalar field in `schema` consumes one one-based worksheet
+/// row selector. An optional field named `n` must be an integer and receives
+/// the one-based physical column number instead. The first selected row is
+/// the driver: only its non-empty cells produce records, preserving gaps in
+/// the synthetic `n` value.
+pub fn read_transposed(
+    path: &Path,
+    schema: &SchemaNode,
+    sheet: Option<&str>,
+    rows: &[u32],
+) -> Result<Vec<Instance>, XlsxFormatError> {
+    let bytes = std::fs::read(path)?;
+    from_bytes_transposed(&bytes, schema, sheet, rows)
+}
+
+/// Reads an XLSX byte buffer with selected rows interpreted as fields.
+///
+/// This is the in-memory equivalent of [`read_transposed`].
+pub fn from_bytes_transposed(
+    bytes: &[u8],
+    schema: &SchemaNode,
+    sheet: Option<&str>,
+    rows: &[u32],
+) -> Result<Vec<Instance>, XlsxFormatError> {
+    let fields = transposed_fields(schema, rows)?;
+    let driver_row = rows
+        .first()
+        .copied()
+        .ok_or(XlsxFormatError::InvalidCoordinate)?
+        - 1;
+    let range = worksheet_range(bytes, sheet)?;
+    let Some((last_row, last_column)) = range.end() else {
+        return Ok(Vec::new());
+    };
+    if driver_row > last_row {
+        return Ok(Vec::new());
+    }
+
+    let mut records = Vec::new();
+    for column in 0..=last_column {
+        if matches!(
+            range.get_value((driver_row, column)),
+            None | Some(Data::Empty)
+        ) {
+            continue;
+        }
+        let values = fields
+            .iter()
+            .map(|field| {
+                let value = match field.row {
+                    Some(row) => parse_cell(
+                        range.get_value((row - 1, column)).unwrap_or(&Data::Empty),
+                        field.ty,
+                        row,
+                        field.name,
+                    )?,
+                    None => Value::Int(i64::from(column + 1)),
+                };
+                Ok((field.name.to_string(), Instance::Scalar(value)))
+            })
+            .collect::<Result<Vec<_>, XlsxFormatError>>()?;
+        records.push(Instance::Group(values));
+    }
+    Ok(records)
+}
+
+fn worksheet_range(bytes: &[u8], sheet: Option<&str>) -> Result<Range<Data>, XlsxFormatError> {
+    let mut workbook = Xlsx::new(Cursor::new(bytes))?;
+    let sheet = match sheet {
+        Some(sheet) => sheet.to_string(),
+        None => workbook
+            .sheet_names()
+            .first()
+            .cloned()
+            .ok_or(XlsxFormatError::NoWorksheets)?,
+    };
+    if !workbook.sheet_names().iter().any(|name| name == &sheet) {
+        return Err(XlsxFormatError::MissingWorksheet(sheet));
+    }
+    Ok(workbook.worksheet_range(&sheet)?)
+}
+
+fn transposed_fields<'a>(
+    schema: &'a SchemaNode,
+    rows: &[u32],
+) -> Result<Vec<TransposedField<'a>>, XlsxFormatError> {
+    let fields = row_fields(schema)?;
+    let synthetic_positions = fields
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (name, _))| (*name == "n").then_some(index))
+        .collect::<Vec<_>>();
+    if synthetic_positions.len() > 1
+        || synthetic_positions
+            .first()
+            .is_some_and(|index| fields[*index].1 != ScalarType::Int)
+    {
+        return Err(XlsxFormatError::UnsupportedSchema);
+    }
+    let data_field_count = fields.len() - synthetic_positions.len();
+    if rows.len() != data_field_count {
+        return Err(XlsxFormatError::RowCount {
+            expected: data_field_count,
+            got: rows.len(),
+        });
+    }
+    let mut unique = std::collections::BTreeSet::new();
+    if rows
+        .iter()
+        .any(|row| *row == 0 || *row > MAX_WORKSHEET_ROW || !unique.insert(*row))
+    {
+        return Err(XlsxFormatError::InvalidCoordinate);
+    }
+
+    let mut selected_rows = rows.iter().copied();
+    fields
+        .into_iter()
+        .map(|(name, ty)| {
+            if name == "n" {
+                Ok(TransposedField {
+                    name,
+                    ty,
+                    row: None,
+                })
+            } else {
+                selected_rows
+                    .next()
+                    .map(|row| TransposedField {
+                        name,
+                        ty,
+                        row: Some(row),
+                    })
+                    .ok_or(XlsxFormatError::UnsupportedSchema)
+            }
+        })
+        .collect()
 }
 
 fn parse_cell(
@@ -570,6 +707,143 @@ mod tests {
                 expected: 3,
                 got: 2
             }
+        ));
+    }
+
+    #[test]
+    fn transposed_reader_uses_driver_cells_and_physical_column_positions() {
+        let schema = SchemaNode::group(
+            "records",
+            vec![
+                SchemaNode::scalar("n", ScalarType::Int),
+                SchemaNode::scalar("month", ScalarType::String),
+                SchemaNode::scalar("amount", ScalarType::Float),
+                SchemaNode::scalar("closed", ScalarType::Bool),
+            ],
+        );
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.set_name("Columns").unwrap();
+        worksheet.write_string(1, 1, "Jan").unwrap();
+        worksheet.write_number(3, 1, 12.5).unwrap();
+        worksheet.write_boolean(5, 1, true).unwrap();
+        worksheet.write_number(3, 2, 99.0).unwrap();
+        worksheet.write_string(1, 3, "Mar").unwrap();
+        worksheet.write_number(3, 3, 8.0).unwrap();
+        worksheet.write_boolean(5, 3, false).unwrap();
+        // A value in a non-driver row must not create a record of its own.
+        worksheet.write_number(3, 5, 17.0).unwrap();
+        let bytes = workbook.save_to_buffer().unwrap();
+
+        let actual = from_bytes_transposed(&bytes, &schema, Some("Columns"), &[2, 4, 6]).unwrap();
+
+        assert_eq!(
+            actual,
+            vec![
+                Instance::Group(vec![
+                    ("n".into(), Instance::Scalar(Value::Int(2))),
+                    (
+                        "month".into(),
+                        Instance::Scalar(Value::String("Jan".into())),
+                    ),
+                    ("amount".into(), Instance::Scalar(Value::Float(12.5))),
+                    ("closed".into(), Instance::Scalar(Value::Bool(true))),
+                ]),
+                Instance::Group(vec![
+                    ("n".into(), Instance::Scalar(Value::Int(4))),
+                    (
+                        "month".into(),
+                        Instance::Scalar(Value::String("Mar".into())),
+                    ),
+                    ("amount".into(), Instance::Scalar(Value::Float(8.0))),
+                    ("closed".into(), Instance::Scalar(Value::Bool(false))),
+                ]),
+            ]
+        );
+    }
+
+    #[test]
+    fn native_transposed_wrapper_reads_generated_workbook() {
+        let schema = SchemaNode::group(
+            "records",
+            vec![
+                SchemaNode::scalar("label", ScalarType::String),
+                SchemaNode::scalar("value", ScalarType::Int),
+            ],
+        );
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.write_string(0, 0, "first").unwrap();
+        worksheet.write_number(1, 0, 7.0).unwrap();
+        let bytes = workbook.save_to_buffer().unwrap();
+        let path = temp_file("transposed");
+        std::fs::write(&path, bytes).unwrap();
+
+        let actual = read_transposed(&path, &schema, None, &[1, 2]).unwrap();
+
+        std::fs::remove_file(path).ok();
+        assert_eq!(
+            actual,
+            vec![Instance::Group(vec![
+                (
+                    "label".into(),
+                    Instance::Scalar(Value::String("first".into())),
+                ),
+                ("value".into(), Instance::Scalar(Value::Int(7))),
+            ])]
+        );
+    }
+
+    #[test]
+    fn transposed_reader_validates_rows_and_synthetic_position() {
+        let schema = SchemaNode::group(
+            "records",
+            vec![
+                SchemaNode::scalar("label", ScalarType::String),
+                SchemaNode::scalar("n", ScalarType::Int),
+                SchemaNode::scalar("value", ScalarType::String),
+            ],
+        );
+
+        let count = transposed_fields(&schema, &[1]).unwrap_err();
+        assert!(matches!(
+            count,
+            XlsxFormatError::RowCount {
+                expected: 2,
+                got: 1
+            }
+        ));
+        let duplicate = transposed_fields(&schema, &[1, 1]).unwrap_err();
+        assert!(matches!(duplicate, XlsxFormatError::InvalidCoordinate));
+        let out_of_range = transposed_fields(&schema, &[1, MAX_WORKSHEET_ROW + 1]).unwrap_err();
+        assert!(matches!(out_of_range, XlsxFormatError::InvalidCoordinate));
+
+        let invalid_n =
+            SchemaNode::group("records", vec![SchemaNode::scalar("n", ScalarType::Float)]);
+        let error = transposed_fields(&invalid_n, &[]).unwrap_err();
+        assert!(matches!(error, XlsxFormatError::UnsupportedSchema));
+    }
+
+    #[test]
+    fn transposed_reader_reports_the_selected_row_for_parse_errors() {
+        let schema = SchemaNode::group(
+            "records",
+            vec![
+                SchemaNode::scalar("label", ScalarType::String),
+                SchemaNode::scalar("amount", ScalarType::Float),
+            ],
+        );
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.write_string(1, 0, "Jan").unwrap();
+        worksheet.write_string(3, 0, "not-a-number").unwrap();
+        let bytes = workbook.save_to_buffer().unwrap();
+
+        let error = from_bytes_transposed(&bytes, &schema, None, &[2, 4]).unwrap_err();
+
+        assert!(matches!(
+            error,
+            XlsxFormatError::Parse { row: 4, field, .. } if field == "amount"
         ));
     }
 }

@@ -123,6 +123,25 @@ fn unsupported_xlsx_schema_does_not_replace_existing_design() {
 }
 
 #[test]
+fn transposed_xlsx_layout_does_not_replace_existing_design() {
+    let mut project = mfd::import(&fixture("people-csv.mfd")).unwrap().project;
+    project.source_path = Some("people.xlsx".into());
+    project.source_options.xlsx_rows = vec![1, 3, 5];
+
+    let dir = TempDir::new("transposed");
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(&design, "existing design").unwrap();
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message))
+            if message.contains("transposed XLSX export is not supported")
+    ));
+    assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
+    assert!(!dir.0.join("mapping-source.xsd").exists());
+}
+
+#[test]
 fn invalid_xlsx_coordinates_are_rejected() {
     let mut project = mfd::import(&fixture("people-to-csv.mfd")).unwrap().project;
     project.target_path = Some("people.xlsx".into());
