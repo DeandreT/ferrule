@@ -88,10 +88,35 @@ pub fn read(
     has_headers: bool,
 ) -> Result<Vec<Instance>, CsvFormatError> {
     let fields = row_fields(schema)?;
-    let mut reader = csv::ReaderBuilder::new()
+    let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
         .delimiter(delimiter_byte(delimiter)?)
         .from_path(path)?;
+    read_records(reader, &fields)
+}
+
+/// Reads CSV text into one [`Instance::Group`] per row.
+///
+/// This is the in-memory equivalent of [`read`], suitable for hosts without
+/// filesystem access such as WebAssembly applications.
+pub fn from_str(
+    text: &str,
+    schema: &SchemaNode,
+    delimiter: Option<char>,
+    has_headers: bool,
+) -> Result<Vec<Instance>, CsvFormatError> {
+    let fields = row_fields(schema)?;
+    let reader = csv::ReaderBuilder::new()
+        .has_headers(has_headers)
+        .delimiter(delimiter_byte(delimiter)?)
+        .from_reader(text.as_bytes());
+    read_records(reader, &fields)
+}
+
+fn read_records<R: std::io::Read>(
+    mut reader: csv::Reader<R>,
+    fields: &[(&str, ScalarType)],
+) -> Result<Vec<Instance>, CsvFormatError> {
     let mut out = Vec::new();
     for (row_idx, result) in reader.records().enumerate() {
         let raw = result?;
@@ -152,10 +177,24 @@ pub fn write(
     delimiter: Option<char>,
     has_headers: bool,
 ) -> Result<(), CsvFormatError> {
+    std::fs::write(path, to_string(schema, rows, delimiter, has_headers)?)?;
+    Ok(())
+}
+
+/// Writes one row per [`Instance::Group`] in `rows` as CSV text.
+///
+/// This is the in-memory equivalent of [`write`], including its delimiter,
+/// header, schema validation, and flat-row conventions.
+pub fn to_string(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    delimiter: Option<char>,
+    has_headers: bool,
+) -> Result<String, CsvFormatError> {
     let fields = row_fields(schema)?;
     let delimiter = delimiter_byte(delimiter)?;
-    // Validate and materialize every record before opening the destination.
-    // A shape/type error must not truncate a previously valid output file.
+    // Validate and materialize every record before producing output. A
+    // shape/type error must not truncate a previously valid output file.
     let records = rows
         .iter()
         .enumerate()
@@ -163,7 +202,7 @@ pub fn write(
         .collect::<Result<Vec<_>, _>>()?;
     let mut writer = csv::WriterBuilder::new()
         .delimiter(delimiter)
-        .from_path(path)?;
+        .from_writer(Vec::new());
     if has_headers {
         writer.write_record(fields.iter().map(|(n, _)| *n))?;
     }
@@ -171,7 +210,9 @@ pub fn write(
         writer.write_record(record)?;
     }
     writer.flush()?;
-    Ok(())
+    let bytes = writer.into_inner().map_err(|error| error.into_error())?;
+    String::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error).into())
 }
 
 fn format_row(
@@ -329,13 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn write_then_read_roundtrips() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_format_csv_test_{}.csv",
-            std::process::id()
-        ));
-
+    fn text_io_roundtrips_with_headers() {
         let row = Instance::Group(vec![
             (
                 "name".into(),
@@ -344,10 +379,10 @@ mod tests {
             ("age".into(), Instance::Scalar(Value::Int(29))),
         ]);
 
-        write(&path, &schema(), std::slice::from_ref(&row), None, true).unwrap();
-        let read_back = read(&path, &schema(), None, true).unwrap();
+        let text = to_string(&schema(), std::slice::from_ref(&row), None, true).unwrap();
+        let read_back = from_str(&text, &schema(), None, true).unwrap();
 
-        std::fs::remove_file(&path).unwrap();
+        assert_eq!(text, "name,age\nJane,29\n");
         assert_eq!(read_back, vec![row]);
     }
 
@@ -373,13 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn headerless_files_roundtrip() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_format_csv_test_nohdr_{}.csv",
-            std::process::id()
-        ));
-
+    fn text_io_roundtrips_without_headers() {
         let row = Instance::Group(vec![
             (
                 "name".into(),
@@ -388,23 +417,15 @@ mod tests {
             ("age".into(), Instance::Scalar(Value::Int(29))),
         ]);
 
-        write(&path, &schema(), std::slice::from_ref(&row), None, false).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        let read_back = read(&path, &schema(), None, false).unwrap();
-        std::fs::remove_file(&path).unwrap();
+        let text = to_string(&schema(), std::slice::from_ref(&row), None, false).unwrap();
+        let read_back = from_str(&text, &schema(), None, false).unwrap();
 
-        assert_eq!(text.trim(), "Jane,29");
+        assert_eq!(text, "Jane,29\n");
         assert_eq!(read_back, vec![row]);
     }
 
     #[test]
-    fn custom_delimiter_roundtrips() {
-        let dir = std::env::temp_dir();
-        let path = dir.join(format!(
-            "ferrule_format_csv_test_semi_{}.csv",
-            std::process::id()
-        ));
-
+    fn text_io_roundtrips_a_custom_delimiter_and_quoted_value() {
         let row = Instance::Group(vec![
             (
                 "name".into(),
@@ -413,19 +434,10 @@ mod tests {
             ("age".into(), Instance::Scalar(Value::Int(29))),
         ]);
 
-        write(
-            &path,
-            &schema(),
-            std::slice::from_ref(&row),
-            Some(';'),
-            true,
-        )
-        .unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        let read_back = read(&path, &schema(), Some(';'), true).unwrap();
-        std::fs::remove_file(&path).unwrap();
+        let text = to_string(&schema(), std::slice::from_ref(&row), Some(';'), true).unwrap();
+        let read_back = from_str(&text, &schema(), Some(';'), true).unwrap();
 
-        assert!(text.starts_with("name;age"));
+        assert_eq!(text, "name;age\n\"Jane;Doe\";29\n");
         // The value containing the delimiter must be quoted, not split.
         assert_eq!(read_back, vec![row]);
     }
