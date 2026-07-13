@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Catalog" library="xml" uid="2" kind="14">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Catalog" expanded="1">
+                    <entry name="Items" expanded="1" use-generic-elements="1">
+                      <entry name="element()" outkey="10" expanded="1">
+                        <typeselections>
+                          <type><entry name="RecordType" type="xml-type"/></type>
+                        </typeselections>
+                        <entry name="LocalName" outkey="11"/>
+                        <entry name="RecordType" type="xml-type" expanded="1">
+                          <entry name="Label" outkey="12"/>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="generic-elements-source.xsd" inputinstance="generic-elements.xml" instanceroot="{}Catalog"/>
+          </data>
+        </component>
+        <component name="Result" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Result" expanded="1">
+                    <entry name="Values" expanded="1" use-generic-elements="1">
+                      <entry name="element()" inpkey="20" expanded="1">
+                        <typeselections>
+                          <type><entry name="text()" type="xml-type"/></type>
+                        </typeselections>
+                        <entry name="LocalName" inpkey="21"/>
+                        <entry name="#text" type="xml-type" inpkey="22"/>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="generic-elements-target.xsd" instanceroot="{}Result"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

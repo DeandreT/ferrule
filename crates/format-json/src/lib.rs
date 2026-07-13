@@ -58,6 +58,13 @@ pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatErro
     from_str(&text, schema)
 }
 
+/// Reads a JSON Lines file into a repeated instance, one item per non-empty
+/// line.
+pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let text = std::fs::read_to_string(path)?;
+    from_lines(&text, schema)
+}
+
 /// Reads JSON text into an [`Instance`] tree shaped by `schema`.
 ///
 /// This is the in-memory equivalent of [`read`], suitable for hosts without
@@ -69,6 +76,19 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatE
     } else {
         read_node(&value, schema)
     }
+}
+
+/// Reads JSON Lines text into a repeated instance.
+pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    let items = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let value: serde_json::Value = serde_json::from_str(line)?;
+            read_node(&value, schema)
+        })
+        .collect::<Result<Vec<_>, JsonFormatError>>()?;
+    Ok(Instance::Repeated(items))
 }
 
 fn read_repeated(
@@ -225,6 +245,16 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     Ok(())
 }
 
+/// Writes a repeated instance as JSON Lines using one compact value per line.
+pub fn write_lines(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), JsonFormatError> {
+    std::fs::write(path, to_lines(schema, instance)?)?;
+    Ok(())
+}
+
 /// Writes an [`Instance`] tree shaped by `schema` as pretty-printed JSON.
 ///
 /// The returned document ends with a newline, matching [`write`]. This is
@@ -244,6 +274,25 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Jso
     };
     let mut text = serde_json::to_string_pretty(&value)?;
     text.push('\n');
+    Ok(text)
+}
+
+/// Serializes an instance as JSON Lines using one compact root value per
+/// line. A non-repeated instance becomes a single line.
+pub fn to_lines(schema: &SchemaNode, instance: &Instance) -> Result<String, JsonFormatError> {
+    let mut text = String::new();
+    match instance {
+        Instance::Repeated(items) => {
+            for item in items {
+                text.push_str(&serde_json::to_string(&write_single_node(schema, item)?)?);
+                text.push('\n');
+            }
+        }
+        item => {
+            text.push_str(&serde_json::to_string(&write_single_node(schema, item)?)?);
+            text.push('\n');
+        }
+    }
     Ok(text)
 }
 
@@ -633,6 +682,25 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&text).unwrap(),
             serde_json::json!([1, 2])
         );
+    }
+
+    #[test]
+    fn json_lines_roundtrips_rows_without_an_enclosing_array() {
+        let schema = SchemaNode::group(
+            "Row",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar("count", ScalarType::Int),
+            ],
+        );
+        let text = "{\"name\":\"first\",\"count\":1}\n\n{\"name\":\"second\",\"count\":2}\n";
+
+        let rows = from_lines(text, &schema).unwrap();
+        assert_eq!(
+            to_lines(&schema, &rows).unwrap(),
+            text.replace("\n\n", "\n")
+        );
+        assert_eq!(rows.as_repeated().map(<[Instance]>::len), Some(2));
     }
 
     #[test]

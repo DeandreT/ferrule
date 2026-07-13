@@ -634,6 +634,30 @@ fn export_rejects_group_nodes_with_scalar_xml_roles() {
 }
 
 #[test]
+fn export_represents_generic_element_groups_as_xsd_wildcards() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::group(
+                ir::XML_ELEMENTS_FIELD,
+                vec![
+                    SchemaNode::scalar(ir::XML_LOCAL_NAME_FIELD, ScalarType::String),
+                    SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+
+    let xsd = export(&schema).unwrap();
+    assert!(
+        xsd.contains(r#"<xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>"#),
+        "{xsd}"
+    );
+    assert!(!xsd.contains(r#"name="element()""#), "{xsd}");
+}
+
+#[test]
 fn export_rejects_group_alternatives_instead_of_flattening_them() {
     let schema = SchemaNode::group(
         "Root",

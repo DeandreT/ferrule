@@ -1,14 +1,17 @@
 //! XSD-lite schema import and XML instance read/write.
 
+mod generic;
 pub mod xsd;
 
 use std::io::Cursor;
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD};
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use thiserror::Error;
+
+use generic::{read_generic_element, read_group_fields, write_generic_element};
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
@@ -83,6 +86,8 @@ pub enum XmlFormatError {
         "schema group `{group}` has alternatives whose xsi:type identity XML input cannot preserve"
     )]
     UnsupportedAlternativeRead { group: String },
+    #[error("generic XML element item has no non-empty LocalName or NodeName field")]
+    MissingGenericElementName,
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
@@ -107,6 +112,9 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatEr
 }
 
 fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+    if schema.name == XML_ELEMENTS_FIELD {
+        return read_generic_element(el, schema);
+    }
     let xml_nil = has_xml_nil(el, schema)?;
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
@@ -131,55 +139,7 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
                     group: schema.name.clone(),
                 });
             }
-            let mut fields = Vec::with_capacity(children.len());
-            for child in children {
-                if child.attribute {
-                    // Attributes are commonly optional; absent -> Null
-                    // rather than the hard error missing elements get.
-                    let value = match el.attribute(child.name.as_str()) {
-                        Some(text) => {
-                            let SchemaKind::Scalar { ty } = child.kind else {
-                                return Err(XmlFormatError::MissingElement(child.name.clone()));
-                            };
-                            parse_scalar(&child.name, ty, text)?
-                        }
-                        None => Value::Null,
-                    };
-                    fields.push((child.name.clone(), Instance::Scalar(value)));
-                } else if child.text {
-                    let SchemaKind::Scalar { ty } = child.kind else {
-                        return Err(XmlFormatError::MissingElement(child.name.clone()));
-                    };
-                    let text = el.text().unwrap_or("");
-                    let value = parse_scalar(&child.name, ty, text)?;
-                    fields.push((child.name.clone(), Instance::Scalar(value)));
-                } else if child.repeating {
-                    let mut items = Vec::new();
-                    for el_child in el
-                        .children()
-                        .filter(|n| n.is_element() && n.tag_name().name() == child.name)
-                    {
-                        items.push(read_node(&el_child, child)?);
-                    }
-                    fields.push((child.name.clone(), Instance::Repeated(items)));
-                } else {
-                    // Absent elements are normal instance data (optional
-                    // elements, unused xs:choice branches), not errors:
-                    // scalars read as Null, groups as empty.
-                    let value = match el
-                        .children()
-                        .find(|n| n.is_element() && n.tag_name().name() == child.name)
-                    {
-                        Some(el_child) => read_node(&el_child, child)?,
-                        None => match child.kind {
-                            SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
-                            SchemaKind::Group { .. } => Instance::Group(Vec::new()),
-                        },
-                    };
-                    fields.push((child.name.clone(), value));
-                }
-            }
-            Ok(Instance::Group(fields))
+            read_group_fields(el, children, false)
         }
     }
 }
@@ -267,6 +227,16 @@ fn write_node<W: std::io::Write>(
     instance: &Instance,
     is_root: bool,
 ) -> Result<(), XmlFormatError> {
+    if schema.name == XML_ELEMENTS_FIELD && !is_root {
+        let items = match instance {
+            Instance::Repeated(items) | Instance::MappedSequence(items) => items,
+            other => return Err(shape_error(schema, "generic XML elements", other)),
+        };
+        for item in items {
+            write_generic_element(writer, schema, item)?;
+        }
+        return Ok(());
+    }
     if let Instance::MappedSequence(items) = instance {
         if is_root || schema.repeating || !matches!(&schema.kind, SchemaKind::Group { .. }) {
             let expected = if is_root {
@@ -564,7 +534,7 @@ fn integral_i64(value: f64) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::XML_TEXT_FIELD;
+    use ir::{XML_LOCAL_NAME_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD};
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -949,6 +919,76 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert!(!text.contains("Nick"), "{text}");
+    }
+
+    #[test]
+    fn generic_element_group_reads_heterogeneous_children_in_document_order() {
+        let generic = SchemaNode::group(
+            XML_ELEMENTS_FIELD,
+            vec![
+                SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+                SchemaNode::scalar("Label", ScalarType::String),
+            ],
+        )
+        .repeating();
+        let schema = SchemaNode::group("Catalog", vec![SchemaNode::group("Items", vec![generic])]);
+
+        let instance = from_str(
+            "<Catalog><Items><Alpha><Label>first</Label></Alpha><Beta><Label>second</Label></Beta></Items></Catalog>",
+            &schema,
+        )
+        .unwrap();
+        let items = instance
+            .field("Items")
+            .and_then(|items| items.field(XML_ELEMENTS_FIELD))
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0]
+                .field(XML_LOCAL_NAME_FIELD)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("Alpha".into()))
+        );
+        assert_eq!(
+            items[1].field("Label").and_then(Instance::as_scalar),
+            Some(&Value::String("second".into()))
+        );
+
+        let xml = to_string(&schema, &instance).unwrap();
+        assert!(xml.contains("<Alpha>"), "{xml}");
+        assert!(xml.contains("<Beta>"), "{xml}");
+        assert!(xml.find("<Alpha>") < xml.find("<Beta>"), "{xml}");
+    }
+
+    #[test]
+    fn generic_text_elements_use_the_mapped_runtime_name() {
+        let generic = SchemaNode::group(
+            XML_ELEMENTS_FIELD,
+            vec![
+                SchemaNode::scalar(XML_NODE_NAME_FIELD, ScalarType::String),
+                SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            ],
+        )
+        .repeating();
+        let schema = SchemaNode::group("Record", vec![generic]);
+        let instance = Instance::Group(vec![(
+            XML_ELEMENTS_FIELD.into(),
+            Instance::Repeated(vec![Instance::Group(vec![
+                (
+                    XML_NODE_NAME_FIELD.into(),
+                    Instance::Scalar(Value::String("Code".into())),
+                ),
+                (
+                    XML_TEXT_FIELD.into(),
+                    Instance::Scalar(Value::String("A-17".into())),
+                ),
+            ])]),
+        )]);
+
+        let xml = to_string(&schema, &instance).unwrap();
+        assert!(xml.contains("<Code>A-17</Code>"), "{xml}");
+        assert_eq!(from_str(&xml, &schema).unwrap(), instance);
     }
 
     #[test]
