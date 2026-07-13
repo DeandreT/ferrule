@@ -7,8 +7,8 @@
 //! shown as canvas nodes: a wire leaving the Source endpoint's pin *is*
 //! the source field. Connecting a wire into a Target pin creates or
 //! replaces the `Binding` in the scope owning that leaf (the scope whose
-//! `target_field` chain matches the leaf's group chain -- create the
-//! scope in the side panel first for nested targets).
+//! `target_field` chain matches the leaf's group chain), creating missing
+//! non-iterating scopes for nested target groups.
 
 use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
@@ -19,6 +19,11 @@ use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Scope};
 use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
+
+#[path = "graph_references.rs"]
+mod graph_references;
+
+use graph_references::node_inputs;
 
 fn sequence_input_at(sequence: &mapping::SequenceExpr, index: usize) -> Option<NodeId> {
     sequence.inputs().get(index).copied()
@@ -210,52 +215,71 @@ impl GraphViewer<'_> {
         })
     }
 
-    fn set_input(&mut self, node_id: NodeId, idx: usize, from_id: NodeId) {
-        if let Some(node) = self.graph.nodes.get_mut(&node_id) {
-            match node {
-                Node::Call { args, .. } => {
-                    if idx < args.len() {
-                        args[idx] = from_id;
-                    }
+    fn set_input(&mut self, node_id: NodeId, idx: usize, from_id: NodeId) -> bool {
+        let Some(node) = self.graph.nodes.get_mut(&node_id) else {
+            return false;
+        };
+        if idx >= Self::input_count(node) {
+            return false;
+        }
+        match node {
+            Node::Call { args, .. } => {
+                args[idx] = from_id;
+            }
+            Node::If {
+                condition,
+                then,
+                else_,
+            } => match idx {
+                0 => *condition = from_id,
+                1 => *then = from_id,
+                2 => *else_ = from_id,
+                _ => return false,
+            },
+            Node::ValueMap { input, .. } => *input = from_id,
+            Node::Lookup { matches, .. } => *matches = from_id,
+            Node::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                let sequence_inputs = sequence.inputs().len();
+                if idx < sequence_inputs {
+                    set_sequence_input(sequence, idx, from_id);
+                } else if idx == sequence_inputs {
+                    *predicate = from_id;
                 }
-                Node::If {
-                    condition,
-                    then,
-                    else_,
-                } => match idx {
-                    0 => *condition = from_id,
-                    1 => *then = from_id,
-                    2 => *else_ = from_id,
-                    _ => {}
-                },
-                Node::ValueMap { input, .. } => *input = from_id,
-                Node::Lookup { matches, .. } => *matches = from_id,
-                Node::SequenceExists {
-                    sequence,
-                    predicate,
-                } => {
-                    let sequence_inputs = sequence.inputs().len();
-                    if idx < sequence_inputs {
-                        set_sequence_input(sequence, idx, from_id);
-                    } else if idx == sequence_inputs {
-                        *predicate = from_id;
-                    }
+            }
+            Node::Aggregate {
+                expression, arg, ..
+            }
+            | Node::JoinAggregate {
+                expression, arg, ..
+            } => {
+                if expression.is_some() && idx == 0 {
+                    *expression = Some(from_id);
+                } else if arg.is_some() && idx == usize::from(expression.is_some()) {
+                    *arg = Some(from_id);
                 }
-                Node::Aggregate {
-                    expression, arg, ..
-                }
-                | Node::JoinAggregate {
-                    expression, arg, ..
-                } => {
-                    if expression.is_some() && idx == 0 {
-                        *expression = Some(from_id);
-                    } else if arg.is_some() && idx == usize::from(expression.is_some()) {
-                        *arg = Some(from_id);
-                    }
-                }
-                _ => {}
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn depends_on(&self, start: NodeId, needle: NodeId) -> bool {
+        let mut pending = vec![start];
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if id == needle {
+                return true;
+            }
+            if visited.insert(id)
+                && let Some(node) = self.graph.nodes.get(&id)
+            {
+                pending.extend(node_inputs(node));
             }
         }
+        false
     }
 
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
@@ -299,16 +323,28 @@ impl GraphViewer<'_> {
         Self::scope_for_chain(child, rest)
     }
 
-    /// Points the binding for `leaf` at `node`, creating it if absent.
-    fn set_binding(&mut self, leaf: &TargetLeaf, node: NodeId) -> bool {
-        let Some(scope) = Self::scope_for_chain(self.root_scope, &leaf.chain) else {
-            self.error = Some(format!(
-                "no scope for `{}` -- create the `{}` scope in the side panel first",
-                leaf.label,
-                leaf.chain.join("/")
-            ));
-            return false;
+    fn ensure_scope_for_chain<'s>(scope: &'s mut Scope, chain: &[String]) -> &'s mut Scope {
+        let Some((first, rest)) = chain.split_first() else {
+            return scope;
         };
+        let child_index = scope
+            .children
+            .iter()
+            .position(|child| child.target_field == *first)
+            .unwrap_or_else(|| {
+                scope.children.push(Scope {
+                    target_field: first.clone(),
+                    ..Scope::default()
+                });
+                scope.children.len() - 1
+            });
+        Self::ensure_scope_for_chain(&mut scope.children[child_index], rest)
+    }
+
+    /// Points the binding for `leaf` at `node`, creating any missing static,
+    /// non-iterating target scopes along the way.
+    fn set_binding(&mut self, leaf: &TargetLeaf, node: NodeId) {
+        let scope = Self::ensure_scope_for_chain(self.root_scope, &leaf.chain);
         match scope
             .bindings
             .iter_mut()
@@ -320,7 +356,6 @@ impl GraphViewer<'_> {
                 node,
             }),
         }
-        true
     }
 
     fn remove_binding(&mut self, leaf: &TargetLeaf) {
@@ -338,97 +373,7 @@ impl GraphViewer<'_> {
     }
 
     fn references_to(&self, needle: NodeId) -> Vec<String> {
-        fn graph_inputs(node: &Node) -> Vec<NodeId> {
-            match node {
-                Node::SourceField { .. }
-                | Node::Position { .. }
-                | Node::JoinField { .. }
-                | Node::JoinPosition { .. }
-                | Node::Const { .. }
-                | Node::RuntimeValue { .. } => Vec::new(),
-                Node::Call { args, .. } => args.clone(),
-                Node::If {
-                    condition,
-                    then,
-                    else_,
-                } => vec![*condition, *then, *else_],
-                Node::ValueMap { input, .. } => vec![*input],
-                Node::Lookup { matches, .. } => vec![*matches],
-                Node::SequenceExists {
-                    sequence,
-                    predicate,
-                } => sequence.inputs().into_iter().chain([*predicate]).collect(),
-                Node::Aggregate {
-                    expression, arg, ..
-                }
-                | Node::JoinAggregate {
-                    expression, arg, ..
-                } => expression.iter().chain(arg).copied().collect(),
-            }
-        }
-
-        fn scope_references(
-            scope: &Scope,
-            path: &mut Vec<String>,
-            needle: NodeId,
-            found: &mut std::collections::BTreeSet<String>,
-        ) {
-            let label = if path.is_empty() {
-                "root scope".to_string()
-            } else {
-                format!("scope {}", path.join("/"))
-            };
-            if scope.filter == Some(needle) {
-                found.insert(format!("{label} filter"));
-            }
-            if scope.group_by == Some(needle) {
-                found.insert(format!("{label} group-by key"));
-            }
-            if scope.group_starting_with == Some(needle) {
-                found.insert(format!("{label} group-starting predicate"));
-            }
-            if scope.group_into_blocks == Some(needle) {
-                found.insert(format!("{label} group block size"));
-            }
-            if scope.sort_by == Some(needle) {
-                found.insert(format!("{label} sort key"));
-            }
-            if scope.take == Some(needle) {
-                found.insert(format!("{label} take count"));
-            }
-            if let Some(sequence) = scope.sequence() {
-                if sequence.inputs().contains(&needle) {
-                    found.insert(format!("{label} sequence input"));
-                }
-                if sequence.item() == needle {
-                    found.insert(format!("{label} sequence item"));
-                }
-            }
-            for binding in &scope.bindings {
-                if binding.node == needle {
-                    found.insert(format!("{label} binding {}", binding.target_field));
-                }
-            }
-            for child in &scope.children {
-                path.push(child.target_field.clone());
-                scope_references(child, path, needle, found);
-                path.pop();
-            }
-        }
-
-        let mut found = std::collections::BTreeSet::new();
-        for (&owner, node) in &self.graph.nodes {
-            if owner != needle && graph_inputs(node).contains(&needle) {
-                found.insert(format!("graph node {owner}"));
-            }
-            if owner != needle
-                && matches!(node, Node::SequenceExists { sequence, .. } if sequence.item() == needle)
-            {
-                found.insert(format!("graph node {owner} sequence item"));
-            }
-        }
-        scope_references(self.root_scope, &mut Vec::new(), needle, &mut found);
-        found.into_iter().collect()
+        graph_references::references_to(self.graph, self.root_scope, needle)
     }
 
     fn remove_orphaned_placeholder(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
@@ -463,7 +408,15 @@ impl GraphViewer<'_> {
         mapping_id: NodeId,
         node: SnarlNodeId,
         snarl: &mut Snarl<CanvasNode>,
-    ) {
+    ) -> bool {
+        let references = self.references_to(mapping_id);
+        if !references.is_empty() {
+            self.error = Some(format!(
+                "mapping node {mapping_id} is still used by {}",
+                references.join(", ")
+            ));
+            return false;
+        }
         let inputs = self
             .graph
             .nodes
@@ -475,6 +428,49 @@ impl GraphViewer<'_> {
         for input in inputs {
             self.remove_orphaned_placeholder(input, snarl);
         }
+        true
+    }
+
+    pub fn remove_snarl_nodes(
+        &mut self,
+        selected: &[SnarlNodeId],
+        snarl: &mut Snarl<CanvasNode>,
+    ) -> usize {
+        let mut pending = selected
+            .iter()
+            .filter_map(|&node| {
+                snarl
+                    .get_node(node)
+                    .and_then(|canvas| Self::mapping_id(*canvas))
+                    .map(|mapping| (mapping, node))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let mut removed = 0;
+        loop {
+            let removable = pending.iter().find_map(|(&mapping, &node)| {
+                self.references_to(mapping)
+                    .is_empty()
+                    .then_some((mapping, node))
+            });
+            let Some((mapping, node)) = removable else {
+                break;
+            };
+            if self.remove_graph_node(mapping, node, snarl) {
+                removed += 1;
+            }
+            pending.remove(&mapping);
+        }
+        if !pending.is_empty() {
+            let blocked = pending
+                .keys()
+                .map(|mapping| mapping.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            self.error = Some(format!(
+                "selected mapping node(s) {blocked} are still referenced; disconnect them first"
+            ));
+        }
+        removed
     }
 
     fn input_count(node: &Node) -> usize {
@@ -499,35 +495,6 @@ impl GraphViewer<'_> {
                 expression, arg, ..
             } => usize::from(expression.is_some()) + usize::from(arg.is_some()),
         }
-    }
-}
-
-fn node_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::SourceField { .. }
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Const { .. }
-        | Node::RuntimeValue { .. } => Vec::new(),
-        Node::Call { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        Node::Lookup { matches, .. } => vec![*matches],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence.inputs().into_iter().chain([*predicate]).collect(),
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
     }
 }
 
@@ -927,59 +894,121 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
+        self.error = None;
         let from_node = snarl[from.id.node];
         let to_node = snarl[to.id.node];
-        let displaced = match to_node {
-            CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) => {
-                self.input_at(to_id, to.id.input)
+        let mutation = (|| -> Result<Option<NodeId>, String> {
+            match (from_node, to_node) {
+                (CanvasNode::Source, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
+                    let source_leaf = self
+                        .source_leaves
+                        .get(from.id.output)
+                        .ok_or_else(|| format!("source pin {} does not exist", from.id.output))?;
+                    let to_node = self
+                        .graph
+                        .nodes
+                        .get(&to_id)
+                        .ok_or_else(|| format!("mapping node {to_id} does not exist"))?;
+                    if to.id.input >= Self::input_count(to_node) {
+                        return Err(format!(
+                            "input {} does not exist on mapping node {to_id}",
+                            to.id.input
+                        ));
+                    }
+                    let displaced = self.input_at(to_id, to.id.input);
+                    // The graph retains independent ownership after this pin
+                    // catalog is rebuilt on the next UI frame.
+                    let field =
+                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
+                    if !self.set_input(to_id, to.id.input, field) {
+                        self.remove_orphaned_placeholder(field, snarl);
+                        return Err(format!(
+                            "input {} could not be updated on mapping node {to_id}",
+                            to.id.input
+                        ));
+                    }
+                    Ok(displaced)
+                }
+                (CanvasNode::Source, CanvasNode::Target) => {
+                    let source_leaf = self
+                        .source_leaves
+                        .get(from.id.output)
+                        .ok_or_else(|| format!("source pin {} does not exist", from.id.output))?;
+                    let target_leaf = self
+                        .target_leaves
+                        .get(to.id.input)
+                        .cloned()
+                        .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
+                    let displaced = self.binding_node(&target_leaf);
+                    let field =
+                        self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
+                    self.set_binding(&target_leaf, field);
+                    Ok(displaced)
+                }
+                (
+                    CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
+                    CanvasNode::Target,
+                ) => {
+                    if from.id.output != 0 || !self.graph.nodes.contains_key(&from_id) {
+                        return Err(format!(
+                            "output {} does not exist on mapping node {from_id}",
+                            from.id.output
+                        ));
+                    }
+                    let target_leaf = self
+                        .target_leaves
+                        .get(to.id.input)
+                        .cloned()
+                        .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
+                    let displaced = self.binding_node(&target_leaf);
+                    self.set_binding(&target_leaf, from_id);
+                    Ok(displaced)
+                }
+                (
+                    CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
+                    CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id),
+                ) => {
+                    if from.id.output != 0 || !self.graph.nodes.contains_key(&from_id) {
+                        return Err(format!(
+                            "output {} does not exist on mapping node {from_id}",
+                            from.id.output
+                        ));
+                    }
+                    let to_node = self
+                        .graph
+                        .nodes
+                        .get(&to_id)
+                        .ok_or_else(|| format!("mapping node {to_id} does not exist"))?;
+                    if to.id.input >= Self::input_count(to_node) {
+                        return Err(format!(
+                            "input {} does not exist on mapping node {to_id}",
+                            to.id.input
+                        ));
+                    }
+                    if self.depends_on(from_id, to_id) {
+                        return Err(format!(
+                            "connection from mapping node {from_id} to {to_id} would create a cycle"
+                        ));
+                    }
+                    let displaced = self.input_at(to_id, to.id.input);
+                    if !self.set_input(to_id, to.id.input, from_id) {
+                        return Err(format!(
+                            "input {} could not be updated on mapping node {to_id}",
+                            to.id.input
+                        ));
+                    }
+                    Ok(displaced)
+                }
+                _ => Err("these canvas pins cannot be connected".to_string()),
             }
-            CanvasNode::Target => self
-                .target_leaves
-                .get(to.id.input)
-                .cloned()
-                .and_then(|leaf| self.binding_node(&leaf)),
-            CanvasNode::Source => None,
+        })();
+        let displaced = match mutation {
+            Ok(displaced) => displaced,
+            Err(error) => {
+                self.error = Some(error);
+                return;
+            }
         };
-        let accepted = match (from_node, to_node) {
-            (CanvasNode::Source, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
-                let Some(leaf) = self.source_leaves.get(from.id.output) else {
-                    return;
-                };
-                // The graph retains independent ownership after this pin
-                // catalog is rebuilt on the next UI frame.
-                let field = self.source_field_for(leaf.frame.clone(), leaf.path.clone());
-                self.set_input(to_id, to.id.input, field);
-                true
-            }
-            (CanvasNode::Source, CanvasNode::Target) => {
-                let (Some(source_leaf), Some(target_leaf)) = (
-                    self.source_leaves.get(from.id.output),
-                    self.target_leaves.get(to.id.input).cloned(),
-                ) else {
-                    return;
-                };
-                let field =
-                    self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
-                self.set_binding(&target_leaf, field)
-            }
-            (CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id), CanvasNode::Target) => {
-                let Some(target_leaf) = self.target_leaves.get(to.id.input).cloned() else {
-                    return;
-                };
-                self.set_binding(&target_leaf, from_id)
-            }
-            (
-                CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
-                CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id),
-            ) => {
-                self.set_input(to_id, to.id.input, from_id);
-                true
-            }
-            _ => false,
-        };
-        if !accepted {
-            return;
-        }
         // Every input takes exactly one value, so replace any existing wire.
         for &remote in &to.remotes {
             snarl.disconnect(remote, to.id);

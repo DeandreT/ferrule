@@ -4,6 +4,7 @@
 //! `app.rs` for why that's out of scope for this first GUI pass).
 
 use egui::Ui;
+use ir::{SchemaKind, SchemaNode};
 use mapping::{Binding, Graph, NodeId, Scope, ScopeIteration};
 
 use crate::path_picker::SourcePathCatalog;
@@ -73,6 +74,39 @@ pub fn scope_at_mut<'a>(root: &'a mut Scope, path: &[usize]) -> &'a mut Scope {
     scope
 }
 
+pub fn scope_target_chain(root: &Scope, path: &[usize]) -> Vec<String> {
+    let mut scope = root;
+    let mut chain = Vec::new();
+    for &index in path {
+        let Some(child) = scope.children.get(index) else {
+            break;
+        };
+        if !child.target_field.is_empty() {
+            chain.push(child.target_field.clone());
+        }
+        scope = child;
+    }
+    chain
+}
+
+pub fn binding_target_fields(target: &SchemaNode, chain: &[String]) -> Vec<String> {
+    let mut node = target;
+    for segment in chain {
+        let Some(child) = node.child(segment) else {
+            return Vec::new();
+        };
+        node = child;
+    }
+    match &node.kind {
+        SchemaKind::Scalar { .. } => Vec::new(),
+        SchemaKind::Group { children, .. } => children
+            .iter()
+            .filter(|child| matches!(child.kind, SchemaKind::Scalar { .. }))
+            .map(|child| child.name.clone())
+            .collect(),
+    }
+}
+
 /// Renders the scope tree as clickable labels; returns the newly selected
 /// path, if the user clicked one.
 pub fn show_scope_tree(ui: &mut Ui, root: &Scope, selected: &ScopePath) -> Option<ScopePath> {
@@ -90,16 +124,15 @@ fn show_scope_node(
     new_selection: &mut Option<ScopePath>,
 ) {
     let is_selected = path == selected;
-    egui::CollapsingHeader::new(label)
+    let title = if is_selected {
+        egui::RichText::new(label).strong()
+    } else {
+        egui::RichText::new(label)
+    };
+    let response = egui::CollapsingHeader::new(title)
         .id_salt(format!("{path:?}"))
         .default_open(true)
         .show(ui, |ui| {
-            if ui
-                .selectable_label(is_selected, "(edit this scope)")
-                .clicked()
-            {
-                *new_selection = Some(path.clone());
-            }
             for (i, child) in scope.children.iter().enumerate() {
                 path.push(i);
                 let child_label = if child.target_field.is_empty() {
@@ -111,6 +144,9 @@ fn show_scope_node(
                 path.pop();
             }
         });
+    if response.header_response.clicked() {
+        *new_selection = Some(path.clone());
+    }
 }
 
 /// Edits `scope`'s sequence controls and bindings.
@@ -119,6 +155,7 @@ pub fn show_scope_editor(
     scope: &mut Scope,
     graph: &Graph,
     source_paths: &SourcePathCatalog,
+    target_fields: &[String],
     nested: bool,
 ) {
     let first_node = first_node_id(graph);
@@ -309,10 +346,25 @@ pub fn show_scope_editor(
     let mut remove_idx = None;
     for (i, binding) in scope.bindings.iter_mut().enumerate() {
         ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut binding.target_field);
+            egui::ComboBox::from_id_salt(("binding_target", i))
+                .selected_text(if binding.target_field.is_empty() {
+                    "<target field>"
+                } else {
+                    &binding.target_field
+                })
+                .width(130.0)
+                .show_ui(ui, |ui| {
+                    for field in target_fields {
+                        ui.selectable_value(&mut binding.target_field, field.clone(), field);
+                    }
+                });
             ui.label("->");
             node_picker(ui, format!("binding_{i}"), &mut binding.node, graph);
-            if ui.small_button("x").clicked() {
+            if ui
+                .small_button("x")
+                .on_hover_text("Remove binding")
+                .clicked()
+            {
                 remove_idx = Some(i);
             }
         });
@@ -320,15 +372,29 @@ pub fn show_scope_editor(
     if let Some(i) = remove_idx {
         scope.bindings.remove(i);
     }
+    let next_target = target_fields
+        .iter()
+        .find(|field| {
+            !scope
+                .bindings
+                .iter()
+                .any(|binding| binding.target_field.as_str() == field.as_str())
+        })
+        .cloned();
     if ui
-        .add_enabled(first_node.is_some(), egui::Button::new("+ binding").small())
-        .on_disabled_hover_text("Add a graph node before creating a binding")
+        .add_enabled(
+            first_node.is_some() && next_target.is_some(),
+            egui::Button::new("+ binding").small(),
+        )
+        .on_disabled_hover_text(if first_node.is_none() {
+            "Add a graph node before creating a binding"
+        } else {
+            "Every scalar target field already has a binding"
+        })
         .clicked()
+        && let (Some(node), Some(target_field)) = (first_node, next_target)
     {
-        scope.bindings.push(Binding {
-            target_field: String::new(),
-            node: first_node.expect("button is disabled without a graph node"),
-        });
+        scope.bindings.push(Binding { target_field, node });
     }
 }
 
@@ -340,33 +406,59 @@ fn node_picker(
 ) {
     let current_label = graph.nodes.get(node_id).map_or_else(
         || "<missing>".to_string(),
-        |n| format!("{node_id}: {}", node_kind_label(n)),
+        |node| format!("{node_id}: {}", node_label(node)),
     );
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(current_label)
         .show_ui(ui, |ui| {
             for (&id, node) in &graph.nodes {
-                let label = format!("{id}: {}", node_kind_label(node));
+                let label = format!("{id}: {}", node_label(node));
                 ui.selectable_value(node_id, id, label);
             }
         });
 }
 
-fn node_kind_label(node: &mapping::Node) -> &'static str {
+fn node_label(node: &mapping::Node) -> String {
     match node {
-        mapping::Node::SourceField { .. } => "source_field",
-        mapping::Node::Position { .. } => "position",
-        mapping::Node::JoinField { .. } => "join_field",
-        mapping::Node::JoinPosition { .. } => "join_position",
-        mapping::Node::Const { .. } => "const",
-        mapping::Node::RuntimeValue { .. } => "runtime_value",
-        mapping::Node::Call { .. } => "call",
-        mapping::Node::If { .. } => "if",
-        mapping::Node::ValueMap { .. } => "value_map",
-        mapping::Node::Lookup { .. } => "lookup",
-        mapping::Node::SequenceExists { .. } => "sequence_exists",
-        mapping::Node::Aggregate { .. } => "aggregate",
-        mapping::Node::JoinAggregate { .. } => "join_aggregate",
+        mapping::Node::SourceField { path, .. } => format!("field {}", display_path(path)),
+        mapping::Node::Position { collection } => {
+            format!("position {}", display_path(collection))
+        }
+        mapping::Node::JoinField {
+            collection, path, ..
+        } => {
+            let mut field = collection.clone();
+            field.extend(path.iter().cloned());
+            format!("joined field {}", display_path(&field))
+        }
+        mapping::Node::JoinPosition { join } => format!("join {} position", join.get()),
+        mapping::Node::Const { value } => format!("constant {value:?}"),
+        mapping::Node::RuntimeValue { value } => format!("runtime {value:?}"),
+        mapping::Node::Call { function, .. } => function.clone(),
+        mapping::Node::If { .. } => "if".to_string(),
+        mapping::Node::ValueMap { .. } => "value map".to_string(),
+        mapping::Node::Lookup { collection, .. } => {
+            format!("lookup {}", display_path(collection))
+        }
+        mapping::Node::SequenceExists { sequence, .. } => {
+            format!("exists {}", generated_sequence_label(sequence))
+        }
+        mapping::Node::Aggregate {
+            function,
+            collection,
+            ..
+        } => format!("{function:?} {}", display_path(collection)).to_lowercase(),
+        mapping::Node::JoinAggregate { function, join, .. } => {
+            format!("{function:?} join {}", join.get()).to_lowercase()
+        }
+    }
+}
+
+fn display_path(path: &[String]) -> String {
+    if path.is_empty() {
+        "<current>".to_string()
+    } else {
+        path.join("/")
     }
 }
 
@@ -383,6 +475,42 @@ mod tests {
             .nodes
             .insert(7, mapping::Node::Const { value: Value::Null });
         assert_eq!(first_node_id(&graph), Some(7));
+    }
+
+    #[test]
+    fn selected_scope_chain_drives_schema_backed_binding_choices() {
+        let root = Scope {
+            children: vec![Scope {
+                target_field: "Orders".into(),
+                children: vec![Scope {
+                    target_field: "Order".into(),
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        };
+        let target = SchemaNode::group(
+            "root",
+            vec![SchemaNode::group(
+                "Orders",
+                vec![SchemaNode::group(
+                    "Order",
+                    vec![
+                        SchemaNode::scalar("Id", ir::ScalarType::Int),
+                        SchemaNode::group(
+                            "Details",
+                            vec![SchemaNode::scalar("Name", ir::ScalarType::String)],
+                        ),
+                    ],
+                )],
+            )],
+        );
+
+        let chain = scope_target_chain(&root, &[0, 0]);
+        assert_eq!(chain, ["Orders", "Order"]);
+        assert_eq!(binding_target_fields(&target, &chain), ["Id"]);
+        assert!(binding_target_fields(&target, &["Missing".into()]).is_empty());
     }
 
     #[test]

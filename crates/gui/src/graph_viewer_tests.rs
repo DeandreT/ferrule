@@ -364,11 +364,11 @@ fn disconnecting_a_target_pin_removes_the_binding() {
 }
 
 #[test]
-fn binding_into_a_missing_scope_reports_instead_of_wiring() {
+fn binding_into_a_nested_target_creates_non_iterating_scope_chain() {
     let mut fx = fixture();
     fx.target_leaves = vec![TargetLeaf {
-        label: "Order/b".into(),
-        chain: vec!["Order".into()],
+        label: "Order/Address/b".into(),
+        chain: vec!["Order".into(), "Address".into()],
         field: "b".into(),
     }];
     let mut snarl = std::mem::take(&mut fx.snarl);
@@ -382,9 +382,242 @@ fn binding_into_a_missing_scope_reports_instead_of_wiring() {
     });
     let mut viewer = fx.viewer();
     viewer.connect(&from, &to, &mut snarl);
-    assert!(viewer.error.is_some());
-    assert_eq!(snarl.wires().count(), 0);
+    assert!(viewer.error.is_none());
+    assert_eq!(snarl.wires().count(), 1);
     assert!(fx.root_scope.bindings.is_empty());
+    let order = &fx.root_scope.children[0];
+    assert_eq!(order.target_field, "Order");
+    assert!(!order.iterates());
+    let address = &order.children[0];
+    assert_eq!(address.target_field, "Address");
+    assert!(!address.iterates());
+    assert_eq!(address.bindings.len(), 1);
+    assert_eq!(address.bindings[0].target_field, "b");
+    assert!(matches!(
+        fx.graph.nodes.get(&address.bindings[0].node),
+        Some(Node::SourceField { path, .. }) if path == &["name"]
+    ));
+}
+
+#[test]
+fn rejected_source_connection_does_not_leak_a_source_field() {
+    let mut fx = fixture();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let from = snarl.out_pin(OutPinId {
+        node: fx.source,
+        output: 0,
+    });
+    let to = snarl.in_pin(InPinId {
+        node: fx.target,
+        input: 99,
+    });
+    let initial_nodes = fx.graph.nodes.len();
+
+    let mut viewer = fx.viewer();
+    viewer.connect(&from, &to, &mut snarl);
+
+    assert!(
+        viewer
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("target pin 99"))
+    );
+    assert_eq!(viewer.graph.nodes.len(), initial_nodes);
+    assert!(
+        !viewer
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::SourceField { .. }))
+    );
+    assert!(viewer.root_scope.bindings.is_empty());
+    assert!(viewer.root_scope.children.is_empty());
+    assert_eq!(snarl.wires().count(), 0);
+}
+
+#[test]
+fn batch_removal_deletes_selected_dependency_chains_in_reference_order() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        1,
+        Node::Call {
+            function: "upper".into(),
+            args: vec![0],
+        },
+    );
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let downstream = snarl.insert_node(egui::pos2(300.0, 100.0), CanvasNode::Graph(1));
+    let call = fx.call;
+
+    let removed = fx
+        .viewer()
+        .remove_snarl_nodes(&[call, downstream], &mut snarl);
+
+    assert_eq!(removed, 2);
+    assert!(fx.graph.nodes.is_empty());
+    assert!(
+        snarl
+            .nodes()
+            .all(|node| matches!(node, CanvasNode::Source | CanvasNode::Target))
+    );
+}
+
+#[test]
+fn batch_removal_uses_context_menu_reference_guards_and_placeholder_cleanup() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(1, Node::Const { value: Value::Null });
+    let Some(Node::Call { args, .. }) = fx.graph.nodes.get_mut(&0) else {
+        panic!("fixture call exists");
+    };
+    args.push(1);
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let placeholder = snarl.insert_node(egui::pos2(100.0, 100.0), CanvasNode::Placeholder(1));
+    snarl.connect(
+        OutPinId {
+            node: placeholder,
+            output: 0,
+        },
+        InPinId {
+            node: fx.call,
+            input: 0,
+        },
+    );
+    fx.root_scope.bindings.push(Binding {
+        target_field: "out".into(),
+        node: 0,
+    });
+    let call = fx.call;
+
+    assert_eq!(fx.viewer().remove_snarl_nodes(&[call], &mut snarl), 0);
+    assert!(fx.graph.nodes.contains_key(&0));
+    assert!(snarl.get_node(call).is_some());
+
+    fx.root_scope.bindings.clear();
+    assert_eq!(fx.viewer().remove_snarl_nodes(&[call], &mut snarl), 1);
+    assert!(fx.graph.nodes.is_empty());
+    assert!(snarl.get_node(call).is_none());
+    assert!(snarl.get_node(placeholder).is_none());
+}
+
+#[test]
+fn graph_connections_reject_invalid_inputs_and_cycles_atomically() {
+    let mut fx = fixture();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+
+    // The fixture call has no inputs, so a source drag to pin zero must not
+    // create its hidden SourceField before rejecting the pin.
+    let source = snarl.out_pin(OutPinId {
+        node: fx.source,
+        output: 0,
+    });
+    let invalid = snarl.in_pin(InPinId {
+        node: fx.call,
+        input: 0,
+    });
+    fx.viewer().connect(&source, &invalid, &mut snarl);
+    assert_eq!(fx.graph.nodes.len(), 1);
+    assert_eq!(snarl.wires().count(), 0);
+
+    let invalid_output = snarl.out_pin(OutPinId {
+        node: fx.call,
+        output: 1,
+    });
+    let target = snarl.in_pin(InPinId {
+        node: fx.target,
+        input: 0,
+    });
+    {
+        let mut viewer = fx.viewer();
+        viewer.connect(&invalid_output, &target, &mut snarl);
+        assert!(
+            viewer
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("output 1"))
+        );
+        assert!(viewer.root_scope.bindings.is_empty());
+    }
+    assert_eq!(snarl.wires().count(), 0);
+
+    fx.graph.nodes.insert(2, Node::Const { value: Value::Null });
+    fx.graph.nodes.insert(
+        1,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![2],
+        },
+    );
+    let Node::Call { args, .. } = fx.graph.nodes.get_mut(&0).unwrap() else {
+        panic!("fixture node should be a call");
+    };
+    args.push(2);
+    let second = snarl.insert_node(egui::pos2(300.0, 100.0), CanvasNode::Graph(1));
+
+    let first_to_second = (
+        snarl.out_pin(OutPinId {
+            node: fx.call,
+            output: 0,
+        }),
+        snarl.in_pin(InPinId {
+            node: second,
+            input: 0,
+        }),
+    );
+    fx.viewer()
+        .connect(&first_to_second.0, &first_to_second.1, &mut snarl);
+    assert!(matches!(
+        fx.graph.nodes.get(&1),
+        Some(Node::Call { args, .. }) if args == &[0]
+    ));
+    assert_eq!(snarl.wires().count(), 1);
+
+    let second_to_first = (
+        snarl.out_pin(OutPinId {
+            node: second,
+            output: 0,
+        }),
+        snarl.in_pin(InPinId {
+            node: fx.call,
+            input: 0,
+        }),
+    );
+    let call = fx.call;
+    let mut viewer = fx.viewer();
+    viewer.connect(&second_to_first.0, &second_to_first.1, &mut snarl);
+    assert!(
+        viewer
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("cycle"))
+    );
+    assert!(matches!(
+        viewer.graph.nodes.get(&0),
+        Some(Node::Call { args, .. }) if args == &[2]
+    ));
+    assert_eq!(snarl.wires().count(), 1);
+
+    let self_connection = (
+        snarl.out_pin(OutPinId {
+            node: call,
+            output: 0,
+        }),
+        snarl.in_pin(InPinId {
+            node: call,
+            input: 0,
+        }),
+    );
+    viewer.connect(&self_connection.0, &self_connection.1, &mut snarl);
+    assert!(
+        viewer
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("cycle"))
+    );
+    assert!(matches!(
+        viewer.graph.nodes.get(&0),
+        Some(Node::Call { args, .. }) if args == &[2]
+    ));
+    assert_eq!(snarl.wires().count(), 1);
 }
 
 #[test]
@@ -582,6 +815,91 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
             "root scope sort key",
             "root scope take count",
         ]
+    );
+}
+
+#[test]
+fn dynamic_scope_references_are_protected_recursively() {
+    let mut fx = fixture();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let protected = snarl.insert_node(egui::pos2(500.0, 0.0), CanvasNode::Graph(1));
+    for id in 1..=9 {
+        fx.graph
+            .nodes
+            .insert(id, Node::Const { value: Value::Null });
+    }
+    fx.root_scope
+        .dynamic_bindings
+        .push(mapping::DynamicBinding { key: 1, value: 2 });
+
+    let mut computed_scope = Scope {
+        filter: Some(4),
+        ..Scope::default()
+    };
+    computed_scope.bindings.push(Binding {
+        target_field: "nested".into(),
+        node: 5,
+    });
+    computed_scope
+        .dynamic_bindings
+        .push(mapping::DynamicBinding { key: 6, value: 7 });
+    computed_scope.dynamic_children.push(mapping::DynamicChild {
+        key: 8,
+        scope: Scope {
+            take: Some(9),
+            ..Scope::default()
+        },
+    });
+    fx.root_scope.dynamic_children.push(mapping::DynamicChild {
+        key: 3,
+        scope: computed_scope,
+    });
+
+    let mut viewer = fx.viewer();
+    assert_eq!(
+        viewer.references_to(1),
+        vec!["root scope dynamic binding 1 key"]
+    );
+    assert_eq!(
+        viewer.references_to(2),
+        vec!["root scope dynamic binding 1 value"]
+    );
+    assert_eq!(
+        viewer.references_to(3),
+        vec!["root scope dynamic child 1 key"]
+    );
+    assert_eq!(
+        viewer.references_to(4),
+        vec!["scope <dynamic child 1> filter"]
+    );
+    assert_eq!(
+        viewer.references_to(5),
+        vec!["scope <dynamic child 1> binding nested"]
+    );
+    assert_eq!(
+        viewer.references_to(6),
+        vec!["scope <dynamic child 1> dynamic binding 1 key"]
+    );
+    assert_eq!(
+        viewer.references_to(7),
+        vec!["scope <dynamic child 1> dynamic binding 1 value"]
+    );
+    assert_eq!(
+        viewer.references_to(8),
+        vec!["scope <dynamic child 1> dynamic child 1 key"]
+    );
+    assert_eq!(
+        viewer.references_to(9),
+        vec!["scope <dynamic child 1>/<dynamic child 1> take count"]
+    );
+    assert!(!viewer.remove_graph_node(1, protected, &mut snarl));
+    assert!(viewer.graph.nodes.contains_key(&1));
+    assert!(snarl.nodes().any(|node| *node == CanvasNode::Graph(1)));
+    assert!(
+        viewer
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("root scope dynamic binding 1 key"))
     );
 }
 
