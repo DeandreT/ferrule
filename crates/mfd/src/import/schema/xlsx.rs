@@ -17,10 +17,27 @@ struct Column {
 
 struct Table {
     sheet: Option<String>,
-    start_row: Option<u32>,
-    has_header: bool,
-    row_ports: Vec<u32>,
-    columns: Vec<Column>,
+    layout: TableLayout,
+}
+
+enum TableLayout {
+    Flat {
+        start_row: Option<u32>,
+        has_header: bool,
+        row_ports: Vec<u32>,
+        columns: Vec<Column>,
+    },
+    Transposed {
+        rows: Vec<TransposedRow>,
+        index_ports: Vec<u32>,
+    },
+}
+
+struct TransposedRow {
+    name: String,
+    row: u32,
+    ty: ScalarType,
+    ports: Vec<u32>,
 }
 
 pub(super) fn read(
@@ -44,20 +61,20 @@ pub(super) fn read(
         .children()
         .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Worksheet"))
     {
-        inspect_worksheet(worksheet, &name, warnings, &mut tables);
+        inspect_worksheet(worksheet, &name, is_source, warnings, &mut tables);
     }
 
     let table = match tables.len() {
         0 => {
             warnings.push(format!(
-                "xlsx component `{name}` has no supported flat table: select one worksheet with one open row range and annotation-named, fixed-index columns"
+                "xlsx component `{name}` has no supported table: select one worksheet with either one open row range and fixed-index columns or multiple fixed rows with open Cell sequences"
             ));
             return None;
         }
         1 => tables.pop()?,
         count => {
             warnings.push(format!(
-                "xlsx component `{name}` contains {count} flat tables; ferrule currently imports one worksheet/table per component"
+                "xlsx component `{name}` contains {count} supported tables; ferrule currently imports one worksheet/table per component"
             ));
             return None;
         }
@@ -70,18 +87,63 @@ pub(super) fn read(
     }
 
     let mut ports = BTreeMap::new();
-    for key in table.row_ports {
-        ports.insert(key, Vec::new());
-    }
-    let mut fields = Vec::with_capacity(table.columns.len());
-    let mut xlsx_columns = Vec::with_capacity(table.columns.len());
-    for column in table.columns {
-        for key in column.ports {
-            ports.insert(key, vec![column.name.clone()]);
+    let (fields, options) = match table.layout {
+        TableLayout::Flat {
+            start_row,
+            has_header,
+            row_ports,
+            columns,
+        } => {
+            for key in row_ports {
+                ports.insert(key, Vec::new());
+            }
+            let mut fields = Vec::with_capacity(columns.len());
+            let mut xlsx_columns = Vec::with_capacity(columns.len());
+            for column in columns {
+                for key in column.ports {
+                    ports.insert(key, vec![column.name.clone()]);
+                }
+                fields.push(SchemaNode::scalar(&column.name, column.ty));
+                xlsx_columns.push(column.index);
+            }
+            (
+                fields,
+                FormatOptions {
+                    has_header_row: Some(has_header),
+                    xlsx_sheet: table.sheet,
+                    xlsx_start_row: start_row,
+                    xlsx_columns,
+                    ..FormatOptions::default()
+                },
+            )
         }
-        fields.push(SchemaNode::scalar(&column.name, column.ty));
-        xlsx_columns.push(column.index);
-    }
+        TableLayout::Transposed { rows, index_ports } => {
+            let mut fields = Vec::with_capacity(rows.len() + usize::from(!index_ports.is_empty()));
+            let mut xlsx_rows = Vec::with_capacity(rows.len());
+            for row in rows {
+                for key in row.ports {
+                    ports.insert(key, vec![row.name.clone()]);
+                }
+                fields.push(SchemaNode::scalar(&row.name, row.ty));
+                xlsx_rows.push(row.row);
+            }
+            if !index_ports.is_empty() {
+                for key in index_ports {
+                    ports.insert(key, vec!["n".to_string()]);
+                }
+                fields.push(SchemaNode::scalar("n", ScalarType::Int));
+            }
+            (
+                fields,
+                FormatOptions {
+                    has_header_row: Some(false),
+                    xlsx_sheet: table.sheet,
+                    xlsx_rows,
+                    ..FormatOptions::default()
+                },
+            )
+        }
+    };
 
     Some(SchemaComponent {
         name: name.clone(),
@@ -89,13 +151,7 @@ pub(super) fn read(
         schema: SchemaNode::group(&name, fields),
         input_instance: excel.attribute("inputinstance").map(str::to_string),
         output_instance: excel.attribute("outputinstance").map(str::to_string),
-        options: FormatOptions {
-            has_header_row: Some(table.has_header),
-            xlsx_sheet: table.sheet,
-            xlsx_start_row: table.start_row,
-            xlsx_columns,
-            ..FormatOptions::default()
-        },
+        options,
         is_source,
         is_default_output: is_default_output(component),
         is_variable: false,
@@ -111,6 +167,7 @@ pub(super) fn read(
 fn inspect_worksheet(
     worksheet: roxmltree::Node<'_, '_>,
     component_name: &str,
+    is_source: bool,
     warnings: &mut Vec<String>,
     tables: &mut Vec<Table>,
 ) {
@@ -122,6 +179,8 @@ fn inspect_worksheet(
         .filter_map(|range| range.attribute("id").map(|id| (id, range)))
         .collect();
 
+    let mut transposed_rows = Vec::new();
+    let mut transposed_index_ports = Vec::new();
     for row in worksheet
         .children()
         .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Row"))
@@ -142,10 +201,25 @@ fn inspect_worksheet(
             }
             continue;
         };
+        if range.attribute("count") == Some("1")
+            && range.attribute("offset").is_none()
+            && is_source
+            && let Some(transposed) = read_transposed_row(
+                row,
+                range,
+                &range_id,
+                component_name,
+                warnings,
+                &mut transposed_index_ports,
+            )
+        {
+            transposed_rows.push(transposed);
+            continue;
+        }
         if range.attribute("count").is_some() {
             if subtree_has_ports(row) {
                 warnings.push(format!(
-                    "xlsx component `{component_name}` has connected fixed range `{range_id}`; only open row tables import, so those ports were skipped"
+                    "xlsx component `{component_name}` has connected fixed range `{range_id}` without a supported open Cell sequence; those ports were skipped"
                 ));
             }
             continue;
@@ -209,12 +283,104 @@ fn inspect_worksheet(
         let row_ports = port_keys(row);
         tables.push(Table {
             sheet,
-            start_row,
-            has_header: row.attribute("enabletitlerow") == Some("1"),
-            row_ports,
-            columns,
+            layout: TableLayout::Flat {
+                start_row,
+                has_header: row.attribute("enabletitlerow") == Some("1"),
+                row_ports,
+                columns,
+            },
         });
     }
+
+    if transposed_rows.is_empty() {
+        return;
+    }
+    if duplicate_transposed_row(&transposed_rows) {
+        warnings.push(format!(
+            "xlsx component `{component_name}` maps a transposed physical row or field name more than once; table skipped"
+        ));
+        return;
+    }
+    let sheet = match worksheet_name(worksheet) {
+        Ok(sheet) => sheet,
+        Err(()) => {
+            warnings.push(format!(
+                "xlsx component `{component_name}` selects a worksheet dynamically; the connected transposed table was skipped"
+            ));
+            return;
+        }
+    };
+    warn_dynamic_sheet_ports(worksheet, component_name, warnings);
+    tables.push(Table {
+        sheet,
+        layout: TableLayout::Transposed {
+            rows: transposed_rows,
+            index_ports: transposed_index_ports,
+        },
+    });
+}
+
+fn read_transposed_row(
+    row: roxmltree::Node<'_, '_>,
+    range: roxmltree::Node<'_, '_>,
+    range_id: &str,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+    index_ports: &mut Vec<u32>,
+) -> Option<TransposedRow> {
+    let physical_row = match range.attribute("start")?.parse::<u32>() {
+        Ok(value) if (1..=MAX_WORKSHEET_ROW).contains(&value) => value,
+        _ => {
+            warnings.push(format!(
+                "xlsx component `{component_name}` fixed range `{range_id}` has an invalid one-based row; that range was skipped"
+            ));
+            return None;
+        }
+    };
+    let connected_cells: Vec<_> = row
+        .children()
+        .filter(|node| {
+            node.has_tag_name("entry")
+                && node.attribute("name") == Some("Cell")
+                && !port_keys(*node).is_empty()
+        })
+        .collect();
+    if connected_cells.len() != 1
+        || selected_column(connected_cells[0]).is_some()
+        || connected_cells[0]
+            .children()
+            .any(|node| node.has_tag_name("condition"))
+    {
+        return None;
+    }
+    let cell = connected_cells[0];
+    let physical_row_port = row.children().any(|node| {
+        node.has_tag_name("entry")
+            && node.attribute("name") == Some("r")
+            && !port_keys(node).is_empty()
+    });
+    if physical_row_port {
+        warnings.push(format!(
+            "xlsx component `{component_name}` exposes physical Row/@r ports; those index values were skipped"
+        ));
+    }
+    index_ports.extend(
+        cell.children()
+            .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("n"))
+            .flat_map(port_keys),
+    );
+    let name = cell
+        .attribute("annotation")
+        .or_else(|| row.attribute("annotation"))
+        .or_else(|| range.attribute("annotation"))
+        .filter(|name| !name.is_empty())
+        .map_or_else(|| format!("Range{range_id}"), str::to_string);
+    Some(TransposedRow {
+        name,
+        row: physical_row,
+        ty: scalar_type(cell.attribute("datatype")),
+        ports: port_keys(cell),
+    })
 }
 
 fn read_columns(
@@ -387,4 +553,11 @@ fn duplicate_column(columns: &[Column]) -> bool {
     columns
         .iter()
         .any(|column| !names.insert(&column.name) || !indexes.insert(column.index))
+}
+
+fn duplicate_transposed_row(rows: &[TransposedRow]) -> bool {
+    let mut names = BTreeSet::from(["n"]);
+    let mut indexes = BTreeSet::new();
+    rows.iter()
+        .any(|row| !names.insert(row.name.as_str()) || !indexes.insert(row.row))
 }

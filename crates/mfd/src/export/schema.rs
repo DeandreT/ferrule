@@ -274,6 +274,11 @@ pub(super) fn render_schema_component(
             );
         }
         SideFormat::Xlsx => {
+            if !options.xlsx_rows.is_empty() {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} XLSX layout is transposed; transposed XLSX export is not supported"
+                )));
+            }
             let fields = csv_fields(schema).ok_or_else(|| {
                 MfdError::Unsupported(format!(
                     "the {side_name} side maps to an XLSX worksheet but its schema is \
