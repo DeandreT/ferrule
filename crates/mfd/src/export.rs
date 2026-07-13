@@ -44,8 +44,10 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     let source_format = side_format(&project.source_path);
     let target_format = side_format(&project.target_path);
-    let target_root_iterable = matches!(target_format, SideFormat::Csv | SideFormat::Db)
-        || (target_format == SideFormat::Json && project.target.repeating);
+    let target_root_iterable = matches!(
+        target_format,
+        SideFormat::Csv | SideFormat::Xlsx | SideFormat::Db
+    ) || (target_format == SideFormat::Json && project.target.repeating);
     let mapped_scope_plans = preflight_mapped_sequences(project, target_format)?;
 
     let mut keys = KeyAlloc { next: 1 };

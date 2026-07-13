@@ -26,7 +26,7 @@ enum DiagnosticFormat {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a mapping project against a CSV, XML, JSON, or SQLite input
+    /// Run a mapping project against a CSV, XLSX, XML, JSON, SQLite, or EDI input
     /// (chosen by extension), producing an output in any of those formats.
     /// For SQLite the table name is the schema root's name.
     Run {

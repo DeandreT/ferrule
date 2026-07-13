@@ -13,6 +13,8 @@ MapForce workflow parity.
 Every format works as both a mapping source and a mapping target:
 
 - **CSV** — delimited flat files (configurable delimiter), typed columns
+- **XLSX** — typed flat worksheet tables with selectable sheet, start row, and
+  columns
 - **XML** — hierarchical documents, with an XSD importer to bootstrap schemas
 - **JSON** — hierarchical documents, with a JSON Schema importer
 - **SQLite** — table introspection, reads, and idempotent full-replace writes
@@ -46,7 +48,7 @@ ferrule can convert MapForce `.mfd` designs (best-effort): XML components
 (resolvable XSDs, including local includes/imports, attributes, simple-content values,
 top-level element refs, named types, and extensions), JSON components (JSON Schema with
 local `$ref` support, or the design's entry tree as a fallback), CSV text components
-(inline delimiter/header settings),
+(inline delimiter/header settings), flat XLSX worksheet tables,
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
@@ -62,7 +64,8 @@ picking each side's component kind from the project's instance paths. Canonical
 structured-join export covers root-context collections inside the primary source.
 Designs built on namespaces, `xsi:type` polymorphism, correlated/keyless joins,
 multi-source or nested join export, joined aggregate export, multi-table database wiring, or other
-endpoints (Excel/FlexText/EDI-config components) are not converted yet.
+endpoints (complex multi-range Excel layouts, FlexText, or EDI-config components)
+are not converted yet.
 
 ```sh
 cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
@@ -99,9 +102,9 @@ cargo run -p gui
 ```
 
 The integration tests double as worked examples — each pairs a project file with inputs
-and expected outputs, covering XML-to-CSV flattening with broadcast fields, JSON and
-SQLite round-trips, X12/EDIFACT extraction, and CSV enrichment joined against a JSON
-reference file. See `crates/cli/tests/fixtures/`.
+and expected outputs, covering XML-to-CSV flattening with broadcast fields, JSON,
+XLSX, and SQLite round-trips, X12/EDIFACT extraction, and CSV enrichment joined
+against a JSON reference file. See `crates/cli/tests/fixtures/`.
 
 ## Workspace layout
 
@@ -112,6 +115,7 @@ reference file. See `crates/cli/tests/fixtures/`.
 - `crates/format-xml` — XSD-lite schema import and XML instance read/write
 - `crates/format-json` — JSON Schema import and JSON instance read/write
 - `crates/format-csv` — delimited flat file schema and read/write
+- `crates/format-xlsx` — flat Excel worksheet row read/write
 - `crates/format-db` — database schema introspection and read/write (SQLite)
 - `crates/format-edi` — EDI (ANSI X12 and UN/EDIFACT) schema-guided read/write
 - `crates/cli` — headless runner (`ferrule` binary): run a project file against inputs
