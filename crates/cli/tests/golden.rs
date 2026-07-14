@@ -25,6 +25,27 @@ fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
     }
 }
 
+fn grid_xlsx_layout() -> mapping::XlsxGridLayout {
+    use mapping::{XlsxColumn, XlsxFixedCell, XlsxGridLayout, XlsxRow};
+
+    XlsxGridLayout {
+        sheet: Some("Sales".into()),
+        header_row: XlsxRow::new(1).unwrap(),
+        data_start_row: XlsxRow::new(2).unwrap(),
+        header_value_field: "Month".into(),
+        header_position_field: "MonthColumn".into(),
+        rows_field: "Rows".into(),
+        cells_field: "Cells".into(),
+        cell_value_field: "Value".into(),
+        cell_position_field: "Column".into(),
+        fixed_cells: vec![XlsxFixedCell {
+            path: vec!["Year".into()],
+            row: XlsxRow::new(1).unwrap(),
+            column: XlsxColumn::new(1).unwrap(),
+        }],
+    }
+}
+
 #[test]
 fn simple_name_and_age_mapping() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -416,6 +437,276 @@ fn composite_xlsx_target_is_rejected_explicitly() {
         error
             .to_string()
             .contains("composite XLSX output is not supported")
+    );
+}
+
+#[test]
+fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
+    use ir::{Instance, ScalarType, SchemaNode, Value};
+    use mapping::{
+        AggregateOp, Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration,
+    };
+
+    let source = SchemaNode::group(
+        "SalesGrid",
+        vec![
+            SchemaNode::scalar("Month", ScalarType::String),
+            SchemaNode::scalar("MonthColumn", ScalarType::Int),
+            SchemaNode::scalar("Year", ScalarType::String),
+            SchemaNode::group(
+                "Rows",
+                vec![
+                    SchemaNode::group(
+                        "Cells",
+                        vec![
+                            SchemaNode::scalar("Value", ScalarType::String),
+                            SchemaNode::scalar("Column", ScalarType::Int),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Report",
+        vec![
+            SchemaNode::group(
+                "Period",
+                vec![
+                    SchemaNode::scalar("Month", ScalarType::String),
+                    SchemaNode::scalar("Year", ScalarType::String),
+                    SchemaNode::group(
+                        "Sale",
+                        vec![
+                            SchemaNode::scalar("Region", ScalarType::String),
+                            SchemaNode::scalar("Amount", ScalarType::String),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let mut graph = Graph::default();
+    for (id, path) in [
+        (0, vec!["Month"]),
+        (1, vec!["Year"]),
+        (2, vec!["MonthColumn"]),
+    ] {
+        graph.nodes.insert(
+            id,
+            Node::SourceField {
+                path: path.into_iter().map(str::to_string).collect(),
+                frame: None,
+            },
+        );
+    }
+    graph.nodes.insert(
+        3,
+        Node::Const {
+            value: Value::Int(1),
+        },
+    );
+    for (id, arg) in [(4, 3), (5, 2)] {
+        graph.nodes.insert(
+            id,
+            Node::Aggregate {
+                function: AggregateOp::ItemAt,
+                collection: vec!["Cells".into()],
+                value: vec!["Value".into()],
+                expression: None,
+                arg: Some(arg),
+            },
+        );
+    }
+    graph.nodes.insert(
+        6,
+        Node::Call {
+            function: "not_equal".into(),
+            args: vec![2, 3],
+        },
+    );
+    let project = Project {
+        source,
+        target: target.clone(),
+        source_path: None,
+        target_path: None,
+        source_options: FormatOptions {
+            xlsx_grid: Some(grid_xlsx_layout()),
+            ..FormatOptions::default()
+        },
+        target_options: FormatOptions::default(),
+        extra_sources: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Period".into(),
+                iteration: ScopeIteration::Source(Vec::new()),
+                filter: Some(6),
+                bindings: vec![
+                    Binding {
+                        target_field: "Month".into(),
+                        node: 0,
+                    },
+                    Binding {
+                        target_field: "Year".into(),
+                        node: 1,
+                    },
+                ],
+                children: vec![Scope {
+                    target_field: "Sale".into(),
+                    iteration: ScopeIteration::Source(vec!["Rows".into()]),
+                    bindings: vec![
+                        Binding {
+                            target_field: "Region".into(),
+                            node: 4,
+                        },
+                        Binding {
+                            target_field: "Amount".into(),
+                            node: 5,
+                        },
+                    ],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let sheet = workbook.add_worksheet();
+    sheet.set_name("Sales").unwrap();
+    for (row, column, value) in [
+        (0, 0, "2025"),
+        (0, 1, "January"),
+        (0, 2, "February"),
+        (1, 0, "West"),
+        (1, 1, "10"),
+        (1, 2, "20"),
+        (2, 0, "East"),
+        (2, 1, "30"),
+        (2, 2, "40"),
+    ] {
+        sheet.write_string(row, column, value).unwrap();
+    }
+
+    let text = |value: &str| Instance::Scalar(Value::String(value.into()));
+    let sale = |region: &str, amount: &str| {
+        Instance::Group(vec![
+            ("Region".into(), text(region)),
+            ("Amount".into(), text(amount)),
+        ])
+    };
+    let period = |month: &str, west: &str, east: &str| {
+        Instance::Group(vec![
+            ("Month".into(), text(month)),
+            ("Year".into(), text("2025")),
+            (
+                "Sale".into(),
+                Instance::Repeated(vec![sale("West", west), sale("East", east)]),
+            ),
+        ])
+    };
+    let expected = Instance::Group(vec![(
+        "Period".into(),
+        Instance::Repeated(vec![
+            period("January", "10", "30"),
+            period("February", "20", "40"),
+        ]),
+    )]);
+
+    let tag = format!("xlsx_grid_source_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let json_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json.out.json"));
+    let xml_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xml"));
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+    std::fs::write(&input_path, workbook.save_to_buffer().unwrap()).unwrap();
+
+    assert_eq!(
+        cli::run_project(&project_path, &input_path, &json_path).unwrap(),
+        1
+    );
+    assert_eq!(
+        cli::run_project(&project_path, &input_path, &xml_path).unwrap(),
+        1
+    );
+    assert_eq!(format_json::read(&json_path, &target).unwrap(), expected);
+    assert_eq!(format_xml::read(&xml_path, &target).unwrap(), expected);
+
+    for path in [project_path, input_path, json_path, xml_path] {
+        std::fs::remove_file(path).unwrap();
+    }
+}
+
+#[test]
+fn grid_xlsx_source_rejects_other_layout_modes() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let project: mapping::Project =
+        serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
+            .unwrap();
+    let transposed = mapping::FormatOptions {
+        xlsx_grid: Some(grid_xlsx_layout()),
+        xlsx_rows: vec![1],
+        ..mapping::FormatOptions::default()
+    };
+    let mut composite = transposed.clone();
+    composite.xlsx_rows.clear();
+    composite.xlsx_composite = Some(composite_xlsx_layout());
+    let mut legacy = transposed.clone();
+    legacy.xlsx_rows.clear();
+    legacy.xlsx_sheet = Some("Legacy".into());
+
+    for (mode, options) in [
+        ("transposed", transposed),
+        ("composite", composite),
+        ("legacy", legacy),
+    ] {
+        let mut project = project.clone();
+        project.source_options = options;
+        let tag = format!("xlsx_grid_{mode}_conflict_{}", std::process::id());
+        let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+        let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+        let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+        std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+        std::fs::write(&input_path, []).unwrap();
+
+        let error = cli::run_project(&project_path, &input_path, &output_path).unwrap_err();
+        for path in [project_path, input_path] {
+            std::fs::remove_file(path).unwrap();
+        }
+        std::fs::remove_file(output_path).ok();
+
+        assert!(error.to_string().contains("`xlsx_grid` cannot be combined"));
+    }
+}
+
+#[test]
+fn grid_xlsx_target_is_rejected_explicitly() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut project: mapping::Project =
+        serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
+            .unwrap();
+    project.target_options.xlsx_grid = Some(grid_xlsx_layout());
+
+    let tag = format!("xlsx_grid_target_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+
+    let error =
+        cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
+    std::fs::remove_file(project_path).unwrap();
+    std::fs::remove_file(output_path).ok();
+
+    assert!(
+        error
+            .to_string()
+            .contains("grid XLSX output is not supported")
     );
 }
 

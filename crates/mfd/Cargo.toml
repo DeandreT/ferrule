@@ -18,6 +18,8 @@ thiserror = { workspace = true }
 [dev-dependencies]
 engine = { workspace = true }
 format-csv = { workspace = true }
+format-xlsx = { workspace = true }
 rusqlite = { workspace = true }
+rust_xlsxwriter = { workspace = true }
 
 serde_json = { workspace = true }

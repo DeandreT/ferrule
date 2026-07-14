@@ -1,4 +1,4 @@
-//! XLSX worksheet instance I/O for row, transposed, and composite mappings.
+//! XLSX worksheet instance I/O for row, transposed, composite, and grid mappings.
 //!
 //! Like CSV, an XLSX table uses a non-repeating group of scalar fields as
 //! its row schema. Worksheet coordinates are one-based at this API boundary
@@ -13,8 +13,10 @@ use rust_xlsxwriter::{Workbook, Worksheet};
 use thiserror::Error;
 
 mod composite;
+mod grid;
 
 pub use composite::{from_bytes_composite, read_composite};
+pub use grid::{from_bytes_grid, read_grid};
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
@@ -49,6 +51,12 @@ pub enum XlsxFormatError {
     CompositePath { path: String, reason: &'static str },
     #[error("composite XLSX schema path `{0}` is mapped more than once")]
     DuplicateCompositePath(String),
+    #[error("grid XLSX root schema must be a non-repeating group")]
+    GridRootSchema,
+    #[error("invalid grid XLSX layout: {0}")]
+    GridLayout(&'static str),
+    #[error("invalid grid XLSX field `{field}`: {reason}")]
+    GridField { field: String, reason: &'static str },
     #[error("row {row}: expected a group, got {got}")]
     RowShape { row: usize, got: &'static str },
     #[error("row {row}: missing column `{field}`")]
