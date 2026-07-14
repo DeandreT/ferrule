@@ -223,7 +223,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     }
                 }
                 "pdf" if component.attribute("kind") == Some("34") => {
-                    match read_pdf_component(&component, path) {
+                    match read_pdf_component(&component, path, &mut warnings) {
                         Ok(component) => schema_components.push(component),
                         Err(reason) => {
                             note_skipped_library(&mut skipped_libraries, "pdf");
@@ -491,12 +491,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         };
         scope_builder.add_binding(target, node);
     }
-    dynamic_json::build_target(
-        dynamic_target,
-        target,
-        &mut builder,
-        &mut scope_builder.root,
-    );
+    dynamic_json::build_target(dynamic_target, target, &mut builder, &mut scope_builder);
 
     let mut extra_sources = Vec::new();
     for (index, extra) in sources.iter().enumerate().skip(1) {

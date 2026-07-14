@@ -64,8 +64,9 @@ pub(super) fn read_protobuf_component(
 pub(super) fn read_pdf_component(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    pdf::read(component, mfd_path)
+    pdf::read(component, mfd_path, warnings)
 }
 
 #[derive(Clone, Copy, PartialEq)]
