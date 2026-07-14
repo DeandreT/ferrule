@@ -3,7 +3,8 @@ use std::fmt;
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
-    Graph, IterationOutput, JoinId, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+    FormatOptions, Graph, IterationOutput, JoinId, Node, NodeId, Project, Scope, ScopeConstruction,
+    ScopeIteration, XbrlBoundaryMode,
 };
 
 use super::validate_join::{
@@ -37,6 +38,18 @@ impl fmt::Display for ValidationIssue {
 /// names, and cycles without reading input data or evaluating expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
+    validate_xbrl_options(
+        "source format options",
+        &project.source_options,
+        XbrlBoundaryMode::ExternalSource,
+        &mut issues,
+    );
+    validate_xbrl_options(
+        "target format options",
+        &project.target_options,
+        XbrlBoundaryMode::ExternalTarget,
+        &mut issues,
+    );
     if project.target_options.http_get.is_some() {
         issues.push(ValidationIssue::new(
             "target format options",
@@ -70,6 +83,12 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         &mut issues,
     );
     for source in &project.extra_sources {
+        validate_xbrl_options(
+            &format!("extra source `{}` format options", source.name),
+            &source.options,
+            XbrlBoundaryMode::ExternalSource,
+            &mut issues,
+        );
         if let Some(layout) = &source.options.pdf
             && layout.schema() != source.schema
         {
@@ -100,6 +119,56 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         &mut issues,
     );
     issues
+}
+
+fn validate_xbrl_options(
+    location: &str,
+    options: &FormatOptions,
+    expected_mode: XbrlBoundaryMode,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(xbrl) = &options.xbrl else {
+        return;
+    };
+    if xbrl.mode() != expected_mode {
+        let actual_mode = match xbrl.mode() {
+            XbrlBoundaryMode::ExternalSource => "external source",
+            XbrlBoundaryMode::ExternalTarget => "external target",
+        };
+        let expected_side = match expected_mode {
+            XbrlBoundaryMode::ExternalSource => "source",
+            XbrlBoundaryMode::ExternalTarget => "target",
+        };
+        issues.push(ValidationIssue::new(
+            location,
+            format!("XBRL boundary mode `{actual_mode}` is invalid on a mapping {expected_side}"),
+        ));
+    }
+    if has_non_xbrl_format_options(options) {
+        issues.push(ValidationIssue::new(
+            location,
+            "`xbrl` cannot be combined with another format's options",
+        ));
+    }
+}
+
+fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
+    options.lenient_segments
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.pdf.is_some()
+        || options.http_get.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
 }
 
 fn validate_schema(

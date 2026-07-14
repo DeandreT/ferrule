@@ -7,9 +7,7 @@ use mapping::{AggregateOp, IterationOutput, Node, SequenceExpr};
 use super::{Call, Definition, OutputExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
 use crate::import::graph::GraphBuilder;
-use crate::import::schema::{
-    ComponentFormat, SchemaComponent, parse_u32, read_schema_component, schema_node_at,
-};
+use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component, schema_node_at};
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::source::SourcePath;
 
@@ -635,7 +633,7 @@ pub(in crate::import) fn accept_target(
     let Some((_, recipe)) = builder.structured_recipe(feed) else {
         return false;
     };
-    let common = target.format == ComponentFormat::Xml
+    let common = target.format.is_xml_like()
         && !target_path.is_empty()
         && matches!(target_node.kind, SchemaKind::Group { .. })
         && target
