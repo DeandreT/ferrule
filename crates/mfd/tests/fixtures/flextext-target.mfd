@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="flex-target-map" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="people" library="xml" uid="2" kind="14">
+          <properties/>
+          <data>
+            <root><header><namespaces><namespace/></namespaces></header><entry name="People"><entry name="Title" outkey="11"/><entry name="Person" outkey="12"><entry name="Name" outkey="13"/><entry name="Year" outkey="14"/><entry name="Text" outkey="15"/></entry></entry></root>
+            <document schema="flextext-target-source.xsd" inputinstance="flextext/target-source.xml" instanceroot="{}People"/>
+          </data>
+        </component>
+        <component name="structured-output" library="text" uid="3" kind="16">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><header><namespaces/></header><entry name="Document"><entry name="Sections"><entry name="Title" inpkey="20"/><entry name="Body" inpkey="30"><entry name="Name" inpkey="31"/><entry name="Year" inpkey="32"/><entry name="Text" inpkey="33"/></entry></entry></entry></root>
+            <text type="txt" config="flextext/target-layout.mft"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="30"/></edges></vertex>
+          <vertex vertexkey="13"><edges><edge vertexkey="31"/></edges></vertex>
+          <vertex vertexkey="14"><edges><edge vertexkey="32"/></edges></vertex>
+          <vertex vertexkey="15"><edges><edge vertexkey="33"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

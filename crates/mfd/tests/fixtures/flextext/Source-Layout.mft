@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FlexText>
+  <Commands>
+    <Project FileName="source.flex" ByteOrderMark="0">
+      <RootName Value="Root"/>
+      <Connections>
+        <Connection>
+          <SplitMultiple Mode="DynLS" Behavior="LineStartsWith">
+            <Separator Value="@"/>
+            <Name Value="Sections"/>
+            <Connections>
+              <Connection>
+                <SplitSingle>
+                  <Upper Offset="1"/>
+                  <Lower/>
+                  <Name Value="Block"/>
+                  <Connections>
+                    <Connection>
+                      <Switch Mode="AllPossible">
+                        <Name Value="Header"/>
+                        <Conditions>
+                          <Condition>
+                            <Value Value="@TITLE%20"/>
+                            <Connections>
+                              <Connection>
+                                <SplitSingle Orientation="Vertical">
+                                  <Upper Offset="1"/>
+                                  <Lower Offset="8"/>
+                                  <Name Value="TitleInfo"/>
+                                  <Connections>
+                                    <Connection><Ignore><Connections><Connection/></Connections></Ignore></Connection>
+                                    <Connection>
+                                      <Store Type="string" TrimSide="Both" TrimCharSet="%20%0D%0A">
+                                        <Name Value="Title"/>
+                                      </Store>
+                                    </Connection>
+                                  </Connections>
+                                </SplitSingle>
+                              </Connection>
+                            </Connections>
+                          </Condition>
+                          <Condition Mode="Default">
+                            <Value/>
+                            <Connections>
+                              <Connection><Ignore><Connections><Connection/></Connections></Ignore></Connection>
+                            </Connections>
+                          </Condition>
+                        </Conditions>
+                        <Connections><Connection/></Connections>
+                      </Switch>
+                    </Connection>
+                    <Connection>
+                      <CSV QuoteCharacter="&quot;" EscapeCharacter="\">
+                        <RecordSeparator Value="%0D%0A"/>
+                        <FieldSeparator Value=","/>
+                        <RecordName Value="Rows"/>
+                        <Fields>
+                          <Field Type="string"><Name Value="Name"/></Field>
+                          <Field Type="integer"><Name Value="Count"/></Field>
+                        </Fields>
+                        <Connections><Connection/></Connections>
+                      </CSV>
+                    </Connection>
+                  </Connections>
+                </SplitSingle>
+              </Connection>
+            </Connections>
+          </SplitMultiple>
+        </Connection>
+      </Connections>
+    </Project>
+  </Commands>
+  <Functions/>
+</FlexText>
