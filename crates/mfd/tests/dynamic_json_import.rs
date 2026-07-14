@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use mapping::Node;
+
 struct TempDir(PathBuf);
 
 impl TempDir {
@@ -100,6 +102,120 @@ fn write_fixture(dir: &Path) -> PathBuf {
     design
 }
 
+fn write_nested_fixture(dir: &Path) -> PathBuf {
+    std::fs::write(
+        dir.join("inventory.schema.json"),
+        r#"{
+  "title": "Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "Article": { "type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "Sku": { "type": "string" },
+        "Store": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "Name": { "type": "string" },
+            "Availability": { "type": "array", "items": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "Size": { "type": "string" },
+                "Count": { "type": "number" }
+              }
+            } }
+          }
+        } }
+      }
+    } }
+  }
+}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("inventory.json"),
+        r#"{"Article":[
+  {"Sku":"A","Store":[
+    {"Name":"North","Availability":[{"Size":"S","Count":4},{"Size":"M","Count":2}]},
+    {"Name":"South","Availability":[{"Size":"L","Count":7}]}
+  ]},
+  {"Sku":"B","Store":[
+    {"Name":"North","Availability":[{"Size":"XL","Count":1}]}
+  ]}
+]}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("nested-target.schema.json"),
+        r#"{
+  "title": "Stock",
+  "type": "array",
+  "items": {
+    "type": "object", "additionalProperties": false,
+    "properties": {
+      "Sku": { "type": "string" },
+      "Stores": { "type": "array", "items": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "Name": { "type": "string" },
+          "Preview": { "type": "string" },
+          "Available": {
+            "type": "object",
+            "additionalProperties": { "type": "number" }
+          }
+        }
+      } }
+    }
+  }
+}"#,
+    )
+    .unwrap();
+
+    let design = dir.join("nested-dynamic.mfd");
+    std::fs::write(
+        &design,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="42"><component name="nested-map"><structure><children>
+  <component name="inventory" library="json" kind="31"><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="object">
+    <entry name="Article" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" outkey="1">
+      <entry name="Sku" type="json-property"><entry name="string" outkey="2"/></entry>
+      <entry name="Store" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" outkey="3">
+        <entry name="Name" type="json-property"><entry name="string" outkey="4"/></entry>
+        <entry name="Availability" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" outkey="5">
+          <entry name="Size" type="json-property"><entry name="string" outkey="6"/></entry>
+          <entry name="Count" type="json-property"><entry name="number" outkey="7"/></entry>
+        </entry></entry></entry></entry>
+      </entry></entry></entry></entry>
+    </entry></entry></entry></entry>
+  </entry></entry></entry></entry></root><json schema="inventory.schema.json" inputinstance="inventory.json"/></data></component>
+  <component name="stock" library="json" kind="31"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="root"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="10">
+    <entry name="Sku" type="json-property"><entry name="string" inpkey="11"/></entry>
+    <entry name="Stores" type="json-property"><entry name="array"><entry name="item" type="json-item"><entry name="object" inpkey="12">
+      <entry name="Name" type="json-property"><entry name="string" inpkey="13"/></entry>
+      <entry name="Preview" type="json-property"><entry name="string" inpkey="17"/></entry>
+      <entry name="Available" type="json-property"><entry name="object">
+        <entry name="property" type="json-property" inpkey="14">
+          <entry name="name" type="json-propertyname" inpkey="15"/>
+          <entry name="number" inpkey="16"/>
+        </entry>
+      </entry></entry>
+    </entry></entry></entry></entry>
+  </entry></entry></entry></entry></entry></entry></root><json schema="nested-target.schema.json" outputinstance="nested-output.json"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="1"><edges><edge vertexkey="10"/></edges></vertex>
+  <vertex vertexkey="2"><edges><edge vertexkey="11"/></edges></vertex>
+  <vertex vertexkey="3"><edges><edge vertexkey="12"/></edges></vertex>
+  <vertex vertexkey="4"><edges><edge vertexkey="13"/></edges></vertex>
+  <vertex vertexkey="5"><edges><edge vertexkey="14"/></edges></vertex>
+  <vertex vertexkey="6"><edges><edge vertexkey="15"/><edge vertexkey="17"/></edges></vertex>
+  <vertex vertexkey="7"><edges><edge vertexkey="16"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+    design
+}
+
 #[test]
 fn imports_executes_and_serializes_computed_json_properties_in_order() {
     let dir = TempDir::new("executes");
@@ -124,6 +240,105 @@ fn imports_executes_and_serializes_computed_json_properties_in_order() {
     assert_eq!(object["Engineering"][0]["Name"], "Ada");
     assert_eq!(object["Engineering"][0]["Details"], "Manager");
     assert_eq!(object["Sales"][0]["Name"], "Grace");
+}
+
+#[test]
+fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
+    let dir = TempDir::new("nested");
+    let design = write_nested_fixture(&dir.0);
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+
+    let stores = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Stores")
+        .unwrap();
+    let available = stores
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Available")
+        .unwrap();
+    assert_eq!(available.source(), Some(&["Availability".to_string()][..]));
+    assert!(available.merge_dynamic_fields);
+    assert_eq!(available.dynamic_bindings.len(), 1);
+
+    let source =
+        format_json::read(&dir.0.join("inventory.json"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let output_path = dir.0.join("nested-output.json");
+    format_json::write(&output_path, &imported.project.target, &output).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(output_path).unwrap()).unwrap();
+
+    assert_eq!(value[0]["Sku"], "A");
+    assert_eq!(value[0]["Stores"][0]["Preview"], "S");
+    assert_eq!(value[0]["Stores"][0]["Available"]["S"], 4.0);
+    assert_eq!(value[0]["Stores"][0]["Available"]["M"], 2.0);
+    assert!(value[0]["Stores"][0]["Available"].get("L").is_none());
+    assert_eq!(value[0]["Stores"][1]["Available"]["L"], 7.0);
+    assert_eq!(value[0]["Stores"][1]["Preview"], "L");
+    assert!(value[0]["Stores"][1]["Available"].get("S").is_none());
+    assert_eq!(value[1]["Sku"], "B");
+    assert_eq!(value[1]["Stores"][0]["Preview"], "XL");
+    assert_eq!(value[1]["Stores"][0]["Available"]["XL"], 1.0);
+    assert!(value[1]["Stores"][0]["Available"].get("S").is_none());
+}
+
+#[test]
+fn late_nested_failure_does_not_reframe_ordinary_source_fields() {
+    let dir = TempDir::new("nested_atomic");
+    let design = write_nested_fixture(&dir.0);
+    let text = std::fs::read_to_string(&design).unwrap().replace(
+        r#"<vertex vertexkey="7"><edges><edge vertexkey="16"/></edges></vertex>"#,
+        r#"<vertex vertexkey="7"><edges><edge vertexkey="999"/></edges></vertex>"#,
+    );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("dynamic JSON target")
+            && warning.contains("nested property value input is not connected")
+    }));
+    let stores = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Stores")
+        .unwrap();
+    assert!(
+        stores
+            .children
+            .iter()
+            .all(|scope| scope.target_field != "Available")
+    );
+    let preview = stores
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Preview")
+        .unwrap();
+    assert!(matches!(
+        imported.project.graph.nodes.get(&preview.node),
+        Some(Node::SourceField { frame: Some(frame), path })
+            if frame == &["Article".to_string(), "Store".to_string()]
+                && path == &["Availability".to_string(), "Size".to_string()]
+    ));
+    assert!(imported.project.graph.nodes.values().all(|node| {
+        !matches!(
+            node,
+            Node::SourceField { frame: Some(frame), .. }
+                if frame.last().is_some_and(|segment| segment == "Availability")
+        )
+    }));
+    assert!(engine::validate(&imported.project).is_empty());
 }
 
 #[test]

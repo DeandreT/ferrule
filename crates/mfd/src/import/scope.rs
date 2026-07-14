@@ -29,6 +29,7 @@ impl TargetLeaf {
 /// Builds the scope tree from iteration and binding connections. `anchors`
 /// remembers, per scope chain, the absolute source path its iteration
 /// starts from, so nested iterations can be expressed relative to it.
+#[derive(Clone)]
 pub(super) struct ScopeBuilder {
     pub(super) root: Scope,
     pub(super) anchors: BTreeMap<Vec<String>, Vec<String>>,
@@ -45,7 +46,7 @@ pub(super) struct IterationNodes {
 }
 
 impl ScopeBuilder {
-    fn ensure_scope(&mut self, chain: &[String]) -> &mut Scope {
+    pub(super) fn ensure_scope(&mut self, chain: &[String]) -> &mut Scope {
         let mut scope = &mut self.root;
         for element in chain {
             let idx = match scope

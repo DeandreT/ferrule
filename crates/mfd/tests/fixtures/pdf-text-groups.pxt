@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document>
+  <Template version="2">
+    <Model>
+      <Root id="1">
+        <Children>
+          <Grouping id="2">
+            <Children>
+              <MergeSource id="3">
+                <Region>{ Left: Left + 30pt, Top: Top + 70pt, Right: Right - 30pt, Bottom: Bottom - 25pt }</Region>
+                <Target>Stack</Target>
+              </MergeSource>
+              <MergeTarget id="4">
+                <Children>
+                  <Collage id="5">
+                    <Children>
+                      <Splitter id="6">
+                        <Children>
+                          <Grouping id="7">
+                            <Children>
+                              <Capture id="8"><Label>Code</Label><Region>{ Left: Left + 90pt, Top: Top, Right: Right, Bottom: Top + 12pt }</Region></Capture>
+                              <Splitter id="9">
+                                <Children>
+                                  <Grouping id="10">
+                                    <Children>
+                                      <Capture id="11"><Label>Name</Label><Region>{ Left: Left + 80pt, Top: Top + 10pt, Right: Right, Bottom: Top + 20pt }</Region></Capture>
+                                      <Capture id="12"><Label>Note</Label><Region>{ Left: Left + 80pt, Top: Top + 20pt, Right: Right, Bottom: Bottom }</Region></Capture>
+                                    </Children>
+                                    <Label/>
+                                    <Kind><GroupByText><Region/><Mode><filter-containing/></Mode><Match><Search>Item Details</Search><AllowArbitrarySpace>1</AllowArbitrarySpace><WordAnchor><none/></WordAnchor><CaseFolding><ignore-case/></CaseFolding></Match></GroupByText></Kind>
+                                    <Filter/>
+                                  </Grouping>
+                                  <Grouping id="13">
+                                    <Children>
+                                      <Capture id="14"><Label>Label</Label><Region>{ Left: Left + 70pt, Top: Top, Right: Right, Bottom: Top + 12pt }</Region></Capture>
+                                      <Splitter id="15">
+                                        <Children>
+                                          <Grouping id="16">
+                                            <Children>
+                                              <Capture id="17"><Label>Variant</Label><Region>{ Left: Left, Top: Top, Right: Left + 120pt, Bottom: Bottom }</Region></Capture>
+                                              <Capture id="18"><Label>Quantity</Label><Region>{ Left: Left + 160pt, Top: Top, Right: Right, Bottom: Bottom }</Region></Capture>
+                                            </Children>
+                                            <Label>Stock</Label><Kind><OneGroupPerPage/></Kind><Filter/>
+                                          </Grouping>
+                                        </Children>
+                                        <Region>{ Left: Left, Top: Top + 20pt, Right: Right, Bottom: Bottom }</Region>
+                                        <Search/>
+                                        <FeatureFind><ObjectFind><Background>#fff</Background><Tolerance>10</Tolerance><MinimumExtent>4pt</MinimumExtent><Fill>0pt</Fill><Edge><start/></Edge><Displace>0pt</Displace></ObjectFind></FeatureFind>
+                                        <PostProcess><MinimumExtent/><Behavior><discard/></Behavior></PostProcess><SkipInitial>0</SkipInitial><SkipFinal>0</SkipFinal>
+                                      </Splitter>
+                                    </Children>
+                                    <Label>Location</Label>
+                                    <Kind><GroupByText><Region/><Mode><filter-containing/></Mode><Match><Search>Location Details</Search><AllowArbitrarySpace>1</AllowArbitrarySpace><WordAnchor><none/></WordAnchor><CaseFolding><ignore-case/></CaseFolding></Match></GroupByText></Kind>
+                                    <Filter/>
+                                  </Grouping>
+                                </Children>
+                                <Region/><Search/>
+                                <FeatureFind><ObjectFind><Background>#fff</Background><Tolerance>10</Tolerance><MinimumExtent>8pt</MinimumExtent><Fill>0pt</Fill><Edge><start/></Edge><Displace>0pt</Displace></ObjectFind></FeatureFind>
+                                <PostProcess><MinimumExtent/><Behavior><discard/></Behavior></PostProcess><SkipInitial>0</SkipInitial><SkipFinal>0</SkipFinal>
+                              </Splitter>
+                            </Children>
+                            <Label>Item</Label><Kind><OneGroupPerPage/></Kind><Filter/>
+                          </Grouping>
+                        </Children>
+                        <Region/><Search/>
+                        <FeatureFind><TextFind><Match><Search>Item Code:</Search><AllowArbitrarySpace>1</AllowArbitrarySpace><WordAnchor><none/></WordAnchor><CaseFolding><ignore-case/></CaseFolding></Match><Coordinate><cell-minimum/></Coordinate><Displace/></TextFind></FeatureFind>
+                        <PostProcess><MinimumExtent/><Behavior><discard/></Behavior></PostProcess><SkipInitial>0</SkipInitial><SkipFinal>0</SkipFinal>
+                      </Splitter>
+                    </Children>
+                  </Collage>
+                </Children>
+                <Name>Stack</Name>
+              </MergeTarget>
+            </Children>
+            <Label/><Kind><GroupsFromList><Pages>2-</Pages></GroupsFromList></Kind><Filter/>
+          </Grouping>
+        </Children>
+        <Label>WarehouseReport</Label>
+      </Root>
+    </Model>
+  </Template>
+</Document>

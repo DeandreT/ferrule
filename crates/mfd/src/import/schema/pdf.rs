@@ -4,13 +4,17 @@ use std::path::{Path, PathBuf};
 
 use mapping::{
     FormatOptions, PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCommand, PdfCoordinate,
-    PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfMerge, PdfMergeSource, PdfPageSelection,
-    PdfPages, PdfReference, PdfRegion, PdfVerticalBoundaryFind,
+    PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfMerge, PdfMergeComposition, PdfMergeSource,
+    PdfPageSelection, PdfPages, PdfReference, PdfRegion, PdfVerticalBoundaryFind,
 };
 
 use super::{
     ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32, schema_node_at,
 };
+
+mod text;
+
+use text::{parse_object_find_splitter, parse_text_find_splitter};
 
 const MAX_PXT_BYTES: usize = 1024 * 1024;
 const MAX_PXT_DEPTH: usize = 64;
@@ -19,6 +23,7 @@ const MAX_PXT_ELEMENTS: usize = 4096;
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
+    warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     if component.attribute("kind") != Some("34") {
         return Err("only kind=34 PDF components are supported".to_string());
@@ -62,7 +67,7 @@ pub(super) fn read(
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "PDF document metadata has no schemafile".to_string())?;
     let schema_path = resolve_reference(mfd_path, schema_file, "PDF template")?;
-    let layout = parse_layout(&schema_path, declared_root)?;
+    let (layout, layout_warnings) = parse_layout(&schema_path, declared_root)?;
     let schema = layout.schema();
     let ports = collect_ports(&root, document_entry, &payload, &declared_outputs, &schema)?;
     if ports.is_empty() {
@@ -83,6 +88,11 @@ pub(super) fn read(
     let input_path = resolve_reference(mfd_path, input_name, "PDF input instance")?;
     let input_instance = portable_instance_path(mfd_path, &input_path);
     let output_keys = ports.keys().copied().collect();
+    warnings.extend(
+        layout_warnings
+            .into_iter()
+            .map(|warning| format!("PDF component `{name}`: {warning}")),
+    );
 
     Ok(SchemaComponent {
         name,
@@ -106,7 +116,7 @@ pub(super) fn read(
     })
 }
 
-fn parse_layout(path: &Path, expected_root: &str) -> Result<PdfLayout, String> {
+fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<String>), String> {
     let bytes = std::fs::read(path)
         .map_err(|error| format!("could not read PDF template `{}` ({error})", path.display()))?;
     if bytes.len() > MAX_PXT_BYTES {
@@ -173,6 +183,7 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<PdfLayout, String> {
     let mut context = ParseContext {
         merge_sources,
         merge_targets: BTreeSet::new(),
+        warnings: BTreeSet::new(),
     };
     let commands = parse_commands(&children, true, &mut context)?;
     if let Some(name) = context.merge_sources.keys().next() {
@@ -180,13 +191,21 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<PdfLayout, String> {
             "PDF merge source `{name}` has no matching MergeTarget"
         ));
     }
-    PdfLayout::new(root_name, PdfPageSelection::All, commands)
-        .map_err(|error| format!("invalid PDF extraction layout ({error})"))
+    let layout = PdfLayout::new(root_name, PdfPageSelection::All, commands)
+        .map_err(|error| format!("invalid PDF extraction layout ({error})"))?;
+    Ok((layout, context.warnings.into_iter().collect()))
 }
 
 struct ParseContext {
     merge_sources: BTreeMap<String, Vec<PdfMergeSource>>,
     merge_targets: BTreeSet<String>,
+    warnings: BTreeSet<String>,
+}
+
+impl ParseContext {
+    fn warn_once(&mut self, warning: &'static str) {
+        self.warnings.insert(warning.to_string());
+    }
 }
 
 fn parse_commands(
@@ -213,16 +232,26 @@ fn parse_command(
         })]),
         "Grouping" => parse_group(node, document_level, context),
         "Splitter" => {
-            let children = child(node, "Children")
-                .ok_or_else(|| "PDF Splitter has no Children block".to_string())?;
-            let children = parse_commands(&children, false, context)?;
-            Ok(vec![PdfCommand::EdgeRows(PdfEdgeRows {
-                region: parse_optional_region(node)?,
-                find: parse_edge_find(node)?,
-                minimum_extent: parse_minimum_extent(node)?,
-                fallback_anchor: last_capture_region(&children),
-                children,
-            })])
+            let feature = child(node, "FeatureFind")
+                .ok_or_else(|| "PDF Splitter has no FeatureFind block".to_string())?;
+            if child(&feature, "EdgeFind").is_some() {
+                let children = child(node, "Children")
+                    .ok_or_else(|| "PDF Splitter has no Children block".to_string())?;
+                let children = parse_commands(&children, false, context)?;
+                Ok(vec![PdfCommand::EdgeRows(PdfEdgeRows {
+                    region: parse_optional_region(node)?,
+                    find: parse_edge_find(node)?,
+                    minimum_extent: parse_minimum_extent(node)?,
+                    fallback_anchor: last_capture_region(&children),
+                    children,
+                })])
+            } else if let Some(text_find) = child(&feature, "TextFind") {
+                parse_text_find_splitter(node, &text_find, context)
+            } else if let Some(object_find) = child(&feature, "ObjectFind") {
+                parse_object_find_splitter(node, &object_find, context)
+            } else {
+                Err("PDF Splitter uses an unsupported feature finder".to_string())
+            }
         }
         "MergeSource" => Ok(Vec::new()),
         "MergeTarget" => parse_merge_target(node, document_level, context),
@@ -255,6 +284,37 @@ fn parse_group(
     document_level: bool,
     context: &mut ParseContext,
 ) -> Result<Vec<PdfCommand>, String> {
+    if let Some(selection) = parse_groups_from_list(node)? {
+        if !document_level {
+            return Err("PDF GroupsFromList is only supported at document level".to_string());
+        }
+        require_transparent_merge_group(node)?;
+        let children = child(node, "Children")
+            .ok_or_else(|| "PDF Grouping has no Children block".to_string())?;
+        let commands = parse_commands(&children, true, context)?;
+        if commands.is_empty()
+            || commands
+                .iter()
+                .any(|command| !matches!(command, PdfCommand::Merge(_)))
+        {
+            return Err(
+                "PDF GroupsFromList currently supports only a named merge source and target"
+                    .to_string(),
+            );
+        }
+        if commands.iter().any(|command| {
+            matches!(
+                command,
+                PdfCommand::Merge(merge)
+                    if merge.sources.iter().any(|source| source.page_selection != selection)
+            )
+        }) {
+            return Err(
+                "PDF GroupsFromList merge sources use incompatible page selections".to_string(),
+            );
+        }
+        return Ok(commands);
+    }
     require_one_group_per_page(node)?;
     let selection = parse_page_filter(node)?;
     if selection.is_some() && !document_level {
@@ -303,10 +363,38 @@ fn parse_merge_target(
         .ok_or_else(|| format!("PDF MergeTarget `{name}` has no MergeSource"))?;
     let children = child(node, "Children")
         .ok_or_else(|| format!("PDF MergeTarget `{name}` has no Children block"))?;
+    let elements = children
+        .children()
+        .filter(roxmltree::Node::is_element)
+        .collect::<Vec<_>>();
+    let (composition, commands) = match elements.as_slice() {
+        [collage] if collage.has_tag_name("Collage") => {
+            let collage_children = child(collage, "Children")
+                .ok_or_else(|| "PDF Collage has no Children block".to_string())?;
+            (
+                PdfMergeComposition::VerticalCollage,
+                parse_commands(&collage_children, false, context)?,
+            )
+        }
+        elements
+            if elements
+                .iter()
+                .any(|element| element.has_tag_name("Collage")) =>
+        {
+            return Err(
+                "PDF MergeTarget Collage must be its only direct child command".to_string(),
+            );
+        }
+        _ => (
+            PdfMergeComposition::Independent,
+            parse_commands(&children, false, context)?,
+        ),
+    };
     Ok(vec![PdfCommand::Merge(PdfMerge {
         name,
+        composition,
         sources,
-        children: parse_commands(&children, false, context)?,
+        children: commands,
     })])
 }
 
@@ -332,21 +420,13 @@ fn collect_merge_sources(
                     }
                     continue;
                 }
-                require_one_group_per_page(&node)?;
-                let name = child(&node, "Label")
-                    .and_then(|label| label.text())
-                    .map(str::trim)
-                    .unwrap_or_default();
-                let region_is_scoped = child(&node, "Region")
-                    .and_then(|region| region.text())
-                    .is_some_and(|region| !region.trim().is_empty());
-                if !name.is_empty() || region_is_scoped {
-                    return Err(
-                        "PDF MergeSource grouping must be transparent and page-relative"
-                            .to_string(),
-                    );
-                }
-                let selection = parse_page_filter(&node)?.unwrap_or(PdfPageSelection::All);
+                let selection = if let Some(selection) = parse_groups_from_list(&node)? {
+                    selection
+                } else {
+                    require_one_group_per_page(&node)?;
+                    parse_page_filter(&node)?.unwrap_or(PdfPageSelection::All)
+                };
+                require_transparent_merge_group(&node)?;
                 for source in direct_sources {
                     insert_merge_source(&source, selection, sources)?;
                 }
@@ -397,6 +477,8 @@ fn last_capture_region(commands: &[PdfCommand]) -> Option<PdfRegion> {
         }
         PdfCommand::GroupPerPage(_)
         | PdfCommand::EdgeRows(_)
+        | PdfCommand::TextGroups(_)
+        | PdfCommand::TextRows(_)
         | PdfCommand::Pages(_)
         | PdfCommand::Merge(_)
         | PdfCommand::Anchor(_)
@@ -421,6 +503,44 @@ fn require_one_group_per_page(node: &roxmltree::Node<'_, '_>) -> Result<(), Stri
     } else {
         Err("PDF grouping kind is not OneGroupPerPage".to_string())
     }
+}
+
+fn require_transparent_merge_group(node: &roxmltree::Node<'_, '_>) -> Result<(), String> {
+    let name = child(node, "Label")
+        .and_then(|label| label.text())
+        .map(str::trim)
+        .unwrap_or_default();
+    let region_is_scoped = child(node, "Region")
+        .and_then(|region| region.text())
+        .is_some_and(|region| !region.trim().is_empty());
+    if !name.is_empty() || region_is_scoped {
+        return Err("PDF MergeSource grouping must be transparent and page-relative".to_string());
+    }
+    Ok(())
+}
+
+fn parse_groups_from_list(
+    node: &roxmltree::Node<'_, '_>,
+) -> Result<Option<PdfPageSelection>, String> {
+    let Some(groups) = child(node, "Kind").and_then(|kind| child(&kind, "GroupsFromList")) else {
+        return Ok(None);
+    };
+    let filter = child(node, "Filter")
+        .and_then(|value| value.text())
+        .map(str::trim)
+        .unwrap_or_default();
+    if !filter.is_empty() {
+        return Err("PDF GroupsFromList cannot be combined with a grouping Filter".to_string());
+    }
+    let pages = required_text_child(&groups, "Pages")?;
+    let first = pages
+        .strip_suffix('-')
+        .and_then(|value| value.trim().parse::<u32>().ok())
+        .and_then(NonZeroU32::new)
+        .ok_or_else(|| {
+            format!("PDF GroupsFromList page expression `{pages}` is unsupported; expected N-")
+        })?;
+    Ok(Some(PdfPageSelection::From { first }))
 }
 
 fn parse_page_filter(node: &roxmltree::Node<'_, '_>) -> Result<Option<PdfPageSelection>, String> {
@@ -811,8 +931,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use super::{
-        collect_merge_sources, last_capture_region, parse_coordinate, parse_page_filter,
-        parse_region,
+        collect_merge_sources, last_capture_region, parse_coordinate, parse_groups_from_list,
+        parse_page_filter, parse_region,
     };
     use mapping::{PdfCapture, PdfCommand, PdfCoordinate, PdfGroup, PdfReference, PdfRegion};
 
@@ -867,6 +987,29 @@ mod tests {
             panic!("zero page filter XML must parse");
         };
         assert!(parse_page_filter(&zero.root_element()).is_err());
+    }
+
+    #[test]
+    fn groups_from_list_accepts_only_open_positive_ranges() {
+        let Ok(valid) = roxmltree::Document::parse(
+            "<Grouping><Kind><GroupsFromList><Pages>2-</Pages></GroupsFromList></Kind><Filter/></Grouping>",
+        ) else {
+            panic!("valid page-list XML must parse");
+        };
+        assert!(matches!(
+            parse_groups_from_list(&valid.root_element()),
+            Ok(Some(mapping::PdfPageSelection::From { first })) if first.get() == 2
+        ));
+
+        let Ok(disjoint) = roxmltree::Document::parse(
+            "<Grouping><Kind><GroupsFromList><Pages>2,4</Pages></GroupsFromList></Kind><Filter/></Grouping>",
+        ) else {
+            panic!("unsupported page-list XML must still parse");
+        };
+        assert!(matches!(
+            parse_groups_from_list(&disjoint.root_element()),
+            Err(message) if message.contains("expected N-")
+        ));
     }
 
     #[test]

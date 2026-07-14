@@ -84,6 +84,7 @@ impl<'de> Deserialize<'de> for PdfLayout {
 pub enum PdfPageSelection {
     All,
     First,
+    From { first: NonZeroU32 },
     Range { first: NonZeroU32, last: NonZeroU32 },
 }
 
@@ -104,6 +105,7 @@ impl PdfPageSelection {
         match self {
             Self::All => true,
             Self::First => page == 1,
+            Self::From { first } => page >= first.get(),
             Self::Range { first, last } => (first.get()..=last.get()).contains(&page),
         }
     }
@@ -119,6 +121,8 @@ pub enum PdfCommand {
     Capture(PdfCapture),
     GroupPerPage(PdfGroup),
     EdgeRows(PdfEdgeRows),
+    TextGroups(PdfTextGroups),
+    TextRows(PdfTextRows),
     Pages(PdfPages),
     Merge(PdfMerge),
     Anchor(PdfAnchorAssignment),
@@ -140,6 +144,12 @@ impl PdfCommand {
                 vec![node]
             }
             Self::EdgeRows(rows) => rows.children.iter().flat_map(Self::schema_nodes).collect(),
+            Self::TextGroups(groups) => groups
+                .groups
+                .iter()
+                .flat_map(PdfTextGroup::schema_nodes)
+                .collect(),
+            Self::TextRows(rows) => rows.children.iter().flat_map(Self::schema_nodes).collect(),
             Self::Pages(pages) => pages.children.iter().flat_map(Self::schema_nodes).collect(),
             Self::Merge(merge) => merge.children.iter().flat_map(Self::schema_nodes).collect(),
             Self::Anchor(_) | Self::BoundaryFindVertical(_) => Vec::new(),
@@ -171,6 +181,70 @@ pub struct PdfEdgeRows {
     pub children: Vec<PdfCommand>,
 }
 
+/// Marker-delimited regions evaluated in their visual order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PdfTextGroups {
+    pub region: PdfRegion,
+    pub groups: Vec<PdfTextGroup>,
+}
+
+/// One marker and the output produced for each of its occurrences.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PdfTextGroup {
+    pub output: PdfTextGroupOutput,
+    pub matcher: PdfTextMatch,
+    pub children: Vec<PdfCommand>,
+}
+
+impl PdfTextGroup {
+    fn schema_nodes(&self) -> Vec<SchemaNode> {
+        let children = self
+            .children
+            .iter()
+            .flat_map(PdfCommand::schema_nodes)
+            .collect::<Vec<_>>();
+        match &self.output {
+            PdfTextGroupOutput::Flatten => children,
+            PdfTextGroupOutput::Repeated { name } => {
+                let mut node = SchemaNode::group(name, children);
+                node.repeating = true;
+                vec![node]
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PdfTextGroupOutput {
+    Flatten,
+    Repeated { name: String },
+}
+
+/// A bounded literal visual-text match.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PdfTextMatch {
+    pub needle: String,
+    pub case: PdfTextCase,
+    pub flexible_whitespace: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PdfTextCase {
+    Sensitive,
+    AsciiInsensitive,
+}
+
+/// Non-empty visual text lines evaluated as independent candidate rows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PdfTextRows {
+    pub region: PdfRegion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_extent: Option<f64>,
+    pub children: Vec<PdfCommand>,
+}
+
 /// A transparent command block restricted to selected physical pages.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PdfPages {
@@ -182,8 +256,18 @@ pub struct PdfPages {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PdfMerge {
     pub name: String,
+    #[serde(default)]
+    pub composition: PdfMergeComposition,
     pub sources: Vec<PdfMergeSource>,
     pub children: Vec<PdfCommand>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PdfMergeComposition {
+    #[default]
+    Independent,
+    VerticalCollage,
 }
 
 /// One physical page region contributing to a [`PdfMerge`].
@@ -277,6 +361,8 @@ pub enum PdfLayoutError {
     InvalidCoordinate,
     InvalidEdgeFind,
     InvalidMinimumExtent,
+    EmptyTextGroups,
+    EmptyTextNeedle,
     NonRepeatingRowOutput(String),
     NonRepeatingDocumentOutput { command: &'static str, name: String },
     EmptyMergeSources(String),
@@ -310,6 +396,12 @@ impl std::fmt::Display for PdfLayoutError {
             ),
             Self::InvalidMinimumExtent => {
                 formatter.write_str("PDF minimum row extent must be positive and finite")
+            }
+            Self::EmptyTextGroups => {
+                formatter.write_str("PDF text-groups command must define at least one matcher")
+            }
+            Self::EmptyTextNeedle => {
+                formatter.write_str("PDF text matcher must not normalize to empty")
             }
             Self::NonRepeatingRowOutput(name) => {
                 write!(
@@ -441,6 +533,53 @@ fn validate_commands(
                     return Err(PdfLayoutError::NonRepeatingRowOutput(node.name.clone()));
                 }
             }
+            PdfCommand::TextGroups(groups) => {
+                validate_region(&groups.region, anchors, state)?;
+                if groups.groups.is_empty() {
+                    return Err(PdfLayoutError::EmptyTextGroups);
+                }
+                for group in &groups.groups {
+                    state.add_node()?;
+                    if group.matcher.normalizes_empty() {
+                        return Err(PdfLayoutError::EmptyTextNeedle);
+                    }
+                    state.add_string(&group.matcher.needle)?;
+                    if let PdfTextGroupOutput::Repeated { name } = &group.output {
+                        validate_name(name, "text group")?;
+                        state.add_string(name)?;
+                    }
+                    let mut child_anchors = anchors.clone();
+                    if validate_commands(
+                        &group.children,
+                        depth + 1,
+                        false,
+                        &mut child_anchors,
+                        state,
+                    )?
+                    .is_empty()
+                    {
+                        return Err(PdfLayoutError::NoOutput);
+                    }
+                }
+            }
+            PdfCommand::TextRows(rows) => {
+                validate_region(&rows.region, anchors, state)?;
+                if rows
+                    .minimum_extent
+                    .is_some_and(|extent| !extent.is_finite() || extent <= 0.0)
+                {
+                    return Err(PdfLayoutError::InvalidMinimumExtent);
+                }
+                let mut child_anchors = anchors.clone();
+                let child_schema =
+                    validate_commands(&rows.children, depth + 1, false, &mut child_anchors, state)?;
+                if child_schema.is_empty() {
+                    return Err(PdfLayoutError::NoOutput);
+                }
+                if let Some(node) = child_schema.iter().find(|node| !node.repeating) {
+                    return Err(PdfLayoutError::NonRepeatingRowOutput(node.name.clone()));
+                }
+            }
             PdfCommand::Pages(pages) => {
                 if !allow_document_commands {
                     return Err(PdfLayoutError::NestedDocumentCommand("pages"));
@@ -491,7 +630,15 @@ fn validate_commands(
                 if child_schema.is_empty() {
                     return Err(PdfLayoutError::NoOutput);
                 }
-                if let Some(node) = child_schema.iter().find(|node| !node.repeating) {
+                let has_multiple_candidates = merge.composition == PdfMergeComposition::Independent
+                    && (merge.sources.len() > 1
+                        || merge
+                            .sources
+                            .iter()
+                            .any(|source| !source.page_selection.is_single_page()));
+                if has_multiple_candidates
+                    && let Some(node) = child_schema.iter().find(|node| !node.repeating)
+                {
                     return Err(PdfLayoutError::NonRepeatingDocumentOutput {
                         command: "merge",
                         name: node.name.clone(),
@@ -523,6 +670,16 @@ fn validate_commands(
         }
     }
     Ok(schema)
+}
+
+impl PdfTextMatch {
+    fn normalizes_empty(&self) -> bool {
+        if self.flexible_whitespace {
+            self.needle.chars().all(char::is_whitespace)
+        } else {
+            self.needle.is_empty()
+        }
+    }
 }
 
 fn insert_anchor(
@@ -622,294 +779,5 @@ fn validate_name(name: &str, role: &'static str) -> Result<(), PdfLayoutError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn capture(name: &str) -> PdfCommand {
-        PdfCommand::Capture(PdfCapture {
-            name: name.into(),
-            region: PdfRegion::full(),
-        })
-    }
-
-    #[test]
-    fn validated_layout_derives_repeating_group_schema_and_roundtrips() {
-        let layout = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![PdfCommand::GroupPerPage(PdfGroup {
-                name: "Row".into(),
-                region: PdfRegion::full(),
-                children: vec![capture("Value")],
-            })],
-        )
-        .unwrap();
-        let schema = layout.schema();
-        assert_eq!(schema.name, "Document");
-        let encoded = serde_json::to_string(&layout).unwrap();
-        assert_eq!(serde_json::from_str::<PdfLayout>(&encoded).unwrap(), layout);
-    }
-
-    #[test]
-    fn layout_rejects_forward_and_wrong_axis_anchor_references() {
-        let unknown = PdfCoordinate::edge(PdfReference::Anchor("Later".into()));
-        let layout = PdfLayout::new(
-            "Document",
-            PdfPageSelection::First,
-            vec![PdfCommand::Capture(PdfCapture {
-                name: "Value".into(),
-                region: PdfRegion {
-                    left: unknown,
-                    ..PdfRegion::full()
-                },
-            })],
-        );
-        assert!(matches!(layout, Err(PdfLayoutError::UnknownAnchor(name)) if name == "Later"));
-    }
-
-    #[test]
-    fn layout_rejects_nonfinite_coordinates_and_reversed_pages() {
-        let nonfinite = PdfLayout::new(
-            "Document",
-            PdfPageSelection::First,
-            vec![PdfCommand::Capture(PdfCapture {
-                name: "Value".into(),
-                region: PdfRegion {
-                    left: PdfCoordinate::new(PdfReference::Left, f64::NAN),
-                    ..PdfRegion::full()
-                },
-            })],
-        );
-        assert!(matches!(nonfinite, Err(PdfLayoutError::InvalidCoordinate)));
-
-        let invalid_extent = PdfLayout::new(
-            "Document",
-            PdfPageSelection::First,
-            vec![PdfCommand::EdgeRows(PdfEdgeRows {
-                region: PdfRegion::full(),
-                find: PdfEdgeFind {
-                    fill: 1.0,
-                    prominence: 0.0,
-                },
-                minimum_extent: Some(0.0),
-                fallback_anchor: None,
-                children: vec![capture("Value")],
-            })],
-        );
-        assert!(matches!(
-            invalid_extent,
-            Err(PdfLayoutError::InvalidMinimumExtent)
-        ));
-
-        let reversed = PdfPageSelection::Range {
-            first: NonZeroU32::new(2).unwrap(),
-            last: NonZeroU32::new(1).unwrap(),
-        };
-        assert!(matches!(
-            PdfLayout::new("Document", reversed, vec![capture("Value")]),
-            Err(PdfLayoutError::InvalidPageRange { .. })
-        ));
-    }
-
-    #[test]
-    fn document_page_and_merge_commands_validate_and_roundtrip() {
-        let Some(page_two) = NonZeroU32::new(2) else {
-            panic!("two must be nonzero");
-        };
-        let Ok(layout) = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![
-                PdfCommand::Pages(PdfPages {
-                    selection: PdfPageSelection::First,
-                    children: vec![capture("Heading")],
-                }),
-                PdfCommand::Merge(PdfMerge {
-                    name: "Rows".into(),
-                    sources: vec![
-                        PdfMergeSource {
-                            page_selection: PdfPageSelection::First,
-                            region: PdfRegion::full(),
-                        },
-                        PdfMergeSource {
-                            page_selection: PdfPageSelection::Range {
-                                first: page_two,
-                                last: page_two,
-                            },
-                            region: PdfRegion::full(),
-                        },
-                    ],
-                    children: vec![PdfCommand::EdgeRows(PdfEdgeRows {
-                        region: PdfRegion::full(),
-                        find: PdfEdgeFind {
-                            fill: 1.0,
-                            prominence: 0.0,
-                        },
-                        minimum_extent: None,
-                        fallback_anchor: None,
-                        children: vec![PdfCommand::GroupPerPage(PdfGroup {
-                            name: "Row".into(),
-                            region: PdfRegion::full(),
-                            children: vec![capture("Value")],
-                        })],
-                    })],
-                }),
-            ],
-        ) else {
-            panic!("document-level page and merge commands must validate");
-        };
-
-        let schema = layout.schema();
-        assert!(schema.child("Heading").is_some());
-        assert!(schema.child("Row").is_some_and(|row| row.repeating));
-        let Ok(encoded) = serde_json::to_string(&layout) else {
-            panic!("validated PDF layout must serialize");
-        };
-        let Ok(decoded) = serde_json::from_str::<PdfLayout>(&encoded) else {
-            panic!("serialized PDF layout must deserialize");
-        };
-        assert_eq!(decoded, layout);
-    }
-
-    #[test]
-    fn layout_rejects_nested_document_commands_and_nonrepeating_row_outputs() {
-        let nested = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![PdfCommand::GroupPerPage(PdfGroup {
-                name: "Outer".into(),
-                region: PdfRegion::full(),
-                children: vec![PdfCommand::Pages(PdfPages {
-                    selection: PdfPageSelection::First,
-                    children: vec![capture("Value")],
-                })],
-            })],
-        );
-        assert!(matches!(
-            nested,
-            Err(PdfLayoutError::NestedDocumentCommand("pages"))
-        ));
-
-        let scalar_rows = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![PdfCommand::EdgeRows(PdfEdgeRows {
-                region: PdfRegion::full(),
-                find: PdfEdgeFind {
-                    fill: 1.0,
-                    prominence: 0.0,
-                },
-                minimum_extent: None,
-                fallback_anchor: None,
-                children: vec![capture("Value")],
-            })],
-        );
-        assert!(matches!(
-            scalar_rows,
-            Err(PdfLayoutError::NonRepeatingRowOutput(name)) if name == "Value"
-        ));
-
-        let multipage_scalar = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![PdfCommand::Pages(PdfPages {
-                selection: PdfPageSelection::All,
-                children: vec![capture("Value")],
-            })],
-        );
-        assert!(matches!(
-            multipage_scalar,
-            Err(PdfLayoutError::NonRepeatingDocumentOutput {
-                command: "page selection",
-                name,
-            }) if name == "Value"
-        ));
-
-        let merged_scalar = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![PdfCommand::Merge(PdfMerge {
-                name: "Merged".into(),
-                sources: vec![PdfMergeSource {
-                    page_selection: PdfPageSelection::First,
-                    region: PdfRegion::full(),
-                }],
-                children: vec![capture("Value")],
-            })],
-        );
-        assert!(matches!(
-            merged_scalar,
-            Err(PdfLayoutError::NonRepeatingDocumentOutput {
-                command: "merge",
-                name,
-            }) if name == "Value"
-        ));
-    }
-
-    #[test]
-    fn merge_sources_and_children_cannot_use_outer_anchors() {
-        let anchor = PdfCommand::Anchor(PdfAnchorAssignment {
-            name: "Outer".into(),
-            axis: PdfAnchorAxis::Horizontal,
-            at: PdfCoordinate::edge(PdfReference::Left),
-        });
-        let anchored_region = PdfRegion {
-            left: PdfCoordinate::edge(PdfReference::Anchor("Outer".into())),
-            ..PdfRegion::full()
-        };
-        let source_layout = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![
-                anchor,
-                PdfCommand::Merge(PdfMerge {
-                    name: "Rows".into(),
-                    sources: vec![PdfMergeSource {
-                        page_selection: PdfPageSelection::All,
-                        region: anchored_region,
-                    }],
-                    children: vec![PdfCommand::GroupPerPage(PdfGroup {
-                        name: "Row".into(),
-                        region: PdfRegion::full(),
-                        children: vec![capture("Value")],
-                    })],
-                }),
-            ],
-        );
-        assert!(matches!(
-            source_layout,
-            Err(PdfLayoutError::UnknownAnchor(name)) if name == "Outer"
-        ));
-
-        let child_layout = PdfLayout::new(
-            "Document",
-            PdfPageSelection::All,
-            vec![
-                PdfCommand::Anchor(PdfAnchorAssignment {
-                    name: "Outer".into(),
-                    axis: PdfAnchorAxis::Horizontal,
-                    at: PdfCoordinate::edge(PdfReference::Left),
-                }),
-                PdfCommand::Merge(PdfMerge {
-                    name: "Rows".into(),
-                    sources: vec![PdfMergeSource {
-                        page_selection: PdfPageSelection::All,
-                        region: PdfRegion::full(),
-                    }],
-                    children: vec![PdfCommand::GroupPerPage(PdfGroup {
-                        name: "Row".into(),
-                        region: PdfRegion {
-                            left: PdfCoordinate::edge(PdfReference::Anchor("Outer".into())),
-                            ..PdfRegion::full()
-                        },
-                        children: vec![capture("Value")],
-                    })],
-                }),
-            ],
-        );
-        assert!(matches!(
-            child_layout,
-            Err(PdfLayoutError::UnknownAnchor(name)) if name == "Outer"
-        ));
-    }
-}
+#[path = "pdf_tests.rs"]
+mod tests;
