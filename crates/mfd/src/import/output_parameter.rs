@@ -170,12 +170,12 @@ pub(super) fn missing_error(
     output_parameter_target_failed: bool,
 ) -> MfdError {
     if side == "target" && output_parameter_target_failed {
-        return MfdError::Unsupported(
+        return MfdError::UnsupportedImport(
             "no importable target component found; core output parameters were present but none had a unique supported datatype and connected value"
                 .to_string(),
         );
     }
-    MfdError::Unsupported(if skipped_libraries.is_empty() {
+    MfdError::UnsupportedImport(if skipped_libraries.is_empty() {
         format!(
             "no importable {side} component (xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf-target/pdf-source/static-http-xml) found in this design"
         )

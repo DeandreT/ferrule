@@ -17,6 +17,7 @@ mod alternatives;
 mod db_query;
 mod db_where;
 mod dynamic_json;
+mod external_udf;
 mod function;
 mod generated_occurrence;
 mod graph;
@@ -82,6 +83,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
     let mut udf_calls = Vec::new();
+    let mut external_udf_candidates = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
 
@@ -256,10 +258,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         }
                     } else {
                         note_skipped_library(&mut skipped_libraries, other);
-                        if let Some(reason) = udf_registry.unsupported_reason(other, &name) {
-                            warnings
-                                .push(format!("skipped user-defined function `{name}`: {reason}"));
-                        } else {
+                        if !external_udf::capture_or_warn(
+                            &component,
+                            udf_registry.unsupported_reason(other, &name),
+                            &mut external_udf_candidates,
+                            &mut warnings,
+                        ) {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
                                  (only xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf/pdf-source, requestless HTTP GET XML, scalar user-defined functions, and \
@@ -284,6 +288,19 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &mut schema_components,
         output_parameters,
         &edge_from,
+        &mut warnings,
+    );
+
+    let target_inputs =
+        external_udf::selected_target_inputs(&schema_components).ok_or_else(|| {
+            output_parameter::missing_error("target", &skipped_libraries, output_failed)
+        })?;
+    external_udf::install_fallback(
+        &mut schema_components,
+        external_udf_candidates,
+        &target_inputs,
+        &edge_from,
+        &fn_components,
         &mut warnings,
     );
 
