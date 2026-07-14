@@ -160,6 +160,35 @@ fn xlsx_input_maps_to_xlsx_output_with_project_layout_options() {
 }
 
 #[test]
+fn imported_hierarchical_xlsx_target_executes() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
+    let imported = mfd::import(&fixture_dir.join("xlsx-hierarchical.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let tag = format!("xlsx_hierarchical_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    std::fs::write(
+        &project_path,
+        serde_json::to_vec(&imported.project).unwrap(),
+    )
+    .unwrap();
+
+    let written = cli::run_project(
+        &project_path,
+        &fixture_dir.join("xlsx-hierarchical-source.xml"),
+        &output_path,
+    )
+    .unwrap();
+    let bytes = std::fs::read(&output_path).unwrap();
+    std::fs::remove_file(project_path).unwrap();
+    std::fs::remove_file(output_path).unwrap();
+
+    assert_eq!(written, 2);
+    assert!(bytes.starts_with(b"PK"));
+}
+
+#[test]
 fn transposed_xlsx_target_is_rejected_explicitly() {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
     let mut project: mapping::Project =
