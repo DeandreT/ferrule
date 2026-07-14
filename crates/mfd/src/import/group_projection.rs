@@ -159,6 +159,14 @@ pub(super) fn classify_target_connection(
         let mut iteration = TargetIteration::repeated(target_path, feed);
         iteration.projects_whole_group = copy_all;
         iterations.push(iteration);
+        if connection_role.representative == input_key
+            && is_xml_text_group(target, target_node)
+            && !text_is_connected(target, target_path, builder)
+            && builder.fn_by_output.contains_key(&feed)
+            && is_scalar_feed(builder, feed)
+        {
+            projections.push(Projection::Text(target_path.to_vec(), feed));
+        }
     } else if is_xml_text_group(target, target_node)
         && !text_is_connected(target, target_path, builder)
         && is_scalar_feed(builder, feed)
@@ -351,7 +359,9 @@ fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
                     matches!(source.format, ComponentFormat::Csv | ComponentFormat::Db)
                         || source.format == ComponentFormat::Xlsx
                             && source.options.xlsx_composite.is_none();
-                !externally_repeated && scalar_schema_path(&source.schema, path)
+                !externally_repeated
+                    && (scalar_schema_path(&source.schema, path)
+                        || is_generic_xml_text_path(source, path))
             })
         }) || builder.fn_by_output.get(&feed).is_some_and(|index| {
             let component = &builder.fn_components[*index];
@@ -375,6 +385,20 @@ fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
         scalar
     }
     visit(builder, feed, &mut BTreeSet::new())
+}
+
+fn is_generic_xml_text_path(source: &SchemaComponent, path: &[String]) -> bool {
+    source.format == ComponentFormat::Xml
+        && path
+            .last()
+            .is_some_and(|name| name == ir::XML_ELEMENTS_FIELD)
+        && schema_node_at(&source.schema, path).is_some_and(|node| {
+            node.repeating
+                && matches!(node.kind, SchemaKind::Group { .. })
+                && node.child(XML_TEXT_FIELD).is_some_and(|text| {
+                    !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
+                })
+        })
 }
 
 fn scalar_schema_path(schema: &SchemaNode, path: &[String]) -> bool {

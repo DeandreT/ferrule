@@ -2,10 +2,16 @@ use std::collections::BTreeMap;
 
 use ir::SchemaNode;
 
+use super::source::SourcePath;
+
 pub(super) struct IterationFeed {
     /// Output key of the underlying source entry (or whatever else feeds
     /// the chain -- callers check it against the source ports).
     pub(super) source_key: u32,
+    /// Physical collection inferred from the scalar expression at
+    /// `source_key`. The expression remains the feed so it can be evaluated
+    /// once per item in this collection's frame.
+    pub(super) computed_source: Option<SourcePath>,
     /// A function that generates the sequence instead of reading a source
     /// collection directly.
     pub(super) sequence_component: Option<usize>,

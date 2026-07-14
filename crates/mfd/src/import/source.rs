@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, SchemaNode};
+use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::NodeId;
 
 use super::function::{
-    FnComponent, is_db_where, is_distinct_values, is_filter, is_first_items, is_group_into_blocks,
-    is_group_starting_with, is_input, is_sort,
+    FnComponent, aggregate_op, is_db_where, is_distinct_values, is_filter, is_first_items,
+    is_group_into_blocks, is_group_starting_with, is_input, is_sequence_producer, is_sort,
+    produces_scalar,
 };
 use super::graph::GraphBuilder;
 use super::iteration::{IterationFeed, split_at_innermost_repeating};
@@ -197,6 +198,73 @@ fn unique_name(base: String, used: &mut BTreeSet<String>) -> String {
 }
 
 impl GraphBuilder<'_> {
+    /// Finds the one repeated collection that can frame a plain scalar
+    /// expression. Dependencies may be broadcast from ancestors, but they
+    /// must all belong to one source and their repeated collections must form
+    /// one ancestor chain.
+    pub(super) fn computed_iteration_source(&self, feed: u32) -> Option<SourcePath> {
+        let component = self
+            .fn_by_output
+            .get(&feed)
+            .and_then(|index| self.fn_components.get(*index))?;
+        if !is_plain_scalar_expression(component) {
+            return None;
+        }
+
+        let mut dependencies = Vec::new();
+        if !self.collect_scalar_dependencies(feed, &mut BTreeSet::new(), &mut dependencies) {
+            return None;
+        }
+        compatible_dependency_source(&dependencies, self.sources)
+    }
+
+    fn collect_scalar_dependencies(
+        &self,
+        feed: u32,
+        active: &mut BTreeSet<u32>,
+        dependencies: &mut Vec<SourcePath>,
+    ) -> bool {
+        if let Some(source) = self.source_abs_path(feed) {
+            dependencies.push(source);
+            return true;
+        }
+        if !active.insert(feed) {
+            return false;
+        }
+        let supported = self
+            .fn_by_output
+            .get(&feed)
+            .and_then(|index| self.fn_components.get(*index))
+            .filter(|component| is_plain_scalar_expression(component))
+            .is_some_and(|component| {
+                component.inputs.iter().flatten().all(|input| {
+                    self.edge_from.get(input).is_none_or(|upstream| {
+                        self.collect_scalar_dependencies(*upstream, active, dependencies)
+                    })
+                })
+            });
+        active.remove(&feed);
+        supported
+    }
+
+    /// Atomizes a generic XML element port when it is consumed as a scalar.
+    /// Structural iteration continues to use the group path itself.
+    pub(super) fn source_value_path(&self, source: usize, mut path: Vec<String>) -> SourcePath {
+        let has_generic_text = path.last().is_some_and(|name| name == XML_ELEMENTS_FIELD)
+            && self.sources.get(source).is_some_and(|component| {
+                schema_node_at(&component.schema, &path).is_some_and(|node| {
+                    matches!(node.kind, SchemaKind::Group { .. })
+                        && node.child(XML_TEXT_FIELD).is_some_and(|text| {
+                            !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
+                        })
+                })
+            });
+        if has_generic_text {
+            path.push(XML_TEXT_FIELD.to_string());
+        }
+        SourcePath { source, path }
+    }
+
     pub(super) fn source_field_at(&mut self, source_path: &SourcePath) -> Option<NodeId> {
         let schema = &self.sources.get(source_path.source)?.schema;
         let path = self.suffix_after_framed(source_path.source, schema, &source_path.path);
@@ -385,7 +453,10 @@ impl GraphBuilder<'_> {
         if feed.sequence_component.is_some() {
             return None;
         }
-        let mut source_path = self.source_abs_path(feed.source_key)?;
+        let mut source_path = feed
+            .computed_source
+            .clone()
+            .or_else(|| self.source_abs_path(feed.source_key))?;
         source_path.path.extend(feed.source_suffix.iter().cloned());
         let transposed_root = self.sources.get(source_path.source).is_some_and(|source| {
             source.format == ComponentFormat::Xlsx && !source.options.xlsx_rows.is_empty()
@@ -427,6 +498,57 @@ impl GraphBuilder<'_> {
     }
 }
 
+fn is_plain_scalar_expression(component: &FnComponent) -> bool {
+    produces_scalar(component)
+        && aggregate_op(&component.name).is_none()
+        && !is_filter(component)
+        && !is_db_where(component)
+        && !is_sort(component)
+        && !is_first_items(component)
+        && !is_group_into_blocks(component)
+        && !is_group_starting_with(component)
+        && !is_distinct_values(component)
+        && !is_sequence_producer(component)
+        && !matches!(component.name.as_str(), "exists" | "position")
+}
+
+fn dependency_collection(component: &SchemaComponent, path: &[String]) -> Option<Vec<String>> {
+    let (collection, _) = split_at_innermost_repeating(&component.schema, path);
+    if !collection.is_empty() {
+        return Some(collection);
+    }
+    let externally_repeated = component.schema.repeating
+        || component.format == ComponentFormat::Csv
+        || component.format == ComponentFormat::Xlsx && component.options.xlsx_composite.is_none();
+    externally_repeated.then(Vec::new)
+}
+
+fn compatible_dependency_source(
+    dependencies: &[SourcePath],
+    sources: &[&SchemaComponent],
+) -> Option<SourcePath> {
+    let source = dependencies.first()?.source;
+    if dependencies
+        .iter()
+        .any(|dependency| dependency.source != source)
+    {
+        return None;
+    }
+    let component = sources.get(source)?;
+    let collections = dependencies
+        .iter()
+        .filter_map(|dependency| dependency_collection(component, &dependency.path))
+        .collect::<Vec<_>>();
+    let deepest = collections.iter().max_by_key(|path| path.len())?.clone();
+    collections
+        .iter()
+        .all(|path| deepest.starts_with(path))
+        .then_some(SourcePath {
+            source,
+            path: deepest,
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,6 +571,129 @@ mod tests {
             db_queries: Vec::new(),
             dynamic_json: None,
         }
+    }
+
+    fn scalar_function(name: &str) -> FnComponent {
+        FnComponent {
+            library: "core".to_string(),
+            name: name.to_string(),
+            kind: 5,
+            inputs: vec![Some(10)],
+            outputs: vec![11],
+            output_pins: vec![Some(11)],
+            constant: None,
+            valuemap: None,
+            sort_descending: None,
+            db_where: None,
+        }
+    }
+
+    #[test]
+    fn computed_dependencies_select_one_deepest_ancestor_chain() {
+        let source = component(
+            "source",
+            SchemaNode::group(
+                "Root",
+                vec![
+                    SchemaNode::scalar("Header", ir::ScalarType::String),
+                    SchemaNode::group(
+                        "Outer",
+                        vec![
+                            SchemaNode::scalar("Label", ir::ScalarType::String),
+                            SchemaNode::group(
+                                "Inner",
+                                vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+                            )
+                            .repeating(),
+                        ],
+                    )
+                    .repeating(),
+                    SchemaNode::group(
+                        "Sibling",
+                        vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+                    )
+                    .repeating(),
+                ],
+            ),
+            (1, vec!["Outer"]),
+        );
+        let sources = [&source];
+
+        let compatible = [
+            SourcePath {
+                source: 0,
+                path: vec!["Header".into()],
+            },
+            SourcePath {
+                source: 0,
+                path: vec!["Outer".into(), "Label".into()],
+            },
+            SourcePath {
+                source: 0,
+                path: vec!["Outer".into(), "Inner".into(), "Value".into()],
+            },
+        ];
+        assert_eq!(
+            compatible_dependency_source(&compatible, &sources),
+            Some(SourcePath {
+                source: 0,
+                path: vec!["Outer".into(), "Inner".into()],
+            })
+        );
+
+        let siblings = [
+            SourcePath {
+                source: 0,
+                path: vec!["Outer".into(), "Label".into()],
+            },
+            SourcePath {
+                source: 0,
+                path: vec!["Sibling".into(), "Value".into()],
+            },
+        ];
+        assert_eq!(compatible_dependency_source(&siblings, &sources), None);
+    }
+
+    #[test]
+    fn computed_dependencies_reject_multiple_sources_aggregates_and_controls() {
+        let first = component(
+            "first",
+            SchemaNode::group(
+                "Rows",
+                vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+            )
+            .repeating(),
+            (1, vec!["Value"]),
+        );
+        let second = component(
+            "second",
+            SchemaNode::group(
+                "Rows",
+                vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+            )
+            .repeating(),
+            (2, vec!["Value"]),
+        );
+        let dependencies = [
+            SourcePath {
+                source: 0,
+                path: vec!["Value".into()],
+            },
+            SourcePath {
+                source: 1,
+                path: vec!["Value".into()],
+            },
+        ];
+        assert_eq!(
+            compatible_dependency_source(&dependencies, &[&first, &second]),
+            None
+        );
+
+        assert!(is_plain_scalar_expression(&scalar_function("upper-case")));
+        assert!(!is_plain_scalar_expression(&scalar_function("sum")));
+        let mut filter = scalar_function("filter");
+        filter.kind = 3;
+        assert!(!is_plain_scalar_expression(&filter));
     }
 
     #[test]

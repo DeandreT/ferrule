@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Company>
+  <Name>Northwind</Name>
+  <Employees>
+    <Engineer>
+      <first>Ana</first>
+      <city>Paris</city>
+    </Engineer>
+    <Designer>
+      <first>Lee</first>
+      <city>Oslo</city>
+    </Designer>
+  </Employees>
+</Company>

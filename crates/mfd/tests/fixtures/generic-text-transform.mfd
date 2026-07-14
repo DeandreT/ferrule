@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Source" library="xml" uid="2" kind="14">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Company" expanded="1">
+                    <entry name="Name" outkey="1"/>
+                    <entry name="Employees" outkey="2" expanded="1" use-generic-elements="1">
+                      <entry name="element()" outkey="3" expanded="1">
+                        <entry name="NodeName" outkey="4"/>
+                        <entry name="element()" outkey="5" expanded="1">
+                          <entry name="NodeName" outkey="6"/>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="generic-text-transform.xsd" inputinstance="generic-text-transform.xml" instanceroot="{}Company"/>
+          </data>
+        </component>
+        <component name="Target" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Company" expanded="1">
+                    <entry name="Name" inpkey="11"/>
+                    <entry name="Employees" inpkey="12" expanded="1" use-generic-elements="1">
+                      <entry name="element()" inpkey="13" expanded="1">
+                        <entry name="NodeName" inpkey="14"/>
+                        <entry name="element()" inpkey="15" expanded="1">
+                          <entry name="NodeName" inpkey="16"/>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="generic-text-transform.xsd" instanceroot="{}Company"/>
+          </data>
+        </component>
+        <component name="upper-case" library="xpath2" uid="4" kind="5">
+          <properties/>
+          <sources><datapoint pos="0" key="20"/></sources>
+          <targets><datapoint pos="0" key="21"/></targets>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="1"><edges><edge vertexkey="11"/></edges></vertex>
+          <vertex vertexkey="2"><edges><edge vertexkey="12"/></edges></vertex>
+          <vertex vertexkey="3"><edges><edge vertexkey="13"/></edges></vertex>
+          <vertex vertexkey="4"><edges><edge vertexkey="14"/></edges></vertex>
+          <vertex vertexkey="5"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="6"><edges><edge vertexkey="16"/></edges></vertex>
+          <vertex vertexkey="21"><edges><edge vertexkey="15"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>
