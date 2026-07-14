@@ -4,10 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Flat worksheet row read/write for Excel XLSX workbooks"
+description = "XLSX worksheet instance I/O for flat, transposed, and composite mappings"
 
 [dependencies]
 ir = { workspace = true }
+mapping = { workspace = true }
 calamine = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 thiserror = { workspace = true }

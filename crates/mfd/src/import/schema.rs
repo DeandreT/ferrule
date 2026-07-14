@@ -431,6 +431,20 @@ fn collect_json_ports(
                 }
             }
             _ => {
+                // Ferrule represents nullable scalar values with `Value::Null`
+                // rather than a second target port. When both alternatives are
+                // connected, keep the typed port and discard the redundant
+                // explicit-null port so one schema field receives one binding.
+                if child.attribute("name") == Some("null")
+                    && child.attribute("inpkey").is_some()
+                    && entry.children().any(|sibling| {
+                        sibling.has_tag_name("entry")
+                            && sibling.attribute("name") != Some("null")
+                            && sibling.attribute("inpkey").is_some()
+                    })
+                {
+                    continue;
+                }
                 record_entry_keys(&child, path, ports, out_count, in_count);
                 collect_json_ports(&child, path, ports, out_count, in_count, warnings);
             }

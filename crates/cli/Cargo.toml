@@ -25,3 +25,6 @@ serde_json = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 jiff = { workspace = true }
+
+[dev-dependencies]
+rust_xlsxwriter = { workspace = true }

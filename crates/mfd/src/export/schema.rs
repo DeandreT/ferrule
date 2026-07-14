@@ -274,6 +274,11 @@ pub(super) fn render_schema_component(
             );
         }
         SideFormat::Xlsx => {
+            if options.xlsx_composite.is_some() {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} XLSX layout is composite; composite XLSX export is not supported"
+                )));
+            }
             if !options.xlsx_rows.is_empty() {
                 return Err(MfdError::Unsupported(format!(
                     "the {side_name} XLSX layout is transposed; transposed XLSX export is not supported"

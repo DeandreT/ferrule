@@ -743,6 +743,7 @@ dependencies = [
  "jiff",
  "mapping",
  "mfd",
+ "rust_xlsxwriter",
  "serde_json",
 ]
 
@@ -1451,6 +1452,7 @@ version = "0.1.0"
 dependencies = [
  "calamine",
  "ir",
+ "mapping",
  "rust_xlsxwriter",
  "thiserror 2.0.18",
 ]
