@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "Organization": { "type": "string" },
+    "People": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "Name": { "type": "string" },
+          "Age": { "type": "integer" }
+        },
+        "required": ["Name", "Age"]
+      }
+    }
+  },
+  "required": ["Organization", "People"]
+}

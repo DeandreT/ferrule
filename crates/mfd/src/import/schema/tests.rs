@@ -46,3 +46,38 @@ fn json_lines_component_sets_runtime_format_option_without_a_downgrade_warning()
         "{warnings:?}"
     );
 }
+
+#[test]
+fn nullable_json_target_uses_one_typed_property_port() {
+    let document = roxmltree::Document::parse(
+        r#"
+        <component name="Result">
+          <data>
+            <root>
+              <entry name="FileInstance"><entry name="document"><entry name="root">
+                <entry name="object">
+                  <entry name="Shares" type="json-property">
+                    <entry name="number" inpkey="22"/>
+                    <entry name="null" inpkey="28"/>
+                  </entry>
+                </entry>
+              </entry></entry></entry>
+            </root>
+            <json/>
+          </data>
+        </component>
+        "#,
+    )
+    .unwrap();
+    let mut warnings = Vec::new();
+
+    let component = read_json_component(
+        &document.root_element(),
+        Path::new("mapping.mfd"),
+        &mut warnings,
+    )
+    .unwrap();
+
+    assert_eq!(component.ports.get(&22), Some(&vec!["Shares".into()]));
+    assert!(!component.ports.contains_key(&28));
+}

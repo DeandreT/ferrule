@@ -1,13 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaNode};
-use mapping::FormatOptions;
+use mapping::{
+    FormatOptions, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxRow,
+    XlsxTableRegion,
+};
 
 use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32};
 
 const MAX_WORKSHEET_ROW: u32 = 1_048_576;
 const MAX_WORKSHEET_COLUMN: u32 = 16_384;
 
+#[derive(Clone)]
 struct Column {
     name: String,
     index: u32,
@@ -15,11 +19,13 @@ struct Column {
     ports: Vec<u32>,
 }
 
+#[derive(Clone)]
 struct Table {
     sheet: Option<String>,
     layout: TableLayout,
 }
 
+#[derive(Clone)]
 enum TableLayout {
     Flat {
         start_row: Option<u32>,
@@ -33,9 +39,25 @@ enum TableLayout {
     },
 }
 
+#[derive(Clone)]
 struct TransposedRow {
     name: String,
     row: u32,
+    ty: ScalarType,
+    ports: Vec<u32>,
+}
+
+struct FixedRecord {
+    name: String,
+    sheet: Option<String>,
+    ports: Vec<u32>,
+    cells: Vec<FixedCell>,
+}
+
+struct FixedCell {
+    name: String,
+    row: XlsxRow,
+    column: XlsxColumn,
     ty: ScalarType,
     ports: Vec<u32>,
 }
@@ -57,13 +79,36 @@ pub(super) fn read(
     let is_source = output_keys.len() >= input_keys.len();
 
     let mut tables = Vec::new();
+    let mut records = Vec::new();
     for worksheet in workbook
         .children()
         .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Worksheet"))
     {
-        inspect_worksheet(worksheet, &name, is_source, warnings, &mut tables);
+        inspect_worksheet(
+            worksheet,
+            &name,
+            is_source,
+            warnings,
+            &mut tables,
+            &mut records,
+        );
     }
 
+    if !records.is_empty()
+        && let Some(composite) = read_composite(
+            name.clone(),
+            excel,
+            tables.clone(),
+            records,
+            input_keys.clone(),
+            output_keys.clone(),
+            is_source,
+            is_default_output(component),
+            warnings,
+        )
+    {
+        return Some(composite);
+    }
     let table = match tables.len() {
         0 => {
             warnings.push(format!(
@@ -164,12 +209,156 @@ pub(super) fn read(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn read_composite(
+    name: String,
+    excel: roxmltree::Node<'_, '_>,
+    mut tables: Vec<Table>,
+    records: Vec<FixedRecord>,
+    input_keys: BTreeSet<u32>,
+    output_keys: BTreeSet<u32>,
+    is_source: bool,
+    is_default_output: bool,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    let table = match tables.len() {
+        1 => tables.pop()?,
+        0 => {
+            warnings.push(format!(
+                "xlsx component `{name}` has fixed records but no supported open row table; composite XLSX sources require exactly one table"
+            ));
+            return None;
+        }
+        count => {
+            warnings.push(format!(
+                "xlsx component `{name}` has fixed records and {count} tables; composite XLSX sources require exactly one table"
+            ));
+            return None;
+        }
+    };
+    let TableLayout::Flat {
+        start_row,
+        has_header,
+        row_ports,
+        columns,
+    } = table.layout
+    else {
+        warnings.push(format!(
+            "xlsx component `{name}` combines fixed records with a transposed table; that composite layout is unsupported"
+        ));
+        return None;
+    };
+    let Some(table_name) = table.sheet.clone().filter(|sheet| !sheet.is_empty()) else {
+        warnings.push(format!(
+            "xlsx component `{name}` combines fixed records with a default worksheet table; a static table worksheet name is required"
+        ));
+        return None;
+    };
+    let start_row = XlsxRow::new(start_row.unwrap_or(1))?;
+    let mut names = BTreeSet::new();
+    if !names.insert(table_name.as_str())
+        || records
+            .iter()
+            .any(|record| !names.insert(record.name.as_str()))
+    {
+        warnings.push(format!(
+            "xlsx component `{name}` uses the same worksheet name for more than one composite region; component skipped"
+        ));
+        return None;
+    }
+
+    let mut ports = BTreeMap::new();
+    let mut fields = Vec::with_capacity(records.len() + 1);
+    let mut fixed_layouts = Vec::with_capacity(records.len());
+    for record in records {
+        let record_path = vec![record.name.clone()];
+        for key in record.ports {
+            ports.insert(key, record_path.clone());
+        }
+        let mut record_fields = Vec::with_capacity(record.cells.len());
+        let mut cells = Vec::with_capacity(record.cells.len());
+        for cell in record.cells {
+            let mut field_path = record_path.clone();
+            field_path.push(cell.name.clone());
+            for key in cell.ports {
+                ports.insert(key, field_path.clone());
+            }
+            record_fields.push(SchemaNode::scalar(&cell.name, cell.ty));
+            cells.push(XlsxFixedCell {
+                path: vec![cell.name],
+                row: cell.row,
+                column: cell.column,
+            });
+        }
+        fields.push(SchemaNode::group(&record.name, record_fields));
+        fixed_layouts.push(XlsxFixedRecord {
+            path: record_path,
+            sheet: record.sheet,
+            cells,
+        });
+    }
+
+    let table_path = vec![table_name.clone()];
+    for key in row_ports {
+        ports.insert(key, table_path.clone());
+    }
+    let mut table_fields = Vec::with_capacity(columns.len());
+    let mut table_columns = Vec::with_capacity(columns.len());
+    for column in columns {
+        let index = XlsxColumn::new(column.index)?;
+        let mut field_path = table_path.clone();
+        field_path.push(column.name.clone());
+        for key in column.ports {
+            ports.insert(key, field_path.clone());
+        }
+        table_fields.push(SchemaNode::scalar(&column.name, column.ty));
+        table_columns.push(index);
+    }
+    fields.push(SchemaNode::group(&table_name, table_fields).repeating());
+
+    if excel.attribute("updateexistingfile") == Some("1") {
+        warnings.push(format!(
+            "xlsx component `{name}` updates an existing workbook; ferrule writes a new workbook, so content outside the selected table will not be preserved"
+        ));
+    }
+    Some(SchemaComponent {
+        name: name.clone(),
+        format: ComponentFormat::Xlsx,
+        schema: SchemaNode::group(&name, fields),
+        input_instance: excel.attribute("inputinstance").map(str::to_string),
+        output_instance: excel.attribute("outputinstance").map(str::to_string),
+        options: FormatOptions {
+            xlsx_composite: Some(XlsxCompositeLayout {
+                table: XlsxTableRegion {
+                    path: table_path,
+                    sheet: table.sheet,
+                    start_row,
+                    columns: table_columns,
+                    has_header,
+                },
+                records: fixed_layouts,
+            }),
+            ..FormatOptions::default()
+        },
+        is_source,
+        is_default_output,
+        is_variable: false,
+        compute_when_key: None,
+        ports,
+        input_keys,
+        output_keys,
+        db_queries: Vec::new(),
+        dynamic_json: None,
+    })
+}
+
 fn inspect_worksheet(
     worksheet: roxmltree::Node<'_, '_>,
     component_name: &str,
     is_source: bool,
     warnings: &mut Vec<String>,
     tables: &mut Vec<Table>,
+    records: &mut Vec<FixedRecord>,
 ) {
     let range_by_id: BTreeMap<&str, roxmltree::Node<'_, '_>> = worksheet
         .children()
@@ -181,6 +370,7 @@ fn inspect_worksheet(
 
     let mut transposed_rows = Vec::new();
     let mut transposed_index_ports = Vec::new();
+    let mut fixed_cells = Vec::new();
     for row in worksheet
         .children()
         .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Row"))
@@ -215,6 +405,14 @@ fn inspect_worksheet(
         {
             transposed_rows.push(transposed);
             continue;
+        }
+        if range.attribute("count") == Some("1") && range.attribute("offset").is_none() && is_source
+        {
+            let cells = read_fixed_cells(row, range, component_name, warnings);
+            if !cells.is_empty() {
+                fixed_cells.extend(cells);
+                continue;
+            }
         }
         if range.attribute("count").is_some() {
             if subtree_has_ports(row) {
@@ -292,32 +490,113 @@ fn inspect_worksheet(
         });
     }
 
-    if transposed_rows.is_empty() {
-        return;
+    if !transposed_rows.is_empty() {
+        if duplicate_transposed_row(&transposed_rows) {
+            warnings.push(format!(
+                "xlsx component `{component_name}` maps a transposed physical row or field name more than once; table skipped"
+            ));
+        } else {
+            let sheet = match worksheet_name(worksheet) {
+                Ok(sheet) => sheet,
+                Err(()) => {
+                    warnings.push(format!(
+                        "xlsx component `{component_name}` selects a worksheet dynamically; the connected transposed table was skipped"
+                    ));
+                    return;
+                }
+            };
+            warn_dynamic_sheet_ports(worksheet, component_name, warnings);
+            tables.push(Table {
+                sheet,
+                layout: TableLayout::Transposed {
+                    rows: transposed_rows,
+                    index_ports: transposed_index_ports,
+                },
+            });
+        }
     }
-    if duplicate_transposed_row(&transposed_rows) {
-        warnings.push(format!(
-            "xlsx component `{component_name}` maps a transposed physical row or field name more than once; table skipped"
-        ));
+
+    if fixed_cells.is_empty() {
         return;
     }
     let sheet = match worksheet_name(worksheet) {
-        Ok(sheet) => sheet,
+        Ok(Some(sheet)) => sheet,
+        Ok(None) => {
+            warnings.push(format!(
+                "xlsx component `{component_name}` has connected fixed cells on the default worksheet; a static worksheet name is required for a composite record"
+            ));
+            return;
+        }
         Err(()) => {
             warnings.push(format!(
-                "xlsx component `{component_name}` selects a worksheet dynamically; the connected transposed table was skipped"
+                "xlsx component `{component_name}` selects a worksheet dynamically; the connected fixed cells were skipped"
             ));
             return;
         }
     };
-    warn_dynamic_sheet_ports(worksheet, component_name, warnings);
-    tables.push(Table {
-        sheet,
-        layout: TableLayout::Transposed {
-            rows: transposed_rows,
-            index_ports: transposed_index_ports,
-        },
+    if duplicate_fixed_cell(&fixed_cells) {
+        warnings.push(format!(
+            "xlsx component `{component_name}` maps a fixed-cell coordinate or field name more than once on worksheet `{sheet}`; record skipped"
+        ));
+        return;
+    }
+    warn_dynamic_sheet_name_port(worksheet, component_name, warnings);
+    records.push(FixedRecord {
+        name: sheet.clone(),
+        sheet: Some(sheet),
+        ports: port_keys(worksheet),
+        cells: fixed_cells,
     });
+}
+
+fn read_fixed_cells(
+    row: roxmltree::Node<'_, '_>,
+    range: roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<FixedCell> {
+    let Some(physical_row) = range
+        .attribute("start")
+        .and_then(|value| value.parse::<u32>().ok())
+        .and_then(XlsxRow::new)
+    else {
+        return Vec::new();
+    };
+    let mut cells = Vec::new();
+    for cell in row.children().filter(|node| {
+        node.has_tag_name("entry")
+            && node.attribute("name") == Some("Cell")
+            && !port_keys(*node).is_empty()
+    }) {
+        let Some(column) = selected_column(cell).and_then(XlsxColumn::new) else {
+            continue;
+        };
+        let Some(name) = cell.attribute("annotation").filter(|name| !name.is_empty()) else {
+            warnings.push(format!(
+                "xlsx component `{component_name}` fixed cell at row {} column {} has no annotation name; that cell was skipped",
+                physical_row.get(),
+                column.get()
+            ));
+            continue;
+        };
+        if cell.children().any(|node| {
+            node.has_tag_name("entry")
+                && matches!(node.attribute("name"), Some("n" | "r"))
+                && !port_keys(node).is_empty()
+        }) {
+            warnings.push(format!(
+                "xlsx component `{component_name}` exposes physical indexes below fixed cell `{name}`; those index ports were skipped"
+            ));
+        }
+        cells.push(FixedCell {
+            name: name.to_string(),
+            row: physical_row,
+            column,
+            ty: scalar_type(cell.attribute("datatype")),
+            ports: port_keys(cell),
+        });
+    }
+    cells
 }
 
 fn read_transposed_row(
@@ -505,6 +784,23 @@ fn warn_dynamic_sheet_ports(
     }
 }
 
+fn warn_dynamic_sheet_name_port(
+    worksheet: roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) {
+    let has_name_port = worksheet.children().any(|node| {
+        node.has_tag_name("entry")
+            && node.attribute("name") == Some("Name")
+            && !port_keys(node).is_empty()
+    });
+    if has_name_port {
+        warnings.push(format!(
+            "xlsx component `{component_name}` has a connected dynamic worksheet-name port; the configured static worksheet is used and that port was skipped"
+        ));
+    }
+}
+
 fn warn_physical_index_ports(
     row: roxmltree::Node<'_, '_>,
     component_name: &str,
@@ -560,4 +856,78 @@ fn duplicate_transposed_row(rows: &[TransposedRow]) -> bool {
     let mut indexes = BTreeSet::new();
     rows.iter()
         .any(|row| !names.insert(row.name.as_str()) || !indexes.insert(row.row))
+}
+
+fn duplicate_fixed_cell(cells: &[FixedCell]) -> bool {
+    let mut names = BTreeSet::new();
+    let mut coordinates = BTreeSet::new();
+    cells.iter().any(|cell| {
+        !names.insert(cell.name.as_str())
+            || !coordinates.insert((cell.row.get(), cell.column.get()))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_composite_shape_falls_back_to_its_supported_table() {
+        let document = roxmltree::Document::parse(
+            r#"
+            <component name="MixedWorkbook">
+              <data>
+                <root>
+                  <entry name="FileInstance">
+                    <entry name="document">
+                      <entry name="Workbook">
+                        <entry name="Worksheet">
+                          <condition><expression><function name="equal-ignorecase" library="xlsx">
+                            <expression><attribute name="Name"/></expression>
+                            <expression><constant value="Sales"/></expression>
+                          </function></expression></condition>
+                          <ranges>
+                            <range id="fixed" start="1" count="1"/>
+                            <range id="row" start="2" count="1"/>
+                          </ranges>
+                          <entry name="Row">
+                            <condition><expression><function name="is-range-id">
+                              <expression><constant value="fixed"/></expression>
+                            </function></expression></condition>
+                            <entry name="Cell" outkey="101" annotation="Year" datatype="string">
+                              <condition><expression><function name="equal" library="core">
+                                <expression><attribute name="n"/></expression>
+                                <expression><constant value="1" datatype="long"/></expression>
+                              </function></expression></condition>
+                            </entry>
+                          </entry>
+                          <entry name="Row">
+                            <condition><expression><function name="is-range-id">
+                              <expression><constant value="row"/></expression>
+                            </function></expression></condition>
+                            <entry name="Cell" outkey="102" annotation="Month" datatype="string">
+                              <entry name="n" outkey="103"/>
+                            </entry>
+                          </entry>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </root>
+                <excel inputinstance="mixed.xlsx"/>
+              </data>
+            </component>
+            "#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+
+        let component = read(&document.root_element(), &mut warnings).unwrap();
+
+        assert!(component.options.xlsx_composite.is_none());
+        assert_eq!(component.options.xlsx_rows, [2]);
+        assert!(warnings.iter().any(|warning| warning.contains(
+            "combines fixed records with a transposed table; that composite layout is unsupported"
+        )));
+    }
 }

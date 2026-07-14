@@ -1,5 +1,30 @@
 use std::path::Path;
 
+fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
+    use mapping::{
+        XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxRow, XlsxTableRegion,
+    };
+
+    XlsxCompositeLayout {
+        table: XlsxTableRegion {
+            path: vec!["Staff".into()],
+            sheet: Some("Staff".into()),
+            start_row: XlsxRow::new(1).unwrap(),
+            columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(2).unwrap()],
+            has_header: true,
+        },
+        records: vec![XlsxFixedRecord {
+            path: vec!["Office".into()],
+            sheet: Some("Office".into()),
+            cells: vec![XlsxFixedCell {
+                path: vec!["Name".into()],
+                row: XlsxRow::new(1).unwrap(),
+                column: XlsxColumn::new(2).unwrap(),
+            }],
+        }],
+    }
+}
+
 #[test]
 fn simple_name_and_age_mapping() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -206,6 +231,192 @@ fn imported_transposed_xlsx_source_executes_to_csv() {
 
     assert_eq!(written, 3);
     assert_eq!(actual, "Category,Amount\nHeader,0\nFood,12\nTravel,34\n");
+}
+
+#[test]
+fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
+    use ir::{ScalarType, SchemaNode};
+    use mapping::{Binding, FormatOptions, Graph, Node, Project, Scope, ScopeIteration};
+
+    let source = SchemaNode::group(
+        "Company",
+        vec![
+            SchemaNode::group(
+                "Office",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            ),
+            SchemaNode::group(
+                "Staff",
+                vec![
+                    SchemaNode::scalar("First", ScalarType::String),
+                    SchemaNode::scalar("Last", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Report",
+        vec![
+            SchemaNode::scalar("OfficeName", ScalarType::String),
+            SchemaNode::group(
+                "Staff",
+                vec![
+                    SchemaNode::scalar("First", ScalarType::String),
+                    SchemaNode::scalar("Last", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let mut graph = Graph::default();
+    graph.nodes.insert(
+        0,
+        Node::SourceField {
+            path: vec!["Office".into(), "Name".into()],
+            frame: None,
+        },
+    );
+    for (id, field) in [(1, "First"), (2, "Last")] {
+        graph.nodes.insert(
+            id,
+            Node::SourceField {
+                path: vec![field.into()],
+                frame: None,
+            },
+        );
+    }
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: FormatOptions {
+            xlsx_composite: Some(composite_xlsx_layout()),
+            ..FormatOptions::default()
+        },
+        target_options: FormatOptions::default(),
+        extra_sources: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "OfficeName".into(),
+                node: 0,
+            }],
+            children: vec![Scope {
+                target_field: "Staff".into(),
+                iteration: ScopeIteration::Source(vec!["Staff".into()]),
+                bindings: vec![
+                    Binding {
+                        target_field: "First".into(),
+                        node: 1,
+                    },
+                    Binding {
+                        target_field: "Last".into(),
+                        node: 2,
+                    },
+                ],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    workbook
+        .add_worksheet()
+        .set_name("Office")
+        .unwrap()
+        .write_string(0, 1, "Acme")
+        .unwrap();
+    let staff = workbook.add_worksheet();
+    staff.set_name("Staff").unwrap();
+    staff.write_string(0, 0, "First").unwrap();
+    staff.write_string(0, 1, "Last").unwrap();
+    staff.write_string(1, 0, "Ada").unwrap();
+    staff.write_string(1, 1, "Lovelace").unwrap();
+    staff.write_string(2, 0, "Grace").unwrap();
+    staff.write_string(2, 1, "Hopper").unwrap();
+
+    let tag = format!("xlsx_composite_source_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}_output.json"));
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+    std::fs::write(&input_path, workbook.save_to_buffer().unwrap()).unwrap();
+
+    let written = cli::run_project(&project_path, &input_path, &output_path).unwrap();
+    let actual: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&output_path).unwrap()).unwrap();
+    for path in [project_path, input_path, output_path] {
+        std::fs::remove_file(path).unwrap();
+    }
+
+    assert_eq!(written, 1);
+    assert_eq!(
+        actual,
+        serde_json::json!({
+            "OfficeName": "Acme",
+            "Staff": [
+                {"First": "Ada", "Last": "Lovelace"},
+                {"First": "Grace", "Last": "Hopper"}
+            ]
+        })
+    );
+}
+
+#[test]
+fn composite_xlsx_source_rejects_legacy_layout_options() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut project: mapping::Project =
+        serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
+            .unwrap();
+    project.source_options.xlsx_composite = Some(composite_xlsx_layout());
+    project.source_options.xlsx_sheet = Some("Legacy".into());
+
+    let tag = format!("xlsx_composite_conflict_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.csv"));
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+    std::fs::write(&input_path, []).unwrap();
+
+    let error = cli::run_project(&project_path, &input_path, &output_path).unwrap_err();
+    for path in [project_path, input_path] {
+        std::fs::remove_file(path).unwrap();
+    }
+    std::fs::remove_file(output_path).ok();
+
+    assert!(
+        error
+            .to_string()
+            .contains("`xlsx_composite` cannot be combined")
+    );
+}
+
+#[test]
+fn composite_xlsx_target_is_rejected_explicitly() {
+    let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut project: mapping::Project =
+        serde_json::from_str(&std::fs::read_to_string(fixture_dir.join("project.json")).unwrap())
+            .unwrap();
+    project.target_options.xlsx_composite = Some(composite_xlsx_layout());
+
+    let tag = format!("xlsx_composite_target_{}", std::process::id());
+    let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
+    let output_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.xlsx"));
+    std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
+
+    let error =
+        cli::run_project(&project_path, &fixture_dir.join("input.csv"), &output_path).unwrap_err();
+    std::fs::remove_file(project_path).unwrap();
+    std::fs::remove_file(output_path).ok();
+
+    assert!(
+        error
+            .to_string()
+            .contains("composite XLSX output is not supported")
+    );
 }
 
 /// Flattens a real-world nested XML document (Orders -> repeating Order ->

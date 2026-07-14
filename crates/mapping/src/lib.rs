@@ -416,6 +416,93 @@ pub struct NamedSource {
     pub options: FormatOptions,
 }
 
+macro_rules! xlsx_coordinate {
+    ($name:ident, $max:expr, $label:literal) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+        #[serde(transparent)]
+        pub struct $name(u32);
+
+        impl $name {
+            pub const MAX: u32 = $max;
+
+            pub const fn new(value: u32) -> Option<Self> {
+                if value >= 1 && value <= Self::MAX {
+                    Some(Self(value))
+                } else {
+                    None
+                }
+            }
+
+            pub const fn get(self) -> u32 {
+                self.0
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                let value = u32::deserialize(deserializer)?;
+                Self::new(value).ok_or_else(|| {
+                    serde::de::Error::custom(format_args!(
+                        "XLSX {} must be between 1 and {}",
+                        $label,
+                        Self::MAX
+                    ))
+                })
+            }
+        }
+    };
+}
+
+xlsx_coordinate!(XlsxRow, 1_048_576, "row");
+xlsx_coordinate!(XlsxColumn, 16_384, "column");
+
+/// One repeated row table inside a composite XLSX workbook source.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxTableRegion {
+    /// Absolute path to a repeating flat group in the source schema.
+    pub path: Vec<String>,
+    /// Named worksheet; the first worksheet is used when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
+    pub start_row: XlsxRow,
+    /// Columns aligned with the table group's scalar children. Empty means
+    /// consecutive columns beginning at A.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<XlsxColumn>,
+    pub has_header: bool,
+}
+
+/// One scalar field read from a fixed worksheet coordinate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxFixedCell {
+    /// Path relative to the owning fixed record group.
+    pub path: Vec<String>,
+    pub row: XlsxRow,
+    pub column: XlsxColumn,
+}
+
+/// One schema-shaped singleton record assembled from fixed worksheet cells.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxFixedRecord {
+    /// Absolute path to a group in the source schema; empty means the root.
+    pub path: Vec<String>,
+    /// Named worksheet; the first worksheet is used when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
+    pub cells: Vec<XlsxFixedCell>,
+}
+
+/// Composite XLSX source layout with one repeated table and fixed records.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxCompositeLayout {
+    pub table: XlsxTableRegion,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub records: Vec<XlsxFixedRecord>,
+}
+
 /// Per-side format knobs. This is deliberately one flat bag of optional
 /// settings rather than per-format sub-structs: each format adapter reads
 /// only the fields that concern it, `mapping` stays free of format-crate
@@ -453,6 +540,11 @@ pub struct FormatOptions {
     /// Empty selects the ordinary row-oriented table layout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xlsx_rows: Vec<u32>,
+    /// XLSX: one repeated table plus schema-shaped records read from fixed
+    /// worksheet cells. This mode is mutually exclusive with the legacy
+    /// flat/transposed XLSX fields above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xlsx_composite: Option<XlsxCompositeLayout>,
 }
 
 #[cfg(test)]
@@ -486,6 +578,7 @@ mod tests {
         assert!(defaults.xlsx_start_row.is_none());
         assert!(defaults.xlsx_columns.is_empty());
         assert!(defaults.xlsx_rows.is_empty());
+        assert!(defaults.xlsx_composite.is_none());
         assert!(
             !serde_json::to_string(&defaults)
                 .unwrap()
@@ -497,7 +590,6 @@ mod tests {
             xlsx_sheet: Some("Revenue".into()),
             xlsx_start_row: Some(5),
             xlsx_columns: vec![2, 4, 7],
-            xlsx_rows: vec![1, 3, 5],
             ..FormatOptions::default()
         };
         let encoded = serde_json::to_string(&options).unwrap();
@@ -506,7 +598,53 @@ mod tests {
         assert_eq!(decoded.xlsx_sheet.as_deref(), Some("Revenue"));
         assert_eq!(decoded.xlsx_start_row, Some(5));
         assert_eq!(decoded.xlsx_columns, vec![2, 4, 7]);
+
+        let transposed = FormatOptions {
+            xlsx_rows: vec![1, 3, 5],
+            ..FormatOptions::default()
+        };
+        let decoded: FormatOptions =
+            serde_json::from_str(&serde_json::to_string(&transposed).unwrap()).unwrap();
         assert_eq!(decoded.xlsx_rows, vec![1, 3, 5]);
+    }
+
+    #[test]
+    fn xlsx_composite_layout_roundtrips() {
+        let composite = XlsxCompositeLayout {
+            table: XlsxTableRegion {
+                path: vec!["Staff".into()],
+                sheet: Some("Roster".into()),
+                start_row: XlsxRow::new(2).unwrap(),
+                columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(3).unwrap()],
+                has_header: true,
+            },
+            records: vec![XlsxFixedRecord {
+                path: vec!["Office".into()],
+                sheet: Some("Office".into()),
+                cells: vec![XlsxFixedCell {
+                    path: vec!["Name".into()],
+                    row: XlsxRow::new(1).unwrap(),
+                    column: XlsxColumn::new(2).unwrap(),
+                }],
+            }],
+        };
+        let options = FormatOptions {
+            xlsx_composite: Some(composite.clone()),
+            ..FormatOptions::default()
+        };
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.xlsx_composite, Some(composite));
+    }
+
+    #[test]
+    fn xlsx_coordinates_reject_values_outside_excel_limits() {
+        assert!(XlsxRow::new(0).is_none());
+        assert!(XlsxRow::new(XlsxRow::MAX + 1).is_none());
+        assert!(XlsxColumn::new(0).is_none());
+        assert!(XlsxColumn::new(XlsxColumn::MAX + 1).is_none());
+        assert!(serde_json::from_str::<XlsxRow>("0").is_err());
+        assert!(serde_json::from_str::<XlsxColumn>("16385").is_err());
     }
 
     fn join_plan() -> JoinPlan {

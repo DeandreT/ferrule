@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="PeopleWorkbook" library="xlsx" uid="2" kind="26">
+					<properties/>
+					<data>
+						<root>
+							<header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header>
+							<entry name="FileInstance" ns="1" expanded="1">
+								<entry name="document" ns="1" expanded="1">
+									<entry name="Workbook" expanded="1">
+										<entry name="Worksheet" expanded="1">
+											<condition><expression><function name="equal-ignorecase" library="xlsx">
+												<expression><attribute name="Name"/></expression>
+												<expression><constant value="Info"/></expression>
+											</function></expression></condition>
+											<ranges><range id="31" start="3" count="1"/></ranges>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="31" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="30" annotation="Organization" datatype="string">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="2" datatype="long"/></expression></function></expression></condition>
+												</entry>
+											</entry>
+										</entry>
+										<entry name="Worksheet" expanded="1">
+											<condition><expression><function name="equal-ignorecase" library="xlsx">
+												<expression><attribute name="Name"/></expression>
+												<expression><constant value="People"/></expression>
+											</function></expression></condition>
+											<ranges><range id="41" start="2"/></ranges>
+											<entry name="Row" outkey="40" enabletitlerow="1" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="41" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="41" annotation="Name" datatype="string">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="2" datatype="long"/></expression></function></expression></condition>
+												</entry>
+												<entry name="Cell" outkey="42" annotation="Age" datatype="integer">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="5" datatype="long"/></expression></function></expression></condition>
+												</entry>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<excel inputinstance="people-workbook.xlsx"/>
+					</data>
+				</component>
+				<component name="People" library="json" uid="3" kind="31">
+					<properties XSLTDefaultOutput="1"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="root" expanded="1">
+										<entry name="object" expanded="1">
+											<entry name="Organization" type="json-property" expanded="1">
+												<entry name="string" inpkey="200"/>
+											</entry>
+											<entry name="People" type="json-property" expanded="1">
+												<entry name="array" expanded="1">
+													<entry name="item" type="json-item" expanded="1">
+														<entry name="object" inpkey="201" expanded="1">
+															<entry name="Name" type="json-property" expanded="1"><entry name="string" inpkey="202"/></entry>
+															<entry name="Age" type="json-property" expanded="1"><entry name="integer" inpkey="203"/></entry>
+														</entry>
+													</entry>
+												</entry>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<json schema="xlsx-composite-target.schema.json"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="30"><edges><edge vertexkey="200"/></edges></vertex>
+					<vertex vertexkey="40"><edges><edge vertexkey="201"/></edges></vertex>
+					<vertex vertexkey="41"><edges><edge vertexkey="202"/></edges></vertex>
+					<vertex vertexkey="42"><edges><edge vertexkey="203"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

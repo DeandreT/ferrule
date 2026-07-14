@@ -142,6 +142,34 @@ fn transposed_xlsx_layout_does_not_replace_existing_design() {
 }
 
 #[test]
+fn composite_xlsx_layout_does_not_replace_existing_design() {
+    let mut project = mfd::import(&fixture("people-csv.mfd")).unwrap().project;
+    project.source_path = Some("people.xlsx".into());
+    project.source_options.xlsx_composite = Some(mapping::XlsxCompositeLayout {
+        table: mapping::XlsxTableRegion {
+            path: vec!["Staff".into()],
+            sheet: Some("Staff".into()),
+            start_row: mapping::XlsxRow::new(1).unwrap(),
+            columns: vec![],
+            has_header: true,
+        },
+        records: vec![],
+    });
+
+    let dir = TempDir::new("composite");
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(&design, "existing design").unwrap();
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message))
+            if message.contains("composite XLSX export is not supported")
+    ));
+    assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
+    assert!(!dir.0.join("mapping-source.xsd").exists());
+}
+
+#[test]
 fn invalid_xlsx_coordinates_are_rejected() {
     let mut project = mfd::import(&fixture("people-to-csv.mfd")).unwrap().project;
     project.target_path = Some("people.xlsx".into());

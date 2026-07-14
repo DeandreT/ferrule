@@ -152,7 +152,10 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .find(|n| n.has_tag_name("result"))
                 .and_then(|r| r.attribute("defaultValue"))
                 .map(|value| parse_constant(value, scalar_type_name(result_type)))
-                .filter(|_| vm.attribute("defaultValueMode") == Some("custom"));
+                .filter(|_| {
+                    vm.attribute("defaultValueMode") == Some("custom")
+                        || vm.attribute("enableDefaultValue") == Some("1")
+                });
             ValueMapData {
                 table,
                 default,
@@ -495,6 +498,23 @@ mod tests {
         let value_map = read(&document.root_element()).valuemap.unwrap();
         assert_eq!(value_map.input_type, Some(ScalarType::Int));
         assert_eq!(value_map.table, vec![(Value::Int(7), Value::Bool(true))]);
+        assert_eq!(value_map.default, Some(Value::Bool(false)));
+    }
+
+    #[test]
+    fn value_map_accepts_enabled_default_value_flag() {
+        let document = roxmltree::Document::parse(
+            r#"<component name="value-map" library="core" kind="23">
+                <data><valuemap enableDefaultValue="1">
+                    <valuemapTable><entry from="Admin" to="true"/></valuemapTable>
+                    <input name="input" type="string"/>
+                    <result name="result" type="boolean" defaultValue="false"/>
+                </valuemap></data>
+            </component>"#,
+        )
+        .unwrap();
+
+        let value_map = read(&document.root_element()).valuemap.unwrap();
         assert_eq!(value_map.default, Some(Value::Bool(false)));
     }
 }

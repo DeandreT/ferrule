@@ -253,7 +253,30 @@ fn eval_scope(
                 })
                 .copied()
                 .or_else(|| context.last().copied())
-                .map_or_else(Vec::new, |base| walk(base, path, &[], &[], &[])),
+                .map_or_else(Vec::new, |base| {
+                    // A grouped scope stores its member collection in the
+                    // context under the original collection frame. Preserve
+                    // that identity when an empty-path child iterates the
+                    // members, so frame-pinned fields select the current
+                    // member instead of the group's first member.
+                    let prefix = if path.is_empty()
+                        && positions.last().is_some_and(|position| {
+                            position.grouped
+                                && context_for_position(
+                                    context,
+                                    positions,
+                                    positions.len().saturating_sub(1),
+                                ) == Some(base)
+                        }) {
+                        positions
+                            .last()
+                            .map(|position| position.collection.as_slice())
+                            .unwrap_or_default()
+                    } else {
+                        &[]
+                    };
+                    walk(base, path, prefix, &[], &[])
+                }),
         }
     };
 
