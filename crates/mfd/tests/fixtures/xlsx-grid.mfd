@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="30">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="QuarterlyGrid" library="xlsx" uid="2" kind="26">
+          <properties/>
+          <data>
+            <root>
+              <entry name="FileInstance">
+                <entry name="document">
+                  <entry name="Workbook">
+                    <entry name="Worksheet">
+                      <condition><expression><function name="equal-ignorecase" library="xlsx">
+                        <expression><attribute name="Name"/></expression>
+                        <expression><constant value="Quarterly"/></expression>
+                      </function></expression></condition>
+                      <ranges>
+                        <range id="1" start="1" count="1"/>
+                        <range id="2" start="2"/>
+                        <range id="3" start="1" count="1"/>
+                      </ranges>
+                      <entry name="Row">
+                        <condition><expression><function name="is-range-id">
+                          <expression><constant value="1" datatype="long"/></expression>
+                        </function></expression></condition>
+                        <entry name="Cell" outkey="10" datatype="string">
+                          <entry name="n" type="attribute" outkey="11"/>
+                        </entry>
+                      </entry>
+                      <entry name="Row" outkey="13">
+                        <condition><expression><function name="is-range-id">
+                          <expression><constant value="2" datatype="long"/></expression>
+                        </function></expression></condition>
+                        <entry name="Cell" outkey="14" datatype="decimal">
+                          <entry name="n" type="attribute" outkey="15"/>
+                        </entry>
+                      </entry>
+                      <entry name="Row">
+                        <condition><expression><function name="is-range-id">
+                          <expression><constant value="3" datatype="long"/></expression>
+                        </function></expression></condition>
+                        <entry name="Cell" outkey="12" annotation="Year" datatype="string">
+                          <condition><expression><function name="equal" library="core">
+                            <expression><attribute name="n"/></expression>
+                            <expression><constant value="1" datatype="long"/></expression>
+                          </function></expression></condition>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <excel inputinstance="quarterly-grid.xlsx"/>
+          </data>
+        </component>
+        <component name="constant" library="core" uid="3" kind="2">
+          <targets><datapoint pos="0" key="20"/></targets>
+          <data><constant value="1" datatype="decimal"/></data>
+        </component>
+        <component name="not-equal" library="core" uid="4" kind="5">
+          <sources><datapoint pos="0" key="21"/><datapoint pos="1" key="22"/></sources>
+          <targets><datapoint pos="0" key="23"/></targets>
+        </component>
+        <component name="HeaderCells" library="core" uid="5" kind="3">
+          <sources><datapoint pos="0" key="24"/><datapoint pos="1" key="25"/></sources>
+          <targets><datapoint pos="0" key="26"/><datapoint/></targets>
+        </component>
+        <component name="item-at" library="core" uid="6" kind="5">
+          <sources><datapoint pos="0" key="27"/><datapoint pos="1" key="28"/></sources>
+          <targets><datapoint pos="0" key="29"/></targets>
+        </component>
+        <component name="equal" library="core" uid="7" kind="5">
+          <sources><datapoint pos="0" key="30"/><datapoint pos="1" key="31"/></sources>
+          <targets><datapoint pos="0" key="32"/></targets>
+        </component>
+        <component name="SelectedCell" library="core" uid="8" kind="3">
+          <sources><datapoint pos="0" key="33"/><datapoint pos="1" key="34"/></sources>
+          <targets><datapoint pos="0" key="35"/><datapoint/></targets>
+        </component>
+        <component name="GridReport" library="xml" uid="9" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <entry name="FileInstance">
+                <entry name="document">
+                  <entry name="Report">
+                    <entry name="Period" inpkey="40">
+                      <entry name="Month" type="attribute" inpkey="41"/>
+                      <entry name="Column" type="attribute" inpkey="42"/>
+                      <entry name="Year" type="attribute" inpkey="43"/>
+                      <entry name="Sale" inpkey="44">
+                        <entry name="Region" type="attribute" inpkey="45"/>
+                        <entry name="Amount" type="attribute" inpkey="46"/>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="xlsx-grid-target.xsd" instanceroot="{}Report"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="24"/><edge vertexkey="41"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/><edge vertexkey="31"/><edge vertexkey="42"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="43"/></edges></vertex>
+          <vertex vertexkey="13"><edges><edge vertexkey="44"/></edges></vertex>
+          <vertex vertexkey="14"><edges><edge vertexkey="27"/><edge vertexkey="33"/></edges></vertex>
+          <vertex vertexkey="15"><edges><edge vertexkey="30"/></edges></vertex>
+          <vertex vertexkey="20"><edges><edge vertexkey="22"/><edge vertexkey="28"/></edges></vertex>
+          <vertex vertexkey="23"><edges><edge vertexkey="25"/></edges></vertex>
+          <vertex vertexkey="26"><edges><edge vertexkey="40"/></edges></vertex>
+          <vertex vertexkey="29"><edges><edge vertexkey="45"/></edges></vertex>
+          <vertex vertexkey="32"><edges><edge vertexkey="34"/></edges></vertex>
+          <vertex vertexkey="35"><edges><edge vertexkey="46"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

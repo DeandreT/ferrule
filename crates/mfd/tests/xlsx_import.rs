@@ -256,3 +256,169 @@ fn imports_fixed_scalar_and_table_as_a_composite_json_source() {
     }));
     assert!(engine::validate(project).is_empty());
 }
+
+#[test]
+fn imports_header_driven_nested_worksheet_grid() {
+    let imported = mfd::import(&fixture("xlsx-grid.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert_eq!(project.source_path.as_deref(), Some("quarterly-grid.xlsx"));
+    assert!(project.source_options.xlsx_rows.is_empty());
+    assert!(project.source_options.xlsx_composite.is_none());
+    let layout = project.source_options.xlsx_grid.as_ref().unwrap();
+    assert_eq!(layout.sheet.as_deref(), Some("Quarterly"));
+    assert_eq!(layout.header_row.get(), 1);
+    assert_eq!(layout.data_start_row.get(), 2);
+    assert_eq!(layout.header_value_field, "Range1");
+    assert_eq!(layout.header_position_field, "HeaderColumn");
+    assert_eq!(layout.rows_field, "Rows");
+    assert_eq!(layout.cells_field, "Cells");
+    assert_eq!(layout.cell_value_field, "value");
+    assert_eq!(layout.cell_position_field, "CellColumn");
+    assert_eq!(layout.fixed_cells.len(), 1);
+    assert_eq!(layout.fixed_cells[0].path, ["Year"]);
+    assert_eq!(layout.fixed_cells[0].row.get(), 1);
+    assert_eq!(layout.fixed_cells[0].column.get(), 1);
+
+    assert!(matches!(
+        project.source.child("Range1").map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::String
+        })
+    ));
+    assert!(matches!(
+        project.source.child("HeaderColumn").map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Int
+        })
+    ));
+    let rows = project.source.child("Rows").unwrap();
+    assert!(rows.repeating);
+    let cells = rows.child("Cells").unwrap();
+    assert!(cells.repeating);
+    assert!(matches!(
+        cells.child("value").map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Float
+        })
+    ));
+
+    let period = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Period")
+        .unwrap();
+    assert_eq!(period.source(), Some(&[][..]));
+    assert!(period.filter.is_some());
+    assert!(period.bindings.iter().any(|binding| {
+        binding.target_field == "Month"
+            && matches!(
+                project.graph.nodes.get(&binding.node),
+                Some(Node::SourceField { path, .. }) if path == &["Range1"]
+            )
+    }));
+    assert!(period.bindings.iter().any(|binding| {
+        binding.target_field == "Column"
+            && matches!(
+                project.graph.nodes.get(&binding.node),
+                Some(Node::SourceField { path, .. }) if path == &["HeaderColumn"]
+            )
+    }));
+    let sale = period
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Sale")
+        .unwrap();
+    assert_eq!(sale.source(), Some(&["Rows".to_string()][..]));
+    assert!(sale.bindings.iter().any(|binding| {
+        binding.target_field == "Region"
+            && matches!(
+                project.graph.nodes.get(&binding.node),
+                Some(Node::Aggregate {
+                    function: AggregateOp::ItemAt,
+                    collection,
+                    value,
+                    ..
+                }) if collection == &["Cells"] && value == &["value"]
+            )
+    }));
+    assert!(sale.bindings.iter().any(|binding| {
+        binding.target_field == "Amount"
+            && matches!(
+                project.graph.nodes.get(&binding.node),
+                Some(Node::Lookup {
+                    collection,
+                    key,
+                    value,
+                    ..
+                }) if collection == &["Cells"]
+                    && key == &["CellColumn"]
+                    && value == &["value"]
+            )
+    }));
+    assert!(engine::validate(project).is_empty());
+}
+
+#[test]
+fn imported_worksheet_grid_executes_header_and_nested_cell_frames() {
+    use ir::{Instance, Value};
+
+    let imported = mfd::import(&fixture("xlsx-grid.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let layout = imported.project.source_options.xlsx_grid.as_ref().unwrap();
+
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.set_name("Quarterly").unwrap();
+    for (row, column, value) in [
+        (0, 0, "2026"),
+        (0, 1, "Q1"),
+        (0, 2, "Q2"),
+        (1, 0, "101"),
+        (1, 1, "10.5"),
+        (1, 2, "20.5"),
+        (2, 0, "202"),
+        (2, 1, "30.5"),
+        (2, 2, "40.5"),
+    ] {
+        worksheet.write_string(row, column, value).unwrap();
+    }
+    let records = format_xlsx::from_bytes_grid(
+        &workbook.save_to_buffer().unwrap(),
+        &imported.project.source,
+        layout,
+    )
+    .unwrap();
+    let actual = engine::run(&imported.project, &Instance::Repeated(records)).unwrap();
+
+    let scalar = |value| Instance::Scalar(value);
+    let sale = |region: f64, amount: f64| {
+        Instance::Group(vec![
+            ("Region".into(), scalar(Value::Float(region))),
+            ("Amount".into(), scalar(Value::Float(amount))),
+        ])
+    };
+    let period = |month: &str, column: i64, first: f64, second: f64| {
+        Instance::Group(vec![
+            ("Month".into(), scalar(Value::String(month.into()))),
+            ("Column".into(), scalar(Value::Int(column))),
+            ("Year".into(), scalar(Value::String("2026".into()))),
+            (
+                "Sale".into(),
+                Instance::Repeated(vec![sale(101.0, first), sale(202.0, second)]),
+            ),
+        ])
+    };
+    assert_eq!(
+        actual,
+        Instance::Group(vec![(
+            "Period".into(),
+            Instance::Repeated(vec![
+                period("Q1", 2, 10.5, 30.5),
+                period("Q2", 3, 20.5, 40.5),
+            ]),
+        )])
+    );
+}

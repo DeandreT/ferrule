@@ -170,6 +170,40 @@ fn composite_xlsx_layout_does_not_replace_existing_design() {
 }
 
 #[test]
+fn grid_xlsx_layout_does_not_replace_existing_design() {
+    let mut project = mfd::import(&fixture("people-csv.mfd")).unwrap().project;
+    project.source_path = Some("people.xlsx".into());
+    project.source_options.xlsx_grid = Some(mapping::XlsxGridLayout {
+        sheet: Some("Sales".into()),
+        header_row: mapping::XlsxRow::new(1).unwrap(),
+        data_start_row: mapping::XlsxRow::new(2).unwrap(),
+        header_value_field: "Month".into(),
+        header_position_field: "MonthColumn".into(),
+        rows_field: "Rows".into(),
+        cells_field: "Cells".into(),
+        cell_value_field: "Value".into(),
+        cell_position_field: "Column".into(),
+        fixed_cells: vec![mapping::XlsxFixedCell {
+            path: vec!["Year".into()],
+            row: mapping::XlsxRow::new(1).unwrap(),
+            column: mapping::XlsxColumn::new(1).unwrap(),
+        }],
+    });
+
+    let dir = TempDir::new("grid");
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(&design, "existing design").unwrap();
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message))
+            if message.contains("grid XLSX export is not supported")
+    ));
+    assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
+    assert!(!dir.0.join("mapping-source.xsd").exists());
+}
+
+#[test]
 fn invalid_xlsx_coordinates_are_rejected() {
     let mut project = mfd::import(&fixture("people-to-csv.mfd")).unwrap().project;
     project.target_path = Some("people.xlsx".into());
