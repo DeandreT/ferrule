@@ -304,6 +304,11 @@ fn read_definition(
     ),
     String,
 > {
+    if definition_is_recursive(component) {
+        let name = component.attribute("name").unwrap_or_default();
+        let library = component.attribute("library").unwrap_or_default();
+        return Err(format!("definition is recursive: `{name}` ({library})"));
+    }
     match read_scalar_definition(component) {
         Ok(definition) => Ok((definition, None, Vec::new())),
         Err(scalar_reason) => match read_lookup_definition(component, mfd_path) {
@@ -321,6 +326,27 @@ fn read_definition(
             }),
         },
     }
+}
+
+fn definition_is_recursive(component: &roxmltree::Node<'_, '_>) -> bool {
+    let name = component.attribute("name").unwrap_or_default();
+    let library = component.attribute("library").unwrap_or_default();
+    component
+        .children()
+        .find(|node| node.has_tag_name("structure"))
+        .and_then(|structure| {
+            structure
+                .children()
+                .find(|node| node.has_tag_name("children"))
+        })
+        .is_some_and(|children| {
+            children.children().any(|child| {
+                child.has_tag_name("component")
+                    && child.attribute("kind") == Some("19")
+                    && child.attribute("name") == Some(name)
+                    && child.attribute("library") == Some(library)
+            })
+        })
 }
 
 fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
@@ -1102,11 +1128,14 @@ mod tests {
     }
 
     #[test]
-    fn recursive_definition_keeps_an_actionable_reason() {
+    fn recursive_definition_preempts_structured_shape_diagnostics() {
         let document = Document::parse(
             r#"<mapping>
                 <component name="loop" library="user">
                   <structure><children>
+                    <component name="result" library="json" uid="2" kind="31">
+                      <data><parameter usageKind="output" name="object"/></data>
+                    </component>
                     <component name="loop" library="user" uid="1" kind="19"/>
                   </children></structure>
                 </component>

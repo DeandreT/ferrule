@@ -284,7 +284,7 @@ pub(super) fn note_skipped_library(skipped: &mut Vec<String>, label: &str) {
 }
 
 /// Records an entry's own port keys under `path`.
-fn record_entry_keys(
+pub(super) fn record_entry_keys(
     entry: &roxmltree::Node,
     path: &[String],
     ports: &mut BTreeMap<u32, Vec<String>>,
@@ -424,7 +424,7 @@ pub(super) fn read_json_component(
 }
 
 /// Maps JSON property ports to schema paths; structural wrappers are transparent.
-fn collect_json_ports(
+pub(super) fn collect_json_ports(
     entry: &roxmltree::Node,
     path: &mut Vec<String>,
     ports: &mut BTreeMap<u32, Vec<String>>,
@@ -499,7 +499,7 @@ fn collect_json_ports(
 /// Fallback JSON schema straight from the entry tree: `json-property`
 /// children become fields, an enclosing `array` marks the property
 /// repeating, type-leaf names give scalar types.
-fn json_entry_value_schema(name: &str, entry: &roxmltree::Node) -> SchemaNode {
+pub(super) fn json_entry_value_schema(name: &str, entry: &roxmltree::Node) -> SchemaNode {
     for child in entry
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")

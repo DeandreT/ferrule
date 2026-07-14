@@ -22,6 +22,10 @@
 //! it) for the same subset, picking each side's component family from the
 //! project's instance-path extension. Static HTTP XML sources and complete
 //! document-copy edges also round-trip through their canonical components.
+//! A source-less design driven by one opaque user call can retain that call's
+//! JSON-shaped public result as a typed external input; the imported project
+//! warns that the component body was not executed and requires a captured
+//! result instance at run time.
 //!
 //! The format knowledge comes from reading real `.mfd` files; nothing here
 //! embeds or copies ReferenceSamples content. MapForce is a trademark of ReferenceSamples
@@ -45,6 +49,8 @@ pub enum MfdError {
     SchemaExport(#[from] format_xml::XmlFormatError),
     #[error("not a MapForce design: {0}")]
     NotMfd(&'static str),
+    #[error("cannot import: {0}")]
+    UnsupportedImport(String),
     #[error("cannot export: {0}")]
     Unsupported(String),
 }
