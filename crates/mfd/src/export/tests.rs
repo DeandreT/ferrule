@@ -15,6 +15,11 @@ fn canonical_scalar_names_export_as_mapforce_core_functions() {
     );
     assert_eq!(function_library("time_from_datetime"), "lang");
     assert_eq!(
+        unmap_function_name("day_from_datetime"),
+        "day-from-datetime"
+    );
+    assert_eq!(function_library("day_from_datetime"), "lang");
+    assert_eq!(
         unmap_function_name("datetime_from_date_and_time"),
         "datetime-from-date-and-time"
     );

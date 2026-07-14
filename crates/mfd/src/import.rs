@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, Value};
-use mapping::{Graph, NamedSource, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
+use ir::SchemaKind;
+use mapping::{Graph, NamedSource, NodeId, Project, Scope, SequenceExpr};
 
 use crate::MfdError;
 
@@ -27,6 +27,7 @@ mod join;
 mod materialize;
 mod output_parameter;
 mod protobuf_target;
+mod scalar_function;
 mod schema;
 mod scope;
 mod sequence_scalar;
@@ -36,11 +37,11 @@ mod udf;
 
 use db_query::is_routine_catalog;
 use function::{
-    aggregate_op, is_db_function_component, is_db_where as is_db_where_component,
+    is_db_function_component, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
     is_first_items as is_first_items_component, is_group_into_blocks, is_group_starting_with,
     is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
-    map_name as map_function_name, parse_constant, read as read_fn_component,
+    is_xbrl_measure_component, map_name as map_function_name, read as read_fn_component,
 };
 use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use iteration::{
@@ -241,6 +242,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             warnings.push(format!("skipped XBRL component `{name}`: {reason}"));
                         }
                     }
+                }
+                "xbrl" if is_xbrl_measure_component(&component) => {
+                    fn_components.push(read_fn_component(&component));
                 }
                 "core" if component.attribute("kind") == Some("7") => {
                     output_parameters.push(output_parameter::read(&component));
@@ -711,165 +715,6 @@ impl GraphBuilder<'_> {
             }
             _ => Some(self.fn_node(idx)),
         }
-    }
-
-    fn fn_node(&mut self, idx: usize) -> NodeId {
-        if let Some(&id) = self.fn_nodes.get(&idx) {
-            return id;
-        }
-        // Reserve the id first so cycles cannot recurse forever.
-        let id = self.next_id;
-        self.next_id += 1;
-        self.fn_nodes.insert(idx, id);
-
-        // Aggregates take a sequence connection, not scalar arguments, so
-        // they must not materialize their feeds as SourceFields.
-        let name = self.fn_components[idx].name.clone();
-        if name == "exists"
-            && self.fn_components[idx].library == "core"
-            && self.fn_components[idx].kind == 5
-            && let Some(node) = self.sequence_exists_node(idx)
-        {
-            self.graph.nodes.insert(id, node);
-            return id;
-        }
-        if let Some(op) = aggregate_op(&name).filter(|_| self.fn_components[idx].kind == 5) {
-            let node = match self.aggregate_node(op, idx) {
-                Ok(Some(node)) => node,
-                Ok(None) => self.unsupported_aggregate_call(
-                    &name,
-                    idx,
-                    "has an unresolvable sequence input",
-                ),
-                Err(reason) => self.unsupported_aggregate_call(
-                    &name,
-                    idx,
-                    &format!("cannot import its sequence: {reason}"),
-                ),
-            };
-            self.graph.nodes.insert(id, node);
-            return id;
-        }
-        if name == "position" && self.fn_components[idx].kind == 5 {
-            let node = self
-                .join_position_node(idx)
-                .unwrap_or_else(|| Node::Position {
-                    collection: self.position_collection(idx),
-                });
-            self.graph.nodes.insert(id, node);
-            return id;
-        }
-        let fc = &self.fn_components[idx];
-        let numeric_inputs = matches!(fc.name.as_str(), "add" | "subtract" | "multiply" | "divide");
-
-        let mut input_ids = Vec::with_capacity(fc.inputs.len());
-        for input in fc.inputs.clone() {
-            let feed = input.and_then(|k| self.edge_from.get(&k).copied());
-            let node = feed.and_then(|from| {
-                numeric_inputs
-                    .then(|| self.numeric_string_constant(from))
-                    .flatten()
-                    .or_else(|| self.value_node(from))
-            });
-            input_ids.push(node);
-        }
-        let input_or_null = |builder: &mut Self, i: usize| {
-            input_ids
-                .get(i)
-                .copied()
-                .flatten()
-                .unwrap_or_else(|| builder.const_null())
-        };
-
-        let node = match (fc.name.as_str(), fc.kind) {
-            ("constant", _) => {
-                let (value, datatype) = fc.constant.clone().unwrap_or_default();
-                Node::Const {
-                    value: parse_constant(&value, &datatype),
-                }
-            }
-            ("mfd-filepath", _) => Node::RuntimeValue {
-                value: RuntimeValue::MappingFilePath,
-            },
-            ("main-mfd-filepath", _) => Node::RuntimeValue {
-                value: RuntimeValue::MainMappingFilePath,
-            },
-            ("now", _) => Node::RuntimeValue {
-                value: RuntimeValue::CurrentDateTime,
-            },
-            ("set-xsi-nil", _) => Node::Const {
-                value: Value::xml_nil(),
-            },
-            ("if-else", _) => Node::If {
-                condition: input_or_null(self, 0),
-                then: input_or_null(self, 1),
-                else_: input_or_null(self, 2),
-            },
-            ("value-map", _) => {
-                let value_map = fc.valuemap.clone().unwrap_or_default();
-                Node::ValueMap {
-                    input: input_or_null(self, 0),
-                    input_type: value_map.input_type,
-                    table: value_map.table,
-                    default: value_map.default,
-                }
-            }
-            (name, _) => {
-                let function = match map_function_name(name) {
-                    Some(mapped) => mapped.to_string(),
-                    None => {
-                        self.warnings.push(format!(
-                            "function `{name}` has no ferrule equivalent; imported \
-                             as-is and will fail at run time until replaced"
-                        ));
-                        name.to_string()
-                    }
-                };
-                // MapForce declares the function's full optional pin set even
-                // when callers leave its trailing optional arguments unwired.
-                // Keep interior pin positions, but do not turn unused trailing
-                // pins into ferrule arguments.
-                let arity = input_ids
-                    .iter()
-                    .rposition(Option::is_some)
-                    .map_or(1, |last| last + 1);
-                let args = (0..arity)
-                    .map(|i| {
-                        input_ids.get(i).copied().flatten().unwrap_or_else(|| {
-                            if function == "format_number" && i == 2 {
-                                self.alloc(Node::Const {
-                                    value: Value::String(".".into()),
-                                })
-                            } else {
-                                self.const_null()
-                            }
-                        })
-                    })
-                    .collect();
-                Node::Call { function, args }
-            }
-        };
-        self.graph.nodes.insert(id, node);
-        id
-    }
-
-    fn numeric_string_constant(&mut self, feed: u32) -> Option<NodeId> {
-        let component = self
-            .fn_by_output
-            .get(&feed)
-            .and_then(|index| self.fn_components.get(*index))?;
-        let (text, datatype) = component.constant.as_ref()?;
-        if datatype != "string" {
-            return None;
-        }
-        let value = text
-            .trim()
-            .parse::<i64>()
-            .map(Value::Int)
-            .or_else(|_| text.trim().parse::<f64>().map(Value::Float))
-            .ok()
-            .filter(|value| !matches!(value, Value::Float(value) if !value.is_finite()))?;
-        Some(self.alloc(Node::Const { value }))
     }
 
     fn position_collection(&self, idx: usize) -> Vec<String> {
