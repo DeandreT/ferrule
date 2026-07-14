@@ -43,6 +43,20 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
             "HTTP GET transport is valid only for mapping sources",
         ));
     }
+    if project.target_options.pdf.is_some() {
+        issues.push(ValidationIssue::new(
+            "target format options",
+            "PDF extraction is valid only for mapping sources",
+        ));
+    }
+    if let Some(layout) = &project.source_options.pdf
+        && layout.schema() != project.source
+    {
+        issues.push(ValidationIssue::new(
+            "source format options",
+            "PDF extraction layout does not match the source schema",
+        ));
+    }
     validate_schema(
         "source schema",
         &project.source,
@@ -56,6 +70,14 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         &mut issues,
     );
     for source in &project.extra_sources {
+        if let Some(layout) = &source.options.pdf
+            && layout.schema() != source.schema
+        {
+            issues.push(ValidationIssue::new(
+                format!("extra source `{}` format options", source.name),
+                "PDF extraction layout does not match the extra-source schema",
+            ));
+        }
         validate_schema(
             &format!("extra source `{}` schema", source.name),
             &source.schema,

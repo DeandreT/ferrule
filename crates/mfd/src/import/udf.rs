@@ -396,7 +396,7 @@ fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
         component_ids.push(component_id);
     }
 
-    let edge_from = read_edges(&structure, None);
+    let edge_from = read_edges(&structure, Some(component));
     let mut by_output = BTreeMap::new();
     let mut parameter_by_key = BTreeMap::new();
     let mut output_feeds = BTreeMap::new();
@@ -518,7 +518,7 @@ fn read_lookup_definition(
         return Err("lookup filter must have an output".to_string());
     };
 
-    let edge_from = read_edges(&structure, None);
+    let edge_from = read_edges(&structure, Some(component));
     if edge_from.len() != 5
         || edge_from.get(output_input) != Some(filter_output)
         || edge_from.get(filter_predicate) != Some(equal_output)
@@ -791,9 +791,18 @@ impl DefinitionContext<'_> {
                     .iter()
                     .rposition(|key| key.is_some_and(|key| self.edge_from.contains_key(&key)))
                     .map_or(1, |last| last + 1);
-                let args = (0..arity)
+                let mut args = (0..arity)
                     .map(|pos| input(pos, active))
-                    .collect::<Result<_, _>>()?;
+                    .collect::<Result<Vec<_>, _>>()?;
+                if matches!(mapped, "add" | "subtract" | "multiply" | "divide" | "round") {
+                    args = args
+                        .into_iter()
+                        .map(|arg| ScalarExpr::Call {
+                            function: "to_number".to_string(),
+                            args: vec![arg],
+                        })
+                        .collect();
+                }
                 Ok(ScalarExpr::Call {
                     function: mapped.to_string(),
                     args,

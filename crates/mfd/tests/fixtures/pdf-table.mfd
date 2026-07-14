@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="42">
+  <resources/>
+  <component name="pdf-table-map" uid="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="garden-report" library="pdf" uid="2" kind="34">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance">
+                <file role="inputinstance" name="garden-input.pdf"/>
+                <entry name="document" type="doc-pdf">
+                  <document schemafile="garden-layout.pxt" root="GardenReport"/>
+                  <entry name="GardenReport">
+                    <entry name="Heading" outkey="10"/>
+                    <entry name="Plant" outkey="11">
+                      <entry name="Name" outkey="12"/>
+                      <entry name="Quantity" outkey="13"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+          </data>
+        </component>
+        <component name="rows" library="text" uid="3" kind="16">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance"><entry name="document">
+                <entry name="Rows" inpkey="20">
+                  <entry name="Name" inpkey="21"/>
+                  <entry name="Quantity" inpkey="22"/>
+                </entry>
+              </entry></entry>
+            </root>
+            <text type="csv" outputinstance="garden.csv">
+              <settings separator="," firstrownames="true">
+                <names root="GardenRows" block="Rows">
+                  <field0 name="Name" type="string"/>
+                  <field1 name="Quantity" type="decimal"/>
+                </names>
+              </settings>
+            </text>
+          </data>
+        </component>
+        <component name="numeric" library="lang" uid="4" kind="5">
+          <sources><datapoint pos="0" key="30"/></sources>
+          <targets><datapoint pos="0" key="31"/></targets>
+        </component>
+        <component name="Plant" library="core" uid="5" kind="3">
+          <sources>
+            <datapoint pos="0" key="32"/>
+            <datapoint pos="1" key="33"/>
+          </sources>
+          <targets><datapoint pos="0" key="34"/><datapoint/></targets>
+        </component>
+        <component name="halve" library="garden-functions" uid="6" kind="19">
+          <data>
+            <root><entry name="value" inpkey="40" componentid="101"/></root>
+            <root><entry name="result" outkey="41" componentid="104"/></root>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="11"><edges><edge vertexkey="32"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="21"/></edges></vertex>
+          <vertex vertexkey="13"><edges><edge vertexkey="30"/><edge vertexkey="40"/></edges></vertex>
+          <vertex vertexkey="31"><edges><edge vertexkey="33"/></edges></vertex>
+          <vertex vertexkey="34"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="41"><edges><edge vertexkey="22"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+  <component name="halve" library="garden-functions" uid="100">
+    <structure>
+      <children>
+        <component name="value" library="core" uid="101" kind="6">
+          <targets><datapoint pos="0" key="1010"/></targets>
+          <data><input datatype="string"/><parameter usageKind="input" name="value"/></data>
+        </component>
+        <component name="constant" library="core" uid="102" kind="2">
+          <targets><datapoint pos="0" key="1020"/></targets>
+          <data><constant value="2" datatype="decimal"/></data>
+        </component>
+        <component name="divide" library="core" uid="103" kind="5">
+          <sources><datapoint pos="0" key="1030"/><datapoint pos="1" key="1031"/></sources>
+          <targets><datapoint pos="0" key="1032"/></targets>
+        </component>
+        <component name="result" library="core" uid="104" kind="7">
+          <sources><datapoint pos="0" key="1040"/></sources>
+          <data><output datatype="decimal"/><parameter usageKind="output" name="result"/></data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="1010" to="1030"/>
+      <edge from="1020" to="1031"/>
+      <edge from="1032" to="1040"/>
+    </connections>
+  </component>
+</mapping>

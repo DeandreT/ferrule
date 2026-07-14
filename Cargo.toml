@@ -12,6 +12,7 @@ members = [
     "crates/format-db",
     "crates/format-edi",
     "crates/format-flextext",
+    "crates/format-pdf",
     "crates/format-protobuf",
     "crates/mfd",
     "crates/cli",
@@ -37,6 +38,7 @@ format-xlsx = { path = "crates/format-xlsx" }
 format-db = { path = "crates/format-db" }
 format-edi = { path = "crates/format-edi" }
 format-flextext = { path = "crates/format-flextext" }
+format-pdf = { path = "crates/format-pdf" }
 format-protobuf = { path = "crates/format-protobuf" }
 mfd = { path = "crates/mfd" }
 cli = { path = "crates/cli" }
@@ -58,3 +60,4 @@ rfd = "0.17"
 rusqlite = { version = "0.37", features = ["bundled"] }
 jiff = "0.2.32"
 ureq = { version = "3.3", default-features = false, features = ["rustls"] }
+pdf-extract = "0.12"

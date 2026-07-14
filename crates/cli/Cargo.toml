@@ -22,6 +22,7 @@ format-db = { workspace = true }
 format-edi = { workspace = true }
 format-flextext = { workspace = true }
 format-protobuf = { workspace = true }
+format-pdf = { workspace = true }
 mfd = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }

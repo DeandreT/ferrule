@@ -1,6 +1,6 @@
 # Ferrule MapForce Workflow-Parity Roadmap
 
-Updated: 2026-07-12
+Updated: 2026-07-13
 
 ## Goal
 
@@ -17,7 +17,9 @@ clean-room interoperability, and extensible adapters.
 
 ## Current Baseline
 
-- Formats, both directions: XML, JSON, CSV, SQLite, X12, and EDIFACT.
+- Formats, both directions: XML, JSON, CSV/fixed-width/FlexText, SQLite, XLSX,
+  X12, and EDIFACT; Protocol Buffers are target-only and visual PDF extraction
+  is source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   bounded existential reduction over generated scalar sequences,
@@ -25,11 +27,11 @@ clean-room interoperability, and extensible adapters.
   duplicate-preserving multi-source inner equijoins, positions, seven
   aggregates, computed aggregate expressions, dynamic JSON target properties,
   structural group projection, mapped and computed XML occurrence sequences,
-  contiguous boundary-driven grouping, and 45 scalar built-ins.
+  contiguous boundary-driven grouping, and 51 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 97/120 local MapForce 2026 samples import; 57 import without
+- `.mfd` survey: 114/120 local MapForce 2026 samples import; 76 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -41,10 +43,10 @@ clean-room interoperability, and extensible adapters.
 | --- | --- | --- |
 | XML | XSD subset, includes/imports, attributes, simple content, `xsi:nil`, selected derived-type output | Namespace identity, derived-type input identity, wildcards, mixed content |
 | JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`, typed dynamic properties | General union/composition schemas, mixed arrays, unconstrained dynamic values |
-| Flat files | Delimited CSV | Fixed length, reusable structured-text/FlexText-style layouts |
+| Flat files | Delimited CSV, fixed length, reusable FlexText layouts | Additional FlexText commands and string-fed parsing |
 | Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | None | XLSX, Protobuf, then demand-driven XBRL/PDF support |
+| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources | XBRL plus advanced PDF extraction and PDF targets |
 | Dataflow | One primary source plus named lookup/join sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
