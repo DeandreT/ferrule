@@ -25,6 +25,7 @@ mod iteration;
 mod join;
 mod materialize;
 mod output_parameter;
+mod protobuf_target;
 mod schema;
 mod scope;
 mod sequence_scalar;
@@ -47,7 +48,7 @@ use iteration::{
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
     read_edi_component, read_fixed_width_component, read_http_get_component, read_json_component,
-    read_schema_component, read_xlsx_component, schema_node_at,
+    read_protobuf_component, read_schema_component, read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{primary_index, runtime_names};
@@ -188,6 +189,15 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         warnings.push(format!("skipped web-service component `{name}`: {reason}"));
                     }
                 },
+                "binary" if component.attribute("kind") == Some("33") => {
+                    match read_protobuf_component(&component, path, &mut warnings) {
+                        Ok(component) => schema_components.push(component),
+                        Err(reason) => {
+                            note_skipped_library(&mut skipped_libraries, "binary/protobuf");
+                            warnings.push(format!("skipped protobuf component `{name}`: {reason}"));
+                        }
+                    }
+                }
                 "core" if component.attribute("kind") == Some("7") => {
                     output_parameters.push(output_parameter::read(&component));
                 }
@@ -219,7 +229,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         } else {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
-                                 (only xml/json/csv/fixed-length/edi/db/xlsx, requestless HTTP GET XML, scalar user-defined functions, and \
+                                 (only xml/json/csv/fixed-length/edi/db/xlsx/protobuf targets, requestless HTTP GET XML, scalar user-defined functions, and \
                                  core/lang function components and supported XPath 2 functions import)"
                             ));
                         }
@@ -377,6 +387,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     udf::structured::prepare_target_frames(&structured_udf_targets, &mut builder);
     generated_occurrence::infer(target, &mut builder, &mut iterations);
     iterations.sort_by_key(|iteration| iteration.target_path.len());
+    let explicit_iteration_paths = iterations
+        .iter()
+        .map(|iteration| iteration.target_path.clone())
+        .collect::<BTreeSet<_>>();
     join::prepare_iterations(&iterations, &mut builder, &mut scope_builder);
     for iteration in &iterations {
         let feed = builder.resolve_iteration_feed(iteration.feed);
@@ -394,6 +408,14 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &bindings,
         &mut builder,
         &mut scope_builder,
+    );
+    protobuf_target::infer_singleton_messages(
+        target,
+        &bindings,
+        &explicit_iteration_paths,
+        &mut builder,
+        &mut scope_builder,
+        &mut skipped_iteration_paths,
     );
     let structured_udf_paths = structured_udf_targets
         .iter()

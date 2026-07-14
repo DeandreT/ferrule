@@ -10,6 +10,7 @@
 //! fallback), CSV text components (inline delimiter/header settings), and EDI
 //! text component graphs (entry-tree fallback, explicitly non-executable
 //! until a positional EDI schema is supplied),
+//! proto2 binary target components (typed from their referenced `.proto`),
 //! single-table SQLite database components (schema introspected from the
 //! referenced database when reachable), the common core functions,
 //! aggregates (count/sum/avg/min/max/string-join/item-at, converted to

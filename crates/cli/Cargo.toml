@@ -20,6 +20,7 @@ format-xml = { workspace = true }
 format-json = { workspace = true }
 format-db = { workspace = true }
 format-edi = { workspace = true }
+format-protobuf = { workspace = true }
 mfd = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }

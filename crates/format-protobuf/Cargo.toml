@@ -1,0 +1,11 @@
+[package]
+name = "format-protobuf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Validated proto2-lite layouts and dynamic Protocol Buffers output"
+
+[dependencies]
+ir = { workspace = true }
+thiserror = { workspace = true }
