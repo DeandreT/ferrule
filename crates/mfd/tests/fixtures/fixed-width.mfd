@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="fixed-width-map" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="records" library="text" uid="2" kind="16">
+					<view rbx="300" rby="300"/>
+					<data>
+						<root>
+							<header><namespaces/></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Rows" outkey="10" expanded="1">
+										<entry name="Code" outkey="11"/>
+										<entry name="Name" outkey="12"/>
+										<entry name="Active" outkey="13"/>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<text type="flf" inputinstance="fixed-width.txt" encoding="1000" byteorder="1" byteordermark="0">
+							<settings delimiter="true" fillchar="_" removeempty="true">
+								<names root="Records" block="Rows">
+									<field2 name="Active" type="boolean" length="5"/>
+									<field0 name="Code" type="integer" length="3"/>
+									<field1 name="Name" type="string" length="6"/>
+								</names>
+							</settings>
+						</text>
+					</data>
+				</component>
+				<component name="output" library="text" uid="3" kind="16">
+					<properties XSLTDefaultOutput="1"/>
+					<view ltx="700" rbx="1000" rby="300"/>
+					<data>
+						<root>
+							<header><namespaces/></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Rows" inpkey="20" expanded="1">
+										<entry name="Code" inpkey="21"/>
+										<entry name="Name" inpkey="22"/>
+										<entry name="Active" inpkey="23"/>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<text type="csv" outputinstance="output.csv" encoding="1000">
+							<settings separator="," quote="&quot;" firstrownames="true">
+								<names root="Output" block="Rows">
+									<field0 name="Code" type="integer"/>
+									<field1 name="Name" type="string"/>
+									<field2 name="Active" type="boolean"/>
+								</names>
+							</settings>
+						</text>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+					<vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+					<vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+					<vertex vertexkey="13"><edges><edge vertexkey="23"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

@@ -5,6 +5,7 @@ use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::FormatOptions;
 
 mod csv;
+mod fixed_width;
 mod generic_xml;
 mod xlsx;
 mod xml_ports;
@@ -18,6 +19,13 @@ pub(super) fn read_xlsx_component(
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     xlsx::read(component, warnings)
+}
+
+pub(super) fn read_fixed_width_component(
+    component: &roxmltree::Node<'_, '_>,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    fixed_width::read(component, warnings)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -69,7 +77,7 @@ pub(super) fn entry_key_sets(root: &roxmltree::Node) -> (BTreeSet<u32>, BTreeSet
     (inputs, outputs)
 }
 
-fn is_default_output(component: &roxmltree::Node) -> bool {
+pub(super) fn is_default_output(component: &roxmltree::Node) -> bool {
     component
         .children()
         .find(|node| node.has_tag_name("properties"))
@@ -521,7 +529,7 @@ pub(super) fn read_csv_component(
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "root")?;
     let configured_block = names_el.and_then(|names| names.attribute("block"));
-    let block = select_csv_block(root_el, configured_block, &name, warnings)?;
+    let block = select_csv_block(root_el, configured_block, &name, "csv", warnings)?;
 
     let fields: Vec<SchemaNode> = names_el
         .map(|names| {
