@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+	<resources/>
+	<component name="defaultmap" uid="1" editable="1">
+		<properties SelectedLanguage="builtin"/>
+		<structure>
+			<children>
+				<component name="BranchWorkbook" library="xlsx" uid="2" kind="26">
+					<properties/>
+					<data>
+						<root>
+							<header><namespaces><namespace/><namespace uid="http://www.altova.com/mapforce"/></namespaces></header>
+							<entry name="FileInstance" ns="1" expanded="1">
+								<entry name="document" ns="1" expanded="1">
+									<entry name="Workbook" expanded="1">
+										<entry name="Worksheet" outkey="10" expanded="1">
+											<condition><expression><function name="equal-ignorecase" library="xlsx">
+												<expression><attribute name="Name"/></expression>
+												<expression><constant value="Branch"/></expression>
+											</function></expression></condition>
+											<ranges>
+												<range id="11" start="2" count="1"/>
+												<range id="12" start="4" count="1"/>
+											</ranges>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="11" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="11" annotation="Name" datatype="string">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="4" datatype="long"/></expression></function></expression></condition>
+												</entry>
+											</entry>
+											<entry name="Row" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="12" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="12" annotation="City" datatype="string">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="4" datatype="long"/></expression></function></expression></condition>
+												</entry>
+											</entry>
+										</entry>
+										<entry name="Worksheet" expanded="1">
+											<condition><expression><function name="equal-ignorecase" library="xlsx">
+												<expression><attribute name="Name"/></expression>
+												<expression><constant value="Roster"/></expression>
+											</function></expression></condition>
+											<ranges><range id="21" start="1"/></ranges>
+											<entry name="Row" outkey="20" enabletitlerow="1" expanded="1">
+												<condition><expression><function name="is-range-id"><expression><constant value="21" datatype="long"/></expression></function></expression></condition>
+												<entry name="Cell" outkey="21" annotation="First" datatype="string">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="1" datatype="long"/></expression></function></expression></condition>
+												</entry>
+												<entry name="Cell" outkey="22" annotation="Team" datatype="string">
+													<condition><expression><function name="equal" library="core"><expression><attribute name="n"/></expression><expression><constant value="3" datatype="long"/></expression></function></expression></condition>
+												</entry>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<excel inputinstance="branches.xlsx"/>
+					</data>
+				</component>
+				<component name="Directory" library="xml" uid="3" kind="14">
+					<properties XSLTDefaultOutput="1"/>
+					<data>
+						<root>
+							<header><namespaces><namespace/></namespaces></header>
+							<entry name="FileInstance" expanded="1">
+								<entry name="document" expanded="1">
+									<entry name="Directory" expanded="1">
+										<entry name="Branch" inpkey="100" expanded="1">
+											<entry name="Name" inpkey="101"/>
+											<entry name="City" inpkey="102"/>
+											<entry name="Member" inpkey="103" expanded="1">
+												<entry name="First" inpkey="104"/>
+												<entry name="Team" inpkey="105"/>
+											</entry>
+										</entry>
+									</entry>
+								</entry>
+							</entry>
+						</root>
+						<document schema="xlsx-composite-target.xsd" instanceroot="{}Directory"/>
+					</data>
+				</component>
+			</children>
+			<graph directed="1">
+				<edges/>
+				<vertices>
+					<vertex vertexkey="10"><edges><edge vertexkey="100"/></edges></vertex>
+					<vertex vertexkey="11"><edges><edge vertexkey="101"/></edges></vertex>
+					<vertex vertexkey="12"><edges><edge vertexkey="102"/></edges></vertex>
+					<vertex vertexkey="20"><edges><edge vertexkey="103"/></edges></vertex>
+					<vertex vertexkey="21"><edges><edge vertexkey="104"/></edges></vertex>
+					<vertex vertexkey="22"><edges><edge vertexkey="105"/></edges></vertex>
+				</vertices>
+			</graph>
+		</structure>
+	</component>
+</mapping>

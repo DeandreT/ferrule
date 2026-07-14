@@ -466,6 +466,91 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
     );
 }
 
+#[test]
+fn empty_path_child_iteration_selects_each_grouped_member_frame() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::SourceField {
+                frame: Some(vec!["Staff".into()]),
+                path: vec!["Department".into()],
+            },
+        ),
+        (
+            1,
+            Node::SourceField {
+                frame: Some(vec!["Staff".into()]),
+                path: vec!["Name".into()],
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Department".into(),
+                iteration: mapping::ScopeIteration::Source(vec!["Staff".into()]),
+                group_by: Some(0),
+                children: vec![Scope {
+                    target_field: "Person".into(),
+                    iteration: mapping::ScopeIteration::Source(Vec::new()),
+                    bindings: vec![Binding {
+                        target_field: "Name".into(),
+                        node: 1,
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    let member = |department: &str, name: &str| {
+        Instance::Group(vec![
+            (
+                "Department".into(),
+                Instance::Scalar(Value::String(department.into())),
+            ),
+            ("Name".into(), Instance::Scalar(Value::String(name.into()))),
+        ])
+    };
+    let source = Instance::Group(vec![(
+        "Staff".into(),
+        Instance::Repeated(vec![
+            member("Engineering", "Ada"),
+            member("Engineering", "Lin"),
+            member("Support", "Grace"),
+        ]),
+    )]);
+
+    let target = run(&project, &source).unwrap();
+    let departments = target
+        .field("Department")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    let engineering = departments[0]
+        .field("Person")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    let names = engineering
+        .iter()
+        .filter_map(|person| person.field("Name"))
+        .filter_map(Instance::as_scalar)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [Value::String("Ada".into()), Value::String("Lin".into())]
+    );
+}
+
 /// Aggregates reduce a repeating collection found by outward context
 /// fallback: count/sum inside an iterating scope see the current
 /// item's children, and join with a separator works over leaf values.

@@ -105,6 +105,11 @@ pub fn run_project_with_paths(
             rows.len()
         }
         "xlsx" => {
+            if project.target_options.xlsx_composite.is_some() {
+                anyhow::bail!(
+                    "composite XLSX output is not supported; `xlsx_composite` is input-only"
+                );
+            }
             if !project.target_options.xlsx_rows.is_empty() {
                 anyhow::bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
             }
@@ -273,9 +278,9 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
 }
 
 /// Reads any supported instance file (format picked by extension) into an
-/// [`Instance`], shaped by `schema`. CSV, XLSX, and single-table database inputs
-/// arrive wrapped in [`Instance::Repeated`]; a composite database schema
-/// produces its grouped table shape directly.
+/// [`Instance`], shaped by `schema`. CSV, flat/transposed XLSX, and single-table
+/// database inputs arrive wrapped in [`Instance::Repeated`]; composite XLSX and
+/// database schemas produce their grouped shapes directly.
 fn read_instance(
     path: &Path,
     schema: &SchemaNode,
@@ -293,25 +298,35 @@ fn read_instance(
             Instance::Repeated(rows)
         }
         "xlsx" => {
-            let rows = if options.xlsx_rows.is_empty() {
-                format_xlsx::read(
-                    path,
-                    schema,
-                    options.xlsx_sheet.as_deref(),
-                    options.xlsx_start_row.unwrap_or(1),
-                    &options.xlsx_columns,
-                    options.has_header_row.unwrap_or(true),
-                )
+            if let Some(layout) = &options.xlsx_composite {
+                if has_legacy_xlsx_layout(options) {
+                    anyhow::bail!(
+                        "`xlsx_composite` cannot be combined with legacy XLSX sheet, row, column, or header options"
+                    );
+                }
+                format_xlsx::read_composite(path, schema, layout)
+                    .with_context(|| format!("reading input {}", path.display()))?
             } else {
-                format_xlsx::read_transposed(
-                    path,
-                    schema,
-                    options.xlsx_sheet.as_deref(),
-                    &options.xlsx_rows,
-                )
+                let rows = if options.xlsx_rows.is_empty() {
+                    format_xlsx::read(
+                        path,
+                        schema,
+                        options.xlsx_sheet.as_deref(),
+                        options.xlsx_start_row.unwrap_or(1),
+                        &options.xlsx_columns,
+                        options.has_header_row.unwrap_or(true),
+                    )
+                } else {
+                    format_xlsx::read_transposed(
+                        path,
+                        schema,
+                        options.xlsx_sheet.as_deref(),
+                        &options.xlsx_rows,
+                    )
+                }
+                .with_context(|| format!("reading input {}", path.display()))?;
+                Instance::Repeated(rows)
             }
-            .with_context(|| format!("reading input {}", path.display()))?;
-            Instance::Repeated(rows)
         }
         "xml" => format_xml::read(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
@@ -338,6 +353,14 @@ fn read_instance(
         other => bail!("unsupported input file extension: .{other}"),
     };
     Ok(instance)
+}
+
+fn has_legacy_xlsx_layout(options: &FormatOptions) -> bool {
+    options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || !options.xlsx_rows.is_empty()
+        || options.has_header_row.is_some()
 }
 
 fn extension_of(path: &Path) -> anyhow::Result<String> {

@@ -1,4 +1,4 @@
-//! XLSX worksheet instance I/O for flat row mappings.
+//! XLSX worksheet instance I/O for row, transposed, and composite mappings.
 //!
 //! Like CSV, an XLSX table uses a non-repeating group of scalar fields as
 //! its row schema. Worksheet coordinates are one-based at this API boundary
@@ -11,6 +11,10 @@ use calamine::{Data, Range, Reader, Xlsx};
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use rust_xlsxwriter::{Workbook, Worksheet};
 use thiserror::Error;
+
+mod composite;
+
+pub use composite::{from_bytes_composite, read_composite};
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
@@ -39,6 +43,12 @@ pub enum XlsxFormatError {
         expected: ScalarType,
         value: String,
     },
+    #[error("composite XLSX root schema must be a non-repeating group")]
+    CompositeRootSchema,
+    #[error("invalid composite XLSX schema path `{path}`: {reason}")]
+    CompositePath { path: String, reason: &'static str },
+    #[error("composite XLSX schema path `{0}` is mapped more than once")]
+    DuplicateCompositePath(String),
     #[error("row {row}: expected a group, got {got}")]
     RowShape { row: usize, got: &'static str },
     #[error("row {row}: missing column `{field}`")]
@@ -145,6 +155,16 @@ pub fn from_bytes(
     let fields = row_fields(schema)?;
     let columns = column_indexes(fields.len(), columns)?;
     let range = worksheet_range(bytes, sheet)?;
+    rows_from_range(&range, &fields, start_row, &columns, has_header)
+}
+
+fn rows_from_range(
+    range: &Range<Data>,
+    fields: &[(&str, ScalarType)],
+    start_row: u32,
+    columns: &[u32],
+    has_header: bool,
+) -> Result<Vec<Instance>, XlsxFormatError> {
     let Some((last_row, _)) = range.end() else {
         return Ok(Vec::new());
     };
@@ -559,7 +579,11 @@ fn instance_type_name(instance: &Instance) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use super::composite::validate_composite_layout;
     use super::*;
+    use mapping::{
+        XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxRow, XlsxTableRegion,
+    };
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -844,6 +868,215 @@ mod tests {
         assert!(matches!(
             error,
             XlsxFormatError::Parse { row: 4, field, .. } if field == "amount"
+        ));
+    }
+
+    fn xlsx_row(value: u32) -> XlsxRow {
+        XlsxRow::new(value).unwrap()
+    }
+
+    fn xlsx_column(value: u32) -> XlsxColumn {
+        XlsxColumn::new(value).unwrap()
+    }
+
+    fn composite_schema() -> SchemaNode {
+        SchemaNode::group(
+            "Workbook",
+            vec![
+                SchemaNode::scalar("Company", ScalarType::String),
+                SchemaNode::group(
+                    "Office",
+                    vec![
+                        SchemaNode::scalar("Name", ScalarType::String),
+                        SchemaNode::group(
+                            "Address",
+                            vec![
+                                SchemaNode::scalar("Street", ScalarType::String),
+                                SchemaNode::scalar("City", ScalarType::String),
+                            ],
+                        ),
+                    ],
+                )
+                .repeating(),
+                SchemaNode::group(
+                    "Staff",
+                    vec![
+                        SchemaNode::scalar("First", ScalarType::String),
+                        SchemaNode::scalar("Extension", ScalarType::Int),
+                        SchemaNode::scalar("Active", ScalarType::Bool),
+                    ],
+                )
+                .repeating(),
+                SchemaNode::scalar("Unmapped", ScalarType::String),
+            ],
+        )
+    }
+
+    fn fixed_cell(path: &[&str], row: u32, column: u32) -> XlsxFixedCell {
+        XlsxFixedCell {
+            path: path.iter().map(|segment| (*segment).to_string()).collect(),
+            row: xlsx_row(row),
+            column: xlsx_column(column),
+        }
+    }
+
+    fn composite_layout() -> XlsxCompositeLayout {
+        XlsxCompositeLayout {
+            table: XlsxTableRegion {
+                path: vec!["Staff".into()],
+                sheet: Some("Staff".into()),
+                start_row: xlsx_row(1),
+                columns: vec![xlsx_column(1), xlsx_column(3), xlsx_column(5)],
+                has_header: true,
+            },
+            records: vec![
+                XlsxFixedRecord {
+                    path: Vec::new(),
+                    sheet: Some("Office".into()),
+                    cells: vec![fixed_cell(&["Company"], 1, 2)],
+                },
+                XlsxFixedRecord {
+                    path: vec!["Office".into()],
+                    sheet: Some("Office".into()),
+                    cells: vec![
+                        fixed_cell(&["Name"], 2, 2),
+                        fixed_cell(&["Address", "Street"], 3, 2),
+                        fixed_cell(&["Address", "City"], 4, 2),
+                    ],
+                },
+            ],
+        }
+    }
+
+    fn composite_workbook() -> Vec<u8> {
+        let mut workbook = Workbook::new();
+        let office = workbook.add_worksheet();
+        office.set_name("Office").unwrap();
+        office.write_string(0, 1, "Example Ltd").unwrap();
+        office.write_string(1, 1, "West").unwrap();
+        office.write_string(2, 1, "Main Street").unwrap();
+        let staff = workbook.add_worksheet();
+        staff.set_name("Staff").unwrap();
+        staff.write_string(0, 0, "First").unwrap();
+        staff.write_string(0, 2, "Extension").unwrap();
+        staff.write_string(0, 4, "Active").unwrap();
+        staff.write_string(1, 0, "Ada").unwrap();
+        staff.write_number(1, 2, 41.0).unwrap();
+        staff.write_boolean(1, 4, true).unwrap();
+        staff.write_string(2, 1, "ignored").unwrap();
+        staff.write_string(3, 0, "Lin").unwrap();
+        staff.write_number(3, 2, 7.0).unwrap();
+        staff.write_boolean(3, 4, false).unwrap();
+        workbook.save_to_buffer().unwrap()
+    }
+
+    #[test]
+    fn composite_reader_materializes_fixed_records_and_sparse_table() {
+        let bytes = composite_workbook();
+        let actual =
+            from_bytes_composite(&bytes, &composite_schema(), &composite_layout()).unwrap();
+
+        assert_eq!(
+            actual,
+            Instance::Group(vec![
+                (
+                    "Company".into(),
+                    Instance::Scalar(Value::String("Example Ltd".into())),
+                ),
+                (
+                    "Office".into(),
+                    Instance::Repeated(vec![Instance::Group(vec![
+                        (
+                            "Name".into(),
+                            Instance::Scalar(Value::String("West".into())),
+                        ),
+                        (
+                            "Address".into(),
+                            Instance::Group(vec![
+                                (
+                                    "Street".into(),
+                                    Instance::Scalar(Value::String("Main Street".into())),
+                                ),
+                                ("City".into(), Instance::Scalar(Value::Null)),
+                            ]),
+                        ),
+                    ])]),
+                ),
+                (
+                    "Staff".into(),
+                    Instance::Repeated(vec![
+                        Instance::Group(vec![
+                            (
+                                "First".into(),
+                                Instance::Scalar(Value::String("Ada".into())),
+                            ),
+                            ("Extension".into(), Instance::Scalar(Value::Int(41))),
+                            ("Active".into(), Instance::Scalar(Value::Bool(true))),
+                        ]),
+                        Instance::Group(vec![
+                            (
+                                "First".into(),
+                                Instance::Scalar(Value::String("Lin".into())),
+                            ),
+                            ("Extension".into(), Instance::Scalar(Value::Int(7))),
+                            ("Active".into(), Instance::Scalar(Value::Bool(false))),
+                        ]),
+                    ]),
+                ),
+                ("Unmapped".into(), Instance::Scalar(Value::Null)),
+            ])
+        );
+
+        let path = temp_file("composite");
+        std::fs::write(&path, bytes).unwrap();
+        let native = read_composite(&path, &composite_schema(), &composite_layout()).unwrap();
+        std::fs::remove_file(path).ok();
+        assert_eq!(native, actual);
+    }
+
+    #[test]
+    fn composite_layout_rejects_invalid_paths_kinds_and_collisions() {
+        let schema = composite_schema();
+        let mut layout = composite_layout();
+        layout.table.path = vec!["Company".into()];
+        assert!(matches!(
+            validate_composite_layout(&schema, &layout),
+            Err(XlsxFormatError::CompositePath { .. })
+        ));
+
+        let mut layout = composite_layout();
+        layout.records[1].cells[0].path = vec!["Address".into()];
+        assert!(matches!(
+            validate_composite_layout(&schema, &layout),
+            Err(XlsxFormatError::CompositePath { .. })
+        ));
+
+        let mut layout = composite_layout();
+        layout.records[0].cells.push(fixed_cell(&["Company"], 2, 2));
+        assert!(matches!(
+            validate_composite_layout(&schema, &layout),
+            Err(XlsxFormatError::DuplicateCompositePath(path)) if path == "Company"
+        ));
+
+        let mut layout = composite_layout();
+        layout.table.columns[1] = xlsx_column(1);
+        assert!(matches!(
+            validate_composite_layout(&schema, &layout),
+            Err(XlsxFormatError::InvalidCoordinate)
+        ));
+    }
+
+    #[test]
+    fn composite_reader_reports_missing_named_sheet() {
+        let mut layout = composite_layout();
+        layout.records[0].sheet = Some("Missing".into());
+
+        let error =
+            from_bytes_composite(&composite_workbook(), &composite_schema(), &layout).unwrap_err();
+
+        assert!(matches!(
+            error,
+            XlsxFormatError::MissingWorksheet(sheet) if sheet == "Missing"
         ));
     }
 }

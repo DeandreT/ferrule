@@ -284,8 +284,9 @@ fn is_group_sequence_path(
         return false;
     };
     let mut node = &source.schema;
-    let mut repeats =
-        node.repeating || matches!(source.format, ComponentFormat::Csv | ComponentFormat::Xlsx);
+    let mut repeats = node.repeating
+        || source.format == ComponentFormat::Csv
+        || source.format == ComponentFormat::Xlsx && source.options.xlsx_composite.is_none();
     for segment in &source_path.path {
         let Some(child) = node.child(segment) else {
             return false;
@@ -346,10 +347,11 @@ fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
         }
         let scalar = builder.sources.iter().any(|source| {
             source.ports.get(&feed).is_some_and(|path| {
-                !matches!(
-                    source.format,
-                    ComponentFormat::Csv | ComponentFormat::Xlsx | ComponentFormat::Db
-                ) && scalar_schema_path(&source.schema, path)
+                let externally_repeated =
+                    matches!(source.format, ComponentFormat::Csv | ComponentFormat::Db)
+                        || source.format == ComponentFormat::Xlsx
+                            && source.options.xlsx_composite.is_none();
+                !externally_repeated && scalar_schema_path(&source.schema, path)
             })
         }) || builder.fn_by_output.get(&feed).is_some_and(|index| {
             let component = &builder.fn_components[*index];
