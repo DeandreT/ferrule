@@ -73,6 +73,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "is_xml_nil" => "is-xsi-nil",
         "date_from_datetime" => "date-from-datetime",
         "month_from_datetime" => "month-from-datetime",
+        "day_from_datetime" => "day-from-datetime",
         "time_from_datetime" => "time-from-datetime",
         "datetime_from_date_and_time" => "datetime-from-date-and-time",
         "datetime_from_parts" => "datetime-from-parts",
@@ -95,6 +96,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "pad_string_left"
         | "pad_string_right"
         | "month_from_datetime"
+        | "day_from_datetime"
         | "time_from_datetime"
         | "datetime_from_date_and_time"
         | "datetime_from_parts"

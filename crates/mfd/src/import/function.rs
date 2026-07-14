@@ -290,9 +290,22 @@ pub(super) fn is_db_where(component: &FnComponent) -> bool {
 }
 
 pub(super) fn is_db_function_component(component: &roxmltree::Node<'_, '_>) -> bool {
-    component.attribute("kind") == Some("21")
-        || component.attribute("kind") == Some("5")
-            && component.attribute("name") == Some("substitute-null")
+    component.attribute("library") == Some("db")
+        && (component.attribute("kind") == Some("21")
+            || component.attribute("kind") == Some("5")
+                && matches!(
+                    component.attribute("name"),
+                    Some("substitute-null" | "is-null" | "is-not-null")
+                ))
+}
+
+pub(super) fn is_xbrl_measure_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("xbrl")
+        && component.attribute("kind") == Some("5")
+        && matches!(
+            component.attribute("name"),
+            Some("xbrl-measure-currency" | "xbrl-measure-shares")
+        )
 }
 
 pub(super) fn produces_scalar(component: &FnComponent) -> bool {
@@ -307,6 +320,15 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
                 | "now"
                 | "set-xsi-nil"
         )
+        || component.kind == 5
+            && component.library == "db"
+            && matches!(component.name.as_str(), "is-null" | "is-not-null")
+        || component.kind == 5
+            && component.library == "xbrl"
+            && matches!(
+                component.name.as_str(),
+                "xbrl-measure-currency" | "xbrl-measure-shares"
+            )
         || component.kind == 5 && aggregate_op(&component.name).is_some()
         || map_name(&component.name).is_some()
 }
@@ -428,6 +450,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "round" | "round-precision" => "round",
         "date-from-datetime" => "date_from_datetime",
         "month-from-datetime" => "month_from_datetime",
+        "day-from-datetime" => "day_from_datetime",
         "time-from-datetime" => "time_from_datetime",
         "datetime-from-date-and-time" => "datetime_from_date_and_time",
         "datetime-from-parts" => "datetime_from_parts",
@@ -445,7 +468,9 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
 mod tests {
     use ir::{ScalarType, Value};
 
-    use super::{map_name, read};
+    use super::{
+        is_db_function_component, is_xbrl_measure_component, map_name, produces_scalar, read,
+    };
 
     #[test]
     fn scalar_names_use_canonical_ir_spelling() {
@@ -454,6 +479,7 @@ mod tests {
         assert_eq!(map_name("format-number"), Some("format_number"));
         assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
         assert_eq!(map_name("month-from-datetime"), Some("month_from_datetime"));
+        assert_eq!(map_name("day-from-datetime"), Some("day_from_datetime"));
         assert_eq!(
             map_name("datetime-from-date-and-time"),
             Some("datetime_from_date_and_time")
@@ -465,6 +491,46 @@ mod tests {
         assert_eq!(map_name("edifact-to-datetime"), Some("edifact_to_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
         assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
+    }
+
+    #[test]
+    fn specialized_scalar_component_classifiers_are_exact() -> Result<(), Box<dyn std::error::Error>>
+    {
+        for (library, name, accepted) in [
+            ("db", "is-null", true),
+            ("db", "is-not-null", true),
+            ("db", "substitute-null", true),
+            ("db", "other", false),
+            ("xbrl", "xbrl-measure-currency", true),
+            ("xbrl", "xbrl-measure-shares", true),
+            ("xbrl", "other", false),
+        ] {
+            let xml = format!(
+                r#"<component library="{library}" name="{name}" kind="5"><targets><datapoint pos="0" key="1"/></targets></component>"#
+            );
+            let document = roxmltree::Document::parse(&xml)?;
+            let node = document.root_element();
+            let classified = if library == "db" {
+                is_db_function_component(&node)
+            } else {
+                is_xbrl_measure_component(&node)
+            };
+            assert_eq!(classified, accepted, "{library}/{name}");
+            if accepted && name != "substitute-null" {
+                assert!(produces_scalar(&read(&node)), "{library}/{name}");
+            }
+        }
+
+        let wrong_db_library =
+            roxmltree::Document::parse(r#"<component library="core" name="is-null" kind="5"/>"#)?;
+        assert!(!is_db_function_component(&wrong_db_library.root_element()));
+        let wrong_xbrl_library = roxmltree::Document::parse(
+            r#"<component library="core" name="xbrl-measure-shares" kind="5"/>"#,
+        )?;
+        assert!(!is_xbrl_measure_component(
+            &wrong_xbrl_library.root_element()
+        ));
+        Ok(())
     }
 
     #[test]
