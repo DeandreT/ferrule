@@ -7,7 +7,9 @@ use eframe::egui;
 use egui_snarl::ui::{PinInfo, SnarlViewer, SnarlWidget};
 use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Project, Scope, ScopeIteration};
+use mapping::{
+    AggregateOp, Binding, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+};
 use web_demo::browser_download::download_utf8_text;
 use web_demo::project_document::{self, ProjectDocumentError};
 use web_demo::runtime::{self, DataFormat};
@@ -115,6 +117,7 @@ fn demo_project() -> Project {
         root: Scope {
             target_field: String::new(),
             iteration: ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -131,6 +134,7 @@ fn demo_project() -> Project {
             children: vec![Scope {
                 target_field: "Order".into(),
                 iteration: ScopeIteration::Source(vec!["Order".into()]),
+                construction: ScopeConstruction::Constructed,
                 filter: None,
                 group_by: None,
                 group_starting_with: None,

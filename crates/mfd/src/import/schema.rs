@@ -7,8 +7,12 @@ use mapping::FormatOptions;
 mod csv;
 mod fixed_width;
 mod generic_xml;
+mod http_get;
+mod shared;
 mod xlsx;
 mod xml_ports;
+
+pub(super) use shared::{entry_key_sets, is_default_output, parse_u32, read_xml_schema_file};
 
 use csv::select_block as select_csv_block;
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
@@ -26,6 +30,14 @@ pub(super) fn read_fixed_width_component(
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     fixed_width::read(component, warnings)
+}
+
+pub(super) fn read_http_get_component(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    http_get::read(component, mfd_path, warnings)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -57,32 +69,6 @@ pub(super) struct SchemaComponent {
     pub(super) output_keys: BTreeSet<u32>,
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
-}
-
-pub(super) fn parse_u32(attr: Option<&str>) -> Option<u32> {
-    attr.and_then(|a| a.parse().ok())
-}
-
-pub(super) fn entry_key_sets(root: &roxmltree::Node) -> (BTreeSet<u32>, BTreeSet<u32>) {
-    let mut inputs = BTreeSet::new();
-    let mut outputs = BTreeSet::new();
-    for entry in root.descendants().filter(|node| node.has_tag_name("entry")) {
-        if let Some(key) = parse_u32(entry.attribute("inpkey")) {
-            inputs.insert(key);
-        }
-        if let Some(key) = parse_u32(entry.attribute("outkey")) {
-            outputs.insert(key);
-        }
-    }
-    (inputs, outputs)
-}
-
-pub(super) fn is_default_output(component: &roxmltree::Node) -> bool {
-    component
-        .children()
-        .find(|node| node.has_tag_name("properties"))
-        .and_then(|properties| properties.attribute("XSLTDefaultOutput"))
-        == Some("1")
 }
 
 /// Reads an xml schema component: entry tree, ports, and the schema itself
@@ -150,9 +136,8 @@ pub(super) fn read_schema_component(
     let mut schema = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
-            let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
-            match format_xml::xsd::import_root(&xsd_path, instance_root.first().map(String::as_str))
-            {
+            let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
+            match read_xml_schema_file(&schema_path, instance_root.first().map(String::as_str)) {
                 Ok(schema) => {
                     if instance_root.len() <= 1 {
                         Some(schema)
@@ -181,8 +166,19 @@ pub(super) fn read_schema_component(
         })
         .unwrap_or_else(|| entry_tree_schema(&entry));
     if let Some(rel) = document.and_then(|document| document.attribute("schema")) {
-        let xsd_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
-        super::alternatives::merge_conditioned_xml_types(&entry, &mut schema, &xsd_path, warnings);
+        let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
+        if !schema_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dtd"))
+        {
+            super::alternatives::merge_conditioned_xml_types(
+                &entry,
+                &mut schema,
+                &schema_path,
+                warnings,
+            );
+        }
     }
     merge_generic_xml_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="28">
+  <resources/>
+  <component name="defaultmap" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="GET snapshot" library="webservice" uid="2" kind="20">
+          <properties/>
+          <data>
+            <root><entry name="HTTPMessage"><entry name="HTTPBody"/></entry></root>
+            <root rootindex="1">
+              <entry name="HTTPMessage">
+                <entry name="HTTPBody">
+                  <entry name="document" type="doc-xml">
+                    <document schemafile="http-copy.dtd" root="Snapshot" encoding="UTF-8"/>
+                    <entry name="Snapshot" outkey="30"/>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <wsdl kind="call" sourceMode="manual" url="https://example.invalid/snapshot" timeout="25" httpmethod="GET"/>
+          </data>
+        </component>
+        <component name="Snapshot" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <entry name="FileInstance"><entry name="document"><entry name="Snapshot" inpkey="40"/></entry></entry>
+            </root>
+            <document schema="http-copy.dtd" instanceroot="{}Snapshot" outputinstance="snapshot.xml"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges><edge edgekey="50"><data><dataconnection type="2"/></data></edge></edges>
+        <vertices>
+          <vertex vertexkey="30"><edges><edge vertexkey="40" edgekey="50"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

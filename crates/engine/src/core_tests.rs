@@ -12,6 +12,54 @@ fn dummy_schema() -> SchemaNode {
     SchemaNode::group("root", vec![])
 }
 
+#[test]
+fn copy_current_source_preserves_the_complete_nested_group() {
+    let schema = SchemaNode::group(
+        "root",
+        vec![
+            SchemaNode::scalar("id", ScalarType::Int),
+            SchemaNode::group(
+                "items",
+                vec![SchemaNode::scalar("name", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    let source = Instance::Group(vec![
+        ("id".into(), Instance::Scalar(Value::Int(7))),
+        (
+            "items".into(),
+            Instance::Repeated(vec![
+                Instance::Group(vec![(
+                    "name".into(),
+                    Instance::Scalar(Value::String("first".into())),
+                )]),
+                Instance::Group(vec![(
+                    "name".into(),
+                    Instance::Scalar(Value::String("second".into())),
+                )]),
+            ]),
+        ),
+    ]);
+    let project = Project {
+        source: schema.clone(),
+        target: schema,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph: Graph::default(),
+        root: Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Scope::default()
+        },
+    };
+
+    assert!(validate(&project).is_empty());
+    assert_eq!(run(&project, &source).unwrap(), source);
+}
+
 fn runtime_project() -> Project {
     Project {
         source: dummy_schema(),
@@ -152,6 +200,7 @@ fn evaluates_a_function_call_over_source_fields() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -206,6 +255,7 @@ fn missing_source_field_is_reported() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -249,6 +299,7 @@ fn self_referential_node_is_a_cycle() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -324,6 +375,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::Source(vec!["orders".into(), "items".into()]),
+            construction: ScopeConstruction::Constructed,
             filter: Some(4),
             group_by: None,
             group_starting_with: None,
@@ -454,6 +506,7 @@ fn if_only_evaluates_the_taken_branch() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -513,6 +566,7 @@ fn value_map_falls_back_to_default_on_miss() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -569,6 +623,7 @@ fn value_map_coerces_input_to_its_declared_type() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -637,6 +692,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::Source(vec![]),
+            construction: ScopeConstruction::Constructed,
             filter: Some(2),
             group_by: None,
             group_starting_with: None,
@@ -815,6 +871,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::None,
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -888,6 +945,7 @@ fn lookup_joins_rows_against_an_extra_source() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::Source(vec![]),
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,
@@ -973,6 +1031,7 @@ fn scope_source_path_reaches_an_extra_source() {
         root: Scope {
             target_field: String::new(),
             iteration: mapping::ScopeIteration::Source(vec!["customers".into()]),
+            construction: ScopeConstruction::Constructed,
             filter: None,
             group_by: None,
             group_starting_with: None,

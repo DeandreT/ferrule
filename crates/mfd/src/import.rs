@@ -46,8 +46,8 @@ use iteration::{
 };
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
-    read_edi_component, read_fixed_width_component, read_json_component, read_schema_component,
-    read_xlsx_component, schema_node_at,
+    read_edi_component, read_fixed_width_component, read_http_get_component, read_json_component,
+    read_schema_component, read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{primary_index, runtime_names};
@@ -181,6 +181,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     Some(sc) => schema_components.push(sc),
                     None => note_skipped_library(&mut skipped_libraries, "db"),
                 },
+                "webservice" => match read_http_get_component(&component, path, &mut warnings) {
+                    Ok(component) => schema_components.push(component),
+                    Err(reason) => {
+                        note_skipped_library(&mut skipped_libraries, "webservice");
+                        warnings.push(format!("skipped web-service component `{name}`: {reason}"));
+                    }
+                },
                 "core" if component.attribute("kind") == Some("7") => {
                     output_parameters.push(output_parameter::read(&component));
                 }
@@ -212,7 +219,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         } else {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
-                                 (only xml/json/csv/fixed-length/edi/db/xlsx, scalar user-defined functions, and \
+                                 (only xml/json/csv/fixed-length/edi/db/xlsx, requestless HTTP GET XML, scalar user-defined functions, and \
                                  core/lang function components and supported XPath 2 functions import)"
                             ));
                         }

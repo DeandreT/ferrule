@@ -2,7 +2,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     Binding, DynamicBinding, DynamicChild, IterationOutput, JoinId, JoinPlan, NodeId, Scope,
-    ScopeIteration, SequenceExpr, is_false, is_repeated_output,
+    ScopeConstruction, ScopeIteration, SequenceExpr, is_constructed_scope, is_false,
+    is_repeated_output,
 };
 
 #[derive(Serialize)]
@@ -20,6 +21,8 @@ struct JoinOwned {
 #[derive(Serialize)]
 struct ScopeRef<'a> {
     target_field: &'a str,
+    #[serde(skip_serializing_if = "is_constructed_scope")]
+    construction: ScopeConstruction,
     source: Option<&'a Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sequence: Option<&'a SequenceExpr>,
@@ -54,6 +57,8 @@ struct ScopeRef<'a> {
 struct ScopeOwned {
     #[serde(default)]
     target_field: String,
+    #[serde(default)]
+    construction: ScopeConstruction,
     #[serde(default)]
     source: Option<Vec<String>>,
     #[serde(default)]
@@ -101,6 +106,7 @@ impl Serialize for Scope {
         };
         ScopeRef {
             target_field: &self.target_field,
+            construction: self.construction,
             source,
             sequence,
             join,
@@ -153,6 +159,7 @@ impl<'de> Deserialize<'de> for Scope {
         Ok(Scope {
             target_field: wire.target_field,
             iteration,
+            construction: wire.construction,
             filter: wire.filter,
             group_by: wire.group_by,
             group_starting_with: wire.group_starting_with,

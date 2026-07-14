@@ -1,0 +1,8 @@
+<!ELEMENT Snapshot (Generated, Category*)>
+<!ELEMENT Generated (#PCDATA)>
+<!ELEMENT Category (Name, (Open | Closed))>
+<!ATTLIST Category code CDATA #REQUIRED>
+<!ELEMENT Name (#PCDATA)>
+<!ELEMENT Open (Item+)>
+<!ELEMENT Closed EMPTY>
+<!ELEMENT Item (#PCDATA)>

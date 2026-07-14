@@ -9,10 +9,12 @@ use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
 mod fixed_width;
+mod http;
 mod iteration;
 mod scope_serde;
 
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
+pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
 };
@@ -252,6 +254,17 @@ pub enum IterationOutput {
     MappedSequence,
 }
 
+/// How a scope produces each target group.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeConstruction {
+    /// Build a new group from the scope's bindings and child scopes.
+    #[default]
+    Constructed,
+    /// Clone the current source item as one complete group.
+    CopyCurrentSource,
+}
+
 /// Populates one target group.
 ///
 /// [`ScopeIteration::Source`] follows a path from the parent scope's current
@@ -278,6 +291,10 @@ pub struct Scope {
     pub target_field: String,
     /// Exactly one iteration form, or `None` for a non-iterating scope.
     pub iteration: ScopeIteration,
+    /// Whether this scope constructs fields or preserves the complete current
+    /// source group. Copy construction is deliberately incompatible with
+    /// bindings, child scopes, generated sequences, joins, and grouping.
+    pub construction: ScopeConstruction,
     pub filter: Option<NodeId>,
     /// Groups the iterated items by this key expression (evaluated once
     /// per item): the scope then produces one target group per distinct
@@ -379,16 +396,20 @@ fn is_repeated_output(output: &IterationOutput) -> bool {
     *output == IterationOutput::Repeated
 }
 
+fn is_constructed_scope(construction: &ScopeConstruction) -> bool {
+    *construction == ScopeConstruction::Constructed
+}
+
 /// A complete mapping project: the source/target shapes, the graph, and the
 /// scope tree that maps one into the other.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
     pub source: SchemaNode,
     pub target: SchemaNode,
-    /// Default source/target instance files, resolved relative to the
-    /// project file's directory -- carried over from imported designs and
-    /// used to pick the component format on `.mfd` export. The CLI uses them
-    /// as project-relative defaults; explicit input/output flags override.
+    /// Default source/target instances, carried over from imported designs
+    /// and used to pick the component format on `.mfd` export. File paths are
+    /// resolved relative to the project directory; typed HTTP GET sources
+    /// retain their absolute URL. Explicit CLI input/output flags override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -406,9 +427,9 @@ pub struct Project {
     pub root: Scope,
 }
 
-/// A named secondary input. `path` is the instance file to load (format
-/// picked by extension, exactly like the CLI's `--input`), resolved
-/// relative to the project file's directory when not absolute.
+/// A named secondary input. `path` is the instance file or typed HTTP GET URL
+/// to load. Files are resolved relative to the project directory when not
+/// absolute; URLs remain absolute.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NamedSource {
     pub name: String,
@@ -555,6 +576,10 @@ pub struct FormatOptions {
     /// not apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed_width: Option<FixedWidthLayout>,
+    /// Static HTTP GET transport policy. The request URL remains the owning
+    /// source path so callers can still override it with a local file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_get: Option<HttpGetOptions>,
     /// JSON: read and write one root value per line instead of one enclosing
     /// JSON document.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -595,6 +620,7 @@ mod tests {
         let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
         assert!(!defaults.json_lines);
         assert!(defaults.fixed_width.is_none());
+        assert!(defaults.http_get.is_none());
         assert!(
             !serde_json::to_string(&defaults)
                 .unwrap()
@@ -784,8 +810,22 @@ mod tests {
         assert!(scope.dynamic_children.is_empty());
         assert!(!scope.merge_dynamic_fields);
         assert_eq!(scope.iteration_output, IterationOutput::Repeated);
+        assert_eq!(scope.construction, ScopeConstruction::Constructed);
         assert!(scope.group_starting_with.is_none());
         assert!(!scope.iterates());
+    }
+
+    #[test]
+    fn copy_current_source_construction_roundtrips_explicitly() {
+        let scope = Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Scope::default()
+        };
+
+        let encoded = serde_json::to_string(&scope).unwrap();
+        assert!(encoded.contains(r#""construction":"copy_current_source""#));
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.construction, ScopeConstruction::CopyCurrentSource);
     }
 
     #[test]

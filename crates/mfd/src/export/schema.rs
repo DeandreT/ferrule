@@ -83,6 +83,7 @@ pub(super) struct RenderedSchemaComponent {
 
 /// Renders one schema component and its optional generated schema sibling.
 /// The caller writes artifacts only after both mapping sides validate.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_schema_component(
     schema: &SchemaNode,
     format: SideFormat,
@@ -91,6 +92,7 @@ pub(super) fn render_schema_component(
     instance_path: Option<&str>,
     options: &FormatOptions,
     mfd_path: &Path,
+    force_root_port: bool,
 ) -> Result<RenderedSchemaComponent, MfdError> {
     let stem = mfd_path
         .file_stem()
@@ -120,6 +122,52 @@ pub(super) fn render_schema_component(
                 path: dir.join(&schema_file),
                 contents: format_xml::xsd::export(schema)?,
             });
+            if let Some(http) = options.http_get {
+                if side != Side::Source {
+                    return Err(MfdError::Unsupported(
+                        "HTTP GET transport is valid only for mapping sources".to_string(),
+                    ));
+                }
+                let url = instance_path.ok_or_else(|| {
+                    MfdError::Unsupported(
+                        "an HTTP GET source requires its URL in source_path".to_string(),
+                    )
+                })?;
+                if !valid_http_url(url) {
+                    return Err(MfdError::Unsupported(
+                        "an HTTP GET source requires an HTTP(S) URL without credentials or a fragment"
+                            .to_string(),
+                    ));
+                }
+                let _ = write!(
+                    out,
+                    "\t\t\t\t<component name=\"GET {}\" library=\"webservice\" uid=\"{uid}\" kind=\"20\">\n\
+                     \t\t\t\t\t<properties/>\n\
+                     \t\t\t\t\t{view}\n\
+                     \t\t\t\t\t<data>\n\
+                     \t\t\t\t\t\t<root><entry name=\"HTTPMessage\"><entry name=\"HTTPBody\"/></entry></root>\n\
+                     \t\t\t\t\t\t<root rootindex=\"1\">\n\
+                     \t\t\t\t\t\t\t<entry name=\"HTTPMessage\" expanded=\"1\">\n\
+                     \t\t\t\t\t\t\t\t<entry name=\"HTTPBody\" expanded=\"1\">\n\
+                     \t\t\t\t\t\t\t\t\t<entry name=\"document\" type=\"doc-xml\" expanded=\"1\">\n\
+                     \t\t\t\t\t\t\t\t\t\t<document schemafile=\"{}\" root=\"{}\" encoding=\"UTF-8\"/>\n\
+                     {}\
+                     \t\t\t\t\t\t\t\t\t</entry>\n\
+                     \t\t\t\t\t\t\t\t</entry>\n\
+                     \t\t\t\t\t\t\t</entry>\n\
+                     \t\t\t\t\t\t</root>\n\
+                     \t\t\t\t\t\t<wsdl kind=\"call\" sourceMode=\"manual\" url=\"{}\" timeout=\"{}\" httpmethod=\"GET\"/>\n\
+                     \t\t\t\t\t</data>\n\
+                     \t\t\t\t</component>\n",
+                    xml_escape(&schema.name),
+                    xml_escape(&schema_file),
+                    xml_escape(&schema.name),
+                    ports.entries_xml(schema, attr, 10, true),
+                    xml_escape(url),
+                    http.timeout_seconds().get(),
+                );
+                return Ok(RenderedSchemaComponent { xml: out, sibling });
+            }
             let _ = write!(
                 out,
                 "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
@@ -137,7 +185,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(&schema.name),
-                ports.entries_xml(schema, attr, 9),
+                ports.entries_xml(schema, attr, 9, force_root_port),
                 xml_escape(&schema_file),
                 xml_escape(&schema.name),
             );
@@ -616,7 +664,13 @@ impl PortTree {
 
     /// Entry-tree XML for a schema with `attr` (outkey/inpkey) on every
     /// entry.
-    fn entries_xml(&self, schema: &SchemaNode, attr: &str, indent: usize) -> String {
+    fn entries_xml(
+        &self,
+        schema: &SchemaNode,
+        attr: &str,
+        indent: usize,
+        force_root_port: bool,
+    ) -> String {
         let mut out = String::new();
         fn walk(
             node: &SchemaNode,
@@ -654,10 +708,12 @@ impl PortTree {
         }
         // The document root itself is one entry level wrapping the children.
         let pad = "\t".repeat(indent);
-        let root_port = schema.text_child().map_or_else(String::new, |_| {
+        let root_port = if force_root_port || schema.text_child().is_some() {
             let key = self.by_abs[&Vec::<String>::new()];
             format!(" {attr}=\"{key}\"")
-        });
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             out,
             "{pad}<entry name=\"{}\"{root_port} expanded=\"1\">",
@@ -749,6 +805,23 @@ impl PortTree {
             }
         }
     }
+}
+
+fn valid_http_url(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.is_empty()
+        && !authority.contains('@')
+        && !url.contains('#')
+        && url.is_ascii()
+        && !url
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
 }
 
 fn json_type_name(ty: ScalarType) -> &'static str {

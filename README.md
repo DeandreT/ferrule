@@ -45,8 +45,9 @@ A project file (plain JSON) holds four things:
 ## Migrating from MapForce
 
 ferrule can convert MapForce `.mfd` designs (best-effort): XML components
-(resolvable XSDs, including local includes/imports, attributes, simple-content values,
-top-level element refs, named types, and extensions), JSON components (JSON Schema with
+(resolvable XSDs, bounded DTDs, local includes/imports, attributes, simple-content values,
+top-level element refs, named types, and extensions), requestless static HTTP GET calls
+with typed XML responses, JSON components (JSON Schema with
 local `$ref` support, or the design's entry tree as a fallback), CSV text components
 (inline delimiter/header settings), flat XLSX worksheet tables,
 single-table SQLite database components (schemas introspected from the referenced
@@ -112,7 +113,7 @@ against a JSON reference file. See `crates/cli/tests/fixtures/`.
 - `crates/mapping` — mapping graph IR (nodes/edges/functions/conditions) and project file format
 - `crates/functions` — built-in function library (string/math/comparison/boolean)
 - `crates/engine` — interprets a mapping graph against source instance(s) to produce target instance(s)
-- `crates/format-xml` — XSD-lite schema import and XML instance read/write
+- `crates/format-xml` — XSD-lite/DTD-lite schema import and XML instance read/write
 - `crates/format-json` — JSON Schema import and JSON instance read/write
 - `crates/format-csv` — delimited flat file schema and read/write
 - `crates/format-xlsx` — flat Excel worksheet row read/write

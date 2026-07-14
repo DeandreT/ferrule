@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Snapshot>
+  <Generated>2026-07-13</Generated>
+  <Category code="A">
+    <Name>Active</Name>
+    <Open><Item>One</Item><Item>Two</Item></Open>
+  </Category>
+  <Category code="Z">
+    <Name>Archived</Name>
+    <Closed/>
+  </Category>
+</Snapshot>

@@ -1,5 +1,6 @@
-//! XSD-lite schema import and XML instance read/write.
+//! XSD-lite and bounded DTD-lite schema import plus XML instance read/write.
 
+pub mod dtd;
 mod generic;
 pub mod xsd;
 
@@ -891,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn absent_optional_elements_read_as_null_and_are_not_written() {
+    fn absent_optional_elements_preserve_scalar_and_group_presence() {
         let schema = SchemaNode::group(
             "Root",
             vec![
@@ -911,14 +912,15 @@ mod tests {
 
         let instance = read(&path, &schema).unwrap();
         assert_eq!(instance.field("Nick"), Some(&Instance::Scalar(Value::Null)));
-        assert_eq!(instance.field("Extra"), Some(&Instance::Group(vec![])));
+        assert_eq!(instance.field("Extra"), None);
 
-        // Writing the Null back omits the element instead of emitting an
-        // empty one.
+        // Writing the Null and omitted group back does not invent empty
+        // elements for either absent value.
         write(&path, &schema, &instance).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert!(!text.contains("Nick"), "{text}");
+        assert!(!text.contains("Extra"), "{text}");
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
-use mapping::{IterationOutput, JoinId};
+use mapping::{IterationOutput, JoinId, ScopeConstruction};
 
 use super::function::{aggregate_op, produces_scalar};
 use super::graph::GraphBuilder;
@@ -11,6 +11,7 @@ use super::schema::{
 use super::scope::{ScopeBuilder, TargetLeaf};
 
 pub(super) enum Projection {
+    CopyCurrentSource,
     Group(Vec<String>, u32),
     Text(Vec<String>, u32),
 }
@@ -113,11 +114,18 @@ pub(super) fn classify_target_connection(
         && resolved.take_expr.is_none()
         && !resolved.take_default_one
         && resolved.projections.is_empty();
-    let exact_group_source = plain_feed
+    let plain_source_path = plain_feed
         .then(|| builder.iteration_source_path(&resolved))
-        .flatten()
-        .and_then(|source| builder.schema_node(&source))
+        .flatten();
+    let exact_group_source = plain_source_path
+        .as_ref()
+        .and_then(|source| builder.schema_node(source))
         .is_some_and(|source| !source.repeating && matches!(source.kind, SchemaKind::Group { .. }));
+    let exact_whole_source_copy = plain_source_path.as_ref().is_some_and(|source_path| {
+        source_path.source == 0
+            && source_path.path.is_empty()
+            && builder.schema_node(source_path) == Some(target_node)
+    });
     let max_one_database_source = builder
         .iteration_source_path(&resolved)
         .is_some_and(|source| builder.db_query_is_at_most_one(&source));
@@ -147,6 +155,11 @@ pub(super) fn classify_target_connection(
                 projects_whole_group: false,
                 join: None,
             });
+        } else if copy_all
+            && exact_whole_source_copy
+            && !has_connected_descendant(target, target_path, builder)
+        {
+            projections.push(Projection::CopyCurrentSource);
         } else if copy_all
             && exact_group_source
             && !has_connected_descendant(target, target_path, builder)
@@ -439,6 +452,10 @@ pub(super) fn build(
 ) {
     for projection in projections {
         let (target_path, feed) = match projection {
+            Projection::CopyCurrentSource => {
+                scopes.root.construction = ScopeConstruction::CopyCurrentSource;
+                continue;
+            }
             Projection::Group(target_path, feed) => (target_path, feed),
             Projection::Text(target_path, feed) => {
                 if skipped_iterations
