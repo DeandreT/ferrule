@@ -344,6 +344,9 @@ fn split_once<'a>(input: &'a str, splitter: &OnceSplitter) -> (&'a str, &'a str)
         OnceSplitter::LineStartingWith(marker) => line_start_offsets(input)
             .find(|offset| input[*offset..].starts_with(marker))
             .unwrap_or(input.len()),
+        OnceSplitter::LineContaining(marker) => line_start_offsets(input)
+            .find(|offset| line_at(input, *offset).contains(marker))
+            .unwrap_or(input.len()),
     };
     (&input[..boundary], &input[boundary..])
 }
@@ -397,6 +400,14 @@ fn line_boundary(input: &str, count: usize) -> usize {
 
 fn line_start_offsets(input: &str) -> impl Iterator<Item = usize> + '_ {
     std::iter::once(0).chain(input.match_indices('\n').map(|(index, _)| index + 1))
+}
+
+fn line_at(input: &str, offset: usize) -> &str {
+    let remainder = &input[offset..];
+    let length = remainder
+        .find('\n')
+        .map_or(remainder.len(), |index| index + 1);
+    &remainder[..length]
 }
 
 fn input_records(input: &str) -> Result<Vec<&str>, FlexTextError> {
@@ -657,6 +668,15 @@ fn render_split_once(
             }
             join_line_chunks(&first_text, &second_text)
         }
+        OnceSplitter::LineContaining(marker) => {
+            if !second_text.is_empty() && !line_at(&second_text, 0).contains(marker) {
+                return Err(data_error(
+                    path,
+                    format!("second split's first line must contain marker `{marker}`"),
+                ));
+            }
+            join_line_chunks(&first_text, &second_text)
+        }
     }
 }
 
@@ -835,9 +855,29 @@ fn render_scalar(instance: &Instance, ty: ScalarType, path: &str) -> Result<Stri
         (_, Value::Null) => String::new(),
         (ScalarType::String, Value::String(value)) => value.clone(),
         (ScalarType::Int, Value::Int(value)) => value.to_string(),
+        (ScalarType::Int, Value::String(value)) => value
+            .trim()
+            .parse::<i64>()
+            .map(|value| value.to_string())
+            .map_err(|_| data_error(path, "expected an Int scalar"))?,
         (ScalarType::Float, Value::Float(value)) if value.is_finite() => value.to_string(),
         (ScalarType::Float, Value::Int(value)) => value.to_string(),
+        (ScalarType::Float, Value::String(value)) => {
+            let parsed = value
+                .trim()
+                .parse::<f64>()
+                .map_err(|_| data_error(path, "expected a Float scalar"))?;
+            if !parsed.is_finite() {
+                return Err(data_error(path, "expected a finite Float scalar"));
+            }
+            parsed.to_string()
+        }
         (ScalarType::Bool, Value::Bool(value)) => value.to_string(),
+        (ScalarType::Bool, Value::String(value)) => value
+            .trim()
+            .parse::<bool>()
+            .map(|value| value.to_string())
+            .map_err(|_| data_error(path, "expected a Bool scalar"))?,
         _ => return Err(data_error(path, format!("expected a {ty:?} scalar"))),
     };
     if rendered.len() > MAX_VALUE_BYTES {

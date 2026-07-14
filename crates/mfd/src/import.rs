@@ -47,8 +47,9 @@ use iteration::{
 };
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
-    read_edi_component, read_fixed_width_component, read_http_get_component, read_json_component,
-    read_protobuf_component, read_schema_component, read_xlsx_component, schema_node_at,
+    read_edi_component, read_fixed_width_component, read_flextext_component,
+    read_http_get_component, read_json_component, read_protobuf_component, read_schema_component,
+    read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{primary_index, runtime_names};
@@ -157,10 +158,33 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     } else if flavor == "txt"
                         && text_el.and_then(|text| text.attribute("config")).is_some()
                     {
-                        note_skipped_library(&mut skipped_libraries, "text/flextext");
-                        warnings.push(format!(
-                            "skipped FlexText component `{name}`: external `.mft` configurations are not embedded in the design and cannot be imported"
-                        ));
+                        let string_parse = text_el.is_some_and(|text| {
+                            text.parent().is_some_and(|data| {
+                                data.children().any(|node| {
+                                    node.has_tag_name("parameter")
+                                        && node.attribute("usageKind") == Some("stringparse")
+                                })
+                            })
+                        });
+                        if string_parse {
+                            note_skipped_library(
+                                &mut skipped_libraries,
+                                "text/flextext-stringparse",
+                            );
+                            warnings.push(format!(
+                                "skipped FlexText component `{name}`: string-parse parameters consume a run-time string, which ferrule file inputs cannot represent"
+                            ));
+                        } else {
+                            match read_flextext_component(&component, path) {
+                                Ok(schema) => schema_components.push(schema),
+                                Err(reason) => {
+                                    note_skipped_library(&mut skipped_libraries, "text/flextext");
+                                    warnings.push(format!(
+                                        "skipped FlexText component `{name}`: {reason}"
+                                    ));
+                                }
+                            }
+                        }
                     } else {
                         let label = if flavor.is_empty() {
                             "text".to_string()
@@ -229,7 +253,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         } else {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
-                                 (only xml/json/csv/fixed-length/edi/db/xlsx/protobuf targets, requestless HTTP GET XML, scalar user-defined functions, and \
+                                 (only xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf targets, requestless HTTP GET XML, scalar user-defined functions, and \
                                  core/lang function components and supported XPath 2 functions import)"
                             ));
                         }
@@ -862,6 +886,7 @@ impl GraphBuilder<'_> {
 
     fn resolve_iteration_feed_inner(&self, mut from: u32, depth: usize) -> IterationFeed {
         let mut filter_expr = None;
+        let mut udf_filters = Vec::new();
         let mut has_filter = false;
         let mut group_key = None;
         let mut has_key_grouping = false;
@@ -892,6 +917,7 @@ impl GraphBuilder<'_> {
                 {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
                     filter_expr = filter_expr.or(control.filter_expr);
+                    udf_filters.extend(control.udf_filters);
                     has_filter |= control.has_filter;
                     let grouping_count = [
                         group_key,
@@ -931,6 +957,13 @@ impl GraphBuilder<'_> {
                 suffix.extend(source_suffix);
                 source_suffix = suffix;
                 from = intermediate.feed;
+                continue;
+            }
+            if let Some(nodes_feed) = self.udf_iteration_filter_source(from) {
+                has_filter = true;
+                note_iteration_control_order(1, &mut nearest_control, &mut order_issue);
+                udf_filters.push(from);
+                from = nodes_feed;
                 continue;
             }
             let Some(&idx) = self.fn_by_output.get(&from) else {
@@ -1098,6 +1131,7 @@ impl GraphBuilder<'_> {
             db_where_component,
             source_suffix,
             filter_expr,
+            udf_filters,
             has_filter,
             group_key,
             has_key_grouping,

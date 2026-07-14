@@ -49,6 +49,8 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "concat",
     "upper",
     "lower",
+    "normalize_space",
+    "is_empty",
     "trim",
     "left_trim",
     "right_trim",
@@ -106,6 +108,8 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "concat" => Ok(concat(args)),
         "upper" => unary_string(args, "upper", str::to_uppercase),
         "lower" => unary_string(args, "lower", str::to_lowercase),
+        "normalize_space" => unary_string(args, "normalize_space", normalize_space),
+        "is_empty" => unary_string_predicate(args, "is_empty", str::is_empty),
         "trim" => unary_string(args, "trim", |s| s.trim().to_string()),
         "left_trim" => unary_string(args, "left_trim", |s| {
             s.trim_start_matches([' ', '\t', '\r', '\n']).to_string()
@@ -233,6 +237,33 @@ fn unary_string(
             got: args.len(),
         }),
     }
+}
+
+fn unary_string_predicate(
+    args: &[Value],
+    name: &'static str,
+    predicate: impl Fn(&str) -> bool,
+) -> Result<Value, FunctionError> {
+    match args {
+        [Value::String(value)] => Ok(Value::Bool(predicate(value))),
+        [other] => Err(FunctionError::TypeMismatch {
+            function: name,
+            got: other.type_name(),
+        }),
+        _ => Err(FunctionError::ArityMismatch {
+            function: name,
+            expected: 1,
+            got: args.len(),
+        }),
+    }
+}
+
+fn normalize_space(value: &str) -> String {
+    value
+        .split([' ', '\t', '\r', '\n'])
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn binary_string(
@@ -794,6 +825,26 @@ mod tests {
         assert_eq!(
             call("length", &[Value::String("Jane".into())]).unwrap(),
             Value::Int(4)
+        );
+    }
+
+    #[test]
+    fn normalize_space_and_empty_follow_string_semantics() {
+        assert_eq!(
+            call(
+                "normalize_space",
+                &[Value::String(" \talpha\r\n beta  gamma ".into())]
+            )
+            .unwrap(),
+            Value::String("alpha beta gamma".into())
+        );
+        assert_eq!(
+            call("is_empty", &[Value::String(String::new())]).unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            call("is_empty", &[Value::String(" ".into())]).unwrap(),
+            Value::Bool(false)
         );
     }
 

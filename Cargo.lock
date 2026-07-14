@@ -2305,6 +2305,7 @@ dependencies = [
  "engine",
  "format-csv",
  "format-db",
+ "format-flextext",
  "format-json",
  "format-protobuf",
  "format-xlsx",

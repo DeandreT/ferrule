@@ -235,6 +235,7 @@ pub enum OnceSplitter {
     FixedColumns(NonZeroU32),
     Delimiter(String),
     LineStartingWith(String),
+    LineContaining(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -670,9 +671,9 @@ fn command_string_bytes(command: &FlexCommand) -> Result<usize, FlexTextLayoutEr
             ..
         } => {
             let splitter = match splitter {
-                OnceSplitter::Delimiter(value) | OnceSplitter::LineStartingWith(value) => {
-                    value.len()
-                }
+                OnceSplitter::Delimiter(value)
+                | OnceSplitter::LineStartingWith(value)
+                | OnceSplitter::LineContaining(value) => value.len(),
                 OnceSplitter::FixedLines(_) | OnceSplitter::FixedColumns(_) => 0,
             };
             let total = add(name_bytes, splitter)?;
@@ -721,6 +722,9 @@ fn validate_once_splitter(splitter: &OnceSplitter) -> Result<(), FlexTextLayoutE
         OnceSplitter::Delimiter(value) => validate_nonempty_string(value, "delimiter"),
         OnceSplitter::LineStartingWith(value) => {
             validate_nonempty_string(value, "line-start marker")
+        }
+        OnceSplitter::LineContaining(value) => {
+            validate_nonempty_string(value, "line-content marker")
         }
         OnceSplitter::FixedLines(_) | OnceSplitter::FixedColumns(_) => Ok(()),
     }
@@ -857,5 +861,16 @@ mod tests {
             FlexTextLayout::new("root", command, FlexLineEnding::Lf, false),
             Err(FlexTextLayoutError::LayoutTooDeep)
         ));
+    }
+
+    #[test]
+    fn line_containing_splitter_has_a_distinct_serialized_kind() {
+        let splitter = OnceSplitter::LineContaining("record".into());
+        let encoded = serde_json::to_string(&splitter).unwrap();
+        assert_eq!(encoded, r#"{"kind":"line_containing","value":"record"}"#);
+        assert_eq!(
+            serde_json::from_str::<OnceSplitter>(&encoded).unwrap(),
+            splitter
+        );
     }
 }

@@ -22,6 +22,9 @@ pub(super) struct IterationFeed {
     pub(super) source_suffix: Vec<String>,
     /// The filter's boolean expression key, if a filter was crossed.
     pub(super) filter_expr: Option<u32>,
+    /// Scalar UDF outputs that are exact nullable pass-through filters. Each
+    /// key resolves to the UDF's per-item keep predicate at materialization.
+    pub(super) udf_filters: Vec<u32>,
     /// Whether a filter was crossed, including one with a missing condition.
     pub(super) has_filter: bool,
     /// The group-by's key expression key, if a group-by was crossed.

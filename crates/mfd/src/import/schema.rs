@@ -6,6 +6,7 @@ use mapping::FormatOptions;
 
 mod csv;
 mod fixed_width;
+mod flextext;
 mod generic_xml;
 mod http_get;
 mod protobuf;
@@ -13,7 +14,10 @@ mod shared;
 mod xlsx;
 mod xml_ports;
 
-pub(super) use shared::{entry_key_sets, is_default_output, parse_u32, read_xml_schema_file};
+pub(super) use shared::{
+    entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
+    resolve_xml_schema_reference,
+};
 
 use csv::select_block as select_csv_block;
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
@@ -31,6 +35,13 @@ pub(super) fn read_fixed_width_component(
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     fixed_width::read(component, warnings)
+}
+
+pub(super) fn read_flextext_component(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+) -> Result<SchemaComponent, String> {
+    flextext::read(component, mfd_path)
 }
 
 pub(super) fn read_http_get_component(
@@ -58,6 +69,7 @@ pub(super) enum ComponentFormat {
     Edi,
     Db,
     Protobuf,
+    FlexText,
 }
 
 /// One schema (source or target) component's extracted facts.
@@ -146,7 +158,16 @@ pub(super) fn read_schema_component(
     let mut schema = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
-            let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
+            let schema_path = match resolve_xml_schema_reference(mfd_path, rel) {
+                Ok(path) => path,
+                Err(error) => {
+                    warnings.push(format!(
+                        "component `{name}`: could not read schema `{rel}` ({error}); \
+                         falling back to the entry tree (no types, no repeating info)"
+                    ));
+                    return None;
+                }
+            };
             match read_xml_schema_file(&schema_path, instance_root.first().map(String::as_str)) {
                 Ok(schema) => {
                     if instance_root.len() <= 1 {
@@ -175,20 +196,19 @@ pub(super) fn read_schema_component(
             }
         })
         .unwrap_or_else(|| entry_tree_schema(&entry));
-    if let Some(rel) = document.and_then(|document| document.attribute("schema")) {
-        let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
-        if !schema_path
+    if let Some(rel) = document.and_then(|document| document.attribute("schema"))
+        && let Ok(schema_path) = resolve_xml_schema_reference(mfd_path, rel)
+        && !schema_path
             .extension()
             .and_then(|extension| extension.to_str())
             .is_some_and(|extension| extension.eq_ignore_ascii_case("dtd"))
-        {
-            super::alternatives::merge_conditioned_xml_types(
-                &entry,
-                &mut schema,
-                &schema_path,
-                warnings,
-            );
-        }
+    {
+        super::alternatives::merge_conditioned_xml_types(
+            &entry,
+            &mut schema,
+            &schema_path,
+            warnings,
+        );
     }
     merge_generic_xml_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);

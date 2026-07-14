@@ -275,7 +275,7 @@ fn mapped_group_sequence(
         || feed.distinct_key.is_some()
         || feed.projects_whole_group
         || !feed.projections.is_empty()
-        || feed.has_filter && feed.filter_expr.is_none()
+        || feed.has_filter && feed.filter_expr.is_none() && feed.udf_filters.is_empty()
         || feed.has_sort && feed.sort_expr.is_none()
     {
         return false;

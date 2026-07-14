@@ -15,7 +15,7 @@
 //! would lose tuple association. It does not support unions, `xs:any`, or
 //! remote schema URLs -- that's the "lite" in the name.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
@@ -23,26 +23,43 @@ use roxmltree::Node;
 
 use crate::XmlFormatError;
 
-#[derive(Debug, PartialEq, Eq)]
+const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 256;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ActiveDeclaration {
     path: PathBuf,
     kind: &'static str,
     name: String,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DeclarationQuery {
+    path: PathBuf,
+    kind: &'static str,
+    qname: String,
+}
+
 #[derive(Default)]
 struct ParseState {
     active: Vec<ActiveDeclaration>,
+    complex_types: BTreeMap<ActiveDeclaration, Vec<SchemaNode>>,
+    declaration_paths: BTreeMap<DeclarationQuery, Option<PathBuf>>,
+    materialized_elements: usize,
+    materialization_limit_reached: bool,
     unsupported_particle: Option<XmlFormatError>,
 }
 
 impl ParseState {
-    fn enter(&mut self, path: &Path, kind: &'static str, name: &str) -> bool {
-        let declaration = ActiveDeclaration {
+    fn declaration(path: &Path, kind: &'static str, name: &str) -> ActiveDeclaration {
+        ActiveDeclaration {
             path: normalized_path(path),
             kind,
             name: name.to_string(),
-        };
+        }
+    }
+
+    fn enter(&mut self, path: &Path, kind: &'static str, name: &str) -> bool {
+        let declaration = Self::declaration(path, kind, name);
         if self.active.contains(&declaration) {
             return false;
         }
@@ -52,6 +69,51 @@ impl ParseState {
 
     fn leave(&mut self) {
         self.active.pop();
+    }
+
+    fn reserve_element(&mut self) -> bool {
+        self.reserve_elements(1)
+    }
+
+    fn reserve_elements(&mut self, count: usize) -> bool {
+        let Some(total) = self.materialized_elements.checked_add(count) else {
+            self.materialization_limit_reached = true;
+            return false;
+        };
+        if total > MAX_MATERIALIZED_SCHEMA_ELEMENTS {
+            self.materialization_limit_reached = true;
+            return false;
+        }
+        self.materialized_elements = total;
+        true
+    }
+
+    fn has_element_capacity(&mut self) -> bool {
+        let has_capacity = self.materialized_elements < MAX_MATERIALIZED_SCHEMA_ELEMENTS;
+        if !has_capacity {
+            self.materialization_limit_reached = true;
+        }
+        has_capacity
+    }
+
+    fn find_external_declaration(
+        &mut self,
+        schema_el: &Node,
+        schema_path: &Path,
+        kind: &'static str,
+        qname: &str,
+    ) -> Option<PathBuf> {
+        let query = DeclarationQuery {
+            path: normalized_path(schema_path),
+            kind,
+            qname: qname.to_string(),
+        };
+        if let Some(path) = self.declaration_paths.get(&query) {
+            return path.clone();
+        }
+        let path = find_external_declaration(schema_el, schema_path, kind, qname);
+        self.declaration_paths.insert(query, path.clone());
+        path
     }
 
     fn reject_repeating_particle(&mut self, compositor: &str, element_count: usize) {
@@ -65,6 +127,11 @@ impl ParseState {
     fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
         match self.unsupported_particle {
             Some(error) => Err(error),
+            None if self.materialization_limit_reached => {
+                Err(XmlFormatError::SchemaMaterializationLimit {
+                    limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
+                })
+            }
             None => Ok(schema),
         }
     }
@@ -225,6 +292,13 @@ fn parse_element(
     schema_path: &Path,
     state: &mut ParseState,
 ) -> SchemaNode {
+    let fallback_name = el
+        .attribute("name")
+        .or_else(|| el.attribute("ref").map(local_name))
+        .unwrap_or_default();
+    if !state.reserve_element() {
+        return SchemaNode::scalar(fallback_name, ScalarType::String);
+    }
     if el.attribute("name").is_none()
         && let Some(r) = el.attribute("ref")
     {
@@ -252,7 +326,7 @@ fn parse_element(
     } else if let Some(ty) = el.attribute("type") {
         if let Some(children) = resolve_complex_type(ty, schema_el, schema_path, state) {
             SchemaNode::group(name, children)
-        } else if let Some(ty) = resolve_simple_type(ty, schema_el, schema_path) {
+        } else if let Some(ty) = resolve_simple_type(ty, schema_el, schema_path, state) {
             SchemaNode::scalar(name, ty)
         } else {
             SchemaNode::scalar(name, map_xsd_type(ty))
@@ -290,7 +364,7 @@ fn resolve_element(
         return parse_element_declaration(&declaration, schema_el, schema_path, local, state);
     }
 
-    let path = find_external_declaration(schema_el, schema_path, "element", qname)?;
+    let path = state.find_external_declaration(schema_el, schema_path, "element", qname)?;
     let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
@@ -326,7 +400,7 @@ fn resolve_complex_type(
         return parse_complex_type_declaration(&declaration, schema_el, schema_path, local, state);
     }
 
-    let path = find_external_declaration(schema_el, schema_path, "complexType", qname)?;
+    let path = state.find_external_declaration(schema_el, schema_path, "complexType", qname)?;
     let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
@@ -341,15 +415,34 @@ fn parse_complex_type_declaration(
     name: &str,
     state: &mut ParseState,
 ) -> Option<Vec<SchemaNode>> {
+    let identity = ParseState::declaration(schema_path, "complexType", name);
+    if let Some(children) = state.complex_types.get(&identity).cloned() {
+        return state
+            .reserve_elements(children.iter().map(schema_node_count).sum())
+            .then_some(children);
+    }
     if !state.enter(schema_path, "complexType", name) {
         return None;
     }
     let children = parse_complex_type(declaration, schema_el, schema_path, state);
     state.leave();
+    state.complex_types.insert(identity, children.clone());
     Some(children)
 }
 
-fn resolve_simple_type(qname: &str, schema_el: &Node, schema_path: &Path) -> Option<ScalarType> {
+fn schema_node_count(node: &SchemaNode) -> usize {
+    1 + match &node.kind {
+        ir::SchemaKind::Scalar { .. } => 0,
+        ir::SchemaKind::Group { children, .. } => children.iter().map(schema_node_count).sum(),
+    }
+}
+
+fn resolve_simple_type(
+    qname: &str,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> Option<ScalarType> {
     let local = local_name(qname);
     if is_local_qname(schema_el, qname)
         && let Some(declaration) = top_level(schema_el, "simpleType", local)
@@ -357,7 +450,7 @@ fn resolve_simple_type(qname: &str, schema_el: &Node, schema_path: &Path) -> Opt
         return Some(simple_type_scalar(&declaration));
     }
 
-    let path = find_external_declaration(schema_el, schema_path, "simpleType", qname)?;
+    let path = state.find_external_declaration(schema_el, schema_path, "simpleType", qname)?;
     let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     top_level(&doc.root_element(), "simpleType", local)
@@ -561,7 +654,7 @@ fn parse_complex_type(
                             children.extend(base_children);
                             resolved_base = true;
                         } else {
-                            let ty = resolve_simple_type(base, schema_el, schema_path)
+                            let ty = resolve_simple_type(base, schema_el, schema_path, state)
                                 .unwrap_or_else(|| map_xsd_type(base));
                             children.push(SchemaNode::scalar(XML_TEXT_FIELD, ty).text());
                             resolved_base = true;
@@ -622,6 +715,9 @@ fn collect_sequence(
         }
         match child.tag_name().name() {
             "element" => {
+                if !state.has_element_capacity() {
+                    return;
+                }
                 let mut node = parse_element(&child, schema_el, schema_path, state);
                 node.repeating = inherited_repeating || is_repeating(&child);
                 out.push(node);

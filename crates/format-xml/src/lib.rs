@@ -67,6 +67,8 @@ pub enum XmlFormatError {
         compositor: String,
         element_count: usize,
     },
+    #[error("XSD expansion exceeds the {limit}-element materialization limit")]
+    SchemaMaterializationLimit { limit: usize },
     #[error("schema node `{node}` cannot be both XML text and an attribute")]
     ConflictingSchemaRoles { node: String },
     #[error("schema {kind} `{node}` cannot be serialized as XML {role}")]

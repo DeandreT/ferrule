@@ -177,11 +177,11 @@ pub(super) fn missing_error(
     }
     MfdError::Unsupported(if skipped_libraries.is_empty() {
         format!(
-            "no importable {side} component (xml/json/csv/fixed-length/edi/db/xlsx/protobuf-target/static-http-xml) found in this design"
+            "no importable {side} component (xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf-target/static-http-xml) found in this design"
         )
     } else {
         format!(
-            "no importable {side} component (xml/json/csv/fixed-length/edi/db/xlsx/protobuf-target/static-http-xml) found; this design uses {} components, which ferrule cannot import yet",
+            "no importable {side} component (xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf-target/static-http-xml) found; this design uses {} components, which ferrule cannot import yet",
             skipped_libraries.join("/")
         )
     })

@@ -179,7 +179,7 @@ impl DynamicJsonTarget {
     ) -> Result<(), String> {
         let unsupported = feed.sequence_component.is_some()
             || feed.db_where_component.is_some()
-            || feed.filter_expr.is_some()
+            || feed.has_filter
             || feed.group_starting_with.is_some()
             || feed.has_start_grouping
             || feed.block_size.is_some()

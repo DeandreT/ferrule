@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<People>
+  <Title>Quotes</Title>
+  <Person><Name>Ada</Name><Year>1815</Year><Text>Analytical</Text></Person>
+  <Person><Name>Grace</Name><Year>1906</Year><Text>Compiler</Text></Person>
+</People>

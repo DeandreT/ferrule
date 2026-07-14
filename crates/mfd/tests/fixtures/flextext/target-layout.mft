@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FlexText>
+  <Commands>
+    <Project FileName="target.flex" ByteOrderMark="0" LineEnding="LF">
+      <RootName Value="Document"/>
+      <Connections>
+        <Connection>
+          <SplitSingle>
+            <Upper Offset="1"/>
+            <Lower/>
+            <Name Value="Sections"/>
+            <Connections>
+              <Connection><Store Type="string"><Name Value="Title"/></Store></Connection>
+              <Connection>
+                <FLF>
+                  <RecordName Value="Body"/>
+                  <Fields>
+                    <Field Type="string" Size="8"><Name Value="Name"/></Field>
+                    <Field Type="integer" Size="4"><Name Value="Year"/></Field>
+                    <Field Type="string" Size="12"><Name Value="Text"/></Field>
+                  </Fields>
+                  <Connections><Connection/></Connections>
+                </FLF>
+              </Connection>
+            </Connections>
+          </SplitSingle>
+        </Connection>
+      </Connections>
+    </Project>
+  </Commands>
+  <Functions/>
+</FlexText>

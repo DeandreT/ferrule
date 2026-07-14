@@ -24,7 +24,8 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
 - **Protocol Buffers** (target) — bounded proto2 schema import and dynamic binary
   encoding for nested messages, enums, required/optional/repeated fields, and packed scalars
 - **FlexText layouts** — bounded recursive split/store/switch pipelines with fixed-width
-  and delimited records; embedded layouts work as both sources and targets
+  and delimited records; embedded layouts work as both sources and targets, and MapForce
+  `.mft` configurations compile into portable project data during import
 
 ## How a mapping works
 
@@ -53,7 +54,8 @@ ferrule can convert MapForce `.mfd` designs (best-effort): XML components
 top-level element refs, named types, and extensions), requestless static HTTP GET calls
 with typed XML responses, JSON components (JSON Schema with
 local `$ref` support, or the design's entry tree as a fallback), CSV text components
-(inline delimiter/header settings), flat and hierarchical XLSX targets,
+(inline delimiter/header settings), external FlexText `.mft` layouts, flat and
+hierarchical XLSX targets,
 proto2 binary targets,
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
@@ -70,7 +72,8 @@ picking each side's component kind from the project's instance paths. Canonical
 structured-join export covers root-context collections inside the primary source.
 Designs built on namespaces, `xsi:type` polymorphism, correlated/keyless joins,
 multi-source or nested join export, joined aggregate export, multi-table database wiring, or other
-endpoints (unsupported Excel layout variants, FlexText, or EDI-config components)
+endpoints (unsupported Excel layout variants, PDF, XBRL, FlexText string-parse, or
+EDI-config components)
 are not converted yet.
 
 ```sh

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="flex-source-map" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="structured-text" library="text" uid="2" kind="16">
+          <properties/>
+          <data>
+            <root>
+              <header><namespaces/></header>
+              <entry name="FileInstance"><entry name="document"><entry name="Root">
+                <entry name="Sections" outkey="10"><entry name="Block">
+                  <entry name="Header"><entry name="TitleInfo"><entry name="Title" outkey="11"/></entry></entry>
+                  <entry name="Rows" outkey="12"><entry name="Name" outkey="13"/><entry name="Count" outkey="14"/></entry>
+                </entry></entry>
+              </entry></entry></entry>
+            </root>
+            <text type="txt" config="flextext/source-layout.mft"/>
+          </data>
+        </component>
+        <component name="output" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="Output"><entry name="Section" inpkey="20"><entry name="Title" inpkey="21"/><entry name="Row" inpkey="22"><entry name="Name" inpkey="23"/><entry name="Count" inpkey="24"/></entry></entry></entry>
+            </root>
+            <document schema="flextext-source-target.xsd" outputinstance="flextext-source-output.xml" instanceroot="{}Output"/>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+          <vertex vertexkey="13"><edges><edge vertexkey="23"/></edges></vertex>
+          <vertex vertexkey="14"><edges><edge vertexkey="24"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>
