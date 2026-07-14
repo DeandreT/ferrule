@@ -2,6 +2,46 @@ use super::*;
 use ir::SchemaKind;
 
 #[test]
+fn imports_utf16_schemas_with_or_without_a_bom() {
+    let text = r#"<?xml version="1.0" encoding="UTF-16"?>
+        <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Root" type="xs:string"/>
+        </xs:schema>"#;
+    for (label, big_endian, bom) in [
+        ("le-bom", false, true),
+        ("be-bom", true, true),
+        ("le-signature", false, false),
+        ("be-signature", true, false),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_utf16_{label}_{}.xsd",
+            std::process::id()
+        ));
+        let mut bytes = if bom {
+            if big_endian {
+                vec![0xfe, 0xff]
+            } else {
+                vec![0xff, 0xfe]
+            }
+        } else {
+            Vec::new()
+        };
+        for unit in text.encode_utf16() {
+            bytes.extend(if big_endian {
+                unit.to_be_bytes()
+            } else {
+                unit.to_le_bytes()
+            });
+        }
+        std::fs::write(&path, bytes).unwrap();
+
+        let schema = import_root(&path, Some("Root")).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(schema.name, "Root", "{label}");
+    }
+}
+
+#[test]
 fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
     for value in ["2", "0002", "+2", "4294967296"] {
         assert!(non_negative_integer_exceeds_one(value), "{value}");
@@ -454,7 +494,12 @@ fn resolves_namespace_qualified_imports() {
     .unwrap();
 
     let schema = import_root(&main, Some("Order")).unwrap();
+    let imported_root =
+        import_root(&main, Some("{urn:ferrule:test:customers}BillingAddress")).unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
+
+    assert_eq!(imported_root.name, "BillingAddress");
+    assert!(imported_root.child("City").is_some());
 
     let customer = schema.child("Customer").unwrap();
     assert!(customer.child("Name").is_some());
