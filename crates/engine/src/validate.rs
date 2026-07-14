@@ -870,20 +870,19 @@ fn validate_scope(
             "dynamic object merge requires an iterated source",
         ));
     }
+    if scope.merge_dynamic_fields && !(scope.bindings.is_empty() && scope.children.is_empty()) {
+        issues.push(ValidationIssue::new(
+            &location,
+            "dynamic object merge accepts only computed properties",
+        ));
+    }
     if scope.merge_dynamic_fields
-        && !(scope.bindings.is_empty()
-            && scope.children.is_empty()
-            && scope.dynamic_bindings.is_empty())
+        && scope.dynamic_bindings.is_empty()
+        && scope.dynamic_children.is_empty()
     {
         issues.push(ValidationIssue::new(
             &location,
-            "dynamic object merge accepts only computed child-scope properties",
-        ));
-    }
-    if scope.merge_dynamic_fields && scope.dynamic_children.is_empty() {
-        issues.push(ValidationIssue::new(
-            &location,
-            "dynamic object merge requires at least one computed child-scope property",
+            "dynamic object merge requires at least one computed property",
         ));
     }
     if (scope.merge_dynamic_fields

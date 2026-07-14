@@ -25,13 +25,14 @@ clean-room interoperability, and extensible adapters.
   bounded existential reduction over generated scalar sequences,
   stable sorting, item limits, conditionals, value maps, lookups,
   duplicate-preserving multi-source inner equijoins, positions, seven
-  aggregates, computed aggregate expressions, dynamic JSON target properties,
+  aggregates, computed aggregate expressions, root and nested dynamic JSON target
+  properties,
   structural group projection, mapped and computed XML occurrence sequences,
   contiguous boundary-driven grouping, and 51 scalar built-ins.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 115/120 local MapForce 2026 samples import; 77 import without
+- `.mfd` survey: 116/120 local MapForce 2026 samples import; 77 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -46,7 +47,7 @@ clean-room interoperability, and extensible adapters.
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts | Additional FlexText commands and string-fed parsing |
 | Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources with page-select/merge table layouts | XBRL plus advanced PDF extraction and PDF targets |
+| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL plus remaining PDF extraction variants and PDF targets |
 | Dataflow | One primary source plus named lookup/join sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
@@ -77,8 +78,8 @@ flat aggregate record. Filtered tokenizer sequences lower to executable existent
 reducers, and selected sibling values lower to round-trippable lookups. Static XML
 catalogs inside scalar lookup UDFs become named lookup sources, while designs with
 only core output parameters synthesize an executable typed target. Mapping-path and
-stable per-run clock values use explicit host context, computed JSON targets, plain
-structural group copies, and filtered
+stable per-run clock values use explicit host context, root and nested computed JSON
+targets, plain structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
 Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
@@ -262,8 +263,8 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 728 (725 executable plus three ignored local-sample surveys).
-- `.mfd` survey: 115/120 import, 77 warning-free.
+- Workspace tests: 742 (738 executable plus four ignored local-sample surveys).
+- `.mfd` survey: 116/120 import, 77 warning-free.
 - Unsupported-function warnings: 2 (`auto-number` and `sleep`) across the
   expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.

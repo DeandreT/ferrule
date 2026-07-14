@@ -152,6 +152,76 @@ fn merges_ordered_dynamic_object_fragments_with_nested_arrays() {
 }
 
 #[test]
+fn merges_computed_scalar_fragments_into_one_open_object() {
+    let source = SchemaNode::group(
+        "Availability",
+        vec![
+            SchemaNode::scalar("Size", ScalarType::String),
+            SchemaNode::scalar("Count", ScalarType::Float),
+        ],
+    )
+    .repeating();
+    let target = SchemaNode::group("Available", Vec::new())
+        .with_dynamic_fields(SchemaNode::scalar("*", ScalarType::Float))
+        .unwrap();
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["Size".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["Count".into()],
+                        frame: None,
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            iteration: mapping::ScopeIteration::Source(Vec::new()),
+            dynamic_bindings: vec![DynamicBinding { key: 0, value: 1 }],
+            merge_dynamic_fields: true,
+            ..Scope::default()
+        },
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let item = |size: &str, count: f64| {
+        Instance::Group(vec![
+            ("Size".into(), Instance::Scalar(Value::String(size.into()))),
+            ("Count".into(), Instance::Scalar(Value::Float(count))),
+        ])
+    };
+
+    let output = run(
+        &project,
+        &Instance::Repeated(vec![item("S", 4.0), item("M", 2.0)]),
+    )
+    .unwrap();
+
+    assert_eq!(
+        output.field("S").and_then(Instance::as_scalar),
+        Some(&Value::Float(4.0))
+    );
+    assert_eq!(
+        output.field("M").and_then(Instance::as_scalar),
+        Some(&Value::Float(2.0))
+    );
+}
+
+#[test]
 fn rejects_duplicate_non_string_and_fixed_colliding_dynamic_keys() {
     let duplicate = Instance::Repeated(vec![
         department("Engineering", &[("Ada", "Manager")]),
@@ -202,7 +272,7 @@ fn validation_rejects_invalid_dynamic_scope_combinations() {
         .collect::<Vec<_>>();
     for expected in [
         "dynamic object merge requires an iterated source",
-        "dynamic object merge accepts only computed child-scope properties",
+        "dynamic object merge accepts only computed properties",
         "computed target properties require an open target group schema",
         "dynamic child key references missing node",
     ] {
@@ -253,7 +323,7 @@ fn validation_enforces_dynamic_schema_shape_and_cardinality() {
         .map(|issue| issue.message)
         .collect::<Vec<_>>();
     assert!(empty_messages.iter().any(|message| {
-        message.contains("dynamic object merge requires at least one computed child-scope")
+        message.contains("dynamic object merge requires at least one computed property")
     }));
 
     let repeating_scalar = SchemaNode::group("person", Vec::new())

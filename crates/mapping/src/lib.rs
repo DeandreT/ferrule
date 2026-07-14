@@ -29,8 +29,9 @@ pub use iteration::{
 };
 pub use pdf::{
     PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCommand, PdfCoordinate, PdfEdgeFind,
-    PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeSource, PdfPageSelection,
-    PdfPages, PdfReference, PdfRegion, PdfVerticalBoundaryFind,
+    PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeComposition,
+    PdfMergeSource, PdfPageSelection, PdfPages, PdfReference, PdfRegion, PdfTextCase, PdfTextGroup,
+    PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextRows, PdfVerticalBoundaryFind,
 };
 pub use protobuf::ProtobufOptions;
 pub use xlsx_output::{

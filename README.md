@@ -27,8 +27,9 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
   and delimited records; embedded layouts work as both sources and targets, and MapForce
   `.mft` configurations compile into portable project data during import
 - **PDF extraction** (source) — bounded positioned-text and painted-edge extraction from
-  embedded visual layouts, including fixed captures, exact page groups, ordered region
-  merges, anchors, and ruled or multiline unruled table rows
+  embedded visual layouts, including fixed captures, exact and open-ended page groups,
+  independent or vertical-collage region merges, anchors, marker-delimited nested groups,
+  and ruled, text-derived, or multiline unruled table rows
 
 ## How a mapping works
 
@@ -59,7 +60,8 @@ with typed XML responses, JSON components (JSON Schema with
 local `$ref` support, or the design's entry tree as a fallback), CSV text components
 (inline delimiter/header settings), external FlexText `.mft` layouts, flat and
 hierarchical XLSX targets, visual PDF sources using supported external `.pxt` layouts,
-including exact page selection and named multi-page table regions, proto2 binary targets,
+including page selection, named multi-page table regions, vertical collages, and
+marker-delimited nested records, proto2 binary targets,
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
