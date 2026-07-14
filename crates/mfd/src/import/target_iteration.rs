@@ -94,7 +94,19 @@ fn build_one(
         ));
         return;
     }
-    let existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
+    let mut existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
+    for output in &feed.udf_filters {
+        let Some(udf_filter) = builder.udf_iteration_filter_node(*output) else {
+            continue;
+        };
+        existing_filter = Some(match existing_filter {
+            Some(existing) => builder.alloc(Node::Call {
+                function: "and".into(),
+                args: vec![existing, udf_filter],
+            }),
+            None => udf_filter,
+        });
+    }
     if let Some(id) = join
         && feed.has_filter
         && existing_filter.is_none()

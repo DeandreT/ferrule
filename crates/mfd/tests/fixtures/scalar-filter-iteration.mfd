@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="16">
+  <component name="main">
+    <structure>
+      <children>
+        <component name="Groups" library="xml" uid="1" kind="14">
+          <data>
+            <root><entry name="Groups"><entry name="Bucket" outkey="10"><entry name="Label" outkey="11"/><entry name="Item" outkey="12"><entry name="Name" outkey="13"/><entry name="Value" outkey="14"/></entry></entry></entry></root>
+            <document schema="scalar-filter-iteration-source.xsd" instanceroot="{}Groups"/>
+          </data>
+        </component>
+        <component name="retain-named" library="user" uid="2" kind="19">
+          <data>
+            <root><entry name="Input" inpkey="20" componentid="100"/><entry name="Name" inpkey="21" componentid="101"/></root>
+            <root rootindex="1"><entry name="Output" outkey="22" componentid="102"/></root>
+          </data>
+        </component>
+        <component name="Results" library="xml" uid="3" kind="14">
+          <data>
+            <root><entry name="Results"><entry name="Bucket" inpkey="40"><entry name="Label" inpkey="41"/><entry name="Result" inpkey="42"><entry name="Name" inpkey="43"/><entry name="Value" inpkey="44"/></entry></entry></entry></root>
+            <document schema="scalar-filter-iteration-target.xsd" instanceroot="{}Results"/>
+          </data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="40"/></edges></vertex>
+        <vertex vertexkey="11"><edges><edge vertexkey="41"/></edges></vertex>
+        <vertex vertexkey="12"><edges><edge vertexkey="20"/></edges></vertex>
+        <vertex vertexkey="13"><edges><edge vertexkey="21"/><edge vertexkey="43"/></edges></vertex>
+        <vertex vertexkey="14"><edges><edge vertexkey="44"/></edges></vertex>
+        <vertex vertexkey="22"><edges><edge vertexkey="42"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+  <component name="retain-named" library="user" inline="1">
+    <structure>
+      <children>
+        <component name="Input" library="core" uid="100" kind="6">
+          <targets><datapoint pos="0" key="1000"/></targets>
+          <data><input datatype="string"/></data>
+        </component>
+        <component name="Name" library="core" uid="101" kind="6">
+          <targets><datapoint pos="0" key="1001"/></targets>
+          <data><input datatype="string"/></data>
+        </component>
+        <component name="normalize-space" library="core" uid="103" kind="5">
+          <sources><datapoint pos="0" key="1002"/></sources>
+          <targets><datapoint pos="0" key="1003"/></targets>
+        </component>
+        <component name="empty" library="lang" uid="104" kind="5">
+          <sources><datapoint pos="0" key="1004"/></sources>
+          <targets><datapoint pos="0" key="1005"/></targets>
+        </component>
+        <component name="filter" library="core" uid="105" kind="3">
+          <sources><datapoint pos="0" key="1006"/><datapoint pos="1" key="1007"/></sources>
+          <targets><datapoint pos="0" key="1010"/><datapoint pos="1" key="1008"/></targets>
+        </component>
+        <component name="Output" library="core" uid="102" kind="7">
+          <sources><datapoint pos="0" key="1009"/></sources>
+          <data><output datatype="string"/></data>
+        </component>
+      </children>
+      <graph><vertices>
+        <vertex vertexkey="1000"><edges><edge vertexkey="1006"/></edges></vertex>
+        <vertex vertexkey="1001"><edges><edge vertexkey="1002"/></edges></vertex>
+        <vertex vertexkey="1003"><edges><edge vertexkey="1004"/></edges></vertex>
+        <vertex vertexkey="1005"><edges><edge vertexkey="1007"/></edges></vertex>
+        <vertex vertexkey="1008"><edges><edge vertexkey="1009"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+</mapping>

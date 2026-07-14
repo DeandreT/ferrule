@@ -20,6 +20,7 @@ thiserror = { workspace = true }
 engine = { workspace = true }
 format-csv = { workspace = true }
 format-xlsx = { workspace = true }
+format-flextext = { workspace = true }
 rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
 

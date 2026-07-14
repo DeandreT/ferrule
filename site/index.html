@@ -164,10 +164,11 @@
     <div class="wrap">
       <h2>Migrating from MapForce?</h2>
       <p>ferrule imports MapForce <code>.mfd</code> designs
-      (best-effort) and exports its own projects back out: XML, JSON, CSV and
-      single-table SQLite components, the common core functions, aggregates,
-      and filter- / group-by-driven iteration convert directly — everything
-      else becomes an explicit warning you can finish in the editor.</p>
+      (best-effort), covering XML, JSON, CSV, FlexText, XLSX, Protocol Buffers,
+      single-table SQLite, common core functions, aggregates, joins, and
+      controlled iteration. Supported project shapes also export back to
+      <code>.mfd</code>; unsupported pieces remain explicit warnings you can
+      finish in the editor.</p>
       <pre><code><span class="c"># convert a design, then run it</span>
 cargo run -p cli -- import-mfd --mfd design.mfd --out project.json
 cargo run -p cli -- run --project project.json --input orders.xml --output summary.json</code></pre>

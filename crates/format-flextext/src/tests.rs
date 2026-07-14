@@ -121,6 +121,77 @@ fn split_once_counts_unicode_columns_and_preserves_line_terminators() {
 }
 
 #[test]
+fn line_containing_split_starts_at_the_full_matching_line_and_round_trips() {
+    let layout = layout(FlexCommand::SplitOnce {
+        name: "parts".into(),
+        splitter: OnceSplitter::LineContaining("ITEM".into()),
+        first: Box::new(FlexCommand::store("prefix", ScalarType::String, None)),
+        second: Box::new(FlexCommand::store("matched", ScalarType::String, None)),
+    });
+    let parsed = parse(&layout, "header\r\nnotes\n  row ITEM 1\r\ntail");
+    let parts = parsed.field("parts").unwrap();
+    assert_eq!(
+        parts.field("prefix"),
+        Some(&scalar(Value::String("header\r\nnotes\n".into())))
+    );
+    assert_eq!(
+        parts.field("matched"),
+        Some(&scalar(Value::String("  row ITEM 1\r\ntail".into())))
+    );
+
+    let rendered = to_string(&layout.schema(), &parsed, &layout).unwrap();
+    assert_eq!(rendered, "header\nnotes\n  row ITEM 1\ntail");
+    assert_eq!(
+        parse(&layout, &rendered),
+        group(vec![(
+            "parts",
+            group(vec![
+                ("prefix", scalar(Value::String("header\nnotes\n".into()))),
+                (
+                    "matched",
+                    scalar(Value::String("  row ITEM 1\ntail".into()))
+                ),
+            ]),
+        )])
+    );
+
+    let misplaced = group(vec![(
+        "parts",
+        group(vec![
+            ("prefix", scalar(Value::String("header".into()))),
+            (
+                "matched",
+                scalar(Value::String("not yet\nlater ITEM".into())),
+            ),
+        ]),
+    )]);
+    assert!(matches!(
+        to_string(&layout.schema(), &misplaced, &layout),
+        Err(FlexTextError::Data { .. })
+    ));
+}
+
+#[test]
+fn line_containing_split_keeps_all_input_when_no_line_matches() {
+    let layout = layout(FlexCommand::SplitOnce {
+        name: "parts".into(),
+        splitter: OnceSplitter::LineContaining("ITEM".into()),
+        first: Box::new(FlexCommand::store("prefix", ScalarType::String, None)),
+        second: Box::new(FlexCommand::store("matched", ScalarType::String, None)),
+    });
+    let parsed = parse(&layout, "header\nnotes");
+    let parts = parsed.field("parts").unwrap();
+    assert_eq!(
+        parts.field("prefix"),
+        Some(&scalar(Value::String("header\nnotes".into())))
+    );
+    assert_eq!(
+        parts.field("matched"),
+        Some(&scalar(Value::String(String::new())))
+    );
+}
+
+#[test]
 fn line_marker_split_retains_markers_and_discards_leading_prefix() {
     let layout = layout(FlexCommand::SplitMany {
         name: "records".into(),
@@ -313,6 +384,36 @@ fn delimited_records_honor_separator_quote_escape_and_lf_or_crlf_input() {
         to_string(&layout.schema(), &parsed, &layout).unwrap(),
         "\"a;b\";2\r\n\"say \\\"hi\\\"\";3"
     );
+}
+
+#[test]
+fn writer_lexically_coerces_string_values_for_typed_scalars() {
+    let cases = [
+        (ScalarType::Int, " 42 ", "42"),
+        (ScalarType::Float, " 1.5 ", "1.5"),
+        (ScalarType::Bool, " true ", "true"),
+    ];
+    for (ty, input, expected) in cases {
+        let layout = layout(FlexCommand::store("value", ty, None));
+        let instance = group(vec![("value", scalar(Value::String(input.into())))]);
+        assert_eq!(
+            to_string(&layout.schema(), &instance, &layout).unwrap(),
+            expected
+        );
+    }
+
+    for (ty, input) in [
+        (ScalarType::Int, "12.5"),
+        (ScalarType::Float, "NaN"),
+        (ScalarType::Bool, "TRUE"),
+    ] {
+        let layout = layout(FlexCommand::store("value", ty, None));
+        let instance = group(vec![("value", scalar(Value::String(input.into())))]);
+        assert!(matches!(
+            to_string(&layout.schema(), &instance, &layout),
+            Err(FlexTextError::Data { .. })
+        ));
+    }
 }
 
 #[test]

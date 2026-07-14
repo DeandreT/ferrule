@@ -56,6 +56,67 @@ enum OutputExpr {
     Structured(structured::Recipe),
 }
 
+#[derive(Clone)]
+struct NullablePassThrough {
+    parameter: u32,
+    predicate: ScalarExpr,
+    keep_when: bool,
+}
+
+impl ScalarExpr {
+    fn nullable_pass_through(&self) -> Option<NullablePassThrough> {
+        let ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } = self
+        else {
+            return None;
+        };
+        match (&**then, &**else_) {
+            (ScalarExpr::Parameter(parameter), ScalarExpr::Const(Value::Null)) => {
+                Some(NullablePassThrough {
+                    parameter: *parameter,
+                    predicate: (**condition).clone(),
+                    keep_when: true,
+                })
+            }
+            (ScalarExpr::Const(Value::Null), ScalarExpr::Parameter(parameter)) => {
+                Some(NullablePassThrough {
+                    parameter: *parameter,
+                    predicate: (**condition).clone(),
+                    keep_when: false,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn collect_parameters(&self, parameters: &mut BTreeSet<u32>) {
+        match self {
+            ScalarExpr::Parameter(component_id) => {
+                parameters.insert(*component_id);
+            }
+            ScalarExpr::Const(_) => {}
+            ScalarExpr::Call { args, .. } => {
+                for arg in args {
+                    arg.collect_parameters(parameters);
+                }
+            }
+            ScalarExpr::If {
+                condition,
+                then,
+                else_,
+            } => {
+                condition.collect_parameters(parameters);
+                then.collect_parameters(parameters);
+                else_.collect_parameters(parameters);
+            }
+            ScalarExpr::ValueMap { input, .. } => input.collect_parameters(parameters),
+        }
+    }
+}
+
 pub(super) struct Definition {
     parameters: BTreeSet<u32>,
     structured_parameters: BTreeSet<u32>,
@@ -272,6 +333,10 @@ fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
         .children()
         .find(|node| node.is_element() && node.has_tag_name("children"))
         .ok_or_else(|| "definition has no component list".to_string())?;
+    let scalar_only = children
+        .children()
+        .filter(|node| node.is_element() && node.has_tag_name("component"))
+        .all(|child| matches!(child.attribute("library"), Some("core" | "lang")));
 
     let mut functions = Vec::new();
     let mut component_ids = Vec::new();
@@ -303,7 +368,7 @@ fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definit
             ));
         }
         let function = read_function(&child);
-        if function.kind == 3
+        if function.kind == 3 && !scalar_only
             || function.kind == 30
             || matches!(
                 function.name.as_str(),
@@ -627,7 +692,7 @@ impl DefinitionContext<'_> {
             .get(&feed)
             .copied()
             .ok_or_else(|| format!("definition feed `{feed}` is not scalar"))
-            .and_then(|idx| self.function_expression(idx, active));
+            .and_then(|idx| self.function_expression(idx, feed, active));
         active.remove(&feed);
         result
     }
@@ -635,6 +700,7 @@ impl DefinitionContext<'_> {
     fn function_expression(
         &self,
         idx: usize,
+        feed: u32,
         active: &mut BTreeSet<u32>,
     ) -> Result<ScalarExpr, String> {
         let function = &self.functions[idx];
@@ -650,6 +716,47 @@ impl DefinitionContext<'_> {
                 })
         };
         match (function.name.as_str(), function.kind) {
+            (_, 3) => {
+                if function.library != "core" || function.inputs.len() != 2 {
+                    return Err(
+                        "definition uses a filter that is not a two-input core filter".to_string(),
+                    );
+                }
+                if function
+                    .inputs
+                    .iter()
+                    .any(|input| input.is_none_or(|key| !self.edge_from.contains_key(&key)))
+                {
+                    return Err(
+                        "definition uses a scalar filter with an unconnected input".to_string()
+                    );
+                }
+                let Some(output_pos) = function
+                    .output_pins
+                    .iter()
+                    .position(|output| *output == Some(feed))
+                else {
+                    return Err("definition filter output is not declared".to_string());
+                };
+                if output_pos > 1 {
+                    return Err(format!(
+                        "definition uses unsupported filter output position `{output_pos}`"
+                    ));
+                }
+                let value = input(0, active)?;
+                let predicate = input(1, active)?;
+                let null = Box::new(ScalarExpr::Const(Value::Null));
+                let (then, else_) = if output_pos == 0 {
+                    (Box::new(value), null)
+                } else {
+                    (null, Box::new(value))
+                };
+                Ok(ScalarExpr::If {
+                    condition: Box::new(predicate),
+                    then,
+                    else_,
+                })
+            }
             (_, 2) => {
                 let (value, datatype) = function
                     .constant
@@ -673,9 +780,12 @@ impl DefinitionContext<'_> {
                 })
             }
             (name, _) => {
-                let mapped = map_name(name).ok_or_else(|| {
-                    format!("definition uses unsupported scalar function `{name}`")
-                })?;
+                let mapped = match name {
+                    "normalize-space" => Some("normalize_space"),
+                    "empty" => Some("is_empty"),
+                    _ => map_name(name),
+                }
+                .ok_or_else(|| format!("definition uses unsupported scalar function `{name}`"))?;
                 let arity = function
                     .inputs
                     .iter()
@@ -694,6 +804,62 @@ impl DefinitionContext<'_> {
 }
 
 impl GraphBuilder<'_> {
+    pub(super) fn udf_iteration_filter_source(&self, output_key: u32) -> Option<u32> {
+        let &(call_idx, component_id) = self.udf_by_output.get(&output_key)?;
+        let call = self.udf_calls.get(call_idx)?;
+        let definition = self.udf_registry.definition(call.definition)?;
+        let OutputExpr::Scalar(expression) = definition.outputs.get(&component_id)? else {
+            return None;
+        };
+        let filter = expression.nullable_pass_through()?;
+        let input_port = call.inputs.get(&filter.parameter)?;
+        self.edge_from.get(input_port).copied()
+    }
+
+    pub(super) fn udf_iteration_filter_node(&mut self, output_key: u32) -> Option<NodeId> {
+        let &(call_idx, component_id) = self.udf_by_output.get(&output_key)?;
+        let call = self.udf_calls.get(call_idx)?;
+        let definition = self.udf_registry.definition(call.definition)?;
+        let OutputExpr::Scalar(expression) = definition.outputs.get(&component_id)? else {
+            return None;
+        };
+        let filter = expression.nullable_pass_through()?;
+        let mut predicate_parameters = BTreeSet::new();
+        filter
+            .predicate
+            .collect_parameters(&mut predicate_parameters);
+        let input_ports = call
+            .inputs
+            .iter()
+            .filter(|(parameter, _)| predicate_parameters.contains(parameter))
+            .map(|(&parameter, &port)| (parameter, port))
+            .collect::<Vec<_>>();
+        let mut parameters = BTreeMap::new();
+        for (parameter, port) in input_ports {
+            let node = self
+                .edge_from
+                .get(&port)
+                .copied()
+                .and_then(|feed| self.value_node(feed))
+                .unwrap_or_else(|| self.const_null());
+            parameters.insert(parameter, node);
+        }
+        let predicate = instantiate(
+            &filter.predicate,
+            &parameters,
+            &mut self.graph,
+            &mut self.next_id,
+        );
+        Some(if filter.keep_when {
+            predicate
+        } else {
+            self.alloc(Node::Call {
+                function: "not".into(),
+                args: vec![predicate],
+            })
+        })
+    }
+
     pub(super) fn udf_output_node(
         &mut self,
         output_key: u32,

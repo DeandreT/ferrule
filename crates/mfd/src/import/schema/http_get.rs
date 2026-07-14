@@ -6,7 +6,7 @@ use mapping::{FormatOptions, HttpGetOptions, HttpTimeoutSeconds};
 use super::{
     ComponentFormat, SchemaComponent, collect_entry_ports, entry_key_sets, entry_tree_schema,
     is_default_output, merge_generic_xml_entries, normalize_xml_text_ports, read_xml_schema_file,
-    record_entry_keys,
+    record_entry_keys, resolve_xml_schema_reference,
 };
 
 /// Imports the executable subset of MapForce's web-service component family:
@@ -119,11 +119,9 @@ pub(super) fn read(
         .and_then(|root| root.rsplit('}').next())
         .filter(|root| !root.is_empty())
         .unwrap_or_else(|| payload.attribute("name").unwrap_or("root"));
-    let schema_path = mfd_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(schema_file);
-    let mut schema = match read_xml_schema_file(&schema_path, Some(root_name)) {
+    let schema = resolve_xml_schema_reference(mfd_path, schema_file)
+        .and_then(|schema_path| read_xml_schema_file(&schema_path, Some(root_name)));
+    let mut schema = match schema {
         Ok(schema) => schema,
         Err(error) => {
             warnings.push(format!(

@@ -266,6 +266,50 @@ fn resolves_top_level_element_refs_and_degrades_cycles() {
 }
 
 #[test]
+fn bounds_expansion_of_reused_type_graphs() {
+    use std::fmt::Write as _;
+
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_bounded_type_graph_{}.xsd",
+        std::process::id()
+    ));
+    let mut xsd = String::from(
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:complexType name="T0"><xs:sequence>
+    <xs:element name="Value" type="xs:string"/>
+  </xs:sequence></xs:complexType>
+"#,
+    );
+    for level in 1..=32 {
+        writeln!(
+            xsd,
+            r#"  <xs:complexType name="T{level}"><xs:sequence>
+    <xs:element name="Left" type="T{}"/>
+    <xs:element name="Right" type="T{}"/>
+  </xs:sequence></xs:complexType>"#,
+            level - 1,
+            level - 1
+        )
+        .unwrap();
+    }
+    xsd.push_str(
+        r#"  <xs:element name="Root" type="T32"/>
+</xs:schema>"#,
+    );
+    std::fs::write(&path, xsd).unwrap();
+
+    let result = import_root(&path, Some("Root"));
+    std::fs::remove_file(path).unwrap();
+
+    assert!(matches!(
+        result,
+        Err(XmlFormatError::SchemaMaterializationLimit {
+            limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS
+        })
+    ));
+}
+
+#[test]
 fn resolves_named_types_extensions_and_choices() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!(
