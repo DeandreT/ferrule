@@ -400,6 +400,11 @@ pub(super) fn render_schema_component(
             );
         }
         SideFormat::Xlsx => {
+            if options.xlsx_hierarchical.is_some() {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} XLSX layout is hierarchical; hierarchical XLSX export is not supported"
+                )));
+            }
             if options.xlsx_grid.is_some() {
                 return Err(MfdError::Unsupported(format!(
                     "the {side_name} XLSX layout is a grid; grid XLSX export is not supported"

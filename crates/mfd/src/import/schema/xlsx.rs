@@ -9,6 +9,7 @@ use mapping::{
 use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32};
 
 mod grid;
+mod hierarchical;
 
 const MAX_WORKSHEET_ROW: u32 = 1_048_576;
 const MAX_WORKSHEET_COLUMN: u32 = 16_384;
@@ -79,6 +80,19 @@ pub(super) fn read(
         .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Workbook"))?;
     let (input_keys, output_keys) = entry_key_sets(&root);
     let is_source = output_keys.len() >= input_keys.len();
+
+    if let Some(hierarchical) = hierarchical::read(
+        *component,
+        excel,
+        workbook,
+        &name,
+        input_keys.clone(),
+        output_keys.clone(),
+        is_source,
+        warnings,
+    ) {
+        return Some(hierarchical);
+    }
 
     if let Some(grid) = grid::read(
         *component,
@@ -743,7 +757,7 @@ fn worksheet_name(worksheet: roxmltree::Node<'_, '_>) -> Result<Option<String>, 
         .ok_or(())
 }
 
-fn selected_range_id(row: roxmltree::Node<'_, '_>) -> Option<String> {
+pub(super) fn selected_range_id(row: roxmltree::Node<'_, '_>) -> Option<String> {
     let function = row.descendants().find(|node| {
         node.has_tag_name("function") && node.attribute("name") == Some("is-range-id")
     })?;
@@ -754,7 +768,7 @@ fn selected_range_id(row: roxmltree::Node<'_, '_>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn selected_column(cell: roxmltree::Node<'_, '_>) -> Option<u32> {
+pub(super) fn selected_column(cell: roxmltree::Node<'_, '_>) -> Option<u32> {
     cell.descendants()
         .filter(|node| node.has_tag_name("function") && node.attribute("name") == Some("equal"))
         .find_map(|equal| {
@@ -772,7 +786,7 @@ fn selected_column(cell: roxmltree::Node<'_, '_>) -> Option<u32> {
         })
 }
 
-fn scalar_type(datatype: Option<&str>) -> ScalarType {
+pub(super) fn scalar_type(datatype: Option<&str>) -> ScalarType {
     match datatype {
         Some("double" | "decimal" | "number" | "float") => ScalarType::Float,
         Some("integer" | "int" | "long") => ScalarType::Int,
@@ -847,7 +861,7 @@ fn warn_physical_index_ports(
     }
 }
 
-fn port_keys(node: roxmltree::Node<'_, '_>) -> Vec<u32> {
+pub(super) fn port_keys(node: roxmltree::Node<'_, '_>) -> Vec<u32> {
     [node.attribute("outkey"), node.attribute("inpkey")]
         .into_iter()
         .filter_map(parse_u32)

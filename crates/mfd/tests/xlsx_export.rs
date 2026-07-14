@@ -204,6 +204,27 @@ fn grid_xlsx_layout_does_not_replace_existing_design() {
 }
 
 #[test]
+fn hierarchical_xlsx_layout_does_not_replace_existing_design() {
+    let mut project = mfd::import(&fixture("xlsx-hierarchical.mfd"))
+        .unwrap()
+        .project;
+    assert!(project.target_options.xlsx_hierarchical.is_some());
+    project.target_path = Some("report.xlsx".into());
+
+    let dir = TempDir::new("hierarchical");
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(&design, "existing design").unwrap();
+
+    assert!(matches!(
+        mfd::export(&project, &design),
+        Err(mfd::MfdError::Unsupported(message))
+            if message.contains("hierarchical XLSX export is not supported")
+    ));
+    assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
+    assert!(!dir.0.join("mapping-source.xsd").exists());
+}
+
+#[test]
 fn invalid_xlsx_coordinates_are_rejected() {
     let mut project = mfd::import(&fixture("people-to-csv.mfd")).unwrap().project;
     project.target_path = Some("people.xlsx".into());

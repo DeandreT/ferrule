@@ -29,7 +29,8 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
             || !project.source_options.xlsx_columns.is_empty()
             || !project.source_options.xlsx_rows.is_empty()
             || project.source_options.xlsx_composite.is_some()
-            || project.source_options.xlsx_grid.is_some())
+            || project.source_options.xlsx_grid.is_some()
+            || project.source_options.xlsx_hierarchical.is_some())
 }
 
 fn validate_copy_current_source(project: &Project) -> Result<(), MfdError> {

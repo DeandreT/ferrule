@@ -12,11 +12,15 @@ mod fixed_width;
 mod http;
 mod iteration;
 mod scope_serde;
+mod xlsx_output;
 
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
+};
+pub use xlsx_output::{
+    XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
 };
 
 fn is_false(value: &bool) -> bool {
@@ -609,6 +613,11 @@ pub struct FormatOptions {
     /// other XLSX layout option.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_grid: Option<XlsxGridLayout>,
+    /// XLSX: repeated runtime-named worksheets containing ordered output row
+    /// ranges. This mode is output-only and mutually exclusive with every
+    /// other XLSX layout option.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xlsx_hierarchical: Option<XlsxHierarchicalLayout>,
 }
 
 #[cfg(test)]
@@ -692,6 +701,7 @@ mod tests {
         assert!(defaults.xlsx_rows.is_empty());
         assert!(defaults.xlsx_composite.is_none());
         assert!(defaults.xlsx_grid.is_none());
+        assert!(defaults.xlsx_hierarchical.is_none());
         assert!(
             !serde_json::to_string(&defaults)
                 .unwrap()
