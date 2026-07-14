@@ -98,7 +98,12 @@ pub fn run_project_with_paths(
     let target_instance =
         engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
 
-    let row_count = if let Some(options) = &project.target_options.protobuf {
+    let row_count = if let Some(layout) = &project.target_options.flextext {
+        reject_flextext_conflicts(&project.target_options, "output")?;
+        format_flextext::write(&output_path, &project.target, &target_instance, layout)
+            .with_context(|| format!("writing output {}", output_path.display()))?;
+        1
+    } else if let Some(options) = &project.target_options.protobuf {
         reject_protobuf_conflicts(&project.target_options, "output")?;
         let layout = format_protobuf::Layout::parse(&options.schema)
             .context("parsing embedded Protocol Buffers schema")?;
@@ -350,6 +355,12 @@ fn read_instance(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if let Some(layout) = &options.flextext {
+        reject_flextext_conflicts(options, "input")?;
+        return format_flextext::read(path, schema, layout)
+            .with_context(|| format!("reading input {}", path.display()));
+    }
+
     if options.protobuf.is_some() {
         reject_protobuf_conflicts(options, "input")?;
         bail!("Protocol Buffers input is not supported; `protobuf` is output-only");
@@ -585,11 +596,27 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
+        || options.flextext.is_some()
         || options.http_get.is_some()
         || options.json_lines
         || has_any_xlsx_layout(options)
     {
         bail!("`protobuf` cannot be combined with another format's options for {side}");
+    }
+    Ok(())
+}
+
+fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.lenient_segments
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.http_get.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || has_any_xlsx_layout(options)
+    {
+        bail!("`flextext` cannot be combined with another format's options for {side}");
     }
     Ok(())
 }

@@ -23,6 +23,8 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
   hierarchies), and a lenient mode that skips segments your schema doesn't mention
 - **Protocol Buffers** (target) — bounded proto2 schema import and dynamic binary
   encoding for nested messages, enums, required/optional/repeated fields, and packed scalars
+- **FlexText layouts** — bounded recursive split/store/switch pipelines with fixed-width
+  and delimited records; embedded layouts work as both sources and targets
 
 ## How a mapping works
 
