@@ -50,7 +50,7 @@ use schema::{
     read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
-use source::{SourcePath, primary_index, runtime_names};
+use source::{primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};
 
 pub struct Imported {
@@ -543,10 +543,8 @@ impl GraphBuilder<'_> {
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
             if let Some(abs) = source.ports.get(&key).cloned() {
-                return self.source_field_at(&SourcePath {
-                    source: idx,
-                    path: abs,
-                });
+                let source_path = self.source_value_path(idx, abs);
+                return self.source_field_at(&source_path);
             }
         }
         // A transparent output of a variable schema component?
@@ -1063,8 +1061,10 @@ impl GraphBuilder<'_> {
                 }
             }
         }
+        let computed_source = self.computed_iteration_source(from);
         IterationFeed {
             source_key: from,
+            computed_source,
             sequence_component,
             db_where_component,
             source_suffix,
