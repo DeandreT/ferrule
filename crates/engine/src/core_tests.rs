@@ -235,6 +235,61 @@ fn evaluates_a_function_call_over_source_fields() {
 }
 
 #[test]
+fn scalar_bindings_follow_repeating_target_shape() {
+    let target = SchemaNode::group(
+        "root",
+        vec![SchemaNode::scalar("tag", ScalarType::String).repeating()],
+    );
+    let mut project = Project {
+        source: dummy_schema(),
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        graph: graph_from(vec![(
+            0,
+            Node::SourceField {
+                frame: None,
+                path: vec!["tag".into()],
+            },
+        )]),
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "tag".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let source = Instance::Group(vec![(
+        "tag".into(),
+        Instance::Scalar(Value::String("reference".into())),
+    )]);
+    assert_eq!(
+        run(&project, &source),
+        Ok(Instance::Group(vec![(
+            "tag".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::String("reference".into()))]),
+        )]))
+    );
+
+    project
+        .graph
+        .nodes
+        .insert(0, Node::Const { value: Value::Null });
+    assert_eq!(
+        run(&project, &Instance::Group(Vec::new())),
+        Ok(Instance::Group(vec![(
+            "tag".into(),
+            Instance::Repeated(Vec::new()),
+        )]))
+    );
+}
+
+#[test]
 fn missing_source_field_is_reported() {
     let graph = graph_from(vec![(
         0,

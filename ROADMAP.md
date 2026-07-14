@@ -44,7 +44,7 @@ clean-room interoperability, and extensible adapters.
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts | Additional FlexText commands and string-fed parsing |
 | Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources | XBRL plus advanced PDF extraction and PDF targets |
+| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources with page-select/merge table layouts | XBRL plus advanced PDF extraction and PDF targets |
 | Dataflow | One primary source plus named lookup/join sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |

@@ -12,23 +12,98 @@ const EMPTY_EPSILON: f64 = 0.01;
 pub(super) fn evaluate(pages: &[Page], layout: &PdfLayout) -> Result<Instance, PdfError> {
     let mut fields = Vec::new();
     let mut budget = OutputBudget::default();
+    let mut page_anchors = BTreeMap::new();
     budget.node()?;
-    for page in pages
-        .iter()
-        .filter(|page| layout.page_selection().includes(page.number))
-    {
-        let mut anchors = BTreeMap::new();
-        let page_fields = evaluate_commands(
-            layout.commands(),
-            page,
-            page.bounds,
-            &mut anchors,
-            &mut budget,
-            1,
-        )?;
-        merge_fields(&mut fields, page_fields)?;
-    }
+    let mut selections = vec![layout.page_selection()];
+    evaluate_global_commands(
+        layout.commands(),
+        pages,
+        &mut selections,
+        &mut page_anchors,
+        &mut fields,
+        &mut budget,
+    )?;
     Ok(Instance::Group(fields))
+}
+
+fn evaluate_global_commands(
+    commands: &[PdfCommand],
+    pages: &[Page],
+    selections: &mut Vec<mapping::PdfPageSelection>,
+    page_anchors: &mut BTreeMap<u32, BTreeMap<String, f64>>,
+    fields: &mut Vec<(String, Instance)>,
+    budget: &mut OutputBudget,
+) -> Result<(), PdfError> {
+    let mut index = 0;
+    while index < commands.len() {
+        match &commands[index] {
+            PdfCommand::Pages(selected) => {
+                selections.push(selected.selection);
+                let mut selected_anchors = BTreeMap::new();
+                evaluate_global_commands(
+                    &selected.children,
+                    pages,
+                    selections,
+                    &mut selected_anchors,
+                    fields,
+                    budget,
+                )?;
+                selections.pop();
+                index += 1;
+            }
+            PdfCommand::Merge(merge) => {
+                for source in &merge.sources {
+                    selections.push(source.page_selection);
+                    for page in pages
+                        .iter()
+                        .filter(|page| page_is_selected(page.number, selections))
+                    {
+                        let mut anchors = BTreeMap::new();
+                        let region = resolve_region(&source.region, page.bounds, &anchors)?;
+                        let produced = evaluate_commands(
+                            &merge.children,
+                            page,
+                            region,
+                            &mut anchors,
+                            budget,
+                            1,
+                        )?;
+                        merge_fields(fields, produced)?;
+                    }
+                    selections.pop();
+                }
+                index += 1;
+            }
+            _ => {
+                let start = index;
+                while index < commands.len()
+                    && !matches!(commands[index], PdfCommand::Pages(_) | PdfCommand::Merge(_))
+                {
+                    index += 1;
+                }
+                for page in pages
+                    .iter()
+                    .filter(|page| page_is_selected(page.number, selections))
+                {
+                    let anchors = page_anchors.entry(page.number).or_default();
+                    let produced = evaluate_commands(
+                        &commands[start..index],
+                        page,
+                        page.bounds,
+                        anchors,
+                        budget,
+                        1,
+                    )?;
+                    merge_fields(fields, produced)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn page_is_selected(page: u32, selections: &[mapping::PdfPageSelection]) -> bool {
+    selections.iter().all(|selection| selection.includes(page))
 }
 
 fn evaluate_commands(
@@ -68,8 +143,19 @@ fn evaluate_commands(
             }
             PdfCommand::EdgeRows(rows) => {
                 let region = resolve_region(&rows.region, current, anchors)?;
+                let fallback_anchor = rows
+                    .fallback_anchor
+                    .as_ref()
+                    .map(|anchor| resolve_region(anchor, region, anchors))
+                    .transpose()?;
                 let mut row_fields = Vec::new();
-                for row in row_regions(page, region, rows.find, rows.minimum_extent) {
+                for row in row_regions(
+                    page,
+                    region,
+                    rows.find,
+                    rows.minimum_extent,
+                    fallback_anchor,
+                ) {
                     if !page_has_text(page, row) {
                         continue;
                     }
@@ -89,6 +175,11 @@ fn evaluate_commands(
                     merge_fields(&mut row_fields, produced)?;
                 }
                 merge_fields(&mut fields, row_fields)?;
+            }
+            PdfCommand::Pages(_) | PdfCommand::Merge(_) => {
+                return Err(PdfError::InvalidLayout(
+                    "PDF page-selection and merge commands must be at the layout root".into(),
+                ));
             }
             PdfCommand::Anchor(anchor) => {
                 let value = resolve_coordinate(&anchor.at, current, anchors)?;
@@ -138,6 +229,10 @@ fn resolve_region(
         .all(|value| value.is_finite())
         || resolved.right - resolved.left <= EMPTY_EPSILON
         || resolved.bottom - resolved.top <= EMPTY_EPSILON
+        || resolved.left < current.left - EMPTY_EPSILON
+        || resolved.top < current.top - EMPTY_EPSILON
+        || resolved.right > current.right + EMPTY_EPSILON
+        || resolved.bottom > current.bottom + EMPTY_EPSILON
     {
         return Err(PdfError::InvalidCandidateRegion);
     }
@@ -221,10 +316,24 @@ fn row_regions(
     region: Rect,
     find: PdfEdgeFind,
     minimum_extent: Option<f64>,
+    fallback_anchor: Option<Rect>,
 ) -> Vec<Rect> {
     let levels = edge_levels(page, region, find);
     if levels.len() >= 2 {
-        return levels
+        let mut boundaries = levels;
+        if boundaries
+            .first()
+            .is_some_and(|first| first - region.top > EMPTY_EPSILON)
+        {
+            boundaries.insert(0, region.top);
+        }
+        if boundaries
+            .last()
+            .is_some_and(|last| region.bottom - last > EMPTY_EPSILON)
+        {
+            boundaries.push(region.bottom);
+        }
+        return boundaries
             .windows(2)
             .filter_map(|levels| {
                 let top = levels[0].max(region.top);
@@ -238,7 +347,7 @@ fn row_regions(
             })
             .collect();
     }
-    text_row_regions(page, region, minimum_extent)
+    text_row_regions(page, region, minimum_extent, fallback_anchor)
 }
 
 fn text_extents(page: &Page, region: Rect) -> Option<(f64, f64)> {
@@ -254,36 +363,60 @@ fn text_extents(page: &Page, region: Rect) -> Option<(f64, f64)> {
         })
 }
 
-fn text_row_regions(page: &Page, region: Rect, minimum_extent: Option<f64>) -> Vec<Rect> {
+fn text_row_regions(
+    page: &Page,
+    region: Rect,
+    minimum_extent: Option<f64>,
+    fallback_anchor: Option<Rect>,
+) -> Vec<Rect> {
     let mut glyphs = page
         .glyphs
         .iter()
         .filter(|glyph| glyph_in_region(glyph, region))
         .collect::<Vec<_>>();
     glyphs.sort_by(|left, right| vertical_center(left).total_cmp(&vertical_center(right)));
-    let mut lines: Vec<(f64, f64)> = Vec::new();
+    let mut lines: Vec<TextLine> = Vec::new();
     for glyph in glyphs {
         let center = vertical_center(glyph);
         let height = (glyph.bounds.bottom - glyph.bounds.top).max(1.0);
+        let anchored = fallback_anchor.is_some_and(|anchor| glyph_in_region(glyph, anchor));
         match lines.last_mut() {
-            Some((top, bottom)) if (center - (*top + *bottom) / 2.0).abs() <= height * 0.5 => {
-                *top = top.min(glyph.bounds.top);
-                *bottom = bottom.max(glyph.bounds.bottom);
+            Some(line) if (center - line.center()).abs() <= height * 0.5 => {
+                line.top = line.top.min(glyph.bounds.top);
+                line.bottom = line.bottom.max(glyph.bounds.bottom);
+                line.anchored |= anchored;
             }
-            _ => lines.push((glyph.bounds.top, glyph.bounds.bottom)),
+            _ => lines.push(TextLine {
+                top: glyph.bounds.top,
+                bottom: glyph.bounds.bottom,
+                anchored,
+            }),
         }
     }
-    lines
+
+    let anchors = lines
+        .iter()
+        .filter(|line| line.anchored)
+        .collect::<Vec<_>>();
+    let row_lines = if anchors.len() >= 2 {
+        anchors
+    } else {
+        lines.iter().collect::<Vec<_>>()
+    };
+
+    row_lines
         .iter()
         .enumerate()
-        .filter_map(|(index, &(line_top, line_bottom))| {
+        .filter_map(|(index, line)| {
             let top = index
                 .checked_sub(1)
-                .map_or(region.top, |previous| (lines[previous].1 + line_top) / 2.0)
+                .map_or(region.top, |previous| {
+                    (row_lines[previous].center() + line.center()) / 2.0
+                })
                 .max(region.top);
-            let bottom = lines
+            let bottom = row_lines
                 .get(index + 1)
-                .map_or(region.bottom, |next| (line_bottom + next.0) / 2.0)
+                .map_or(region.bottom, |next| (line.center() + next.center()) / 2.0)
                 .min(region.bottom);
             row_has_minimum_extent(top, bottom, minimum_extent).then_some(Rect {
                 left: region.left,
@@ -293,6 +426,18 @@ fn text_row_regions(page: &Page, region: Rect, minimum_extent: Option<f64>) -> V
             })
         })
         .collect()
+}
+
+struct TextLine {
+    top: f64,
+    bottom: f64,
+    anchored: bool,
+}
+
+impl TextLine {
+    fn center(&self) -> f64 {
+        (self.top + self.bottom) / 2.0
+    }
 }
 
 fn row_has_minimum_extent(top: f64, bottom: f64, minimum_extent: Option<f64>) -> bool {
@@ -466,10 +611,12 @@ impl OutputBudget {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use ir::{Instance, Value};
     use mapping::{
         PdfCapture, PdfCommand, PdfCoordinate, PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout,
-        PdfPageSelection, PdfReference, PdfRegion,
+        PdfMerge, PdfMergeSource, PdfPageSelection, PdfPages, PdfReference, PdfRegion,
     };
 
     use super::evaluate;
@@ -484,6 +631,15 @@ mod tests {
                 right,
                 bottom,
             },
+        }
+    }
+
+    fn fixed_region(left: f64, top: f64, right: f64, bottom: f64) -> PdfRegion {
+        PdfRegion {
+            left: PdfCoordinate::new(PdfReference::Left, left),
+            top: PdfCoordinate::new(PdfReference::Top, top),
+            right: PdfCoordinate::new(PdfReference::Left, right),
+            bottom: PdfCoordinate::new(PdfReference::Top, bottom),
         }
     }
 
@@ -504,7 +660,7 @@ mod tests {
                 glyph("Lin", 10.0, 80.0, 28.0, 90.0),
                 glyph("9", 120.0, 80.0, 126.0, 90.0),
             ],
-            horizontal_edges: [10.0, 50.0, 70.0, 110.0, 130.0]
+            horizontal_edges: [50.0, 70.0, 110.0]
                 .into_iter()
                 .map(|y| HorizontalEdge {
                     left: 0.0,
@@ -524,7 +680,7 @@ mod tests {
                 },
             })
         };
-        let layout = PdfLayout::new(
+        let Ok(layout) = PdfLayout::new(
             "Document",
             PdfPageSelection::All,
             vec![PdfCommand::EdgeRows(PdfEdgeRows {
@@ -534,19 +690,22 @@ mod tests {
                     prominence: 100.0,
                 },
                 minimum_extent: Some(30.0),
+                fallback_anchor: None,
                 children: vec![PdfCommand::GroupPerPage(PdfGroup {
                     name: "Row".into(),
                     region: PdfRegion::full(),
                     children: vec![capture("Name", 0.0, 100.0), capture("Count", 100.0, 200.0)],
                 })],
             })],
-        )
-        .unwrap();
-        let instance = evaluate(&[page], &layout).unwrap();
-        let rows = instance
-            .field("Row")
-            .and_then(Instance::as_repeated)
-            .unwrap();
+        ) else {
+            panic!("synthetic ruled-row layout must be valid");
+        };
+        let Ok(instance) = evaluate(&[page], &layout) else {
+            panic!("synthetic ruled-row page must evaluate");
+        };
+        let Some(rows) = instance.field("Row").and_then(Instance::as_repeated) else {
+            panic!("synthetic ruled-row output must contain rows");
+        };
         assert_eq!(rows.len(), 2);
         assert_eq!(
             rows[0].field("Name").and_then(Instance::as_scalar),
@@ -555,6 +714,233 @@ mod tests {
         assert_eq!(
             rows[1].field("Count").and_then(Instance::as_scalar),
             Some(&Value::String("9".into()))
+        );
+    }
+
+    #[test]
+    fn unruled_rows_fold_wrapped_lines_around_a_trailing_column() {
+        let page = Page {
+            number: 1,
+            bounds: Rect {
+                left: 0.0,
+                top: 0.0,
+                right: 200.0,
+                bottom: 100.0,
+            },
+            glyphs: vec![
+                glyph("Long", 10.0, 5.0, 34.0, 15.0),
+                glyph("A", 180.0, 12.0, 190.0, 22.0),
+                glyph("title", 10.0, 18.0, 36.0, 28.0),
+                glyph("Second", 10.0, 45.0, 48.0, 55.0),
+                glyph("B", 180.0, 45.0, 190.0, 55.0),
+            ],
+            horizontal_edges: Vec::new(),
+        };
+        let capture = |name: &str, left: f64, right: f64| {
+            PdfCommand::Capture(PdfCapture {
+                name: name.into(),
+                region: PdfRegion {
+                    left: PdfCoordinate::new(PdfReference::Left, left),
+                    top: PdfCoordinate::edge(PdfReference::Top),
+                    right: PdfCoordinate::new(PdfReference::Left, right),
+                    bottom: PdfCoordinate::edge(PdfReference::Bottom),
+                },
+            })
+        };
+        let Ok(layout) = PdfLayout::new(
+            "Document",
+            PdfPageSelection::All,
+            vec![PdfCommand::EdgeRows(PdfEdgeRows {
+                region: PdfRegion::full(),
+                find: PdfEdgeFind {
+                    fill: 1.0,
+                    prominence: 100.0,
+                },
+                minimum_extent: None,
+                fallback_anchor: Some(fixed_region(100.0, 0.0, 200.0, 100.0)),
+                children: vec![PdfCommand::GroupPerPage(PdfGroup {
+                    name: "Row".into(),
+                    region: PdfRegion::full(),
+                    children: vec![capture("Title", 0.0, 100.0), capture("Key", 100.0, 200.0)],
+                })],
+            })],
+        ) else {
+            panic!("synthetic unruled-row layout must be valid");
+        };
+
+        let Ok(instance) = evaluate(&[page], &layout) else {
+            panic!("synthetic unruled-row page must evaluate");
+        };
+        let Some(rows) = instance.field("Row").and_then(Instance::as_repeated) else {
+            panic!("synthetic unruled-row output must contain rows");
+        };
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].field("Title").and_then(Instance::as_scalar),
+            Some(&Value::String("Long title".into()))
+        );
+        assert_eq!(
+            rows[1].field("Key").and_then(Instance::as_scalar),
+            Some(&Value::String("B".into()))
+        );
+    }
+
+    #[test]
+    fn page_blocks_and_merge_sources_preserve_page_and_source_order() {
+        let page = |number, company, row| Page {
+            number,
+            bounds: Rect {
+                left: 0.0,
+                top: 0.0,
+                right: 200.0,
+                bottom: 120.0,
+            },
+            glyphs: vec![
+                glyph(company, 10.0, 10.0, 60.0, 20.0),
+                glyph(row, 10.0, 65.0, 30.0, 75.0),
+            ],
+            horizontal_edges: Vec::new(),
+        };
+        let pages = [page(1, "Acme", "A"), page(2, "ignored", "B")];
+        let Some(page_two) = NonZeroU32::new(2) else {
+            panic!("two must be nonzero");
+        };
+        let second_page = PdfPageSelection::Range {
+            first: page_two,
+            last: page_two,
+        };
+        let Ok(layout) = PdfLayout::new(
+            "Document",
+            PdfPageSelection::All,
+            vec![
+                PdfCommand::Pages(PdfPages {
+                    selection: PdfPageSelection::First,
+                    children: vec![PdfCommand::Capture(PdfCapture {
+                        name: "Company".into(),
+                        region: fixed_region(0.0, 0.0, 100.0, 40.0),
+                    })],
+                }),
+                PdfCommand::Merge(PdfMerge {
+                    name: "Table".into(),
+                    sources: vec![
+                        PdfMergeSource {
+                            page_selection: PdfPageSelection::First,
+                            region: fixed_region(0.0, 50.0, 200.0, 100.0),
+                        },
+                        PdfMergeSource {
+                            page_selection: second_page,
+                            region: fixed_region(0.0, 50.0, 200.0, 100.0),
+                        },
+                    ],
+                    children: vec![PdfCommand::EdgeRows(PdfEdgeRows {
+                        region: PdfRegion::full(),
+                        find: PdfEdgeFind {
+                            fill: 1.0,
+                            prominence: 0.0,
+                        },
+                        minimum_extent: None,
+                        fallback_anchor: None,
+                        children: vec![PdfCommand::GroupPerPage(PdfGroup {
+                            name: "Row".into(),
+                            region: PdfRegion::full(),
+                            children: vec![PdfCommand::Capture(PdfCapture {
+                                name: "Value".into(),
+                                region: PdfRegion::full(),
+                            })],
+                        })],
+                    })],
+                }),
+            ],
+        ) else {
+            panic!("synthetic page merge layout must be valid");
+        };
+
+        let Ok(instance) = evaluate(&pages, &layout) else {
+            panic!("synthetic page merge must evaluate");
+        };
+        assert_eq!(
+            instance.field("Company").and_then(Instance::as_scalar),
+            Some(&Value::String("Acme".into()))
+        );
+        let Some(rows) = instance.field("Row").and_then(Instance::as_repeated) else {
+            panic!("synthetic page merge output must contain rows");
+        };
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].field("Value").and_then(Instance::as_scalar),
+            Some(&Value::String("A".into()))
+        );
+        assert_eq!(
+            rows[1].field("Value").and_then(Instance::as_scalar),
+            Some(&Value::String("B".into()))
+        );
+    }
+
+    #[test]
+    fn root_anchors_survive_intervening_page_blocks_per_physical_page() {
+        let page = |number, value| Page {
+            number,
+            bounds: Rect {
+                left: 0.0,
+                top: 0.0,
+                right: 200.0,
+                bottom: 100.0,
+            },
+            glyphs: vec![
+                glyph("heading", 10.0, 10.0, 40.0, 20.0),
+                glyph(value, 60.0, 60.0, 80.0, 70.0),
+            ],
+            horizontal_edges: Vec::new(),
+        };
+        let pages = [page(1, "A"), page(2, "B")];
+        let Ok(layout) = PdfLayout::new(
+            "Document",
+            PdfPageSelection::All,
+            vec![
+                PdfCommand::Anchor(mapping::PdfAnchorAssignment {
+                    name: "Column".into(),
+                    axis: mapping::PdfAnchorAxis::Horizontal,
+                    at: PdfCoordinate::new(PdfReference::Left, 50.0),
+                }),
+                PdfCommand::Pages(PdfPages {
+                    selection: PdfPageSelection::First,
+                    children: vec![PdfCommand::Capture(PdfCapture {
+                        name: "Heading".into(),
+                        region: fixed_region(0.0, 0.0, 50.0, 30.0),
+                    })],
+                }),
+                PdfCommand::GroupPerPage(PdfGroup {
+                    name: "Row".into(),
+                    region: PdfRegion {
+                        left: PdfCoordinate::edge(PdfReference::Anchor("Column".into())),
+                        top: PdfCoordinate::new(PdfReference::Top, 50.0),
+                        right: PdfCoordinate::edge(PdfReference::Right),
+                        bottom: PdfCoordinate::edge(PdfReference::Bottom),
+                    },
+                    children: vec![PdfCommand::Capture(PdfCapture {
+                        name: "Value".into(),
+                        region: PdfRegion::full(),
+                    })],
+                }),
+            ],
+        ) else {
+            panic!("root anchor page-block layout must validate");
+        };
+
+        let Ok(instance) = evaluate(&pages, &layout) else {
+            panic!("root anchor page-block layout must evaluate");
+        };
+        let Some(rows) = instance.field("Row").and_then(Instance::as_repeated) else {
+            panic!("root anchor page-block output must contain rows");
+        };
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].field("Value").and_then(Instance::as_scalar),
+            Some(&Value::String("A".into()))
+        );
+        assert_eq!(
+            rows[1].field("Value").and_then(Instance::as_scalar),
+            Some(&Value::String("B".into()))
         );
     }
 }

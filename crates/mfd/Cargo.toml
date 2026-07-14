@@ -19,6 +19,7 @@ thiserror = { workspace = true }
 [dev-dependencies]
 engine = { workspace = true }
 format-csv = { workspace = true }
+format-pdf = { workspace = true }
 format-xlsx = { workspace = true }
 format-flextext = { workspace = true }
 rusqlite = { workspace = true }
