@@ -12,6 +12,7 @@ mod http_get;
 mod pdf;
 mod protobuf;
 mod shared;
+mod xbrl;
 mod xlsx;
 mod xml_ports;
 
@@ -69,6 +70,13 @@ pub(super) fn read_pdf_component(
     pdf::read(component, mfd_path, warnings)
 }
 
+pub(super) fn read_xbrl_component(
+    component: &roxmltree::Node<'_, '_>,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    xbrl::read(component, warnings)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ComponentFormat {
     Xml,
@@ -80,6 +88,13 @@ pub(super) enum ComponentFormat {
     Protobuf,
     FlexText,
     Pdf,
+    Xbrl,
+}
+
+impl ComponentFormat {
+    pub(super) const fn is_xml_like(self) -> bool {
+        matches!(self, Self::Xml | Self::Xbrl)
+    }
 }
 
 /// One schema (source or target) component's extracted facts.

@@ -27,6 +27,9 @@ impl fmt::Display for DataFormat {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuntimeError {
     InvalidProject(Vec<String>),
+    XbrlSourceNotExecutable,
+    XbrlTargetNotExecutable,
+    XbrlExtraSourceNotExecutable { name: String },
     Parse { format: DataFormat, message: String },
     Execute(String),
     Serialize { format: DataFormat, message: String },
@@ -43,6 +46,16 @@ impl fmt::Display for RuntimeError {
                     issues.len()
                 )
             }
+            Self::XbrlSourceNotExecutable => formatter.write_str(
+                "XBRL source input is not executable in the web demo; native XBRL reading is not supported",
+            ),
+            Self::XbrlTargetNotExecutable => formatter.write_str(
+                "XBRL target output is not executable in the web demo; native XBRL writing is not supported",
+            ),
+            Self::XbrlExtraSourceNotExecutable { name } => write!(
+                formatter,
+                "extra source `{name}` is an XBRL boundary and is not executable in the web demo"
+            ),
             Self::Parse { format, message } => {
                 write!(formatter, "could not parse {format} source: {message}")
             }
@@ -66,6 +79,9 @@ pub fn parse_source(
     text: &str,
     format: DataFormat,
 ) -> Result<Instance, RuntimeError> {
+    if project.source_options.xbrl.is_some() {
+        return Err(RuntimeError::XbrlSourceNotExecutable);
+    }
     match format {
         DataFormat::Xml => {
             format_xml::from_str(text, &project.source).map_err(|error| RuntimeError::Parse {
@@ -105,6 +121,9 @@ pub fn serialize_target(
     target: &Instance,
     format: DataFormat,
 ) -> Result<String, RuntimeError> {
+    if project.target_options.xbrl.is_some() {
+        return Err(RuntimeError::XbrlTargetNotExecutable);
+    }
     match format {
         DataFormat::Xml => format_xml::to_string(&project.target, target).map_err(|error| {
             RuntimeError::Serialize {
@@ -148,6 +167,7 @@ pub fn run(
     source_format: DataFormat,
     target_format: DataFormat,
 ) -> Result<String, RuntimeError> {
+    reject_xbrl_boundaries(project)?;
     let issues: Vec<String> = engine::validate(project)
         .into_iter()
         .map(|issue| issue.to_string())
@@ -161,11 +181,33 @@ pub fn run(
     serialize_target(project, &target, target_format)
 }
 
+fn reject_xbrl_boundaries(project: &Project) -> Result<(), RuntimeError> {
+    if project.source_options.xbrl.is_some() {
+        return Err(RuntimeError::XbrlSourceNotExecutable);
+    }
+    if project.target_options.xbrl.is_some() {
+        return Err(RuntimeError::XbrlTargetNotExecutable);
+    }
+    if let Some(source) = project
+        .extra_sources
+        .iter()
+        .find(|source| source.options.xbrl.is_some())
+    {
+        return Err(RuntimeError::XbrlExtraSourceNotExecutable {
+            name: source.name.clone(),
+        });
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use ir::{ScalarType, SchemaNode};
-    use mapping::{Binding, FormatOptions, Graph, Node, Scope, ScopeIteration};
+    use mapping::{
+        Binding, FormatOptions, Graph, NamedSource, Node, Scope, ScopeIteration,
+        XbrlBoundaryOptions,
+    };
 
     fn scalar_project(iterate_rows: bool) -> Project {
         let source = SchemaNode::group(
@@ -296,5 +338,69 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error, RuntimeError::CsvTargetNotRepeated);
+    }
+
+    #[test]
+    fn xbrl_source_rejects_before_ui_selected_source_parsing()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut project = scalar_project(false);
+        project.source_options.xbrl = Some(XbrlBoundaryOptions::external_source("taxonomy.xsd")?);
+
+        assert_eq!(
+            parse_source(&project, "not,csv", DataFormat::Csv),
+            Err(RuntimeError::XbrlSourceNotExecutable)
+        );
+        assert_eq!(
+            run(&project, "not,csv", DataFormat::Csv, DataFormat::Json,),
+            Err(RuntimeError::XbrlSourceNotExecutable)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn xbrl_target_rejects_before_source_parsing_or_target_serialization()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut project = scalar_project(false);
+        project.target_options.xbrl = Some(XbrlBoundaryOptions::external_target(
+            "taxonomy.xsd",
+            Some("table.sps"),
+        )?);
+
+        assert_eq!(
+            serialize_target(&project, &Instance::Group(Vec::new()), DataFormat::Xml),
+            Err(RuntimeError::XbrlTargetNotExecutable)
+        );
+        assert_eq!(
+            run(&project, "not valid XML", DataFormat::Xml, DataFormat::Csv,),
+            Err(RuntimeError::XbrlTargetNotExecutable)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn xbrl_extra_source_rejects_before_execution() -> Result<(), Box<dyn std::error::Error>> {
+        let mut project = scalar_project(false);
+        project.extra_sources.push(NamedSource {
+            name: "filing".to_owned(),
+            path: "filing.xbrl".to_owned(),
+            schema: SchemaNode::group("Filing", Vec::new()),
+            options: FormatOptions {
+                xbrl: Some(XbrlBoundaryOptions::external_source("taxonomy.xsd")?),
+                ..FormatOptions::default()
+            },
+        });
+
+        assert_eq!(
+            run(
+                &project,
+                "not valid JSON",
+                DataFormat::Json,
+                DataFormat::Xml,
+            ),
+            Err(RuntimeError::XbrlExtraSourceNotExecutable {
+                name: "filing".to_owned(),
+            })
+        );
+        Ok(())
     }
 }

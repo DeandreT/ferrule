@@ -60,10 +60,7 @@ pub(super) fn classify_target_connection(
     } = connection;
     match builder.classify_join_iteration(feed, target_path) {
         super::join::IterationFeed::Join(join) => {
-            if target.format == ComponentFormat::Xml
-                && target_path.is_empty()
-                && !target_node.repeating
-            {
+            if target.format.is_xml_like() && target_path.is_empty() && !target_node.repeating {
                 builder.rejected_join_paths.insert(target_path.to_vec());
                 if builder.warned_join_controls.insert(join) {
                     builder.warnings.push(
@@ -97,7 +94,7 @@ pub(super) fn classify_target_connection(
     };
     let copy_all = connection_role.copy_all;
     let mapped_xml_target =
-        target.format == ComponentFormat::Xml && !target_path.is_empty() && !target_node.repeating;
+        target.format.is_xml_like() && !target_path.is_empty() && !target_node.repeating;
     if mapped_xml_target && connection_role.representative != input_key {
         return;
     }
@@ -143,7 +140,7 @@ pub(super) fn classify_target_connection(
                 "copy-all document connection also has connected descendants; mapping skipped"
                     .to_string(),
             );
-        } else if target.format == ComponentFormat::Xml
+        } else if target.format.is_xml_like()
             && max_one_database_source
             && matches!(target_node.kind, SchemaKind::Group { .. })
             && has_connected_descendant(target, target_path, builder)
@@ -265,7 +262,7 @@ fn mapped_group_sequence(
     copy_all: bool,
 ) -> bool {
     let has_descendants = has_connected_descendant(target, target_path, builder);
-    if target.format != ComponentFormat::Xml
+    if !target.format.is_xml_like()
         || target_path.is_empty()
         || !copy_all && !has_descendants
         || feed.sequence_component.is_some()
@@ -342,7 +339,7 @@ fn enclosing_iteration_owns_source(
 }
 
 fn is_xml_text_group(target: &SchemaComponent, node: &SchemaNode) -> bool {
-    target.format == ComponentFormat::Xml
+    target.format.is_xml_like()
         && node
             .child(XML_TEXT_FIELD)
             .is_some_and(|text| !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. }))
@@ -401,7 +398,7 @@ fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
 }
 
 fn is_generic_xml_text_path(source: &SchemaComponent, path: &[String]) -> bool {
-    source.format == ComponentFormat::Xml
+    source.format.is_xml_like()
         && path
             .last()
             .is_some_and(|name| name == ir::XML_ELEMENTS_FIELD)

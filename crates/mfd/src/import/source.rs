@@ -44,7 +44,7 @@ pub(super) fn primary_index(
             ) || target.format == ComponentFormat::Json && target_node.repeating);
         let repeating_group =
             target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. });
-        let mapped_xml_group = target.format == ComponentFormat::Xml
+        let mapped_xml_group = target.format.is_xml_like()
             && !target_node.repeating
             && matches!(target_node.kind, SchemaKind::Group { .. });
         if !(row_root || repeating_group || mapped_xml_group) {

@@ -2,7 +2,7 @@ use super::*;
 use ir::{ScalarType, Value};
 use mapping::{
     Binding, DynamicBinding, NamedSource, PdfCapture, PdfCommand, PdfLayout, PdfPageSelection,
-    PdfRegion, ScopeConstruction, SequenceExpr,
+    PdfRegion, ScopeConstruction, SequenceExpr, XbrlBoundaryOptions,
 };
 
 fn valid_project() -> Project {
@@ -66,6 +66,56 @@ fn rejects_http_transport_metadata_on_a_target() {
         issue.location == "target format options"
             && issue.message.contains("only for mapping sources")
     }));
+}
+
+#[test]
+fn validates_xbrl_boundary_side_and_format_exclusivity() -> Result<(), Box<dyn std::error::Error>> {
+    let mut valid_source = valid_project();
+    valid_source.source_options.xbrl = Some(XbrlBoundaryOptions::external_source("source.xsd")?);
+    assert!(validate(&valid_source).is_empty());
+
+    let mut valid_target = valid_project();
+    valid_target.target_options.xbrl = Some(XbrlBoundaryOptions::external_target(
+        "target.xsd",
+        Some("table.sps"),
+    )?);
+    assert!(validate(&valid_target).is_empty());
+
+    let mut wrong_sides = valid_project();
+    wrong_sides.source_options.xbrl =
+        Some(XbrlBoundaryOptions::external_target("target.xsd", None)?);
+    wrong_sides.target_options.xbrl = Some(XbrlBoundaryOptions::external_source("source.xsd")?);
+    let side_issues = validate(&wrong_sides);
+    assert_eq!(
+        side_issues
+            .iter()
+            .filter(|issue| issue.message.contains("boundary mode"))
+            .count(),
+        2
+    );
+
+    let mut conflict = valid_project();
+    conflict.source_options.xbrl = Some(XbrlBoundaryOptions::external_source("source.xsd")?);
+    conflict.source_options.delimiter = Some('|');
+    assert!(validate(&conflict).iter().any(|issue| {
+        issue.location == "source format options" && issue.message.contains("cannot be combined")
+    }));
+
+    let mut extra = valid_project();
+    extra.extra_sources.push(NamedSource {
+        name: "taxonomy".to_owned(),
+        path: "instance.xbrl".to_owned(),
+        schema: SchemaNode::group("instance", Vec::new()),
+        options: mapping::FormatOptions {
+            xbrl: Some(XbrlBoundaryOptions::external_target("taxonomy.xsd", None)?),
+            ..mapping::FormatOptions::default()
+        },
+    });
+    assert!(validate(&extra).iter().any(|issue| {
+        issue.location == "extra source `taxonomy` format options"
+            && issue.message.contains("boundary mode")
+    }));
+    Ok(())
 }
 
 #[test]

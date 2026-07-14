@@ -52,6 +52,7 @@ pub fn run_project_with_paths(
 ) -> anyhow::Result<RunOutcome> {
     let project = load_project(project_path)?;
     require_valid(&project)?;
+    reject_xbrl_boundaries(&project)?;
 
     let input_path = resolve_run_path(
         project_path,
@@ -359,6 +360,10 @@ fn read_instance(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if options.xbrl.is_some() {
+        bail!("XBRL source input is not executable; native XBRL reading is not supported");
+    }
+
     if let Some(pdf) = &options.pdf {
         reject_pdf_conflicts(options, "input")?;
         return format_pdf::read(path, pdf)
@@ -602,6 +607,26 @@ fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow
     Ok(())
 }
 
+fn reject_xbrl_boundaries(project: &mapping::Project) -> anyhow::Result<()> {
+    if project.source_options.xbrl.is_some() {
+        bail!("XBRL source input is not executable; native XBRL reading is not supported");
+    }
+    if let Some(source) = project
+        .extra_sources
+        .iter()
+        .find(|source| source.options.xbrl.is_some())
+    {
+        bail!(
+            "extra source `{}` is an XBRL boundary; native XBRL reading is not supported",
+            source.name
+        );
+    }
+    if project.target_options.xbrl.is_some() {
+        bail!("XBRL target output is not executable; native XBRL writing is not supported");
+    }
+    Ok(())
+}
+
 fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
     if options.lenient_segments
         || options.delimiter.is_some()
@@ -611,6 +636,7 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.http_get.is_some()
         || options.json_lines
         || options.pdf.is_some()
+        || options.xbrl.is_some()
         || has_any_xlsx_layout(options)
     {
         bail!("`protobuf` cannot be combined with another format's options for {side}");
@@ -627,6 +653,7 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
+        || options.xbrl.is_some()
         || has_any_xlsx_layout(options)
     {
         bail!("`flextext` cannot be combined with another format's options for {side}");
@@ -643,6 +670,7 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.http_get.is_some()
         || options.json_lines
         || options.protobuf.is_some()
+        || options.xbrl.is_some()
         || has_any_xlsx_layout(options)
     {
         bail!("`pdf` cannot be combined with another format's options for {side}");

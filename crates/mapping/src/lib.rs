@@ -15,6 +15,7 @@ mod iteration;
 mod pdf;
 mod protobuf;
 mod scope_serde;
+mod xbrl;
 mod xlsx_output;
 
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
@@ -34,6 +35,7 @@ pub use pdf::{
     PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextRows, PdfVerticalBoundaryFind,
 };
 pub use protobuf::ProtobufOptions;
+pub use xbrl::{XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError};
 pub use xlsx_output::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
 };
@@ -615,6 +617,10 @@ pub struct FormatOptions {
     /// This mode is output-only and takes precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protobuf: Option<ProtobufOptions>,
+    /// Opaque XBRL contract metadata. The visible schema remains available
+    /// for graph inspection, but native XBRL I/O is not executable yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xbrl: Option<XbrlBoundaryOptions>,
     /// XLSX: worksheet name. The first sheet is used when omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_sheet: Option<String>,
