@@ -387,13 +387,23 @@ impl GraphBuilder<'_> {
         }
         let mut source_path = self.source_abs_path(feed.source_key)?;
         source_path.path.extend(feed.source_suffix.iter().cloned());
-        if self.sources.get(source_path.source).is_some_and(|source| {
+        let transposed_root = self.sources.get(source_path.source).is_some_and(|source| {
             source.format == ComponentFormat::Xlsx && !source.options.xlsx_rows.is_empty()
-        }) {
+        });
+        let grid_root = self
+            .sources
+            .get(source_path.source)
+            .filter(|source| source.format == ComponentFormat::Xlsx)
+            .and_then(|source| source.options.xlsx_grid.as_ref())
+            .is_some_and(|grid| {
+                source_path.path.as_slice() == [grid.header_value_field.as_str()]
+                    || source_path.path.as_slice() == [grid.header_position_field.as_str()]
+            });
+        if transposed_root || grid_root {
             // A transposed worksheet's driver Cell port carries both its
-            // scalar value and the physical column sequence. Runtime rows
-            // are already normalized records, so iteration owns the flat
-            // record root while scalar expressions retain the field path.
+            // scalar value and the physical column sequence. Grid headers
+            // use the same external-record convention. Only header fields
+            // collapse for a grid; nested Rows/Cells remain ordinary paths.
             source_path.path.clear();
         }
         if feed.distinct_key.is_some() {

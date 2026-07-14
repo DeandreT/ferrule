@@ -503,6 +503,34 @@ pub struct XlsxCompositeLayout {
     pub records: Vec<XlsxFixedRecord>,
 }
 
+/// One two-dimensional worksheet grid exposed as header records containing
+/// the complete nested row/cell matrix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxGridLayout {
+    /// Named worksheet; the first worksheet is used when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sheet: Option<String>,
+    /// One-based row whose non-empty cells drive the outer records.
+    pub header_row: XlsxRow,
+    /// One-based first physical row in the nested data matrix.
+    pub data_start_row: XlsxRow,
+    /// Direct root scalar containing the current header cell value.
+    pub header_value_field: String,
+    /// Direct root integer scalar containing the header's physical column.
+    pub header_position_field: String,
+    /// Direct root repeating group containing the data rows.
+    pub rows_field: String,
+    /// Direct repeating group below each row containing its physical cells.
+    pub cells_field: String,
+    /// Direct scalar below each cell containing its value.
+    pub cell_value_field: String,
+    /// Direct integer scalar below each cell containing its physical column.
+    pub cell_position_field: String,
+    /// Root-relative scalar fields read from fixed worksheet coordinates.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixed_cells: Vec<XlsxFixedCell>,
+}
+
 /// Per-side format knobs. This is deliberately one flat bag of optional
 /// settings rather than per-format sub-structs: each format adapter reads
 /// only the fields that concern it, `mapping` stays free of format-crate
@@ -545,6 +573,11 @@ pub struct FormatOptions {
     /// flat/transposed XLSX fields above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_composite: Option<XlsxCompositeLayout>,
+    /// XLSX: a two-dimensional matrix repeated once per non-empty header
+    /// cell. This mode is input-only and mutually exclusive with every
+    /// other XLSX layout option.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xlsx_grid: Option<XlsxGridLayout>,
 }
 
 #[cfg(test)]
@@ -579,6 +612,7 @@ mod tests {
         assert!(defaults.xlsx_columns.is_empty());
         assert!(defaults.xlsx_rows.is_empty());
         assert!(defaults.xlsx_composite.is_none());
+        assert!(defaults.xlsx_grid.is_none());
         assert!(
             !serde_json::to_string(&defaults)
                 .unwrap()
@@ -635,6 +669,35 @@ mod tests {
         let encoded = serde_json::to_string(&options).unwrap();
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded.xlsx_composite, Some(composite));
+    }
+
+    #[test]
+    fn xlsx_grid_layout_roundtrips() {
+        let grid = XlsxGridLayout {
+            sheet: Some("Sales".into()),
+            header_row: XlsxRow::new(1).unwrap(),
+            data_start_row: XlsxRow::new(2).unwrap(),
+            header_value_field: "Month".into(),
+            header_position_field: "MonthColumn".into(),
+            rows_field: "Rows".into(),
+            cells_field: "Cells".into(),
+            cell_value_field: "Value".into(),
+            cell_position_field: "Column".into(),
+            fixed_cells: vec![XlsxFixedCell {
+                path: vec!["Year".into()],
+                row: XlsxRow::new(1).unwrap(),
+                column: XlsxColumn::new(1).unwrap(),
+            }],
+        };
+        let options = FormatOptions {
+            xlsx_grid: Some(grid.clone()),
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded.xlsx_grid, Some(grid));
     }
 
     #[test]

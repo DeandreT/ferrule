@@ -8,6 +8,8 @@ use mapping::{
 
 use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32};
 
+mod grid;
+
 const MAX_WORKSHEET_ROW: u32 = 1_048_576;
 const MAX_WORKSHEET_COLUMN: u32 = 16_384;
 
@@ -77,6 +79,19 @@ pub(super) fn read(
         .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Workbook"))?;
     let (input_keys, output_keys) = entry_key_sets(&root);
     let is_source = output_keys.len() >= input_keys.len();
+
+    if let Some(grid) = grid::read(
+        *component,
+        excel,
+        workbook,
+        &name,
+        input_keys.clone(),
+        output_keys.clone(),
+        is_source,
+        warnings,
+    ) {
+        return Some(grid);
+    }
 
     let mut tables = Vec::new();
     let mut records = Vec::new();
@@ -871,6 +886,49 @@ fn duplicate_fixed_cell(cells: &[FixedCell]) -> bool {
 mod tests {
     use super::*;
 
+    fn minimal_grid(
+        header_start: u32,
+        data_start: u32,
+        header_row_key: Option<u32>,
+        value_ports: bool,
+    ) -> String {
+        let header_row_key = header_row_key
+            .map(|key| format!(r#" outkey="{key}""#))
+            .unwrap_or_default();
+        let header_value_key = if value_ports { r#" outkey="1""# } else { "" };
+        let data_value_key = if value_ports { r#" outkey="4""# } else { "" };
+        format!(
+            r#"
+            <component name="Grid">
+              <data>
+                <root><entry name="Workbook"><entry name="Worksheet">
+                  <ranges>
+                    <range id="1" start="{header_start}" count="1"/>
+                    <range id="2" start="{data_start}"/>
+                  </ranges>
+                  <entry name="Row"{header_row_key}>
+                    <condition><function name="is-range-id"><constant value="1"/></function></condition>
+                    <entry name="Cell"{header_value_key}><entry name="n" outkey="2"/></entry>
+                  </entry>
+                  <entry name="Row" outkey="3">
+                    <condition><function name="is-range-id"><constant value="2"/></function></condition>
+                    <entry name="Cell"{data_value_key}><entry name="n" outkey="5"/></entry>
+                  </entry>
+                </entry></entry></root>
+                <excel inputinstance="grid.xlsx"/>
+              </data>
+            </component>
+            "#
+        )
+    }
+
+    fn read_minimal_grid(xml: &str) -> (SchemaComponent, Vec<String>) {
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let mut warnings = Vec::new();
+        let component = read(&document.root_element(), &mut warnings).unwrap();
+        (component, warnings)
+    }
+
     #[test]
     fn unsupported_composite_shape_falls_back_to_its_supported_table() {
         let document = roxmltree::Document::parse(
@@ -929,5 +987,77 @@ mod tests {
         assert!(warnings.iter().any(|warning| warning.contains(
             "combines fixed records with a transposed table; that composite layout is unsupported"
         )));
+    }
+
+    #[test]
+    fn grid_field_collision_warns_and_falls_back() {
+        let document = roxmltree::Document::parse(
+            r#"
+            <component name="Grid">
+              <data>
+                <root><entry name="Workbook"><entry name="Worksheet">
+                  <ranges>
+                    <range id="1" start="1" count="1"/>
+                    <range id="2" start="2"/>
+                  </ranges>
+                  <entry name="Row">
+                    <condition><function name="is-range-id"><constant value="1"/></function></condition>
+                    <entry name="Cell" annotation="value" outkey="1">
+                      <entry name="n" outkey="2"/>
+                    </entry>
+                  </entry>
+                  <entry name="Row" outkey="3">
+                    <condition><function name="is-range-id"><constant value="2"/></function></condition>
+                    <entry name="Cell" outkey="4"><entry name="n" outkey="5"/></entry>
+                  </entry>
+                </entry></entry></root>
+                <excel inputinstance="grid.xlsx"/>
+              </data>
+            </component>
+            "#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+
+        let component = read(&document.root_element(), &mut warnings).unwrap();
+
+        assert!(component.options.xlsx_grid.is_none());
+        assert!(warnings.iter().any(|warning| {
+            warning.contains("nested-grid header name `value` conflicts with a generated field")
+        }));
+    }
+
+    #[test]
+    fn grid_rejects_runtime_invalid_row_order_and_connected_header_rows() {
+        let (component, warnings) = read_minimal_grid(&minimal_grid(2, 1, None, true));
+        assert!(component.options.xlsx_grid.is_none());
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("data row must start after its header row"))
+        );
+
+        let (component, warnings) = read_minimal_grid(&minimal_grid(1, 2, Some(6), true));
+        assert!(component.options.xlsx_grid.is_none());
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| { warning.contains("header Row connections are not supported") })
+        );
+    }
+
+    #[test]
+    fn grid_accepts_position_only_cell_sequences() {
+        let (component, warnings) = read_minimal_grid(&minimal_grid(1, 2, None, false));
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(component.options.xlsx_grid.is_some());
+        assert!(!component.ports.contains_key(&1));
+        assert!(!component.ports.contains_key(&4));
+        assert_eq!(component.ports.get(&2), Some(&vec!["HeaderColumn".into()]));
+        assert_eq!(
+            component.ports.get(&5),
+            Some(&vec!["Rows".into(), "Cells".into(), "CellColumn".into()])
+        );
     }
 }

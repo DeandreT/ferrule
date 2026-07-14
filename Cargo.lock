@@ -2252,11 +2252,13 @@ dependencies = [
  "format-csv",
  "format-db",
  "format-json",
+ "format-xlsx",
  "format-xml",
  "ir",
  "mapping",
  "roxmltree",
  "rusqlite",
+ "rust_xlsxwriter",
  "serde_json",
  "thiserror 2.0.18",
 ]

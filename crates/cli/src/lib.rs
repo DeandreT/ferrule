@@ -105,6 +105,9 @@ pub fn run_project_with_paths(
             rows.len()
         }
         "xlsx" => {
+            if project.target_options.xlsx_grid.is_some() {
+                anyhow::bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+            }
             if project.target_options.xlsx_composite.is_some() {
                 anyhow::bail!(
                     "composite XLSX output is not supported; `xlsx_composite` is input-only"
@@ -278,9 +281,9 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
 }
 
 /// Reads any supported instance file (format picked by extension) into an
-/// [`Instance`], shaped by `schema`. CSV, flat/transposed XLSX, and single-table
-/// database inputs arrive wrapped in [`Instance::Repeated`]; composite XLSX and
-/// database schemas produce their grouped shapes directly.
+/// [`Instance`], shaped by `schema`. CSV, flat/transposed/grid XLSX, and
+/// single-table database inputs arrive wrapped in [`Instance::Repeated`];
+/// composite XLSX and database schemas produce their grouped shapes directly.
 fn read_instance(
     path: &Path,
     schema: &SchemaNode,
@@ -298,7 +301,16 @@ fn read_instance(
             Instance::Repeated(rows)
         }
         "xlsx" => {
-            if let Some(layout) = &options.xlsx_composite {
+            if let Some(layout) = &options.xlsx_grid {
+                if options.xlsx_composite.is_some() || has_legacy_xlsx_layout(options) {
+                    anyhow::bail!(
+                        "`xlsx_grid` cannot be combined with `xlsx_composite` or legacy XLSX sheet, row, column, transposed, or header options"
+                    );
+                }
+                let rows = format_xlsx::read_grid(path, schema, layout)
+                    .with_context(|| format!("reading input {}", path.display()))?;
+                Instance::Repeated(rows)
+            } else if let Some(layout) = &options.xlsx_composite {
                 if has_legacy_xlsx_layout(options) {
                     anyhow::bail!(
                         "`xlsx_composite` cannot be combined with legacy XLSX sheet, row, column, or header options"
