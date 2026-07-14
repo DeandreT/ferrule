@@ -48,8 +48,8 @@ use iteration::{
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
     read_edi_component, read_fixed_width_component, read_flextext_component,
-    read_http_get_component, read_json_component, read_protobuf_component, read_schema_component,
-    read_xlsx_component, schema_node_at,
+    read_http_get_component, read_json_component, read_pdf_component, read_protobuf_component,
+    read_schema_component, read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{primary_index, runtime_names};
@@ -222,6 +222,15 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         }
                     }
                 }
+                "pdf" if component.attribute("kind") == Some("34") => {
+                    match read_pdf_component(&component, path) {
+                        Ok(component) => schema_components.push(component),
+                        Err(reason) => {
+                            note_skipped_library(&mut skipped_libraries, "pdf");
+                            warnings.push(format!("skipped PDF component `{name}`: {reason}"));
+                        }
+                    }
+                }
                 "core" if component.attribute("kind") == Some("7") => {
                     output_parameters.push(output_parameter::read(&component));
                 }
@@ -253,7 +262,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         } else {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
-                                 (only xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf targets, requestless HTTP GET XML, scalar user-defined functions, and \
+                                 (only xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf/pdf-source, requestless HTTP GET XML, scalar user-defined functions, and \
                                  core/lang function components and supported XPath 2 functions import)"
                             ));
                         }

@@ -15,6 +15,12 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                 .to_string(),
         ));
     }
+    if project.source_options.pdf.is_some() || project.target_options.pdf.is_some() {
+        return Err(MfdError::Unsupported(
+            "PDF component export is not supported; remove PDF format options before exporting this project"
+                .to_string(),
+        ));
+    }
     if project.target_options.http_get.is_some() {
         return Err(MfdError::Unsupported(
             "HTTP GET transport is valid only for mapping sources".to_string(),

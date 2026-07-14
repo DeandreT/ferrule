@@ -26,8 +26,8 @@ enum DiagnosticFormat {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a mapping project against a CSV, XLSX, XML, JSON, SQLite, EDI, or
-    /// configured FlexText input, producing those formats or Protocol Buffers.
+    /// Run a mapping project, including configured PDF input. Output supports
+    /// CSV, XLSX, XML, JSON, SQLite, EDI, FlexText, and Protocol Buffers.
     /// For SQLite the table name is the schema root's name.
     Run {
         #[arg(long)]

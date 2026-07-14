@@ -410,6 +410,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "upper-case" => "upper",
         "lower-case" => "lower",
         "string" => "string",
+        "numeric" => "is_numeric",
         "format-number" => "format_number",
         "trim" => "trim",
         "left-trim" => "left_trim",
@@ -449,6 +450,7 @@ mod tests {
     #[test]
     fn scalar_names_use_canonical_ir_spelling() {
         assert_eq!(map_name("string"), Some("string"));
+        assert_eq!(map_name("numeric"), Some("is_numeric"));
         assert_eq!(map_name("format-number"), Some("format_number"));
         assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
         assert_eq!(map_name("month-from-datetime"), Some("month_from_datetime"));

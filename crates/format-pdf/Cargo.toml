@@ -1,0 +1,13 @@
+[package]
+name = "format-pdf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded visual PDF source extraction"
+
+[dependencies]
+ir = { workspace = true }
+mapping = { workspace = true }
+pdf-extract = { workspace = true }
+thiserror = { workspace = true }

@@ -12,6 +12,7 @@ mod fixed_width;
 mod flextext;
 mod http;
 mod iteration;
+mod pdf;
 mod protobuf;
 mod scope_serde;
 mod xlsx_output;
@@ -25,6 +26,11 @@ pub use flextext::{
 pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
+};
+pub use pdf::{
+    PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCommand, PdfCoordinate, PdfEdgeFind,
+    PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfPageSelection, PdfReference, PdfRegion,
+    PdfVerticalBoundaryFind,
 };
 pub use protobuf::ProtobufOptions;
 pub use xlsx_output::{
@@ -592,6 +598,10 @@ pub struct FormatOptions {
     /// precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flextext: Option<FlexTextLayout>,
+    /// PDF visual extraction layout. This mode is input-only and takes
+    /// precedence over the file extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pdf: Option<PdfLayout>,
     /// Static HTTP GET transport policy. The request URL remains the owning
     /// source path so callers can still override it with a local file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -646,6 +656,7 @@ mod tests {
         assert!(!defaults.json_lines);
         assert!(defaults.fixed_width.is_none());
         assert!(defaults.flextext.is_none());
+        assert!(defaults.pdf.is_none());
         assert!(defaults.http_get.is_none());
         assert!(defaults.protobuf.is_none());
         assert!(

@@ -1,8 +1,8 @@
 //! Headless runner: loads a mapping project and runs it against an input
-//! file (delimited/fixed-width text, XLSX, XML, JSON, SQLite, or X12 EDI,
-//! chosen by extension and format options) or a static HTTP(S) XML source to
-//! produce an output file. Split out from `main.rs` so it's testable without
-//! shelling out to the built binary.
+//! file (delimited/fixed-width text, XLSX, XML, JSON, SQLite, PDF, or X12
+//! EDI, chosen by extension and format options) or a static HTTP(S) XML
+//! source to produce an output file. Split out from `main.rs` so it's
+//! testable without shelling out to the built binary.
 //!
 //! For SQLite (`.db`/`.sqlite`/`.sqlite3`) the table name is the project's
 //! source/target schema root `name`. For EDI (`.edi`/`.x12`/`.edifact`)
@@ -98,7 +98,10 @@ pub fn run_project_with_paths(
     let target_instance =
         engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
 
-    let row_count = if let Some(layout) = &project.target_options.flextext {
+    let row_count = if project.target_options.pdf.is_some() {
+        reject_pdf_conflicts(&project.target_options, "output")?;
+        bail!("PDF output is not supported; `pdf` is input-only");
+    } else if let Some(layout) = &project.target_options.flextext {
         reject_flextext_conflicts(&project.target_options, "output")?;
         format_flextext::write(&output_path, &project.target, &target_instance, layout)
             .with_context(|| format!("writing output {}", output_path.display()))?;
@@ -221,6 +224,7 @@ pub fn run_project_with_paths(
                     .with_context(|| format!("writing output {}", output_path.display()))?;
                 1
             }
+            "pdf" => bail!("PDF output is not supported; PDF is input-only"),
             other => bail!("unsupported output file extension: .{other}"),
         }
     };
@@ -346,15 +350,21 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
 }
 
 /// Reads any supported instance file into an [`Instance`], shaped by `schema`.
-/// A configured fixed-width layout takes precedence over the extension. CSV,
-/// fixed-width text, flat/transposed/grid XLSX, and single-table database
-/// inputs arrive wrapped in [`Instance::Repeated`]; composite XLSX and database
-/// schemas produce their grouped shapes directly.
+/// A configured PDF, FlexText, or fixed-width layout takes precedence over the
+/// extension. CSV, fixed-width text, flat/transposed/grid XLSX, and single-table
+/// database inputs arrive wrapped in [`Instance::Repeated`]; composite XLSX,
+/// PDF, and database schemas produce their grouped shapes directly.
 fn read_instance(
     path: &Path,
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if let Some(pdf) = &options.pdf {
+        reject_pdf_conflicts(options, "input")?;
+        return format_pdf::read(path, pdf)
+            .with_context(|| format!("reading input {}", path.display()));
+    }
+
     if let Some(layout) = &options.flextext {
         reject_flextext_conflicts(options, "input")?;
         return format_flextext::read(path, schema, layout)
@@ -454,6 +464,7 @@ fn read_instance(
             read(path, schema, options.lenient_segments)
                 .with_context(|| format!("reading input {}", path.display()))?
         }
+        "pdf" => bail!("PDF input requires embedded `pdf` extraction options"),
         other => bail!("unsupported input file extension: .{other}"),
     };
     Ok(instance)
@@ -599,6 +610,7 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.flextext.is_some()
         || options.http_get.is_some()
         || options.json_lines
+        || options.pdf.is_some()
         || has_any_xlsx_layout(options)
     {
         bail!("`protobuf` cannot be combined with another format's options for {side}");
@@ -613,10 +625,27 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.fixed_width.is_some()
         || options.http_get.is_some()
         || options.json_lines
+        || options.pdf.is_some()
         || options.protobuf.is_some()
         || has_any_xlsx_layout(options)
     {
         bail!("`flextext` cannot be combined with another format's options for {side}");
+    }
+    Ok(())
+}
+
+fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.lenient_segments
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.http_get.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || has_any_xlsx_layout(options)
+    {
+        bail!("`pdf` cannot be combined with another format's options for {side}");
     }
     Ok(())
 }

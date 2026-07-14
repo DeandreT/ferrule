@@ -26,6 +26,8 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
 - **FlexText layouts** — bounded recursive split/store/switch pipelines with fixed-width
   and delimited records; embedded layouts work as both sources and targets, and MapForce
   `.mft` configurations compile into portable project data during import
+- **PDF extraction** (source) — bounded positioned-text and painted-edge extraction from
+  embedded visual layouts, including fixed captures, page groups, anchors, and table rows
 
 ## How a mapping works
 
@@ -55,7 +57,7 @@ top-level element refs, named types, and extensions), requestless static HTTP GE
 with typed XML responses, JSON components (JSON Schema with
 local `$ref` support, or the design's entry tree as a fallback), CSV text components
 (inline delimiter/header settings), external FlexText `.mft` layouts, flat and
-hierarchical XLSX targets,
+hierarchical XLSX targets, visual PDF sources using supported external `.pxt` layouts,
 proto2 binary targets,
 single-table SQLite database components (schemas introspected from the referenced
 database when it's reachable), the common core functions, the aggregate family
@@ -72,8 +74,8 @@ picking each side's component kind from the project's instance paths. Canonical
 structured-join export covers root-context collections inside the primary source.
 Designs built on namespaces, `xsi:type` polymorphism, correlated/keyless joins,
 multi-source or nested join export, joined aggregate export, multi-table database wiring, or other
-endpoints (unsupported Excel layout variants, PDF, XBRL, FlexText string-parse, or
-EDI-config components)
+endpoints (unsupported Excel/PDF layout variants, PDF targets, XBRL, FlexText
+string-parse, or EDI-config components)
 are not converted yet.
 
 ```sh

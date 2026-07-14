@@ -189,7 +189,7 @@ pub(super) fn read(
     let [equal_index] = equal_indexes.as_slice() else {
         return Err("structured lookup requires exactly one equality predicate".to_string());
     };
-    let edge_from = crate::import::graph::read_edges(&structure, None);
+    let edge_from = crate::import::graph::read_edges(&structure, Some(component));
     let parameters = parameter_outputs(&functions, &ids)?;
     let by_output = function_outputs(&functions);
 
