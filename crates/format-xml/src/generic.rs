@@ -83,17 +83,21 @@ pub(super) fn read_group_fields(
                 .collect::<Result<Vec<_>, _>>()?;
             fields.push((child.name.clone(), Instance::Repeated(items)));
         } else {
-            let value = match element
+            let matched = element
                 .children()
-                .find(|node| node.is_element() && node.tag_name().name() == child.name)
-            {
-                Some(element) => read_node(&element, child)?,
-                None => match child.kind {
-                    SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
-                    SchemaKind::Group { .. } => Instance::Group(Vec::new()),
-                },
-            };
-            fields.push((child.name.clone(), value));
+                .find(|node| node.is_element() && node.tag_name().name() == child.name);
+            match matched {
+                Some(element) => {
+                    fields.push((child.name.clone(), read_node(&element, child)?));
+                }
+                None if matches!(child.kind, SchemaKind::Scalar { .. }) => {
+                    fields.push((child.name.clone(), Instance::Scalar(Value::Null)));
+                }
+                // A missing field and a present empty group must remain
+                // distinguishable so an XML read/write round trip does not
+                // invent absent choice branches or lose `<Empty/>` elements.
+                None => {}
+            }
         }
     }
     Ok(Instance::Group(fields))

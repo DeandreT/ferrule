@@ -4,7 +4,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
 use ir::{Instance, ScalarType, Value};
-use mapping::{Graph, IterationOutput, JoinId, Node, NodeId, Project, RuntimeValue, Scope};
+use mapping::{
+    Graph, IterationOutput, JoinId, Node, NodeId, Project, RuntimeValue, Scope, ScopeConstruction,
+};
 use thiserror::Error;
 
 mod context;
@@ -64,6 +66,8 @@ pub enum EngineError {
     ConflictingIterationOutput,
     #[error("mapped-sequence output cannot populate a computed target property")]
     MappedSequenceDynamicTarget,
+    #[error("copy-current-source construction requires a group item, got {found}")]
+    CopyCurrentSourceRequiresGroup { found: &'static str },
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     #[error("join {} is not active in the current scope", .join.get())]
@@ -570,6 +574,24 @@ fn produce_item(
 ) -> Result<Option<Instance>, EngineError> {
     if apply_filter && !passes_filter(graph, scope.filter, context, filter_positions)? {
         return Ok(None);
+    }
+
+    if scope.construction == ScopeConstruction::CopyCurrentSource {
+        return match context.last().copied() {
+            Some(current @ Instance::Group(_)) => Ok(Some((*current).clone())),
+            Some(Instance::Scalar(_)) => {
+                Err(EngineError::CopyCurrentSourceRequiresGroup { found: "scalar" })
+            }
+            Some(Instance::Repeated(_)) => Err(EngineError::CopyCurrentSourceRequiresGroup {
+                found: "repeated collection",
+            }),
+            Some(Instance::MappedSequence(_)) => Err(EngineError::CopyCurrentSourceRequiresGroup {
+                found: "mapped sequence",
+            }),
+            None => Err(EngineError::CopyCurrentSourceRequiresGroup {
+                found: "missing context",
+            }),
+        };
     }
 
     let mut fields = Vec::with_capacity(

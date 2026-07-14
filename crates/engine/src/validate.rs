@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Graph, IterationOutput, JoinId, Node, NodeId, Project, Scope};
+use mapping::{
+    Graph, IterationOutput, JoinId, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+};
 
 use super::validate_join::{
     validate_plan as validate_join_plan, validate_roots as validate_join_roots,
@@ -35,6 +37,12 @@ impl fmt::Display for ValidationIssue {
 /// names, and cycles without reading input data or evaluating expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
+    if project.target_options.http_get.is_some() {
+        issues.push(ValidationIssue::new(
+            "target format options",
+            "HTTP GET transport is valid only for mapping sources",
+        ));
+    }
     validate_schema(
         "source schema",
         &project.source,
@@ -60,7 +68,10 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     validate_scope(
         project,
         &project.root,
-        Some(&project.target),
+        ScopeSchemas {
+            target: Some(&project.target),
+            parent_source: Some(&project.source),
+        },
         &mut Vec::new(),
         &[],
         &mut BTreeMap::new(),
@@ -544,20 +555,84 @@ fn validate_cycles(graph: &Graph, issues: &mut Vec<ValidationIssue>) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct ScopeSchemas<'a> {
+    target: Option<&'a SchemaNode>,
+    parent_source: Option<&'a SchemaNode>,
+}
+
 fn validate_scope(
     project: &Project,
     scope: &Scope,
-    target: Option<&SchemaNode>,
+    schemas: ScopeSchemas<'_>,
     path: &mut Vec<String>,
     active_joins: &[(JoinId, Vec<Vec<String>>)],
     join_owners: &mut BTreeMap<JoinId, String>,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    let target = schemas.target;
     let location = if path.is_empty() {
         "root scope".to_string()
     } else {
         format!("scope `{}`", path.join("/"))
     };
+    let current_source = current_source_schema(project, schemas.parent_source, &scope.iteration);
+
+    if scope.construction == ScopeConstruction::CopyCurrentSource {
+        if target.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
+            issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction requires a group target schema",
+            ));
+        }
+        if current_source.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
+            issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction requires a group source item",
+            ));
+        }
+        if let (Some(source), Some(target)) = (current_source, target)
+            && matches!(source.kind, SchemaKind::Group { .. })
+            && matches!(target.kind, SchemaKind::Group { .. })
+            && source.kind != target.kind
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction requires matching source and target group fields",
+            ));
+        }
+        if !(scope.bindings.is_empty()
+            && scope.children.is_empty()
+            && scope.dynamic_bindings.is_empty()
+            && scope.dynamic_children.is_empty()
+            && !scope.merge_dynamic_fields)
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction cannot contain bindings, child scopes, or dynamic target content",
+            ));
+        }
+        if scope.group_by.is_some()
+            || scope.group_starting_with.is_some()
+            || scope.group_into_blocks.is_some()
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction cannot use grouping controls",
+            ));
+        }
+        match &scope.iteration {
+            ScopeIteration::Sequence(_) => issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction cannot iterate a generated sequence",
+            )),
+            ScopeIteration::InnerJoin { .. } => issues.push(ValidationIssue::new(
+                &location,
+                "copy-current-source construction cannot iterate an inner join",
+            )),
+            ScopeIteration::None | ScopeIteration::Source(_) => {}
+        }
+    }
 
     if let Some(source) = scope.source()
         && !source_path_matches(project, source, |_| true)
@@ -862,7 +937,10 @@ fn validate_scope(
         validate_scope(
             project,
             child,
-            child_target,
+            ScopeSchemas {
+                target: child_target,
+                parent_source: current_source,
+            },
             path,
             &active_joins,
             join_owners,
@@ -927,7 +1005,10 @@ fn validate_scope(
         validate_scope(
             project,
             &child.scope,
-            dynamic_target,
+            ScopeSchemas {
+                target: dynamic_target,
+                parent_source: current_source,
+            },
             path,
             &active_joins,
             join_owners,
@@ -935,6 +1016,52 @@ fn validate_scope(
         );
         path.pop();
     }
+}
+
+fn current_source_schema<'a>(
+    project: &'a Project,
+    parent: Option<&'a SchemaNode>,
+    iteration: &ScopeIteration,
+) -> Option<&'a SchemaNode> {
+    match iteration {
+        ScopeIteration::None => parent,
+        ScopeIteration::Source(path) => source_schema_at(project, parent, path),
+        ScopeIteration::Sequence(_) | ScopeIteration::InnerJoin { .. } => None,
+    }
+}
+
+fn source_schema_at<'a>(
+    project: &'a Project,
+    parent: Option<&'a SchemaNode>,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
+    if let Some(node) = parent.and_then(|schema| follow_schema(schema, path)) {
+        return Some(node);
+    }
+    if let Some((name, rest)) = path.split_first()
+        && let Some(extra) = project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == *name)
+        && let Some(node) = follow_schema(&extra.schema, rest)
+    {
+        return Some(node);
+    }
+    find_schema_path(&project.source, path).or_else(|| {
+        project
+            .extra_sources
+            .iter()
+            .find_map(|source| find_schema_path(&source.schema, path))
+    })
+}
+
+fn find_schema_path<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    follow_schema(schema, path).or_else(|| match &schema.kind {
+        SchemaKind::Group { children, .. } => children
+            .iter()
+            .find_map(|child| find_schema_path(child, path)),
+        SchemaKind::Scalar { .. } => None,
+    })
 }
 
 pub(super) fn source_path_matches(
@@ -994,157 +1121,4 @@ pub(super) fn display_path(path: &[String]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use ir::{ScalarType, Value};
-    use mapping::{Binding, NamedSource};
-
-    fn valid_project() -> Project {
-        let mut graph = Graph::default();
-        graph.nodes.insert(
-            0,
-            Node::SourceField {
-                frame: None,
-                path: vec!["name".into()],
-            },
-        );
-        Project {
-            source: SchemaNode::group("row", vec![SchemaNode::scalar("name", ScalarType::String)]),
-            target: SchemaNode::group("row", vec![SchemaNode::scalar("name", ScalarType::String)]),
-            source_path: None,
-            target_path: None,
-            source_options: Default::default(),
-            target_options: Default::default(),
-            extra_sources: Vec::new(),
-            graph,
-            root: Scope {
-                iteration: mapping::ScopeIteration::Source(Vec::new()),
-                bindings: vec![Binding {
-                    target_field: "name".into(),
-                    node: 0,
-                }],
-                ..Scope::default()
-            },
-        }
-    }
-
-    #[test]
-    fn accepts_a_valid_project_and_relative_source_paths() {
-        let mut project = valid_project();
-        project.extra_sources.push(NamedSource {
-            name: "reference".into(),
-            path: "reference.json".into(),
-            schema: SchemaNode::group(
-                "records",
-                vec![SchemaNode::scalar("code", ScalarType::String)],
-            ),
-            options: Default::default(),
-        });
-        project.graph.nodes.insert(
-            1,
-            Node::SourceField {
-                frame: None,
-                path: vec!["reference".into(), "code".into()],
-            },
-        );
-
-        assert!(validate(&project).is_empty());
-    }
-
-    #[test]
-    fn rejects_inconsistent_deserialized_group_alternatives() {
-        let mut project = valid_project();
-        let SchemaKind::Group { alternatives, .. } = &mut project.target.kind else {
-            panic!("test target must be a group");
-        };
-        *alternatives = vec![ir::GroupAlternative {
-            name: "broken".into(),
-            members: vec!["missing".into()],
-            required: vec!["missing".into()],
-        }];
-
-        let issues = validate(&project);
-        assert!(issues.iter().any(|issue| {
-            issue.location == "target schema"
-                && issue.message.contains("group alternative metadata")
-        }));
-    }
-
-    #[test]
-    fn reports_dangling_references_paths_unknown_functions_and_cycles() {
-        let mut project = valid_project();
-        project.graph.nodes.insert(
-            1,
-            Node::Call {
-                function: "mystery".into(),
-                args: vec![99],
-            },
-        );
-        project.graph.nodes.insert(
-            2,
-            Node::Call {
-                function: "concat".into(),
-                args: vec![2],
-            },
-        );
-        project.graph.nodes.insert(
-            3,
-            Node::SourceField {
-                frame: None,
-                path: vec!["missing".into()],
-            },
-        );
-        project.graph.nodes.insert(
-            4,
-            Node::Const {
-                value: Value::String("unused".into()),
-            },
-        );
-        project.root.set_source(None);
-        project.root.filter = Some(88);
-        project.root.group_by = Some(89);
-        project.root.group_starting_with = Some(92);
-        project.root.group_into_blocks = Some(93);
-        project.root.sort_by = Some(90);
-        project.root.take = Some(91);
-        project.root.bindings.push(Binding {
-            target_field: "missing".into(),
-            node: 77,
-        });
-        project.root.children.push(Scope {
-            target_field: "absent".into(),
-            ..Scope::default()
-        });
-
-        let rendered: Vec<String> = validate(&project)
-            .into_iter()
-            .map(|issue| issue.to_string())
-            .collect();
-        for expected in [
-            "unknown function `mystery`",
-            "argument 0 references missing node 99",
-            "cycle reaches node 2",
-            "source field `missing` matches no scalar",
-            "filter references missing node 88",
-            "group-by key references missing node 89",
-            "group-starting-with predicate references missing node 92",
-            "group block size references missing node 93",
-            "group-starting-with predicate has no iterated source",
-            "group block size has no iterated source",
-            "scope grouping modes are mutually exclusive",
-            "sort key references missing node 90",
-            "take count references missing node 91",
-            "filter has no iterated source",
-            "sort key has no iterated source",
-            "take count has no iterated source",
-            "binding target `missing` does not exist",
-            "binding for `missing` references missing node 77",
-            "target scope does not exist",
-        ] {
-            assert!(
-                rendered.iter().any(|issue| issue.contains(expected)),
-                "missing `{expected}` in {rendered:#?}"
-            );
-        }
-    }
-}
+mod tests;
