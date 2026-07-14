@@ -245,7 +245,7 @@ fn invalid_output_parameters_do_not_bypass_the_missing_target_error() {
         let dir = setup(&design);
         assert!(matches!(
             mfd::import(&dir.0.join("mapping.mfd")),
-            Err(mfd::MfdError::Unsupported(message))
+            Err(mfd::MfdError::UnsupportedImport(message))
                 if message.contains("output parameters were present but none")
         ));
     }
@@ -253,7 +253,7 @@ fn invalid_output_parameters_do_not_bypass_the_missing_target_error() {
     let dir = setup(&mapping(""));
     assert!(matches!(
         mfd::import(&dir.0.join("mapping.mfd")),
-        Err(mfd::MfdError::Unsupported(message))
+        Err(mfd::MfdError::UnsupportedImport(message))
             if message.contains("no importable target component")
                 && !message.contains("output parameters were present")
     ));
