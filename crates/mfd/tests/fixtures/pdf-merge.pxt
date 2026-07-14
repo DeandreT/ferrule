@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document>
+  <Template version="1">
+    <Model>
+      <Root id="1">
+        <Children>
+          <Grouping id="2">
+            <Children>
+              <Capture id="3">
+                <Label>ReportName</Label>
+                <Region>{ Left: Left + 40pt, Top: Top + 20pt, Right: Right - 40pt, Bottom: Top + 50pt }</Region>
+              </Capture>
+              <MergeSource id="4">
+                <Region>{ Left: Left + 30pt, Top: Top + 90pt, Right: Right - 30pt, Bottom: Bottom - 20pt }</Region>
+                <Target>Records</Target>
+              </MergeSource>
+            </Children>
+            <Label/>
+            <Kind><OneGroupPerPage/></Kind>
+            <Filter>1</Filter>
+          </Grouping>
+          <Grouping id="5">
+            <Children>
+              <MergeSource id="6">
+                <Region>{ Left: Left + 30pt, Top: Top + 25pt, Right: Right - 30pt, Bottom: Bottom - 20pt }</Region>
+                <Target>Records</Target>
+              </MergeSource>
+            </Children>
+            <Label/>
+            <Kind><OneGroupPerPage/></Kind>
+            <Filter>2</Filter>
+          </Grouping>
+          <MergeTarget id="7">
+            <Children>
+              <Splitter id="8">
+                <Children>
+                  <Grouping id="9">
+                    <Children>
+                      <Capture id="10">
+                        <Label>Code</Label>
+                        <Region>{ Left: Left, Top: Top, Right: Left + 180pt, Bottom: Bottom }</Region>
+                      </Capture>
+                      <Capture id="11">
+                        <Label>Amount</Label>
+                        <Region>{ Left: Left + 180pt, Top: Top, Right: Right, Bottom: Bottom }</Region>
+                      </Capture>
+                    </Children>
+                    <Label>Record</Label>
+                    <Kind><OneGroupPerPage/></Kind>
+                    <Filter/>
+                  </Grouping>
+                </Children>
+                <Region/>
+                <FeatureFind>
+                  <EdgeFind>
+                    <Fill>3pt</Fill>
+                    <Prominence>20</Prominence>
+                    <Resolution><Standard/></Resolution>
+                  </EdgeFind>
+                </FeatureFind>
+                <PostProcess><MinimumExtent/><Behavior><discard/></Behavior></PostProcess>
+              </Splitter>
+            </Children>
+            <Name>Records</Name>
+          </MergeTarget>
+        </Children>
+        <Label>Ledger</Label>
+      </Root>
+    </Model>
+  </Template>
+</Document>

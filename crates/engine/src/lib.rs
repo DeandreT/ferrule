@@ -609,11 +609,14 @@ fn produce_item(
             output_positions,
             &mut in_progress,
         )?;
-        insert_target_field(
-            &mut fields,
-            binding.target_field.clone(),
-            Instance::Scalar(value),
-        )?;
+        let value = match target.and_then(|schema| schema.child(&binding.target_field)) {
+            Some(field) if field.repeating => match value {
+                Value::Null => Instance::Repeated(Vec::new()),
+                value => Instance::Repeated(vec![Instance::Scalar(value)]),
+            },
+            _ => Instance::Scalar(value),
+        };
+        insert_target_field(&mut fields, binding.target_field.clone(), value)?;
     }
     for binding in &scope.dynamic_bindings {
         let key = eval_dynamic_key(graph, binding.key, context, output_positions)?;

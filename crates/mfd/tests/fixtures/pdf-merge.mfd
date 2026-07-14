@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="42">
+  <resources/>
+  <component name="pdf-merge-map" uid="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="ledger" library="pdf" uid="2" kind="34">
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance">
+                <file role="inputinstance" name="ledger.pdf"/>
+                <entry name="document" type="doc-pdf">
+                  <document schemafile="ledger.pxt" root="Ledger"/>
+                  <entry name="Ledger">
+                    <entry name="ReportName" outkey="1"/>
+                    <entry name="Record" outkey="2">
+                      <entry name="Code" outkey="3"/>
+                      <entry name="Amount" outkey="4"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+          </data>
+        </component>
+        <component name="records" library="text" uid="3" kind="16">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header><namespaces><namespace/></namespaces></header>
+              <entry name="FileInstance"><entry name="document">
+                <entry name="Rows" inpkey="10">
+                  <entry name="Code" inpkey="11"/>
+                  <entry name="Amount" inpkey="12"/>
+                </entry>
+              </entry></entry>
+            </root>
+            <text type="csv" outputinstance="ledger.csv">
+              <settings separator="," firstrownames="true">
+                <names root="LedgerRows" block="Rows">
+                  <field0 name="Code" type="string"/>
+                  <field1 name="Amount" type="decimal"/>
+                </names>
+              </settings>
+            </text>
+          </data>
+        </component>
+      </children>
+      <graph directed="1">
+        <edges/>
+        <vertices>
+          <vertex vertexkey="2"><edges><edge vertexkey="10"/></edges></vertex>
+          <vertex vertexkey="3"><edges><edge vertexkey="11"/></edges></vertex>
+          <vertex vertexkey="4"><edges><edge vertexkey="12"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

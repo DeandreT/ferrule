@@ -31,7 +31,7 @@ clean-room interoperability, and extensible adapters.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: 114/120 local MapForce 2026 samples import; 76 import without
+- `.mfd` survey: 115/120 local MapForce 2026 samples import; 77 import without
   warnings. The survey is diagnostic, not a compatibility claim.
 - Known architectural constraints: one primary input and one target instance
   per run, scalar graph outputs, fixed-path extra sources, no trace API, and
@@ -46,7 +46,7 @@ clean-room interoperability, and extensible adapters.
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts | Additional FlexText commands and string-fed parsing |
 | Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources | XBRL plus advanced PDF extraction and PDF targets |
+| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources with page-select/merge table layouts | XBRL plus advanced PDF extraction and PDF targets |
 | Dataflow | One primary source plus named lookup/join sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
@@ -262,15 +262,15 @@ Five release journeys require no hand-edited project JSON:
 
 Update these numbers with each parity increment:
 
-- Workspace tests: 479 (478 executable plus the ignored local-sample survey).
-- `.mfd` survey: 97/120 import, 57 warning-free.
+- Workspace tests: 728 (725 executable plus three ignored local-sample surveys).
+- `.mfd` survey: 115/120 import, 77 warning-free.
 - Unsupported-function warnings: 2 (`auto-number` and `sleep`) across the
   expanded importable set.
 - Target-path mismatch warnings: 1 across the expanded importable set.
-- Generic unsupported binding/iteration warnings: 22/11 across the expanded
+- Generic unsupported binding/iteration warnings: 18/7 across the expanded
   importable set, down from 32/13 before structured join import.
 - Unresolvable aggregate warnings: 2, down from 4 after joined-tuple reduction.
-- Non-repeating structural-group warnings: 5 across the expanded importable set.
+- Non-repeating structural-group warnings: 2 across the expanded importable set.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
   warnings, runtime failures, and invalid command usage.
 - CLI run paths: explicit flags override project-relative `source_path` and

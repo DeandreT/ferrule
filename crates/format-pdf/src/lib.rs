@@ -4,6 +4,7 @@ mod extract;
 mod layout;
 
 use std::path::Path;
+use std::{fs::File, io::Read};
 
 use ir::Instance;
 use mapping::PdfLayout;
@@ -43,7 +44,17 @@ pub enum PdfError {
 }
 
 pub fn read(path: &Path, layout: &PdfLayout) -> Result<Instance, PdfError> {
-    let bytes = std::fs::read(path)?;
+    let file = File::open(path)?;
+    let metadata = file.metadata()?;
+    if metadata.len() > MAX_INPUT_BYTES as u64 {
+        return Err(PdfError::InputTooLarge);
+    }
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_INPUT_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_INPUT_BYTES {
+        return Err(PdfError::InputTooLarge);
+    }
     from_bytes(&bytes, layout)
 }
 
@@ -53,4 +64,40 @@ pub fn from_bytes(bytes: &[u8], layout: &PdfLayout) -> Result<Instance, PdfError
     }
     let pages = extract::extract_pages(bytes)?;
     layout::evaluate(&pages, layout)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+
+    use mapping::{PdfCapture, PdfCommand, PdfPageSelection, PdfRegion};
+
+    use super::*;
+
+    #[test]
+    fn path_read_rejects_oversized_sparse_file_before_allocation() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_pdf_oversized_{}_{}",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        let Ok(file) = File::create(&path) else {
+            panic!("sparse PDF test file must be creatable");
+        };
+        assert!(file.set_len(MAX_INPUT_BYTES as u64 + 1).is_ok());
+        drop(file);
+        let Ok(layout) = PdfLayout::new(
+            "Document",
+            PdfPageSelection::First,
+            vec![PdfCommand::Capture(PdfCapture {
+                name: "Value".into(),
+                region: PdfRegion::full(),
+            })],
+        ) else {
+            panic!("bounded-read test layout must validate");
+        };
+
+        assert!(matches!(read(&path, &layout), Err(PdfError::InputTooLarge)));
+        assert!(std::fs::remove_file(path).is_ok());
+    }
 }
