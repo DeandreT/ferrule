@@ -9,7 +9,7 @@ use super::function::{
 };
 use super::graph::GraphBuilder;
 use super::group_projection::TargetIteration;
-use super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
+use super::schema::{SchemaComponent, schema_node_at};
 
 /// Infers generated XML occurrence scopes whose sequence is visible only
 /// through computed descendant feeds. MapForce permits these mappings to emit
@@ -19,7 +19,7 @@ pub(super) fn infer(
     builder: &mut GraphBuilder<'_>,
     iterations: &mut Vec<TargetIteration>,
 ) {
-    if target.format != ComponentFormat::Xml {
+    if !target.format.is_xml_like() {
         return;
     }
 
