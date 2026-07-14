@@ -70,6 +70,50 @@ impl ParseState {
     }
 }
 
+fn read_xml_text(path: &Path) -> std::io::Result<String> {
+    let bytes = std::fs::read(path)?;
+    if bytes.starts_with(&[0x00, 0x00, 0xfe, 0xff]) || bytes.starts_with(&[0xff, 0xfe, 0x00, 0x00])
+    {
+        return Err(invalid_xml_encoding("UTF-32 schemas are not supported"));
+    }
+    if let Some(body) = bytes.strip_prefix(&[0xff, 0xfe]) {
+        return decode_utf16(body, u16::from_le_bytes);
+    }
+    if let Some(body) = bytes.strip_prefix(&[0xfe, 0xff]) {
+        return decode_utf16(body, u16::from_be_bytes);
+    }
+    if bytes.starts_with(&[b'<', 0, b'?', 0]) {
+        return decode_utf16(&bytes, u16::from_le_bytes);
+    }
+    if bytes.starts_with(&[0, b'<', 0, b'?']) {
+        return decode_utf16(&bytes, u16::from_be_bytes);
+    }
+    let decoded = match bytes.strip_prefix(&[0xef, 0xbb, 0xbf]) {
+        Some(body) => String::from_utf8(body.to_vec()),
+        None => String::from_utf8(bytes),
+    };
+    decoded.map_err(|error| invalid_xml_encoding(&format!("schema is not UTF-8: {error}")))
+}
+
+fn decode_utf16(bytes: &[u8], decode: fn([u8; 2]) -> u16) -> std::io::Result<String> {
+    let mut chunks = bytes.chunks_exact(2);
+    let units = chunks
+        .by_ref()
+        .map(|chunk| decode([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    if !chunks.remainder().is_empty() {
+        return Err(invalid_xml_encoding(
+            "UTF-16 schema contains an incomplete code unit",
+        ));
+    }
+    String::from_utf16(&units)
+        .map_err(|error| invalid_xml_encoding(&format!("schema is not valid UTF-16: {error}")))
+}
+
+fn invalid_xml_encoding(message: &str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message)
+}
+
 /// Imports the first root element declaration of an XSD file as a
 /// [`SchemaNode`].
 pub fn import(path: &std::path::Path) -> Result<SchemaNode, XmlFormatError> {
@@ -83,13 +127,18 @@ pub fn import_root(
     path: &std::path::Path,
     root: Option<&str>,
 ) -> Result<SchemaNode, XmlFormatError> {
-    let text = std::fs::read_to_string(path)?;
+    let text = read_xml_text(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let schema_el = doc.root_element();
+    let root_local =
+        root.map(|name| expanded_name(name).map_or(local_name(name), |(_, local)| local));
+    let root_namespace = root.and_then(expanded_name).map(|(namespace, _)| namespace);
     let root_element = schema_el.children().find(|n| {
         n.is_element()
             && n.tag_name().name() == "element"
-            && root.is_none_or(|r| n.attribute("name") == Some(r))
+            && root_local.is_none_or(|name| n.attribute("name") == Some(name))
+            && root_namespace
+                .is_none_or(|namespace| schema_el.attribute("targetNamespace") == Some(namespace))
     });
     if let Some(root_element) = root_element {
         let mut state = ParseState::default();
@@ -103,10 +152,11 @@ pub fn import_root(
     if let Some(root) = root
         && let Some(external_path) = find_external_declaration(&schema_el, path, "element", root)
     {
-        let external_text = std::fs::read_to_string(&external_path)?;
+        let external_text = read_xml_text(&external_path)?;
         let external_doc = roxmltree::Document::parse(&external_text)?;
         let external_schema = external_doc.root_element();
-        if let Some(root_element) = top_level(&external_schema, "element", root) {
+        let root_local = expanded_name(root).map_or(local_name(root), |(_, local)| local);
+        if let Some(root_element) = top_level(&external_schema, "element", root_local) {
             let mut state = ParseState::default();
             let schema = parse_element(&root_element, &external_schema, &external_path, &mut state);
             return state.finish(schema);
@@ -122,7 +172,7 @@ pub fn import_root(
 /// Imports a named complex type, resolving it through local includes and
 /// imports. The returned group is named after the type's local QName.
 pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormatError> {
-    let text = std::fs::read_to_string(path)?;
+    let text = read_xml_text(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let schema_el = doc.root_element();
     let mut state = ParseState::default();
@@ -151,7 +201,7 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
                 &mut visited,
             )
             .and_then(|external_path| {
-                let text = std::fs::read_to_string(&external_path).ok()?;
+                let text = read_xml_text(&external_path).ok()?;
                 let doc = roxmltree::Document::parse(&text).ok()?;
                 let external_schema = doc.root_element();
                 let declaration = top_level(&external_schema, "complexType", local)?;
@@ -241,7 +291,7 @@ fn resolve_element(
     }
 
     let path = find_external_declaration(schema_el, schema_path, "element", qname)?;
-    let text = std::fs::read_to_string(&path).ok()?;
+    let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
     let declaration = top_level(&external_schema, "element", local)?;
@@ -277,7 +327,7 @@ fn resolve_complex_type(
     }
 
     let path = find_external_declaration(schema_el, schema_path, "complexType", qname)?;
-    let text = std::fs::read_to_string(&path).ok()?;
+    let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
     let declaration = top_level(&external_schema, "complexType", local)?;
@@ -308,7 +358,7 @@ fn resolve_simple_type(qname: &str, schema_el: &Node, schema_path: &Path) -> Opt
     }
 
     let path = find_external_declaration(schema_el, schema_path, "simpleType", qname)?;
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     top_level(&doc.root_element(), "simpleType", local)
         .map(|declaration| simple_type_scalar(&declaration))
@@ -316,6 +366,10 @@ fn resolve_simple_type(qname: &str, schema_el: &Node, schema_path: &Path) -> Opt
 
 fn local_name(qname: &str) -> &str {
     qname.rsplit(':').next().unwrap_or(qname)
+}
+
+fn expanded_name(qname: &str) -> Option<(&str, &str)> {
+    qname.strip_prefix('{')?.split_once('}')
 }
 
 fn is_local_qname(schema_el: &Node, qname: &str) -> bool {
@@ -333,9 +387,14 @@ fn find_external_declaration(
     tag: &str,
     qname: &str,
 ) -> Option<PathBuf> {
-    let wanted_namespace = qname
-        .split_once(':')
-        .and_then(|(prefix, _)| schema_el.lookup_namespace_uri(Some(prefix)))
+    let expanded = expanded_name(qname);
+    let wanted_namespace = expanded
+        .map(|(namespace, _)| namespace)
+        .or_else(|| {
+            qname
+                .split_once(':')
+                .and_then(|(prefix, _)| schema_el.lookup_namespace_uri(Some(prefix)))
+        })
         .map(str::to_string);
     let effective_namespace = schema_el.attribute("targetNamespace").map(str::to_string);
     let mut visited = BTreeSet::new();
@@ -344,7 +403,7 @@ fn find_external_declaration(
         schema_el,
         schema_path,
         tag,
-        local_name(qname),
+        expanded.map_or(local_name(qname), |(_, local)| local),
         wanted_namespace.as_deref(),
         effective_namespace.as_deref(),
         &mut visited,
@@ -414,7 +473,7 @@ fn search_schema_file(
     if !visited.insert(path.clone()) {
         return None;
     }
-    let text = std::fs::read_to_string(&path).ok()?;
+    let text = read_xml_text(&path).ok()?;
     let doc = roxmltree::Document::parse(&text).ok()?;
     let schema_el = doc.root_element();
     let declared_namespace = schema_el.attribute("targetNamespace");

@@ -9,7 +9,69 @@ pub(super) fn merge_conditioned_xml_types(
     xsd_path: &Path,
     warnings: &mut Vec<String>,
 ) {
+    merge_selected_roots(entry, schema, xsd_path, warnings, &mut Vec::new());
     merge_entry_children(entry, schema, xsd_path, warnings, &mut Vec::new());
+}
+
+fn merge_selected_roots(
+    entry: &roxmltree::Node,
+    schema: &mut SchemaNode,
+    xsd_path: &Path,
+    warnings: &mut Vec<String>,
+    path: &mut Vec<String>,
+) {
+    let entries = entry
+        .children()
+        .filter(|child| child.has_tag_name("entry"))
+        .collect::<Vec<_>>();
+    let selected = entries
+        .iter()
+        .filter(|child| child.attribute("name") == Some("*"))
+        .flat_map(|wildcard| wildcard.descendants())
+        .filter(|node| node.has_tag_name("qname"))
+        .filter_map(|node| node.attribute("QNameAsString"))
+        .filter(|qname| !qname.is_empty())
+        .collect::<Vec<_>>();
+
+    if let SchemaKind::Group { children, .. } = &mut schema.kind {
+        for qname in selected {
+            let name = qname.rsplit('}').next().unwrap_or(qname);
+            if children.iter().any(|child| child.name == name) {
+                continue;
+            }
+            match format_xml::xsd::import_root(xsd_path, Some(qname)) {
+                Ok(selected_schema) => children.push(selected_schema),
+                Err(error) => warnings.push(format!(
+                    "selected XML element `{}` could not be resolved from the schema: {error}",
+                    display_child_path(path, name)
+                )),
+            }
+        }
+    }
+
+    for child_entry in entries {
+        let name = normalized_entry_name(child_entry.attribute("name").unwrap_or_default());
+        if name == "*" {
+            continue;
+        }
+        let SchemaKind::Group { children, .. } = &mut schema.kind else {
+            continue;
+        };
+        let Some(child_schema) = children.iter_mut().find(|child| child.name == name) else {
+            continue;
+        };
+        path.push(name);
+        merge_selected_roots(&child_entry, child_schema, xsd_path, warnings, path);
+        path.pop();
+    }
+}
+
+fn display_child_path(path: &[String], child: &str) -> String {
+    if path.is_empty() {
+        child.to_string()
+    } else {
+        format!("{}/{child}", path.join("/"))
+    }
 }
 
 fn merge_entry_children(
@@ -178,4 +240,72 @@ fn normalized_entry_name(name: &str) -> String {
         _ => name,
     };
     name.strip_prefix('@').unwrap_or(name).to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use ir::ScalarType;
+
+    use super::*;
+
+    #[test]
+    fn wildcard_qname_selections_import_their_concrete_schema_roots() {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ferrule_mfd_selected_xml_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("message.xsd");
+        std::fs::write(
+            dir.join("payload.xsd"),
+            r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    targetNamespace="urn:ferrule:selected">
+                <xs:element name="Chosen"><xs:complexType><xs:sequence>
+                    <xs:element name="Count" type="xs:int"/>
+                </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"###,
+        )
+        .unwrap();
+        std::fs::write(
+            &main,
+            r###"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                    targetNamespace="urn:ferrule:message">
+                <xs:import namespace="urn:ferrule:selected" schemaLocation="payload.xsd"/>
+                <xs:element name="Envelope"><xs:complexType><xs:sequence>
+                    <xs:element name="Body"><xs:complexType><xs:sequence>
+                        <xs:any namespace="##other" minOccurs="0" maxOccurs="unbounded"/>
+                    </xs:sequence></xs:complexType></xs:element>
+                </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"###,
+        )
+        .unwrap();
+        let entry = roxmltree::Document::parse(
+            r#"<entry name="Envelope"><entry name="Body">
+                <entry name="*"><selections>
+                    <qname QNameAsString="{urn:ferrule:selected}Chosen"/>
+                </selections></entry>
+                <entry name="Chosen"><entry name="Count"/></entry>
+            </entry></entry>"#,
+        )
+        .unwrap();
+        let mut schema = format_xml::xsd::import_root(&main, Some("Envelope")).unwrap();
+        let mut warnings = Vec::new();
+
+        merge_conditioned_xml_types(&entry.root_element(), &mut schema, &main, &mut warnings);
+        std::fs::remove_dir_all(dir).unwrap();
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let chosen = schema.child("Body").unwrap().child("Chosen").unwrap();
+        assert!(matches!(
+            chosen.child("Count").unwrap().kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::Int
+            }
+        ));
+    }
 }
