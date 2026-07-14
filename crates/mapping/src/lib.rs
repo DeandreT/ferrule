@@ -9,6 +9,7 @@ use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
 mod fixed_width;
+mod flextext;
 mod http;
 mod iteration;
 mod protobuf;
@@ -16,6 +17,11 @@ mod scope_serde;
 mod xlsx_output;
 
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
+pub use flextext::{
+    DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
+    FlexTextLayout, FlexTextLayoutError, MAX_FLEXTEXT_LAYOUT_DEPTH, MAX_FLEXTEXT_LAYOUT_NODES,
+    MAX_FLEXTEXT_LAYOUT_STRING_BYTES, ManySplitter, OnceSplitter, StoreTrim, SwitchArm, TrimSide,
+};
 pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
@@ -582,6 +588,10 @@ pub struct FormatOptions {
     /// not apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed_width: Option<FixedWidthLayout>,
+    /// FlexText-style recursive structured text layout. This mode takes
+    /// precedence over the file extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flextext: Option<FlexTextLayout>,
     /// Static HTTP GET transport policy. The request URL remains the owning
     /// source path so callers can still override it with a local file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -635,6 +645,7 @@ mod tests {
         let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
         assert!(!defaults.json_lines);
         assert!(defaults.fixed_width.is_none());
+        assert!(defaults.flextext.is_none());
         assert!(defaults.http_get.is_none());
         assert!(defaults.protobuf.is_none());
         assert!(
@@ -667,6 +678,26 @@ mod tests {
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
 
         assert_eq!(decoded.protobuf, options.protobuf);
+    }
+
+    #[test]
+    fn flextext_format_option_roundtrips_validated_layout() {
+        let layout = FlexTextLayout::new(
+            "document",
+            FlexCommand::store("value", ScalarType::String, None),
+            FlexLineEnding::Crlf,
+            false,
+        )
+        .unwrap();
+        let options = FormatOptions {
+            flextext: Some(layout.clone()),
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded.flextext, Some(layout));
     }
 
     #[test]

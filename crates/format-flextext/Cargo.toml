@@ -1,0 +1,12 @@
+[package]
+name = "format-flextext"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded structured-text/FlexText-style instance I/O"
+
+[dependencies]
+ir = { workspace = true }
+mapping = { workspace = true }
+thiserror = { workspace = true }

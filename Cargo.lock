@@ -742,6 +742,7 @@ dependencies = [
  "format-csv",
  "format-db",
  "format-edi",
+ "format-flextext",
  "format-json",
  "format-protobuf",
  "format-xlsx",
@@ -1443,6 +1444,15 @@ name = "format-edi"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "format-flextext"
+version = "0.1.0"
+dependencies = [
+ "ir",
+ "mapping",
  "thiserror 2.0.18",
 ]
 
