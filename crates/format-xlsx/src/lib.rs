@@ -1,4 +1,5 @@
-//! XLSX worksheet instance I/O for row, transposed, composite, and grid mappings.
+//! XLSX worksheet instance I/O for flat, transposed, composite, grid, and
+//! hierarchical workbook mappings.
 //!
 //! Like CSV, an XLSX table uses a non-repeating group of scalar fields as
 //! its row schema. Worksheet coordinates are one-based at this API boundary
@@ -14,9 +15,11 @@ use thiserror::Error;
 
 mod composite;
 mod grid;
+mod hierarchical;
 
 pub use composite::{from_bytes_composite, read_composite};
 pub use grid::{from_bytes_grid, read_grid};
+pub use hierarchical::{to_bytes_hierarchical, write_hierarchical};
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
@@ -57,6 +60,14 @@ pub enum XlsxFormatError {
     GridLayout(&'static str),
     #[error("invalid grid XLSX field `{field}`: {reason}")]
     GridField { field: String, reason: &'static str },
+    #[error("invalid hierarchical XLSX layout: {0}")]
+    HierarchicalLayout(&'static str),
+    #[error("invalid hierarchical XLSX path `{path}`: {reason}")]
+    HierarchicalPath { path: String, reason: &'static str },
+    #[error("invalid hierarchical XLSX value at `{path}`: {reason}")]
+    HierarchicalValue { path: String, reason: &'static str },
+    #[error("worksheet name `{0}` is produced more than once")]
+    DuplicateWorksheet(String),
     #[error("row {row}: expected a group, got {got}")]
     RowShape { row: usize, got: &'static str },
     #[error("row {row}: missing column `{field}`")]

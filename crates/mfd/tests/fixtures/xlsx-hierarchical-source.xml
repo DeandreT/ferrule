@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Organization>
+  <Division>
+    <Title>Design</Title>
+    <Member><Name>Iris</Name><Rating>7</Rating></Member>
+    <Member><Name>Omar</Name><Rating>9</Rating></Member>
+  </Division>
+  <Division>
+    <Title>Research</Title>
+    <Member><Name>Mina</Name><Rating>8</Rating></Member>
+  </Division>
+</Organization>

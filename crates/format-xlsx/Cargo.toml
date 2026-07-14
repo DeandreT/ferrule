@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "XLSX worksheet instance I/O for flat, transposed, composite, and grid mappings"
+description = "XLSX worksheet instance I/O for flat, transposed, composite, grid, and hierarchical mappings"
 
 [dependencies]
 ir = { workspace = true }

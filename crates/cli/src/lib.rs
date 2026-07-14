@@ -123,33 +123,53 @@ pub fn run_project_with_paths(
                 rows.len()
             }
             "xlsx" => {
-                if project.target_options.xlsx_grid.is_some() {
-                    anyhow::bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+                if let Some(layout) = &project.target_options.xlsx_hierarchical {
+                    if project.target_options.xlsx_grid.is_some()
+                        || project.target_options.xlsx_composite.is_some()
+                        || has_legacy_xlsx_layout(&project.target_options)
+                    {
+                        anyhow::bail!(
+                            "`xlsx_hierarchical` cannot be combined with other XLSX layout options"
+                        );
+                    }
+                    format_xlsx::write_hierarchical(
+                        &output_path,
+                        &project.target,
+                        &target_instance,
+                        layout,
+                    )
+                    .with_context(|| format!("writing output {}", output_path.display()))?
+                } else {
+                    if project.target_options.xlsx_grid.is_some() {
+                        anyhow::bail!(
+                            "grid XLSX output is not supported; `xlsx_grid` is input-only"
+                        );
+                    }
+                    if project.target_options.xlsx_composite.is_some() {
+                        anyhow::bail!(
+                            "composite XLSX output is not supported; `xlsx_composite` is input-only"
+                        );
+                    }
+                    if !project.target_options.xlsx_rows.is_empty() {
+                        anyhow::bail!(
+                            "transposed XLSX output is not supported; `xlsx_rows` is input-only"
+                        );
+                    }
+                    let rows = target_instance.as_repeated().context(
+                        "mapping did not produce a repeating row set for an XLSX output",
+                    )?;
+                    format_xlsx::write(
+                        &output_path,
+                        &project.target,
+                        rows,
+                        project.target_options.xlsx_sheet.as_deref(),
+                        project.target_options.xlsx_start_row.unwrap_or(1),
+                        &project.target_options.xlsx_columns,
+                        project.target_options.has_header_row.unwrap_or(true),
+                    )
+                    .with_context(|| format!("writing output {}", output_path.display()))?;
+                    rows.len()
                 }
-                if project.target_options.xlsx_composite.is_some() {
-                    anyhow::bail!(
-                        "composite XLSX output is not supported; `xlsx_composite` is input-only"
-                    );
-                }
-                if !project.target_options.xlsx_rows.is_empty() {
-                    anyhow::bail!(
-                        "transposed XLSX output is not supported; `xlsx_rows` is input-only"
-                    );
-                }
-                let rows = target_instance
-                    .as_repeated()
-                    .context("mapping did not produce a repeating row set for an XLSX output")?;
-                format_xlsx::write(
-                    &output_path,
-                    &project.target,
-                    rows,
-                    project.target_options.xlsx_sheet.as_deref(),
-                    project.target_options.xlsx_start_row.unwrap_or(1),
-                    &project.target_options.xlsx_columns,
-                    project.target_options.has_header_row.unwrap_or(true),
-                )
-                .with_context(|| format!("writing output {}", output_path.display()))?;
-                rows.len()
             }
             "xml" => {
                 format_xml::write(&output_path, &project.target, &target_instance)
@@ -341,7 +361,11 @@ fn read_instance(
             Instance::Repeated(rows)
         }
         "xlsx" => {
-            if let Some(layout) = &options.xlsx_grid {
+            if options.xlsx_hierarchical.is_some() {
+                anyhow::bail!(
+                    "hierarchical XLSX input is not supported; `xlsx_hierarchical` is output-only"
+                );
+            } else if let Some(layout) = &options.xlsx_grid {
                 if options.xlsx_composite.is_some() || has_legacy_xlsx_layout(options) {
                     anyhow::bail!(
                         "`xlsx_grid` cannot be combined with `xlsx_composite` or legacy XLSX sheet, row, column, transposed, or header options"
