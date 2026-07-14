@@ -1,0 +1,2 @@
+007Ada___true_
+042Linus_false

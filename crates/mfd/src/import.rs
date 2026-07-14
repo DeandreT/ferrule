@@ -46,8 +46,8 @@ use iteration::{
 };
 use schema::{
     SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
-    read_edi_component, read_json_component, read_schema_component, read_xlsx_component,
-    schema_node_at,
+    read_edi_component, read_fixed_width_component, read_json_component, read_schema_component,
+    read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -130,6 +130,36 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped edi component `{name}`")),
                         }
+                    } else if flavor == "flf" {
+                        let string_parse = text_el.is_some_and(|text| {
+                            text.parent().is_some_and(|data| {
+                                data.children().any(|node| {
+                                    node.has_tag_name("parameter")
+                                        && node.attribute("usageKind") == Some("stringparse")
+                                })
+                            })
+                        });
+                        if string_parse {
+                            note_skipped_library(&mut skipped_libraries, "text/flf-stringparse");
+                            warnings.push(format!(
+                                "skipped fixed-length component `{name}`: string-parse parameters consume a run-time string, which ferrule file inputs cannot represent"
+                            ));
+                        } else {
+                            let warning_count = warnings.len();
+                            match read_fixed_width_component(&component, &mut warnings) {
+                                Some(sc) => schema_components.push(sc),
+                                None if warnings.len() == warning_count => warnings
+                                    .push(format!("skipped fixed-length component `{name}`")),
+                                None => {}
+                            }
+                        }
+                    } else if flavor == "txt"
+                        && text_el.and_then(|text| text.attribute("config")).is_some()
+                    {
+                        note_skipped_library(&mut skipped_libraries, "text/flextext");
+                        warnings.push(format!(
+                            "skipped FlexText component `{name}`: external `.mft` configurations are not embedded in the design and cannot be imported"
+                        ));
                     } else {
                         let label = if flavor.is_empty() {
                             "text".to_string()
@@ -139,7 +169,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         note_skipped_library(&mut skipped_libraries, &label);
                         warnings.push(format!(
                             "skipped component `{name}`: text flavor `{flavor}` is \
-                             not supported yet (only csv and edi text components import)"
+                             not supported yet (inline csv, fixed-length, and edi text components import)"
                         ));
                     }
                 }
@@ -182,7 +212,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         } else {
                             warnings.push(format!(
                                 "skipped component `{name}`: unsupported library `{other}` \
-                                 (only xml/json/csv/edi/db/xlsx, scalar user-defined functions, and \
+                                 (only xml/json/csv/fixed-length/edi/db/xlsx, scalar user-defined functions, and \
                                  core/lang function components and supported XPath 2 functions import)"
                             ));
                         }

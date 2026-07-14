@@ -8,9 +8,11 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
+mod fixed_width;
 mod iteration;
 mod scope_serde;
 
+pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
 };
@@ -549,6 +551,10 @@ pub struct FormatOptions {
     /// CSV: whether the file's first row is a header (default true).
     #[serde(default)]
     pub has_header_row: Option<bool>,
+    /// Fixed-width text layout. When set, CSV delimiter/header options do
+    /// not apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fixed_width: Option<FixedWidthLayout>,
     /// JSON: read and write one root value per line instead of one enclosing
     /// JSON document.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -588,6 +594,7 @@ mod tests {
     fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
         let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
         assert!(!defaults.json_lines);
+        assert!(defaults.fixed_width.is_none());
         assert!(
             !serde_json::to_string(&defaults)
                 .unwrap()
@@ -602,6 +609,52 @@ mod tests {
         assert!(encoded.contains("\"json_lines\":true"));
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
         assert!(decoded.json_lines);
+    }
+
+    #[test]
+    fn fixed_width_layout_validates_and_roundtrips() {
+        let layout = FixedWidthLayout::new(
+            vec![
+                FixedFieldWidth::new(6).unwrap(),
+                FixedFieldWidth::new(12).unwrap(),
+            ],
+            '@',
+            true,
+            true,
+        )
+        .unwrap();
+        let options = FormatOptions {
+            fixed_width: Some(layout.clone()),
+            ..FormatOptions::default()
+        };
+
+        assert_eq!(layout.record_width(), 18);
+        assert_eq!(layout.field_widths()[0].get(), 6);
+        assert_eq!(layout.fill_char(), '@');
+        assert!(layout.record_delimiters());
+        assert!(layout.treat_empty_as_absent());
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.fixed_width, Some(layout));
+    }
+
+    #[test]
+    fn fixed_width_layout_rejects_invalid_construction_and_json() {
+        assert!(FixedFieldWidth::new(0).is_none());
+        assert!(matches!(
+            FixedWidthLayout::new(Vec::new(), ' ', true, false),
+            Err(FixedWidthLayoutError::EmptyFieldWidths)
+        ));
+        assert!(matches!(
+            FixedWidthLayout::new(vec![FixedFieldWidth::new(1).unwrap()], '\n', true, false),
+            Err(FixedWidthLayoutError::InvalidFillChar('\n'))
+        ));
+        assert!(serde_json::from_str::<FixedFieldWidth>("0").is_err());
+        assert!(serde_json::from_str::<FixedWidthLayout>(
+            r#"{"field_widths":[2],"fill_char":"\r","record_delimiters":true,"treat_empty_as_absent":false}"#
+        )
+        .is_err());
     }
 
     #[test]

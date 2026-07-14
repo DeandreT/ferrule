@@ -43,11 +43,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         );
     }
 
-    let source_format = side_format(&project.source_path);
-    let target_format = side_format(&project.target_path);
+    let source_format = side_format(&project.source_path, &project.source_options);
+    let target_format = side_format(&project.target_path, &project.target_options);
     let target_root_iterable = matches!(
         target_format,
-        SideFormat::Csv | SideFormat::Xlsx | SideFormat::Db
+        SideFormat::Csv | SideFormat::FixedWidth | SideFormat::Xlsx | SideFormat::Db
     ) || (target_format == SideFormat::Json && project.target.repeating);
     let mapped_scope_plans = preflight_mapped_sequences(project, target_format)?;
 

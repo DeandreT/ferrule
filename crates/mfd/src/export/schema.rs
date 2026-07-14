@@ -18,11 +18,15 @@ pub(super) enum SideFormat {
     Xml,
     Json,
     Csv,
+    FixedWidth,
     Xlsx,
     Db,
 }
 
-pub(super) fn side_format(instance_path: &Option<String>) -> SideFormat {
+pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOptions) -> SideFormat {
+    if options.fixed_width.is_some() {
+        return SideFormat::FixedWidth;
+    }
     let ext = instance_path
         .as_deref()
         .and_then(|p| Path::new(p).extension())
@@ -270,6 +274,80 @@ pub(super) fn render_schema_component(
                 xml_escape(&schema.name),
                 xml_escape(&options.delimiter.unwrap_or(',').to_string()),
                 options.has_header_row.unwrap_or(true),
+                xml_escape(&schema.name),
+            );
+        }
+        SideFormat::FixedWidth => {
+            if options.delimiter.is_some() || options.has_header_row.is_some() {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} fixed-width layout conflicts with CSV delimiter/header options"
+                )));
+            }
+            let fields = csv_fields(schema).ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "the {side_name} side has a fixed-width layout but its schema is not a flat group of scalar fields"
+                ))
+            })?;
+            let layout = options.fixed_width.as_ref().ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "the {side_name} fixed-width component has no layout"
+                ))
+            })?;
+            if layout.field_widths().len() != fields.len() {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} fixed-width layout has {} width(s) for {} schema field(s)",
+                    layout.field_widths().len(),
+                    fields.len()
+                )));
+            }
+            let block_key = ports.required_key_for_abs(&[], "fixed-width row block")?;
+            let mut field_entries = String::new();
+            let mut field_decls = String::new();
+            for (index, ((name, ty), width)) in fields.iter().zip(layout.field_widths()).enumerate()
+            {
+                let key =
+                    ports.required_key_for_abs(&[(*name).to_string()], "fixed-width field")?;
+                let _ = writeln!(
+                    field_entries,
+                    "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" {attr}=\"{key}\"/>",
+                    xml_escape(name)
+                );
+                let _ = writeln!(
+                    field_decls,
+                    "\t\t\t\t\t\t\t\t<field{index} name=\"{}\" type=\"{}\" length=\"{}\"/>",
+                    xml_escape(name),
+                    csv_type_name(*ty),
+                    width.get()
+                );
+            }
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{}\" library=\"text\" uid=\"{uid}\" kind=\"16\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t\t<entry name=\"Rows\" {attr}=\"{block_key}\" expanded=\"1\">\n\
+                 {field_entries}\
+                 \t\t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<text type=\"flf\"{instance} encoding=\"1000\" byteorder=\"1\" byteordermark=\"0\">\n\
+                 \t\t\t\t\t\t\t<settings delimiter=\"{}\" fillchar=\"{}\" removeempty=\"{}\">\n\
+                 \t\t\t\t\t\t\t\t<names root=\"{}\" block=\"Rows\">\n\
+                 {field_decls}\
+                 \t\t\t\t\t\t\t\t</names>\n\
+                 \t\t\t\t\t\t\t</settings>\n\
+                 \t\t\t\t\t\t</text>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(&schema.name),
+                layout.record_delimiters(),
+                xml_escape(&layout.fill_char().to_string()),
+                layout.treat_empty_as_absent(),
                 xml_escape(&schema.name),
             );
         }
