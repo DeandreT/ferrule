@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document>
+  <Template version="1">
+    <Model>
+      <Root id="1">
+        <Children>
+          <Grouping id="2">
+            <Children>
+              <VerticalAnchorAssignment id="3">
+                <Name>GridTop</Name>
+                <Expression>Top + 120pt</Expression>
+              </VerticalAnchorAssignment>
+              <VerticalAnchorAssignment id="4">
+                <Name>GridBottom</Name>
+                <Expression>Top + 420pt</Expression>
+              </VerticalAnchorAssignment>
+              <Capture id="5">
+                <Label>Heading</Label>
+                <Region>{ Left: Left + 20pt, Top: Top + 20pt, Right: Right - 20pt, Bottom: Top + 60pt }</Region>
+              </Capture>
+              <Splitter id="6">
+                <Children>
+                  <Grouping id="7">
+                    <Children>
+                      <HorizontalAnchorAssignment id="8">
+                        <Name>NameColumn</Name>
+                        <Expression>Left</Expression>
+                      </HorizontalAnchorAssignment>
+                      <HorizontalAnchorAssignment id="9">
+                        <Name>QuantityColumn</Name>
+                        <Expression>[NameColumn] + 240pt</Expression>
+                      </HorizontalAnchorAssignment>
+                      <HorizontalAnchorAssignment id="10">
+                        <Name>EndColumn</Name>
+                        <Expression>Right</Expression>
+                      </HorizontalAnchorAssignment>
+                      <Capture id="11">
+                        <Label>Name</Label>
+                        <Region>{ Left: [NameColumn], Top: Top, Right: [QuantityColumn], Bottom: Bottom }</Region>
+                      </Capture>
+                      <Capture id="12">
+                        <Label>Quantity</Label>
+                        <Region>{ Left: [QuantityColumn], Top: Top, Right: [EndColumn], Bottom: Bottom }</Region>
+                      </Capture>
+                    </Children>
+                    <Label>Plant</Label>
+                    <Kind><OneGroupPerPage/></Kind>
+                    <Filter/>
+                  </Grouping>
+                </Children>
+                <Region>{ Left: Left + 20pt, Top: [GridTop], Right: Right - 20pt, Bottom: [GridBottom] }</Region>
+                <FeatureFind>
+                  <EdgeFind>
+                    <Fill>2pt</Fill>
+                    <Prominence>15</Prominence>
+                    <Resolution><Standard/></Resolution>
+                  </EdgeFind>
+                </FeatureFind>
+                <PostProcess>
+                  <MinimumExtent>30pt</MinimumExtent>
+                  <Behavior><discard/></Behavior>
+                </PostProcess>
+              </Splitter>
+            </Children>
+            <Label/>
+            <Kind><OneGroupPerPage/></Kind>
+            <Filter>1</Filter>
+          </Grouping>
+        </Children>
+        <Label>GardenReport</Label>
+      </Root>
+    </Model>
+  </Template>
+</Document>

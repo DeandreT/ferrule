@@ -9,6 +9,7 @@ mod fixed_width;
 mod flextext;
 mod generic_xml;
 mod http_get;
+mod pdf;
 mod protobuf;
 mod shared;
 mod xlsx;
@@ -60,6 +61,13 @@ pub(super) fn read_protobuf_component(
     protobuf::read(component, mfd_path, warnings)
 }
 
+pub(super) fn read_pdf_component(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+) -> Result<SchemaComponent, String> {
+    pdf::read(component, mfd_path)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ComponentFormat {
     Xml,
@@ -70,6 +78,7 @@ pub(super) enum ComponentFormat {
     Db,
     Protobuf,
     FlexText,
+    Pdf,
 }
 
 /// One schema (source or target) component's extracted facts.

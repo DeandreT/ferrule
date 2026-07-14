@@ -1,6 +1,9 @@
 use super::*;
 use ir::{ScalarType, Value};
-use mapping::{Binding, DynamicBinding, NamedSource, ScopeConstruction, SequenceExpr};
+use mapping::{
+    Binding, DynamicBinding, NamedSource, PdfCapture, PdfCommand, PdfLayout, PdfPageSelection,
+    PdfRegion, ScopeConstruction, SequenceExpr,
+};
 
 fn valid_project() -> Project {
     let mut graph = Graph::default();
@@ -60,6 +63,35 @@ fn rejects_http_transport_metadata_on_a_target() {
     project.target_options.http_get = Some(mapping::HttpGetOptions::default());
 
     assert!(validate(&project).iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("only for mapping sources")
+    }));
+}
+
+#[test]
+fn validates_pdf_direction_and_source_schema() {
+    let layout = PdfLayout::new(
+        "row",
+        PdfPageSelection::First,
+        vec![PdfCommand::Capture(PdfCapture {
+            name: "name".into(),
+            region: PdfRegion::full(),
+        })],
+    )
+    .unwrap();
+    let mut source = valid_project();
+    source.source_options.pdf = Some(layout.clone());
+    assert!(validate(&source).is_empty());
+
+    source.source = SchemaNode::group("row", vec![SchemaNode::scalar("other", ScalarType::String)]);
+    assert!(validate(&source).iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("does not match the source schema")
+    }));
+
+    let mut target = valid_project();
+    target.target_options.pdf = Some(layout);
+    assert!(validate(&target).iter().any(|issue| {
         issue.location == "target format options"
             && issue.message.contains("only for mapping sources")
     }));

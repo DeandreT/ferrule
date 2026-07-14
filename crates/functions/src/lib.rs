@@ -77,6 +77,8 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "substring_before",
     "substring_after",
     "string",
+    "is_numeric",
+    "to_number",
     "format_number",
     "exists",
     "round",
@@ -142,6 +144,8 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "substring_before" => split_string(args, "substring_before", true),
         "substring_after" => split_string(args, "substring_after", false),
         "string" => string(args),
+        "is_numeric" => is_numeric(args),
+        "to_number" => to_number(args),
         "format_number" => format_number::format_number(args),
         "exists" => exists(args),
         "round" => round(args),
@@ -362,6 +366,62 @@ fn string(args: &[Value]) -> Result<Value, FunctionError> {
             expected: 1,
             got: args.len(),
         }),
+    }
+}
+
+fn is_numeric(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "is_numeric",
+            expected: 1,
+            got: args.len(),
+        });
+    };
+    let numeric = match value {
+        Value::Int(_) => true,
+        Value::Float(value) => value.is_finite(),
+        Value::String(value) => value
+            .trim()
+            .parse::<f64>()
+            .is_ok_and(|value| value.is_finite()),
+        Value::Null | Value::XmlNil(_) | Value::Bool(_) => false,
+    };
+    Ok(Value::Bool(numeric))
+}
+
+fn to_number(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "to_number",
+            expected: 1,
+            got: args.len(),
+        });
+    };
+    match value {
+        Value::Null => Ok(Value::Null),
+        Value::Int(value) => Ok(Value::Int(*value)),
+        Value::Float(value) if value.is_finite() => Ok(Value::Float(*value)),
+        Value::String(value) => {
+            let value = value.trim();
+            if let Ok(value) = value.parse::<i64>() {
+                return Ok(Value::Int(value));
+            }
+            value
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map(Value::Float)
+                .ok_or(FunctionError::InvalidArgument {
+                    function: "to_number",
+                    message: "requires a finite numeric value",
+                })
+        }
+        Value::Float(_) | Value::Bool(_) | Value::XmlNil(_) => {
+            Err(FunctionError::InvalidArgument {
+                function: "to_number",
+                message: "requires a finite numeric value",
+            })
+        }
     }
 }
 
@@ -730,6 +790,45 @@ mod tests {
             call("add", &[Value::Int(1), Value::Float(1.5)]).unwrap(),
             Value::Float(2.5)
         );
+    }
+
+    #[test]
+    fn numeric_predicate_accepts_finite_numbers_and_numeric_strings() {
+        for value in [
+            Value::Int(-7),
+            Value::Float(12.5),
+            Value::String(" 42 ".into()),
+            Value::String("-1.25e2".into()),
+        ] {
+            assert_eq!(call("is_numeric", &[value]).unwrap(), Value::Bool(true));
+        }
+        for value in [
+            Value::Null,
+            Value::Bool(true),
+            Value::Float(f64::INFINITY),
+            Value::String("forty-two".into()),
+            Value::String("NaN".into()),
+        ] {
+            assert_eq!(call("is_numeric", &[value]).unwrap(), Value::Bool(false));
+        }
+    }
+
+    #[test]
+    fn number_conversion_preserves_integers_and_parses_finite_decimals() {
+        assert_eq!(
+            call("to_number", &[Value::String(" 42 ".into())]).unwrap(),
+            Value::Int(42)
+        );
+        assert_eq!(
+            call("to_number", &[Value::String("12.5".into())]).unwrap(),
+            Value::Float(12.5)
+        );
+        assert_eq!(
+            call("to_number", &[Value::Float(6.25)]).unwrap(),
+            Value::Float(6.25)
+        );
+        assert!(call("to_number", &[Value::String("NaN".into())]).is_err());
+        assert!(call("to_number", &[Value::Bool(true)]).is_err());
     }
 
     #[test]
