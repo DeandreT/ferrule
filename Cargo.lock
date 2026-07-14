@@ -2508,6 +2508,7 @@ dependencies = [
  "format-db",
  "format-flextext",
  "format-json",
+ "format-pdf",
  "format-protobuf",
  "format-xlsx",
  "format-xml",
