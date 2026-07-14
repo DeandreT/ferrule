@@ -4,6 +4,7 @@ pub(super) fn select_block<'a, 'input>(
     root: roxmltree::Node<'a, 'input>,
     configured_block: Option<&str>,
     component_name: &str,
+    format_name: &str,
     warnings: &mut Vec<String>,
 ) -> Option<roxmltree::Node<'a, 'input>> {
     let document = root
@@ -38,8 +39,13 @@ pub(super) fn select_block<'a, 'input>(
         return Some(first);
     };
     if blocks.len() > 1 {
+        let target_label = if format_name == "csv" {
+            "CSV"
+        } else {
+            format_name
+        };
         warnings.push(format!(
-            "csv target component `{component_name}` contains singleton rows alongside repeated block `{}`; singleton rows were skipped because ferrule CSV targets represent one repeated row shape",
+            "{format_name} target component `{component_name}` contains singleton rows alongside repeated block `{}`; singleton rows were skipped because ferrule {target_label} targets represent one repeated row shape",
             repeated.attribute("name").unwrap_or_default()
         ));
     }

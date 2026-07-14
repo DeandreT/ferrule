@@ -1,6 +1,7 @@
 //! Headless runner: loads a mapping project and runs it against an input
-//! file (CSV, XLSX, XML, JSON, SQLite, or X12 EDI, chosen by extension) to
-//! produce an output file. Split out from `main.rs` so it's testable
+//! file (delimited/fixed-width text, XLSX, XML, JSON, SQLite, or X12 EDI,
+//! chosen by extension and format options) to produce an output file. Split
+//! out from `main.rs` so it's testable
 //! without shelling out to the built binary.
 //!
 //! For SQLite (`.db`/`.sqlite`/`.sqlite3`) the table name is the project's
@@ -89,82 +90,94 @@ pub fn run_project_with_paths(
     let target_instance =
         engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
 
-    let row_count = match extension_of(&output_path)?.as_str() {
-        "csv" => {
-            let rows = target_instance
-                .as_repeated()
-                .context("mapping did not produce a repeating row set for a CSV output")?;
-            format_csv::write(
-                &output_path,
-                &project.target,
-                rows,
-                project.target_options.delimiter,
-                project.target_options.has_header_row.unwrap_or(true),
-            )
+    let row_count = if let Some(layout) = &project.target_options.fixed_width {
+        reject_fixed_width_csv_options(&project.target_options, "output")?;
+        let rows = target_instance
+            .as_repeated()
+            .context("mapping did not produce a repeating row set for a fixed-width output")?;
+        format_csv::write_fixed_width(&output_path, &project.target, rows, layout)
             .with_context(|| format!("writing output {}", output_path.display()))?;
-            rows.len()
-        }
-        "xlsx" => {
-            if project.target_options.xlsx_grid.is_some() {
-                anyhow::bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
-            }
-            if project.target_options.xlsx_composite.is_some() {
-                anyhow::bail!(
-                    "composite XLSX output is not supported; `xlsx_composite` is input-only"
-                );
-            }
-            if !project.target_options.xlsx_rows.is_empty() {
-                anyhow::bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
-            }
-            let rows = target_instance
-                .as_repeated()
-                .context("mapping did not produce a repeating row set for an XLSX output")?;
-            format_xlsx::write(
-                &output_path,
-                &project.target,
-                rows,
-                project.target_options.xlsx_sheet.as_deref(),
-                project.target_options.xlsx_start_row.unwrap_or(1),
-                &project.target_options.xlsx_columns,
-                project.target_options.has_header_row.unwrap_or(true),
-            )
-            .with_context(|| format!("writing output {}", output_path.display()))?;
-            rows.len()
-        }
-        "xml" => {
-            format_xml::write(&output_path, &project.target, &target_instance)
+        rows.len()
+    } else {
+        match extension_of(&output_path)?.as_str() {
+            "csv" | "txt" => {
+                let rows = target_instance
+                    .as_repeated()
+                    .context("mapping did not produce a repeating row set for a CSV output")?;
+                format_csv::write(
+                    &output_path,
+                    &project.target,
+                    rows,
+                    project.target_options.delimiter,
+                    project.target_options.has_header_row.unwrap_or(true),
+                )
                 .with_context(|| format!("writing output {}", output_path.display()))?;
-            1
-        }
-        "json" | "jsonl" | "ndjson" => {
-            let json_lines = project.target_options.json_lines
-                || matches!(extension_of(&output_path)?.as_str(), "jsonl" | "ndjson");
-            if json_lines {
-                format_json::write_lines(&output_path, &project.target, &target_instance)
-            } else {
-                format_json::write(&output_path, &project.target, &target_instance)
+                rows.len()
             }
-            .with_context(|| format!("writing output {}", output_path.display()))?;
-            target_instance.as_repeated().map_or(1, <[Instance]>::len)
-        }
-        "db" | "sqlite" | "sqlite3" => {
-            let rows = target_instance
-                .as_repeated()
-                .context("mapping did not produce a repeating row set for a database output")?;
-            format_db::write(&output_path, &project.target, rows)
+            "xlsx" => {
+                if project.target_options.xlsx_grid.is_some() {
+                    anyhow::bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+                }
+                if project.target_options.xlsx_composite.is_some() {
+                    anyhow::bail!(
+                        "composite XLSX output is not supported; `xlsx_composite` is input-only"
+                    );
+                }
+                if !project.target_options.xlsx_rows.is_empty() {
+                    anyhow::bail!(
+                        "transposed XLSX output is not supported; `xlsx_rows` is input-only"
+                    );
+                }
+                let rows = target_instance
+                    .as_repeated()
+                    .context("mapping did not produce a repeating row set for an XLSX output")?;
+                format_xlsx::write(
+                    &output_path,
+                    &project.target,
+                    rows,
+                    project.target_options.xlsx_sheet.as_deref(),
+                    project.target_options.xlsx_start_row.unwrap_or(1),
+                    &project.target_options.xlsx_columns,
+                    project.target_options.has_header_row.unwrap_or(true),
+                )
                 .with_context(|| format!("writing output {}", output_path.display()))?;
-            rows.len()
-        }
-        "edi" | "x12" | "edifact" => {
-            let write = match format_edi::dialect_of(&project.target)? {
-                format_edi::Dialect::X12 => format_edi::x12::write,
-                format_edi::Dialect::Edifact => format_edi::edifact::write,
-            };
-            write(&output_path, &project.target, &target_instance)
+                rows.len()
+            }
+            "xml" => {
+                format_xml::write(&output_path, &project.target, &target_instance)
+                    .with_context(|| format!("writing output {}", output_path.display()))?;
+                1
+            }
+            "json" | "jsonl" | "ndjson" => {
+                let json_lines = project.target_options.json_lines
+                    || matches!(extension_of(&output_path)?.as_str(), "jsonl" | "ndjson");
+                if json_lines {
+                    format_json::write_lines(&output_path, &project.target, &target_instance)
+                } else {
+                    format_json::write(&output_path, &project.target, &target_instance)
+                }
                 .with_context(|| format!("writing output {}", output_path.display()))?;
-            1
+                target_instance.as_repeated().map_or(1, <[Instance]>::len)
+            }
+            "db" | "sqlite" | "sqlite3" => {
+                let rows = target_instance
+                    .as_repeated()
+                    .context("mapping did not produce a repeating row set for a database output")?;
+                format_db::write(&output_path, &project.target, rows)
+                    .with_context(|| format!("writing output {}", output_path.display()))?;
+                rows.len()
+            }
+            "edi" | "x12" | "edifact" => {
+                let write = match format_edi::dialect_of(&project.target)? {
+                    format_edi::Dialect::X12 => format_edi::x12::write,
+                    format_edi::Dialect::Edifact => format_edi::edifact::write,
+                };
+                write(&output_path, &project.target, &target_instance)
+                    .with_context(|| format!("writing output {}", output_path.display()))?;
+                1
+            }
+            other => bail!("unsupported output file extension: .{other}"),
         }
-        other => bail!("unsupported output file extension: .{other}"),
     };
 
     Ok(RunOutcome {
@@ -280,17 +293,25 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
     Ok(serde_json::to_string_pretty(&schema)?)
 }
 
-/// Reads any supported instance file (format picked by extension) into an
-/// [`Instance`], shaped by `schema`. CSV, flat/transposed/grid XLSX, and
-/// single-table database inputs arrive wrapped in [`Instance::Repeated`];
-/// composite XLSX and database schemas produce their grouped shapes directly.
+/// Reads any supported instance file into an [`Instance`], shaped by `schema`.
+/// A configured fixed-width layout takes precedence over the extension. CSV,
+/// fixed-width text, flat/transposed/grid XLSX, and single-table database
+/// inputs arrive wrapped in [`Instance::Repeated`]; composite XLSX and database
+/// schemas produce their grouped shapes directly.
 fn read_instance(
     path: &Path,
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if let Some(layout) = &options.fixed_width {
+        reject_fixed_width_csv_options(options, "input")?;
+        let rows = format_csv::read_fixed_width(path, schema, layout)
+            .with_context(|| format!("reading input {}", path.display()))?;
+        return Ok(Instance::Repeated(rows));
+    }
+
     let instance = match extension_of(path)?.as_str() {
-        "csv" => {
+        "csv" | "txt" => {
             let rows = format_csv::read(
                 path,
                 schema,
@@ -365,6 +386,15 @@ fn read_instance(
         other => bail!("unsupported input file extension: .{other}"),
     };
     Ok(instance)
+}
+
+fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.delimiter.is_some() || options.has_header_row.is_some() {
+        bail!(
+            "`fixed_width` cannot be combined with CSV `delimiter` or `has_header_row` options for {side}"
+        );
+    }
+    Ok(())
 }
 
 fn has_legacy_xlsx_layout(options: &FormatOptions) -> bool {

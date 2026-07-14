@@ -13,6 +13,12 @@ use std::path::Path;
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use thiserror::Error;
 
+mod fixed_width;
+
+pub use fixed_width::{
+    from_str_fixed_width, read_fixed_width, to_string_fixed_width, write_fixed_width,
+};
+
 #[derive(Debug, Error)]
 pub enum CsvFormatError {
     #[error("csv error: {0}")]
@@ -51,6 +57,29 @@ pub enum CsvFormatError {
     },
     #[error("`{0}` is not a valid CSV delimiter (must be a single-byte character)")]
     BadDelimiter(char),
+    #[error("fixed-width layout declares {got} field width(s), but the schema has {expected}")]
+    FixedWidthFieldCount { expected: usize, got: usize },
+    #[error("fixed-width record {record}: expected {expected} character(s), got only {got}")]
+    PartialFixedWidthRecord {
+        record: usize,
+        expected: usize,
+        got: usize,
+    },
+    #[error("fixed-width record {record}: expected {expected} character(s), got {got}")]
+    FixedWidthRecordOverflow {
+        record: usize,
+        expected: usize,
+        got: usize,
+    },
+    #[error(
+        "row {row}: column `{field}` exceeds its fixed width of {width} character(s), got {got}"
+    )]
+    FixedWidthFieldOverflow {
+        row: usize,
+        field: String,
+        width: usize,
+        got: usize,
+    },
 }
 
 fn delimiter_byte(delimiter: Option<char>) -> Result<u8, CsvFormatError> {
@@ -148,6 +177,15 @@ fn parse_value(
     if cell.is_empty() {
         return Ok(Value::Null);
     }
+    parse_present_value(name, ty, cell, row)
+}
+
+fn parse_present_value(
+    name: &str,
+    ty: ScalarType,
+    cell: &str,
+    row: usize,
+) -> Result<Value, CsvFormatError> {
     let bad = || CsvFormatError::Parse {
         row,
         field: name.to_string(),
