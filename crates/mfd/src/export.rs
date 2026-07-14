@@ -5,7 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-use mapping::{Graph, JoinId, Node, NodeId, Project, RuntimeValue, Scope, SequenceExpr};
+use mapping::{
+    Graph, JoinId, Node, NodeId, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr,
+};
 
 use crate::MfdError;
 
@@ -14,6 +16,7 @@ mod function;
 mod join;
 mod mapped_sequence;
 mod position;
+mod preflight;
 mod schema;
 mod sequence;
 #[cfg(test)]
@@ -24,7 +27,7 @@ use function::{
     unmap_function_name, value_scalar_type, value_text,
 };
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
-use position::{connect_join_position_roots, connect_position_roots, render_component};
+use position::{connect_position_roots, connect_scope_position_roots, render_component};
 use schema::{
     KeyAlloc, PortMatch, PortTree, Side, SideFormat, db_datasource_name, render_schema_component,
     side_format, xml_escape,
@@ -36,6 +39,8 @@ use sequence::{SequenceExistsPins, collect_scope_sequences};
 pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut warnings = Vec::new();
 
+    preflight::validate(project)?;
+
     if !project.extra_sources.is_empty() {
         warnings.push(
             "extra sources are not exported; MapForce multi-input wiring must be redone"
@@ -43,8 +48,13 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         );
     }
 
-    let source_format = side_format(&project.source_path, &project.source_options);
+    let source_format = if project.source_options.http_get.is_some() {
+        SideFormat::Xml
+    } else {
+        side_format(&project.source_path, &project.source_options)
+    };
     let target_format = side_format(&project.target_path, &project.target_options);
+    let copy_document_root = project.root.construction == ScopeConstruction::CopyCurrentSource;
     let target_root_iterable = matches!(
         target_format,
         SideFormat::Csv | SideFormat::FixedWidth | SideFormat::Xlsx | SideFormat::Db
@@ -597,6 +607,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         project.source_path.as_deref(),
         &project.source_options,
         path,
+        copy_document_root,
     )?;
     let target_component = render_schema_component(
         &project.target,
@@ -606,6 +617,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         project.target_path.as_deref(),
         &project.target_options,
         path,
+        copy_document_root,
     )?;
     out.push_str(&source_component.xml);
     out.push_str(&target_component.xml);
@@ -651,45 +663,6 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     artifacts.push((path.to_path_buf(), out));
     write_artifacts(artifacts)?;
     Ok(warnings)
-}
-
-#[allow(clippy::too_many_arguments)]
-fn connect_scope_position_roots(
-    roots: impl IntoIterator<Item = NodeId>,
-    source_collection: Option<&[String]>,
-    join: Option<JoinId>,
-    allow_empty: bool,
-    from: u32,
-    graph: &Graph,
-    position_inputs: &BTreeMap<NodeId, u32>,
-    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
-    edges: &mut Vec<(u32, u32)>,
-    warnings: &mut Vec<String>,
-) {
-    let roots = roots.into_iter().collect::<Vec<_>>();
-    connect_position_roots(
-        roots.iter().copied(),
-        source_collection,
-        allow_empty,
-        from,
-        graph,
-        position_inputs,
-        position_contexts,
-        edges,
-        warnings,
-    );
-    if let Some(join) = join {
-        connect_join_position_roots(
-            roots.iter().copied(),
-            join,
-            from,
-            graph,
-            position_inputs,
-            position_contexts,
-            edges,
-            warnings,
-        );
-    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1017,7 +990,21 @@ fn collect_scope_edges(
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all);
     let anchor_len = anchor.len();
-    if let Some((join, _)) = scope.join() {
+    if scope.construction == ScopeConstruction::CopyCurrentSource && scope.source().is_none() {
+        match (
+            source_ports.key_for_abs(anchor),
+            target_ports.key_for_abs(chain),
+        ) {
+            (Some(from), Some(to)) => {
+                edges.push((from, to));
+                structural_edges.insert((from, to));
+            }
+            _ => warnings.push(format!(
+                "scope `{}` cannot connect its current source group to the target; copy skipped",
+                chain.join("/")
+            )),
+        }
+    } else if let Some((join, _)) = scope.join() {
         if let (Some(from), Some(to)) = (joins.row_output(join), target_ports.key_for_abs(chain)) {
             let from = append_scope_controls(
                 scope,
@@ -1145,7 +1132,9 @@ fn collect_scope_edges(
                     warnings,
                 );
                 edges.push((from, to));
-                if mapped_plan.is_some_and(|plan| plan.copy_all) {
+                if mapped_plan.is_some_and(|plan| plan.copy_all)
+                    || scope.construction == ScopeConstruction::CopyCurrentSource
+                {
                     structural_edges.insert((from, to));
                 }
                 *anchor = abs;

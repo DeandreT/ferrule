@@ -132,6 +132,45 @@ pub(super) fn connect_join_position_roots(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn connect_scope_position_roots(
+    roots: impl IntoIterator<Item = NodeId>,
+    source_collection: Option<&[String]>,
+    join: Option<JoinId>,
+    allow_empty: bool,
+    from: u32,
+    graph: &Graph,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+) {
+    let roots = roots.into_iter().collect::<Vec<_>>();
+    connect_position_roots(
+        roots.iter().copied(),
+        source_collection,
+        allow_empty,
+        from,
+        graph,
+        position_inputs,
+        position_contexts,
+        edges,
+        warnings,
+    );
+    if let Some(join) = join {
+        connect_join_position_roots(
+            roots,
+            join,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+    }
+}
+
 fn connect_one(
     id: NodeId,
     input: u32,
