@@ -142,6 +142,119 @@ fn generic_xml_elements_preserve_runtime_names_and_document_order() {
 }
 
 #[test]
+fn scalar_calls_iterate_and_transform_nested_generic_element_text() {
+    let imported = mfd::import(&fixture("generic-text-transform.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let outer = imported
+        .project
+        .target
+        .child("Employees")
+        .and_then(|employees| employees.child(ir::XML_ELEMENTS_FIELD))
+        .unwrap();
+    let inner = outer.child(ir::XML_ELEMENTS_FIELD).unwrap();
+    assert!(inner.repeating);
+    assert!(inner.child(XML_TEXT_FIELD).is_some_and(|text| text.text));
+
+    let employees_scope = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Employees")
+        .unwrap();
+    let outer_scope = employees_scope
+        .children
+        .iter()
+        .find(|scope| scope.target_field == ir::XML_ELEMENTS_FIELD)
+        .unwrap();
+    assert_eq!(
+        outer_scope.source().map(|path| path.to_vec()),
+        Some(vec![
+            "Employees".to_string(),
+            ir::XML_ELEMENTS_FIELD.to_string(),
+        ])
+    );
+    assert!(
+        outer_scope
+            .bindings
+            .iter()
+            .all(|binding| binding.target_field != XML_TEXT_FIELD)
+    );
+    let inner_scope = outer_scope
+        .children
+        .iter()
+        .find(|scope| scope.target_field == ir::XML_ELEMENTS_FIELD)
+        .unwrap();
+    assert_eq!(
+        inner_scope.source().map(|path| path.to_vec()),
+        Some(vec![ir::XML_ELEMENTS_FIELD.to_string()])
+    );
+    let text_binding = inner_scope
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == XML_TEXT_FIELD)
+        .unwrap();
+    let Node::Call { function, args } = &imported.project.graph.nodes[&text_binding.node] else {
+        panic!("generic text should be bound to a scalar call");
+    };
+    assert_eq!(function, "upper");
+    assert!(matches!(
+        &imported.project.graph.nodes[&args[0]],
+        Node::SourceField { path, frame: Some(frame) }
+            if path == &[XML_TEXT_FIELD]
+                && frame == &["Employees", ir::XML_ELEMENTS_FIELD, ir::XML_ELEMENTS_FIELD]
+    ));
+
+    let source = format_xml::read(
+        &fixture("generic-text-transform.xml"),
+        &imported.project.source,
+    )
+    .unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let employees = target.field("Employees").unwrap();
+    let outer_elements = employees
+        .field(ir::XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(outer_elements.len(), 2);
+    assert_eq!(
+        scalar(&outer_elements[0], ir::XML_NODE_NAME_FIELD),
+        Value::String("Engineer".into())
+    );
+    assert_eq!(
+        scalar(&outer_elements[1], ir::XML_NODE_NAME_FIELD),
+        Value::String("Designer".into())
+    );
+    let engineer_fields = outer_elements[0]
+        .field(ir::XML_ELEMENTS_FIELD)
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(engineer_fields.len(), 2);
+    assert_eq!(
+        scalar(&engineer_fields[0], ir::XML_NODE_NAME_FIELD),
+        Value::String("first".into())
+    );
+    assert_eq!(
+        scalar(&engineer_fields[0], XML_TEXT_FIELD),
+        Value::String("ANA".into())
+    );
+    assert_eq!(
+        scalar(&engineer_fields[1], ir::XML_NODE_NAME_FIELD),
+        Value::String("city".into())
+    );
+    assert_eq!(
+        scalar(&engineer_fields[1], XML_TEXT_FIELD),
+        Value::String("PARIS".into())
+    );
+
+    let xml = format_xml::to_string(&imported.project.target, &target).unwrap();
+    assert!(xml.contains("<first>ANA</first>"), "{xml}");
+    assert!(xml.contains("<city>OSLO</city>"), "{xml}");
+    assert!(xml.find("<Engineer>") < xml.find("<Designer>"), "{xml}");
+}
+
+#[test]
 fn xsd_includes_supply_component_schemas_and_the_project_runs() {
     let imported = mfd::import(&fixture("includes.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
