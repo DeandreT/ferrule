@@ -3,12 +3,20 @@ use ir::Value;
 use crate::{FunctionError, datetime};
 
 const FUNCTION: &str = "datetime_add";
-const INVALID: &str = "requires an xs:dateTime followed by one or more xs:duration values";
+const INVALID: &str =
+    "requires an xs:date or xs:dateTime followed by one or more xs:duration values";
 // Fixed-width arithmetic stays exact through this precision. Longer
 // significant fractions are rejected instead of rounded.
 const MAX_FRACTION_DIGITS: usize = 18;
 
+#[derive(Clone, Copy)]
+enum TemporalKind {
+    Date,
+    DateTime,
+}
+
 struct DateTime {
+    kind: TemporalKind,
     year: i64,
     month: u32,
     day: u32,
@@ -62,12 +70,15 @@ pub(super) fn datetime_add(args: &[Value]) -> Result<Value, FunctionError> {
 
 impl DateTime {
     fn parse(value: &str) -> Result<Self, FunctionError> {
-        let Some((date, time)) = value.split_once('T') else {
-            return Err(invalid());
+        let (kind, date, time, timezone) = if let Some((date, time)) = value.split_once('T') {
+            let (time, timezone) = datetime::split_iso_timezone(time, FUNCTION)?;
+            (TemporalKind::DateTime, date, time, timezone)
+        } else {
+            let (date, timezone) = datetime::split_iso_timezone(value, FUNCTION)?;
+            (TemporalKind::Date, date, "00:00:00", timezone)
         };
-        let (time, timezone) = datetime::split_iso_timezone(time, FUNCTION)?;
         datetime::validate_iso_date(date, FUNCTION)?;
-        let end_of_day = time.starts_with("24:");
+        let end_of_day = matches!(kind, TemporalKind::DateTime) && time.starts_with("24:");
         if end_of_day {
             let normalized = format!("00{}", &time[2..]);
             datetime::validate_iso_time(&normalized, FUNCTION)?;
@@ -100,6 +111,7 @@ impl DateTime {
             return Err(invalid());
         }
         Ok(Self {
+            kind,
             year,
             month,
             day,
@@ -196,14 +208,17 @@ impl DateTime {
         } else {
             format!("{:04}", self.year)
         };
-        let mut output = format!(
-            "{year}-{:02}-{:02}T{:02}:{:02}:{:02}",
-            self.month, self.day, self.hour, self.minute, self.second
-        );
-        if self.fraction != 0 {
-            let fraction = format!("{:0width$}", self.fraction, width = self.fraction_digits);
-            output.push('.');
-            output.push_str(fraction.trim_end_matches('0'));
+        let mut output = format!("{year}-{:02}-{:02}", self.month, self.day);
+        if matches!(self.kind, TemporalKind::DateTime) {
+            output.push_str(&format!(
+                "T{:02}:{:02}:{:02}",
+                self.hour, self.minute, self.second
+            ));
+            if self.fraction != 0 {
+                let fraction = format!("{:0width$}", self.fraction, width = self.fraction_digits);
+                output.push('.');
+                output.push_str(fraction.trim_end_matches('0'));
+            }
         }
         if let Some(timezone) = &self.timezone {
             output.push_str(timezone);
@@ -423,6 +438,22 @@ mod tests {
         assert_eq!(
             datetime_add(&[text("2023-01-31T00:00:00"), text("P1M")]).unwrap(),
             text("2023-02-28T00:00:00")
+        );
+    }
+
+    #[test]
+    fn adds_durations_to_dates_without_changing_the_lexical_kind() {
+        assert_eq!(
+            datetime_add(&[text("2019-02-01"), text("P1M"), text("-P1D")]).unwrap(),
+            text("2019-02-28")
+        );
+        assert_eq!(
+            datetime_add(&[text("2024-02-01+05:30"), text("P1M"), text("-P1D")]).unwrap(),
+            text("2024-02-29+05:30")
+        );
+        assert_eq!(
+            datetime_add(&[text("2024-01-31Z"), text("PT25H")]).unwrap(),
+            text("2024-02-01Z")
         );
     }
 
