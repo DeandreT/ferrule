@@ -98,7 +98,19 @@ pub fn run_project_with_paths(
     let target_instance =
         engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
 
-    let row_count = if let Some(layout) = &project.target_options.fixed_width {
+    let row_count = if let Some(options) = &project.target_options.protobuf {
+        reject_protobuf_conflicts(&project.target_options, "output")?;
+        let layout = format_protobuf::Layout::parse(&options.schema)
+            .context("parsing embedded Protocol Buffers schema")?;
+        format_protobuf::write(
+            &output_path,
+            &layout,
+            &options.root_message,
+            &target_instance,
+        )
+        .with_context(|| format!("writing output {}", output_path.display()))?;
+        1
+    } else if let Some(layout) = &project.target_options.fixed_width {
         reject_fixed_width_csv_options(&project.target_options, "output")?;
         let rows = target_instance
             .as_repeated()
@@ -338,6 +350,11 @@ fn read_instance(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if options.protobuf.is_some() {
+        reject_protobuf_conflicts(options, "input")?;
+        bail!("Protocol Buffers input is not supported; `protobuf` is output-only");
+    }
+
     if let Some(url) = http_url(path) {
         return read_http_xml(url, schema, options);
     }
@@ -561,6 +578,27 @@ fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow
         );
     }
     Ok(())
+}
+
+fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.lenient_segments
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.http_get.is_some()
+        || options.json_lines
+        || has_any_xlsx_layout(options)
+    {
+        bail!("`protobuf` cannot be combined with another format's options for {side}");
+    }
+    Ok(())
+}
+
+fn has_any_xlsx_layout(options: &FormatOptions) -> bool {
+    has_legacy_xlsx_layout(options)
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
 }
 
 fn has_legacy_xlsx_layout(options: &FormatOptions) -> bool {

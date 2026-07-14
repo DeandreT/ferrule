@@ -3,6 +3,12 @@ use mapping::{Project, Scope, ScopeConstruction};
 use crate::MfdError;
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    if project.source_options.protobuf.is_some() || project.target_options.protobuf.is_some() {
+        return Err(MfdError::Unsupported(
+            "protobuf component export is not supported; remove protobuf format options before exporting this project"
+                .to_string(),
+        ));
+    }
     if project.target_options.http_get.is_some() {
         return Err(MfdError::Unsupported(
             "HTTP GET transport is valid only for mapping sources".to_string(),

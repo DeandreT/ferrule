@@ -11,6 +11,7 @@ members = [
     "crates/format-xlsx",
     "crates/format-db",
     "crates/format-edi",
+    "crates/format-protobuf",
     "crates/mfd",
     "crates/cli",
     "crates/gui",
@@ -34,6 +35,7 @@ format-csv = { path = "crates/format-csv" }
 format-xlsx = { path = "crates/format-xlsx" }
 format-db = { path = "crates/format-db" }
 format-edi = { path = "crates/format-edi" }
+format-protobuf = { path = "crates/format-protobuf" }
 mfd = { path = "crates/mfd" }
 cli = { path = "crates/cli" }
 

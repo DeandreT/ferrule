@@ -1,0 +1,26 @@
+syntax = "proto2";
+
+package ferrule.fixture;
+
+message Directory {
+  optional string title = 1;
+
+  enum Rank {
+    STANDARD = 0;
+    PRIORITY = 1;
+  }
+
+  message Record {
+    required int32 code = 1;
+    required string label = 2;
+    optional Rank rank = 3;
+
+    message Note {
+      required string text = 1;
+    }
+
+    repeated Note notes = 4;
+  }
+
+  repeated Record records = 2;
+}

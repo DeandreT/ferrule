@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Catalog>
+  <Title>Demo</Title>
+  <Item>
+    <Code>7</Code>
+    <Label>One</Label>
+    <Rank>1</Rank>
+    <Note>A</Note>
+  </Item>
+  <Item>
+    <Code>9</Code>
+    <Label>Two</Label>
+    <Rank>0</Rank>
+    <Note>B</Note>
+  </Item>
+</Catalog>

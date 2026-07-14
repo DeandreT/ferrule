@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 mod fixed_width;
 mod http;
 mod iteration;
+mod protobuf;
 mod scope_serde;
 mod xlsx_output;
 
@@ -19,6 +20,7 @@ pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
 };
+pub use protobuf::ProtobufOptions;
 pub use xlsx_output::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
 };
@@ -588,6 +590,10 @@ pub struct FormatOptions {
     /// JSON document.
     #[serde(default, skip_serializing_if = "is_false")]
     pub json_lines: bool,
+    /// Protocol Buffers: embedded proto2 schema and selected output message.
+    /// This mode is output-only and takes precedence over the file extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protobuf: Option<ProtobufOptions>,
     /// XLSX: worksheet name. The first sheet is used when omitted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_sheet: Option<String>,
@@ -630,6 +636,7 @@ mod tests {
         assert!(!defaults.json_lines);
         assert!(defaults.fixed_width.is_none());
         assert!(defaults.http_get.is_none());
+        assert!(defaults.protobuf.is_none());
         assert!(
             !serde_json::to_string(&defaults)
                 .unwrap()
@@ -644,6 +651,22 @@ mod tests {
         assert!(encoded.contains("\"json_lines\":true"));
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
         assert!(decoded.json_lines);
+    }
+
+    #[test]
+    fn protobuf_format_option_roundtrips_embedded_schema() {
+        let options = FormatOptions {
+            protobuf: Some(ProtobufOptions {
+                schema: "message Result { required string value = 1; }".into(),
+                root_message: "Result".into(),
+            }),
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded.protobuf, options.protobuf);
     }
 
     #[test]

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="32">
+  <resources/>
+  <component name="defaultmap" uid="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Catalog" library="xml" uid="2" kind="14">
+          <properties/>
+          <data>
+            <root>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Catalog" expanded="1">
+                    <entry name="Title" outkey="1"/>
+                    <entry name="Item" outkey="2" expanded="1">
+                      <entry name="Code" outkey="3"/>
+                      <entry name="Label" outkey="4"/>
+                      <entry name="Rank" outkey="5"/>
+                      <entry name="Note" outkey="6"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="protobuf-target-source.xsd" inputinstance="protobuf-target-source.xml" instanceroot="{}Catalog"/>
+          </data>
+        </component>
+        <component name="Directory" library="binary" uid="3" kind="33">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <header>
+                <namespaces>
+                  <namespace uid="ferrule.fixture.Directory.Record"/>
+                  <namespace uid="ferrule.fixture.Directory"/>
+                  <namespace uid="http://www.altova.com/mapforce"/>
+                </namespaces>
+              </header>
+              <entry name="FileInstance" inpkey="10" expanded="1">
+                <entry name="document" type="doc-protobuf" expanded="1">
+                  <document schemafile="protobuf-target.proto" root="{ferrule.fixture}Directory"/>
+                  <entry name="Directory" expanded="1">
+                    <entry name="title" inpkey="11"/>
+                    <entry name="records" inpkey="12" expanded="1">
+                      <entry name="code" inpkey="13"/>
+                      <entry name="label" inpkey="14"/>
+                      <entry name="rank" inpkey="15"/>
+                      <entry name="notes" expanded="1">
+                        <entry name="text" inpkey="16"/>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <binary outputinstance="directory.bin"/>
+          </data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="1" to="11"/>
+      <edge from="2" to="12"/>
+      <edge from="3" to="13"/>
+      <edge from="4" to="14"/>
+      <edge from="5" to="15"/>
+      <edge from="6" to="16"/>
+    </connections>
+  </component>
+</mapping>

@@ -743,6 +743,7 @@ dependencies = [
  "format-db",
  "format-edi",
  "format-json",
+ "format-protobuf",
  "format-xlsx",
  "format-xml",
  "ir",
@@ -1451,6 +1452,14 @@ version = "0.1.0"
 dependencies = [
  "ir",
  "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "format-protobuf"
+version = "0.1.0"
+dependencies = [
+ "ir",
  "thiserror 2.0.18",
 ]
 
@@ -2287,6 +2296,7 @@ dependencies = [
  "format-csv",
  "format-db",
  "format-json",
+ "format-protobuf",
  "format-xlsx",
  "format-xml",
  "ir",

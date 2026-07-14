@@ -8,6 +8,7 @@ mod csv;
 mod fixed_width;
 mod generic_xml;
 mod http_get;
+mod protobuf;
 mod shared;
 mod xlsx;
 mod xml_ports;
@@ -40,6 +41,14 @@ pub(super) fn read_http_get_component(
     http_get::read(component, mfd_path, warnings)
 }
 
+pub(super) fn read_protobuf_component(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    protobuf::read(component, mfd_path, warnings)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum ComponentFormat {
     Xml,
@@ -48,6 +57,7 @@ pub(super) enum ComponentFormat {
     Xlsx,
     Edi,
     Db,
+    Protobuf,
 }
 
 /// One schema (source or target) component's extracted facts.
