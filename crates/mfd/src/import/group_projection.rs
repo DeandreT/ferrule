@@ -509,70 +509,132 @@ pub(super) fn build(
             );
             continue;
         }
-        let mut relative = Vec::new();
-        let mut repeated_groups = Vec::new();
-        let mut skipped_repeating = false;
         let active_anchor = scopes.enclosing_anchor(&target_path);
-        collect_paths(
-            source_group,
-            target_group,
-            &mut Vec::new(),
-            &mut relative,
-            &mut repeated_groups,
-            &mut skipped_repeating,
-        );
-        let compatible = relative.len() + repeated_groups.len();
-        repeated_groups.sort_by_key(Vec::len);
-        for path in repeated_groups {
-            let mut source_collection = source_path.clone();
-            source_collection.path.extend(path.iter().cloned());
-            builder.note_framed_prefixes(&source_collection);
-            let mut target_collection = target_path.clone();
-            target_collection.extend(path);
-            scopes.add_copy_iteration(
-                &target_collection,
-                &builder.context_path(&source_collection),
-            );
-        }
-        for path in relative {
-            let mut target_leaf = target_path.clone();
-            target_leaf.extend(path.iter().cloned());
-            let Some(target_leaf) = TargetLeaf::from_path(&target_leaf) else {
-                continue;
-            };
-            let mut source_leaf = source_path.clone();
-            source_leaf.path.extend(path);
-            if let Some(node) = builder.source_field_at_anchor(&source_leaf, &active_anchor) {
-                scopes.add_binding(target_leaf, node);
+        let plan = GroupProjectionPlan::between(source_group, target_group);
+        let coverage = plan.coverage();
+        for step in plan.into_ordered_steps() {
+            match step {
+                GroupProjectionStep::CopyRepeatedGroup(path) => {
+                    let mut source_collection = source_path.clone();
+                    source_collection.path.extend(path.iter().cloned());
+                    builder.note_framed_prefixes(&source_collection);
+                    let mut target_collection = target_path.clone();
+                    target_collection.extend(path);
+                    scopes.add_copy_iteration(
+                        &target_collection,
+                        &builder.context_path(&source_collection),
+                    );
+                }
+                GroupProjectionStep::BindScalar(path) => {
+                    let mut target_leaf = target_path.clone();
+                    target_leaf.extend(path.iter().cloned());
+                    let Some(target_leaf) = TargetLeaf::from_path(&target_leaf) else {
+                        continue;
+                    };
+                    let mut source_leaf = source_path.clone();
+                    source_leaf.path.extend(path);
+                    if let Some(node) = builder.source_field_at_anchor(&source_leaf, &active_anchor)
+                    {
+                        scopes.add_binding(target_leaf, node);
+                    }
+                }
+                GroupProjectionStep::UnsupportedRepetition => {}
             }
         }
-        if compatible == 0 {
-            warn(
-                builder,
-                &target_path,
-                if skipped_repeating {
-                    "it contains only repeating compatible descendants, which require explicit iteration connections"
-                } else {
-                    "it has no compatible same-name scalar leaves"
-                },
-            );
-        } else if skipped_repeating {
-            warn(
-                builder,
-                &target_path,
-                "matching repeating descendants were not copied; connect them to explicit iterations",
-            );
+        match coverage {
+            ProjectionCoverage::Complete => {}
+            ProjectionCoverage::NoCompatibleFields => {
+                warn(
+                    builder,
+                    &target_path,
+                    "it has no compatible same-name scalar leaves",
+                );
+            }
+            ProjectionCoverage::UnsupportedRepetitionOnly => {
+                warn(
+                    builder,
+                    &target_path,
+                    "it contains only repeating compatible descendants, which require explicit iteration connections",
+                );
+            }
+            ProjectionCoverage::PartialUnsupportedRepetition => {
+                warn(
+                    builder,
+                    &target_path,
+                    "matching repeating descendants were not copied; connect them to explicit iterations",
+                );
+            }
         }
     }
 }
 
-fn collect_paths(
+enum GroupProjectionStep {
+    BindScalar(Vec<String>),
+    CopyRepeatedGroup(Vec<String>),
+    UnsupportedRepetition,
+}
+
+enum ProjectionCoverage {
+    Complete,
+    NoCompatibleFields,
+    UnsupportedRepetitionOnly,
+    PartialUnsupportedRepetition,
+}
+
+#[derive(Default)]
+struct GroupProjectionPlan {
+    steps: Vec<GroupProjectionStep>,
+}
+
+impl GroupProjectionPlan {
+    fn between(source: &SchemaNode, target: &SchemaNode) -> Self {
+        let mut plan = Self::default();
+        collect_steps(source, target, &mut Vec::new(), &mut plan);
+        plan
+    }
+
+    fn coverage(&self) -> ProjectionCoverage {
+        let has_compatible = self.steps.iter().any(|step| {
+            matches!(
+                step,
+                GroupProjectionStep::BindScalar(_) | GroupProjectionStep::CopyRepeatedGroup(_)
+            )
+        });
+        let has_unsupported = self
+            .steps
+            .iter()
+            .any(|step| matches!(step, GroupProjectionStep::UnsupportedRepetition));
+        match (has_compatible, has_unsupported) {
+            (true, false) => ProjectionCoverage::Complete,
+            (false, false) => ProjectionCoverage::NoCompatibleFields,
+            (false, true) => ProjectionCoverage::UnsupportedRepetitionOnly,
+            (true, true) => ProjectionCoverage::PartialUnsupportedRepetition,
+        }
+    }
+
+    fn into_ordered_steps(mut self) -> impl Iterator<Item = GroupProjectionStep> {
+        self.steps.sort_by_key(GroupProjectionStep::order_key);
+        self.steps.into_iter()
+    }
+}
+
+impl GroupProjectionStep {
+    fn order_key(&self) -> (u8, usize) {
+        match self {
+            // Parent repeated groups must exist before any scalar binding can
+            // select its enclosing target scope.
+            Self::CopyRepeatedGroup(path) => (0, path.len()),
+            Self::BindScalar(_) => (1, 0),
+            Self::UnsupportedRepetition => (2, 0),
+        }
+    }
+}
+
+fn collect_steps(
     source: &SchemaNode,
     target: &SchemaNode,
     path: &mut Vec<String>,
-    paths: &mut Vec<Vec<String>>,
-    repeated_groups: &mut Vec<Vec<String>>,
-    skipped_repeating: &mut bool,
+    plan: &mut GroupProjectionPlan,
 ) {
     match (&source.kind, &target.kind) {
         (SchemaKind::Scalar { .. }, SchemaKind::Scalar { .. })
@@ -580,7 +642,8 @@ fn collect_paths(
         {
             // This follows the same adapter-guided coercion as an explicit
             // scalar connection; structural copies do not impose stricter types.
-            paths.push(path.clone());
+            plan.steps
+                .push(GroupProjectionStep::BindScalar(path.clone()));
         }
         (
             SchemaKind::Group {
@@ -608,19 +671,13 @@ fn collect_paths(
                         && matches!(source_child.kind, SchemaKind::Group { .. })
                         && source_child.kind == target_child.kind
                     {
-                        repeated_groups.push(path.clone());
+                        plan.steps
+                            .push(GroupProjectionStep::CopyRepeatedGroup(path.clone()));
                     } else {
-                        *skipped_repeating = true;
+                        plan.steps.push(GroupProjectionStep::UnsupportedRepetition);
                     }
                 } else {
-                    collect_paths(
-                        source_child,
-                        target_child,
-                        path,
-                        paths,
-                        repeated_groups,
-                        skipped_repeating,
-                    );
+                    collect_steps(source_child, target_child, path, plan);
                 }
                 path.pop();
             }
