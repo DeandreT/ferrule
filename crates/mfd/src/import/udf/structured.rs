@@ -766,12 +766,19 @@ pub(in crate::import) fn accept_target(
                     let recipe_field = recipe.bindings.keys().any(|relative| {
                         path.strip_prefix(target_path) == Some(relative.as_slice())
                     });
-                    !recipe_field
-                        || builder
-                            .edge_from
-                            .get(key)
-                            .and_then(|feed| builder.udf_by_output.get(feed))
-                            == recipe_key
+                    if path.len() <= target_path.len() || !path.starts_with(target_path) {
+                        return true;
+                    }
+                    let descendant_recipe = builder
+                        .edge_from
+                        .get(key)
+                        .filter(|feed| builder.structured_recipe(**feed).is_some())
+                        .and_then(|feed| builder.udf_by_output.get(feed));
+                    match (recipe_field, descendant_recipe) {
+                        (true, owner) => owner == recipe_key,
+                        (false, Some(_)) => false,
+                        (false, None) => true,
+                    }
                 })
         }
     }
