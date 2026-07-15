@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use ir::{Instance, Value};
 use mapping::{Graph, NodeId};
 
-use super::{EngineError, PositionFrame, eval_expr};
+use super::EngineError;
+use super::eval_expr::eval_expr;
+use super::source_iteration::PositionFrame;
 
 pub(super) fn eval_dynamic_key(
     graph: &Graph,
