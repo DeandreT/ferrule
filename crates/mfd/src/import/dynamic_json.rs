@@ -1,5 +1,7 @@
+use std::collections::BTreeSet;
+
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{DynamicBinding, DynamicChild, IterationOutput, Scope};
+use mapping::{DynamicBinding, DynamicChild, IterationOutput, NodeId, Scope};
 
 use super::graph::GraphBuilder;
 use super::schema::SchemaComponent;
@@ -10,6 +12,7 @@ use super::source::SourcePath;
 pub(super) struct DynamicJsonTarget {
     root: Option<RootDynamicJsonTarget>,
     nested: Vec<DynamicObjectTarget>,
+    claimed_sequences: BTreeSet<usize>,
 }
 
 #[derive(Clone)]
@@ -43,8 +46,11 @@ pub(super) fn prepare_target(
     component
         .dynamic_json
         .clone()
-        .and_then(|dynamic| match dynamic.validate_frames(builder) {
-            Ok(()) => Some(dynamic),
+        .and_then(|mut dynamic| match dynamic.validate_frames(builder) {
+            Ok(()) => {
+                dynamic.claim_sequence_scopes(builder);
+                Some(dynamic)
+            }
             Err(reason) => {
                 builder.warnings.push(format!(
                     "dynamic JSON target `{}` is unsupported: {reason}",
@@ -112,13 +118,28 @@ impl DynamicJsonTarget {
             sources.extend(root.frame_sources(builder)?);
         }
         for site in &self.nested {
-            sources.push(site.iteration_source(builder)?);
+            if let Some(source) = site.iteration_source(builder)? {
+                sources.push(source);
+            }
         }
         Ok(sources)
     }
 
     fn validate_frames(&self, builder: &GraphBuilder<'_>) -> Result<(), String> {
         self.frame_sources(builder).map(|_| ())
+    }
+
+    fn claim_sequence_scopes(&mut self, builder: &mut GraphBuilder<'_>) {
+        for site in &self.nested {
+            let Some(feed) = builder.edge_from.get(&site.property_input).copied() else {
+                continue;
+            };
+            if let Some(index) = builder.resolve_iteration_feed(feed).sequence_component
+                && builder.sequence_scope_components.insert(index)
+            {
+                self.claimed_sequences.insert(index);
+            }
+        }
     }
 
     pub(super) fn build(
@@ -131,6 +152,7 @@ impl DynamicJsonTarget {
         let previous_next_id = builder.next_id;
         let previous_fn_nodes = builder.fn_nodes.clone();
         let previous_sequence_items = builder.sequence_items.clone();
+        let previous_sequence_scope_components = builder.sequence_scope_components.clone();
         let previous_sequence_predicate_components = builder.sequence_predicate_components.clone();
         let previous_framed = builder.framed.clone();
         let previous_source_fields = builder.source_fields.clone();
@@ -163,6 +185,7 @@ impl DynamicJsonTarget {
                 builder.next_id = previous_next_id;
                 builder.fn_nodes = previous_fn_nodes;
                 builder.sequence_items = previous_sequence_items;
+                builder.sequence_scope_components = previous_sequence_scope_components;
                 builder.sequence_predicate_components = previous_sequence_predicate_components;
                 builder.framed = previous_framed;
                 builder.source_fields = previous_source_fields;
@@ -172,6 +195,24 @@ impl DynamicJsonTarget {
                 builder.warnings = previous_warnings;
                 builder.warned_sequence_uses = previous_warned_sequence_uses;
                 builder.warned_scalar_filters = previous_warned_scalar_filters;
+                for index in &self.claimed_sequences {
+                    if builder
+                        .sequence_items
+                        .get(index)
+                        .is_some_and(|item| scope_owns_sequence_item(&scopes.root, *item))
+                    {
+                        continue;
+                    }
+                    builder.sequence_scope_components.remove(index);
+                    if builder.warned_sequence_uses.insert(*index)
+                        && let Some(component) = builder.fn_components.get(*index)
+                    {
+                        builder.warnings.push(format!(
+                            "sequence function `{}` is not connected to a repeating target; scalar use is unsupported",
+                            component.name
+                        ));
+                    }
+                }
                 Err(reason)
             }
         }
@@ -344,7 +385,7 @@ impl RootDynamicJsonTarget {
 }
 
 impl DynamicObjectTarget {
-    fn iteration_source(&self, builder: &GraphBuilder<'_>) -> Result<SourcePath, String> {
+    fn iteration_source(&self, builder: &GraphBuilder<'_>) -> Result<Option<SourcePath>, String> {
         let feed = builder
             .edge_from
             .get(&self.property_input)
@@ -353,8 +394,7 @@ impl DynamicObjectTarget {
                 "computed nested property collection input is not connected".to_string()
             })?;
         let control = builder.resolve_iteration_feed(feed);
-        if control.sequence_component.is_some()
-            || control.db_where_component.is_some()
+        if control.db_where_component.is_some()
             || control.has_filter
             || control.has_key_grouping
             || control.has_start_grouping
@@ -366,9 +406,12 @@ impl DynamicObjectTarget {
             || control.take_default_one
         {
             return Err(
-                "nested computed properties currently support only plain source iteration"
+                "nested computed properties currently support only plain source or generated-sequence iteration"
                     .to_string(),
             );
+        }
+        if control.sequence_component.is_some() {
+            return Ok(None);
         }
         let mut source = builder
             .iteration_source_path(&control)
@@ -379,7 +422,7 @@ impl DynamicObjectTarget {
             .ok_or_else(|| "computed nested property source component is missing".to_string())?
             .schema;
         source.path = super::iteration::split_at_innermost_repeating(schema, &source.path).0;
-        Ok(source)
+        Ok(Some(source))
     }
 
     fn build(
@@ -387,31 +430,55 @@ impl DynamicObjectTarget {
         builder: &mut GraphBuilder<'_>,
         scopes: &mut ScopeBuilder,
     ) -> Result<(), String> {
-        let source = self.iteration_source(builder)?;
-        let source_abs = builder.context_path(&source);
-        let key = self.value_from_input(builder, self.key_input, "nested property name")?;
-        let value = self.value_from_input(builder, self.value_input, "nested property value")?;
-
         if !scope_is_unconfigured(scopes.ensure_scope(&self.owner_path)) {
             return Err(format!(
                 "computed nested object `{}` cannot be combined with an existing target scope",
                 self.owner_path.join("/")
             ));
         }
-        scopes.add_iteration(
-            &self.owner_path,
-            &source_abs,
-            IterationNodes {
-                filter: None,
-                group_by: None,
-                group_starting_with: None,
-                group_into_blocks: None,
-                sort_by: None,
-                sort_descending: false,
-                take: None,
-            },
-            IterationOutput::Repeated,
-        );
+        let property_feed = builder
+            .edge_from
+            .get(&self.property_input)
+            .copied()
+            .ok_or_else(|| {
+                "computed nested property collection input is not connected".to_string()
+            })?;
+        let control = builder.resolve_iteration_feed(property_feed);
+        let nodes = IterationNodes {
+            filter: None,
+            group_by: None,
+            group_starting_with: None,
+            group_into_blocks: None,
+            sort_by: None,
+            sort_descending: false,
+            take: None,
+        };
+        if let Some(index) = control.sequence_component {
+            builder.sequence_scope_components.insert(index);
+            let sequence = builder.sequence_expr(index).ok_or_else(|| {
+                "computed nested property generated sequence is invalid".to_string()
+            })?;
+            if scope_owns_sequence_item(&scopes.root, sequence.item()) {
+                return Err(
+                    "computed nested property generated sequence already feeds another target iteration"
+                        .to_string(),
+                );
+            }
+            scopes.add_sequence(&self.owner_path, sequence, nodes, IterationOutput::Repeated);
+        } else {
+            let source = self
+                .iteration_source(builder)?
+                .ok_or_else(|| "computed nested property has no source collection".to_string())?;
+            let source_abs = builder.context_path(&source);
+            scopes.add_iteration(
+                &self.owner_path,
+                &source_abs,
+                nodes,
+                IterationOutput::Repeated,
+            );
+        }
+        let key = self.value_from_input(builder, self.key_input, "nested property name")?;
+        let value = self.value_from_input(builder, self.value_input, "nested property value")?;
         let scope = scopes.ensure_scope(&self.owner_path);
         scope.merge_dynamic_fields = true;
         scope.dynamic_bindings.push(DynamicBinding { key, value });
@@ -488,8 +555,26 @@ pub(super) fn read_target(
     if root.is_none() && nested.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(DynamicJsonTarget { root, nested }))
+        Ok(Some(DynamicJsonTarget {
+            root,
+            nested,
+            claimed_sequences: BTreeSet::new(),
+        }))
     }
+}
+
+fn scope_owns_sequence_item(scope: &Scope, item: NodeId) -> bool {
+    scope
+        .sequence()
+        .is_some_and(|sequence| sequence.item() == item)
+        || scope
+            .children
+            .iter()
+            .any(|child| scope_owns_sequence_item(child, item))
+        || scope
+            .dynamic_children
+            .iter()
+            .any(|child| scope_owns_sequence_item(&child.scope, item))
 }
 
 fn read_root_target(
@@ -557,12 +642,7 @@ fn read_root_target(
     for property in properties {
         let name = direct_child(&property, Some("json-propertyname"), Some("name"))?;
         let key_input = input_key(&name, "computed item property name")?;
-        let values = property
-            .children()
-            .filter(|node| {
-                node.has_tag_name("entry") && node.attribute("type") != Some("json-propertyname")
-            })
-            .collect::<Vec<_>>();
+        let values = connected_value_branches(&property);
         let [value] = values.as_slice() else {
             return Err(
                 "computed item properties require exactly one scalar value branch".to_string(),
@@ -636,12 +716,7 @@ fn read_nested_target(
         return Err("computed scalar properties require a named enclosing JSON object".to_string());
     }
     let name = direct_child(property, Some("json-propertyname"), Some("name"))?;
-    let values = property
-        .children()
-        .filter(|node| {
-            node.has_tag_name("entry") && node.attribute("type") != Some("json-propertyname")
-        })
-        .collect::<Vec<_>>();
+    let values = connected_value_branches(property);
     let [value] = values.as_slice() else {
         return Err(
             "nested computed properties require exactly one scalar value branch".to_string(),
@@ -657,6 +732,22 @@ fn read_nested_target(
         value_input: input_key(value, "nested computed property value")?,
         value_type,
     })
+}
+
+fn connected_value_branches<'a, 'input>(
+    property: &roxmltree::Node<'a, 'input>,
+) -> Vec<roxmltree::Node<'a, 'input>> {
+    property
+        .children()
+        .filter(|node| {
+            node.has_tag_name("entry")
+                && node.attribute("type") != Some("json-propertyname")
+                && (node.attribute("inpkey").is_some()
+                    || node.descendants().any(|descendant| {
+                        descendant.has_tag_name("entry") && descendant.attribute("inpkey").is_some()
+                    }))
+        })
+        .collect()
 }
 
 fn direct_child<'a, 'input>(
