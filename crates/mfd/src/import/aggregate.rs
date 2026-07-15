@@ -111,11 +111,10 @@ impl GraphBuilder<'_> {
                 return;
             }
             if let Some(path) = builder
-                .sources
-                .first()
-                .and_then(|source| source.ports.get(&feed))
+                .sequence_source_path(feed)
+                .filter(|path| path.source == 0)
             {
-                paths.push(path.clone());
+                paths.push(path.path);
                 return;
             }
             let Some(&idx) = builder.fn_by_output.get(&feed) else {
