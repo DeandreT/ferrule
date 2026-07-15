@@ -64,6 +64,7 @@ fn project() -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph { nodes },
         root: Scope {
             bindings: vec![Binding {

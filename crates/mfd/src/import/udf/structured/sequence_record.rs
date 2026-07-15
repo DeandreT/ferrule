@@ -6,8 +6,8 @@ use mapping::IterationOutput;
 
 use super::target::instantiate;
 use super::{
-    ExprContext, FieldPolicy, Recipe, RecipeSource, component_id, flat_group_fields,
-    function_outputs, scalar_parameter_outputs,
+    ExprContext, FieldPolicy, ImportedDefinition, Recipe, RecipeSource, component_id,
+    flat_group_fields, function_outputs, scalar_parameter_outputs,
 };
 use crate::import::function::read as read_function;
 use crate::import::graph::GraphBuilder;
@@ -18,14 +18,12 @@ use crate::import::schema::{
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::udf::{Call, Definition, OutputExpr};
 
-type ReadResult = (Definition, Option<SchemaComponent>, Vec<String>);
-
 pub(super) fn try_read(
     component: &roxmltree::Node<'_, '_>,
     structure: &roxmltree::Node<'_, '_>,
     children: &[roxmltree::Node<'_, '_>],
     mfd_path: &Path,
-) -> Result<Option<ReadResult>, String> {
+) -> Result<Option<ImportedDefinition>, String> {
     let declarations = children
         .iter()
         .copied()
@@ -149,6 +147,7 @@ pub(super) fn try_read(
     let context = ExprContext {
         functions: &functions,
         by_output: &by_output,
+        nested: None,
         parameters: &parameters,
         catalog_ports: &source.ports,
         collection_path: source_path,
@@ -406,6 +405,7 @@ pub(super) fn build_target(
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
         },
         output,
@@ -469,6 +469,7 @@ mod tests {
         let context = ExprContext {
             functions: &functions,
             by_output: &by_output,
+            nested: None,
             parameters: &parameters,
             catalog_ports: &ports,
             collection_path: &[],
@@ -510,6 +511,7 @@ mod tests {
         let context = ExprContext {
             functions: &functions,
             by_output: &by_output,
+            nested: None,
             parameters: &parameters,
             catalog_ports: &ports,
             collection_path: &[],

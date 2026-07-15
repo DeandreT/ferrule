@@ -514,9 +514,9 @@ fn parse_delimited(
         if character == dialect.quote() && field.is_empty() {
             quoted = true;
             index += length;
-        } else if character == dialect.field_separator() {
+        } else if rest.starts_with(dialect.field_separator()) {
             record.push(std::mem::take(&mut field));
-            index += length;
+            index += dialect.field_separator().len();
         } else if let Some(separator_len) = record_separator_len(rest, dialect.record_separator()) {
             record.push(std::mem::take(&mut field));
             if records.len() == MAX_RECORDS {
@@ -787,8 +787,7 @@ fn render_delimited_records(
             )?;
             encoded.push(quote_field(&raw, dialect)?);
         }
-        let separator = dialect.field_separator().to_string();
-        records.push(bounded_join(&encoded, &separator)?);
+        records.push(bounded_join(&encoded, dialect.field_separator())?);
     }
     bounded_join(&records, dialect.record_separator())
 }

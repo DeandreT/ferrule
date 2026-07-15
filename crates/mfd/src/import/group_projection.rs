@@ -16,9 +16,11 @@ pub(super) enum Projection {
     Text(Vec<String>, u32),
 }
 
+#[derive(Clone)]
 pub(super) struct TargetIteration {
     pub(super) target_path: Vec<String>,
     pub(super) feed: u32,
+    pub(super) additional_feeds: Vec<u32>,
     pub(super) output: IterationOutput,
     pub(super) projects_whole_group: bool,
     pub(super) join: Option<JoinId>,
@@ -37,6 +39,7 @@ impl TargetIteration {
         Self {
             target_path: target_path.to_vec(),
             feed,
+            additional_feeds: Vec::new(),
             output: IterationOutput::Repeated,
             projects_whole_group: false,
             join: None,
@@ -78,6 +81,7 @@ pub(super) fn classify_target_connection(
             iterations.push(TargetIteration {
                 target_path: target_path.to_vec(),
                 feed,
+                additional_feeds: Vec::new(),
                 output,
                 projects_whole_group: false,
                 join: Some(join),
@@ -111,18 +115,24 @@ pub(super) fn classify_target_connection(
         && resolved.take_expr.is_none()
         && !resolved.take_default_one
         && resolved.projections.is_empty();
-    let plain_source_path = plain_feed
-        .then(|| builder.iteration_source_path(&resolved))
+    // Iteration resolution intentionally stops at the repeated owner. A
+    // structural copy can target a non-repeating descendant of that owner,
+    // so retain the direct endpoint path for group compatibility checks.
+    let plain_structural_source_path = plain_feed
+        .then(|| builder.sequence_source_path(feed))
         .flatten();
-    let exact_group_source = plain_source_path
+    let exact_group_source = plain_structural_source_path
         .as_ref()
         .and_then(|source| builder.schema_node(source))
         .is_some_and(|source| !source.repeating && matches!(source.kind, SchemaKind::Group { .. }));
-    let exact_whole_source_copy = plain_source_path.as_ref().is_some_and(|source_path| {
-        source_path.source == 0
-            && source_path.path.is_empty()
-            && builder.schema_node(source_path) == Some(target_node)
-    });
+    let exact_whole_source_copy =
+        plain_structural_source_path
+            .as_ref()
+            .is_some_and(|source_path| {
+                source_path.source == 0
+                    && source_path.path.is_empty()
+                    && builder.schema_node(source_path) == Some(target_node)
+            });
     let max_one_database_source = builder
         .iteration_source_path(&resolved)
         .is_some_and(|source| builder.db_query_is_at_most_one(&source));
@@ -148,6 +158,7 @@ pub(super) fn classify_target_connection(
             iterations.push(TargetIteration {
                 target_path: target_path.to_vec(),
                 feed,
+                additional_feeds: Vec::new(),
                 output: IterationOutput::First,
                 projects_whole_group: false,
                 join: None,
@@ -195,8 +206,28 @@ pub(super) fn classify_target_connection(
                 mapped_group_sequence(target, target_path, builder, &candidate, role.copy_all)
             })
             .collect::<Vec<_>>();
-        if mapped_feeds.len() != 1 {
-            if mapped_feeds
+        if mapped_feeds.len() > 1 {
+            let mut mapped_feeds = mapped_feeds;
+            mapped_feeds.sort_by_key(|(_, role)| role.representative);
+            if mapped_feeds.first().is_some_and(|(_, role)| {
+                role.representative == input_key
+                    && mapped_feeds.iter().all(|(_, role)| role.copy_all)
+                    && mapped_feeds.iter().all(|(feed, role)| {
+                        matching_xml_type_conditions(builder, **feed, role.representative)
+                    })
+            }) {
+                let mut feeds = mapped_feeds.iter().map(|(feed, _)| **feed);
+                if let Some(feed) = feeds.next() {
+                    iterations.push(TargetIteration {
+                        target_path: target_path.to_vec(),
+                        feed,
+                        additional_feeds: feeds.collect(),
+                        output: IterationOutput::MappedSequence,
+                        projects_whole_group: true,
+                        join: None,
+                    });
+                }
+            } else if mapped_feeds
                 .first()
                 .is_some_and(|(_, role)| role.representative == input_key)
             {
@@ -210,6 +241,7 @@ pub(super) fn classify_target_connection(
         iterations.push(TargetIteration {
             target_path: target_path.to_vec(),
             feed,
+            additional_feeds: Vec::new(),
             output: IterationOutput::MappedSequence,
             projects_whole_group: copy_all,
             join: None,
@@ -224,6 +256,11 @@ pub(super) fn classify_target_connection(
             ));
         }
     }
+}
+
+fn matching_xml_type_conditions(builder: &GraphBuilder<'_>, feed: u32, target_port: u32) -> bool {
+    let source_port = builder.resolve_iteration_feed(feed).source_key;
+    builder.xml_type_conditions.get(&source_port) == builder.xml_type_conditions.get(&target_port)
 }
 
 struct StructuralFeedRole {

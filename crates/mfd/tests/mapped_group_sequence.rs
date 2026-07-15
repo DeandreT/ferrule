@@ -50,6 +50,53 @@ fn write_fixture(dir: &Path) {
     );
 }
 
+fn write_concatenated_fixture(dir: &Path) {
+    write(
+        &dir.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Domestic" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element><xs:element name="International" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    );
+    write(
+        &dir.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Address" minOccurs="0"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/><xs:element name="Code" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    );
+    write(
+        &dir.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Domestic" outkey="10"><entry name="Name" outkey="11"/><entry name="Code" outkey="12"/></entry><entry name="International" outkey="20"><entry name="Name" outkey="21"/><entry name="Code" outkey="22"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Address" inpkey="30"><entry name="Name"/><entry name="Code"/></entry><entry name="Address" inpkey="40"><entry name="Name"/><entry name="Code"/></entry></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge><edge edgekey="91"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="30" edgekey="90"/></edges></vertex><vertex vertexkey="20"><edges><edge vertexkey="40" edgekey="91"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    );
+}
+
+fn write_conditioned_concatenated_fixture(dir: &Path) {
+    write(
+        &dir.join("typed-address.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:ferrule:typed-address" targetNamespace="urn:ferrule:typed-address" elementFormDefault="qualified">
+          <xs:complexType name="Address"><xs:sequence><xs:element name="name" type="xs:string"/></xs:sequence></xs:complexType>
+          <xs:complexType name="EUAddress"><xs:complexContent><xs:extension base="t:Address"><xs:sequence><xs:element name="postcode" type="xs:string"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>
+          <xs:complexType name="USAddress"><xs:complexContent><xs:extension base="t:Address"><xs:sequence><xs:element name="state" type="xs:string"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>
+          <xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Message" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Address" type="t:Address"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element>
+          <xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Address" type="t:Address" minOccurs="0"/></xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    );
+    let condition = |type_name: &str| {
+        format!(
+            r#"<condition><expression><function name="equal" library="core"><expression><attribute ns="http://www.w3.org/2001/XMLSchema-instance" name="type"/></expression><expression><constant value="{{urn:ferrule:typed-address}}{type_name}" datatype="QName"/></expression></function></expression></condition>"#
+        )
+    };
+    write(
+        &dir.join("mapping.mfd"),
+        &format!(
+            r#"<mapping version="26"><component name="map"><structure><children>
+              <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Message"><entry name="Address" outkey="10">{eu}</entry><entry name="Address" outkey="20">{us}</entry></entry></entry></entry></entry></root><document schema="typed-address.xsd" inputinstance="source.xml" instanceroot="{{urn:ferrule:typed-address}}Source"/></data></component>
+              <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Address" inpkey="30">{eu}</entry><entry name="Address" inpkey="40">{us}</entry></entry></entry></entry></root><document schema="typed-address.xsd" outputinstance="target.xml" instanceroot="{{urn:ferrule:typed-address}}Target"/></data></component>
+            </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge><edge edgekey="91"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="30" edgekey="90"/></edges></vertex><vertex vertexkey="20"><edges><edge vertexkey="40" edgekey="91"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+            eu = condition("EUAddress"),
+            us = condition("USAddress"),
+        ),
+    );
+}
+
 fn rewrite_mapping(dir: &Path, rewrite: impl FnOnce(String) -> String) {
     let path = dir.join("mapping.mfd");
     let mapping = std::fs::read_to_string(&path).unwrap();
@@ -76,6 +123,159 @@ fn mapped_names(project: &mapping::Project, source_xml: &str) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+#[test]
+fn compatible_structural_sequence_feeds_are_concatenated_in_target_port_order() {
+    let dir = TempDir::new();
+    write_concatenated_fixture(&dir.0);
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+
+    let address = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Address")
+        .unwrap();
+    assert_eq!(address.iteration_output, IterationOutput::MappedSequence);
+    let segments = address.concatenated().unwrap().iter().collect::<Vec<_>>();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(
+        segments[0].source(),
+        Some(["Domestic".to_string()].as_slice())
+    );
+    assert_eq!(
+        segments[1].source(),
+        Some(["International".to_string()].as_slice())
+    );
+
+    let source = format_xml::from_str(
+        "<Source><Domestic><Name>North</Name><Code>N1</Code></Domestic><Domestic><Name>South</Name><Code>S2</Code></Domestic><International><Name>East</Name><Code>E3</Code></International></Source>",
+        &imported.project.source,
+    )
+    .unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let addresses = target
+        .field("Address")
+        .and_then(Instance::as_mapped_sequence)
+        .unwrap();
+    let names = addresses
+        .iter()
+        .filter_map(|address| address.field("Name").and_then(Instance::as_scalar))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            &Value::String("North".into()),
+            &Value::String("South".into()),
+            &Value::String("East".into()),
+        ]
+    );
+    let xml = format_xml::to_string(&imported.project.target, &target).unwrap();
+    assert_eq!(xml.matches("<Address>").count(), 3);
+    assert!(xml.find("North").unwrap() < xml.find("South").unwrap());
+    assert!(xml.find("South").unwrap() < xml.find("East").unwrap());
+}
+
+#[test]
+fn xsi_type_conditioned_structural_feeds_filter_and_preserve_type_identity() {
+    let dir = TempDir::new();
+    write_conditioned_concatenated_fixture(&dir.0);
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+
+    let source = format_xml::from_str(
+        r#"<Source xmlns="urn:ferrule:typed-address" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:t="urn:ferrule:typed-address"><Message><Address xsi:type="t:USAddress"><name>West</name><state>CA</state></Address></Message><Message><Address xsi:type="t:EUAddress"><name>North</name><postcode>N1</postcode></Address></Message></Source>"#,
+        &imported.project.source,
+    )
+    .unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let addresses = target
+        .field("Address")
+        .and_then(Instance::as_mapped_sequence)
+        .unwrap();
+    assert_eq!(addresses.len(), 2);
+    assert_eq!(
+        addresses[0].field("name").and_then(Instance::as_scalar),
+        Some(&Value::String("North".into()))
+    );
+    assert_eq!(
+        addresses[1].field("name").and_then(Instance::as_scalar),
+        Some(&Value::String("West".into()))
+    );
+    assert_eq!(
+        addresses[0]
+            .field(ir::XML_TYPE_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String(
+            "{urn:ferrule:typed-address}EUAddress".into()
+        ))
+    );
+    assert_eq!(
+        addresses[1]
+            .field(ir::XML_TYPE_FIELD)
+            .and_then(Instance::as_scalar),
+        Some(&Value::String(
+            "{urn:ferrule:typed-address}USAddress".into()
+        ))
+    );
+    let xml = format_xml::to_string(&imported.project.target, &target).unwrap();
+    let eu = xml.find("xsi:type=\"ft:EUAddress\"").unwrap();
+    let us = xml.find("xsi:type=\"ft:USAddress\"").unwrap();
+    assert!(eu < us, "{xml}");
+}
+
+#[test]
+#[ignore = "needs the local MapForce sample set; informational only"]
+fn local_read_messages_preserves_one_conditioned_bill_to_per_purchase_order() {
+    let sample_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../samples/ReferenceSamples");
+    let mapping = sample_dir.join("ReadMessages.mfd");
+    if !mapping.is_file() {
+        return;
+    }
+    let imported = mfd::import(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+    let source =
+        format_xml::read(&sample_dir.join("messages.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let orders = target
+        .field("purchaseOrder")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(orders.len(), 3);
+    for order in orders {
+        let bill_to = order
+            .field("billTo")
+            .and_then(Instance::as_mapped_sequence)
+            .unwrap();
+        assert_eq!(bill_to.len(), 1);
+        assert_eq!(
+            bill_to[0]
+                .field(ir::XML_TYPE_FIELD)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(
+                "{http://www.altova.com/IPO}US-Address".into()
+            ))
+        );
+    }
 }
 
 fn nested_source_group_project(copy_extra: bool) -> Project {
@@ -137,6 +337,7 @@ fn nested_source_group_project(copy_extra: bool) -> Project {
         source_options: mapping::FormatOptions::default(),
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph { nodes },
         root: Scope {
             children: vec![Scope {
@@ -347,7 +548,7 @@ fn duplicate_target_port_aliases_for_one_feed_create_one_mapped_scope() {
 }
 
 #[test]
-fn competing_mapped_group_feeds_warn_once_and_create_no_occurrence_scope() {
+fn compatible_filtered_and_direct_group_feeds_are_concatenated() {
     let dir = TempDir::new();
     write_fixture(&dir.0);
     rewrite_mapping(&dir.0, |mapping| {
@@ -367,14 +568,31 @@ fn competing_mapped_group_feeds_warn_once_and_create_no_occurrence_scope() {
     });
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("multiple connected structural sequence feeds"));
-    assert!(
-        imported
-            .project
-            .root
-            .children
-            .iter()
-            .all(|scope| scope.target_field != "Selected")
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let selected = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Selected")
+        .unwrap();
+    let segments = selected.concatenated().unwrap().iter().collect::<Vec<_>>();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(
+        segments[0].source(),
+        Some(["Person".to_string()].as_slice())
+    );
+    assert!(segments[0].filter.is_some());
+    assert_eq!(
+        segments[1].source(),
+        Some(["Person".to_string()].as_slice())
+    );
+    assert!(segments[1].filter.is_none());
+    assert_eq!(
+        mapped_names(
+            &imported.project,
+            "<Source><Person><Name>A</Name><Include>true</Include></Person><Person><Name>B</Name><Include>false</Include></Person></Source>",
+        ),
+        vec!["A", "A", "B"]
     );
 }

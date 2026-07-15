@@ -94,7 +94,11 @@ pub(super) fn read(
                             clone_with_budget(expression, &mut template_budget, 0)
                                 .map_err(ReadError::Nested)?
                         }
-                        Some(OutputExpr::Lookup(_) | OutputExpr::Structured(_)) => {
+                        Some(
+                            OutputExpr::Lookup(_)
+                            | OutputExpr::CollectionFind(_)
+                            | OutputExpr::Structured(_),
+                        ) => {
                             return Err(ReadError::Nested(format!(
                                 "nested user-defined function `{child_name}` ({library}) output `{component_id}` is not scalar"
                             )));

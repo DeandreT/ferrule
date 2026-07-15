@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
 
 use ir::{SchemaKind, Value};
-use mapping::{IterationOutput, Node, SequenceExpr};
+use mapping::{
+    AdjacencyTreePlan, IterationOutput, Node, PathHierarchyPlan, RecursiveFilterPlan,
+    ScopeConstruction, SequenceExpr,
+};
 
-use super::{Expr, Recipe, RecipeSource, record, sequence_record};
+use super::{Expr, FindRecipe, FindSource, Recipe, RecipeSource, record, sequence_record};
 use crate::import::graph::GraphBuilder;
 use crate::import::schema::{ComponentFormat, SchemaComponent, schema_node_at};
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
@@ -32,6 +35,10 @@ pub(in crate::import) fn accept_target(
             target.format == ComponentFormat::Db
                 || (target.format.is_xml_like() && !target_path.is_empty())
         }
+        RecipeSource::RecursiveCollect { .. }
+        | RecipeSource::RecursiveFilter { .. }
+        | RecipeSource::PathHierarchy { .. }
+        | RecipeSource::AdjacencyTree { .. } => target.format.is_xml_like(),
         _ => target.format.is_xml_like() && !target_path.is_empty(),
     };
     let common = supported_location
@@ -81,6 +88,17 @@ pub(in crate::import) fn accept_target(
                     }
                 })
         }
+        RecipeSource::RecursiveCollect { output, .. } => {
+            let mut path = target_path.to_vec();
+            path.extend(output.iter().cloned());
+            !target_node.repeating
+                && schema_node_at(&target.schema, &path).is_some_and(|node| {
+                    node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                })
+        }
+        RecipeSource::RecursiveFilter { .. } => true,
+        RecipeSource::PathHierarchy { .. } => !target_node.repeating && target_path.is_empty(),
+        RecipeSource::AdjacencyTree { .. } => !target_node.repeating,
     }
 }
 
@@ -113,7 +131,10 @@ pub(in crate::import) fn prepare_target_frames(
         };
         let component_id = match &recipe.source {
             RecipeSource::SequenceParameter { component_id }
-            | RecipeSource::MappedSequenceParameter { component_id, .. } => component_id,
+            | RecipeSource::MappedSequenceParameter { component_id, .. }
+            | RecipeSource::RecursiveCollect { component_id, .. }
+            | RecipeSource::RecursiveFilter { component_id, .. }
+            | RecipeSource::PathHierarchy { component_id, .. } => component_id,
             _ => continue,
         };
         let input = call
@@ -199,7 +220,365 @@ fn build_target(
                 input_name,
             )
         }
+        RecipeSource::RecursiveCollect {
+            component_id,
+            prefix_parameter,
+            children,
+            descent_value,
+            values,
+            value,
+            output,
+            separator,
+        } => build_recursive_collect_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &call_inputs,
+            &structured_inputs,
+            *component_id,
+            *prefix_parameter,
+            children,
+            descent_value,
+            values,
+            value,
+            output,
+            separator,
+        ),
+        RecipeSource::RecursiveFilter {
+            component_id,
+            predicate_parameter,
+            children,
+            items,
+            value,
+            value_first,
+        } => build_recursive_filter_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &call_inputs,
+            &structured_inputs,
+            *component_id,
+            *predicate_parameter,
+            children,
+            items,
+            value,
+            *value_first,
+        ),
+        RecipeSource::PathHierarchy {
+            component_id,
+            values,
+            separator,
+            directories,
+            files,
+            name,
+        } => build_path_hierarchy_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &structured_inputs,
+            *component_id,
+            values,
+            separator,
+            directories,
+            files,
+            name,
+        ),
+        RecipeSource::AdjacencyTree {
+            component_id,
+            base_parameter,
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+        } => build_adjacency_tree_target(
+            target_path,
+            target,
+            builder,
+            scopes,
+            &call_inputs,
+            &structured_inputs,
+            *component_id,
+            *base_parameter,
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+        ),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_adjacency_tree_target(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    call_inputs: &BTreeMap<u32, u32>,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    component_id: u32,
+    base_parameter: u32,
+    collection: &[String],
+    key: &[String],
+    parent: &[String],
+    target_key: &str,
+    target_children: &str,
+) -> Result<(), String> {
+    let connected = structured_inputs
+        .get(&component_id)
+        .into_iter()
+        .flatten()
+        .filter_map(|(_, port)| {
+            builder
+                .edge_from
+                .get(port)
+                .copied()
+                .and_then(|feed| builder.source_abs_path(feed))
+        })
+        .collect::<Vec<_>>();
+    let [base] = connected.as_slice() else {
+        return Err("its adjacency catalog requires one directly imported source group".into());
+    };
+    let mut source_collection = (*base).clone();
+    source_collection.path.extend(collection.iter().cloned());
+    let source_node = builder
+        .schema_node(&source_collection)
+        .ok_or("its adjacency collection is missing from the source schema")?;
+    if !source_node.repeating || !matches!(source_node.kind, SchemaKind::Group { .. }) {
+        return Err("its adjacency collection is not a repeating group".into());
+    }
+    for (role, path) in [("key", key), ("parent", parent)] {
+        if schema_node_at(source_node, path).is_none_or(|field| {
+            field.repeating
+                || !matches!(
+                    field.kind,
+                    SchemaKind::Scalar {
+                        ty: ir::ScalarType::String
+                    }
+                )
+        }) {
+            return Err(format!(
+                "its adjacency {role} field `{}` is not a non-repeating string",
+                path.join("/")
+            ));
+        }
+    }
+    let target_node = schema_node_at(&target.schema, target_path)
+        .ok_or("its adjacency target group is missing")?;
+    if target_node.child(target_key).is_none_or(|field| {
+        field.repeating
+            || !matches!(
+                field.kind,
+                SchemaKind::Scalar {
+                    ty: ir::ScalarType::String
+                }
+            )
+    }) {
+        return Err(format!(
+            "its adjacency target key `{target_key}` is not a non-repeating string"
+        ));
+    }
+    if target_node.child(target_children).is_none_or(|field| {
+        !field.repeating
+            || !matches!(field.kind, SchemaKind::Group { .. })
+            || field.recursive_ref.as_deref() != Some(target_node.name.as_str())
+    }) {
+        return Err(format!(
+            "its adjacency target child `{target_children}` does not recursively reference `{}`",
+            target_node.name
+        ));
+    }
+    let root = call_inputs
+        .get(&base_parameter)
+        .and_then(|input| builder.edge_from.get(input))
+        .copied()
+        .and_then(|feed| builder.value_node(feed));
+    let plan = AdjacencyTreePlan::new(
+        builder.context_path(&source_collection),
+        key.to_vec(),
+        parent.to_vec(),
+        target_key.to_string(),
+        target_children.to_string(),
+        root,
+    )
+    .ok_or("its adjacency fields are invalid")?;
+    scopes.ensure_scope(target_path).construction = ScopeConstruction::AdjacencyTree { plan };
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_path_hierarchy_target(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    component_id: u32,
+    values: &[String],
+    separator: &str,
+    directories: &str,
+    files: &str,
+    name: &str,
+) -> Result<(), String> {
+    if !target_path.is_empty() {
+        return Err("its path hierarchy must populate the XML document root".to_string());
+    }
+    let mut collection = structured_inputs
+        .get(&component_id)
+        .into_iter()
+        .flatten()
+        .find_map(|(_, port)| builder.edge_from.get(port).copied())
+        .and_then(|feed| builder.source_abs_path(feed))
+        .ok_or("its path-list parameter is not a directly imported source group")?;
+    collection.path.extend(values.iter().cloned());
+    if !builder
+        .schema_node(&collection)
+        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+    {
+        return Err("its path-list parameter does not resolve to repeating strings".to_string());
+    }
+    let plan = PathHierarchyPlan::new(
+        builder.context_path(&collection),
+        separator.to_string(),
+        directories.to_string(),
+        files.to_string(),
+        name.to_string(),
+    )
+    .ok_or("its path hierarchy fields or separator are invalid")?;
+    if target.schema.child(name).is_none()
+        || target.schema.child(files).is_none()
+        || target.schema.child(directories).is_none()
+    {
+        return Err("its target does not match the recursive directory shape".to_string());
+    }
+    scopes.ensure_scope(target_path).construction = ScopeConstruction::PathHierarchy { plan };
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_recursive_filter_target(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    call_inputs: &BTreeMap<u32, u32>,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    component_id: u32,
+    predicate_parameter: u32,
+    children: &str,
+    items: &str,
+    value: &[String],
+    value_first: bool,
+) -> Result<(), String> {
+    if !target_path.is_empty() {
+        // Descendant structural ports are owned by the root recursive recipe.
+        return Ok(());
+    }
+    let source = structured_inputs
+        .get(&component_id)
+        .into_iter()
+        .flatten()
+        .find_map(|(_, port)| builder.edge_from.get(port).copied())
+        .and_then(|feed| builder.source_abs_path(feed))
+        .ok_or("its recursive group parameter is not a directly imported source group")?;
+    if source.source != 0 || !source.path.is_empty() {
+        return Err("its recursive filter input must be the primary document root".to_string());
+    }
+    if builder.schema_node(&source) != Some(&target.schema) {
+        return Err("its recursive source and target schemas do not match".to_string());
+    }
+    let parameter = call_inputs
+        .get(&predicate_parameter)
+        .and_then(|input| builder.edge_from.get(input))
+        .copied()
+        .and_then(|feed| builder.value_node(feed))
+        .ok_or("its recursive filter parameter is not a scalar expression")?;
+    let item_value = builder.alloc(Node::SourceField {
+        path: value.to_vec(),
+        frame: None,
+    });
+    let args = if value_first {
+        vec![item_value, parameter]
+    } else {
+        vec![parameter, item_value]
+    };
+    let predicate = builder.alloc(Node::Call {
+        function: "contains".to_string(),
+        args,
+    });
+    let plan = RecursiveFilterPlan::new(children.to_string(), items.to_string(), predicate)
+        .ok_or("its recursive filter collection names are invalid")?;
+    scopes.ensure_scope(target_path).construction =
+        mapping::ScopeConstruction::RecursiveFilter { plan };
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_recursive_collect_target(
+    target_path: &[String],
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    call_inputs: &BTreeMap<u32, u32>,
+    structured_inputs: &BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    component_id: u32,
+    prefix_parameter: u32,
+    children: &[String],
+    descent_value: &[String],
+    values: &[String],
+    value: &[String],
+    output: &[String],
+    separator: &str,
+) -> Result<(), String> {
+    let source = structured_inputs
+        .get(&component_id)
+        .into_iter()
+        .flatten()
+        .find_map(|(_, port)| builder.edge_from.get(port).copied())
+        .and_then(|feed| builder.source_abs_path(feed))
+        .ok_or("its recursive group parameter is not a directly imported source group")?;
+    let prefix = call_inputs
+        .get(&prefix_parameter)
+        .and_then(|input| builder.edge_from.get(input))
+        .copied()
+        .and_then(|feed| builder.value_node(feed))
+        .ok_or("its recursive prefix parameter is not a scalar expression")?;
+    let separator = builder.alloc(Node::Const {
+        value: Value::String(separator.to_string()),
+    });
+    let item = builder.alloc(Node::SourceField {
+        path: Vec::new(),
+        frame: None,
+    });
+    let mut output_path = target_path.to_vec();
+    output_path.extend(output.iter().cloned());
+    if !schema_node_at(&target.schema, &output_path)
+        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+    {
+        return Err("its recursive output is not a repeating scalar target".to_string());
+    }
+    scopes.add_sequence(
+        &output_path,
+        SequenceExpr::RecursiveCollect {
+            collection: builder.context_path(&source),
+            children: children.to_vec(),
+            descent_value: descent_value.to_vec(),
+            values: values.to_vec(),
+            value: value.to_vec(),
+            prefix,
+            separator,
+            item,
+        },
+        IterationNodes::default(),
+        IterationOutput::Repeated,
+    );
+    scopes.ensure_scope(&output_path).construction =
+        mapping::ScopeConstruction::Scalar { value: item };
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -265,6 +644,7 @@ fn build_catalog_target(
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
         },
         IterationOutput::MappedSequence,
@@ -366,6 +746,7 @@ fn build_aggregate_target(
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
         },
         IterationOutput::Repeated,
@@ -392,6 +773,97 @@ impl GraphBuilder<'_> {
     }
 }
 
+pub(in crate::import) fn instantiate_find(
+    call_idx: usize,
+    recipe: &FindRecipe,
+    parameters: &BTreeMap<u32, mapping::NodeId>,
+    builder: &mut GraphBuilder<'_>,
+) -> Option<mapping::NodeId> {
+    let (base, relative_collection) = match &recipe.source {
+        FindSource::Catalog { port, collection } => {
+            let catalog = builder.source_abs_path(*port)?;
+            (
+                SourcePath {
+                    source: catalog.source,
+                    path: Vec::new(),
+                },
+                collection,
+            )
+        }
+        FindSource::Parameter {
+            component_id,
+            collection,
+            ..
+        } => {
+            let inputs = builder
+                .udf_calls
+                .get(call_idx)?
+                .structured_inputs
+                .get(component_id)?
+                .clone();
+            let base = inputs.into_iter().find_map(|(_, input)| {
+                builder
+                    .edge_from
+                    .get(&input)
+                    .copied()
+                    .and_then(|feed| builder.source_abs_path(feed))
+            })?;
+            (base, collection)
+        }
+    };
+    let mut collection_path = base.path.clone();
+    collection_path.extend(relative_collection.iter().cloned());
+    let collection = SourcePath {
+        source: base.source,
+        path: collection_path,
+    };
+    if !builder
+        .schema_node(&collection)
+        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        return None;
+    }
+    builder.note_framed_prefixes(&collection);
+    let mut predicate = recipe.predicate.clone();
+    let mut value = recipe.value.clone();
+    qualify_catalog_paths(&mut predicate, &base.path);
+    qualify_catalog_paths(&mut value, &base.path);
+    let predicate = instantiate(&predicate, &collection, parameters, None, builder).ok()?;
+    let value = instantiate(&value, &collection, parameters, None, builder).ok()?;
+    let collection = builder.context_path(&collection);
+    Some(builder.alloc(Node::CollectionFind {
+        collection,
+        predicate,
+        value,
+    }))
+}
+
+fn qualify_catalog_paths(expression: &mut Expr, base: &[String]) {
+    match expression {
+        Expr::CatalogAbsolute(path) => {
+            let mut qualified = base.to_vec();
+            qualified.append(path);
+            *path = qualified;
+        }
+        Expr::Parameter(_) | Expr::Catalog(_) | Expr::Const(_) | Expr::Aggregate { .. } => {}
+        Expr::Call { args, .. } => {
+            for argument in args {
+                qualify_catalog_paths(argument, base);
+            }
+        }
+        Expr::If {
+            condition,
+            then,
+            else_,
+        } => {
+            qualify_catalog_paths(condition, base);
+            qualify_catalog_paths(then, base);
+            qualify_catalog_paths(else_, base);
+        }
+        Expr::ValueMap { input, .. } => qualify_catalog_paths(input, base),
+    }
+}
+
 pub(super) fn instantiate(
     expression: &Expr,
     collection: &SourcePath,
@@ -410,6 +882,14 @@ pub(super) fn instantiate(
             builder
                 .source_field_at(&field)
                 .ok_or("catalog field cannot be resolved")?
+        }
+        Expr::CatalogAbsolute(path) => {
+            let field = SourcePath {
+                source: collection.source,
+                path: path.clone(),
+            };
+            let path = builder.context_path(&field);
+            builder.source_field(None, path)
         }
         Expr::Const(value) => builder.alloc(Node::Const {
             value: value.clone(),

@@ -18,17 +18,18 @@ fn item(name: &str) -> Instance {
 #[test]
 fn cloned_csv_row_block_preserves_iteration_and_reducer_bindings() {
     let imported = mfd::import(&fixture("csv-cloned-row-block.mfd")).unwrap();
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(
-        imported.warnings[0].contains(
-            "singleton rows were skipped because ferrule CSV targets represent one repeated row shape"
-        ),
-        "{:?}",
-        imported.warnings
-    );
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
+    let segments = imported
+        .project
+        .root
+        .concatenated()
+        .unwrap()
+        .iter()
+        .collect::<Vec<_>>();
+    assert_eq!(segments.len(), 2);
     assert_eq!(
-        imported.project.root.source().map(|path| path.to_vec()),
+        segments[1].source().map(|path| path.to_vec()),
         Some(vec!["Item".into()])
     );
 
@@ -38,17 +39,25 @@ fn cloned_csv_row_block_preserves_iteration_and_reducer_bindings() {
     )]);
     let target = engine::run(&imported.project, &source).unwrap();
     let rows = target.as_repeated().unwrap();
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 3);
     assert_eq!(
         rows[0].field("Name").and_then(Instance::as_scalar),
-        Some(&Value::String("Alpha".into()))
+        Some(&Value::String("Name".into()))
+    );
+    assert_eq!(
+        rows[0].field("Total").and_then(Instance::as_scalar),
+        Some(&Value::String("Total".into()))
     );
     assert_eq!(
         rows[1].field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Alpha".into()))
+    );
+    assert_eq!(
+        rows[2].field("Name").and_then(Instance::as_scalar),
         Some(&Value::String("Beta".into()))
     );
     assert!(
-        rows.iter().all(|row| {
+        rows[1..].iter().all(|row| {
             row.field("Total").and_then(Instance::as_scalar) == Some(&Value::Int(2))
         })
     );

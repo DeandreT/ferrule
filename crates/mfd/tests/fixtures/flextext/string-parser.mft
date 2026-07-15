@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FlexText>
+  <Commands>
+    <Project FileName="parsed.txt" ByteOrderMark="0" LineEnding="LF">
+      <RootName Value="Parsed"/>
+      <Connections>
+        <Connection>
+          <CSV QuoteCharacter="&quot;" EscapeCharacter="\">
+            <RecordSeparator Value="%0A"/>
+            <FieldSeparator Value="*#*"/>
+            <RecordName Value="Row"/>
+            <Fields>
+              <Field Type="string"><Name Value="Name"/></Field>
+              <Field Type="integer"><Name Value="Count"/></Field>
+            </Fields>
+            <Connections><Connection/></Connections>
+          </CSV>
+        </Connection>
+      </Connections>
+    </Project>
+  </Commands>
+  <Functions/>
+</FlexText>

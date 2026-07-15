@@ -219,6 +219,14 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 outcome.records_written,
                 outcome.output_path.display()
             );
+            for output in outcome.extra_outputs {
+                println!(
+                    "wrote {} record(s) for {} to {}",
+                    output.records_written,
+                    output.name,
+                    output.path.display()
+                );
+            }
             Ok(ExitCode::SUCCESS)
         }
         Command::Validate { project } => {

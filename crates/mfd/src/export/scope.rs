@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use mapping::{Graph, JoinId, Node, NodeId, Scope, ScopeConstruction};
+use mapping::{Graph, JoinId, Node, NodeId, Scope, ScopeConstruction, SortFilterOrder};
 
 use super::join::JoinExports;
 use super::mapped_sequence::ScopePlans;
@@ -86,7 +86,9 @@ fn append_scope_controls(
     warnings: &mut Vec<String>,
     mut from: u32,
 ) -> u32 {
-    if let Some(sort_by) = scope.sort_by {
+    if scope.sort_filter_order == SortFilterOrder::SortThenFilter
+        && let Some(sort_by) = scope.sort_by
+    {
         connect_scope_position_roots(
             [sort_by],
             source_collection,
@@ -162,6 +164,51 @@ fn append_scope_controls(
             }
             None => warnings.push(format!(
                 "scope `{}` filter references an unexported node; filter dropped",
+                chain.join("/")
+            )),
+        }
+    }
+    if scope.sort_filter_order == SortFilterOrder::FilterThenSort
+        && let Some(sort_by) = scope.sort_by
+    {
+        connect_scope_position_roots(
+            [sort_by],
+            source_collection,
+            join,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&sort_by) {
+            Some(&key_src) => {
+                let in_nodes = keys.next();
+                let in_key = keys.next();
+                let out_nodes = keys.next();
+                let direction = if scope.sort_descending {
+                    "descending"
+                } else {
+                    "ascending"
+                };
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+                     \t\t\t\t\t<data><sort><collation/><key direction=\"{direction}\"/></sort></data>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((key_src, in_key));
+                from = out_nodes;
+            }
+            None => warnings.push(format!(
+                "scope `{}` sort key references an unexported node; sorting dropped",
                 chain.join("/")
             )),
         }

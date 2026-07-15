@@ -16,10 +16,12 @@ use thiserror::Error;
 mod composite;
 mod grid;
 mod hierarchical;
+mod update;
 
 pub use composite::{from_bytes_composite, read_composite};
 pub use grid::{from_bytes_grid, read_grid};
 pub use hierarchical::{to_bytes_hierarchical, write_hierarchical};
+pub use update::update;
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
@@ -29,6 +31,8 @@ pub enum XlsxFormatError {
     Read(#[from] calamine::XlsxError),
     #[error("xlsx write error: {0}")]
     Write(#[from] rust_xlsxwriter::XlsxError),
+    #[error("xlsx update error: {0}")]
+    Update(String),
     #[error("workbook contains no worksheets")]
     NoWorksheets,
     #[error("worksheet `{0}` does not exist")]

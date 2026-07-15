@@ -154,12 +154,6 @@ pub(super) fn read(
         }
     };
 
-    if excel.attribute("updateexistingfile") == Some("1") {
-        warnings.push(format!(
-            "xlsx component `{name}` updates an existing workbook; ferrule writes a new workbook, so content outside the selected table will not be preserved"
-        ));
-    }
-
     let mut ports = BTreeMap::new();
     let (fields, options) = match table.layout {
         TableLayout::Flat {
@@ -187,11 +181,18 @@ pub(super) fn read(
                     xlsx_sheet: table.sheet,
                     xlsx_start_row: start_row,
                     xlsx_columns,
+                    xlsx_update_existing: !is_source
+                        && excel.attribute("updateexistingfile") == Some("1"),
                     ..FormatOptions::default()
                 },
             )
         }
         TableLayout::Transposed { rows, index_ports } => {
+            if !is_source && excel.attribute("updateexistingfile") == Some("1") {
+                warnings.push(format!(
+                    "xlsx component `{name}` updates a transposed table in an existing workbook; that target layout is unsupported"
+                ));
+            }
             let mut fields = Vec::with_capacity(rows.len() + usize::from(!index_ports.is_empty()));
             let mut xlsx_rows = Vec::with_capacity(rows.len());
             for row in rows {
@@ -1073,5 +1074,39 @@ mod tests {
             component.ports.get(&5),
             Some(&vec!["Rows".into(), "Cells".into(), "CellColumn".into()])
         );
+    }
+
+    #[test]
+    fn flat_target_retains_existing_workbook_update_mode() {
+        let document = roxmltree::Document::parse(
+            r#"
+            <component name="Report">
+              <data>
+                <root><entry name="Workbook"><entry name="Worksheet">
+                  <condition><function name="equal-ignorecase" library="xlsx">
+                    <attribute name="Name"/><constant value="Sales"/>
+                  </function></condition>
+                  <ranges><range id="2" start="5"/></ranges>
+                  <entry name="Row" inpkey="10" enabletitlerow="1">
+                    <condition><function name="is-range-id"><constant value="2"/></function></condition>
+                    <entry name="Cell" inpkey="11" annotation="Month" datatype="string">
+                      <condition><function name="equal"><attribute name="n"/><constant value="1"/></function></condition>
+                    </entry>
+                  </entry>
+                </entry></entry></root>
+                <excel outputinstance="report.xlsx" updateexistingfile="1"/>
+              </data>
+            </component>
+            "#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+
+        let component = read(&document.root_element(), &mut warnings).unwrap();
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert!(component.options.xlsx_update_existing);
+        assert_eq!(component.options.xlsx_sheet.as_deref(), Some("Sales"));
+        assert_eq!(component.options.xlsx_start_row, Some(5));
     }
 }

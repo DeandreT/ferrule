@@ -4,8 +4,8 @@ use ir::SchemaKind;
 
 use super::target::instantiate;
 use super::{
-    ExprContext, FieldPolicy, Recipe, RecipeSource, component_id, flat_group_fields,
-    flat_output_group, function_outputs, scalar_parameter_outputs,
+    ExprContext, FieldPolicy, ImportedDefinition, Recipe, RecipeSource, component_id,
+    flat_group_fields, flat_output_group, function_outputs, scalar_parameter_outputs,
 };
 use crate::import::function::read as read_function;
 use crate::import::graph::GraphBuilder;
@@ -32,7 +32,7 @@ pub(super) fn read(
     source: &SchemaComponent,
     output: &SchemaComponent,
     schema_warnings: Vec<String>,
-) -> Result<(Definition, Option<SchemaComponent>, Vec<String>), String> {
+) -> Result<ImportedDefinition, String> {
     if source.schema.repeating || !flat_group_fields(&source.schema) {
         return Err("structured record input must be one flat non-repeating group".to_string());
     }
@@ -94,6 +94,7 @@ pub(super) fn read(
     let context = ExprContext {
         functions: &functions,
         by_output: &by_output,
+        nested: None,
         parameters: &parameters,
         catalog_ports: &source.ports,
         collection_path: &[],

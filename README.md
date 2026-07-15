@@ -13,11 +13,13 @@ MapForce workflow parity.
 Core formats work as both mapping sources and targets; one-way modes are noted:
 
 - **CSV** — delimited flat files (configurable delimiter), typed columns
-- **XLSX** — typed flat worksheet tables, composite/grid source layouts, and
-  hierarchical targets with repeated runtime-named worksheets and ordered row ranges
+- **XLSX** — typed flat worksheet tables, composite/grid source layouts, hierarchical
+  targets with repeated runtime-named worksheets and ordered row ranges, and
+  update-in-place writes that preserve unrelated workbook content
 - **XML** — hierarchical documents, with an XSD importer to bootstrap schemas
 - **JSON** — hierarchical documents, with a JSON Schema importer
-- **SQLite** — table introspection, reads, and idempotent full-replace writes
+- **SQLite** — table introspection plus idempotent flat or relational multi-table reads
+  and full-replace writes
 - **EDI** — ANSI X12 and UN/EDIFACT: separator discovery from the envelope, composite
   elements, repetition separators, qualifier-driven loops (HIPAA-style `HL`/`NM1`
   hierarchies), and a lenient mode that skips segments your schema doesn't mention
@@ -33,7 +35,7 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
 
 ## How a mapping works
 
-A project file (plain JSON) holds four things:
+A project file (plain JSON) holds these core pieces:
 
 - a **source schema** and **target schema** — trees of named groups and typed scalar
   leaves, where any node can be `repeating`
@@ -48,8 +50,11 @@ A project file (plain JSON) holds four things:
   generate scalar sequences with `tokenize`, `tokenize-by-length`, and
   inclusive integer ranges (capped at 1,000,000 materialized items per scope), or
   iterate a typed multi-source equijoin
-- optional **extra sources** — named secondary inputs (reference data) that any scope or
-  lookup can address by name
+- optional **extra sources** — named secondary inputs that any scope or lookup can
+  address; a source path may also be computed per driver item to load a typed document
+  at runtime
+- optional **extra targets** — independently mapped outputs written alongside the
+  primary target in one execution
 
 ## Migrating from MapForce
 
@@ -58,15 +63,19 @@ ferrule can convert MapForce `.mfd` designs (best-effort): XML components
 top-level element refs, named types, and extensions), requestless static HTTP GET calls
 with typed XML responses, JSON components (JSON Schema with
 local `$ref` support, or the design's entry tree as a fallback), CSV text components
-(inline delimiter/header settings), external FlexText `.mft` layouts, flat and
+(inline delimiter/header settings), external FlexText `.mft` layouts and supported
+string-parser components, flat and
 hierarchical XLSX targets, visual PDF sources using supported external `.pxt` layouts,
 including page selection, named multi-page table regions, vertical collages, and
 marker-delimited nested records, proto2 binary targets,
-single-table SQLite database components (schemas introspected from the referenced
-database when it's reachable), the common core functions, the aggregate family
+SQLite database components, including relational table graphs (schemas are
+introspected from the referenced database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
 filter-, group-by-, distinct-values-, tokenizer-, and generated-range-driven iteration
-import directly. Core kind-32 inner equijoins import with duplicate-preserving tuple
+import directly. Connected target components become independent project outputs, and
+connected document paths can become per-item dynamic sources. Recognized recursive UDF
+shapes lower to bounded typed recursive filters, path hierarchies, or adjacency trees.
+Core kind-32 inner equijoins import with duplicate-preserving tuple
 order, composite keys, projected fields, position, filter/sort/item-limit controls,
 and count or computed scalar aggregates over the joined tuples;
 `string` and decimal-safe `format-number` conversion are supported;
@@ -75,10 +84,11 @@ with an actionable warning so you can finish the mapping in the editor. Export
 writes the exportable subset back out as `.mfd` plus generated XSD / JSON Schema files,
 picking each side's component kind from the project's instance paths. Canonical
 structured-join export covers root-context collections inside the primary source.
-Designs built on namespaces, `xsi:type` polymorphism, correlated/keyless joins,
-multi-source or nested join export, joined aggregate export, multi-table database wiring, or other
-endpoints (unsupported Excel/PDF layout variants, PDF targets, XBRL, FlexText
-string-parse, or EDI-config components)
+Designs built on general namespace identity or `xsi:type` polymorphism,
+scalar-key/keyless correlated joins,
+multi-source or nested join export, joined aggregate export, general SQL/database
+composition, or other endpoints (unsupported Excel/PDF layout variants, PDF targets,
+XBRL, or unsupported FlexText/EDI configuration variants)
 are not converted yet.
 
 ```sh

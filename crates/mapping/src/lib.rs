@@ -8,16 +8,20 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
+mod adjacency;
 mod fixed_width;
 mod flextext;
 mod http;
 mod iteration;
+mod path_hierarchy;
 mod pdf;
 mod protobuf;
+mod recursive;
 mod scope_serde;
 mod xbrl;
 mod xlsx_output;
 
+pub use adjacency::AdjacencyTreePlan;
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use flextext::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
@@ -26,15 +30,19 @@ pub use flextext::{
 };
 pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use iteration::{
-    JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, ScopeIteration,
+    JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
+    ScopeIteration, ScopeSequence,
 };
+pub use path_hierarchy::PathHierarchyPlan;
 pub use pdf::{
     PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCommand, PdfCoordinate, PdfEdgeFind,
     PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeComposition,
-    PdfMergeSource, PdfPageSelection, PdfPages, PdfReference, PdfRegion, PdfTextCase, PdfTextGroup,
-    PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextRows, PdfVerticalBoundaryFind,
+    PdfMergeSource, PdfMetricMatch, PdfPageSelection, PdfPages, PdfReference, PdfRegion,
+    PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextProperties,
+    PdfTextRows, PdfVerticalBoundaryFind,
 };
 pub use protobuf::ProtobufOptions;
+pub use recursive::RecursiveFilterPlan;
 pub use xbrl::{XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError};
 pub use xlsx_output::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
@@ -129,6 +137,23 @@ pub enum Node {
         key: Vec<String>,
         matches: NodeId,
         value: Vec<String>,
+    },
+    /// Reads one runtime-named scalar field from an open source object.
+    /// `frame` pins colliding nested repetitions with the same semantics as
+    /// [`Node::SourceField`], while `key` computes the property name.
+    DynamicSourceField {
+        object: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame: Option<Vec<String>>,
+        key: NodeId,
+    },
+    /// Scans `collection` in source order, evaluating `predicate` and
+    /// `value` once per item. Returns the value for the first item whose
+    /// predicate is true, or `Null` when no item matches.
+    CollectionFind {
+        collection: Vec<String>,
+        predicate: NodeId,
+        value: NodeId,
     },
     /// Returns whether any item produced by `sequence` satisfies `predicate`.
     /// The sequence's item node is an owned empty-path `SourceField` that is
@@ -240,6 +265,18 @@ pub enum SequenceExpr {
         to: NodeId,
         item: NodeId,
     },
+    /// Walks a recursive group depth-first and collects scalar leaves while
+    /// carrying an accumulated prefix between parent and child groups.
+    RecursiveCollect {
+        collection: Vec<String>,
+        children: Vec<String>,
+        descent_value: Vec<String>,
+        values: Vec<String>,
+        value: Vec<String>,
+        prefix: NodeId,
+        separator: NodeId,
+        item: NodeId,
+    },
 }
 
 impl SequenceExpr {
@@ -250,6 +287,9 @@ impl SequenceExpr {
             } => vec![*input, *delimiter],
             Self::TokenizeByLength { input, length, .. } => vec![*input, *length],
             Self::Generate { from, to, .. } => from.iter().copied().chain([*to]).collect(),
+            Self::RecursiveCollect {
+                prefix, separator, ..
+            } => vec![*prefix, *separator],
         }
     }
 
@@ -257,7 +297,8 @@ impl SequenceExpr {
         match self {
             Self::Tokenize { item, .. }
             | Self::TokenizeByLength { item, .. }
-            | Self::Generate { item, .. } => *item,
+            | Self::Generate { item, .. }
+            | Self::RecursiveCollect { item, .. } => *item,
         }
     }
 }
@@ -276,7 +317,7 @@ pub enum IterationOutput {
 }
 
 /// How a scope produces each target group.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeConstruction {
     /// Build a new group from the scope's bindings and child scopes.
@@ -284,6 +325,25 @@ pub enum ScopeConstruction {
     Constructed,
     /// Clone the current source item as one complete group.
     CopyCurrentSource,
+    /// Evaluate one scalar expression as the scope's complete output item.
+    Scalar { value: NodeId },
+    /// Clone one group shape while recursively filtering one item collection.
+    RecursiveFilter { plan: RecursiveFilterPlan },
+    /// Group scalar path strings into one bounded recursive directory tree.
+    PathHierarchy { plan: PathHierarchyPlan },
+    /// Build a bounded recursive target group from flat adjacency rows.
+    AdjacencyTree { plan: AdjacencyTreePlan },
+}
+
+/// Relative order of the two ordinary per-item sequence controls.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SortFilterOrder {
+    /// Sort candidates before evaluating the filter predicate.
+    #[default]
+    SortThenFilter,
+    /// Filter candidates in source order, then sort the surviving items.
+    FilterThenSort,
 }
 
 /// Populates one target group.
@@ -337,6 +397,7 @@ pub struct Scope {
     /// their source order.
     pub sort_by: Option<NodeId>,
     pub sort_descending: bool,
+    pub sort_filter_order: SortFilterOrder,
     /// Expression evaluated once in the parent context to determine the
     /// maximum number of output items.
     pub take: Option<NodeId>,
@@ -367,7 +428,8 @@ impl Scope {
             ScopeIteration::Source(path) => Some(path),
             ScopeIteration::None
             | ScopeIteration::Sequence(_)
-            | ScopeIteration::InnerJoin { .. } => None,
+            | ScopeIteration::InnerJoin { .. }
+            | ScopeIteration::Concatenate(_) => None,
         }
     }
 
@@ -388,9 +450,10 @@ impl Scope {
     pub fn sequence_mut(&mut self) -> Option<&mut SequenceExpr> {
         match &mut self.iteration {
             ScopeIteration::Sequence(sequence) => Some(sequence),
-            ScopeIteration::None | ScopeIteration::Source(_) | ScopeIteration::InnerJoin { .. } => {
-                None
-            }
+            ScopeIteration::None
+            | ScopeIteration::Source(_)
+            | ScopeIteration::InnerJoin { .. }
+            | ScopeIteration::Concatenate(_) => None,
         }
     }
 
@@ -408,6 +471,14 @@ impl Scope {
         self.iteration.join()
     }
 
+    pub fn concatenated(&self) -> Option<&ScopeSequence> {
+        self.iteration.concatenated()
+    }
+
+    pub fn concatenated_mut(&mut self) -> Option<&mut ScopeSequence> {
+        self.iteration.concatenated_mut()
+    }
+
     pub fn iterates(&self) -> bool {
         self.iteration.iterates()
     }
@@ -418,7 +489,7 @@ fn is_repeated_output(output: &IterationOutput) -> bool {
 }
 
 fn is_constructed_scope(construction: &ScopeConstruction) -> bool {
-    *construction == ScopeConstruction::Constructed
+    matches!(construction, ScopeConstruction::Constructed)
 }
 
 /// A complete mapping project: the source/target shapes, the graph, and the
@@ -444,6 +515,11 @@ pub struct Project {
     /// scope or field path via outward fallback.
     #[serde(default)]
     pub extra_sources: Vec<NamedSource>,
+    /// Additional independently shaped outputs evaluated from the same
+    /// source frames and graph. The primary target remains in `target` and
+    /// `root` for compatibility with single-output projects and hosts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_targets: Vec<NamedTarget>,
     pub graph: Graph,
     pub root: Scope,
 }
@@ -458,6 +534,29 @@ pub struct NamedSource {
     pub schema: SchemaNode,
     #[serde(default)]
     pub options: FormatOptions,
+    /// A run-time path expression and the repeated primary-source collection
+    /// that frames it. When present, the host loads one typed source instance
+    /// for each produced path instead of preloading `path` once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dynamic_path: Option<DynamicSourcePath>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DynamicSourcePath {
+    pub node: NodeId,
+    pub iteration: Vec<String>,
+}
+
+/// One additional output document produced by a project.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamedTarget {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub schema: SchemaNode,
+    #[serde(default)]
+    pub options: FormatOptions,
+    pub root: Scope,
 }
 
 macro_rules! xlsx_coordinate {
@@ -632,6 +731,10 @@ pub struct FormatOptions {
     /// Empty means consecutive columns starting at A.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xlsx_columns: Vec<u32>,
+    /// XLSX: replace the selected table in an existing workbook while
+    /// preserving all cells and worksheets outside that table.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub xlsx_update_existing: bool,
     /// XLSX: one-based worksheet rows to transpose into schema fields.
     /// Empty selects the ordinary row-oriented table layout.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

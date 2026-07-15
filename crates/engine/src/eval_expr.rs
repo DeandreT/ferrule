@@ -7,7 +7,9 @@ use crate::EngineError;
 use crate::aggregate::aggregate;
 use crate::context::runtime_field;
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
-use crate::resolve::{field_scalar, join_scalar, repeated, scalar, scalar_in_frame};
+use crate::resolve::{
+    dynamic_scalar, field_scalar, join_scalar, repeated, scalar, scalar_in_frame,
+};
 use crate::sequence::eval_sequence_exists;
 use crate::source_iteration::PositionFrame;
 
@@ -120,6 +122,29 @@ pub(crate) fn eval_expr(
                 .and_then(|item| field_scalar(item, value).cloned())
                 .unwrap_or(Value::Null))
         }
+        Node::DynamicSourceField { object, frame, key } => {
+            let key = eval_expr(graph, *key, context, positions, in_progress)?;
+            let Value::String(key) = key else {
+                return Ok(Value::Null);
+            };
+            Ok(
+                dynamic_scalar(context, positions, frame.as_deref(), object, &key)
+                    .unwrap_or(Value::Null),
+            )
+        }
+        Node::CollectionFind {
+            collection,
+            predicate,
+            value,
+        } => eval_collection_find(
+            graph,
+            collection,
+            *predicate,
+            *value,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::SequenceExists {
             sequence,
             predicate,
@@ -189,6 +214,112 @@ pub(crate) fn eval_expr(
 
     in_progress.remove(&node_id);
     result
+}
+
+fn eval_collection_find(
+    graph: &Graph,
+    collection: &[String],
+    predicate: NodeId,
+    value: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let root = if let Some(first) = collection.first() {
+        context
+            .iter()
+            .rev()
+            .copied()
+            .find(|item| item.field(first).is_some())
+    } else {
+        context
+            .iter()
+            .rev()
+            .copied()
+            .find(|item| item.as_repeated().is_some())
+    }
+    .ok_or_else(|| EngineError::MissingSourceField(collection.join("/")))?;
+    let mut item_context = context.to_vec();
+    let mut item_positions = positions.to_vec();
+    visit_collection_find(
+        graph,
+        root,
+        collection,
+        0,
+        predicate,
+        value,
+        &mut item_context,
+        &mut item_positions,
+        in_progress,
+    )
+    .map(|found| found.unwrap_or(Value::Null))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn visit_collection_find<'a>(
+    graph: &Graph,
+    current: &'a Instance,
+    collection: &[String],
+    consumed: usize,
+    predicate: NodeId,
+    value: NodeId,
+    context: &mut Vec<&'a Instance>,
+    positions: &mut Vec<PositionFrame>,
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Option<Value>, EngineError> {
+    if let Instance::Repeated(items) = current {
+        for (item_index, item) in items.iter().enumerate() {
+            context.push(item);
+            positions.push(PositionFrame {
+                collection: collection[..consumed].to_vec(),
+                index: item_index + 1,
+                grouped: false,
+                join: None,
+                join_position: None,
+            });
+            let found = visit_collection_find(
+                graph,
+                item,
+                collection,
+                consumed,
+                predicate,
+                value,
+                context,
+                positions,
+                in_progress,
+            )?;
+            positions.pop();
+            context.pop();
+            if found.is_some() {
+                return Ok(found);
+            }
+        }
+        return Ok(None);
+    }
+    if consumed < collection.len() {
+        return match current.field(&collection[consumed]) {
+            Some(next) => visit_collection_find(
+                graph,
+                next,
+                collection,
+                consumed + 1,
+                predicate,
+                value,
+                context,
+                positions,
+                in_progress,
+            ),
+            None => Ok(None),
+        };
+    }
+    match eval_expr(graph, predicate, context, positions, in_progress)? {
+        Value::Bool(true) => eval_expr(graph, value, context, positions, in_progress).map(Some),
+        Value::Bool(false) | Value::Null | Value::XmlNil(_) => Ok(None),
+        other => Err(EngineError::NotABool {
+            node: predicate,
+            found: other.type_name(),
+        }),
+    }
 }
 
 fn coerce_value_map_input(value: &Value, ty: ScalarType) -> Option<Value> {
