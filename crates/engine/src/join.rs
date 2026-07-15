@@ -3,8 +3,11 @@ use std::collections::HashSet;
 use ir::{Instance, Value};
 use mapping::{AggregateOp, Graph, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId};
 
+use super::EngineError;
+use super::aggregate::aggregate;
+use super::eval_expr::eval_expr;
+use super::resolve::field_scalar;
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
-use super::{EngineError, aggregate, eval_expr, field_scalar};
 
 pub(super) struct JoinedRow<'a> {
     instances: Vec<&'a Instance>,

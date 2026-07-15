@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use ir::{Instance, Value};
 use mapping::{Graph, NodeId, SequenceExpr};
 
-use super::{EngineError, PositionFrame, eval_expr};
+use super::EngineError;
+use super::eval_expr::eval_expr;
+use super::source_iteration::PositionFrame;
 
 pub(super) const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
 
