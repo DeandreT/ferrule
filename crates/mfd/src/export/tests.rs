@@ -26,12 +26,12 @@ fn canonical_scalar_names_export_as_mapforce_core_functions() {
     assert_eq!(function_library("day_from_datetime"), "lang");
     assert_eq!(
         unmap_function_name("hours_from_datetime"),
-        "hours-from-datetime"
+        "hour-from-datetime"
     );
     assert_eq!(function_library("hours_from_datetime"), "lang");
     assert_eq!(
         unmap_function_name("minutes_from_datetime"),
-        "minutes-from-datetime"
+        "minute-from-datetime"
     );
     assert_eq!(function_library("minutes_from_datetime"), "lang");
     assert_eq!(
