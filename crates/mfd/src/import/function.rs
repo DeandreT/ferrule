@@ -452,8 +452,8 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "year-from-datetime" => "year_from_datetime",
         "month-from-datetime" => "month_from_datetime",
         "day-from-datetime" => "day_from_datetime",
-        "hours-from-datetime" => "hours_from_datetime",
-        "minutes-from-datetime" => "minutes_from_datetime",
+        "hour-from-datetime" | "hours-from-datetime" => "hours_from_datetime",
+        "minute-from-datetime" | "minutes-from-datetime" => "minutes_from_datetime",
         "time-from-datetime" => "time_from_datetime",
         "datetime-from-date-and-time" => "datetime_from_date_and_time",
         "datetime-from-parts" => "datetime_from_parts",
@@ -485,8 +485,13 @@ mod tests {
         assert_eq!(map_name("month-from-datetime"), Some("month_from_datetime"));
         assert_eq!(map_name("day-from-datetime"), Some("day_from_datetime"));
         assert_eq!(map_name("hours-from-datetime"), Some("hours_from_datetime"));
+        assert_eq!(map_name("hour-from-datetime"), Some("hours_from_datetime"));
         assert_eq!(
             map_name("minutes-from-datetime"),
+            Some("minutes_from_datetime")
+        );
+        assert_eq!(
+            map_name("minute-from-datetime"),
             Some("minutes_from_datetime")
         );
         assert_eq!(
