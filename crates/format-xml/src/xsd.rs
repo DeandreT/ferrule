@@ -164,11 +164,7 @@ fn read_xml_text(path: &Path) -> std::io::Result<String> {
 
 fn decode_utf16(bytes: &[u8], decode: fn([u8; 2]) -> u16) -> std::io::Result<String> {
     let (chunks, remainder) = bytes.as_chunks::<2>();
-    let units = chunks
-        .iter()
-        .copied()
-        .map(decode)
-        .collect::<Vec<_>>();
+    let units = chunks.iter().copied().map(decode).collect::<Vec<_>>();
     if !remainder.is_empty() {
         return Err(invalid_xml_encoding(
             "UTF-16 schema contains an incomplete code unit",
