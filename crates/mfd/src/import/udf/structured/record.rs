@@ -2,9 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::SchemaKind;
 
+use super::target::instantiate;
 use super::{
     ExprContext, FieldPolicy, Recipe, RecipeSource, component_id, flat_group_fields,
-    flat_output_group, function_outputs, instantiate, scalar_parameter_outputs,
+    flat_output_group, function_outputs, scalar_parameter_outputs,
 };
 use crate::import::function::read as read_function;
 use crate::import::graph::GraphBuilder;

@@ -4,9 +4,10 @@ use std::path::Path;
 use ir::SchemaKind;
 use mapping::IterationOutput;
 
+use super::target::instantiate;
 use super::{
     ExprContext, FieldPolicy, Recipe, RecipeSource, component_id, flat_group_fields,
-    function_outputs, instantiate, scalar_parameter_outputs,
+    function_outputs, scalar_parameter_outputs,
 };
 use crate::import::function::read as read_function;
 use crate::import::graph::GraphBuilder;
