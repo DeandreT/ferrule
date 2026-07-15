@@ -7,11 +7,14 @@ use mapping::{AggregateOp, IterationOutput, Node, SequenceExpr};
 use super::{Call, Definition, OutputExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
 use crate::import::graph::GraphBuilder;
-use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component, schema_node_at};
+use crate::import::schema::{
+    ComponentFormat, SchemaComponent, parse_u32, read_schema_component, schema_node_at,
+};
 use crate::import::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 use crate::import::source::SourcePath;
 
 mod record;
+mod sequence_record;
 
 #[derive(Clone)]
 pub(super) struct Recipe {
@@ -20,11 +23,22 @@ pub(super) struct Recipe {
     bindings: BTreeMap<Vec<String>, Expr>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum RecipeSource {
-    Catalog { port: u32 },
-    RecordParameter { component_id: u32 },
-    SequenceParameter { component_id: u32 },
+    Catalog {
+        port: u32,
+    },
+    RecordParameter {
+        component_id: u32,
+    },
+    SequenceParameter {
+        component_id: u32,
+    },
+    MappedSequenceParameter {
+        component_id: u32,
+        input_name: String,
+        output_name: String,
+    },
 }
 
 #[derive(Clone)]
@@ -68,6 +82,11 @@ pub(super) fn read(
         .children()
         .filter(|node| node.has_tag_name("component"))
         .collect::<Vec<_>>();
+
+    if let Some(definition) = sequence_record::try_read(component, &structure, &children, mfd_path)?
+    {
+        return Ok(definition);
+    }
 
     let xml = children
         .iter()
@@ -226,6 +245,7 @@ pub(super) fn read(
         catalog_ports: &catalog.ports,
         collection_path: &collection_path,
         edge_from: &edge_from,
+        field_policy: FieldPolicy::Flat,
     };
     let left = context.connected_expr(*equal_left)?;
     let right = context.connected_expr(*equal_right)?;
@@ -520,6 +540,24 @@ struct ExprContext<'a> {
     catalog_ports: &'a BTreeMap<u32, Vec<String>>,
     collection_path: &'a [String],
     edge_from: &'a BTreeMap<u32, u32>,
+    field_policy: FieldPolicy<'a>,
+}
+
+#[derive(Clone, Copy)]
+enum FieldPolicy<'a> {
+    Flat,
+    NestedScalar {
+        schema: &'a ir::SchemaNode,
+        allow_inferred_repetition: bool,
+    },
+}
+
+const MAX_STRUCTURED_EXPR_DEPTH: usize = 256;
+const MAX_STRUCTURED_EXPR_NODES: usize = 65_536;
+
+#[derive(Default)]
+struct ExprBudget {
+    nodes: usize,
 }
 
 impl ExprContext<'_> {
@@ -532,6 +570,27 @@ impl ExprContext<'_> {
     }
 
     fn expr(&self, feed: u32, active: &mut BTreeSet<u32>) -> Result<Expr, String> {
+        self.expr_bounded(feed, active, &mut ExprBudget::default(), 0)
+    }
+
+    fn expr_bounded(
+        &self,
+        feed: u32,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExprBudget,
+        depth: usize,
+    ) -> Result<Expr, String> {
+        if depth >= MAX_STRUCTURED_EXPR_DEPTH {
+            return Err(format!(
+                "structured scalar expression exceeds the {MAX_STRUCTURED_EXPR_DEPTH}-level depth limit"
+            ));
+        }
+        budget.nodes = budget.nodes.saturating_add(1);
+        if budget.nodes > MAX_STRUCTURED_EXPR_NODES {
+            return Err(format!(
+                "structured scalar expression exceeds the {MAX_STRUCTURED_EXPR_NODES}-node expansion limit"
+            ));
+        }
         if let Some(parameter) = self.parameters.get(&feed) {
             return Ok(Expr::Parameter(*parameter));
         }
@@ -539,11 +598,32 @@ impl ExprContext<'_> {
             let relative = path.strip_prefix(self.collection_path).ok_or_else(|| {
                 "structured lookup expression reads outside its catalog collection".to_string()
             })?;
-            if relative.len() != 1 {
-                return Err(
-                    "structured lookup catalog expressions must read flat scalar fields"
-                        .to_string(),
-                );
+            match self.field_policy {
+                FieldPolicy::Flat if relative.len() != 1 => {
+                    return Err(
+                        "structured lookup catalog expressions must read flat scalar fields"
+                            .to_string(),
+                    );
+                }
+                FieldPolicy::NestedScalar {
+                    schema,
+                    allow_inferred_repetition,
+                } if relative.is_empty()
+                    || !schema_node_at(schema, path).is_some_and(|node| {
+                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                    })
+                    || !allow_inferred_repetition
+                        && (self.collection_path.len() + 1..path.len()).any(|length| {
+                            schema_node_at(schema, &path[..length])
+                                .is_some_and(|node| node.repeating)
+                        }) =>
+                {
+                    return Err(
+                        "structured sequence expressions must read scalar fields without crossing a nested repetition"
+                            .to_string(),
+                    );
+                }
+                _ => {}
             }
             return Ok(Expr::Catalog(relative.to_vec()));
         }
@@ -555,21 +635,29 @@ impl ExprContext<'_> {
             .get(&feed)
             .copied()
             .ok_or_else(|| format!("structured lookup feed `{feed}` is unsupported"))
-            .and_then(|index| self.function_expr(index, active));
+            .and_then(|index| self.function_expr(index, active, budget, depth));
         active.remove(&feed);
         result
     }
 
-    fn function_expr(&self, index: usize, active: &mut BTreeSet<u32>) -> Result<Expr, String> {
+    fn function_expr(
+        &self,
+        index: usize,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExprBudget,
+        depth: usize,
+    ) -> Result<Expr, String> {
         let function = &self.functions[index];
-        let input = |position: usize, active: &mut BTreeSet<u32>| {
+        let input = |position: usize, active: &mut BTreeSet<u32>, budget: &mut ExprBudget| {
             function
                 .inputs
                 .get(position)
                 .copied()
                 .flatten()
                 .and_then(|key| self.edge_from.get(&key).copied())
-                .map_or(Ok(Expr::Const(Value::Null)), |feed| self.expr(feed, active))
+                .map_or(Ok(Expr::Const(Value::Null)), |feed| {
+                    self.expr_bounded(feed, active, budget, depth + 1)
+                })
         };
         match (function.name.as_str(), function.kind) {
             (_, 2) => {
@@ -581,14 +669,14 @@ impl ExprContext<'_> {
                 Ok(Expr::Const(parse_constant(value, datatype)))
             }
             (_, 4) => Ok(Expr::If {
-                condition: Box::new(input(0, active)?),
-                then: Box::new(input(1, active)?),
-                else_: Box::new(input(2, active)?),
+                condition: Box::new(input(0, active, budget)?),
+                then: Box::new(input(1, active, budget)?),
+                else_: Box::new(input(2, active, budget)?),
             }),
             (_, 23) => {
                 let valuemap = function.valuemap.clone().unwrap_or_default();
                 Ok(Expr::ValueMap {
-                    input: Box::new(input(0, active)?),
+                    input: Box::new(input(0, active, budget)?),
                     input_type: valuemap.input_type,
                     table: valuemap.table,
                     default: valuemap.default,
@@ -603,7 +691,7 @@ impl ExprContext<'_> {
                 })?;
                 let arity = function_inputs(function, &self.functions[index], self.edge_from);
                 let args = (0..arity)
-                    .map(|position| input(position, active))
+                    .map(|position| input(position, active, budget))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(Expr::Call {
                     function: function.to_string(),
@@ -630,11 +718,23 @@ pub(in crate::import) fn accept_target(
     feed: u32,
     builder: &GraphBuilder<'_>,
 ) -> bool {
-    let Some((_, recipe)) = builder.structured_recipe(feed) else {
+    let Some((call, recipe)) = builder.structured_recipe(feed) else {
         return false;
     };
-    let common = target.format.is_xml_like()
-        && !target_path.is_empty()
+    if let RecipeSource::MappedSequenceParameter { output_name, .. } = &recipe.source
+        && !sequence_record::is_public_output(call, feed, output_name)
+    {
+        return false;
+    }
+    let recipe_key = builder.udf_by_output.get(&feed);
+    let supported_location = match &recipe.source {
+        RecipeSource::MappedSequenceParameter { .. } => {
+            target.format == ComponentFormat::Db
+                || (target.format.is_xml_like() && !target_path.is_empty())
+        }
+        _ => target.format.is_xml_like() && !target_path.is_empty(),
+    };
+    let common = supported_location
         && matches!(target_node.kind, SchemaKind::Group { .. })
         && target
             .ports
@@ -649,7 +749,7 @@ pub(in crate::import) fn accept_target(
     if !common {
         return false;
     }
-    match recipe.source {
+    match &recipe.source {
         RecipeSource::Catalog { .. } | RecipeSource::RecordParameter { .. } => {
             !target_node.repeating
                 && target.ports.iter().all(|(key, path)| {
@@ -658,8 +758,10 @@ pub(in crate::import) fn accept_target(
                         || !builder.edge_from.contains_key(key)
                 })
         }
-        RecipeSource::SequenceParameter { .. } => {
-            target_node.repeating
+        RecipeSource::SequenceParameter { .. } | RecipeSource::MappedSequenceParameter { .. } => {
+            (target_node.repeating
+                || matches!(&recipe.source, RecipeSource::MappedSequenceParameter { .. })
+                    && target.format.is_xml_like())
                 && target.ports.iter().all(|(key, path)| {
                     let recipe_field = recipe.bindings.keys().any(|relative| {
                         path.strip_prefix(target_path) == Some(relative.as_slice())
@@ -668,7 +770,8 @@ pub(in crate::import) fn accept_target(
                         || builder
                             .edge_from
                             .get(key)
-                            .is_some_and(|feed| builder.structured_recipe(*feed).is_some())
+                            .and_then(|feed| builder.udf_by_output.get(feed))
+                            == recipe_key
                 })
         }
     }
@@ -701,12 +804,14 @@ pub(in crate::import) fn prepare_target_frames(
         let Some((call, recipe)) = builder.structured_recipe(*feed) else {
             continue;
         };
-        let RecipeSource::SequenceParameter { component_id } = recipe.source else {
-            continue;
+        let component_id = match &recipe.source {
+            RecipeSource::SequenceParameter { component_id }
+            | RecipeSource::MappedSequenceParameter { component_id, .. } => component_id,
+            _ => continue,
         };
         let input = call
             .structured_inputs
-            .get(&component_id)
+            .get(component_id)
             .and_then(|inputs| inputs.as_slice().first())
             .map(|(_, input)| *input);
         let source = input
@@ -729,10 +834,16 @@ fn build_target(
     let (call, recipe) = builder
         .structured_recipe(feed)
         .ok_or("its UDF output recipe is missing")?;
+    let public_output = match &recipe.source {
+        RecipeSource::MappedSequenceParameter { output_name, .. } => {
+            sequence_record::is_public_output(call, feed, output_name)
+        }
+        _ => true,
+    };
     let call_inputs = call.inputs.clone();
     let structured_inputs = call.structured_inputs.clone();
     let recipe = recipe.clone();
-    match recipe.source {
+    match &recipe.source {
         RecipeSource::Catalog { port } => build_catalog_target(
             target_path,
             target,
@@ -740,7 +851,7 @@ fn build_target(
             scopes,
             &call_inputs,
             &recipe,
-            port,
+            *port,
         ),
         RecipeSource::RecordParameter { component_id } => record::build_target(
             target_path,
@@ -750,7 +861,7 @@ fn build_target(
             &call_inputs,
             &structured_inputs,
             &recipe,
-            component_id,
+            *component_id,
         ),
         RecipeSource::SequenceParameter { component_id } => build_aggregate_target(
             target_path,
@@ -759,8 +870,28 @@ fn build_target(
             scopes,
             &structured_inputs,
             &recipe,
-            component_id,
+            *component_id,
         ),
+        RecipeSource::MappedSequenceParameter {
+            component_id,
+            input_name,
+            ..
+        } => {
+            if !public_output {
+                return Err("its mapped sequence output is not the public record port".to_string());
+            }
+            sequence_record::build_target(
+                target_path,
+                target,
+                builder,
+                scopes,
+                &call_inputs,
+                &structured_inputs,
+                &recipe,
+                *component_id,
+                input_name,
+            )
+        }
     }
 }
 

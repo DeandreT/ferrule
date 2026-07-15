@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use ir::SchemaKind;
 
 use super::{
-    ExprContext, Recipe, RecipeSource, component_id, flat_group_fields, flat_output_group,
-    function_outputs, instantiate, scalar_parameter_outputs,
+    ExprContext, FieldPolicy, Recipe, RecipeSource, component_id, flat_group_fields,
+    flat_output_group, function_outputs, instantiate, scalar_parameter_outputs,
 };
 use crate::import::function::read as read_function;
 use crate::import::graph::GraphBuilder;
@@ -97,6 +97,7 @@ pub(super) fn read(
         catalog_ports: &source.ports,
         collection_path: &[],
         edge_from: &edge_from,
+        field_policy: FieldPolicy::Flat,
     };
     let mut bindings = BTreeMap::new();
     for input in &output.input_keys {
