@@ -3,11 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::{Graph, Node, NodeId};
 
-use super::function::{FnComponent, map_name, parse_constant, read as read_function};
+use super::function::read as read_function;
 use super::graph::{GraphBuilder, read_edges};
 use super::schema::{parse_u32, read_schema_component, schema_node_at};
 
+mod scalar;
 pub(super) mod structured;
+
+const MAX_NESTED_UDF_DEPTH: usize = 64;
 
 #[derive(Clone)]
 pub(super) enum ScalarExpr {
@@ -138,30 +141,121 @@ impl Registry {
         warnings: &mut Vec<String>,
     ) -> Self {
         let mut registry = Self::default();
-        for component in mapping
+        let declarations = mapping
             .children()
             .filter(|node| node.is_element() && node.has_tag_name("component"))
-        {
-            let library = component.attribute("library").unwrap_or_default();
-            if library.is_empty() {
-                continue;
-            }
-            let name = component.attribute("name").unwrap_or_default();
-            let key = (library.to_string(), name.to_string());
-            match read_definition(&component, mfd_path) {
-                Ok((definition, source, source_warnings)) => {
-                    let idx = registry.definitions.len();
-                    registry.definitions.push(definition);
-                    registry.sources.extend(source);
-                    warnings.extend(source_warnings);
-                    registry.supported.insert(key, idx);
-                }
-                Err(reason) => {
-                    registry.unsupported.insert(key, reason);
-                }
-            }
+            .filter_map(|component| {
+                let library = component.attribute("library").unwrap_or_default();
+                (!library.is_empty()).then(|| {
+                    (
+                        (
+                            library.to_string(),
+                            component.attribute("name").unwrap_or_default().to_string(),
+                        ),
+                        component,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        let declaration_by_key = declarations
+            .iter()
+            .map(|(key, component)| (key.clone(), *component))
+            .collect::<BTreeMap<_, _>>();
+        for (key, _) in &declarations {
+            let _ = registry.resolve(
+                key,
+                &declaration_by_key,
+                &mut Vec::new(),
+                mfd_path,
+                warnings,
+            );
         }
         registry
+    }
+
+    fn resolve<'a, 'input>(
+        &mut self,
+        key: &(String, String),
+        declarations: &BTreeMap<(String, String), roxmltree::Node<'a, 'input>>,
+        active: &mut Vec<(String, String)>,
+        mfd_path: &std::path::Path,
+        warnings: &mut Vec<String>,
+    ) -> Result<usize, String> {
+        if let Some(idx) = self.supported.get(key) {
+            return Ok(*idx);
+        }
+        if let Some(reason) = self.unsupported.get(key) {
+            return Err(reason.clone());
+        }
+        if let Some(start) = active.iter().position(|candidate| candidate == key) {
+            let reason = if start + 1 == active.len() {
+                format!("definition is recursive: `{}` ({})", key.1, key.0)
+            } else {
+                let mut path = active[start..]
+                    .iter()
+                    .map(|(library, name)| format!("`{name}` ({library})"))
+                    .collect::<Vec<_>>();
+                path.push(format!("`{}` ({})", key.1, key.0));
+                format!("definition dependency cycle: {}", path.join(" -> "))
+            };
+            return Err(reason);
+        }
+        if active.len() >= MAX_NESTED_UDF_DEPTH {
+            return Err(format!(
+                "nested user-defined function dependency depth exceeds the {MAX_NESTED_UDF_DEPTH}-definition limit at `{}` ({})",
+                key.1, key.0
+            ));
+        }
+        let Some(component) = declarations.get(key).copied() else {
+            return Err(format!(
+                "definition references missing nested user-defined function `{}` ({})",
+                key.1, key.0
+            ));
+        };
+
+        active.push(key.clone());
+        let dependency_result =
+            nested_definition_keys(component)
+                .into_iter()
+                .try_for_each(|dependency| {
+                    if !declarations.contains_key(&dependency) {
+                        return Ok(());
+                    }
+                    self.resolve(&dependency, declarations, active, mfd_path, warnings)
+                    .map(|_| ())
+                    .map_err(|reason| {
+                        if reason.contains("definition dependency cycle")
+                            || reason.starts_with("definition is recursive")
+                            || reason.contains("dependency depth exceeds")
+                        {
+                            reason
+                        } else {
+                            format!(
+                                "nested user-defined function `{}` ({}) is unsupported: {reason}",
+                                dependency.1, dependency.0
+                            )
+                        }
+                    })
+                });
+        let result = dependency_result.and_then(|()| read_definition(&component, mfd_path, self));
+        active.pop();
+
+        match result {
+            Ok((definition, source, source_warnings)) => {
+                let idx = self.definitions.len();
+                self.definitions.push(definition);
+                self.sources.extend(source);
+                warnings.extend(source_warnings);
+                self.supported.insert(key.clone(), idx);
+                Ok(idx)
+            }
+            Err(reason) => {
+                if !reason.contains("dependency depth exceeds") || active.is_empty() {
+                    self.unsupported.insert(key.clone(), reason.clone());
+                }
+                Err(reason)
+            }
+        }
     }
 
     pub(super) fn supported(&self, library: &str, name: &str) -> Option<usize> {
@@ -180,9 +274,35 @@ impl Registry {
         self.definitions.get(idx)
     }
 
+    fn definition_named(&self, library: &str, name: &str) -> Option<&Definition> {
+        self.supported(library, name)
+            .and_then(|idx| self.definition(idx))
+    }
+
     pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
         std::mem::take(&mut self.sources)
     }
+}
+
+fn nested_definition_keys(component: roxmltree::Node<'_, '_>) -> Vec<(String, String)> {
+    component
+        .children()
+        .find(|node| node.has_tag_name("structure"))
+        .and_then(|structure| {
+            structure
+                .children()
+                .find(|node| node.has_tag_name("children"))
+        })
+        .into_iter()
+        .flat_map(|children| children.children())
+        .filter(|child| child.has_tag_name("component") && child.attribute("kind") == Some("19"))
+        .map(|child| {
+            (
+                child.attribute("library").unwrap_or_default().to_string(),
+                child.attribute("name").unwrap_or_default().to_string(),
+            )
+        })
+        .collect()
 }
 
 pub(super) struct Call {
@@ -296,6 +416,7 @@ fn collect_call_entries<'a, 'input>(
 fn read_definition(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &std::path::Path,
+    registry: &Registry,
 ) -> Result<
     (
         Definition,
@@ -304,175 +425,27 @@ fn read_definition(
     ),
     String,
 > {
-    if definition_is_recursive(component) {
-        let name = component.attribute("name").unwrap_or_default();
-        let library = component.attribute("library").unwrap_or_default();
-        return Err(format!("definition is recursive: `{name}` ({library})"));
-    }
-    match read_scalar_definition(component) {
+    match scalar::read(component, registry) {
         Ok(definition) => Ok((definition, None, Vec::new())),
-        Err(scalar_reason) => match read_lookup_definition(component, mfd_path) {
-            Ok(definition) => Ok(definition),
-            Err(_) => structured::read(component, mfd_path).map_err(|structured_reason| {
-                if component.descendants().any(|node| {
-                    node.has_tag_name("properties") && node.attribute("UsageKind") == Some("output")
-                        || node.has_tag_name("parameter")
-                            && node.attribute("usageKind") == Some("output")
-                }) {
-                    structured_reason
-                } else {
-                    scalar_reason
-                }
-            }),
-        },
-    }
-}
-
-fn definition_is_recursive(component: &roxmltree::Node<'_, '_>) -> bool {
-    let name = component.attribute("name").unwrap_or_default();
-    let library = component.attribute("library").unwrap_or_default();
-    component
-        .children()
-        .find(|node| node.has_tag_name("structure"))
-        .and_then(|structure| {
-            structure
-                .children()
-                .find(|node| node.has_tag_name("children"))
-        })
-        .is_some_and(|children| {
-            children.children().any(|child| {
-                child.has_tag_name("component")
-                    && child.attribute("kind") == Some("19")
-                    && child.attribute("name") == Some(name)
-                    && child.attribute("library") == Some(library)
-            })
-        })
-}
-
-fn read_scalar_definition(component: &roxmltree::Node<'_, '_>) -> Result<Definition, String> {
-    let name = component.attribute("name").unwrap_or_default();
-    let structure = component
-        .children()
-        .find(|node| node.is_element() && node.has_tag_name("structure"))
-        .ok_or_else(|| "definition has no structure".to_string())?;
-    let children = structure
-        .children()
-        .find(|node| node.is_element() && node.has_tag_name("children"))
-        .ok_or_else(|| "definition has no component list".to_string())?;
-    let scalar_only = children
-        .children()
-        .filter(|node| node.is_element() && node.has_tag_name("component"))
-        .all(|child| matches!(child.attribute("library"), Some("core" | "lang")));
-
-    let mut functions = Vec::new();
-    let mut component_ids = Vec::new();
-    let mut seen_component_ids = BTreeSet::new();
-    for child in children
-        .children()
-        .filter(|node| node.is_element() && node.has_tag_name("component"))
-    {
-        let library = child.attribute("library").unwrap_or_default();
-        let child_name = child.attribute("name").unwrap_or_default();
-        if !matches!(library, "core" | "lang") {
-            let detail = if library == component.attribute("library").unwrap_or_default()
-                && child_name == name
-            {
-                "is recursive"
-            } else if library == "xml" || library == "json" || library == "text" {
-                "constructs or reads a structured sequence"
-            } else {
-                "contains a nested unsupported component"
-            };
-            return Err(format!("definition {detail}: `{child_name}` ({library})"));
-        }
-        let component_id = parse_u32(child.attribute("uid")).ok_or_else(|| {
-            format!("definition component `{child_name}` has a missing or invalid uid")
-        })?;
-        if !seen_component_ids.insert(component_id) {
-            return Err(format!(
-                "definition has duplicate component uid `{component_id}`"
-            ));
-        }
-        let function = read_function(&child);
-        if function.kind == 3 && !scalar_only
-            || function.kind == 30
-            || matches!(
-                function.name.as_str(),
-                "group-by"
-                    | "first-items"
-                    | "distinct-values"
-                    | "tokenize"
-                    | "tokenize-by-length"
-                    | "generate-sequence"
-                    | "count"
-                    | "sum"
-                    | "avg"
-                    | "min"
-                    | "max"
-                    | "string-join"
-                    | "item-at"
-            )
-        {
-            return Err(format!(
-                "definition uses sequence operation `{}`",
-                function.name
-            ));
-        }
-        functions.push(function);
-        component_ids.push(component_id);
-    }
-
-    let edge_from = read_edges(&structure, Some(component));
-    let mut by_output = BTreeMap::new();
-    let mut parameter_by_key = BTreeMap::new();
-    let mut output_feeds = BTreeMap::new();
-    for (idx, function) in functions.iter().enumerate() {
-        let component_id = component_ids[idx];
-        if function.kind == 6 {
-            let key = function
-                .outputs
-                .first()
-                .copied()
-                .ok_or_else(|| format!("input parameter `{}` has no output", function.name))?;
-            parameter_by_key.insert(key, component_id);
-        } else if function.kind == 7 {
-            let input_key = function
-                .inputs
-                .first()
-                .copied()
-                .flatten()
-                .ok_or_else(|| format!("output parameter `{}` has no input", function.name))?;
-            let feed = edge_from
-                .get(&input_key)
-                .copied()
-                .ok_or_else(|| format!("output parameter `{}` is not connected", function.name))?;
-            output_feeds.insert(component_id, feed);
-        } else {
-            for output in &function.outputs {
-                by_output.insert(*output, idx);
+        Err(scalar::ReadError::Nested(reason)) => Err(reason),
+        Err(scalar::ReadError::Shape(scalar_reason)) => {
+            match read_lookup_definition(component, mfd_path) {
+                Ok(definition) => Ok(definition),
+                Err(_) => structured::read(component, mfd_path).map_err(|structured_reason| {
+                    if component.descendants().any(|node| {
+                        node.has_tag_name("properties")
+                            && node.attribute("UsageKind") == Some("output")
+                            || node.has_tag_name("parameter")
+                                && node.attribute("usageKind") == Some("output")
+                    }) {
+                        structured_reason
+                    } else {
+                        scalar_reason
+                    }
+                }),
             }
         }
     }
-    if output_feeds.is_empty() {
-        return Err("definition has no scalar output parameters".to_string());
-    }
-
-    let context = DefinitionContext {
-        functions: &functions,
-        by_output: &by_output,
-        parameter_by_key: &parameter_by_key,
-        edge_from: &edge_from,
-    };
-    let mut outputs = BTreeMap::new();
-    for (component_id, feed) in output_feeds {
-        let expression = context.expression(feed, &mut BTreeSet::new())?;
-        outputs.insert(component_id, OutputExpr::Scalar(expression));
-    }
-    Ok(Definition {
-        parameters: parameter_by_key.values().copied().collect(),
-        structured_parameters: BTreeSet::new(),
-        outputs,
-    })
 }
 
 fn read_lookup_definition(
@@ -695,146 +668,6 @@ fn collect_xml_output_paths(
         }
         collect_xml_output_paths(entry, path, ports);
         path.pop();
-    }
-}
-
-struct DefinitionContext<'a> {
-    functions: &'a [FnComponent],
-    by_output: &'a BTreeMap<u32, usize>,
-    parameter_by_key: &'a BTreeMap<u32, u32>,
-    edge_from: &'a BTreeMap<u32, u32>,
-}
-
-impl DefinitionContext<'_> {
-    fn expression(&self, feed: u32, active: &mut BTreeSet<u32>) -> Result<ScalarExpr, String> {
-        if let Some(component_id) = self.parameter_by_key.get(&feed) {
-            return Ok(ScalarExpr::Parameter(*component_id));
-        }
-        if !active.insert(feed) {
-            return Err("definition contains a cyclic scalar expression".to_string());
-        }
-        let result = self
-            .by_output
-            .get(&feed)
-            .copied()
-            .ok_or_else(|| format!("definition feed `{feed}` is not scalar"))
-            .and_then(|idx| self.function_expression(idx, feed, active));
-        active.remove(&feed);
-        result
-    }
-
-    fn function_expression(
-        &self,
-        idx: usize,
-        feed: u32,
-        active: &mut BTreeSet<u32>,
-    ) -> Result<ScalarExpr, String> {
-        let function = &self.functions[idx];
-        let input = |pos: usize, active: &mut BTreeSet<u32>| {
-            function
-                .inputs
-                .get(pos)
-                .copied()
-                .flatten()
-                .and_then(|key| self.edge_from.get(&key).copied())
-                .map_or(Ok(ScalarExpr::Const(Value::Null)), |feed| {
-                    self.expression(feed, active)
-                })
-        };
-        match (function.name.as_str(), function.kind) {
-            (_, 3) => {
-                if function.library != "core" || function.inputs.len() != 2 {
-                    return Err(
-                        "definition uses a filter that is not a two-input core filter".to_string(),
-                    );
-                }
-                if function
-                    .inputs
-                    .iter()
-                    .any(|input| input.is_none_or(|key| !self.edge_from.contains_key(&key)))
-                {
-                    return Err(
-                        "definition uses a scalar filter with an unconnected input".to_string()
-                    );
-                }
-                let Some(output_pos) = function
-                    .output_pins
-                    .iter()
-                    .position(|output| *output == Some(feed))
-                else {
-                    return Err("definition filter output is not declared".to_string());
-                };
-                if output_pos > 1 {
-                    return Err(format!(
-                        "definition uses unsupported filter output position `{output_pos}`"
-                    ));
-                }
-                let value = input(0, active)?;
-                let predicate = input(1, active)?;
-                let null = Box::new(ScalarExpr::Const(Value::Null));
-                let (then, else_) = if output_pos == 0 {
-                    (Box::new(value), null)
-                } else {
-                    (null, Box::new(value))
-                };
-                Ok(ScalarExpr::If {
-                    condition: Box::new(predicate),
-                    then,
-                    else_,
-                })
-            }
-            (_, 2) => {
-                let (value, datatype) = function
-                    .constant
-                    .as_ref()
-                    .map(|(value, datatype)| (value.as_str(), datatype.as_str()))
-                    .unwrap_or_default();
-                Ok(ScalarExpr::Const(parse_constant(value, datatype)))
-            }
-            (_, 4) => Ok(ScalarExpr::If {
-                condition: Box::new(input(0, active)?),
-                then: Box::new(input(1, active)?),
-                else_: Box::new(input(2, active)?),
-            }),
-            (_, 23) => {
-                let valuemap = function.valuemap.clone().unwrap_or_default();
-                Ok(ScalarExpr::ValueMap {
-                    input: Box::new(input(0, active)?),
-                    input_type: valuemap.input_type,
-                    table: valuemap.table,
-                    default: valuemap.default,
-                })
-            }
-            (name, _) => {
-                let mapped = match name {
-                    "normalize-space" => Some("normalize_space"),
-                    "empty" => Some("is_empty"),
-                    _ => map_name(name),
-                }
-                .ok_or_else(|| format!("definition uses unsupported scalar function `{name}`"))?;
-                let arity = function
-                    .inputs
-                    .iter()
-                    .rposition(|key| key.is_some_and(|key| self.edge_from.contains_key(&key)))
-                    .map_or(1, |last| last + 1);
-                let mut args = (0..arity)
-                    .map(|pos| input(pos, active))
-                    .collect::<Result<Vec<_>, _>>()?;
-                if matches!(mapped, "add" | "subtract" | "multiply" | "divide" | "round") {
-                    args = args
-                        .into_iter()
-                        .map(|arg| ScalarExpr::Call {
-                            function: "to_number".to_string(),
-                            args: vec![arg],
-                        })
-                        .collect();
-                }
-                Ok(ScalarExpr::Call {
-                    function: mapped.to_string(),
-                    args,
-                })
-            }
-        }
     }
 }
 
@@ -1104,12 +937,15 @@ fn alloc_node(graph: &mut Graph, next_id: &mut NodeId, node: Node) -> NodeId {
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
+    use std::fmt::Write as _;
 
     use ir::Value;
     use mapping::{Graph, Node};
     use roxmltree::Document;
 
-    use super::{Call, Definition, OutputExpr, Registry, ScalarExpr, instantiate};
+    use super::{
+        Call, Definition, MAX_NESTED_UDF_DEPTH, OutputExpr, Registry, ScalarExpr, instantiate,
+    };
 
     #[test]
     fn omitted_scalar_parameter_expands_to_null() {
@@ -1151,6 +987,131 @@ mod tests {
             registry.unsupported_reason("user", "loop"),
             Some("definition is recursive: `loop` (user)")
         );
+    }
+
+    #[test]
+    fn indirect_definition_cycles_report_the_dependency_path() {
+        let document = Document::parse(
+            r#"<mapping>
+                <component name="a" library="user"><structure><children>
+                  <component name="b" library="user" uid="1" kind="19"/>
+                </children></structure></component>
+                <component name="b" library="user"><structure><children>
+                  <component name="a" library="user" uid="2" kind="19"/>
+                </children></structure></component>
+            </mapping>"#,
+        )
+        .unwrap();
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
+        assert_eq!(
+            registry.unsupported_reason("user", "a"),
+            Some("definition dependency cycle: `a` (user) -> `b` (user) -> `a` (user)")
+        );
+        assert_eq!(
+            registry.unsupported_reason("user", "b"),
+            registry.unsupported_reason("user", "a")
+        );
+    }
+
+    #[test]
+    fn missing_nested_definitions_keep_an_actionable_reason() {
+        let document = Document::parse(
+            r#"<mapping>
+                <component name="caller" library="user"><structure><children>
+                  <component name="missing" library="helpers" uid="1" kind="19"/>
+                </children></structure></component>
+            </mapping>"#,
+        )
+        .unwrap();
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
+        assert_eq!(
+            registry.unsupported_reason("user", "caller"),
+            Some("definition references missing nested user-defined function `missing` (helpers)")
+        );
+    }
+
+    #[test]
+    fn malformed_nested_output_ids_keep_the_call_diagnostic() {
+        let document = Document::parse(
+            r#"<mapping>
+                <component name="caller" library="user"><structure><children>
+                  <component name="callee" library="user" uid="20" kind="19"><data>
+                    <root rootindex="1"><entry name="Result" outkey="300" componentid="999"/></root>
+                  </data></component>
+                  <component name="Result" library="core" uid="21" kind="7">
+                    <sources><datapoint key="301"/></sources>
+                  </component>
+                </children><graph><vertices>
+                  <vertex vertexkey="300"><edges><edge vertexkey="301"/></edges></vertex>
+                </vertices></graph></structure></component>
+                <component name="callee" library="user"><structure><children>
+                  <component name="constant" library="core" uid="10" kind="2">
+                    <targets><datapoint key="100"/></targets><data><constant value="ok" datatype="string"/></data>
+                  </component>
+                  <component name="Result" library="core" uid="11" kind="7">
+                    <sources><datapoint key="101"/></sources>
+                  </component>
+                </children><graph><vertices>
+                  <vertex vertexkey="100"><edges><edge vertexkey="101"/></edges></vertex>
+                </vertices></graph></structure></component>
+            </mapping>"#,
+        )
+        .unwrap();
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
+        assert!(
+            registry
+                .unsupported_reason("user", "caller")
+                .is_some_and(|reason| reason
+                    .contains("output port references unknown definition parameter `999`"))
+        );
+    }
+
+    #[test]
+    fn nested_definition_resolution_has_a_depth_limit() {
+        let mut xml = "<mapping>".to_string();
+        for index in 0..=MAX_NESTED_UDF_DEPTH {
+            let _ = write!(
+                xml,
+                "<component name=\"d{index}\" library=\"user\"><structure><children>"
+            );
+            if index < MAX_NESTED_UDF_DEPTH {
+                let _ = write!(
+                    xml,
+                    "<component name=\"d{}\" library=\"user\" uid=\"1\" kind=\"19\"><data><root rootindex=\"1\"><entry name=\"Result\" outkey=\"100\" componentid=\"2\"/></root></data></component><component name=\"Result\" library=\"core\" uid=\"2\" kind=\"7\"><sources><datapoint key=\"101\"/></sources></component></children><graph><vertices><vertex vertexkey=\"100\"><edges><edge vertexkey=\"101\"/></edges></vertex></vertices></graph>",
+                    index + 1,
+                );
+            } else {
+                xml.push_str(
+                    "<component name=\"constant\" library=\"core\" uid=\"1\" kind=\"2\"><targets><datapoint key=\"100\"/></targets><data><constant value=\"done\" datatype=\"string\"/></data></component><component name=\"Result\" library=\"core\" uid=\"2\" kind=\"7\"><sources><datapoint key=\"101\"/></sources></component></children><graph><vertices><vertex vertexkey=\"100\"><edges><edge vertexkey=\"101\"/></edges></vertex></vertices></graph>",
+                );
+            }
+            xml.push_str("</structure></component>");
+        }
+        xml.push_str("</mapping>");
+        let document = Document::parse(&xml).unwrap();
+        let registry = Registry::read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut Vec::new(),
+        );
+        assert!(
+            registry
+                .unsupported_reason("user", "d0")
+                .is_some_and(|reason| reason.contains("dependency depth exceeds"))
+        );
+        assert!(registry.supported("user", "d1").is_some());
     }
 
     #[test]

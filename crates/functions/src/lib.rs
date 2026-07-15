@@ -83,8 +83,11 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "exists",
     "round",
     "date_from_datetime",
+    "year_from_datetime",
     "month_from_datetime",
     "day_from_datetime",
+    "hours_from_datetime",
+    "minutes_from_datetime",
     "time_from_datetime",
     "datetime_from_date_and_time",
     "datetime_from_parts",
@@ -151,8 +154,11 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "exists" => exists(args),
         "round" => round(args),
         "date_from_datetime" => date_from_datetime(args),
+        "year_from_datetime" => year_from_datetime(args),
         "month_from_datetime" => month_from_datetime(args),
         "day_from_datetime" => day_from_datetime(args),
+        "hours_from_datetime" => hours_from_datetime(args),
+        "minutes_from_datetime" => minutes_from_datetime(args),
         "time_from_datetime" => datetime::time_from_datetime(args),
         "datetime_from_date_and_time" => datetime::datetime_from_date_and_time(args),
         "datetime_from_parts" => datetime::datetime_from_parts(args),
@@ -671,87 +677,267 @@ fn date_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     }
 }
 
-/// The local month component of an ISO date or dateTime, without timezone adjustment.
-fn month_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
-    const FUNCTION: &str = "month_from_datetime";
+fn nullable_string_arg<'a>(
+    args: &'a [Value],
+    function: &'static str,
+) -> Result<Option<&'a str>, FunctionError> {
     let value = match args {
-        [Value::Null] => return Ok(Value::Null),
+        [Value::Null] => return Ok(None),
         [Value::String(value)] => value,
         [other] => {
             return Err(FunctionError::TypeMismatch {
-                function: FUNCTION,
+                function,
                 got: other.type_name(),
             });
         }
         _ => {
             return Err(FunctionError::ArityMismatch {
-                function: FUNCTION,
+                function,
                 expected: 1,
                 got: args.len(),
             });
         }
     };
+    Ok(Some(value))
+}
+
+/// The local year component of an ISO date or dateTime, without timezone adjustment.
+fn year_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "year_from_datetime";
+    let Some(value) = nullable_string_arg(args, FUNCTION)? else {
+        return Ok(Value::Null);
+    };
     let date = validated_local_date(value, FUNCTION)?;
-    let year_end = date
-        .len()
-        .checked_sub(6)
-        .ok_or(FunctionError::InvalidArgument {
+    let mut year = date
+        .year
+        .parse::<i64>()
+        .map_err(|_| FunctionError::InvalidArgument {
             function: FUNCTION,
-            message: "requires a valid ISO date or dateTime",
+            message: "requires a year within the signed 64-bit integer range",
         })?;
-    let month = date
-        .get(year_end + 1..date.len() - 3)
-        .and_then(|month| month.parse::<i64>().ok())
-        .ok_or(FunctionError::InvalidArgument {
-            function: FUNCTION,
-            message: "requires a valid ISO date or dateTime",
-        })?;
-    Ok(Value::Int(month))
+    if date.rolls_year() {
+        year = if year == -1 {
+            1
+        } else {
+            year.checked_add(1).ok_or(FunctionError::InvalidArgument {
+                function: FUNCTION,
+                message: "requires a year within the signed 64-bit integer range",
+            })?
+        };
+    }
+    Ok(Value::Int(year))
+}
+
+/// The local month component of an ISO date or dateTime, without timezone adjustment.
+fn month_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "month_from_datetime";
+    let Some(value) = nullable_string_arg(args, FUNCTION)? else {
+        return Ok(Value::Null);
+    };
+    let date = validated_local_date(value, FUNCTION)?;
+    let (month, _) = date.normalized_month_day();
+    Ok(Value::Int(i64::from(month)))
 }
 
 /// The local day component of an ISO date or dateTime, without timezone adjustment.
 fn day_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     const FUNCTION: &str = "day_from_datetime";
-    let value = match args {
-        [Value::Null] => return Ok(Value::Null),
-        [Value::String(value)] => value,
-        [other] => {
-            return Err(FunctionError::TypeMismatch {
-                function: FUNCTION,
-                got: other.type_name(),
-            });
-        }
-        _ => {
-            return Err(FunctionError::ArityMismatch {
-                function: FUNCTION,
-                expected: 1,
-                got: args.len(),
-            });
-        }
+    let Some(value) = nullable_string_arg(args, FUNCTION)? else {
+        return Ok(Value::Null);
     };
     let date = validated_local_date(value, FUNCTION)?;
-    let day = date
-        .get(date.len() - 2..)
-        .and_then(|day| day.parse::<i64>().ok())
-        .ok_or(FunctionError::InvalidArgument {
+    let (_, day) = date.normalized_month_day();
+    Ok(Value::Int(i64::from(day)))
+}
+
+/// The local hour component of an ISO dateTime, without timezone adjustment.
+fn hours_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "hours_from_datetime";
+    let Some(value) = nullable_string_arg(args, FUNCTION)? else {
+        return Ok(Value::Null);
+    };
+    let time = validated_local_datetime_time(value, FUNCTION)?;
+    if time.end_of_day {
+        return Ok(Value::Int(0));
+    }
+    let hour = time.value[..2]
+        .parse::<i64>()
+        .map_err(|_| FunctionError::InvalidArgument {
             function: FUNCTION,
-            message: "requires a valid ISO date or dateTime",
+            message: "requires a valid ISO dateTime",
         })?;
-    Ok(Value::Int(day))
+    Ok(Value::Int(hour))
+}
+
+/// The local minute component of an ISO dateTime, without timezone adjustment.
+fn minutes_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "minutes_from_datetime";
+    let Some(value) = nullable_string_arg(args, FUNCTION)? else {
+        return Ok(Value::Null);
+    };
+    let time = validated_local_datetime_time(value, FUNCTION)?;
+    if time.end_of_day {
+        return Ok(Value::Int(0));
+    }
+    let minute = time.value[3..5]
+        .parse::<i64>()
+        .map_err(|_| FunctionError::InvalidArgument {
+            function: FUNCTION,
+            message: "requires a valid ISO dateTime",
+        })?;
+    Ok(Value::Int(minute))
+}
+
+struct LocalDate<'a> {
+    year: &'a str,
+    month: u32,
+    day: u32,
+    end_of_day: bool,
+}
+
+impl LocalDate<'_> {
+    fn rolls_year(&self) -> bool {
+        self.end_of_day && self.month == 12 && self.day == 31
+    }
+
+    fn normalized_month_day(&self) -> (u32, u32) {
+        if !self.end_of_day {
+            return (self.month, self.day);
+        }
+        let last_day = iso_days_in_month(self.year, self.month);
+        if self.day < last_day {
+            (self.month, self.day + 1)
+        } else if self.month < 12 {
+            (self.month + 1, 1)
+        } else {
+            (1, 1)
+        }
+    }
 }
 
 fn validated_local_date<'a>(
     value: &'a str,
     function: &'static str,
-) -> Result<&'a str, FunctionError> {
-    if let Some((date, time)) = value.split_once('T') {
-        datetime::validate_iso_date(date, function)?;
-        datetime::validate_iso_time(time, function)?;
-        Ok(date)
+) -> Result<LocalDate<'a>, FunctionError> {
+    if !value.is_ascii() {
+        return Err(FunctionError::InvalidArgument {
+            function,
+            message: "requires a valid ISO date or dateTime",
+        });
+    }
+    let (date, end_of_day) = if let Some((date, time)) = value.split_once('T') {
+        let time = validated_local_time(time, function)?;
+        (date, time.end_of_day)
     } else {
         let (date, _) = datetime::split_iso_timezone(value, function)?;
-        datetime::validate_iso_date(date, function)?;
-        Ok(date)
+        (date, false)
+    };
+    datetime::validate_iso_date(date, function)?;
+    let year_end = date
+        .len()
+        .checked_sub(6)
+        .ok_or(FunctionError::InvalidArgument {
+            function,
+            message: "requires a valid ISO date or dateTime",
+        })?;
+    let month = date[year_end + 1..date.len() - 3]
+        .parse::<u32>()
+        .map_err(|_| FunctionError::InvalidArgument {
+            function,
+            message: "requires a valid ISO date or dateTime",
+        })?;
+    let day =
+        date[date.len() - 2..]
+            .parse::<u32>()
+            .map_err(|_| FunctionError::InvalidArgument {
+                function,
+                message: "requires a valid ISO date or dateTime",
+            })?;
+    Ok(LocalDate {
+        year: &date[..year_end],
+        month,
+        day,
+        end_of_day,
+    })
+}
+
+struct LocalTime<'a> {
+    value: &'a str,
+    end_of_day: bool,
+}
+
+fn validated_local_datetime_time<'a>(
+    value: &'a str,
+    function: &'static str,
+) -> Result<LocalTime<'a>, FunctionError> {
+    let (date, time) = value
+        .split_once('T')
+        .ok_or(FunctionError::InvalidArgument {
+            function,
+            message: "requires a valid ISO dateTime",
+        })?;
+    datetime::validate_iso_date(date, function)?;
+    validated_local_time(time, function)
+}
+
+fn validated_local_time<'a>(
+    value: &'a str,
+    function: &'static str,
+) -> Result<LocalTime<'a>, FunctionError> {
+    if !value.is_ascii() {
+        return Err(FunctionError::InvalidArgument {
+            function,
+            message: "requires a valid ISO dateTime",
+        });
+    }
+    let (time, _) = datetime::split_iso_timezone(value, function)?;
+    let end_of_day = time.starts_with("24:");
+    if end_of_day {
+        let normalized = format!("00{}", &time[2..]);
+        datetime::validate_iso_time(&normalized, function)?;
+        let (_, minute_second) = time.split_once(':').ok_or(FunctionError::InvalidArgument {
+            function,
+            message: "requires a valid ISO dateTime",
+        })?;
+        let (minute, second) =
+            minute_second
+                .split_once(':')
+                .ok_or(FunctionError::InvalidArgument {
+                    function,
+                    message: "requires a valid ISO dateTime",
+                })?;
+        let (second, fraction) = second
+            .split_once('.')
+            .map_or((second, ""), |(second, fraction)| (second, fraction));
+        if minute != "00" || second != "00" || fraction.bytes().any(|digit| digit != b'0') {
+            return Err(FunctionError::InvalidArgument {
+                function,
+                message: "requires a valid ISO dateTime",
+            });
+        }
+    } else {
+        datetime::validate_iso_time(value, function)?;
+    }
+    Ok(LocalTime {
+        value: time,
+        end_of_day,
+    })
+}
+
+fn iso_days_in_month(year: &str, month: u32) -> u32 {
+    let digits = year.strip_prefix('-').unwrap_or(year);
+    let decimal_mod = |modulus| {
+        digits.bytes().fold(0, |value, digit| {
+            (value * 10 + u32::from(digit - b'0')) % modulus
+        })
+    };
+    let leap = decimal_mod(400) == 0 || decimal_mod(4) == 0 && decimal_mod(100) != 0;
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => 0,
     }
 }
 
@@ -1433,6 +1619,35 @@ mod tests {
     }
 
     #[test]
+    fn year_from_datetime_returns_the_validated_local_year() {
+        for (value, year) in [
+            ("1999-12-31T19:20:00-05:00", 1999),
+            ("2000-01-01T00:00:00Z", 2000),
+            ("1999-12-31T24:00:00", 2000),
+            ("-0001-12-31T24:00:00.0Z", 1),
+            ("-0004-02-29T23:59:59.5+14:00", -4),
+            ("2019-07-01-05:00", 2019),
+            ("9223372036854775807-01-01", i64::MAX),
+            ("-9223372036854775808-01-01", i64::MIN),
+        ] {
+            assert_eq!(
+                call("year_from_datetime", &[Value::String(value.into())]),
+                Ok(Value::Int(year))
+            );
+        }
+        for value in [
+            "9223372036854775808-01-01",
+            "-9223372036854775809-01-01",
+            "9223372036854775807-12-31T24:00:00",
+        ] {
+            assert!(matches!(
+                call("year_from_datetime", &[Value::String(value.into())]),
+                Err(FunctionError::InvalidArgument { .. })
+            ));
+        }
+    }
+
+    #[test]
     fn month_from_datetime_returns_the_validated_local_month() {
         for (value, month) in [
             ("1999-12-31T19:20:00-05:00", 12),
@@ -1441,6 +1656,9 @@ mod tests {
             ("2019-07-01", 7),
             ("2019-07-01Z", 7),
             ("2019-07-01-05:00", 7),
+            ("2000-02-28T24:00:00", 2),
+            ("2000-02-29T24:00:00", 3),
+            ("1999-12-31T24:00:00", 1),
         ] {
             assert_eq!(
                 call("month_from_datetime", &[Value::String(value.into())]).unwrap(),
@@ -1454,7 +1672,7 @@ mod tests {
         for value in [
             "2000-13-01T00:00:00",
             "2001-02-29T00:00:00",
-            "2000-01-01T24:00:00",
+            "2000-01-01T24:01:00",
         ] {
             assert!(call("month_from_datetime", &[Value::String(value.into())]).is_err());
         }
@@ -1469,6 +1687,9 @@ mod tests {
             ("2019-07-08", 8),
             ("2019-07-08Z", 8),
             ("2019-07-08-05:00", 8),
+            ("2000-02-28T24:00:00", 29),
+            ("2000-02-29T24:00:00", 1),
+            ("1999-12-31T24:00:00", 1),
         ] {
             assert_eq!(
                 call("day_from_datetime", &[Value::String(value.into())]),
@@ -1479,7 +1700,7 @@ mod tests {
         for value in [
             "2000-04-31T00:00:00",
             "2001-02-29T00:00:00",
-            "2000-01-01T24:00:00",
+            "2000-01-01T24:00:01",
         ] {
             assert!(call("day_from_datetime", &[Value::String(value.into())]).is_err());
         }
@@ -1516,6 +1737,91 @@ mod tests {
                 got: 2,
             })
         );
+    }
+
+    #[test]
+    fn time_component_extractors_return_local_values() {
+        for (value, hour, minute) in [
+            ("1999-12-31T19:20:00-05:00", 19, 20),
+            ("2000-01-01T00:01:00Z", 0, 1),
+            ("-0004-02-29T23:59:59.5+14:00", 23, 59),
+            ("1999-12-31T24:00:00.000-05:00", 0, 0),
+        ] {
+            assert_eq!(
+                call("hours_from_datetime", &[Value::String(value.into())]),
+                Ok(Value::Int(hour))
+            );
+            assert_eq!(
+                call("minutes_from_datetime", &[Value::String(value.into())]),
+                Ok(Value::Int(minute))
+            );
+        }
+    }
+
+    #[test]
+    fn new_datetime_extractors_propagate_null_and_reject_invalid_calls() {
+        for function in [
+            "year_from_datetime",
+            "hours_from_datetime",
+            "minutes_from_datetime",
+        ] {
+            assert_eq!(call(function, &[Value::Null]), Ok(Value::Null));
+            assert_eq!(
+                call(function, &[Value::Int(1)]),
+                Err(FunctionError::TypeMismatch {
+                    function,
+                    got: "int",
+                })
+            );
+            assert_eq!(
+                call(function, &[]),
+                Err(FunctionError::ArityMismatch {
+                    function,
+                    expected: 1,
+                    got: 0,
+                })
+            );
+            assert_eq!(
+                call(
+                    function,
+                    &[
+                        Value::String("2024-01-01T00:00:00".into()),
+                        Value::String("2024-01-02T00:00:00".into()),
+                    ],
+                ),
+                Err(FunctionError::ArityMismatch {
+                    function,
+                    expected: 1,
+                    got: 2,
+                })
+            );
+        }
+
+        for (function, values) in [
+            (
+                "year_from_datetime",
+                &["0000-01-01", "2001-02-29T00:00:00", "2024-01💣-01"] as &[_],
+            ),
+            (
+                "hours_from_datetime",
+                &[
+                    "2024-01-01",
+                    "2024-01-01T24:00:00.1",
+                    "2024-01-01T24:00💣:00",
+                ],
+            ),
+            (
+                "minutes_from_datetime",
+                &["2024-01-01T00:60:00", "2024-01-01T00:00:00+15:00"],
+            ),
+        ] {
+            for value in values {
+                assert!(matches!(
+                    call(function, &[Value::String((*value).into())]),
+                    Err(FunctionError::InvalidArgument { .. })
+                ));
+            }
+        }
     }
 
     #[test]
