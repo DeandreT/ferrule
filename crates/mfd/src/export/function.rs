@@ -72,8 +72,11 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "resolve_filepath" => "resolve-filepath",
         "is_xml_nil" => "is-xsi-nil",
         "date_from_datetime" => "date-from-datetime",
+        "year_from_datetime" => "year-from-datetime",
         "month_from_datetime" => "month-from-datetime",
         "day_from_datetime" => "day-from-datetime",
+        "hours_from_datetime" => "hours-from-datetime",
+        "minutes_from_datetime" => "minutes-from-datetime",
         "time_from_datetime" => "time-from-datetime",
         "datetime_from_date_and_time" => "datetime-from-date-and-time",
         "datetime_from_parts" => "datetime-from-parts",
@@ -95,8 +98,11 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "right_trim"
         | "pad_string_left"
         | "pad_string_right"
+        | "year_from_datetime"
         | "month_from_datetime"
         | "day_from_datetime"
+        | "hours_from_datetime"
+        | "minutes_from_datetime"
         | "time_from_datetime"
         | "datetime_from_date_and_time"
         | "datetime_from_parts"
