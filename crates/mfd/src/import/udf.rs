@@ -309,6 +309,7 @@ pub(super) struct Call {
     pub(super) definition: usize,
     pub(super) inputs: BTreeMap<u32, u32>,
     structured_inputs: BTreeMap<u32, Vec<(Vec<String>, u32)>>,
+    structured_outputs: BTreeMap<u32, Vec<String>>,
     pub(super) outputs: BTreeMap<u32, u32>,
 }
 
@@ -321,6 +322,7 @@ impl Call {
         let mut inputs = BTreeMap::new();
         let mut outputs = BTreeMap::new();
         let mut structured_inputs = BTreeMap::new();
+        let mut structured_outputs = BTreeMap::new();
         let mut output_parameters = BTreeSet::new();
         let mut entries = Vec::new();
         for root in component
@@ -346,7 +348,7 @@ impl Call {
                     structured_inputs
                         .entry(component_id)
                         .or_insert_with(Vec::new)
-                        .push((path, key));
+                        .push((path.clone(), key));
                 } else if inputs.insert(component_id, key).is_some() {
                     return Err(format!(
                         "call has duplicate input parameter componentid `{component_id}`"
@@ -358,6 +360,9 @@ impl Call {
                     shape.outputs.get(&component_id),
                     Some(OutputExpr::Structured(_))
                 );
+                if structured {
+                    structured_outputs.insert(key, path.clone());
+                }
                 if !structured && !output_parameters.insert(component_id) {
                     return Err(format!(
                         "call has duplicate output parameter componentid `{component_id}`"
@@ -391,6 +396,7 @@ impl Call {
             definition,
             inputs,
             structured_inputs,
+            structured_outputs,
             outputs,
         })
     }
