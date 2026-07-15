@@ -510,6 +510,7 @@ pub(super) fn build(
             continue;
         }
         let mut relative = Vec::new();
+        let mut repeated_groups = Vec::new();
         let mut skipped_repeating = false;
         let active_anchor = scopes.enclosing_anchor(&target_path);
         collect_paths(
@@ -517,9 +518,22 @@ pub(super) fn build(
             target_group,
             &mut Vec::new(),
             &mut relative,
+            &mut repeated_groups,
             &mut skipped_repeating,
         );
-        let compatible = relative.len();
+        let compatible = relative.len() + repeated_groups.len();
+        repeated_groups.sort_by_key(Vec::len);
+        for path in repeated_groups {
+            let mut source_collection = source_path.clone();
+            source_collection.path.extend(path.iter().cloned());
+            builder.note_framed_prefixes(&source_collection);
+            let mut target_collection = target_path.clone();
+            target_collection.extend(path);
+            scopes.add_copy_iteration(
+                &target_collection,
+                &builder.context_path(&source_collection),
+            );
+        }
         for path in relative {
             let mut target_leaf = target_path.clone();
             target_leaf.extend(path.iter().cloned());
@@ -557,6 +571,7 @@ fn collect_paths(
     target: &SchemaNode,
     path: &mut Vec<String>,
     paths: &mut Vec<Vec<String>>,
+    repeated_groups: &mut Vec<Vec<String>>,
     skipped_repeating: &mut bool,
 ) {
     match (&source.kind, &target.kind) {
@@ -586,12 +601,27 @@ fn collect_paths(
                 else {
                     continue;
                 };
-                if source_child.repeating || target_child.repeating {
-                    *skipped_repeating = true;
-                    continue;
-                }
                 path.push(target_child.name.clone());
-                collect_paths(source_child, target_child, path, paths, skipped_repeating);
+                if source_child.repeating || target_child.repeating {
+                    if source_child.repeating
+                        && target_child.repeating
+                        && matches!(source_child.kind, SchemaKind::Group { .. })
+                        && source_child.kind == target_child.kind
+                    {
+                        repeated_groups.push(path.clone());
+                    } else {
+                        *skipped_repeating = true;
+                    }
+                } else {
+                    collect_paths(
+                        source_child,
+                        target_child,
+                        path,
+                        paths,
+                        repeated_groups,
+                        skipped_repeating,
+                    );
+                }
                 path.pop();
             }
         }

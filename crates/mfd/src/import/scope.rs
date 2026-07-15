@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use mapping::{
-    Binding, IterationOutput, JoinId, JoinPlan, NodeId, Scope, ScopeIteration, SequenceExpr,
+    Binding, IterationOutput, JoinId, JoinPlan, NodeId, Scope, ScopeConstruction, ScopeIteration,
+    SequenceExpr,
 };
 
 #[derive(Clone)]
@@ -35,6 +36,7 @@ pub(super) struct ScopeBuilder {
     pub(super) anchors: BTreeMap<Vec<String>, Vec<String>>,
 }
 
+#[derive(Default)]
 pub(super) struct IterationNodes {
     pub(super) filter: Option<NodeId>,
     pub(super) group_by: Option<NodeId>,
@@ -104,6 +106,16 @@ impl ScopeBuilder {
         scope.sort_descending = nodes.sort_descending;
         scope.take = nodes.take;
         scope.iteration_output = output;
+    }
+
+    pub(super) fn add_copy_iteration(&mut self, target_path: &[String], source_abs: &[String]) {
+        self.add_iteration(
+            target_path,
+            source_abs,
+            IterationNodes::default(),
+            IterationOutput::Repeated,
+        );
+        self.ensure_scope(target_path).construction = ScopeConstruction::CopyCurrentSource;
     }
 
     pub(super) fn add_sequence(
