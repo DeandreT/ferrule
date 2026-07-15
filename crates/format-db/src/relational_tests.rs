@@ -3,7 +3,7 @@ use rusqlite::Connection;
 
 use super::{
     DbFormatError, ForeignKeySide, read_instance, resolve_foreign_key_columns,
-    resolve_foreign_key_relation,
+    resolve_foreign_key_relation, write_instance,
 };
 
 fn test_path(name: &str) -> std::path::PathBuf {
@@ -31,6 +31,130 @@ fn scalar_value<'a>(instance: &'a Instance, name: &str) -> &'a Value {
     field(instance, name)
         .as_scalar()
         .unwrap_or_else(|| panic!("field {name} was not scalar"))
+}
+
+fn value(name: &str, value: Value) -> (String, Instance) {
+    (name.to_string(), Instance::Scalar(value))
+}
+
+#[test]
+fn writes_child_owned_relations_with_generated_keys_idempotently() {
+    let path = test_path("write_children");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE parents (id INTEGER PRIMARY KEY, name TEXT NOT NULL); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL, value TEXT, \
+             FOREIGN KEY(parent_id) REFERENCES parents(id));",
+    )
+    .unwrap();
+    drop(conn);
+    let schema = table(
+        "parents",
+        vec![
+            scalar("id", ScalarType::Int),
+            scalar("name", ScalarType::String),
+            table(
+                "children|parent_id",
+                vec![
+                    scalar("id", ScalarType::Int),
+                    scalar("parent_id", ScalarType::Int),
+                    scalar("value", ScalarType::String),
+                ],
+            ),
+        ],
+    );
+    let row = Instance::Group(vec![
+        value("id", Value::Null),
+        value("name", Value::String("Parent".into())),
+        (
+            "children|parent_id".into(),
+            Instance::Repeated(vec![
+                Instance::Group(vec![
+                    value("id", Value::Null),
+                    value("parent_id", Value::Null),
+                    value("value", Value::String("First".into())),
+                ]),
+                Instance::Group(vec![
+                    value("id", Value::Null),
+                    value("parent_id", Value::Null),
+                    value("value", Value::String("Second".into())),
+                ]),
+            ]),
+        ),
+    ]);
+    let instance = Instance::Repeated(vec![row]);
+
+    write_instance(&path, &schema, &instance).unwrap();
+    write_instance(&path, &schema, &instance).unwrap();
+    let result = read_instance(&path, &schema).unwrap();
+    let parents = result.as_repeated().unwrap();
+    let children = field(&parents[0], "children|parent_id")
+        .as_repeated()
+        .unwrap();
+    let parent_id = scalar_value(&parents[0], "id");
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(parents.len(), 1);
+    assert_eq!(children.len(), 2);
+    assert_ne!(parent_id, &Value::Null);
+    assert_eq!(scalar_value(&children[0], "parent_id"), parent_id);
+    assert_eq!(scalar_value(&children[1], "parent_id"), parent_id);
+}
+
+#[test]
+fn writes_parent_owned_relations_before_the_referencing_row() {
+    let path = test_path("write_reference");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE groups (id INTEGER PRIMARY KEY, name TEXT NOT NULL); \
+         CREATE TABLE users (id INTEGER PRIMARY KEY, group_id INTEGER, name TEXT NOT NULL, \
+             FOREIGN KEY(group_id) REFERENCES groups(id));",
+    )
+    .unwrap();
+    drop(conn);
+    let schema = table(
+        "users",
+        vec![
+            scalar("id", ScalarType::Int),
+            scalar("group_id", ScalarType::Int),
+            scalar("name", ScalarType::String),
+            table(
+                "groups|group_id",
+                vec![
+                    scalar("id", ScalarType::Int),
+                    scalar("name", ScalarType::String),
+                ],
+            ),
+        ],
+    );
+    let instance = Instance::Repeated(vec![Instance::Group(vec![
+        value("id", Value::Null),
+        value("group_id", Value::Null),
+        value("name", Value::String("User".into())),
+        (
+            "groups|group_id".into(),
+            Instance::Repeated(vec![Instance::Group(vec![
+                value("id", Value::Null),
+                value("name", Value::String("Group".into())),
+            ])]),
+        ),
+    ])]);
+
+    write_instance(&path, &schema, &instance).unwrap();
+    let result = read_instance(&path, &schema).unwrap();
+    let users = result.as_repeated().unwrap();
+    let groups = field(&users[0], "groups|group_id").as_repeated().unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(groups.len(), 1);
+    assert_eq!(
+        scalar_value(&users[0], "group_id"),
+        scalar_value(&groups[0], "id")
+    );
 }
 
 #[test]

@@ -222,11 +222,35 @@ pub enum PdfTextGroupOutput {
 }
 
 /// A bounded literal visual-text match.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PdfTextMatch {
     pub needle: String,
     pub case: PdfTextCase,
     pub flexible_whitespace: bool,
+    #[serde(default, skip_serializing_if = "PdfTextProperties::is_empty")]
+    pub properties: PdfTextProperties,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PdfTextProperties {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font_face: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cell_height: Option<PdfMetricMatch>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub baseline_angle: Option<PdfMetricMatch>,
+}
+
+impl PdfTextProperties {
+    pub fn is_empty(&self) -> bool {
+        self.font_face.is_none() && self.cell_height.is_none() && self.baseline_angle.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PdfMetricMatch {
+    pub value: f64,
+    pub deviation: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -363,6 +387,7 @@ pub enum PdfLayoutError {
     InvalidMinimumExtent,
     EmptyTextGroups,
     EmptyTextNeedle,
+    InvalidTextMetric,
     NonRepeatingRowOutput(String),
     NonRepeatingDocumentOutput { command: &'static str, name: String },
     EmptyMergeSources(String),
@@ -403,6 +428,9 @@ impl std::fmt::Display for PdfLayoutError {
             Self::EmptyTextNeedle => {
                 formatter.write_str("PDF text matcher must not normalize to empty")
             }
+            Self::InvalidTextMetric => formatter.write_str(
+                "PDF text metric values must be finite and deviations must be nonnegative",
+            ),
             Self::NonRepeatingRowOutput(name) => {
                 write!(
                     formatter,
@@ -544,6 +572,32 @@ fn validate_commands(
                         return Err(PdfLayoutError::EmptyTextNeedle);
                     }
                     state.add_string(&group.matcher.needle)?;
+                    if let Some(face) = &group.matcher.properties.font_face {
+                        validate_name(face, "font face")?;
+                        state.add_string(face)?;
+                    }
+                    for metric in [
+                        group.matcher.properties.cell_height,
+                        group.matcher.properties.baseline_angle,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        if !metric.value.is_finite()
+                            || !metric.deviation.is_finite()
+                            || metric.deviation < 0.0
+                        {
+                            return Err(PdfLayoutError::InvalidTextMetric);
+                        }
+                    }
+                    if group
+                        .matcher
+                        .properties
+                        .cell_height
+                        .is_some_and(|metric| metric.value <= 0.0)
+                    {
+                        return Err(PdfLayoutError::InvalidTextMetric);
+                    }
                     if let PdfTextGroupOutput::Repeated { name } = &group.output {
                         validate_name(name, "text group")?;
                         state.add_string(name)?;

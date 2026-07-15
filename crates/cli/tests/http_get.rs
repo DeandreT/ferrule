@@ -316,6 +316,7 @@ fn stored_http_extra_source_is_loaded() {
             vec![SchemaNode::scalar("Version", ScalarType::String)],
         ),
         options: FormatOptions::default(),
+        dynamic_path: None,
     });
     let project_path = write_project(dir.path(), &project, None);
 

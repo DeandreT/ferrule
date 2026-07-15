@@ -2,7 +2,8 @@ use std::io;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use pdf_extract::{
-    ColorSpace, Document, MediaBox, OutputDev, OutputError, Path, PathOp, Transform, output_doc,
+    ColorSpace, Dictionary, Document, MediaBox, Object, OutputDev, OutputError, Path, PathOp,
+    Transform, content::Content, output_doc,
 };
 
 use crate::{MAX_EVENTS, MAX_INPUT_BYTES, MAX_PAGES, MAX_VALUE_BYTES, PdfError};
@@ -30,6 +31,9 @@ pub(crate) struct Rect {
 pub(crate) struct Glyph {
     pub text: String,
     pub bounds: Rect,
+    pub font_face: Option<String>,
+    pub cell_height: f64,
+    pub baseline_angle: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -70,6 +74,7 @@ pub(crate) fn extract_pages(bytes: &[u8]) -> Result<Vec<Page>, PdfError> {
             "PDF content ended before its page was closed".into(),
         ));
     }
+    annotate_font_faces(&document, &mut collector.pages);
     Ok(collector.pages)
 }
 
@@ -238,6 +243,9 @@ impl OutputDev for Collector {
                 right: xs.iter().copied().fold(f64::NEG_INFINITY, f64::max) - current.media_left,
                 bottom: current.media_top - ys.iter().copied().fold(f64::INFINITY, f64::min),
             },
+            font_face: None,
+            cell_height: (cap_x - origin_x).hypot(cap_y - origin_y),
+            baseline_angle: (end_y - origin_y).atan2(end_x - origin_x).to_degrees(),
         });
         Ok(())
     }
@@ -274,6 +282,133 @@ impl OutputDev for Collector {
     ) -> Result<(), OutputError> {
         self.event()?;
         self.collect_edges(transform, path, true)
+    }
+}
+
+struct FontRun {
+    text: String,
+    face: String,
+}
+
+fn annotate_font_faces(document: &Document, pages: &mut [Page]) {
+    for (number, page_id) in document.get_pages() {
+        let Some(page) = pages.iter_mut().find(|page| page.number == number) else {
+            continue;
+        };
+        let Some(runs) = page_font_runs(document, page_id) else {
+            continue;
+        };
+        apply_font_runs(&mut page.glyphs, &runs);
+    }
+}
+
+fn page_font_runs(document: &Document, page_id: (u32, u16)) -> Option<Vec<FontRun>> {
+    let fonts = document.get_page_fonts(page_id).ok()?;
+    let content = document.get_page_content(page_id).ok()?;
+    let content = Content::decode(&content).ok()?;
+    if content.operations.len() > MAX_EVENTS {
+        return None;
+    }
+    let mut current_font = None;
+    let mut runs = Vec::new();
+    for operation in content.operations {
+        if operation.operator == "Tf" {
+            current_font = operation
+                .operands
+                .first()
+                .and_then(|operand| operand.as_name().ok())
+                .map(<[u8]>::to_vec);
+            continue;
+        }
+        let Some(font) = current_font.as_ref().and_then(|name| fonts.get(name)) else {
+            continue;
+        };
+        let face = font
+            .get(b"BaseFont")
+            .ok()
+            .and_then(|value| value.as_name().ok())
+            .map(|value| String::from_utf8_lossy(value).into_owned());
+        let Some(face) = face else {
+            continue;
+        };
+        match operation.operator.as_str() {
+            "Tj" | "'" | "\"" => {
+                if let Some(value) = operation.operands.last()
+                    && let Some(text) = decode_font_text(document, font, value)
+                {
+                    runs.push(FontRun {
+                        text,
+                        face: face.clone(),
+                    });
+                }
+            }
+            "TJ" => {
+                let Some(values) = operation
+                    .operands
+                    .first()
+                    .and_then(|value| value.as_array().ok())
+                else {
+                    continue;
+                };
+                for value in values {
+                    if let Some(text) = decode_font_text(document, font, value) {
+                        runs.push(FontRun {
+                            text,
+                            face: face.clone(),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+        if runs.len() > MAX_EVENTS {
+            return None;
+        }
+    }
+    Some(runs)
+}
+
+fn decode_font_text(document: &Document, font: &Dictionary, value: &Object) -> Option<String> {
+    let bytes = value.as_str().ok()?;
+    let encoding = font.get_font_encoding(document).ok()?;
+    Document::decode_text(&encoding, bytes).ok()
+}
+
+fn apply_font_runs(glyphs: &mut [Glyph], runs: &[FontRun]) {
+    let mut stream = String::new();
+    let mut ranges = Vec::with_capacity(glyphs.len());
+    for glyph in glyphs.iter() {
+        let start = stream.len();
+        stream.push_str(&glyph.text);
+        ranges.push(start..stream.len());
+    }
+    let mut cursor = 0;
+    let mut glyph_cursor = 0;
+    for run in runs {
+        if run.text.is_empty() || cursor > stream.len() {
+            continue;
+        }
+        let Some(relative) = stream[cursor..].find(&run.text) else {
+            continue;
+        };
+        let start = cursor + relative;
+        let end = start + run.text.len();
+        while ranges
+            .get(glyph_cursor)
+            .is_some_and(|range| range.end <= start)
+        {
+            glyph_cursor += 1;
+        }
+        for (glyph, range) in glyphs[glyph_cursor..]
+            .iter_mut()
+            .zip(&ranges[glyph_cursor..])
+            .take_while(|(_, range)| range.start < end)
+        {
+            if range.start < end && range.end > start {
+                glyph.font_face = Some(run.face.clone());
+            }
+        }
+        cursor = end;
     }
 }
 
@@ -472,6 +607,9 @@ mod tests {
                 && glyph.bounds.top.is_finite()
                 && glyph.bounds.right.is_finite()
                 && glyph.bounds.bottom.is_finite()
+                && glyph.font_face.as_deref() == Some("Courier")
+                && (glyph.cell_height - 20.0).abs() < 0.01
+                && glyph.baseline_angle.abs() < 0.01
         }));
         assert!(
             page.horizontal_edges

@@ -3,6 +3,26 @@ use std::path::Path;
 
 use ir::{GroupAlternative, SchemaKind, SchemaNode};
 
+pub(super) fn conditioned_port_types(structure: &roxmltree::Node<'_, '_>) -> BTreeMap<u32, String> {
+    let mut types = BTreeMap::new();
+    for entry in structure
+        .descendants()
+        .filter(|node| node.has_tag_name("entry"))
+    {
+        let Some(type_name) = conditioned_type_name(&entry) else {
+            continue;
+        };
+        for key in [entry.attribute("outkey"), entry.attribute("inpkey")]
+            .into_iter()
+            .flatten()
+            .filter_map(|key| key.parse::<u32>().ok())
+        {
+            types.insert(key, type_name.clone());
+        }
+    }
+    types
+}
+
 pub(super) fn merge_conditioned_xml_types(
     entry: &roxmltree::Node,
     schema: &mut SchemaNode,
@@ -40,7 +60,13 @@ fn merge_selected_roots(
                 continue;
             }
             match format_xml::xsd::import_root(xsd_path, Some(qname)) {
-                Ok(selected_schema) => children.push(selected_schema),
+                Ok(mut selected_schema) => {
+                    // A concrete QName selected from `xs:any` is still a
+                    // sequence projection over wildcard children, even when
+                    // the selected document root itself is singular.
+                    selected_schema.repeating = true;
+                    children.push(selected_schema);
+                }
                 Err(error) => warnings.push(format!(
                     "selected XML element `{}` could not be resolved from the schema: {error}",
                     display_child_path(path, name)
@@ -301,6 +327,7 @@ mod tests {
 
         assert!(warnings.is_empty(), "{warnings:?}");
         let chosen = schema.child("Body").unwrap().child("Chosen").unwrap();
+        assert!(chosen.repeating);
         assert!(matches!(
             chosen.child("Count").unwrap().kind,
             SchemaKind::Scalar {

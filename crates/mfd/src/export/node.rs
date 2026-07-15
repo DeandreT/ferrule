@@ -75,6 +75,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 sequence_inputs.push((*to, second_key));
                 "generate-sequence"
             }
+            SequenceExpr::RecursiveCollect {
+                prefix, separator, ..
+            } => {
+                sequence_inputs.push((*prefix, first_key));
+                sequence_inputs.push((*separator, second_key));
+                "recursive-collect"
+            }
         };
         *uid += 1;
         let _ = write!(
@@ -187,6 +194,31 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     (value_output, filter_nodes),
                     (equal_output, filter_predicate),
                 ]);
+            }
+            Node::DynamicSourceField { .. } => {
+                warnings.push(format!(
+                    "dynamic source field node {id} is not exportable; skipped"
+                ));
+                continue;
+            }
+            Node::CollectionFind {
+                predicate, value, ..
+            } => {
+                let filter_nodes = keys.next();
+                let filter_predicate = keys.next();
+                let filter_output = keys.next();
+                node_out_key.insert(id, filter_output);
+                fn_inputs.insert(id, vec![filter_nodes, filter_predicate]);
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{filter_nodes}\"/><datapoint pos=\"1\" key=\"{filter_predicate}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{filter_output}\"/><datapoint/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                let _ = (predicate, value);
             }
             Node::SequenceExists {
                 sequence,
@@ -461,6 +493,10 @@ fn connect_inputs(
             } => vec![*condition, *then, *else_],
             Node::ValueMap { input, .. } => vec![*input],
             Node::Lookup { matches, .. } => vec![*matches],
+            Node::DynamicSourceField { key, .. } => vec![*key],
+            Node::CollectionFind {
+                predicate, value, ..
+            } => vec![*value, *predicate],
             Node::Aggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).copied().collect(),

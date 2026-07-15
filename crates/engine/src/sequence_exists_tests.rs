@@ -14,6 +14,7 @@ fn project(nodes: Vec<(NodeId, Node)>, output: NodeId) -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: nodes.into_iter().collect(),
         },

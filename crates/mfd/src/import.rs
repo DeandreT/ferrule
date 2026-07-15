@@ -8,7 +8,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::SchemaKind;
-use mapping::{Graph, NamedSource, NodeId, Project, Scope, SequenceExpr};
+use mapping::{
+    Graph, NamedSource, NamedTarget, NodeId, Project, Scope, ScopeIteration, ScopeSequence,
+    SequenceExpr,
+};
 
 use crate::MfdError;
 
@@ -18,12 +21,14 @@ mod db_query;
 mod db_where;
 mod dynamic_json;
 mod external_udf;
+mod flextext_parser;
 mod function;
 mod generated_occurrence;
 mod graph;
 mod group_projection;
 mod iteration;
 mod join;
+mod json_serializer;
 mod materialize;
 mod output_parameter;
 mod protobuf_target;
@@ -40,8 +45,9 @@ use function::{
     is_db_function_component, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
     is_first_items as is_first_items_component, is_group_into_blocks, is_group_starting_with,
-    is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
-    is_xbrl_measure_component, map_name as map_function_name, read as read_fn_component,
+    is_input as is_input_component, is_isbn_converter_component, is_sequence_producer,
+    is_sort as is_sort_component, is_xbrl_measure_component, map_name as map_function_name,
+    read as read_fn_component, read_isbn_converter_component,
 };
 use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use iteration::{
@@ -54,7 +60,7 @@ use schema::{
     read_schema_component, read_xbrl_component, read_xlsx_component, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
-use source::{primary_index, runtime_names};
+use source::{SourcePath, primary_index, runtime_names};
 use udf::{Call as UdfCall, Registry as UdfRegistry};
 
 pub struct Imported {
@@ -81,6 +87,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut warnings = Vec::new();
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
+    let mut json_serializers = Vec::new();
+    let mut flextext_parsers = Vec::new();
     let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
     let mut udf_calls = Vec::new();
@@ -104,7 +112,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     None => warnings.push(format!("skipped xml component `{name}`")),
                 },
                 "json" => match read_json_component(&component, path, &mut warnings) {
-                    Some(sc) => schema_components.push(sc),
+                    Some(sc) => match json_serializer::read(&component, &sc) {
+                        Ok(Some(serializer)) => json_serializers.push(serializer),
+                        Ok(None) => schema_components.push(sc),
+                        Err(reason) => {
+                            warnings.push(format!(
+                                "JSON string serializer `{name}` is unsupported: {reason}"
+                            ));
+                            schema_components.push(sc);
+                        }
+                    },
                     None => warnings.push(format!("skipped json component `{name}`")),
                 },
                 "xlsx" if component.attribute("kind") == Some("26") => {
@@ -170,13 +187,20 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             })
                         });
                         if string_parse {
-                            note_skipped_library(
-                                &mut skipped_libraries,
-                                "text/flextext-stringparse",
-                            );
-                            warnings.push(format!(
-                                "skipped FlexText component `{name}`: string-parse parameters consume a run-time string, which ferrule file inputs cannot represent"
-                            ));
+                            match read_flextext_component(&component, path)
+                                .and_then(|schema| flextext_parser::read(&component, schema))
+                            {
+                                Ok(parser) => flextext_parsers.push(parser),
+                                Err(reason) => {
+                                    note_skipped_library(
+                                        &mut skipped_libraries,
+                                        "text/flextext-stringparse",
+                                    );
+                                    warnings.push(format!(
+                                        "skipped FlexText component `{name}`: {reason}"
+                                    ));
+                                }
+                            }
                         } else {
                             match read_flextext_component(&component, path) {
                                 Ok(schema) => schema_components.push(schema),
@@ -259,6 +283,14 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 "xpath2" if map_function_name(&name).is_some() => {
                     fn_components.push(read_fn_component(&component));
                 }
+                "IsbnConverterService" if is_isbn_converter_component(&component) => {
+                    match read_isbn_converter_component(&component) {
+                        Ok(function) => fn_components.push(function),
+                        Err(reason) => warnings.push(format!(
+                            "skipped ISBN converter component `{name}`: {reason}"
+                        )),
+                    }
+                }
                 other => {
                     if let Some(definition) = udf_registry.supported(other, &name) {
                         if let Some(shape) = udf_registry.definition(definition) {
@@ -295,6 +327,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
     let edge_from = read_edges(&structure, Some(&wrapper));
+    udf::refine_source_schemas(
+        &mut schema_components,
+        &udf_calls,
+        &udf_registry,
+        &edge_from,
+    );
     let copy_all_targets = read_copy_all_targets(&structure);
 
     let output_failed = output_parameter::install_fallback(
@@ -336,19 +374,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let target = default_target
         .or_else(|| targets.first().copied())
         .ok_or_else(|| unsupported("target"))?;
-    let drops_connected_target = targets.iter().copied().any(|component| {
-        !std::ptr::eq(component, target)
-            && component
-                .ports
-                .keys()
-                .any(|key| edge_from.contains_key(key))
-    });
-    if targets.len() > 1 && (default_target.is_none() || drops_connected_target) {
-        warnings.push(format!(
-            "multiple target components; only `{}` imported",
-            target.name
-        ));
-    }
+    let connected_targets = std::iter::once(target)
+        .chain(targets.iter().copied().filter(|component| {
+            !std::ptr::eq(*component, target)
+                && component
+                    .ports
+                    .keys()
+                    .any(|key| edge_from.contains_key(key))
+        }))
+        .collect::<Vec<_>>();
+    let target_names = runtime_names(&connected_targets);
     if sources.is_empty() {
         return Err(unsupported("source"));
     }
@@ -358,6 +393,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let primary = sources[0];
     let joins = pending_joins.resolve(&edge_from, &sources, &source_names, &mut warnings);
 
+    let xml_type_conditions = alternatives::conditioned_port_types(&structure);
     let mut builder = GraphBuilder {
         graph: Graph::default(),
         next_id: 0,
@@ -370,12 +406,18 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         warned_join_controls: BTreeSet::new(),
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
+        json_serializer_nodes: BTreeMap::new(),
+        flextext_parser_nodes: BTreeMap::new(),
+        claimed_dynamic_ports: BTreeSet::new(),
         query_scope_sources: BTreeSet::new(),
         warned_unscoped_queries: BTreeSet::new(),
+        xml_type_conditions,
         edge_from: &edge_from,
         sources: &sources,
         source_names: &source_names,
         intermediates: &intermediates,
+        json_serializers: &json_serializers,
+        flextext_parsers: &flextext_parsers,
         fn_components: &fn_components,
         fn_by_output: BTreeMap::new(),
         udf_nodes: BTreeMap::new(),
@@ -398,24 +440,137 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 .insert(output, (call_idx, component_id));
         }
     }
-    // Scopes and bindings from the target's connected ports.
-    let mut scope_builder = ScopeBuilder {
+
+    // Dynamic document inputs must establish their driver frames before any
+    // target expression is materialized. A filename expression can also feed
+    // an ordinary target binding, and SourceField nodes created there need the
+    // same framed suffix as the loader path expression.
+    let mut dynamic_source_inputs: Vec<Option<(u32, SourcePath)>> = vec![None; sources.len()];
+    for (index, extra) in sources.iter().enumerate().skip(1) {
+        if !extra.db_queries.is_empty() {
+            continue;
+        }
+        let connected = extra
+            .input_keys
+            .iter()
+            .filter_map(|key| edge_from.get(key).copied())
+            .collect::<Vec<_>>();
+        match connected.as_slice() {
+            [] => {}
+            [feed] => {
+                if let Some(driver) = builder.computed_iteration_source(*feed) {
+                    builder.note_framed_prefixes(&driver);
+                    dynamic_source_inputs[index] = Some((*feed, driver));
+                } else {
+                    builder.warnings.push(format!(
+                        "extra source `{}` has a connected run-time path that does not have one representable source iteration; the stored instance path is used",
+                        source_names[index]
+                    ));
+                }
+            }
+            _ => builder.warnings.push(format!(
+                "extra source `{}` has multiple connected run-time paths; the stored instance path is used",
+                source_names[index]
+            )),
+        }
+    }
+
+    let root = build_target_scope(target, &edge_from, &copy_all_targets, &mut builder);
+    let mut extra_targets = Vec::new();
+    for (index, extra) in connected_targets.iter().copied().enumerate().skip(1) {
+        extra_targets.push(NamedTarget {
+            name: target_names[index].clone(),
+            path: extra
+                .output_instance
+                .clone()
+                .or_else(|| extra.input_instance.clone()),
+            schema: extra.schema.clone(),
+            options: extra.options.clone(),
+            root: build_target_scope(extra, &edge_from, &copy_all_targets, &mut builder),
+        });
+    }
+
+    let mut extra_sources = Vec::new();
+    for (index, extra) in sources.iter().enumerate().skip(1) {
+        let dynamic_path = dynamic_source_inputs[index]
+            .as_ref()
+            .and_then(|(feed, driver)| {
+                builder
+                    .binding_node(*feed, &[])
+                    .map(|node| mapping::DynamicSourcePath {
+                        node,
+                        iteration: builder.context_path(driver),
+                    })
+            });
+        if dynamic_path.is_none() && extra.input_instance.is_none() {
+            builder.warnings.push(format!(
+                "extra source `{}` has no input instance path; the imported project needs one \
+                 before it can run",
+                source_names[index]
+            ));
+        }
+        extra_sources.push(NamedSource {
+            name: source_names[index].clone(),
+            path: extra.input_instance.clone().unwrap_or_default(),
+            schema: extra.schema.clone(),
+            options: extra.options.clone(),
+            dynamic_path,
+        });
+    }
+
+    warnings.extend(builder.warnings);
+    Ok(Imported {
+        project: Project {
+            source: primary.schema.clone(),
+            target: target.schema.clone(),
+            source_path: primary.input_instance.clone(),
+            target_path: target
+                .output_instance
+                .clone()
+                .or_else(|| target.input_instance.clone()),
+            source_options: primary.options.clone(),
+            target_options: target.options.clone(),
+            extra_sources,
+            extra_targets,
+            graph: builder.graph,
+            root,
+        },
+        warnings,
+    })
+}
+
+fn build_target_scope(
+    target: &SchemaComponent,
+    edge_from: &BTreeMap<u32, u32>,
+    copy_all_targets: &BTreeSet<u32>,
+    builder: &mut GraphBuilder<'_>,
+) -> Scope {
+    builder.rejected_join_paths.clear();
+    let mut scopes = ScopeBuilder {
         root: Scope::default(),
         anchors: BTreeMap::new(),
     };
-    let dynamic_target = dynamic_json::prepare_target(target, &mut builder);
+    let dynamic_target = dynamic_json::prepare_target(target, builder);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
     let mut group_projections = Vec::new();
     let mut structured_udf_targets = Vec::new();
+    let mut csv_singleton_bindings = BTreeMap::new();
     for (&inpkey, target_path) in &target.ports {
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
         };
+        if let Some((position, field)) = schema::split_singleton_port(target_path) {
+            csv_singleton_bindings
+                .entry(position)
+                .or_insert_with(Vec::new)
+                .push((field.to_string(), from));
+            continue;
+        }
         let node_kind = schema_node_at(&target.schema, target_path);
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
-                if udf::structured::accept_target(target, target_path, node, inpkey, from, &builder)
+                if udf::structured::accept_target(target, target_path, node, inpkey, from, builder)
                 {
                     structured_udf_targets.push((target_path.clone(), from));
                     continue;
@@ -427,9 +582,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                         target_node: node,
                         input_key: inpkey,
                         feed: from,
-                        copy_all_targets: &copy_all_targets,
+                        copy_all_targets,
                     },
-                    &mut builder,
+                    builder,
                     &mut iterations,
                     &mut group_projections,
                 )
@@ -447,37 +602,36 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             )),
         }
     }
-    udf::structured::prepare_target_frames(&structured_udf_targets, &mut builder);
-    generated_occurrence::infer(target, &mut builder, &mut iterations);
+    udf::structured::prepare_target_frames(&structured_udf_targets, builder);
+    generated_occurrence::infer(target, builder, &mut iterations);
     iterations.sort_by_key(|iteration| iteration.target_path.len());
     let explicit_iteration_paths = iterations
         .iter()
         .map(|iteration| iteration.target_path.clone())
         .collect::<BTreeSet<_>>();
-    join::prepare_iterations(&iterations, &mut builder, &mut scope_builder);
+    join::prepare_iterations(&iterations, builder, &mut scopes);
     for iteration in &iterations {
-        let feed = builder.resolve_iteration_feed(iteration.feed);
-        if let Some(idx) = feed.sequence_component {
-            builder.sequence_scope_components.insert(idx);
-        }
-        if let Some(source_path) = builder.iteration_source_path(&feed) {
-            builder.note_framed_prefixes(&source_path);
+        for feed_key in
+            std::iter::once(iteration.feed).chain(iteration.additional_feeds.iter().copied())
+        {
+            let feed = builder.resolve_iteration_feed(feed_key);
+            if let Some(idx) = feed.sequence_component {
+                builder.sequence_scope_components.insert(idx);
+            }
+            if let Some(source_path) = builder.iteration_source_path(&feed) {
+                builder.note_framed_prefixes(&source_path);
+            }
         }
     }
-    materialize::eager_functions(&mut builder);
-    let mut skipped_iteration_paths = target_iteration::build(
-        iterations,
-        target,
-        &bindings,
-        &mut builder,
-        &mut scope_builder,
-    );
+    materialize::eager_functions(builder);
+    let mut skipped_iteration_paths =
+        target_iteration::build(iterations, target, &bindings, builder, &mut scopes);
     protobuf_target::infer_singleton_messages(
         target,
         &bindings,
         &explicit_iteration_paths,
-        &mut builder,
-        &mut scope_builder,
+        builder,
+        &mut scopes,
         &mut skipped_iteration_paths,
     );
     let structured_udf_paths = structured_udf_targets
@@ -487,16 +641,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     udf::structured::build_targets(
         structured_udf_targets,
         target,
-        &mut builder,
-        &mut scope_builder,
+        builder,
+        &mut scopes,
         &mut skipped_iteration_paths,
     );
     group_projection::build(
         group_projections,
         target,
         &skipped_iteration_paths,
-        &mut builder,
-        &mut scope_builder,
+        builder,
+        &mut scopes,
     );
     for (target, from) in bindings {
         let target_path = target.path();
@@ -519,56 +673,53 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         let Some(node) = builder.binding_node(from, &target_path) else {
             continue;
         };
-        scope_builder.add_binding(target, node);
+        scopes.add_binding(target, node);
     }
-    dynamic_json::build_target(dynamic_target, target, &mut builder, &mut scope_builder);
+    dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);
+    compose_csv_target_rows(csv_singleton_bindings, builder, &mut scopes);
+    scopes.root
+}
 
-    let mut extra_sources = Vec::new();
-    for (index, extra) in sources.iter().enumerate().skip(1) {
-        let has_dynamic_input = extra.db_queries.is_empty()
-            && extra
-                .input_keys
-                .iter()
-                .any(|key| edge_from.contains_key(key));
-        if has_dynamic_input {
-            builder.warnings.push(format!(
-                "extra source `{}` has a connected run-time input; the stored instance path is \
-                 used until dynamic sources are supported",
-                source_names[index]
-            ));
-        } else if extra.input_instance.is_none() {
-            builder.warnings.push(format!(
-                "extra source `{}` has no input instance path; the imported project needs one \
-                 before it can run",
-                source_names[index]
-            ));
+fn compose_csv_target_rows(
+    singleton_bindings: BTreeMap<schema::CsvSingletonPosition, Vec<(String, u32)>>,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+) {
+    if singleton_bindings.is_empty() {
+        return;
+    }
+    let repeated = std::mem::take(&mut scopes.root);
+    let mut before = Vec::new();
+    let mut after = Vec::new();
+    for (position, bindings) in singleton_bindings {
+        let mut segment = Scope::default();
+        for (field, feed) in bindings {
+            let target_path = vec![field.clone()];
+            let Some(node) = builder.binding_node(feed, &target_path) else {
+                continue;
+            };
+            segment.bindings.push(mapping::Binding {
+                target_field: field,
+                node,
+            });
         }
-        extra_sources.push(NamedSource {
-            name: source_names[index].clone(),
-            path: extra.input_instance.clone().unwrap_or_default(),
-            schema: extra.schema.clone(),
-            options: extra.options.clone(),
-        });
+        match position {
+            schema::CsvSingletonPosition::Before(index) => before.push((index, segment)),
+            schema::CsvSingletonPosition::After(index) => after.push((index, segment)),
+        }
     }
-
-    warnings.extend(builder.warnings);
-    Ok(Imported {
-        project: Project {
-            source: primary.schema.clone(),
-            target: target.schema.clone(),
-            source_path: primary.input_instance.clone(),
-            target_path: target
-                .output_instance
-                .clone()
-                .or_else(|| target.input_instance.clone()),
-            source_options: primary.options.clone(),
-            target_options: target.options.clone(),
-            extra_sources,
-            graph: builder.graph,
-            root: scope_builder.root,
-        },
-        warnings,
-    })
+    before.sort_by_key(|(index, _)| *index);
+    after.sort_by_key(|(index, _)| *index);
+    let mut segments = before
+        .into_iter()
+        .map(|(_, scope)| scope)
+        .chain(std::iter::once(repeated))
+        .chain(after.into_iter().map(|(_, scope)| scope));
+    let Some(first) = segments.next() else {
+        return;
+    };
+    scopes.root.iteration =
+        ScopeIteration::Concatenate(ScopeSequence::new(first, segments.collect()));
 }
 
 impl GraphBuilder<'_> {
@@ -627,9 +778,32 @@ impl GraphBuilder<'_> {
         if let Some(node) = self.join_field_node(key) {
             return Some(node);
         }
+        if self
+            .json_serializers
+            .iter()
+            .any(|serializer| serializer.output == key)
+        {
+            return self.json_serializer_node(key);
+        }
+        if self
+            .flextext_parsers
+            .iter()
+            .any(|parser| parser.outputs.contains_key(&key))
+        {
+            return self.flextext_parser_node(key);
+        }
         // A source schema entry?
         for (idx, source) in self.sources.iter().enumerate() {
             if let Some(abs) = source.ports.get(&key).cloned() {
+                if schema::split_json_dynamic_port(&abs).is_some() {
+                    if self.claimed_dynamic_ports.contains(&key) {
+                        return Some(self.const_null());
+                    }
+                    self.warnings.push(format!(
+                        "dynamic JSON source port {key} is supported only as a paired property-name equality and boolean value"
+                    ));
+                    return None;
+                }
                 let source_path = self.source_value_path(idx, abs);
                 return self.source_field_at(&source_path);
             }
@@ -784,6 +958,13 @@ impl GraphBuilder<'_> {
         let mut db_where_component = None;
         // Chains are short; the bound only guards against odd cycles.
         for _ in 0..12 {
+            if let Some(input) = self.flextext_parser_input(from) {
+                let Some(feed) = self.edge_from.get(&input).copied() else {
+                    break;
+                };
+                from = feed;
+                continue;
+            }
             if let Some(intermediate) = self.intermediate_feed(from) {
                 projects_whole_group |= intermediate.suffix.is_empty();
                 projections.extend(intermediate.projections);
@@ -998,7 +1179,21 @@ impl GraphBuilder<'_> {
                 }
             }
         }
-        let computed_source = self.computed_iteration_source(from);
+        let direct_group_source = self.source_abs_path(from).is_some_and(|source| {
+            self.schema_node(&source)
+                .is_some_and(|node| matches!(node.kind, SchemaKind::Group { .. }))
+        });
+        let computed_source = (!direct_group_source)
+            .then(|| self.computed_iteration_source(from))
+            .flatten();
+        let sort_filter_order = if order_issue
+            == Some("applies sort after filter, which cannot be represented exactly")
+        {
+            order_issue = None;
+            mapping::SortFilterOrder::FilterThenSort
+        } else {
+            mapping::SortFilterOrder::SortThenFilter
+        };
         IterationFeed {
             source_key: from,
             computed_source,
@@ -1019,6 +1214,7 @@ impl GraphBuilder<'_> {
             sort_expr,
             has_sort,
             sort_descending,
+            sort_filter_order,
             take_expr,
             take_default_one,
             projects_whole_group,

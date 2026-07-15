@@ -247,6 +247,7 @@ mod tests {
             source_options: FormatOptions::default(),
             target_options: FormatOptions::default(),
             extra_sources: Vec::new(),
+            extra_targets: Vec::new(),
             graph,
             root: Scope {
                 iteration: if iterate_rows {
@@ -388,6 +389,7 @@ mod tests {
                 xbrl: Some(XbrlBoundaryOptions::external_source("taxonomy.xsd")?),
                 ..FormatOptions::default()
             },
+            dynamic_path: None,
         });
 
         assert_eq!(

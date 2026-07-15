@@ -387,6 +387,38 @@ fn delimited_records_honor_separator_quote_escape_and_lf_or_crlf_input() {
 }
 
 #[test]
+fn delimited_records_support_multi_character_field_separators() {
+    let dialect = DelimitedDialect::new_with_field_separator("*#*", "\n", '"', '\\').unwrap();
+    let layout = FlexTextLayout::new(
+        "document",
+        FlexCommand::DelimitedRecords {
+            name: "rows".into(),
+            dialect,
+            fields: vec![
+                DelimitedRecordField::new("text", ScalarType::String).unwrap(),
+                DelimitedRecordField::new("count", ScalarType::Int).unwrap(),
+            ],
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .unwrap();
+    let parsed = parse(&layout, "Ada*#*3\nGrace*#*5");
+    let rows = parsed
+        .field("rows")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        rows[1].field("count").and_then(Instance::as_scalar),
+        Some(&Value::Int(5))
+    );
+    assert_eq!(
+        to_string(&layout.schema(), &parsed, &layout).unwrap(),
+        "Ada*#*3\nGrace*#*5"
+    );
+}
+
+#[test]
 fn writer_lexically_coerces_string_values_for_typed_scalars() {
     let cases = [
         (ScalarType::Int, " 42 ", "42"),

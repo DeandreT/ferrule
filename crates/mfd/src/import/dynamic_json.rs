@@ -451,6 +451,7 @@ impl DynamicObjectTarget {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
         };
         if let Some(index) = control.sequence_component {

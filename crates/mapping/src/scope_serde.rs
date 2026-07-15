@@ -2,8 +2,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     Binding, DynamicBinding, DynamicChild, IterationOutput, JoinId, JoinPlan, NodeId, Scope,
-    ScopeConstruction, ScopeIteration, SequenceExpr, is_constructed_scope, is_false,
-    is_repeated_output,
+    ScopeConstruction, ScopeIteration, ScopeSequence, SequenceExpr, SortFilterOrder,
+    is_constructed_scope, is_false, is_repeated_output,
 };
 
 #[derive(Serialize)]
@@ -28,6 +28,8 @@ struct ScopeRef<'a> {
     sequence: Option<&'a SequenceExpr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     join: Option<JoinRef<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    segments: Option<&'a ScopeSequence>,
     filter: Option<NodeId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     group_by: Option<NodeId>,
@@ -39,6 +41,8 @@ struct ScopeRef<'a> {
     sort_by: Option<NodeId>,
     #[serde(skip_serializing_if = "is_false")]
     sort_descending: bool,
+    #[serde(skip_serializing_if = "is_default_sort_filter_order")]
+    sort_filter_order: SortFilterOrder,
     #[serde(skip_serializing_if = "Option::is_none")]
     take: Option<NodeId>,
     #[serde(skip_serializing_if = "is_repeated_output")]
@@ -66,6 +70,8 @@ struct ScopeOwned {
     #[serde(default)]
     join: Option<JoinOwned>,
     #[serde(default)]
+    segments: Option<ScopeSequence>,
+    #[serde(default)]
     filter: Option<NodeId>,
     #[serde(default)]
     group_by: Option<NodeId>,
@@ -77,6 +83,8 @@ struct ScopeOwned {
     sort_by: Option<NodeId>,
     #[serde(default)]
     sort_descending: bool,
+    #[serde(default)]
+    sort_filter_order: SortFilterOrder,
     #[serde(default)]
     take: Option<NodeId>,
     #[serde(default)]
@@ -98,24 +106,29 @@ impl Serialize for Scope {
     where
         S: Serializer,
     {
-        let (source, sequence, join) = match &self.iteration {
-            ScopeIteration::None => (None, None, None),
-            ScopeIteration::Source(path) => (Some(path), None, None),
-            ScopeIteration::Sequence(sequence) => (None, Some(sequence), None),
-            ScopeIteration::InnerJoin { id, plan } => (None, None, Some(JoinRef { id: *id, plan })),
+        let (source, sequence, join, segments) = match &self.iteration {
+            ScopeIteration::None => (None, None, None, None),
+            ScopeIteration::Source(path) => (Some(path), None, None, None),
+            ScopeIteration::Sequence(sequence) => (None, Some(sequence), None, None),
+            ScopeIteration::InnerJoin { id, plan } => {
+                (None, None, Some(JoinRef { id: *id, plan }), None)
+            }
+            ScopeIteration::Concatenate(segments) => (None, None, None, Some(segments)),
         };
         ScopeRef {
             target_field: &self.target_field,
-            construction: self.construction,
+            construction: self.construction.clone(),
             source,
             sequence,
             join,
+            segments,
             filter: self.filter,
             group_by: self.group_by,
             group_starting_with: self.group_starting_with,
             group_into_blocks: self.group_into_blocks,
             sort_by: self.sort_by,
             sort_descending: self.sort_descending,
+            sort_filter_order: self.sort_filter_order,
             take: self.take,
             iteration_output: self.iteration_output,
             bindings: &self.bindings,
@@ -136,23 +149,25 @@ impl<'de> Deserialize<'de> for Scope {
         let wire = ScopeOwned::deserialize(deserializer)?;
         let iteration_count = usize::from(wire.source.is_some())
             + usize::from(wire.sequence.is_some())
-            + usize::from(wire.join.is_some());
+            + usize::from(wire.join.is_some())
+            + usize::from(wire.segments.is_some());
         if iteration_count > 1 {
             return Err(serde::de::Error::custom(
-                "scope source, sequence, and join iteration forms are mutually exclusive",
+                "scope source, sequence, join, and concatenated iteration forms are mutually exclusive",
             ));
         }
-        let iteration = match (wire.source, wire.sequence, wire.join) {
-            (Some(path), None, None) => ScopeIteration::Source(path),
-            (None, Some(sequence), None) => ScopeIteration::Sequence(sequence),
-            (None, None, Some(join)) => ScopeIteration::InnerJoin {
+        let iteration = match (wire.source, wire.sequence, wire.join, wire.segments) {
+            (Some(path), None, None, None) => ScopeIteration::Source(path),
+            (None, Some(sequence), None, None) => ScopeIteration::Sequence(sequence),
+            (None, None, Some(join), None) => ScopeIteration::InnerJoin {
                 id: join.id,
                 plan: join.plan,
             },
-            (None, None, None) => ScopeIteration::None,
+            (None, None, None, Some(segments)) => ScopeIteration::Concatenate(segments),
+            (None, None, None, None) => ScopeIteration::None,
             _ => {
                 return Err(serde::de::Error::custom(
-                    "scope source, sequence, and join iteration forms are mutually exclusive",
+                    "scope source, sequence, join, and concatenated iteration forms are mutually exclusive",
                 ));
             }
         };
@@ -166,6 +181,7 @@ impl<'de> Deserialize<'de> for Scope {
             group_into_blocks: wire.group_into_blocks,
             sort_by: wire.sort_by,
             sort_descending: wire.sort_descending,
+            sort_filter_order: wire.sort_filter_order,
             take: wire.take,
             iteration_output: wire.iteration_output,
             bindings: wire.bindings,
@@ -175,4 +191,8 @@ impl<'de> Deserialize<'de> for Scope {
             merge_dynamic_fields: wire.merge_dynamic_fields,
         })
     }
+}
+
+fn is_default_sort_filter_order(order: &SortFilterOrder) -> bool {
+    *order == SortFilterOrder::SortThenFilter
 }

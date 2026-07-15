@@ -58,6 +58,7 @@ fn project(
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: nodes.into_iter().collect(),
         },
@@ -80,6 +81,75 @@ fn scalar<'a>(row: &'a Instance, field: &str) -> &'a Value {
     row.field(field)
         .and_then(Instance::as_scalar)
         .unwrap_or_else(|| panic!("missing scalar `{field}`"))
+}
+
+#[test]
+fn singleton_scalar_can_join_a_repeating_collection() {
+    let plan = JoinPlan::new(
+        JoinSource::singleton(vec!["CustomerNr".into()]),
+        JoinSource::new(vec!["Customer".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["CustomerNr".into()],
+            Vec::new(),
+            vec!["Number".into()],
+        )),
+    )
+    .unwrap();
+    let mut project = project(
+        [(
+            0,
+            Node::JoinField {
+                join: JoinId::new(7),
+                collection: vec!["Customer".into()],
+                path: vec!["Name".into()],
+            },
+        )],
+        plan,
+        vec![Binding {
+            target_field: "Name".into(),
+            node: 0,
+        }],
+        &[("Name", ScalarType::String)],
+    );
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::scalar("CustomerNr", ScalarType::String),
+            SchemaNode::group(
+                "Customer",
+                vec![
+                    SchemaNode::scalar("Number", ScalarType::String),
+                    SchemaNode::scalar("Name", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    let source = Instance::Group(vec![
+        (
+            "CustomerNr".into(),
+            Instance::Scalar(Value::String("B".into())),
+        ),
+        (
+            "Customer".into(),
+            repeated(vec![
+                record(&[
+                    ("Number", Value::String("A".into())),
+                    ("Name", Value::String("Ada".into())),
+                ]),
+                record(&[
+                    ("Number", Value::String("B".into())),
+                    ("Name", Value::String("Grace".into())),
+                ]),
+            ]),
+        ),
+    ]);
+    let output = run(&project, &source).unwrap();
+    let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(scalar(&rows[0], "Name"), &Value::String("Grace".into()));
 }
 
 #[test]
@@ -580,6 +650,7 @@ fn join_aggregates_reduce_naked_duplicate_tuples_and_empty_results() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![
@@ -803,6 +874,7 @@ fn validation_rejects_duplicate_join_ids_and_invalid_plan_paths() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph::default(),
         root: Scope {
             children: vec![row, other],
@@ -893,6 +965,7 @@ fn validation_scopes_join_aggregate_expression_but_not_argument() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: [
                 (

@@ -1,6 +1,6 @@
 # Ferrule Mapping Workflow Roadmap
 
-Updated: 2026-07-13
+Updated: 2026-07-15
 
 ## Goal
 
@@ -26,15 +26,16 @@ clean-room interoperability, and extensible adapters.
   stable sorting, item limits, conditionals, value maps, lookups,
   duplicate-preserving multi-source inner equijoins, positions, seven
   aggregates, computed aggregate expressions, root and nested dynamic JSON target
-  properties,
+  properties, per-item dynamic typed document sources, multiple mapped outputs,
   structural group projection, mapped and computed XML occurrence sequences,
-  contiguous boundary-driven grouping, and 51 scalar built-ins.
+  contiguous boundary-driven grouping, bounded recursive filter/path/adjacency
+  constructions, and an expanding scalar function library.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- Known architectural constraints: one primary input and one target instance
-  per run, scalar graph outputs, fixed-path extra sources, no trace API, and
-  no project-level reusable functions.
+- Known architectural constraints: one primary driver input per run, scalar graph
+  outputs, no general endpoint/stage DAG, no trace API, and no project-level
+  reusable functions.
 
 ## Capability Matrix
 
@@ -42,11 +43,11 @@ clean-room interoperability, and extensible adapters.
 | --- | --- | --- |
 | XML | XSD subset, includes/imports, attributes, simple content, `xsi:nil`, selected derived-type output | Namespace identity, derived-type input identity, wildcards, mixed content |
 | JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`, typed dynamic properties | General union/composition schemas, mixed arrays, unconstrained dynamic values |
-| Flat files | Delimited CSV, fixed length, reusable FlexText layouts | Additional FlexText commands and string-fed parsing |
-| Database | Relational SQLite reads, flat-table full-replace output, imported WHERE/ORDER controls, and static/correlated single-table queries | General query model, relational writes, insert/update/delete, PostgreSQL |
+| Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
+| Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, and static/correlated queries | General query model, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | XLSX, Protobuf targets, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL plus remaining PDF extraction variants and PDF targets |
-| Dataflow | One primary source plus named lookup/join sources; one target | Named N-to-M endpoints, runtime paths/parameters, ordered stage DAG |
+| Other formats | XLSX including hierarchical and update-existing targets, Protobuf targets, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL plus remaining PDF extraction variants and PDF targets |
+| Dataflow | One primary driver plus named static/dynamic sources and multiple mapped targets | Fully general named N-to-M endpoints, runtime parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor | Blank-project authoring, undo/layout, schema wizards, auto-connect, preview |

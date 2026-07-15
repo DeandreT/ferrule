@@ -340,7 +340,7 @@ fn parse_delimited_records(node: &roxmltree::Node<'_, '_>) -> Result<FlexCommand
     let fields = record_fields(node, |_field, name, ty| {
         DelimitedRecordField::new(name, ty).map_err(|error| format!("invalid CSV field ({error})"))
     })?;
-    let field_separator = single_character(&value_child(node, "FieldSeparator")?, "CSV field")?;
+    let field_separator = value_child(node, "FieldSeparator")?;
     let record_separator = value_child(node, "RecordSeparator")?;
     let quote = single_character(
         node.attribute("QuoteCharacter").unwrap_or("\""),
@@ -350,8 +350,13 @@ fn parse_delimited_records(node: &roxmltree::Node<'_, '_>) -> Result<FlexCommand
         node.attribute("EscapeCharacter").unwrap_or("\""),
         "CSV escape",
     )?;
-    let dialect = DelimitedDialect::new(field_separator, record_separator, quote, escape)
-        .map_err(|error| format!("invalid CSV dialect ({error})"))?;
+    let dialect = DelimitedDialect::new_with_field_separator(
+        field_separator,
+        record_separator,
+        quote,
+        escape,
+    )
+    .map_err(|error| format!("invalid CSV dialect ({error})"))?;
     Ok(FlexCommand::DelimitedRecords {
         name: value_child(node, "RecordName")?,
         dialect,

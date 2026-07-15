@@ -14,7 +14,7 @@ use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use ir::Value;
-use mapping::{AggregateOp, Binding, Graph, Node, NodeId, Scope};
+use mapping::{AggregateOp, Binding, Graph, NamedTarget, Node, NodeId, Scope};
 
 use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
@@ -57,6 +57,13 @@ fn set_sequence_input(sequence: &mut mapping::SequenceExpr, index: usize, node: 
                 *to = node;
             }
         }
+        mapping::SequenceExpr::RecursiveCollect {
+            prefix, separator, ..
+        } => match index {
+            0 => *prefix = node,
+            1 => *separator = node,
+            _ => {}
+        },
     }
 }
 
@@ -65,6 +72,7 @@ fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
+        mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
 }
 
@@ -84,12 +92,17 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> &'stati
             ["from", "to"].get(index).copied().unwrap_or("input")
         }
         mapping::SequenceExpr::Generate { from: None, .. } => "to",
+        mapping::SequenceExpr::RecursiveCollect { .. } => ["prefix", "separator"]
+            .get(index)
+            .copied()
+            .unwrap_or("input"),
     }
 }
 
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
     pub root_scope: &'a mut Scope,
+    pub extra_targets: &'a [NamedTarget],
     pub source_leaves: &'a [SourceLeaf],
     pub target_leaves: &'a [TargetLeaf],
     pub source_paths: &'a SourcePathCatalog,
@@ -238,6 +251,14 @@ impl GraphViewer<'_> {
             },
             Node::ValueMap { input, .. } => *input = from_id,
             Node::Lookup { matches, .. } => *matches = from_id,
+            Node::DynamicSourceField { key, .. } => *key = from_id,
+            Node::CollectionFind {
+                predicate, value, ..
+            } => match idx {
+                0 => *predicate = from_id,
+                1 => *value = from_id,
+                _ => return false,
+            },
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -292,6 +313,10 @@ impl GraphViewer<'_> {
             } => [*condition, *then, *else_].get(idx).copied(),
             Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
             Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
+            Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
+            Node::CollectionFind {
+                predicate, value, ..
+            } => [*predicate, *value].get(idx).copied(),
             Node::SequenceExists {
                 sequence,
                 predicate,
@@ -373,7 +398,7 @@ impl GraphViewer<'_> {
     }
 
     fn references_to(&self, needle: NodeId) -> Vec<String> {
-        graph_references::references_to(self.graph, self.root_scope, needle)
+        graph_references::references_to(self.graph, self.root_scope, self.extra_targets, needle)
     }
 
     fn remove_orphaned_placeholder(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
@@ -483,7 +508,8 @@ impl GraphViewer<'_> {
             | Node::RuntimeValue { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
-            Node::ValueMap { .. } | Node::Lookup { .. } => 1,
+            Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
+            Node::CollectionFind { .. } => 2,
             Node::SequenceExists {
                 sequence,
                 predicate: _,
@@ -539,6 +565,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Some(Node::ValueMap { .. }) => "Value Map".to_string(),
                 Some(Node::Lookup { collection, .. }) => {
                     format!("Lookup: {}", collection.join("/"))
+                }
+                Some(Node::DynamicSourceField { object, .. }) => {
+                    format!("Dynamic field: {}", object.join("/"))
+                }
+                Some(Node::CollectionFind { collection, .. }) => {
+                    format!("Find: {}", collection.join("/"))
                 }
                 Some(Node::SequenceExists { sequence, .. }) => {
                     format!("Exists: {}", sequence_label(sequence))
@@ -610,6 +642,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                     Some(Node::ValueMap { .. }) => "input".to_string(),
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
+                    Some(Node::DynamicSourceField { .. }) => "property name".to_string(),
+                    Some(Node::CollectionFind { .. }) => ["predicate", "value"][idx].to_string(),
                     Some(Node::SequenceExists { sequence, .. }) => {
                         sequence_pin_label(sequence, idx).to_string()
                     }
@@ -737,6 +771,26 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             );
                             ui.end_row();
                         });
+                    });
+                }
+                Node::DynamicSourceField { object, frame, .. } => {
+                    ui.label(format!(
+                        "open source object: {}{}",
+                        frame
+                            .as_ref()
+                            .map(|path| format!("{}/", path.join("/")))
+                            .unwrap_or_default(),
+                        object.join("/")
+                    ));
+                }
+                Node::CollectionFind { collection, .. } => {
+                    ui.horizontal(|ui| {
+                        ui.label("collection");
+                        self.source_paths.show_collection_picker(
+                            ui,
+                            ui.id().with("find_collection"),
+                            collection,
+                        );
                     });
                 }
                 Node::SequenceExists { sequence, .. } => {
@@ -1125,6 +1179,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 key: vec![],
                 matches: inputs[0],
                 value: vec![],
+            });
+            ui.close();
+        }
+        if ui.button("Find in collection").clicked() {
+            self.insert_with_placeholders(snarl, pos, 2, |inputs| Node::CollectionFind {
+                collection: vec![],
+                predicate: inputs[0],
+                value: inputs[1],
             });
             ui.close();
         }

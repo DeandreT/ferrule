@@ -73,6 +73,44 @@ fn root_group_projects_nested_scalars_simple_content_and_attributes() {
 }
 
 #[test]
+fn group_copy_below_repeated_owner_projects_the_connected_descendant() {
+    let dir = TempDir::new();
+    let source_xsd = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Address"><xs:complexType><xs:sequence><xs:element name="City" type="xs:string"/><xs:element name="PostalCode" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#;
+    write(&dir.0.join("source.xsd"), source_xsd);
+    write(
+        &dir.0.join("target.xsd"),
+        &source_xsd.replace("name=\"Source\"", "name=\"Target\""),
+    );
+    write(
+        &dir.0.join("source.xml"),
+        "<Source><Row><Address><City>Seattle</City><PostalCode>98101</PostalCode></Address></Row><Row><Address><City>Portland</City><PostalCode>97205</PostalCode></Address></Row></Source>",
+    );
+    write(
+        &dir.0.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Row" outkey="10"><entry name="Address" outkey="11"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Row" inpkey="20"><entry name="Address" inpkey="21"/></entry></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21" edgekey="90"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    );
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = format_xml::read(&dir.0.join("source.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let rows = target.field("Row").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        scalar(rows[0].field("Address").unwrap(), "City"),
+        &Value::String("Seattle".into())
+    );
+    assert_eq!(
+        scalar(rows[1].field("Address").unwrap(), "PostalCode"),
+        &Value::String("97205".into())
+    );
+}
+
+#[test]
 fn connected_leaf_makes_its_parent_group_port_redundant() {
     let dir = TempDir::new();
     let source_xsd = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Group"><xs:complexType><xs:sequence><xs:element name="A" type="xs:string"/><xs:element name="B" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#;

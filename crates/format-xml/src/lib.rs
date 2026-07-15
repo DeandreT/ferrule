@@ -7,12 +7,14 @@ pub mod xsd;
 use std::io::Cursor;
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_TYPE_FIELD};
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use thiserror::Error;
 
 use generic::{read_generic_element, read_group_fields, write_generic_element};
+
+const MAX_XML_RECURSION_DEPTH: usize = 256;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
@@ -89,8 +91,16 @@ pub enum XmlFormatError {
         "schema group `{group}` has alternatives whose xsi:type identity XML input cannot preserve"
     )]
     UnsupportedAlternativeRead { group: String },
+    #[error("element `{name}` has invalid xsi:type QName `{value}`")]
+    InvalidXmlType { name: String, value: String },
+    #[error("element `{name}` has undeclared xsi:type `{value}`")]
+    UnknownXmlType { name: String, value: String },
     #[error("generic XML element item has no non-empty LocalName or NodeName field")]
     MissingGenericElementName,
+    #[error("recursive schema reference `{node}` targets non-root anchor `{anchor}`")]
+    UnsupportedRecursiveAnchor { node: String, anchor: String },
+    #[error("XML recursion exceeds the {limit}-element depth limit")]
+    RecursionLimit { limit: usize },
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.
@@ -111,12 +121,29 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatEr
             found: root.tag_name().name().to_string(),
         });
     }
-    read_node(&root, schema)
+    read_node(&root, schema, schema, 0)
 }
 
-fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+fn read_node(
+    el: &roxmltree::Node,
+    schema: &SchemaNode,
+    root_schema: &SchemaNode,
+    recursion_depth: usize,
+) -> Result<Instance, XmlFormatError> {
+    let resolved;
+    let schema = if let Some(anchor) = &schema.recursive_ref {
+        if recursion_depth >= MAX_XML_RECURSION_DEPTH {
+            return Err(XmlFormatError::RecursionLimit {
+                limit: MAX_XML_RECURSION_DEPTH,
+            });
+        }
+        resolved = resolve_recursive_schema(schema, root_schema, anchor)?;
+        &resolved
+    } else {
+        schema
+    };
     if schema.name == XML_ELEMENTS_FIELD {
-        return read_generic_element(el, schema);
+        return read_generic_element(el, schema, root_schema, recursion_depth);
     }
     let xml_nil = has_xml_nil(el, schema)?;
     match &schema.kind {
@@ -137,14 +164,136 @@ fn read_node(el: &roxmltree::Node, schema: &SchemaNode) -> Result<Instance, XmlF
                     name: schema.name.clone(),
                 });
             }
-            if !alternatives.is_empty() {
-                return Err(XmlFormatError::UnsupportedAlternativeRead {
-                    group: schema.name.clone(),
-                });
+            let mut instance =
+                read_group_fields(el, children, false, root_schema, recursion_depth)?;
+            if alternatives.is_empty() {
+                return Ok(instance);
             }
-            read_group_fields(el, children, false)
+            let alternative = input_group_alternative(el, schema, alternatives, &instance)?;
+            let Instance::Group(fields) = &mut instance else {
+                unreachable!("read_group_fields always returns a group")
+            };
+            fields.push((
+                XML_TYPE_FIELD.to_string(),
+                Instance::Scalar(Value::String(alternative.name.clone())),
+            ));
+            Ok(instance)
         }
     }
+}
+
+fn input_group_alternative<'a>(
+    element: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+    alternatives: &'a [ir::GroupAlternative],
+    instance: &Instance,
+) -> Result<&'a ir::GroupAlternative, XmlFormatError> {
+    const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    let fields = group_fields(instance);
+    let selected = match element.attribute((XSI, "type")) {
+        Some(value) => {
+            let expanded = expand_xml_qname(element, schema, value)?;
+            alternatives
+                .iter()
+                .find(|alternative| alternative.name == expanded)
+                .ok_or_else(|| XmlFormatError::UnknownXmlType {
+                    name: schema.name.clone(),
+                    value: expanded,
+                })?
+        }
+        None => select_group_alternative(schema, alternatives, fields)?.ok_or_else(|| {
+            XmlFormatError::NoMatchingAlternative {
+                name: schema.name.clone(),
+            }
+        })?,
+    };
+    validate_alternative_fields(schema, selected, fields)?;
+    Ok(selected)
+}
+
+fn expand_xml_qname(
+    element: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+    value: &str,
+) -> Result<String, XmlFormatError> {
+    let invalid = || XmlFormatError::InvalidXmlType {
+        name: schema.name.clone(),
+        value: value.to_string(),
+    };
+    if value.is_empty() || value.chars().any(char::is_whitespace) {
+        return Err(invalid());
+    }
+    let (prefix, local) = match value.split_once(':') {
+        Some((prefix, local))
+            if !prefix.is_empty() && !local.is_empty() && !local.contains(':') =>
+        {
+            (Some(prefix), local)
+        }
+        Some(_) => return Err(invalid()),
+        None => (None, value),
+    };
+    Ok(match element.lookup_namespace_uri(prefix) {
+        Some(namespace) if !namespace.is_empty() => format!("{{{namespace}}}{local}"),
+        Some(_) | None if prefix.is_none() => local.to_string(),
+        Some(_) | None => return Err(invalid()),
+    })
+}
+
+fn group_fields(instance: &Instance) -> &[(String, Instance)] {
+    let Instance::Group(fields) = instance else {
+        unreachable!("read_group_fields always returns a group")
+    };
+    fields
+}
+
+fn validate_alternative_fields(
+    schema: &SchemaNode,
+    alternative: &ir::GroupAlternative,
+    fields: &[(String, Instance)],
+) -> Result<(), XmlFormatError> {
+    if fields.iter().any(|(name, instance)| {
+        name != XML_TYPE_FIELD
+            && instance_has_value(instance)
+            && !alternative.members.contains(name)
+    }) || alternative.required.iter().any(|required| {
+        !fields
+            .iter()
+            .any(|(name, instance)| name == required && instance_has_value(instance))
+    }) {
+        return Err(XmlFormatError::NoMatchingAlternative {
+            name: schema.name.clone(),
+        });
+    }
+    Ok(())
+}
+
+fn resolve_recursive_schema(
+    occurrence: &SchemaNode,
+    root: &SchemaNode,
+    anchor: &str,
+) -> Result<SchemaNode, XmlFormatError> {
+    let mut resolved = find_concrete_group(root, anchor)
+        .cloned()
+        .ok_or_else(|| XmlFormatError::MissingElement(format!("recursive anchor `{anchor}`")))?;
+    resolved.name.clone_from(&occurrence.name);
+    resolved.repeating = occurrence.repeating;
+    resolved.nillable = occurrence.nillable;
+    Ok(resolved)
+}
+
+fn find_concrete_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
+    if schema.recursive_ref.is_none()
+        && schema.name == anchor
+        && matches!(schema.kind, SchemaKind::Group { .. })
+    {
+        return Some(schema);
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return None;
+    };
+    children
+        .iter()
+        .find_map(|child| find_concrete_group(child, anchor))
 }
 
 fn has_xml_nil(
@@ -219,7 +368,7 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Xml
         Some("UTF-8"),
         None,
     )))?;
-    write_node(&mut writer, schema, instance, true)?;
+    write_node(&mut writer, schema, schema, instance, true, 0)?;
     let bytes = writer.into_inner().into_inner();
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -227,16 +376,30 @@ pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, Xml
 fn write_node<W: std::io::Write>(
     writer: &mut Writer<W>,
     schema: &SchemaNode,
+    root_schema: &SchemaNode,
     instance: &Instance,
     is_root: bool,
+    recursion_depth: usize,
 ) -> Result<(), XmlFormatError> {
+    let resolved;
+    let schema = if let Some(anchor) = &schema.recursive_ref {
+        if recursion_depth >= MAX_XML_RECURSION_DEPTH {
+            return Err(XmlFormatError::RecursionLimit {
+                limit: MAX_XML_RECURSION_DEPTH,
+            });
+        }
+        resolved = resolve_recursive_schema(schema, root_schema, anchor)?;
+        &resolved
+    } else {
+        schema
+    };
     if schema.name == XML_ELEMENTS_FIELD && !is_root {
         let items = match instance {
             Instance::Repeated(items) | Instance::MappedSequence(items) => items,
             other => return Err(shape_error(schema, "generic XML elements", other)),
         };
         for item in items {
-            write_generic_element(writer, schema, item)?;
+            write_generic_element(writer, schema, root_schema, item, recursion_depth)?;
         }
         return Ok(());
     }
@@ -250,7 +413,7 @@ fn write_node<W: std::io::Write>(
             return Err(shape_error(schema, expected, instance));
         }
         for item in items {
-            write_single_node(writer, schema, item)?;
+            write_single_node(writer, schema, root_schema, item, recursion_depth)?;
         }
         return Ok(());
     }
@@ -259,7 +422,7 @@ fn write_node<W: std::io::Write>(
             return Err(shape_error(schema, "repeating elements", instance));
         };
         for item in items {
-            write_single_node(writer, schema, item)?;
+            write_single_node(writer, schema, root_schema, item, recursion_depth)?;
         }
         return Ok(());
     }
@@ -271,13 +434,15 @@ fn write_node<W: std::io::Write>(
         };
         return Err(shape_error(schema, expected, instance));
     }
-    write_single_node(writer, schema, instance)
+    write_single_node(writer, schema, root_schema, instance, recursion_depth)
 }
 
 fn write_single_node<W: std::io::Write>(
     writer: &mut Writer<W>,
     schema: &SchemaNode,
+    root_schema: &SchemaNode,
     instance: &Instance,
+    recursion_depth: usize,
 ) -> Result<(), XmlFormatError> {
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
@@ -307,7 +472,7 @@ fn write_single_node<W: std::io::Write>(
             },
             Instance::Group(fields),
         ) => {
-            validate_group_fields(schema, children, fields)?;
+            validate_group_fields(schema, children, alternatives, fields)?;
             let mut start = BytesStart::new(schema.name.clone());
             if let Some(alternative) = select_group_alternative(schema, alternatives, fields)? {
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
@@ -377,7 +542,14 @@ fn write_single_node<W: std::io::Write>(
                     {
                         continue;
                     }
-                    write_node(writer, child_schema, child_instance, false)?;
+                    write_node(
+                        writer,
+                        child_schema,
+                        root_schema,
+                        child_instance,
+                        false,
+                        recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
+                    )?;
                 }
             }
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
@@ -396,9 +568,26 @@ fn select_group_alternative<'a>(
     if alternatives.is_empty() {
         return Ok(None);
     }
+    if let Some((_, marker)) = fields.iter().find(|(name, _)| name == XML_TYPE_FIELD) {
+        let Instance::Scalar(Value::String(type_name)) = marker else {
+            return Err(XmlFormatError::InvalidXmlType {
+                name: schema.name.clone(),
+                value: "non-string internal marker".to_string(),
+            });
+        };
+        let selected = alternatives
+            .iter()
+            .find(|alternative| alternative.name == *type_name)
+            .ok_or_else(|| XmlFormatError::UnknownXmlType {
+                name: schema.name.clone(),
+                value: type_name.clone(),
+            })?;
+        validate_alternative_fields(schema, selected, fields)?;
+        return Ok(Some(selected));
+    }
     let populated: Vec<&str> = fields
         .iter()
-        .filter(|(_, instance)| instance_has_value(instance))
+        .filter(|(name, instance)| name != XML_TYPE_FIELD && instance_has_value(instance))
         .map(|(name, _)| name.as_str())
         .collect();
     let mut matches = alternatives.iter().filter(|alternative| {
@@ -439,10 +628,12 @@ fn split_expanded_name(name: &str) -> (Option<&str>, &str) {
 fn validate_group_fields(
     schema: &SchemaNode,
     children: &[SchemaNode],
+    alternatives: &[ir::GroupAlternative],
     fields: &[(String, Instance)],
 ) -> Result<(), XmlFormatError> {
     for (index, (name, _)) in fields.iter().enumerate() {
-        if !children.iter().any(|child| child.name == *name) {
+        let xml_type_marker = name == XML_TYPE_FIELD && !alternatives.is_empty();
+        if !xml_type_marker && !children.iter().any(|child| child.name == *name) {
             return Err(XmlFormatError::UnexpectedField {
                 group: schema.name.clone(),
                 field: name.clone(),
@@ -537,7 +728,7 @@ fn integral_i64(value: f64) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::{XML_LOCAL_NAME_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD};
+    use ir::{XML_ATTRIBUTES_FIELD, XML_LOCAL_NAME_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD};
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -996,6 +1187,62 @@ mod tests {
     }
 
     #[test]
+    fn generic_elements_preserve_ordered_runtime_attributes() {
+        let attributes = SchemaNode::group(
+            XML_ATTRIBUTES_FIELD,
+            vec![
+                SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+                SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            ],
+        )
+        .repeating();
+        let generic = SchemaNode::group(
+            XML_ELEMENTS_FIELD,
+            vec![
+                SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+                attributes,
+                SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            ],
+        )
+        .repeating();
+        let schema = SchemaNode::group("Record", vec![generic]);
+
+        let instance = from_str(
+            "<Record><Field name=\"FirstName\" type=\"string\"/></Record>",
+            &schema,
+        )
+        .unwrap();
+        let field = instance
+            .field(XML_ELEMENTS_FIELD)
+            .and_then(Instance::as_repeated)
+            .and_then(|items| items.first())
+            .unwrap();
+        let attributes = field
+            .field(XML_ATTRIBUTES_FIELD)
+            .and_then(Instance::as_repeated)
+            .unwrap();
+        assert_eq!(attributes.len(), 2);
+        assert_eq!(
+            attributes[0]
+                .field(XML_LOCAL_NAME_FIELD)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("name".into()))
+        );
+        assert_eq!(
+            attributes[0]
+                .field(XML_TEXT_FIELD)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("FirstName".into()))
+        );
+
+        let xml = to_string(&schema, &instance).unwrap();
+        assert!(
+            xml.contains("<Field name=\"FirstName\" type=\"string\">"),
+            "{xml}"
+        );
+    }
+
+    #[test]
     fn group_alternatives_emit_selected_xsi_type_and_integral_float() {
         let address = SchemaNode::group(
             "Address",
@@ -1019,9 +1266,23 @@ mod tests {
             },
         ])
         .unwrap();
+        let read = from_str(
+            r#"<Address xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:t="urn:ferrule:test" xsi:type="t:Domestic"><name>Ada</name></Address>"#,
+            &address,
+        )
+        .unwrap();
+        assert_eq!(
+            read.field(XML_TYPE_FIELD).and_then(Instance::as_scalar),
+            Some(&Value::String("{urn:ferrule:test}Domestic".into()))
+        );
+        let read_xml = to_string(&address, &read).unwrap();
+        assert!(read_xml.contains("xsi:type=\"ft:Domestic\""), "{read_xml}");
         assert!(matches!(
-            from_str("<Address><name>Ada</name></Address>", &address),
-            Err(XmlFormatError::UnsupportedAlternativeRead { .. })
+            from_str(
+                r#"<Address xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="Missing"><name>Ada</name></Address>"#,
+                &address,
+            ),
+            Err(XmlFormatError::UnknownXmlType { .. })
         ));
         let schema = SchemaNode::group("Root", vec![address]);
         let instance = Instance::Group(vec![(
@@ -1110,5 +1371,58 @@ mod tests {
             ),
             Err(XmlFormatError::XmlNilWithContent { .. })
         ));
+    }
+
+    #[test]
+    fn recursive_groups_round_trip_and_export_as_root_references() {
+        let schema = SchemaNode::group(
+            "directory",
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::recursive_group("directory", "directory").repeating(),
+            ],
+        );
+        let instance = recursive_directory("root", Some(recursive_directory("child", None)));
+
+        let xml = to_string(&schema, &instance).unwrap();
+        assert!(xml.contains("<directory>\n    <name>child</name>"), "{xml}");
+        assert_eq!(from_str(&xml, &schema).unwrap(), instance);
+
+        let xsd = xsd::export(&schema).unwrap();
+        assert!(
+            xsd.contains("<xs:element ref=\"directory\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>"),
+            "{xsd}"
+        );
+    }
+
+    #[test]
+    fn recursive_xml_writes_are_depth_bounded() {
+        let schema = SchemaNode::group(
+            "directory",
+            vec![SchemaNode::recursive_group("directory", "directory")],
+        );
+        let mut instance = Instance::Group(Vec::new());
+        for _ in 0..=MAX_XML_RECURSION_DEPTH {
+            instance = Instance::Group(vec![("directory".into(), instance)]);
+        }
+        assert!(matches!(
+            to_string(&schema, &instance),
+            Err(XmlFormatError::RecursionLimit {
+                limit: MAX_XML_RECURSION_DEPTH
+            })
+        ));
+    }
+
+    fn recursive_directory(name: &str, child: Option<Instance>) -> Instance {
+        Instance::Group(vec![
+            (
+                "name".into(),
+                Instance::Scalar(Value::String(name.to_string())),
+            ),
+            (
+                "directory".into(),
+                Instance::Repeated(child.into_iter().collect()),
+            ),
+        ])
     }
 }

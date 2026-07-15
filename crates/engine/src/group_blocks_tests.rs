@@ -85,6 +85,7 @@ fn project(block_size: Value) -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             children: vec![block],

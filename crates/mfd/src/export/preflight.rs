@@ -3,6 +3,51 @@ use mapping::{Project, Scope, ScopeConstruction};
 use crate::MfdError;
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    if !project.extra_targets.is_empty() {
+        return Err(MfdError::Unsupported(
+            "projects with additional targets cannot be exported to .mfd yet".to_string(),
+        ));
+    }
+    if has_concatenated_scope(&project.root) {
+        return Err(MfdError::Unsupported(
+            "concatenated target scope export is not supported".to_string(),
+        ));
+    }
+    if has_recursive_sequence(&project.root) {
+        return Err(MfdError::Unsupported(
+            "recursive scalar sequence export is not supported".to_string(),
+        ));
+    }
+    if has_scalar_construction(&project.root) {
+        return Err(MfdError::Unsupported(
+            "scalar scope construction export is not supported".to_string(),
+        ));
+    }
+    if has_recursive_filter(&project.root) {
+        return Err(MfdError::Unsupported(
+            "recursive-filter scope construction export is not supported".to_string(),
+        ));
+    }
+    if has_path_hierarchy(&project.root) {
+        return Err(MfdError::Unsupported(
+            "path-hierarchy scope construction export is not supported".to_string(),
+        ));
+    }
+    if has_adjacency_tree(&project.root) {
+        return Err(MfdError::Unsupported(
+            "adjacency-tree scope construction export is not supported".to_string(),
+        ));
+    }
+    if project
+        .graph
+        .nodes
+        .values()
+        .any(|node| matches!(node, mapping::Node::DynamicSourceField { .. }))
+    {
+        return Err(MfdError::Unsupported(
+            "runtime-named JSON source field export is not supported".to_string(),
+        ));
+    }
     if project.source_options.xbrl.is_some()
         || project.target_options.xbrl.is_some()
         || project
@@ -45,6 +90,57 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         ));
     }
     validate_copy_current_source(project)
+}
+
+fn has_concatenated_scope(scope: &Scope) -> bool {
+    scope.concatenated().is_some()
+        || scope.children.iter().any(has_concatenated_scope)
+        || scope
+            .dynamic_children
+            .iter()
+            .any(|child| has_concatenated_scope(&child.scope))
+}
+
+fn has_recursive_sequence(scope: &Scope) -> bool {
+    matches!(
+        scope.sequence(),
+        Some(mapping::SequenceExpr::RecursiveCollect { .. })
+    ) || nested_scopes(scope).any(has_recursive_sequence)
+}
+
+fn has_scalar_construction(scope: &Scope) -> bool {
+    matches!(&scope.construction, ScopeConstruction::Scalar { .. })
+        || nested_scopes(scope).any(has_scalar_construction)
+}
+
+fn has_recursive_filter(scope: &Scope) -> bool {
+    matches!(
+        &scope.construction,
+        ScopeConstruction::RecursiveFilter { .. }
+    ) || nested_scopes(scope).any(has_recursive_filter)
+}
+
+fn has_path_hierarchy(scope: &Scope) -> bool {
+    matches!(&scope.construction, ScopeConstruction::PathHierarchy { .. })
+        || nested_scopes(scope).any(has_path_hierarchy)
+}
+
+fn has_adjacency_tree(scope: &Scope) -> bool {
+    matches!(&scope.construction, ScopeConstruction::AdjacencyTree { .. })
+        || nested_scopes(scope).any(has_adjacency_tree)
+}
+
+fn nested_scopes(scope: &Scope) -> impl Iterator<Item = &Scope> {
+    scope
+        .children
+        .iter()
+        .chain(scope.dynamic_children.iter().map(|child| &child.scope))
+        .chain(
+            scope
+                .concatenated()
+                .into_iter()
+                .flat_map(|segments| segments.iter()),
+        )
 }
 
 fn has_conflicting_http_source_options(project: &Project) -> bool {
@@ -108,4 +204,33 @@ fn has_copy(scope: &Scope) -> bool {
             .dynamic_children
             .iter()
             .any(|child| has_copy(&child.scope))
+}
+
+#[cfg(test)]
+mod tests {
+    use mapping::{AdjacencyTreePlan, Scope, ScopeConstruction};
+
+    use super::has_adjacency_tree;
+
+    #[test]
+    fn detects_nested_adjacency_tree_construction() {
+        let mut root = Scope::default();
+        root.children.push(Scope {
+            target_field: "tree".into(),
+            construction: ScopeConstruction::AdjacencyTree {
+                plan: AdjacencyTreePlan::new(
+                    vec!["row".into()],
+                    vec!["name".into()],
+                    vec!["base".into()],
+                    "name".into(),
+                    "children".into(),
+                    None,
+                )
+                .unwrap(),
+            },
+            ..Scope::default()
+        });
+
+        assert!(has_adjacency_tree(&root));
+    }
 }

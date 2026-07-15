@@ -58,6 +58,7 @@ impl Fixture {
         GraphViewer {
             graph: &mut self.graph,
             root_scope: &mut self.root_scope,
+            extra_targets: &[],
             source_leaves: &self.source_leaves,
             target_leaves: &self.target_leaves,
             source_paths: &self.source_paths,
@@ -171,6 +172,7 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
     let mut viewer = GraphViewer {
         graph: &mut graph,
         root_scope: &mut root_scope,
+        extra_targets: &[],
         source_leaves: &source_leaves,
         target_leaves: &target_leaves,
         source_paths: &source_paths,
@@ -943,5 +945,32 @@ fn generated_sequence_nodes_are_protected_from_deletion() {
     assert_eq!(
         fx.viewer().references_to(3),
         vec!["root scope sequence item"]
+    );
+}
+
+#[test]
+fn adjacency_tree_root_node_is_protected_from_deletion() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(
+        1,
+        Node::Const {
+            value: Value::String("Root".into()),
+        },
+    );
+    fx.root_scope.construction = mapping::ScopeConstruction::AdjacencyTree {
+        plan: mapping::AdjacencyTreePlan::new(
+            vec!["row".into()],
+            vec!["name".into()],
+            vec!["base".into()],
+            "name".into(),
+            "children".into(),
+            Some(1),
+        )
+        .unwrap(),
+    };
+
+    assert_eq!(
+        fx.viewer().references_to(1),
+        vec!["root scope adjacency-tree root"]
     );
 }

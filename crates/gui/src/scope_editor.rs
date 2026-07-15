@@ -121,6 +121,7 @@ fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
+        mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
 }
 
@@ -412,6 +413,13 @@ pub fn show_scope_editor(
                 }
             }
         }
+        ScopeIteration::Concatenate(segments) => {
+            ui.horizontal(|ui| {
+                ui.label("iteration:");
+                ui.label(format!("{} ordered row segments", segments.len()));
+            });
+            return;
+        }
         ScopeIteration::None | ScopeIteration::Source(_) => {
             ui.horizontal(|ui| {
                 ui.label("source path:");
@@ -651,6 +659,12 @@ fn node_label(node: &mapping::Node) -> String {
         mapping::Node::ValueMap { .. } => "value map".to_string(),
         mapping::Node::Lookup { collection, .. } => {
             format!("lookup {}", display_path(collection))
+        }
+        mapping::Node::DynamicSourceField { object, .. } => {
+            format!("dynamic field {}", display_path(object))
+        }
+        mapping::Node::CollectionFind { collection, .. } => {
+            format!("find {}", display_path(collection))
         }
         mapping::Node::SequenceExists { sequence, .. } => {
             format!("exists {}", generated_sequence_label(sequence))
