@@ -60,6 +60,7 @@ impl ExtraSourceDraft {
             path: path.to_owned(),
             schema,
             options: self.options,
+            dynamic_path: None,
         })
     }
 }
@@ -96,6 +97,7 @@ mod tests {
             path: format!("{name}.json"),
             schema: schema(name),
             options: FormatOptions::default(),
+            dynamic_path: None,
         }
     }
 

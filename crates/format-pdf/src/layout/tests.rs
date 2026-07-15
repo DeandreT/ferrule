@@ -20,6 +20,9 @@ fn glyph(text: &str, left: f64, top: f64, right: f64, bottom: f64) -> Glyph {
             right,
             bottom,
         },
+        font_face: None,
+        cell_height: bottom - top,
+        baseline_angle: 0.0,
     }
 }
 
@@ -410,6 +413,7 @@ fn vertical_collage_text_groups_keep_nested_records_open_across_pages() {
                 needle: "Warehouse:".into(),
                 case: PdfTextCase::Sensitive,
                 flexible_whitespace: true,
+                properties: Default::default(),
             },
             children: vec![
                 capture("Name", 40.0, 0.0, 100.0, 12.0),
@@ -436,6 +440,7 @@ fn vertical_collage_text_groups_keep_nested_records_open_across_pages() {
                 needle: "item code:".into(),
                 case: PdfTextCase::AsciiInsensitive,
                 flexible_whitespace: true,
+                properties: Default::default(),
             },
             children: vec![capture("Code", 40.0, 0.0, 100.0, 12.0), warehouses],
         }],
@@ -582,6 +587,7 @@ fn nested_text_groups_charge_each_parent_page_rescan() {
         needle: "row".into(),
         case: PdfTextCase::Sensitive,
         flexible_whitespace: false,
+        properties: Default::default(),
     };
     let inner = PdfCommand::TextGroups(PdfTextGroups {
         region: PdfRegion::full(),

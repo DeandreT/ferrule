@@ -20,8 +20,8 @@ pub(super) struct SourcePath {
 }
 
 /// Selects the ordinary input that most directly drives target repetition.
-/// Dynamic components without a stored instance remain secondary until the
-/// importer can represent their connected run-time resource path.
+/// Components with connected run-time resource paths remain secondary because
+/// their driver collection is represented explicitly on `NamedSource`.
 pub(super) fn primary_index(
     sources: &[&SchemaComponent],
     target: &SchemaComponent,
@@ -203,11 +203,12 @@ impl GraphBuilder<'_> {
     /// must all belong to one source and their repeated collections must form
     /// one ancestor chain.
     pub(super) fn computed_iteration_source(&self, feed: u32) -> Option<SourcePath> {
-        let component = self
+        if self
             .fn_by_output
             .get(&feed)
-            .and_then(|index| self.fn_components.get(*index))?;
-        if !is_plain_scalar_expression(component) {
+            .and_then(|index| self.fn_components.get(*index))
+            .is_some_and(|component| !is_plain_scalar_expression(component))
+        {
             return None;
         }
 
@@ -365,7 +366,7 @@ impl GraphBuilder<'_> {
         }
     }
 
-    fn suffix_after_framed(
+    pub(super) fn suffix_after_framed(
         &self,
         source: usize,
         schema: &SchemaNode,
@@ -393,7 +394,7 @@ impl GraphBuilder<'_> {
         }
     }
 
-    fn frame_for_field(
+    pub(super) fn frame_for_field(
         &self,
         source: usize,
         schema: &SchemaNode,

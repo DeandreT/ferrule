@@ -14,6 +14,7 @@ format-json = { workspace = true }
 format-db = { workspace = true }
 format-protobuf = { workspace = true }
 roxmltree = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
@@ -24,5 +25,3 @@ format-xlsx = { workspace = true }
 format-flextext = { workspace = true }
 rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }
-
-serde_json = { workspace = true }

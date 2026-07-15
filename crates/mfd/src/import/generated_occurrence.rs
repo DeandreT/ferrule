@@ -85,6 +85,7 @@ pub(super) fn infer(
         iterations.push(TargetIteration {
             target_path,
             feed,
+            additional_feeds: Vec::new(),
             output: IterationOutput::MappedSequence,
             projects_whole_group: false,
             join: None,

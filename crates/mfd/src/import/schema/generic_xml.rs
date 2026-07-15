@@ -1,6 +1,6 @@
 use ir::{
-    SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD, XML_NODE_NAME_FIELD,
-    XML_TEXT_FIELD,
+    SchemaKind, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD,
+    XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
 };
 
 use super::{entry_tree_schema, normalize_xml_entry_name};
@@ -9,12 +9,22 @@ pub(super) fn merge_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
     for child in entry.children().filter(|node| node.has_tag_name("entry")) {
         let (name, _) = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
         if name == XML_ELEMENTS_FIELD {
-            if let SchemaKind::Group { children, .. } = &mut schema.kind
-                && !children
-                    .iter()
-                    .any(|child| child.name == XML_ELEMENTS_FIELD)
-            {
-                children.push(generic_entry_schema(&child));
+            match &mut schema.kind {
+                SchemaKind::Group { children, .. }
+                    if !children
+                        .iter()
+                        .any(|child| child.name == XML_ELEMENTS_FIELD) =>
+                {
+                    children.push(generic_entry_schema(&child));
+                }
+                SchemaKind::Scalar { .. } => {
+                    schema.kind = SchemaKind::Group {
+                        children: vec![generic_entry_schema(&child)],
+                        dynamic: None,
+                        alternatives: Vec::new(),
+                    };
+                }
+                _ => {}
             }
         } else if child.attribute("type") == Some("xml-type") {
             merge_entries(&child, schema);
@@ -36,6 +46,12 @@ fn entry_children(entry: &roxmltree::Node) -> Vec<SchemaNode> {
     if !children.iter().any(|child| child.name == XML_TEXT_FIELD) {
         children.push(text_schema());
     }
+    if !children
+        .iter()
+        .any(|child| child.name == XML_ATTRIBUTES_FIELD)
+    {
+        children.push(attribute_schema());
+    }
     children
 }
 
@@ -45,6 +61,13 @@ fn collect_entry_children(entry: &roxmltree::Node, children: &mut Vec<SchemaNode
         let (name, legacy_attribute) = normalize_xml_entry_name(raw_name);
         if name == XML_ELEMENTS_FIELD {
             children.push(generic_entry_schema(&child));
+        } else if name == XML_ATTRIBUTES_FIELD {
+            if !children
+                .iter()
+                .any(|child| child.name == XML_ATTRIBUTES_FIELD)
+            {
+                children.push(attribute_schema());
+            }
         } else if name == XML_TEXT_FIELD || name == "text()" {
             if !children.iter().any(|child| child.name == XML_TEXT_FIELD) {
                 children.push(text_schema());
@@ -63,6 +86,17 @@ fn collect_entry_children(entry: &roxmltree::Node, children: &mut Vec<SchemaNode
 
 fn text_schema() -> SchemaNode {
     SchemaNode::scalar(XML_TEXT_FIELD, ir::ScalarType::String).text()
+}
+
+fn attribute_schema() -> SchemaNode {
+    SchemaNode::group(
+        XML_ATTRIBUTES_FIELD,
+        vec![
+            SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ir::ScalarType::String),
+            text_schema(),
+        ],
+    )
+    .repeating()
 }
 
 #[cfg(test)]
@@ -116,7 +150,12 @@ mod tests {
                 .iter()
                 .map(|child| child.name.as_str())
                 .collect::<Vec<_>>(),
-            [XML_LOCAL_NAME_FIELD, "Label", XML_TEXT_FIELD]
+            [
+                XML_LOCAL_NAME_FIELD,
+                "Label",
+                XML_TEXT_FIELD,
+                XML_ATTRIBUTES_FIELD,
+            ]
         );
         assert_one_text_child(&schema);
     }
@@ -142,7 +181,12 @@ mod tests {
                 .iter()
                 .map(|child| child.name.as_str())
                 .collect::<Vec<_>>(),
-            [XML_LOCAL_NAME_FIELD, XML_TEXT_FIELD, "Label"]
+            [
+                XML_LOCAL_NAME_FIELD,
+                XML_TEXT_FIELD,
+                "Label",
+                XML_ATTRIBUTES_FIELD,
+            ]
         );
         assert_one_text_child(&schema);
     }

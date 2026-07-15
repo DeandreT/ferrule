@@ -88,6 +88,46 @@ pub(crate) fn scalar_in_frame(
     scalar(&[instance], path)
 }
 
+pub(crate) fn dynamic_scalar(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    frame: Option<&[String]>,
+    object: &[String],
+    key: &str,
+) -> Option<Value> {
+    if let Some(frame) = frame {
+        let position_index = positions.iter().rposition(|position| {
+            position.collection == frame
+                || !position.collection.is_empty()
+                    && frame.ends_with(position.collection.as_slice())
+        })?;
+        let instance = context_for_position(context, positions, position_index)?;
+        return dynamic_scalar_in(instance, object, key).flatten();
+    }
+    for item in context.iter().rev() {
+        if let Some(value) = dynamic_scalar_in(item, object, key) {
+            return value;
+        }
+    }
+    None
+}
+
+/// The outer option says whether this frame contains the owning object; the
+/// inner option distinguishes an absent runtime property from that mismatch.
+fn dynamic_scalar_in(item: &Instance, object: &[String], key: &str) -> Option<Option<Value>> {
+    let mut current = item;
+    for segment in object {
+        if let Instance::Repeated(items) = current {
+            current = items.first()?;
+        }
+        current = current.field(segment)?;
+    }
+    if let Instance::Repeated(items) = current {
+        current = items.first()?;
+    }
+    Some(current.field(key).and_then(Instance::as_scalar).cloned())
+}
+
 pub(crate) fn join_scalar(
     context: &[&Instance],
     positions: &[PositionFrame],

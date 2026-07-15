@@ -117,6 +117,7 @@ fn two_way_project() -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -315,6 +316,7 @@ fn exports_and_round_trips_a_three_way_join() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,

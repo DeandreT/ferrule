@@ -1,6 +1,11 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
-use super::{instance_root_segments, normalize_xml_entry_name, read_json_component};
+use ir::{ScalarType, SchemaKind};
+
+use super::{
+    db_table_schema, instance_root_segments, normalize_xml_entry_name, read_json_component,
+};
 
 #[test]
 fn instance_root_paths_do_not_split_namespace_uris() {
@@ -80,4 +85,54 @@ fn nullable_json_target_uses_one_typed_property_port() {
 
     assert_eq!(component.ports.get(&22), Some(&vec!["Shares".into()]));
     assert!(!component.ports.contains_key(&28));
+}
+
+#[test]
+fn whole_table_ports_include_introspected_columns_missing_from_the_entry_tree() {
+    let document = roxmltree::Document::parse(
+        r#"<entry name="departments" type="table" outkey="7">
+            <entry name="id"/>
+            <entry name="people|department_id" type="table"/>
+        </entry>"#,
+    )
+    .unwrap();
+    let mut types = BTreeMap::new();
+    types.insert(
+        "departments".to_string(),
+        BTreeMap::from([
+            ("id".to_string(), ScalarType::Int),
+            ("name".to_string(), ScalarType::String),
+        ]),
+    );
+    types.insert(
+        "people".to_string(),
+        BTreeMap::from([
+            ("id".to_string(), ScalarType::Int),
+            ("department_id".to_string(), ScalarType::Int),
+        ]),
+    );
+
+    let schema = db_table_schema(&document.root_element(), &types);
+
+    assert!(matches!(
+        schema.child("id").map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Int
+        })
+    ));
+    assert!(matches!(
+        schema.child("name").map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::String
+        })
+    ));
+    assert!(matches!(
+        schema
+            .child("people|department_id")
+            .and_then(|people| people.child("department_id"))
+            .map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::Int
+        })
+    ));
 }

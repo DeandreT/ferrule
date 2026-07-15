@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ir::{Instance, Value};
 use mapping::{
     PdfCommand, PdfCoordinate, PdfEdgeFind, PdfLayout, PdfMerge, PdfMergeComposition, PdfReference,
-    PdfRegion, PdfTextCase, PdfTextGroupOutput, PdfTextGroups,
+    PdfRegion, PdfTextCase, PdfTextGroupOutput, PdfTextGroups, PdfTextProperties,
 };
 
 use crate::extract::{Glyph, Page, Rect};
@@ -190,6 +190,9 @@ fn vertical_collage(strips: Vec<(&Page, Rect)>) -> Result<Option<Page>, PdfError
             collage.glyphs.push(Glyph {
                 text: glyph.text.clone(),
                 bounds: translate_rect(clipped, -source.left, logical_top - source.top),
+                font_face: glyph.font_face.clone(),
+                cell_height: glyph.cell_height,
+                baseline_angle: glyph.baseline_angle,
             });
         }
         for edge in &page.horizontal_edges {
@@ -411,6 +414,7 @@ fn evaluate_text_groups(
                 group.matcher.case,
                 group.matcher.flexible_whitespace,
                 needle,
+                &group.matcher.properties,
             ))
         })
         .collect::<Result<Vec<_>, PdfError>>()?;
@@ -418,21 +422,37 @@ fn evaluate_text_groups(
     let mut markers = Vec::new();
     for line in marker_lines(page, region, budget)? {
         let mut normalized: [Option<String>; 4] = Default::default();
-        for (group_index, (case, flexible_whitespace, needle)) in prepared.iter().enumerate() {
+        for (group_index, (case, flexible_whitespace, needle, properties)) in
+            prepared.iter().enumerate()
+        {
             budget.work()?;
             let key = normalization_key(*case, *flexible_whitespace);
-            let haystack = match &normalized[key] {
-                Some(value) => value,
-                None => {
-                    let value = normalize_literal(
-                        &line.text,
-                        *case,
-                        *flexible_whitespace,
-                        "text-group visual line",
-                        budget,
-                    )?;
-                    normalized[key].insert(value)
+            let property_text;
+            let property_haystack;
+            let haystack = if properties.is_empty() {
+                match &normalized[key] {
+                    Some(value) => value,
+                    None => {
+                        let value = normalize_literal(
+                            &line.text,
+                            *case,
+                            *flexible_whitespace,
+                            "text-group visual line",
+                            budget,
+                        )?;
+                        normalized[key].insert(value)
+                    }
                 }
+            } else {
+                property_text = render_property_line(&line.glyphs, properties, budget)?;
+                property_haystack = normalize_literal(
+                    &property_text,
+                    *case,
+                    *flexible_whitespace,
+                    "text-group property line",
+                    budget,
+                )?;
+                &property_haystack
             };
             budget.work_units(
                 haystack
@@ -496,16 +516,17 @@ fn evaluate_text_groups(
     Ok(())
 }
 
-struct MarkerLine {
+struct MarkerLine<'a> {
     top: f64,
     text: String,
+    glyphs: Vec<&'a Glyph>,
 }
 
-fn marker_lines(
-    page: &Page,
+fn marker_lines<'a>(
+    page: &'a Page,
     region: Rect,
     budget: &mut OutputBudget,
-) -> Result<Vec<MarkerLine>, PdfError> {
+) -> Result<Vec<MarkerLine<'a>>, PdfError> {
     budget.work_units(page.glyphs.len())?;
     let mut glyphs = page
         .glyphs
@@ -547,12 +568,79 @@ fn marker_lines(
                 .iter()
                 .map(|glyph| glyph.bounds.top)
                 .fold(f64::INFINITY, f64::min);
-            Ok(MarkerLine {
-                top,
-                text: render_visual_line(&glyphs, "text-group visual line", budget)?,
-            })
+            let text = render_visual_line(&glyphs, "text-group visual line", budget)?;
+            Ok(MarkerLine { top, text, glyphs })
         })
         .collect()
+}
+
+fn render_property_line(
+    glyphs: &[&Glyph],
+    properties: &PdfTextProperties,
+    budget: &mut OutputBudget,
+) -> Result<String, PdfError> {
+    budget.work_units(glyphs.len())?;
+    let mut value = String::new();
+    let mut previous_right = None;
+    for glyph in glyphs {
+        if !glyph_matches_properties(glyph, properties) {
+            value.push('\0');
+            previous_right = None;
+            continue;
+        }
+        let height = (glyph.bounds.bottom - glyph.bounds.top).max(1.0);
+        if previous_right.is_some_and(|right| {
+            glyph.bounds.left - right > height * 0.15
+                && !value.ends_with(char::is_whitespace)
+                && !glyph.text.starts_with(char::is_whitespace)
+        }) {
+            value.push(' ');
+        }
+        value.push_str(&glyph.text);
+        previous_right = Some(glyph.bounds.right);
+        if value.len() > MAX_VALUE_BYTES {
+            return Err(PdfError::ValueTooLarge("text-group property line".into()));
+        }
+    }
+    Ok(value)
+}
+
+fn glyph_matches_properties(glyph: &Glyph, properties: &PdfTextProperties) -> bool {
+    if let Some(expected) = properties.font_face.as_deref()
+        && glyph
+            .font_face
+            .as_deref()
+            .map(canonical_font_face)
+            .is_none_or(|actual| actual != canonical_font_face(expected))
+    {
+        return false;
+    }
+    if let Some(expected) = properties.cell_height
+        && (glyph.cell_height - expected.value).abs() > expected.deviation + EMPTY_EPSILON
+    {
+        return false;
+    }
+    if let Some(expected) = properties.baseline_angle
+        && angle_distance(glyph.baseline_angle, expected.value) > expected.deviation + EMPTY_EPSILON
+    {
+        return false;
+    }
+    true
+}
+
+fn canonical_font_face(face: &str) -> &str {
+    face.split_once('+').map_or(face, |(prefix, name)| {
+        if prefix.len() == 6 && prefix.bytes().all(|byte| byte.is_ascii_uppercase()) {
+            name
+        } else {
+            face
+        }
+    })
+}
+
+fn angle_distance(left: f64, right: f64) -> f64 {
+    let difference = (left - right).rem_euclid(360.0);
+    difference.min(360.0 - difference)
 }
 
 fn render_visual_line(

@@ -18,6 +18,14 @@ fn imports_edi_entry_tree_paths_and_honors_default_output() {
     assert!(project.source_options.lenient_segments);
     assert_eq!(project.target.name, "People");
     assert_eq!(project.target_path.as_deref(), Some("people.xml"));
+    assert_eq!(project.extra_targets.len(), 1);
+    assert_eq!(project.extra_targets[0].name, "ignored");
+    assert_eq!(project.extra_targets[0].schema.name, "Ignored");
+    assert_eq!(project.extra_targets[0].root.bindings.len(), 1);
+    assert_eq!(
+        project.extra_targets[0].root.bindings[0].target_field,
+        "Value"
+    );
 
     let interchange = project.source.child("Interchange").unwrap();
     assert!(interchange.repeating);
@@ -46,16 +54,10 @@ fn imports_edi_entry_tree_paths_and_honors_default_output() {
         )
     }));
 
-    assert_eq!(imported.warnings.len(), 2, "{:?}", imported.warnings);
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("entry-tree schema inferred") && warning.contains("execution is disabled")
     }));
-    assert!(
-        imported
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("multiple target components"))
-    );
 }
 
 #[test]

@@ -69,6 +69,7 @@ fn group_by_partitions_iterated_items() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -196,6 +197,7 @@ fn filter_removes_candidates_before_grouping() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -325,6 +327,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -492,6 +495,7 @@ fn empty_path_child_iteration_selects_each_grouped_member_frame() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -649,6 +653,7 @@ fn aggregates_reduce_collections_in_context() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -816,6 +821,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -979,6 +985,7 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Tokenize {
@@ -1080,6 +1087,7 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {

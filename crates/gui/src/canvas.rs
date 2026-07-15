@@ -172,6 +172,10 @@ pub fn layered_layout(
             | mapping::Node::Lookup { matches: input, .. } => {
                 vec![*input]
             }
+            mapping::Node::DynamicSourceField { key, .. } => vec![*key],
+            mapping::Node::CollectionFind {
+                predicate, value, ..
+            } => vec![*predicate, *value],
             mapping::Node::SequenceExists {
                 sequence,
                 predicate,

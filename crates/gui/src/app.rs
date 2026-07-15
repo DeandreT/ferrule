@@ -253,6 +253,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             else_,
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
+        Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
         Node::SequenceExists {
             sequence,
             predicate,
@@ -280,6 +284,11 @@ fn walk_scopes(
             .position(|l| l.chain == *chain && l.field == binding.target_field)
         {
             out.push((binding.node, leaf));
+        }
+    }
+    if let Some(segments) = scope.concatenated() {
+        for segment in segments.iter() {
+            walk_scopes(segment, chain, target_pins, out);
         }
     }
     for child in &scope.children {
@@ -1152,6 +1161,7 @@ impl eframe::App for FerruleApp {
                 let mut viewer = GraphViewer {
                     graph: &mut self.project.graph,
                     root_scope: &mut self.project.root,
+                    extra_targets: &self.project.extra_targets,
                     source_leaves: &source_pins,
                     target_leaves: &target_pins,
                     source_paths: &source_paths,

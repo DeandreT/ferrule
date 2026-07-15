@@ -51,6 +51,7 @@ fn project() -> Project {
         source_options: mapping::FormatOptions::default(),
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![Binding {

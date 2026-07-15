@@ -10,6 +10,11 @@ pub(super) fn collect_scope_sequences<'a>(scope: &'a Scope, sequences: &mut Vec<
     if let Some(sequence) = scope.sequence() {
         sequences.push(sequence);
     }
+    if let Some(segments) = scope.concatenated() {
+        for segment in segments.iter() {
+            collect_scope_sequences(segment, sequences);
+        }
+    }
     for child in &scope.children {
         collect_scope_sequences(child, sequences);
     }

@@ -20,6 +20,15 @@ pub(super) fn eager_functions(builder: &mut GraphBuilder<'_>) {
             builder.fn_node(index);
         }
     }
+    // A dynamic JSON property selection claims its paired name/value ports
+    // as one expression. Build that recognizer before its ordinary scalar
+    // helper dependencies are visited independently.
+    for index in 0..builder.fn_components.len() {
+        let component = &builder.fn_components[index];
+        if component.kind == 5 && component.name == "logical-and" {
+            builder.fn_node(index);
+        }
+    }
     // Materialize every remaining value-producing function up front
     // (filters and group-bys are handled at the scope stage instead).
     // Outputless core components are annotations such as comments.

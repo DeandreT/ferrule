@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use mapping::{Graph, JoinId, JoinPlan, Node, NodeId, Project, Scope};
+use mapping::{Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, Project, Scope};
 
 use super::validate::{
     ValidationIssue, display_path, node_inputs, source_path_matches, validate_collection_value,
@@ -15,13 +15,24 @@ pub(super) fn validate_plan(
 ) {
     for source in plan.sources() {
         let collection = source.collection();
-        if !collection.is_empty()
-            && !source_path_matches(project, collection, |node| node.repeating)
-        {
+        let valid = match source.cardinality() {
+            JoinSourceCardinality::Repeating => {
+                collection.is_empty()
+                    || source_path_matches(project, collection, |node| node.repeating)
+            }
+            JoinSourceCardinality::Singleton => source_path_matches(project, collection, |node| {
+                !node.repeating && matches!(node.kind, ir::SchemaKind::Scalar { .. })
+            }),
+        };
+        if !valid {
+            let expected = match source.cardinality() {
+                JoinSourceCardinality::Repeating => "missing or not repeating",
+                JoinSourceCardinality::Singleton => "missing or not a singleton scalar",
+            };
             issues.push(ValidationIssue::new(
                 location,
                 format!(
-                    "join {} collection `{}` is missing or not repeating",
+                    "join {} collection `{}` is {expected}",
                     join.get(),
                     display_path(collection)
                 ),

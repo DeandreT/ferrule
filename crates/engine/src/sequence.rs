@@ -8,6 +8,7 @@ use super::eval_expr::eval_expr;
 use super::source_iteration::PositionFrame;
 
 pub(super) const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
+pub(super) const MAX_RECURSIVE_SEQUENCE_DEPTH: usize = 256;
 
 pub(super) fn eval_sequence(
     graph: &Graph,
@@ -69,6 +70,189 @@ pub(super) fn eval_sequence_in_progress(
             };
             generate_sequence(from, to)
         }
+        SequenceExpr::RecursiveCollect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+            prefix,
+            separator,
+            ..
+        } => {
+            let prefix = eval_sequence_arg(graph, *prefix, context, positions, in_progress)?
+                .map(|value| scalar_text(&value))
+                .transpose()?
+                .unwrap_or_default();
+            let separator = eval_sequence_arg(graph, *separator, context, positions, in_progress)?
+                .map(|value| scalar_text(&value))
+                .transpose()?
+                .unwrap_or_default();
+            recursive_collect(
+                context,
+                collection,
+                children,
+                descent_value,
+                values,
+                value,
+                &prefix,
+                &separator,
+            )
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn recursive_collect(
+    context: &[&Instance],
+    collection: &[String],
+    children: &[String],
+    descent_value: &[String],
+    values: &[String],
+    value: &[String],
+    prefix: &str,
+    separator: &str,
+) -> Result<Vec<Value>, EngineError> {
+    let Some(base) = context
+        .iter()
+        .rev()
+        .find(|frame| {
+            collection
+                .first()
+                .is_none_or(|first| frame.field(first).is_some())
+        })
+        .copied()
+        .or_else(|| context.last().copied())
+    else {
+        return Ok(Vec::new());
+    };
+    let mut roots = Vec::new();
+    collect_instances(base, collection, &mut roots);
+    let mut output = Vec::new();
+    for root in roots {
+        collect_recursive_group(
+            root,
+            children,
+            descent_value,
+            values,
+            value,
+            prefix,
+            separator,
+            0,
+            &mut output,
+        )?;
+    }
+    Ok(output)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn collect_recursive_group(
+    group: &Instance,
+    children: &[String],
+    descent_value: &[String],
+    values: &[String],
+    value: &[String],
+    prefix: &str,
+    separator: &str,
+    depth: usize,
+    output: &mut Vec<Value>,
+) -> Result<(), EngineError> {
+    if depth >= MAX_RECURSIVE_SEQUENCE_DEPTH {
+        return Err(EngineError::RecursiveSequenceDepth {
+            limit: MAX_RECURSIVE_SEQUENCE_DEPTH,
+        });
+    }
+    let Some(segment) = scalar_at(group, descent_value) else {
+        return Ok(());
+    };
+    let current_prefix = format!("{prefix}{separator}{}", scalar_text(segment)?);
+    let mut leaves = Vec::new();
+    collect_instances(group, values, &mut leaves);
+    for leaf in leaves {
+        let Some(value) = scalar_at(leaf, value) else {
+            continue;
+        };
+        if output.len() as u128 >= MAX_GENERATED_SEQUENCE_ITEMS {
+            return Err(EngineError::RecursiveSequenceTooLarge {
+                max: MAX_GENERATED_SEQUENCE_ITEMS,
+            });
+        }
+        output.push(Value::String(format!(
+            "{current_prefix}{separator}{}",
+            scalar_text(value)?
+        )));
+    }
+    let mut child_groups = Vec::new();
+    collect_instances(group, children, &mut child_groups);
+    for child in child_groups {
+        collect_recursive_group(
+            child,
+            children,
+            descent_value,
+            values,
+            value,
+            &current_prefix,
+            separator,
+            depth + 1,
+            output,
+        )?;
+    }
+    Ok(())
+}
+
+fn collect_instances<'a>(instance: &'a Instance, path: &[String], output: &mut Vec<&'a Instance>) {
+    if path.is_empty() {
+        match instance {
+            Instance::Repeated(items) | Instance::MappedSequence(items) => {
+                output.extend(items.iter());
+            }
+            Instance::Scalar(_) | Instance::Group(_) => output.push(instance),
+        }
+        return;
+    }
+    match instance {
+        Instance::Group(fields) => {
+            if let Some((_, child)) = fields.iter().find(|(name, _)| name == &path[0]) {
+                collect_instances(child, &path[1..], output);
+            }
+        }
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            for item in items {
+                collect_instances(item, path, output);
+            }
+        }
+        Instance::Scalar(_) => {}
+    }
+}
+
+fn scalar_at<'a>(instance: &'a Instance, path: &[String]) -> Option<&'a Value> {
+    if path.is_empty() {
+        return instance.as_scalar();
+    }
+    match instance {
+        Instance::Group(fields) => fields
+            .iter()
+            .find(|(name, _)| name == &path[0])
+            .and_then(|(_, child)| scalar_at(child, &path[1..])),
+        Instance::Repeated(items) | Instance::MappedSequence(items) => {
+            items.first().and_then(|item| scalar_at(item, path))
+        }
+        Instance::Scalar(_) => None,
+    }
+}
+
+fn scalar_text(value: &Value) -> Result<String, EngineError> {
+    match value {
+        Value::Bool(value) => Ok(value.to_string()),
+        Value::Int(value) => Ok(value.to_string()),
+        Value::Float(value) if value.is_finite() => Ok(value.to_string()),
+        Value::String(value) => Ok(value.clone()),
+        Value::Null | Value::XmlNil(_) | Value::Float(_) => Err(EngineError::Function(
+            functions::FunctionError::TypeMismatch {
+                function: "recursive-collect",
+                got: value.type_name(),
+            },
+        )),
     }
 }
 

@@ -1,4 +1,4 @@
-use mapping::{Graph, Node, NodeId, Scope};
+use mapping::{Graph, NamedTarget, Node, NodeId, Scope, ScopeConstruction};
 
 pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
@@ -16,6 +16,10 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
+        Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
         Node::SequenceExists {
             sequence,
             predicate,
@@ -29,7 +33,12 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
     }
 }
 
-pub(super) fn references_to(graph: &Graph, root_scope: &Scope, needle: NodeId) -> Vec<String> {
+pub(super) fn references_to(
+    graph: &Graph,
+    root_scope: &Scope,
+    extra_targets: &[NamedTarget],
+    needle: NodeId,
+) -> Vec<String> {
     fn scope_references(
         scope: &Scope,
         path: &mut Vec<String>,
@@ -61,6 +70,11 @@ pub(super) fn references_to(graph: &Graph, root_scope: &Scope, needle: NodeId) -
                 found.insert(format!("{label} sequence item"));
             }
         }
+        if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction
+            && plan.root() == Some(needle)
+        {
+            found.insert(format!("{label} adjacency-tree root"));
+        }
         for binding in &scope.bindings {
             if binding.node == needle {
                 found.insert(format!("{label} binding {}", binding.target_field));
@@ -72,6 +86,13 @@ pub(super) fn references_to(graph: &Graph, root_scope: &Scope, needle: NodeId) -
             }
             if binding.value == needle {
                 found.insert(format!("{label} dynamic binding {} value", index + 1));
+            }
+        }
+        if let Some(segments) = scope.concatenated() {
+            for (index, segment) in segments.iter().enumerate() {
+                path.push(format!("<segment {}>", index + 1));
+                scope_references(segment, path, needle, found);
+                path.pop();
             }
         }
         for child in &scope.children {
@@ -101,5 +122,9 @@ pub(super) fn references_to(graph: &Graph, root_scope: &Scope, needle: NodeId) -
         }
     }
     scope_references(root_scope, &mut Vec::new(), needle, &mut found);
+    for target in extra_targets {
+        let mut path = vec![format!("<target {}>", target.name)];
+        scope_references(&target.root, &mut path, needle, &mut found);
+    }
     found.into_iter().collect()
 }

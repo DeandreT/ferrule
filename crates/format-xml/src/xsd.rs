@@ -7,7 +7,7 @@
 //! attribute-flagged scalar children; `xs:element ref="..."`, named
 //! top-level complex/simple types, and `complexContent`/`xs:extension`
 //! resolve across local `xs:include` and `xs:import` schema locations
-//! (recursive references and include cycles degrade safely); `xs:choice`
+//! (recursive declarations remain finite named references); `xs:choice`
 //! and `xs:all` import as if they were sequences (every branch becomes a
 //! child -- ferrule has no exclusivity concept). `xs:simpleContent` becomes
 //! a `#text` scalar plus attribute scalars. Repeating `xs:sequence` particles
@@ -49,6 +49,11 @@ struct ParseState {
     unsupported_particle: Option<XmlFormatError>,
 }
 
+enum ComplexTypeResolution {
+    Children(Vec<SchemaNode>),
+    Recursive(String),
+}
+
 impl ParseState {
     fn declaration(path: &Path, kind: &'static str, name: &str) -> ActiveDeclaration {
         ActiveDeclaration {
@@ -69,6 +74,17 @@ impl ParseState {
 
     fn leave(&mut self) {
         self.active.pop();
+    }
+
+    fn recursive_anchor(&self, fallback: &str) -> String {
+        self.active
+            .iter()
+            .rev()
+            .find(|declaration| declaration.kind == "element")
+            .map_or_else(
+                || fallback.to_string(),
+                |declaration| declaration.name.clone(),
+            )
     }
 
     fn reserve_element(&mut self) -> bool {
@@ -206,7 +222,19 @@ pub fn import_root(
     });
     if let Some(root_element) = root_element {
         let mut state = ParseState::default();
-        let schema = parse_element(&root_element, &schema_el, path, &mut state);
+        let schema = parse_element_declaration(
+            &root_element,
+            &schema_el,
+            path,
+            root_element.attribute("name").unwrap_or_default(),
+            &mut state,
+        )
+        .unwrap_or_else(|| {
+            SchemaNode::recursive_group(
+                root_element.attribute("name").unwrap_or_default(),
+                root_element.attribute("name").unwrap_or_default(),
+            )
+        });
         return state.finish(schema);
     }
 
@@ -222,7 +250,14 @@ pub fn import_root(
         let root_local = expanded_name(root).map_or(local_name(root), |(_, local)| local);
         if let Some(root_element) = top_level(&external_schema, "element", root_local) {
             let mut state = ParseState::default();
-            let schema = parse_element(&root_element, &external_schema, &external_path, &mut state);
+            let schema = parse_element_declaration(
+                &root_element,
+                &external_schema,
+                &external_path,
+                root_local,
+                &mut state,
+            )
+            .unwrap_or_else(|| SchemaNode::recursive_group(root_local, root_local));
             return state.finish(schema);
         }
     }
@@ -279,6 +314,10 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
             })
         }
     }
+    .and_then(|resolved| match resolved {
+        ComplexTypeResolution::Children(children) => Some(children),
+        ComplexTypeResolution::Recursive(_) => None,
+    })
     .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:complexType `{type_name}`")))?;
     state.finish(SchemaNode::group(local, children))
 }
@@ -303,7 +342,7 @@ fn parse_element(
         if let Some(node) = resolve_element(r, schema_el, schema_path, state) {
             return node;
         }
-        // Unresolvable or recursive reference: degrade to a string scalar.
+        // An unresolved non-recursive reference still degrades leniently.
         return SchemaNode::scalar(local, ScalarType::String);
     }
     let name = el.attribute("name").unwrap_or_default().to_string();
@@ -321,8 +360,13 @@ fn parse_element(
     {
         SchemaNode::scalar(name, simple_type_scalar(&simple_type))
     } else if let Some(ty) = el.attribute("type") {
-        if let Some(children) = resolve_complex_type(ty, schema_el, schema_path, state) {
-            SchemaNode::group(name, children)
+        if let Some(resolved) = resolve_complex_type(ty, schema_el, schema_path, state) {
+            match resolved {
+                ComplexTypeResolution::Children(children) => SchemaNode::group(name, children),
+                ComplexTypeResolution::Recursive(anchor) => {
+                    SchemaNode::recursive_group(name, anchor)
+                }
+            }
         } else if let Some(ty) = resolve_simple_type(ty, schema_el, schema_path, state) {
             SchemaNode::scalar(name, ty)
         } else {
@@ -377,7 +421,7 @@ fn parse_element_declaration(
     state: &mut ParseState,
 ) -> Option<SchemaNode> {
     if !state.enter(schema_path, "element", name) {
-        return None;
+        return Some(SchemaNode::recursive_group(name, name));
     }
     let node = parse_element(declaration, schema_el, schema_path, state);
     state.leave();
@@ -389,7 +433,7 @@ fn resolve_complex_type(
     schema_el: &Node,
     schema_path: &Path,
     state: &mut ParseState,
-) -> Option<Vec<SchemaNode>> {
+) -> Option<ComplexTypeResolution> {
     let local = local_name(qname);
     if is_local_qname(schema_el, qname)
         && let Some(declaration) = top_level(schema_el, "complexType", local)
@@ -411,20 +455,22 @@ fn parse_complex_type_declaration(
     schema_path: &Path,
     name: &str,
     state: &mut ParseState,
-) -> Option<Vec<SchemaNode>> {
+) -> Option<ComplexTypeResolution> {
     let identity = ParseState::declaration(schema_path, "complexType", name);
     if let Some(children) = state.complex_types.get(&identity).cloned() {
         return state
             .reserve_elements(children.iter().map(schema_node_count).sum())
-            .then_some(children);
+            .then_some(ComplexTypeResolution::Children(children));
     }
     if !state.enter(schema_path, "complexType", name) {
-        return None;
+        return Some(ComplexTypeResolution::Recursive(
+            state.recursive_anchor(name),
+        ));
     }
     let children = parse_complex_type(declaration, schema_el, schema_path, state);
     state.leave();
     state.complex_types.insert(identity, children.clone());
-    Some(children)
+    Some(ComplexTypeResolution::Children(children))
 }
 
 fn schema_node_count(node: &SchemaNode) -> usize {
@@ -630,7 +676,7 @@ fn parse_complex_type(
                     .find(|n| n.is_element() && n.tag_name().name() == "extension")
                 {
                     if let Some(base) = ext.attribute("base")
-                        && let Some(base_children) =
+                        && let Some(ComplexTypeResolution::Children(base_children)) =
                             resolve_complex_type(base, schema_el, schema_path, state)
                     {
                         children.extend(base_children);
@@ -645,7 +691,7 @@ fn parse_complex_type(
                 }) {
                     let mut resolved_base = false;
                     if let Some(base) = content.attribute("base") {
-                        if let Some(base_children) =
+                        if let Some(ComplexTypeResolution::Children(base_children)) =
                             resolve_complex_type(base, schema_el, schema_path, state)
                         {
                             children.extend(base_children);
@@ -813,16 +859,20 @@ fn map_xsd_type(ty: &str) -> ScalarType {
 /// XML role flags describe mixed content or another shape this subset cannot
 /// preserve.
 pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
-    validate_export_node(schema, true)?;
+    validate_export_node(schema, true, &schema.name)?;
     let mut out = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">\n",
     );
-    write_element(schema, 1, &mut out)?;
+    write_element(schema, 1, &schema.name, &mut out)?;
     out.push_str("</xs:schema>\n");
     Ok(out)
 }
 
-fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlFormatError> {
+fn validate_export_node(
+    node: &SchemaNode,
+    is_root: bool,
+    root_name: &str,
+) -> Result<(), XmlFormatError> {
     if node.attribute && node.text {
         return Err(XmlFormatError::ConflictingSchemaRoles {
             node: node.name.clone(),
@@ -857,6 +907,16 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
             });
         }
     }
+    if let Some(anchor) = &node.recursive_ref {
+        return if !is_root && anchor == root_name {
+            Ok(())
+        } else {
+            Err(XmlFormatError::UnsupportedRecursiveAnchor {
+                node: node.name.clone(),
+                anchor: anchor.clone(),
+            })
+        };
+    }
     let ir::SchemaKind::Group {
         children,
         alternatives,
@@ -882,7 +942,7 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
         };
     }
     for child in children {
-        validate_export_node(child, false)?;
+        validate_export_node(child, false, root_name)?;
     }
     let text_count = children.iter().filter(|child| child.text).count();
     if text_count > 1 {
@@ -899,7 +959,12 @@ fn validate_export_node(node: &SchemaNode, is_root: bool) -> Result<(), XmlForma
     Ok(())
 }
 
-fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<(), XmlFormatError> {
+fn write_element(
+    node: &SchemaNode,
+    depth: usize,
+    root_name: &str,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
     if node.name == XML_ELEMENTS_FIELD {
         out.push_str(&format!(
@@ -917,6 +982,12 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<()
     } else {
         ""
     };
+    if node.recursive_ref.as_deref() == Some(root_name) {
+        out.push_str(&format!(
+            "{pad}<xs:element ref=\"{root_name}\"{occurs}{nillable}/>\n"
+        ));
+        return Ok(());
+    }
     match &node.kind {
         ir::SchemaKind::Scalar { ty } => {
             out.push_str(&format!(
@@ -975,7 +1046,7 @@ fn write_element(node: &SchemaNode, depth: usize, out: &mut String) -> Result<()
                 node.name
             ));
             for child in nested_elements {
-                write_element(child, depth + 3, out)?;
+                write_element(child, depth + 3, root_name, out)?;
             }
             out.push_str(&format!("{pad}    </xs:sequence>\n"));
             for attr in attrs {

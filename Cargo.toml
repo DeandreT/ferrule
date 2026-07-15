@@ -51,6 +51,7 @@ clap = { version = "4", features = ["derive"] }
 csv = "1"
 calamine = { version = "0.36", default-features = false }
 rust_xlsxwriter = { version = "0.96", default-features = false }
+umya-spreadsheet = { version = "3.0.1", default-features = false }
 roxmltree = "0.21"
 quick-xml = "0.41"
 egui = "0.35"

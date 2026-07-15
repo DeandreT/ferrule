@@ -1,6 +1,6 @@
 use super::*;
 use ir::SchemaNode;
-use mapping::Binding;
+use mapping::{Binding, SequenceExpr};
 
 fn graph_from(nodes: Vec<(NodeId, Node)>) -> Graph {
     Graph {
@@ -49,6 +49,7 @@ fn copy_current_source_preserves_the_complete_nested_group() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph::default(),
         root: Scope {
             construction: ScopeConstruction::CopyCurrentSource,
@@ -56,7 +57,8 @@ fn copy_current_source_preserves_the_complete_nested_group() {
         },
     };
 
-    assert!(validate(&project).is_empty());
+    let issues = validate(&project);
+    assert!(issues.is_empty(), "{issues:?}");
     assert_eq!(run(&project, &source).unwrap(), source);
 }
 
@@ -69,6 +71,7 @@ fn runtime_project() -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: graph_from(vec![
             (
                 0,
@@ -196,6 +199,7 @@ fn evaluates_a_function_call_over_source_fields() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -207,6 +211,7 @@ fn evaluates_a_function_call_over_source_fields() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -248,6 +253,7 @@ fn scalar_bindings_follow_repeating_target_shape() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: graph_from(vec![(
             0,
             Node::SourceField {
@@ -306,6 +312,7 @@ fn missing_source_field_is_reported() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -317,6 +324,7 @@ fn missing_source_field_is_reported() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -350,6 +358,7 @@ fn self_referential_node_is_a_cycle() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -361,6 +370,7 @@ fn self_referential_node_is_a_cycle() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -426,6 +436,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -437,6 +448,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![
@@ -557,6 +569,7 @@ fn if_only_evaluates_the_taken_branch() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -568,6 +581,7 @@ fn if_only_evaluates_the_taken_branch() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -617,6 +631,7 @@ fn value_map_falls_back_to_default_on_miss() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -628,6 +643,7 @@ fn value_map_falls_back_to_default_on_miss() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -674,6 +690,7 @@ fn value_map_coerces_input_to_its_declared_type() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -685,6 +702,7 @@ fn value_map_coerces_input_to_its_declared_type() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -743,6 +761,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -754,6 +773,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![
@@ -831,6 +851,7 @@ fn scope_sort_and_take_are_stable_and_reindex_positions() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(Vec::new()),
@@ -890,6 +911,90 @@ fn scope_sort_and_take_are_stable_and_reindex_positions() {
 }
 
 #[test]
+fn scope_can_filter_in_source_order_before_sorting_survivors() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::SourceField {
+                frame: None,
+                path: vec!["score".into()],
+            },
+        ),
+        (
+            1,
+            Node::SourceField {
+                frame: None,
+                path: vec!["name".into()],
+            },
+        ),
+        (
+            2,
+            Node::Position {
+                collection: Vec::new(),
+            },
+        ),
+        (
+            3,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (
+            4,
+            Node::Call {
+                function: "less_or_equal".into(),
+                args: vec![2, 3],
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            iteration: mapping::ScopeIteration::Source(Vec::new()),
+            filter: Some(4),
+            sort_by: Some(0),
+            sort_descending: true,
+            sort_filter_order: mapping::SortFilterOrder::FilterThenSort,
+            bindings: vec![Binding {
+                target_field: "name".into(),
+                node: 1,
+            }],
+            ..Scope::default()
+        },
+    };
+    let row = |name: &str, score: i64| {
+        Instance::Group(vec![
+            ("name".into(), Instance::Scalar(Value::String(name.into()))),
+            ("score".into(), Instance::Scalar(Value::Int(score))),
+        ])
+    };
+    let source = Instance::Repeated(vec![row("low", 1), row("high", 5), row("middle", 3)]);
+
+    let target = run(&project, &source).unwrap();
+    let names = target
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .map(|row| row.field("name").and_then(Instance::as_scalar).cloned())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            Some(Value::String("high".into())),
+            Some(Value::String("low".into()))
+        ]
+    );
+}
+
+#[test]
 fn sort_order_places_null_first_for_ascending_and_last_when_reversed() {
     assert_eq!(
         value_ordering(&Value::Null, &Value::String("value".into())),
@@ -922,6 +1027,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -933,6 +1039,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -996,6 +1103,7 @@ fn lookup_joins_rows_against_an_extra_source() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -1007,6 +1115,7 @@ fn lookup_joins_rows_against_an_extra_source() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![
@@ -1063,6 +1172,139 @@ fn lookup_joins_rows_against_an_extra_source() {
     );
 }
 
+#[test]
+fn collection_find_evaluates_composite_predicates_and_values_per_item() {
+    let person_field = |path: &[&str]| Node::SourceField {
+        frame: Some(vec!["departments".into(), "people".into()]),
+        path: path.iter().map(|segment| (*segment).to_string()).collect(),
+    };
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::SourceField {
+                frame: Some(vec!["departments".into()]),
+                path: vec!["office".into()],
+            },
+        ),
+        (
+            1,
+            Node::Const {
+                value: Value::String("HQ".into()),
+            },
+        ),
+        (
+            2,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![0, 1],
+            },
+        ),
+        (3, person_field(&["first"])),
+        (
+            4,
+            Node::Const {
+                value: Value::String("Ada".into()),
+            },
+        ),
+        (
+            5,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![3, 4],
+            },
+        ),
+        (
+            6,
+            Node::Call {
+                function: "and".into(),
+                args: vec![2, 5],
+            },
+        ),
+        (7, person_field(&["title"])),
+        (8, person_field(&["email"])),
+        (
+            9,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![7, 8],
+            },
+        ),
+        (
+            10,
+            Node::CollectionFind {
+                collection: vec!["departments".into(), "people".into()],
+                predicate: 6,
+                value: 9,
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "details".into(),
+                node: 10,
+            }],
+            ..Scope::default()
+        },
+    };
+    let person = |first: &str, title: &str, email: &str| {
+        Instance::Group(vec![
+            (
+                "first".into(),
+                Instance::Scalar(Value::String(first.into())),
+            ),
+            (
+                "title".into(),
+                Instance::Scalar(Value::String(title.into())),
+            ),
+            (
+                "email".into(),
+                Instance::Scalar(Value::String(email.into())),
+            ),
+        ])
+    };
+    let department = |office: &str, people: Vec<Instance>| {
+        Instance::Group(vec![
+            (
+                "office".into(),
+                Instance::Scalar(Value::String(office.into())),
+            ),
+            ("people".into(), Instance::Repeated(people)),
+        ])
+    };
+    let source = Instance::Group(vec![(
+        "departments".into(),
+        Instance::Repeated(vec![
+            department(
+                "Remote",
+                vec![person("Ada", "Wrong: ", "remote@example.test")],
+            ),
+            department(
+                "HQ",
+                vec![
+                    person("Grace", "Director: ", "grace@example.test"),
+                    person("Ada", "Engineer: ", "ada@example.test"),
+                ],
+            ),
+        ]),
+    )]);
+
+    let output = run(&project, &source).unwrap();
+    assert_eq!(
+        output.field("details").and_then(Instance::as_scalar),
+        Some(&Value::String("Engineer: ada@example.test".to_string()))
+    );
+}
+
 /// A scope can iterate a named extra source directly: its path falls
 /// back outward past the primary source to the extras frame.
 #[test]
@@ -1082,6 +1324,7 @@ fn scope_source_path_reaches_an_extra_source() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -1093,6 +1336,7 @@ fn scope_source_path_reaches_an_extra_source() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -1115,4 +1359,133 @@ fn scope_source_path_reaches_an_extra_source() {
     let target =
         run_with_sources(&project, &source, vec![("customers".into(), customers)]).unwrap();
     assert_eq!(target.as_repeated().map(<[Instance]>::len), Some(1));
+}
+
+#[test]
+fn recursive_collect_populates_a_repeating_scalar_target() {
+    let project = recursive_collect_project();
+    let issues = validate(&project);
+    assert!(issues.is_empty(), "{issues:?}");
+    let source = directory(
+        "root",
+        &["top.txt"],
+        vec![directory("child", &["nested.txt"], Vec::new())],
+    );
+
+    assert_eq!(
+        run(&project, &source),
+        Ok(Instance::Group(vec![(
+            "File".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("\\root\\top.txt".into())),
+                Instance::Scalar(Value::String("\\root\\child\\nested.txt".into())),
+            ]),
+        )]))
+    );
+}
+
+#[test]
+fn recursive_collect_has_a_typed_depth_limit() {
+    let project = recursive_collect_project();
+    let mut source = directory("leaf", &[], Vec::new());
+    for depth in 0..=super::sequence::MAX_RECURSIVE_SEQUENCE_DEPTH {
+        source = directory(&format!("level-{depth}"), &[], vec![source]);
+    }
+
+    assert_eq!(
+        run(&project, &source),
+        Err(EngineError::RecursiveSequenceDepth {
+            limit: super::sequence::MAX_RECURSIVE_SEQUENCE_DEPTH,
+        })
+    );
+}
+
+fn recursive_collect_project() -> Project {
+    let source = SchemaNode::group(
+        "directory",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::group("file", vec![SchemaNode::scalar("name", ScalarType::String)])
+                .repeating(),
+            SchemaNode::recursive_group("directory", "directory").repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "FileList",
+        vec![SchemaNode::scalar("File", ScalarType::String).repeating()],
+    );
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::Const {
+                value: Value::String(String::new()),
+            },
+        ),
+        (
+            1,
+            Node::Const {
+                value: Value::String("\\".into()),
+            },
+        ),
+        (
+            2,
+            Node::SourceField {
+                path: Vec::new(),
+                frame: None,
+            },
+        ),
+    ]);
+    Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "File".into(),
+                iteration: mapping::ScopeIteration::Sequence(SequenceExpr::RecursiveCollect {
+                    collection: Vec::new(),
+                    children: vec!["directory".into()],
+                    descent_value: vec!["name".into()],
+                    values: vec!["file".into()],
+                    value: vec!["name".into()],
+                    prefix: 0,
+                    separator: 1,
+                    item: 2,
+                }),
+                construction: ScopeConstruction::Scalar { value: 2 },
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+fn directory(name: &str, files: &[&str], directories: Vec<Instance>) -> Instance {
+    Instance::Group(vec![
+        (
+            "name".into(),
+            Instance::Scalar(Value::String(name.to_string())),
+        ),
+        (
+            "file".into(),
+            Instance::Repeated(
+                files
+                    .iter()
+                    .map(|name| {
+                        Instance::Group(vec![(
+                            "name".into(),
+                            Instance::Scalar(Value::String((*name).to_string())),
+                        )])
+                    })
+                    .collect(),
+            ),
+        ),
+        ("directory".into(), Instance::Repeated(directories)),
+    ])
 }

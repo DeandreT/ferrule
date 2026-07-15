@@ -11,4 +11,5 @@ ir = { workspace = true }
 mapping = { workspace = true }
 calamine = { workspace = true }
 rust_xlsxwriter = { workspace = true }
+umya-spreadsheet = { workspace = true }
 thiserror = { workspace = true }

@@ -217,8 +217,7 @@ fn imports_open_page_collage_and_marker_delimited_groups() {
     let Ok(imported) = mfd::import(&temp.0.join("mapping.mfd")) else {
         panic!("self-authored PDF text-group fixture must import");
     };
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("ObjectFind"));
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let Some(layout) = imported.project.source_options.pdf.as_ref() else {
         panic!("PDF text-group import must retain its source layout");
     };
@@ -324,19 +323,7 @@ fn imports_and_executes_the_local_article_stock_pdf() {
     let Ok(imported) = mfd::import(&design) else {
         panic!("local article-stock PDF mapping must import");
     };
-    assert_eq!(imported.warnings.len(), 2, "{:?}", imported.warnings);
-    assert!(
-        imported
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("ObjectFind"))
-    );
-    assert!(
-        imported
-            .warnings
-            .iter()
-            .any(|warning| warning.contains("TextProperties"))
-    );
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     let Some(layout) = imported.project.source_options.pdf.as_ref() else {
         panic!("local article-stock PDF mapping must retain its layout");

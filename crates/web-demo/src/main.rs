@@ -113,6 +113,7 @@ fn demo_project() -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -124,6 +125,7 @@ fn demo_project() -> Project {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
             bindings: vec![Binding {
@@ -141,6 +143,7 @@ fn demo_project() -> Project {
                 group_into_blocks: None,
                 sort_by: None,
                 sort_descending: false,
+                sort_filter_order: Default::default(),
                 take: None,
                 iteration_output: Default::default(),
                 bindings: vec![
@@ -181,6 +184,11 @@ fn flat_bindings(scope: &Scope, prefix: &str, out: &mut Vec<(String, NodeId)>) {
     for binding in &scope.bindings {
         out.push((format!("{prefix}{}", binding.target_field), binding.node));
     }
+    if let Some(segments) = scope.concatenated() {
+        for segment in segments.iter() {
+            flat_bindings(segment, prefix, out);
+        }
+    }
     for child in &scope.children {
         let child_prefix = format!("{prefix}{}/", child.target_field);
         flat_bindings(child, &child_prefix, out);
@@ -192,6 +200,7 @@ fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
+        mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
 }
 
@@ -211,6 +220,10 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String 
             ["from", "to"].get(index).copied().unwrap_or("input")
         }
         mapping::SequenceExpr::Generate { from: None, .. } => "to",
+        mapping::SequenceExpr::RecursiveCollect { .. } => ["prefix", "separator"]
+            .get(index)
+            .copied()
+            .unwrap_or("input"),
     }
     .to_string()
 }
@@ -231,6 +244,10 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
             else_,
         } => vec![Some(*condition), Some(*then), Some(*else_)],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![Some(*input)],
+        Node::DynamicSourceField { key, .. } => vec![Some(*key)],
+        Node::CollectionFind {
+            predicate, value, ..
+        } => vec![Some(*predicate), Some(*value)],
         Node::SequenceExists {
             sequence,
             predicate,
@@ -269,6 +286,12 @@ fn node_title(node: &Node) -> String {
         Node::If { .. } => "if".to_string(),
         Node::ValueMap { .. } => "value-map".to_string(),
         Node::Lookup { collection, .. } => format!("lookup · {}", collection.join("/")),
+        Node::DynamicSourceField { object, .. } => {
+            format!("dynamic field · {}", object.join("/"))
+        }
+        Node::CollectionFind { collection, .. } => {
+            format!("find · {}", collection.join("/"))
+        }
         Node::SequenceExists { sequence, .. } => {
             format!("exists · {}", sequence_label(sequence))
         }

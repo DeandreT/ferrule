@@ -308,6 +308,46 @@ pub(super) fn is_xbrl_measure_component(component: &roxmltree::Node<'_, '_>) -> 
         )
 }
 
+pub(super) fn is_isbn_converter_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("IsbnConverterService")
+        && component.attribute("kind") == Some("20")
+        && matches!(
+            component.attribute("name"),
+            Some("convertToISBN13" | "convertToEAN")
+        )
+}
+
+pub(super) fn read_isbn_converter_component(
+    component: &roxmltree::Node<'_, '_>,
+) -> Result<FnComponent, &'static str> {
+    let mut function = read(component);
+    if !function.inputs.is_empty() || !function.outputs.is_empty() {
+        return (matches!(function.inputs.as_slice(), [Some(_)])
+            && matches!(function.output_pins.as_slice(), [Some(_)]))
+        .then_some(function)
+        .ok_or("expected one scalar request input and one scalar response output");
+    }
+    let data = component
+        .children()
+        .find(|node| node.has_tag_name("data"))
+        .ok_or("missing request and response entry trees")?;
+    let inputs = data
+        .descendants()
+        .filter_map(|node| parse_u32(node.attribute("inpkey")))
+        .collect::<Vec<_>>();
+    let outputs = data
+        .descendants()
+        .filter_map(|node| parse_u32(node.attribute("outkey")))
+        .collect::<Vec<_>>();
+    let ([input], [output]) = (inputs.as_slice(), outputs.as_slice()) else {
+        return Err("expected one scalar request input and one scalar response output");
+    };
+    function.inputs = vec![Some(*input)];
+    function.outputs = vec![*output];
+    function.output_pins = vec![Some(*output)];
+    Ok(function)
+}
+
 pub(super) fn produces_scalar(component: &FnComponent) -> bool {
     component.name == "constant"
         || matches!(
@@ -319,6 +359,7 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
                 | "main-mfd-filepath"
                 | "now"
                 | "set-xsi-nil"
+                | "auto-number"
         )
         || component.kind == 5
             && component.library == "db"
@@ -463,6 +504,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "parse-time" => "parse_time",
         "edifact-to-datetime" => "edifact_to_datetime",
         "substitute-missing" | "substitute-null" => "substitute_missing",
+        "convertToISBN13" | "convertToEAN" => "isbn10_to_isbn13",
         _ => return None,
     })
 }
@@ -472,7 +514,8 @@ mod tests {
     use ir::{ScalarType, Value};
 
     use super::{
-        is_db_function_component, is_xbrl_measure_component, map_name, produces_scalar, read,
+        is_db_function_component, is_isbn_converter_component, is_xbrl_measure_component, map_name,
+        produces_scalar, read, read_isbn_converter_component,
     };
 
     #[test]
@@ -505,6 +548,8 @@ mod tests {
         assert_eq!(map_name("edifact-to-datetime"), Some("edifact_to_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
         assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
+        assert_eq!(map_name("convertToISBN13"), Some("isbn10_to_isbn13"));
+        assert_eq!(map_name("convertToEAN"), Some("isbn10_to_isbn13"));
     }
 
     #[test]
@@ -544,6 +589,35 @@ mod tests {
         assert!(!is_xbrl_measure_component(
             &wrong_xbrl_library.root_element()
         ));
+
+        for (name, kind, accepted) in [
+            ("convertToISBN13", "20", true),
+            ("convertToEAN", "20", true),
+            ("convertToISBN10", "20", false),
+            ("convertToISBN13", "5", false),
+        ] {
+            let xml = format!(
+                r#"<component library="IsbnConverterService" name="{name}" kind="{kind}"/>"#
+            );
+            let document = roxmltree::Document::parse(&xml)?;
+            assert_eq!(
+                is_isbn_converter_component(&document.root_element()),
+                accepted,
+                "IsbnConverterService/{name}/{kind}"
+            );
+        }
+        let wrong_isbn_library = roxmltree::Document::parse(
+            r#"<component library="other" name="convertToISBN13" kind="20"/>"#,
+        )?;
+        assert!(!is_isbn_converter_component(
+            &wrong_isbn_library.root_element()
+        ));
+        let entry_pins = roxmltree::Document::parse(
+            r#"<component library="IsbnConverterService" name="convertToEAN" kind="20"><data><root><entry inpkey="4"/></root><root><entry outkey="7"/></root></data></component>"#,
+        )?;
+        let converted = read_isbn_converter_component(&entry_pins.root_element())?;
+        assert_eq!(converted.inputs, [Some(4)]);
+        assert_eq!(converted.outputs, [7]);
         Ok(())
     }
 

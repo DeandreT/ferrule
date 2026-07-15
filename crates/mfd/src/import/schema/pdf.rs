@@ -183,7 +183,6 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
     let mut context = ParseContext {
         merge_sources,
         merge_targets: BTreeSet::new(),
-        warnings: BTreeSet::new(),
     };
     let commands = parse_commands(&children, true, &mut context)?;
     if let Some(name) = context.merge_sources.keys().next() {
@@ -193,19 +192,12 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
     }
     let layout = PdfLayout::new(root_name, PdfPageSelection::All, commands)
         .map_err(|error| format!("invalid PDF extraction layout ({error})"))?;
-    Ok((layout, context.warnings.into_iter().collect()))
+    Ok((layout, Vec::new()))
 }
 
 struct ParseContext {
     merge_sources: BTreeMap<String, Vec<PdfMergeSource>>,
     merge_targets: BTreeSet<String>,
-    warnings: BTreeSet<String>,
-}
-
-impl ParseContext {
-    fn warn_once(&mut self, warning: &'static str) {
-        self.warnings.insert(warning.to_string());
-    }
 }
 
 fn parse_commands(

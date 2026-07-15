@@ -1,8 +1,10 @@
-use ir::Value;
+use ir::{ScalarType, Value};
 use mapping::{Node, NodeId, RuntimeValue};
 
 use super::function::{aggregate_op, map_name as map_function_name, parse_constant};
 use super::graph::GraphBuilder;
+use super::schema::{JsonDynamicPort, split_json_dynamic_port};
+use super::source::SourcePath;
 
 impl GraphBuilder<'_> {
     pub(super) fn fn_node(&mut self, idx: usize) -> NodeId {
@@ -48,6 +50,18 @@ impl GraphBuilder<'_> {
                 .unwrap_or_else(|| Node::Position {
                     collection: self.position_collection(idx),
                 });
+            self.graph.nodes.insert(id, node);
+            return id;
+        }
+        if name == "auto-number" && self.fn_components[idx].kind == 5 {
+            let node = self.auto_number_node(idx);
+            self.graph.nodes.insert(id, node);
+            return id;
+        }
+        if name == "logical-and"
+            && self.fn_components[idx].kind == 5
+            && let Some(node) = self.dynamic_boolean_property_node(idx)
+        {
             self.graph.nodes.insert(id, node);
             return id;
         }
@@ -190,6 +204,149 @@ impl GraphBuilder<'_> {
                 args: vec![exists],
             }
         }
+    }
+
+    fn auto_number_node(&mut self, idx: usize) -> Node {
+        let inputs = self.fn_components[idx].inputs.clone();
+        let global_id = inputs.first().copied().flatten();
+        let restart = inputs.get(3).copied().flatten();
+        if global_id.is_some() || restart.is_some() {
+            self.warnings.push(
+                "auto-number with global-id or restart-on-change is unsupported; imported as Null"
+                    .to_string(),
+            );
+            return Node::Const { value: Value::Null };
+        }
+        let start = inputs
+            .get(1)
+            .copied()
+            .flatten()
+            .and_then(|input| self.edge_from.get(&input).copied())
+            .and_then(|feed| self.value_node(feed))
+            .unwrap_or_else(|| {
+                self.alloc(Node::Const {
+                    value: Value::Int(1),
+                })
+            });
+        let increment = inputs
+            .get(2)
+            .copied()
+            .flatten()
+            .and_then(|input| self.edge_from.get(&input).copied())
+            .and_then(|feed| self.value_node(feed))
+            .unwrap_or_else(|| {
+                self.alloc(Node::Const {
+                    value: Value::Int(1),
+                })
+            });
+        let position = self.alloc(Node::Position {
+            collection: Vec::new(),
+        });
+        let one = self.alloc(Node::Const {
+            value: Value::Int(1),
+        });
+        let zero_based = self.alloc(Node::Call {
+            function: "subtract".to_string(),
+            args: vec![position, one],
+        });
+        let offset = self.alloc(Node::Call {
+            function: "multiply".to_string(),
+            args: vec![zero_based, increment],
+        });
+        Node::Call {
+            function: "add".to_string(),
+            args: vec![start, offset],
+        }
+    }
+
+    fn dynamic_boolean_property_node(&mut self, idx: usize) -> Option<Node> {
+        let feeds = [self.input_feed(idx, 0)?, self.input_feed(idx, 1)?];
+        for (equality_feed, value_feed) in [(feeds[0], feeds[1]), (feeds[1], feeds[0])] {
+            let Some((value_source, JsonDynamicPort::Value(ScalarType::Bool))) =
+                self.json_dynamic_source_port(value_feed)
+            else {
+                continue;
+            };
+            let Some((name_source, key, name_port)) =
+                self.dynamic_property_name_equality(equality_feed)
+            else {
+                continue;
+            };
+            if value_source != name_source {
+                continue;
+            }
+            self.claimed_dynamic_ports.insert(name_port);
+            self.claimed_dynamic_ports.insert(value_feed);
+            let source = self.sources.get(value_source.source)?;
+            let object =
+                self.suffix_after_framed(value_source.source, &source.schema, &value_source.path);
+            let frame =
+                self.frame_for_field(value_source.source, &source.schema, &value_source.path);
+            let field = self.alloc(Node::DynamicSourceField { object, frame, key });
+            let exists = self.alloc(Node::Call {
+                function: "exists".to_string(),
+                args: vec![field],
+            });
+            let false_value = self.alloc(Node::Const {
+                value: Value::Bool(false),
+            });
+            return Some(Node::If {
+                condition: exists,
+                then: field,
+                else_: false_value,
+            });
+        }
+        None
+    }
+
+    fn dynamic_property_name_equality(&mut self, feed: u32) -> Option<(SourcePath, NodeId, u32)> {
+        let index = *self.fn_by_output.get(&feed)?;
+        let component = self.fn_components.get(index)?;
+        if component.kind != 5 || component.name != "equal" {
+            return None;
+        }
+        let feeds = [self.input_feed(index, 0)?, self.input_feed(index, 1)?];
+        for (name_feed, key_feed) in [(feeds[0], feeds[1]), (feeds[1], feeds[0])] {
+            let Some((source, name_port)) = self.dynamic_property_name_source(name_feed) else {
+                continue;
+            };
+            let key = self.value_node(key_feed)?;
+            return Some((source, key, name_port));
+        }
+        None
+    }
+
+    fn dynamic_property_name_source(&self, feed: u32) -> Option<(SourcePath, u32)> {
+        if let Some((source, JsonDynamicPort::Name)) = self.json_dynamic_source_port(feed) {
+            return Some((source, feed));
+        }
+        let index = *self.fn_by_output.get(&feed)?;
+        let component = self.fn_components.get(index)?;
+        if component.kind != 5 || component.name != "string" {
+            return None;
+        }
+        let input = self.input_feed(index, 0)?;
+        let (source, JsonDynamicPort::Name) = self.json_dynamic_source_port(input)? else {
+            return None;
+        };
+        Some((source, input))
+    }
+
+    fn json_dynamic_source_port(&self, key: u32) -> Option<(SourcePath, JsonDynamicPort)> {
+        self.sources
+            .iter()
+            .enumerate()
+            .find_map(|(source, component)| {
+                let path = component.ports.get(&key)?;
+                let (owner, port) = split_json_dynamic_port(path)?;
+                Some((
+                    SourcePath {
+                        source,
+                        path: owner.to_vec(),
+                    },
+                    port,
+                ))
+            })
     }
 
     fn xbrl_measure_node(&mut self, idx: usize, name: &str) -> Node {

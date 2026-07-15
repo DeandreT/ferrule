@@ -1,6 +1,6 @@
 use mapping::{
-    PdfCommand, PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch,
-    PdfTextRows,
+    PdfCommand, PdfMetricMatch, PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups,
+    PdfTextMatch, PdfTextProperties, PdfTextRows,
 };
 
 use super::{
@@ -56,9 +56,6 @@ pub(super) fn parse_object_find_splitter(
 ) -> Result<Vec<PdfCommand>, String> {
     validate_splitter_controls(node)?;
     let minimum_extent = validate_object_find(object_find)?;
-    context.warn_once(
-        "ObjectFind is approximated with extracted text rows/groups; background, tolerance, fill, edge, and displacement matching are not supported, so verify the detected row/group boundaries",
-    );
     let children = child(node, "Children")
         .ok_or_else(|| "PDF ObjectFind Splitter has no Children block".to_string())?;
     let groups = children
@@ -140,7 +137,7 @@ fn group_by_text_kind<'a, 'input>(
 
 fn parse_text_match(
     node: &roxmltree::Node<'_, '_>,
-    context: &mut ParseContext,
+    _context: &mut ParseContext,
 ) -> Result<PdfTextMatch, String> {
     for element in node.children().filter(roxmltree::Node::is_element) {
         if !matches!(
@@ -166,27 +163,25 @@ fn parse_text_match(
     let folding = child(node, "CaseFolding")
         .ok_or_else(|| "PDF text match has no CaseFolding".to_string())?;
     require_only_choice(&folding, "ignore-case", "PDF text match case folding")?;
-    if let Some(properties) = child(node, "TextProperties") {
-        validate_text_properties(&properties)?;
-        if properties.children().any(|child| child.is_element()) {
-            context.warn_once(
-                "TextProperties font face, weight, style, cell-height, and baseline constraints are ignored because the runtime retains only visual text and bounds; verify that each marker literal is unique in its candidate region",
-            );
-        }
-    }
+    let properties = child(node, "TextProperties")
+        .map(|properties| parse_text_properties(&properties))
+        .transpose()?
+        .unwrap_or_default();
     Ok(PdfTextMatch {
         needle,
         case: PdfTextCase::AsciiInsensitive,
         flexible_whitespace: true,
+        properties,
     })
 }
 
-fn validate_text_properties(node: &roxmltree::Node<'_, '_>) -> Result<(), String> {
+fn parse_text_properties(node: &roxmltree::Node<'_, '_>) -> Result<PdfTextProperties, String> {
+    let mut properties = PdfTextProperties::default();
     for element in node.children().filter(roxmltree::Node::is_element) {
         match element.tag_name().name() {
             "FaceNameMatch" => {
                 require_exact_text(&element, "Enable", "1", "PDF face-name match")?;
-                let _ = required_text_child(&element, "FontFace")?;
+                properties.font_face = Some(required_text_child(&element, "FontFace")?);
             }
             "Weight" => require_only_choice(&element, "normal", "PDF text weight")?,
             "Style" => require_only_choice(&element, "upright", "PDF text style")?,
@@ -197,16 +192,22 @@ fn validate_text_properties(node: &roxmltree::Node<'_, '_>) -> Result<(), String
                 if height <= 0.0 || deviation < 0.0 {
                     return Err("PDF cell-height match has an invalid extent".to_string());
                 }
+                properties.cell_height = Some(PdfMetricMatch {
+                    value: height,
+                    deviation,
+                });
             }
             "BaselineMatch" => {
                 require_exact_text(&element, "Enable", "1", "PDF baseline match")?;
                 let angle = parse_f64(&required_text_child(&element, "BaselineAngle")?)?;
                 let deviation = parse_f64(&required_text_child(&element, "AngleDeviation")?)?;
-                if angle != 0.0 || deviation != 0.0 {
-                    return Err(
-                        "only horizontal exact PDF baseline matching is supported".to_string()
-                    );
+                if deviation < 0.0 {
+                    return Err("PDF baseline match has a negative deviation".to_string());
                 }
+                properties.baseline_angle = Some(PdfMetricMatch {
+                    value: angle,
+                    deviation,
+                });
             }
             other => {
                 return Err(format!(
@@ -215,7 +216,7 @@ fn validate_text_properties(node: &roxmltree::Node<'_, '_>) -> Result<(), String
             }
         }
     }
-    Ok(())
+    Ok(properties)
 }
 
 fn validate_object_find(node: &roxmltree::Node<'_, '_>) -> Result<f64, String> {
@@ -322,7 +323,6 @@ mod tests {
         ParseContext {
             merge_sources: BTreeMap::new(),
             merge_targets: BTreeSet::new(),
-            warnings: BTreeSet::new(),
         }
     }
 
@@ -350,20 +350,24 @@ mod tests {
     }
 
     #[test]
-    fn text_properties_emit_one_approximation_warning() {
+    fn text_properties_are_retained_as_runtime_constraints() {
         let Ok(text) = roxmltree::Document::parse(
             "<Match><Search>Item Code:</Search><AllowArbitrarySpace>1</AllowArbitrarySpace><WordAnchor><none/></WordAnchor><CaseFolding><ignore-case/></CaseFolding><TextProperties><FaceNameMatch><Enable>1</Enable><FontFace>Sans</FontFace></FaceNameMatch><Weight><normal/></Weight><Style><upright/></Style><CellHeightMatch><Enable>1</Enable><CellHeight>10pt</CellHeight><Deviation>1pt</Deviation></CellHeightMatch><BaselineMatch><Enable>1</Enable><BaselineAngle>0</BaselineAngle><AngleDeviation>0</AngleDeviation></BaselineMatch></TextProperties></Match>",
         ) else {
             panic!("supported text-property XML must parse");
         };
         let mut context = context();
-        assert!(parse_text_match(&text.root_element(), &mut context).is_ok());
-        assert_eq!(context.warnings.len(), 1);
-        assert!(
-            context
-                .warnings
-                .iter()
-                .any(|warning| warning.contains("TextProperties"))
+        let Ok(parsed) = parse_text_match(&text.root_element(), &mut context) else {
+            panic!("supported text properties should parse");
+        };
+        assert_eq!(parsed.properties.font_face.as_deref(), Some("Sans"));
+        assert_eq!(
+            parsed.properties.cell_height.map(|metric| metric.value),
+            Some(10.0)
+        );
+        assert_eq!(
+            parsed.properties.baseline_angle.map(|metric| metric.value),
+            Some(0.0)
         );
     }
 }

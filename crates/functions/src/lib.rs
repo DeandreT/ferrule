@@ -14,7 +14,9 @@ use thiserror::Error;
 mod datetime;
 mod datetime_add;
 mod filepath;
+mod flextext;
 mod format_number;
+mod json;
 
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
 
@@ -101,11 +103,14 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "remove_folder",
     "resolve_filepath",
     "is_xml_nil",
+    "isbn10_to_isbn13",
 ];
+
+const INTERNAL_NAMES: &[&str] = &["json_serialize_object", "flextext_parse_field"];
 
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
 pub fn is_known(name: &str) -> bool {
-    BUILTIN_NAMES.contains(&name)
+    BUILTIN_NAMES.contains(&name) || INTERNAL_NAMES.contains(&name)
 }
 
 /// Dispatches a built-in function call by name.
@@ -172,8 +177,73 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "remove_folder" => filepath::remove_folder(args),
         "resolve_filepath" => filepath::resolve_filepath(args),
         "is_xml_nil" => is_xml_nil(args),
+        "isbn10_to_isbn13" => isbn10_to_isbn13(args),
+        "json_serialize_object" => json::serialize_object(args),
+        "flextext_parse_field" => flextext::parse_field(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
+}
+
+/// Converts a validated ISBN-10 into its equivalent Bookland ISBN-13/EAN-13.
+/// ASCII spaces and hyphens are accepted as presentation separators.
+fn isbn10_to_isbn13(args: &[Value]) -> Result<Value, FunctionError> {
+    let [Value::String(input)] = args else {
+        return match args {
+            [_] => Err(FunctionError::TypeMismatch {
+                function: "isbn10_to_isbn13",
+                got: args[0].type_name(),
+            }),
+            _ => Err(FunctionError::ArityMismatch {
+                function: "isbn10_to_isbn13",
+                expected: 1,
+                got: args.len(),
+            }),
+        };
+    };
+    let normalized = input
+        .bytes()
+        .filter(|byte| !matches!(byte, b' ' | b'-'))
+        .collect::<Vec<_>>();
+    if normalized.len() != 10
+        || !normalized[..9].iter().all(u8::is_ascii_digit)
+        || !(normalized[9].is_ascii_digit() || normalized[9].eq_ignore_ascii_case(&b'X'))
+    {
+        return Err(FunctionError::InvalidArgument {
+            function: "isbn10_to_isbn13",
+            message: "expected a 10-character ISBN with an optional final X check digit",
+        });
+    }
+    let isbn10_sum = normalized[..9]
+        .iter()
+        .enumerate()
+        .map(|(index, byte)| u32::from(byte - b'0') * (10 - index as u32))
+        .sum::<u32>()
+        + if normalized[9].eq_ignore_ascii_case(&b'X') {
+            10
+        } else {
+            u32::from(normalized[9] - b'0')
+        };
+    if isbn10_sum % 11 != 0 {
+        return Err(FunctionError::InvalidArgument {
+            function: "isbn10_to_isbn13",
+            message: "ISBN-10 check digit is invalid",
+        });
+    }
+
+    let mut output = Vec::with_capacity(13);
+    output.extend_from_slice(b"978");
+    output.extend_from_slice(&normalized[..9]);
+    let weighted = output
+        .iter()
+        .enumerate()
+        .map(|(index, byte)| u32::from(byte - b'0') * if index % 2 == 0 { 1 } else { 3 })
+        .sum::<u32>();
+    output.push(b'0' + ((10 - weighted % 10) % 10) as u8);
+    let converted = String::from_utf8(output).map_err(|_| FunctionError::InvalidArgument {
+        function: "isbn10_to_isbn13",
+        message: "converted ISBN was not valid UTF-8",
+    })?;
+    Ok(Value::String(converted))
 }
 
 fn is_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {
@@ -1009,6 +1079,25 @@ mod tests {
     }
 
     #[test]
+    fn isbn10_converts_to_bookland_isbn13_and_validates_check_digit() {
+        assert_eq!(
+            call("isbn10_to_isbn13", &[Value::String("0-7645-4964-2".into())]),
+            Ok(Value::String("9780764549649".into()))
+        );
+        assert_eq!(
+            call("isbn10_to_isbn13", &[Value::String("080442957X".into())]),
+            Ok(Value::String("9780804429573".into()))
+        );
+        assert!(matches!(
+            call("isbn10_to_isbn13", &[Value::String("0764549643".into())]),
+            Err(FunctionError::InvalidArgument {
+                function: "isbn10_to_isbn13",
+                message: "ISBN-10 check digit is invalid"
+            })
+        ));
+    }
+
+    #[test]
     fn add_promotes_int_and_float() {
         assert_eq!(
             call("add", &[Value::Int(29), Value::Int(1)]).unwrap(),
@@ -1092,6 +1181,7 @@ mod tests {
         );
         assert!(!is_known("nope"));
         assert!(is_known("concat"));
+        assert!(is_known("flextext_parse_field"));
         for name in BUILTIN_NAMES {
             assert!(
                 !matches!(call(name, &[]), Err(FunctionError::UnknownFunction(_))),

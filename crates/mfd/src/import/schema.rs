@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
+use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::FormatOptions;
 
 mod csv;
@@ -24,6 +24,7 @@ pub(super) use shared::{
 };
 
 use csv::select_block as select_csv_block;
+pub(crate) use csv::{SingletonPosition as CsvSingletonPosition, split_singleton_port};
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
 use xml_ports::normalize_xml_text_ports;
 
@@ -118,6 +119,31 @@ pub(super) struct SchemaComponent {
     pub(super) output_keys: BTreeSet<u32>,
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
+}
+
+const JSON_DYNAMIC_NAME_PORT: &str = "\u{1f}ferrule-json-dynamic-name";
+const JSON_DYNAMIC_BOOL_PORT: &str = "\u{1f}ferrule-json-dynamic-bool";
+const JSON_DYNAMIC_INT_PORT: &str = "\u{1f}ferrule-json-dynamic-int";
+const JSON_DYNAMIC_FLOAT_PORT: &str = "\u{1f}ferrule-json-dynamic-float";
+const JSON_DYNAMIC_STRING_PORT: &str = "\u{1f}ferrule-json-dynamic-string";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum JsonDynamicPort {
+    Name,
+    Value(ScalarType),
+}
+
+pub(super) fn split_json_dynamic_port(path: &[String]) -> Option<(&[String], JsonDynamicPort)> {
+    let (marker, owner) = path.split_last()?;
+    let port = match marker.as_str() {
+        JSON_DYNAMIC_NAME_PORT => JsonDynamicPort::Name,
+        JSON_DYNAMIC_BOOL_PORT => JsonDynamicPort::Value(ScalarType::Bool),
+        JSON_DYNAMIC_INT_PORT => JsonDynamicPort::Value(ScalarType::Int),
+        JSON_DYNAMIC_FLOAT_PORT => JsonDynamicPort::Value(ScalarType::Float),
+        JSON_DYNAMIC_STRING_PORT => JsonDynamicPort::Value(ScalarType::String),
+        _ => return None,
+    };
+    Some((owner, port))
 }
 
 /// Reads an xml schema component: entry tree, ports, and the schema itself
@@ -255,6 +281,8 @@ pub(super) fn read_schema_component(
         is_default_output: is_default_output(component),
         is_variable: data.descendants().any(|node| {
             node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
+        }) || component.children().any(|node| {
+            node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
         }),
         compute_when_key: root_el
             .descendants()
@@ -405,6 +433,11 @@ pub(super) fn read_json_component(
             }
             json_entry_value_schema(&name, &entry)
         });
+    if is_source && let Err(reason) = attach_json_dynamic_source_schema(&mut schema, &ports) {
+        warnings.push(format!(
+            "dynamic JSON source `{name}` is unsupported: {reason}"
+        ));
+    }
     if let Some(target) = &dynamic_json
         && !target.attach_schema(&mut schema)
     {
@@ -455,6 +488,9 @@ pub(super) fn collect_json_ports(
     {
         match child.attribute("type") {
             Some("json-property") => {
+                if record_json_dynamic_source_ports(&child, path, ports, out_count) {
+                    continue;
+                }
                 if child.attribute("inpkey").is_some()
                     && child.children().any(|entry| {
                         entry.has_tag_name("entry")
@@ -511,6 +547,105 @@ pub(super) fn collect_json_ports(
             }
         }
     }
+}
+
+fn record_json_dynamic_source_ports(
+    property: &roxmltree::Node<'_, '_>,
+    owner: &[String],
+    ports: &mut BTreeMap<u32, Vec<String>>,
+    out_count: &mut usize,
+) -> bool {
+    let children = property
+        .children()
+        .filter(|node| node.has_tag_name("entry"))
+        .collect::<Vec<_>>();
+    let Some(name) = children.iter().find(|node| {
+        node.attribute("type") == Some("json-propertyname")
+            && parse_u32(node.attribute("outkey")).is_some()
+    }) else {
+        return false;
+    };
+    let values = children
+        .iter()
+        .filter_map(|node| {
+            let ty = match node.attribute("name")? {
+                "boolean" => ScalarType::Bool,
+                "integer" => ScalarType::Int,
+                "number" => ScalarType::Float,
+                "string" => ScalarType::String,
+                _ => return None,
+            };
+            Some((parse_u32(node.attribute("outkey"))?, ty))
+        })
+        .collect::<Vec<_>>();
+    let [(value_key, value_type)] = values.as_slice() else {
+        return false;
+    };
+    let Some(name_key) = parse_u32(name.attribute("outkey")) else {
+        return false;
+    };
+    let value_marker = match value_type {
+        ScalarType::Bool => JSON_DYNAMIC_BOOL_PORT,
+        ScalarType::Int => JSON_DYNAMIC_INT_PORT,
+        ScalarType::Float => JSON_DYNAMIC_FLOAT_PORT,
+        ScalarType::String => JSON_DYNAMIC_STRING_PORT,
+    };
+    let mut name_path = owner.to_vec();
+    name_path.push(JSON_DYNAMIC_NAME_PORT.to_string());
+    let mut value_path = owner.to_vec();
+    value_path.push(value_marker.to_string());
+    ports.insert(name_key, name_path);
+    ports.insert(*value_key, value_path);
+    *out_count += 2;
+    true
+}
+
+fn attach_json_dynamic_source_schema(
+    schema: &mut SchemaNode,
+    ports: &BTreeMap<u32, Vec<String>>,
+) -> Result<(), String> {
+    for path in ports.values() {
+        let Some((owner_path, JsonDynamicPort::Value(value_type))) = split_json_dynamic_port(path)
+        else {
+            continue;
+        };
+        let owner = schema_node_at_path_mut(schema, owner_path).ok_or_else(|| {
+            format!(
+                "open object `{}` is absent from its schema",
+                owner_path.join("/")
+            )
+        })?;
+        if let Some(existing) = owner.dynamic_fields() {
+            if existing.repeating
+                || !matches!(existing.kind, SchemaKind::Scalar { ty } if ty == value_type)
+            {
+                return Err(format!(
+                    "open object `{}` declares incompatible dynamic value shapes",
+                    owner_path.join("/")
+                ));
+            }
+        } else if !owner.set_dynamic_fields(Some(SchemaNode::scalar("*", value_type))) {
+            return Err(format!(
+                "open object `{}` cannot combine dynamic fields with schema alternatives",
+                owner_path.join("/")
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn schema_node_at_path_mut<'a>(
+    schema: &'a mut SchemaNode,
+    path: &[String],
+) -> Option<&'a mut SchemaNode> {
+    let mut current = schema;
+    for segment in path {
+        let SchemaKind::Group { children, .. } = &mut current.kind else {
+            return None;
+        };
+        current = children.iter_mut().find(|child| child.name == *segment)?;
+    }
+    Some(current)
 }
 
 /// Fallback JSON schema straight from the entry tree: `json-property`
@@ -583,6 +718,7 @@ pub(super) fn read_csv_component(
         .find(|n| n.is_element() && n.tag_name().name() == "root")?;
     let configured_block = names_el.and_then(|names| names.attribute("block"));
     let block = select_csv_block(root_el, configured_block, &name, "csv", warnings)?;
+    let singleton_rows = csv::singleton_rows(root_el, configured_block, block);
 
     let fields: Vec<SchemaNode> = names_el
         .map(|names| {
@@ -656,6 +792,32 @@ pub(super) fn read_csv_component(
             &mut out_count,
             &mut in_count,
         );
+    }
+    for row in singleton_rows {
+        let mut connected = false;
+        for field_entry in row
+            .entry
+            .children()
+            .filter(|node| node.has_tag_name("entry"))
+        {
+            let Some(key) = parse_u32(field_entry.attribute("inpkey")) else {
+                continue;
+            };
+            connected = true;
+            in_count += 1;
+            ports.insert(
+                key,
+                csv::singleton_port_path(
+                    row.position,
+                    field_entry.attribute("name").unwrap_or_default(),
+                ),
+            );
+        }
+        if !connected {
+            warnings.push(format!(
+                "csv target component `{name}` contains an unconnected singleton row; that row was skipped"
+            ));
+        }
     }
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
@@ -883,13 +1045,6 @@ pub(super) fn read_db_component(
     }
     let is_source = out_count >= in_count;
     let (input_keys, output_keys) = entry_key_sets(&root_el);
-    if !single_plain_table && !is_source {
-        warnings.push(format!(
-            "relational database target component `{name}` is non-executable: \
-             ferrule can read relational schemas but cannot write them yet"
-        ));
-    }
-
     // The connection string lives in the mapping's datasource registry,
     // linked from the component by name.
     let connection = data
@@ -1063,14 +1218,29 @@ fn db_table_schema(
     table: &roxmltree::Node,
     types: &BTreeMap<String, BTreeMap<String, ir::ScalarType>>,
 ) -> SchemaNode {
+    db_table_schema_with_complete_row(table, types, false)
+}
+
+fn db_table_schema_with_complete_row(
+    table: &roxmltree::Node,
+    types: &BTreeMap<String, BTreeMap<String, ir::ScalarType>>,
+    parent_is_complete: bool,
+) -> SchemaNode {
     let name = table.attribute("name").unwrap_or_default();
     let physical_table = name.split_once('|').map_or(name, |(table, _)| table);
     let columns = types.get(physical_table);
-    let children = table
+    let is_complete = parent_is_complete
+        || table.attribute("inpkey").is_some()
+        || table.attribute("outkey").is_some();
+    let mut children = table
         .children()
         .filter(|node| node.is_element() && node.tag_name().name() == "entry")
         .filter_map(|entry| match entry.attribute("type") {
-            Some("table") => Some(db_table_schema(&entry, types)),
+            Some("table") => Some(db_table_schema_with_complete_row(
+                &entry,
+                types,
+                is_complete,
+            )),
             None => {
                 let column = entry.attribute("name").unwrap_or_default();
                 let ty = columns
@@ -1085,7 +1255,17 @@ fn db_table_schema(
             }
             Some(_) => None,
         })
-        .collect();
+        .collect::<Vec<_>>();
+    if is_complete {
+        for (column, ty) in columns.into_iter().flatten() {
+            if !children
+                .iter()
+                .any(|child| child.name.eq_ignore_ascii_case(column))
+            {
+                children.push(SchemaNode::scalar(column, *ty));
+            }
+        }
+    }
     SchemaNode::group(name, children).repeating()
 }
 

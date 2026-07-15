@@ -563,6 +563,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
+        Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
         Node::SequenceExists {
             sequence,
             predicate,

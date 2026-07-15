@@ -34,6 +34,10 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
+        Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
         // The reducer's predicate has its own generated-item context and is
         // connected explicitly when the filter/exists chain is emitted.
         // Its sequence arguments still execute in the enclosing scope.

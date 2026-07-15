@@ -254,7 +254,7 @@ fn warns_when_nested_relationship_metadata_is_missing() {
 }
 
 #[test]
-fn relational_database_targets_are_explicitly_non_executable() {
+fn relational_database_targets_use_the_executable_writer() {
     let dir = TempDir::new("target");
     let db_path = dir.0.join("test.sqlite");
     let connection = Connection::open(&db_path).unwrap();
@@ -271,8 +271,8 @@ fn relational_database_targets_are_explicitly_non_executable() {
     write_relational_target_design(&design);
 
     let imported = mfd::import(&design).unwrap();
-    assert!(imported.warnings.iter().any(|warning| {
-        warning.contains("relational database target component `database` is non-executable")
-            && warning.contains("cannot write")
+    assert!(imported.warnings.iter().all(|warning| {
+        !warning.contains("relational database target component `database` is non-executable")
+            && !warning.contains("cannot write")
     }));
 }

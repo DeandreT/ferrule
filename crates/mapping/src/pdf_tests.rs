@@ -161,6 +161,7 @@ fn text_groups_rows_and_open_page_ranges_validate_and_roundtrip() {
         needle: needle.into(),
         case: PdfTextCase::AsciiInsensitive,
         flexible_whitespace: true,
+        properties: Default::default(),
     };
     let Ok(layout) = PdfLayout::new(
         "Document",
@@ -239,6 +240,7 @@ fn text_group_validation_rejects_empty_matchers_and_nonrepeating_rows() {
                     needle: String::new(),
                     case: PdfTextCase::Sensitive,
                     flexible_whitespace: false,
+                    properties: Default::default(),
                 },
                 children: vec![capture("Value")],
             }],
@@ -260,6 +262,7 @@ fn text_group_validation_rejects_empty_matchers_and_nonrepeating_rows() {
                     needle: " \t\n".into(),
                     case: PdfTextCase::Sensitive,
                     flexible_whitespace: true,
+                    properties: Default::default(),
                 },
                 children: vec![capture("Value")],
             }],
@@ -284,6 +287,7 @@ fn text_group_validation_rejects_empty_matchers_and_nonrepeating_rows() {
                     needle: " \t".into(),
                     case: PdfTextCase::Sensitive,
                     flexible_whitespace: false,
+                    properties: Default::default(),
                 },
                 children: vec![capture("Value")],
             }],

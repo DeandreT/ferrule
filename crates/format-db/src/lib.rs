@@ -274,6 +274,23 @@ pub fn read_instance(db_path: &Path, schema: &SchemaNode) -> Result<Instance, Db
     relational::read_instance(db_path, schema)
 }
 
+/// Replaces the rows described by either a flat table or relational schema.
+/// Relationship insertion order follows the side that owns each foreign key.
+pub fn write_instance(
+    db_path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), DbFormatError> {
+    if relational::is_flat_table(schema) {
+        let rows = instance.as_repeated().ok_or(DbFormatError::RowShape {
+            row: 0,
+            got: instance_type_name(instance),
+        })?;
+        return write(db_path, schema, rows);
+    }
+    relational::write_instance(db_path, schema, instance)
+}
+
 /// Validates a relational database schema against SQLite's foreign-key
 /// metadata without reading any table rows.
 pub fn validate_relational_schema(

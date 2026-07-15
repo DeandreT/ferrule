@@ -217,7 +217,7 @@ fn imports_nested_repeating_groups() {
 }
 
 #[test]
-fn resolves_top_level_element_refs_and_degrades_cycles() {
+fn resolves_top_level_element_refs_and_retains_recursive_cycles() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("ferrule_xsd_ref_test_{}.xsd", std::process::id()));
     std::fs::write(
@@ -256,13 +256,9 @@ fn resolves_top_level_element_refs_and_degrades_cycles() {
             ty: ScalarType::String
         }
     ));
-    // The self-reference inside Office degrades to a string scalar.
-    assert!(matches!(
-        office.child("Office").unwrap().kind,
-        SchemaKind::Scalar {
-            ty: ScalarType::String
-        }
-    ));
+    let recursive = office.child("Office").unwrap();
+    assert_eq!(recursive.recursive_ref.as_deref(), Some("Office"));
+    assert!(matches!(recursive.kind, SchemaKind::Group { .. }));
 }
 
 #[test]

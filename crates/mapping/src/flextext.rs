@@ -383,7 +383,7 @@ impl<'de> Deserialize<'de> for DelimitedRecordField {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DelimitedDialect {
-    field_separator: char,
+    field_separator: String,
     record_separator: String,
     quote: char,
     escape: char,
@@ -396,14 +396,27 @@ impl DelimitedDialect {
         quote: char,
         escape: char,
     ) -> Result<Self, FlexTextLayoutError> {
+        Self::new_with_field_separator(field_separator.to_string(), record_separator, quote, escape)
+    }
+
+    pub fn new_with_field_separator(
+        field_separator: impl Into<String>,
+        record_separator: impl Into<String>,
+        quote: char,
+        escape: char,
+    ) -> Result<Self, FlexTextLayoutError> {
+        let field_separator = field_separator.into();
         let record_separator = record_separator.into();
-        if matches!(field_separator, '\r' | '\n' | '\0')
+        if field_separator
+            .chars()
+            .any(|value| matches!(value, '\r' | '\n' | '\0'))
             || matches!(quote, '\r' | '\n' | '\0')
             || matches!(escape, '\r' | '\n' | '\0')
-            || field_separator == quote
+            || field_separator.contains(quote)
         {
             return Err(FlexTextLayoutError::InvalidDelimitedDialect);
         }
+        validate_nonempty_string(&field_separator, "field separator")?;
         validate_nonempty_string(&record_separator, "record separator")?;
         Ok(Self {
             field_separator,
@@ -413,8 +426,8 @@ impl DelimitedDialect {
         })
     }
 
-    pub const fn field_separator(&self) -> char {
-        self.field_separator
+    pub fn field_separator(&self) -> &str {
+        &self.field_separator
     }
 
     pub fn record_separator(&self) -> &str {
@@ -437,13 +450,13 @@ impl<'de> Deserialize<'de> for DelimitedDialect {
     {
         #[derive(Deserialize)]
         struct Repr {
-            field_separator: char,
+            field_separator: String,
             record_separator: String,
             quote: char,
             escape: char,
         }
         let value = Repr::deserialize(deserializer)?;
-        Self::new(
+        Self::new_with_field_separator(
             value.field_separator,
             value.record_separator,
             value.quote,
@@ -620,6 +633,7 @@ fn validate_command(
             dialect, fields, ..
         } => {
             validate_fields(fields.iter().map(DelimitedRecordField::name))?;
+            validate_nonempty_string(dialect.field_separator(), "field separator")?;
             validate_nonempty_string(dialect.record_separator(), "record separator")?;
         }
         FlexCommand::Switch { arms, default, .. } => {
@@ -699,10 +713,13 @@ fn command_string_bytes(command: &FlexCommand) -> Result<usize, FlexTextLayoutEr
             .try_fold(name_bytes, |total, field| add(total, field.name().len())),
         FlexCommand::DelimitedRecords {
             dialect, fields, ..
-        } => fields.iter().try_fold(
-            add(name_bytes, dialect.record_separator().len())?,
-            |total, field| add(total, field.name().len()),
-        ),
+        } => {
+            let total = add(name_bytes, dialect.field_separator().len())?;
+            fields.iter().try_fold(
+                add(total, dialect.record_separator().len())?,
+                |total, field| add(total, field.name().len()),
+            )
+        }
         FlexCommand::Switch { arms, default, .. } => {
             let mut total = name_bytes;
             for arm in arms {

@@ -64,38 +64,48 @@ pub(super) struct PlannedJoinOutput {
 }
 
 impl ParsedJoin {
+    #[cfg(test)]
     pub(super) fn to_plan(&self, collections: &[Vec<String>]) -> Result<PlannedJoin, String> {
-        if collections.len() != self.inputs.len() || collections.len() < 2 {
-            return Err(format!(
-                "join has {} parsed inputs but {} resolved collections",
-                self.inputs.len(),
-                collections.len()
-            ));
-        }
         let sources = collections
             .iter()
             .cloned()
             .map(JoinSource::new)
             .collect::<Vec<_>>();
+        self.to_plan_sources(&sources)
+    }
+
+    fn to_plan_sources(&self, sources: &[JoinSource]) -> Result<PlannedJoin, String> {
+        if sources.len() != self.inputs.len() || sources.len() < 2 {
+            return Err(format!(
+                "join has {} parsed inputs but {} resolved collections",
+                self.inputs.len(),
+                sources.len()
+            ));
+        }
+        let collections = sources
+            .iter()
+            .map(|source| source.collection().to_vec())
+            .collect::<Vec<_>>();
         let mut plan = JoinPlan::new(
             sources[0].clone(),
             sources[1].clone(),
-            self.stage_conditions(1, collections)?,
+            self.stage_conditions(1, &collections)?,
         )
         .map_err(|error| error.to_string())?;
-        for (stage, source) in sources.into_iter().enumerate().skip(2) {
+        for (stage, source) in sources.iter().enumerate().skip(2) {
             plan = plan
-                .then(source, self.stage_conditions(stage, collections)?)
+                .then(source.clone(), self.stage_conditions(stage, &collections)?)
                 .map_err(|error| error.to_string())?;
         }
         let outputs = self
             .inputs
             .iter()
             .flat_map(|input| {
+                let collection = collections[input.index].clone();
                 input.outputs.iter().map(move |output| PlannedJoinOutput {
                     port: output.port,
                     input_index: input.index,
-                    collection: collections[input.index].clone(),
+                    collection: collection.clone(),
                     path: output.path.clone(),
                 })
             })
@@ -171,6 +181,7 @@ struct ResolvedJoin {
 struct ResolvedInput {
     source: usize,
     path: Vec<String>,
+    singleton: bool,
 }
 
 struct ResolvedField {
@@ -315,7 +326,7 @@ impl Registry {
             }
             return Err("one join output is used under incomparable target contexts".to_string());
         }
-        let collections = join
+        let plan_sources = join
             .inputs
             .iter()
             .map(|input| {
@@ -330,14 +341,19 @@ impl Registry {
                     ]
                 };
                 absolute.extend(input.path.iter().cloned());
-                Ok(if absolute.starts_with(anchor) {
+                let path = if absolute.starts_with(anchor) {
                     absolute[anchor.len()..].to_vec()
                 } else {
                     absolute
+                };
+                Ok(if input.singleton {
+                    JoinSource::singleton(path)
+                } else {
+                    JoinSource::new(path)
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
-        let planned = join.parsed.to_plan(&collections)?;
+        let planned = join.parsed.to_plan_sources(&plan_sources)?;
         validate_outputs(&planned, &join.inputs, sources)?;
         join.target_path = Some(target_path.to_vec());
         join.planned = Some(planned);
@@ -658,18 +674,22 @@ pub(super) fn prepare_iterations(
         let Some(source_path) = builder.iteration_source_path(&feed) else {
             continue;
         };
-        let scope_source = if iteration.output == IterationOutput::MappedSequence {
-            builder
-                .sources
-                .get(source_path.source)
-                .map(|source| SourcePath {
-                    source: source_path.source,
-                    path: split_at_innermost_repeating(&source.schema, &source_path.path).0,
-                })
-                .unwrap_or_else(|| source_path.clone())
-        } else {
-            source_path
-        };
+        let structural_source = builder
+            .schema_node(&source_path)
+            .is_some_and(|node| matches!(node.kind, ir::SchemaKind::Group { .. }));
+        let scope_source =
+            if iteration.output == IterationOutput::MappedSequence || structural_source {
+                builder
+                    .sources
+                    .get(source_path.source)
+                    .map(|source| SourcePath {
+                        source: source_path.source,
+                        path: split_at_innermost_repeating(&source.schema, &source_path.path).0,
+                    })
+                    .unwrap_or_else(|| source_path.clone())
+            } else {
+                source_path
+            };
         scopes.anchors.insert(
             iteration.target_path.clone(),
             builder.context_path(&scope_source),
@@ -700,17 +720,25 @@ fn resolve_join(
                     .map(|path| (index, path))
             })
             .ok_or_else(|| format!("input {} is not a plain source feed", input.index))?;
-        if !sources
+        let source_node = sources
             .get(source)
-            .and_then(|source| schema_node_at(&source.schema, &path))
-            .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+            .and_then(|source| schema_node_at(&source.schema, &path));
+        let singleton = source_node
+            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }));
+        if !singleton
+            && !source_node
+                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
         {
             return Err(format!(
-                "input {} must be a repeating structural source",
+                "input {} must be a repeating structural source or singleton scalar",
                 input.index
             ));
         }
-        inputs.push(ResolvedInput { source, path });
+        inputs.push(ResolvedInput {
+            source,
+            path,
+            singleton,
+        });
     }
     for equality in &pending.parsed.equalities {
         for key in [&equality.first, &equality.second] {
@@ -719,6 +747,12 @@ fn resolve_join(
                 .ok_or("join equality references an unknown input")?;
             let mut path = input.path.clone();
             path.extend(key.path.iter().cloned());
+            if inputs[key.input_index].singleton && !key.path.is_empty() {
+                return Err(format!(
+                    "input {} singleton equality path must be empty",
+                    key.input_index
+                ));
+            }
             if !sources
                 .get(input.source)
                 .and_then(|source| schema_node_at(&source.schema, &path))
@@ -734,7 +768,7 @@ fn resolve_join(
             }
         }
     }
-    let collections = inputs
+    let plan_sources = inputs
         .iter()
         .map(|input| {
             let mut collection = if input.source == 0 {
@@ -748,10 +782,14 @@ fn resolve_join(
                 ]
             };
             collection.extend(input.path.iter().cloned());
-            Ok(collection)
+            Ok(if input.singleton {
+                JoinSource::singleton(collection)
+            } else {
+                JoinSource::new(collection)
+            })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let root = pending.parsed.to_plan(&collections)?;
+    let root = pending.parsed.to_plan_sources(&plan_sources)?;
     validate_outputs(&root, &inputs, sources)?;
     Ok(ResolvedJoin {
         parsed: pending.parsed.clone(),

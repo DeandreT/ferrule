@@ -92,6 +92,7 @@ fn project(target: SchemaNode) -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root,
     }
@@ -172,6 +173,7 @@ fn merges_computed_scalar_fragments_into_one_open_object() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

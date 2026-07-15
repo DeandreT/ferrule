@@ -9,7 +9,10 @@
 //! the schema describes the segment/loop structure and picks the dialect
 //! by its first segment (ISA = X12, UNB = EDIFACT) -- see `format_edi`.
 
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, bail};
@@ -27,6 +30,15 @@ pub struct RunOutcome {
     pub records_written: usize,
     pub input_path: PathBuf,
     pub output_path: PathBuf,
+    pub extra_outputs: Vec<WrittenOutput>,
+}
+
+/// One additional target file written during a project run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WrittenOutput {
+    pub name: String,
+    pub records_written: usize,
+    pub path: PathBuf,
 }
 
 /// Loads the project at `project_path`, runs it against `input_path` (plus
@@ -70,12 +82,31 @@ pub fn run_project_with_paths(
         "target_path",
         false,
     )?;
+    let extra_output_paths = project
+        .extra_targets
+        .iter()
+        .map(|target| {
+            let stored = target
+                .path
+                .as_deref()
+                .filter(|path| !path.trim().is_empty())
+                .with_context(|| {
+                    format!("extra target `{}` has no stored output path", target.name)
+                })?;
+            resolve_stored_path(project_path, stored, false)
+                .with_context(|| format!("resolving extra target `{}` output", target.name))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
 
     let source_instance = read_instance(&input_path, &project.source, &project.source_options)?;
 
     let project_dir = project_path.parent().unwrap_or_else(|| Path::new("."));
     let mut extras = Vec::with_capacity(project.extra_sources.len());
-    for extra in &project.extra_sources {
+    for extra in project
+        .extra_sources
+        .iter()
+        .filter(|extra| extra.dynamic_path.is_none())
+    {
         let path = PathBuf::from(&extra.path);
         let path = if path.is_absolute() || http_url(&path).is_some() {
             path
@@ -94,147 +125,95 @@ pub fn run_project_with_paths(
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
+    let dynamic_loader = ProjectDynamicSourceLoader::new(project_dir, &project.extra_sources);
     let execution = engine::ExecutionContext::new(&runtime_project_path)
-        .with_current_datetime(&current_datetime);
-    let target_instance =
-        engine::run_with_sources_and_context(&project, &source_instance, extras, &execution)?;
+        .with_current_datetime(&current_datetime)
+        .with_dynamic_source_loader(&dynamic_loader);
+    let outputs = engine::run_outputs_with_sources_and_context(
+        &project,
+        &source_instance,
+        extras,
+        &execution,
+    )?;
 
-    let row_count = if project.target_options.pdf.is_some() {
-        reject_pdf_conflicts(&project.target_options, "output")?;
-        bail!("PDF output is not supported; `pdf` is input-only");
-    } else if let Some(layout) = &project.target_options.flextext {
-        reject_flextext_conflicts(&project.target_options, "output")?;
-        format_flextext::write(&output_path, &project.target, &target_instance, layout)
-            .with_context(|| format!("writing output {}", output_path.display()))?;
-        1
-    } else if let Some(options) = &project.target_options.protobuf {
-        reject_protobuf_conflicts(&project.target_options, "output")?;
-        let layout = format_protobuf::Layout::parse(&options.schema)
-            .context("parsing embedded Protocol Buffers schema")?;
-        format_protobuf::write(
-            &output_path,
-            &layout,
-            &options.root_message,
-            &target_instance,
-        )
-        .with_context(|| format!("writing output {}", output_path.display()))?;
-        1
-    } else if let Some(layout) = &project.target_options.fixed_width {
-        reject_fixed_width_csv_options(&project.target_options, "output")?;
-        let rows = target_instance
-            .as_repeated()
-            .context("mapping did not produce a repeating row set for a fixed-width output")?;
-        format_csv::write_fixed_width(&output_path, &project.target, rows, layout)
-            .with_context(|| format!("writing output {}", output_path.display()))?;
-        rows.len()
-    } else {
-        match extension_of(&output_path)?.as_str() {
-            "csv" | "txt" => {
-                let rows = target_instance
-                    .as_repeated()
-                    .context("mapping did not produce a repeating row set for a CSV output")?;
-                format_csv::write(
-                    &output_path,
-                    &project.target,
-                    rows,
-                    project.target_options.delimiter,
-                    project.target_options.has_header_row.unwrap_or(true),
-                )
-                .with_context(|| format!("writing output {}", output_path.display()))?;
-                rows.len()
-            }
-            "xlsx" => {
-                if let Some(layout) = &project.target_options.xlsx_hierarchical {
-                    if project.target_options.xlsx_grid.is_some()
-                        || project.target_options.xlsx_composite.is_some()
-                        || has_legacy_xlsx_layout(&project.target_options)
-                    {
-                        anyhow::bail!(
-                            "`xlsx_hierarchical` cannot be combined with other XLSX layout options"
-                        );
-                    }
-                    format_xlsx::write_hierarchical(
-                        &output_path,
-                        &project.target,
-                        &target_instance,
-                        layout,
-                    )
-                    .with_context(|| format!("writing output {}", output_path.display()))?
-                } else {
-                    if project.target_options.xlsx_grid.is_some() {
-                        anyhow::bail!(
-                            "grid XLSX output is not supported; `xlsx_grid` is input-only"
-                        );
-                    }
-                    if project.target_options.xlsx_composite.is_some() {
-                        anyhow::bail!(
-                            "composite XLSX output is not supported; `xlsx_composite` is input-only"
-                        );
-                    }
-                    if !project.target_options.xlsx_rows.is_empty() {
-                        anyhow::bail!(
-                            "transposed XLSX output is not supported; `xlsx_rows` is input-only"
-                        );
-                    }
-                    let rows = target_instance.as_repeated().context(
-                        "mapping did not produce a repeating row set for an XLSX output",
-                    )?;
-                    format_xlsx::write(
-                        &output_path,
-                        &project.target,
-                        rows,
-                        project.target_options.xlsx_sheet.as_deref(),
-                        project.target_options.xlsx_start_row.unwrap_or(1),
-                        &project.target_options.xlsx_columns,
-                        project.target_options.has_header_row.unwrap_or(true),
-                    )
-                    .with_context(|| format!("writing output {}", output_path.display()))?;
-                    rows.len()
-                }
-            }
-            "xml" => {
-                format_xml::write(&output_path, &project.target, &target_instance)
-                    .with_context(|| format!("writing output {}", output_path.display()))?;
-                1
-            }
-            "json" | "jsonl" | "ndjson" => {
-                let json_lines = project.target_options.json_lines
-                    || matches!(extension_of(&output_path)?.as_str(), "jsonl" | "ndjson");
-                if json_lines {
-                    format_json::write_lines(&output_path, &project.target, &target_instance)
-                } else {
-                    format_json::write(&output_path, &project.target, &target_instance)
-                }
-                .with_context(|| format!("writing output {}", output_path.display()))?;
-                target_instance.as_repeated().map_or(1, <[Instance]>::len)
-            }
-            "db" | "sqlite" | "sqlite3" => {
-                let rows = target_instance
-                    .as_repeated()
-                    .context("mapping did not produce a repeating row set for a database output")?;
-                format_db::write(&output_path, &project.target, rows)
-                    .with_context(|| format!("writing output {}", output_path.display()))?;
-                rows.len()
-            }
-            "edi" | "x12" | "edifact" => {
-                let write = match format_edi::dialect_of(&project.target)? {
-                    format_edi::Dialect::X12 => format_edi::x12::write,
-                    format_edi::Dialect::Edifact => format_edi::edifact::write,
-                };
-                write(&output_path, &project.target, &target_instance)
-                    .with_context(|| format!("writing output {}", output_path.display()))?;
-                1
-            }
-            "pdf" => bail!("PDF output is not supported; PDF is input-only"),
-            other => bail!("unsupported output file extension: .{other}"),
-        }
-    };
+    let engine::ExecutionOutputs {
+        primary,
+        extras: target_outputs,
+    } = outputs;
+    let row_count = write_output(
+        &output_path,
+        &project.target,
+        &primary,
+        &project.target_options,
+    )?;
+    if target_outputs.len() != project.extra_targets.len() {
+        bail!("engine returned an unexpected number of additional target values");
+    }
+    let mut extra_outputs = Vec::with_capacity(project.extra_targets.len());
+    for ((target, path), output) in project
+        .extra_targets
+        .iter()
+        .zip(extra_output_paths)
+        .zip(target_outputs)
+    {
+        let records_written =
+            write_output(&path, &target.schema, &output.instance, &target.options)
+                .with_context(|| format!("writing extra target `{}`", target.name))?;
+        extra_outputs.push(WrittenOutput {
+            name: output.name,
+            records_written,
+            path,
+        });
+    }
 
     Ok(RunOutcome {
         records_written: row_count,
         input_path,
         output_path,
+        extra_outputs,
     })
+}
+
+struct ProjectDynamicSourceLoader<'a> {
+    project_dir: &'a Path,
+    sources: &'a [mapping::NamedSource],
+    cache: RefCell<BTreeMap<(String, String), Arc<Instance>>>,
+}
+
+impl<'a> ProjectDynamicSourceLoader<'a> {
+    fn new(project_dir: &'a Path, sources: &'a [mapping::NamedSource]) -> Self {
+        Self {
+            project_dir,
+            sources,
+            cache: RefCell::new(BTreeMap::new()),
+        }
+    }
+}
+
+impl engine::DynamicSourceLoader for ProjectDynamicSourceLoader<'_> {
+    fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
+        let key = (source_name.to_string(), path.to_string());
+        if let Some(instance) = self.cache.borrow().get(&key).cloned() {
+            return Ok(instance);
+        }
+        let source = self
+            .sources
+            .iter()
+            .find(|source| source.name == source_name)
+            .ok_or_else(|| format!("dynamic source `{source_name}` is not declared"))?;
+        let path = PathBuf::from(path);
+        let resolved = if path.is_absolute() || http_url(&path).is_some() {
+            path
+        } else {
+            self.project_dir.join(path)
+        };
+        let instance = Arc::new(
+            read_instance(&resolved, &source.schema, &source.options)
+                .map_err(|error| error.to_string())?,
+        );
+        self.cache.borrow_mut().insert(key, Arc::clone(&instance));
+        Ok(instance)
+    }
 }
 
 fn resolve_run_path(
@@ -255,12 +234,20 @@ fn resolve_run_path(
             project_path.display()
         )
     })?;
+    resolve_stored_path(project_path, stored_path, allow_http)
+}
+
+fn resolve_stored_path(
+    project_path: &Path,
+    stored_path: &str,
+    allow_http: bool,
+) -> anyhow::Result<PathBuf> {
     let stored_path = PathBuf::from(stored_path);
     if http_url(&stored_path).is_some() {
         if allow_http {
             return Ok(stored_path);
         }
-        bail!("HTTP output URLs are not supported; pass a local --{argument} path");
+        bail!("HTTP output URLs are not supported; configure a local output path");
     }
     if stored_path.is_absolute() {
         return Ok(stored_path);
@@ -348,6 +335,130 @@ pub fn import_db(db_path: &Path, table: &str) -> anyhow::Result<String> {
     let schema = format_db::introspect(db_path, table)
         .with_context(|| format!("introspecting {} in {}", table, db_path.display()))?;
     Ok(serde_json::to_string_pretty(&schema)?)
+}
+
+fn write_output(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &FormatOptions,
+) -> anyhow::Result<usize> {
+    if options.pdf.is_some() {
+        reject_pdf_conflicts(options, "output")?;
+        bail!("PDF output is not supported; `pdf` is input-only");
+    }
+    if let Some(layout) = &options.flextext {
+        reject_flextext_conflicts(options, "output")?;
+        format_flextext::write(path, schema, instance, layout)
+            .with_context(|| format!("writing output {}", path.display()))?;
+        return Ok(1);
+    }
+    if let Some(protobuf) = &options.protobuf {
+        reject_protobuf_conflicts(options, "output")?;
+        let layout = format_protobuf::Layout::parse(&protobuf.schema)
+            .context("parsing embedded Protocol Buffers schema")?;
+        format_protobuf::write(path, &layout, &protobuf.root_message, instance)
+            .with_context(|| format!("writing output {}", path.display()))?;
+        return Ok(1);
+    }
+    if let Some(layout) = &options.fixed_width {
+        reject_fixed_width_csv_options(options, "output")?;
+        let rows = instance
+            .as_repeated()
+            .context("mapping did not produce a repeating row set for a fixed-width output")?;
+        format_csv::write_fixed_width(path, schema, rows, layout)
+            .with_context(|| format!("writing output {}", path.display()))?;
+        return Ok(rows.len());
+    }
+
+    match extension_of(path)?.as_str() {
+        "csv" | "txt" => {
+            let rows = instance
+                .as_repeated()
+                .context("mapping did not produce a repeating row set for a CSV output")?;
+            format_csv::write(
+                path,
+                schema,
+                rows,
+                options.delimiter,
+                options.has_header_row.unwrap_or(true),
+            )
+            .with_context(|| format!("writing output {}", path.display()))?;
+            Ok(rows.len())
+        }
+        "xlsx" => {
+            if let Some(layout) = &options.xlsx_hierarchical {
+                if options.xlsx_grid.is_some()
+                    || options.xlsx_composite.is_some()
+                    || has_legacy_xlsx_layout(options)
+                {
+                    bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
+                }
+                return format_xlsx::write_hierarchical(path, schema, instance, layout)
+                    .with_context(|| format!("writing output {}", path.display()));
+            }
+            if options.xlsx_grid.is_some() {
+                bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+            }
+            if options.xlsx_composite.is_some() {
+                bail!("composite XLSX output is not supported; `xlsx_composite` is input-only");
+            }
+            if !options.xlsx_rows.is_empty() {
+                bail!("transposed XLSX output is not supported; `xlsx_rows` is input-only");
+            }
+            let rows = instance
+                .as_repeated()
+                .context("mapping did not produce a repeating row set for an XLSX output")?;
+            let write = if options.xlsx_update_existing {
+                format_xlsx::update
+            } else {
+                format_xlsx::write
+            };
+            write(
+                path,
+                schema,
+                rows,
+                options.xlsx_sheet.as_deref(),
+                options.xlsx_start_row.unwrap_or(1),
+                &options.xlsx_columns,
+                options.has_header_row.unwrap_or(true),
+            )
+            .with_context(|| format!("writing output {}", path.display()))?;
+            Ok(rows.len())
+        }
+        "xml" => {
+            format_xml::write(path, schema, instance)
+                .with_context(|| format!("writing output {}", path.display()))?;
+            Ok(1)
+        }
+        "json" | "jsonl" | "ndjson" => {
+            let json_lines =
+                options.json_lines || matches!(extension_of(path)?.as_str(), "jsonl" | "ndjson");
+            if json_lines {
+                format_json::write_lines(path, schema, instance)
+            } else {
+                format_json::write(path, schema, instance)
+            }
+            .with_context(|| format!("writing output {}", path.display()))?;
+            Ok(instance.as_repeated().map_or(1, <[Instance]>::len))
+        }
+        "db" | "sqlite" | "sqlite3" => {
+            format_db::write_instance(path, schema, instance)
+                .with_context(|| format!("writing output {}", path.display()))?;
+            Ok(instance.as_repeated().map_or(1, <[Instance]>::len))
+        }
+        "edi" | "x12" | "edifact" => {
+            let write = match format_edi::dialect_of(schema)? {
+                format_edi::Dialect::X12 => format_edi::x12::write,
+                format_edi::Dialect::Edifact => format_edi::edifact::write,
+            };
+            write(path, schema, instance)
+                .with_context(|| format!("writing output {}", path.display()))?;
+            Ok(1)
+        }
+        "pdf" => bail!("PDF output is not supported; PDF is input-only"),
+        other => bail!("unsupported output file extension: .{other}"),
+    }
 }
 
 /// Reads any supported instance file into an [`Instance`], shaped by `schema`.
@@ -623,6 +734,16 @@ fn reject_xbrl_boundaries(project: &mapping::Project) -> anyhow::Result<()> {
     }
     if project.target_options.xbrl.is_some() {
         bail!("XBRL target output is not executable; native XBRL writing is not supported");
+    }
+    if let Some(target) = project
+        .extra_targets
+        .iter()
+        .find(|target| target.options.xbrl.is_some())
+    {
+        bail!(
+            "extra target `{}` is an XBRL boundary; native XBRL writing is not supported",
+            target.name
+        );
     }
     Ok(())
 }

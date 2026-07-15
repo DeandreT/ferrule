@@ -4,21 +4,50 @@ use std::path::Path;
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::AggregateOp;
 
-use super::{Definition, OutputExpr};
+use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
 use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component, schema_node_at};
 
+mod adjacency;
+mod hierarchy;
 mod record;
+mod recursive;
 mod sequence_record;
 mod target;
 
+pub(super) use adjacency::try_read as try_read_adjacency_tree;
+pub(super) use hierarchy::try_read as try_read_path_hierarchy;
+pub(super) use recursive::try_read as try_read_recursive;
+pub(super) use target::instantiate_find;
 pub(in crate::import) use target::{accept_target, build_targets, prepare_target_frames};
+
+pub(super) type ImportedDefinition = (Definition, Option<SchemaComponent>, Vec<String>);
 
 #[derive(Clone)]
 pub(super) struct Recipe {
     source: RecipeSource,
     filter: Option<Expr>,
     bindings: BTreeMap<Vec<String>, Expr>,
+}
+
+#[derive(Clone)]
+pub(super) struct FindRecipe {
+    pub(super) source: FindSource,
+    predicate: Expr,
+    value: Expr,
+}
+
+#[derive(Clone)]
+pub(super) enum FindSource {
+    Catalog {
+        port: u32,
+        collection: Vec<String>,
+    },
+    Parameter {
+        component_id: u32,
+        schema: ir::SchemaNode,
+        collection: Vec<String>,
+    },
 }
 
 #[derive(Clone)]
@@ -37,12 +66,48 @@ enum RecipeSource {
         input_name: String,
         output_name: String,
     },
+    RecursiveCollect {
+        component_id: u32,
+        prefix_parameter: u32,
+        children: Vec<String>,
+        descent_value: Vec<String>,
+        values: Vec<String>,
+        value: Vec<String>,
+        output: Vec<String>,
+        separator: String,
+    },
+    RecursiveFilter {
+        component_id: u32,
+        predicate_parameter: u32,
+        children: String,
+        items: String,
+        value: Vec<String>,
+        value_first: bool,
+    },
+    PathHierarchy {
+        component_id: u32,
+        values: Vec<String>,
+        separator: String,
+        directories: String,
+        files: String,
+        name: String,
+    },
+    AdjacencyTree {
+        component_id: u32,
+        base_parameter: u32,
+        collection: Vec<String>,
+        key: Vec<String>,
+        parent: Vec<String>,
+        target_key: String,
+        target_children: String,
+    },
 }
 
 #[derive(Clone)]
 enum Expr {
     Parameter(u32),
     Catalog(Vec<String>),
+    CatalogAbsolute(Vec<String>),
     Const(Value),
     Call {
         function: String,
@@ -68,7 +133,8 @@ enum Expr {
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
-) -> Result<(Definition, Option<SchemaComponent>, Vec<String>), String> {
+    registry: &Registry,
+) -> Result<ImportedDefinition, String> {
     let structure = component
         .children()
         .find(|node| node.has_tag_name("structure"))
@@ -80,6 +146,12 @@ pub(super) fn read(
         .children()
         .filter(|node| node.has_tag_name("component"))
         .collect::<Vec<_>>();
+
+    if let Some(definition) =
+        try_read_scalar_find(component, &structure, &children, mfd_path, registry)?
+    {
+        return Ok(definition);
+    }
 
     if let Some(definition) = sequence_record::try_read(component, &structure, &children, mfd_path)?
     {
@@ -239,6 +311,7 @@ pub(super) fn read(
     let context = ExprContext {
         functions: &functions,
         by_output: &by_output,
+        nested: None,
         parameters: &parameters,
         catalog_ports: &catalog.ports,
         collection_path: &collection_path,
@@ -317,6 +390,323 @@ pub(super) fn read(
     ))
 }
 
+#[derive(Clone)]
+struct NestedOutput {
+    expression: ScalarExpr,
+    inputs: BTreeMap<u32, u32>,
+}
+
+fn try_read_scalar_find(
+    component: &roxmltree::Node<'_, '_>,
+    structure: &roxmltree::Node<'_, '_>,
+    children: &[roxmltree::Node<'_, '_>],
+    mfd_path: &Path,
+    registry: &Registry,
+) -> Result<Option<ImportedDefinition>, String> {
+    let xml = children
+        .iter()
+        .filter(|child| child.attribute("library") == Some("xml"))
+        .copied()
+        .collect::<Vec<_>>();
+    let outputs = children
+        .iter()
+        .filter(|child| {
+            child.attribute("library") == Some("core") && child.attribute("kind") == Some("7")
+        })
+        .copied()
+        .collect::<Vec<_>>();
+    let filters = children
+        .iter()
+        .filter(|child| {
+            child.attribute("library") == Some("core") && child.attribute("kind") == Some("3")
+        })
+        .copied()
+        .collect::<Vec<_>>();
+    let ([catalog_node], [output_node], [filter_node]) =
+        (xml.as_slice(), outputs.as_slice(), filters.as_slice())
+    else {
+        return Ok(None);
+    };
+
+    let mut schema_warnings = Vec::new();
+    let catalog = read_schema_component(catalog_node, mfd_path, &mut schema_warnings)
+        .ok_or("scalar structured lookup catalog schema cannot be read")?;
+    let parameter_source = catalog.is_source
+        && catalog.input_instance.is_none()
+        && record::is_input_parameter(*catalog_node);
+    if !catalog.is_source || catalog.input_instance.is_none() && !parameter_source {
+        return Ok(None);
+    }
+
+    let mut functions = Vec::new();
+    let mut ids = Vec::new();
+    let mut nested = BTreeMap::new();
+    for child in children {
+        if child.attribute("library") == Some("xml") || *child == *output_node {
+            continue;
+        }
+        if child.attribute("kind") == Some("19") {
+            let library = child.attribute("library").unwrap_or_default();
+            let name = child.attribute("name").unwrap_or_default();
+            let definition = registry.definition_named(library, name).ok_or_else(|| {
+                format!(
+                    "scalar structured lookup references unsupported nested user-defined function `{name}` ({library})"
+                )
+            })?;
+            if !definition.structured_parameters.is_empty() {
+                return Err(format!(
+                    "scalar structured lookup nested user-defined function `{name}` has structured inputs"
+                ));
+            }
+            let call = Call::read(child, 0, definition).map_err(|reason| {
+                format!(
+                    "scalar structured lookup nested user-defined function `{name}` is invalid: {reason}"
+                )
+            })?;
+            for (&output, component_id) in &call.outputs {
+                let Some(OutputExpr::Scalar(expression)) = definition.outputs.get(component_id)
+                else {
+                    return Err(format!(
+                        "scalar structured lookup nested user-defined function `{name}` has a non-scalar output"
+                    ));
+                };
+                if nested
+                    .insert(
+                        output,
+                        NestedOutput {
+                            expression: expression.clone(),
+                            inputs: call.inputs.clone(),
+                        },
+                    )
+                    .is_some()
+                {
+                    return Err(format!(
+                        "scalar structured lookup has duplicate nested output key `{output}`"
+                    ));
+                }
+            }
+            continue;
+        }
+        if !matches!(child.attribute("library"), Some("core") | Some("lang")) {
+            return Err("scalar structured lookup contains an unsupported component".to_string());
+        }
+        let function = read_function(child);
+        if function.kind == 30
+            || matches!(
+                function.name.as_str(),
+                "group-by"
+                    | "first-items"
+                    | "distinct-values"
+                    | "tokenize"
+                    | "tokenize-by-length"
+                    | "generate-sequence"
+                    | "count"
+                    | "sum"
+                    | "avg"
+                    | "min"
+                    | "max"
+                    | "string-join"
+                    | "item-at"
+            )
+        {
+            return Err(format!(
+                "scalar structured lookup uses unsupported sequence operation `{}`",
+                function.name
+            ));
+        }
+        functions.push(function);
+        ids.push(component_id(*child)?);
+    }
+
+    let edge_from = crate::import::graph::read_edges(structure, Some(component));
+    let parameters = scalar_parameter_outputs(&functions, &ids)?;
+    let by_output = function_outputs(&functions);
+    let filter = read_function(filter_node);
+    let [Some(values_input), Some(predicate_input)] = filter.inputs.as_slice() else {
+        return Err("scalar structured lookup filter pins are invalid".to_string());
+    };
+    let [filter_output, ..] = filter.outputs.as_slice() else {
+        return Err("scalar structured lookup filter has no output".to_string());
+    };
+    let output = read_function(output_node);
+    let [Some(output_input)] = output.inputs.as_slice() else {
+        return Err("scalar structured lookup output pin is invalid".to_string());
+    };
+    if edge_from.get(output_input) != Some(filter_output) {
+        return Err("scalar structured lookup output is not connected to its filter".to_string());
+    }
+
+    let context = ExprContext {
+        functions: &functions,
+        by_output: &by_output,
+        nested: Some(&nested),
+        parameters: &parameters,
+        catalog_ports: &catalog.ports,
+        collection_path: &[],
+        edge_from: &edge_from,
+        field_policy: FieldPolicy::NestedScalar {
+            schema: &catalog.schema,
+            allow_inferred_repetition: true,
+        },
+    };
+    let values_feed = edge_from
+        .get(values_input)
+        .copied()
+        .ok_or("scalar structured lookup values are not connected")?;
+    let predicate_feed = edge_from
+        .get(predicate_input)
+        .copied()
+        .ok_or("scalar structured lookup predicate is not connected")?;
+    let mut value = catalog
+        .ports
+        .get(&values_feed)
+        .filter(|path| {
+            schema_node_at(&catalog.schema, path)
+                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+        })
+        .map(|path| {
+            let mut text = path.clone();
+            text.push(ir::XML_TEXT_FIELD.to_string());
+            Expr::Catalog(text)
+        })
+        .map_or_else(|| context.expr(values_feed, &mut BTreeSet::new()), Ok)?;
+    let mut predicate = context.expr(predicate_feed, &mut BTreeSet::new())?;
+    let mut paths = Vec::new();
+    collect_catalog_paths(&value, &mut paths);
+    collect_catalog_paths(&predicate, &mut paths);
+    let collection = deepest_compatible_collection(&catalog.schema, &paths)?;
+    rebase_catalog_paths(&mut value, &collection)?;
+    rebase_catalog_paths(&mut predicate, &collection)?;
+    let source = if parameter_source {
+        FindSource::Parameter {
+            component_id: component_id(*catalog_node)?,
+            schema: catalog.schema.clone(),
+            collection,
+        }
+    } else {
+        let port = catalog
+            .ports
+            .iter()
+            .find(|(_, path)| path.starts_with(&collection))
+            .map(|(port, _)| *port)
+            .ok_or("scalar structured lookup collection has no source port")?;
+        FindSource::Catalog { port, collection }
+    };
+    let output_id = component_id(*output_node)?;
+    let structured_parameters = match &source {
+        FindSource::Catalog { .. } => BTreeSet::new(),
+        FindSource::Parameter { component_id, .. } => BTreeSet::from([*component_id]),
+    };
+    Ok(Some((
+        Definition {
+            parameters: parameters.values().copied().collect(),
+            structured_parameters,
+            outputs: BTreeMap::from([(
+                output_id,
+                OutputExpr::CollectionFind(FindRecipe {
+                    source,
+                    predicate,
+                    value,
+                }),
+            )]),
+        },
+        (!parameter_source).then_some(catalog),
+        schema_warnings,
+    )))
+}
+
+fn collect_catalog_paths<'a>(expression: &'a Expr, paths: &mut Vec<&'a [String]>) {
+    match expression {
+        Expr::Catalog(path) | Expr::CatalogAbsolute(path) => paths.push(path),
+        Expr::Parameter(_) | Expr::Const(_) => {}
+        Expr::Call { args, .. } => {
+            for argument in args {
+                collect_catalog_paths(argument, paths);
+            }
+        }
+        Expr::If {
+            condition,
+            then,
+            else_,
+        } => {
+            collect_catalog_paths(condition, paths);
+            collect_catalog_paths(then, paths);
+            collect_catalog_paths(else_, paths);
+        }
+        Expr::ValueMap { input, .. } => collect_catalog_paths(input, paths),
+        Expr::Aggregate { value, .. } => paths.push(value),
+    }
+}
+
+fn deepest_compatible_collection(
+    schema: &ir::SchemaNode,
+    paths: &[&[String]],
+) -> Result<Vec<String>, String> {
+    let mut collections = paths
+        .iter()
+        .filter_map(|path| innermost_repeating_group(schema, path))
+        .collect::<Vec<_>>();
+    collections.sort_by_key(Vec::len);
+    let collection = collections
+        .pop()
+        .ok_or("scalar structured lookup reads no repeated catalog collection")?;
+    if collections
+        .iter()
+        .any(|candidate| !collection.starts_with(candidate))
+    {
+        return Err("scalar structured lookup reads incompatible catalog collections".to_string());
+    }
+    Ok(collection)
+}
+
+fn innermost_repeating_group(schema: &ir::SchemaNode, path: &[String]) -> Option<Vec<String>> {
+    let mut node = schema;
+    let mut collection = node
+        .repeating
+        .then(Vec::<String>::new)
+        .filter(|_| matches!(node.kind, SchemaKind::Group { .. }));
+    for (index, segment) in path.iter().enumerate() {
+        node = node.child(segment)?;
+        if node.repeating && matches!(node.kind, SchemaKind::Group { .. }) {
+            collection = Some(path[..=index].to_vec());
+        }
+    }
+    collection
+}
+
+fn rebase_catalog_paths(expression: &mut Expr, collection: &[String]) -> Result<(), String> {
+    match expression {
+        Expr::Catalog(path) => {
+            if let Some(relative) = path.strip_prefix(collection) {
+                *path = relative.to_vec();
+            } else {
+                let absolute = std::mem::take(path);
+                *expression = Expr::CatalogAbsolute(absolute);
+            }
+        }
+        Expr::CatalogAbsolute(_) | Expr::Parameter(_) | Expr::Const(_) => {}
+        Expr::Call { args, .. } => {
+            for argument in args {
+                rebase_catalog_paths(argument, collection)?;
+            }
+        }
+        Expr::If {
+            condition,
+            then,
+            else_,
+        } => {
+            rebase_catalog_paths(condition, collection)?;
+            rebase_catalog_paths(then, collection)?;
+            rebase_catalog_paths(else_, collection)?;
+        }
+        Expr::ValueMap { input, .. } => rebase_catalog_paths(input, collection)?,
+        Expr::Aggregate { .. } => {
+            return Err("scalar structured lookup value cannot contain an aggregate".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn is_sequence_parameter(component: roxmltree::Node<'_, '_>) -> bool {
     component.descendants().any(|node| {
         node.has_tag_name("parameter")
@@ -333,7 +723,7 @@ fn read_aggregate_record(
     source: &SchemaComponent,
     output: &SchemaComponent,
     schema_warnings: Vec<String>,
-) -> Result<(Definition, Option<SchemaComponent>, Vec<String>), String> {
+) -> Result<ImportedDefinition, String> {
     if !flat_group_fields(&output.schema) {
         return Err("structured aggregate output must be one flat group".to_string());
     }
@@ -534,6 +924,7 @@ fn function_outputs(functions: &[FnComponent]) -> BTreeMap<u32, usize> {
 struct ExprContext<'a> {
     functions: &'a [FnComponent],
     by_output: &'a BTreeMap<u32, usize>,
+    nested: Option<&'a BTreeMap<u32, NestedOutput>>,
     parameters: &'a BTreeMap<u32, u32>,
     catalog_ports: &'a BTreeMap<u32, Vec<String>>,
     collection_path: &'a [String],
@@ -628,14 +1019,82 @@ impl ExprContext<'_> {
         if !active.insert(feed) {
             return Err("structured lookup contains a cyclic scalar expression".to_string());
         }
-        let result = self
-            .by_output
-            .get(&feed)
-            .copied()
-            .ok_or_else(|| format!("structured lookup feed `{feed}` is unsupported"))
-            .and_then(|index| self.function_expr(index, active, budget, depth));
+        let result = if let Some(output) = self.nested.and_then(|nested| nested.get(&feed)) {
+            self.nested_expr(output, &output.expression, active, budget, depth)
+        } else {
+            self.by_output
+                .get(&feed)
+                .copied()
+                .ok_or_else(|| format!("structured lookup feed `{feed}` is unsupported"))
+                .and_then(|index| self.function_expr(index, active, budget, depth))
+        };
         active.remove(&feed);
         result
+    }
+
+    fn nested_expr(
+        &self,
+        output: &NestedOutput,
+        expression: &ScalarExpr,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExprBudget,
+        depth: usize,
+    ) -> Result<Expr, String> {
+        if depth >= MAX_STRUCTURED_EXPR_DEPTH {
+            return Err(format!(
+                "structured scalar expression exceeds the {MAX_STRUCTURED_EXPR_DEPTH}-level depth limit"
+            ));
+        }
+        budget.nodes = budget.nodes.saturating_add(1);
+        if budget.nodes > MAX_STRUCTURED_EXPR_NODES {
+            return Err(format!(
+                "structured scalar expression exceeds the {MAX_STRUCTURED_EXPR_NODES}-node expansion limit"
+            ));
+        }
+        match expression {
+            ScalarExpr::Parameter(parameter) => output
+                .inputs
+                .get(parameter)
+                .and_then(|input| self.edge_from.get(input))
+                .copied()
+                .map_or(Ok(Expr::Const(Value::Null)), |feed| {
+                    self.expr_bounded(feed, active, budget, depth + 1)
+                }),
+            ScalarExpr::Const(value) => Ok(Expr::Const(value.clone())),
+            ScalarExpr::Call { function, args } => Ok(Expr::Call {
+                function: function.clone(),
+                args: args
+                    .iter()
+                    .map(|argument| self.nested_expr(output, argument, active, budget, depth + 1))
+                    .collect::<Result<Vec<_>, _>>()?,
+            }),
+            ScalarExpr::If {
+                condition,
+                then,
+                else_,
+            } => Ok(Expr::If {
+                condition: Box::new(self.nested_expr(
+                    output,
+                    condition,
+                    active,
+                    budget,
+                    depth + 1,
+                )?),
+                then: Box::new(self.nested_expr(output, then, active, budget, depth + 1)?),
+                else_: Box::new(self.nested_expr(output, else_, active, budget, depth + 1)?),
+            }),
+            ScalarExpr::ValueMap {
+                input,
+                input_type,
+                table,
+                default,
+            } => Ok(Expr::ValueMap {
+                input: Box::new(self.nested_expr(output, input, active, budget, depth + 1)?),
+                input_type: *input_type,
+                table: table.clone(),
+                default: default.clone(),
+            }),
+        }
     }
 
     fn function_expr(

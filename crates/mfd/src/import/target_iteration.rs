@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use ir::{SchemaKind, Value};
+use ir::{SchemaKind, Value, XML_TYPE_FIELD};
 use mapping::{IterationOutput, Node};
 
 use super::graph::GraphBuilder;
@@ -20,9 +20,83 @@ pub(super) fn build(
         bindings.iter().map(|(target, _)| target.path()).collect();
     let mut skipped = builder.rejected_join_paths.iter().cloned().collect();
     for iteration in iterations {
-        build_one(iteration, target, &connected, builder, scopes, &mut skipped);
+        if iteration.additional_feeds.is_empty() {
+            build_one(iteration, target, &connected, builder, scopes, &mut skipped);
+        } else {
+            build_concatenated(iteration, target, &connected, builder, scopes, &mut skipped);
+        }
     }
     skipped
+}
+
+fn build_concatenated(
+    iteration: TargetIteration,
+    target: &SchemaComponent,
+    connected: &BTreeSet<Vec<String>>,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    skipped: &mut Vec<Vec<String>>,
+) {
+    let target_path = iteration.target_path.clone();
+    let feeds = std::iter::once(iteration.feed)
+        .chain(iteration.additional_feeds.iter().copied())
+        .collect::<Vec<_>>();
+    let mut segments = Vec::with_capacity(feeds.len());
+    for feed in feeds {
+        let mut segment_builder = ScopeBuilder {
+            root: mapping::Scope::default(),
+            anchors: scopes.anchors.clone(),
+        };
+        let mut segment_skipped = Vec::new();
+        build_one(
+            TargetIteration {
+                target_path: target_path.clone(),
+                feed,
+                additional_feeds: Vec::new(),
+                output: iteration.output,
+                projects_whole_group: iteration.projects_whole_group,
+                join: iteration.join,
+            },
+            target,
+            connected,
+            builder,
+            &mut segment_builder,
+            &mut segment_skipped,
+        );
+        let Some(mut segment) = take_scope(&mut segment_builder.root, &target_path) else {
+            if !segment_skipped.iter().any(|path| path == &target_path) {
+                skipped.push(target_path.clone());
+            }
+            return;
+        };
+        if !segment_skipped.is_empty() {
+            skipped.extend(segment_skipped);
+            return;
+        }
+        segment.target_field.clear();
+        segments.push(segment);
+    }
+    let mut segments = segments.into_iter();
+    let Some(first) = segments.next() else {
+        return;
+    };
+    scopes.add_concatenated(&target_path, first, segments.collect(), iteration.output);
+}
+
+fn take_scope(root: &mut mapping::Scope, target_path: &[String]) -> Option<mapping::Scope> {
+    let (target, parents) = target_path.split_last()?;
+    let mut parent = root;
+    for field in parents {
+        parent = parent
+            .children
+            .iter_mut()
+            .find(|scope| scope.target_field == *field)?;
+    }
+    let index = parent
+        .children
+        .iter()
+        .position(|scope| scope.target_field == *target)?;
+    Some(parent.children.remove(index))
 }
 
 fn build_one(
@@ -84,6 +158,9 @@ fn build_one(
         ));
     }
     let source_path = builder.iteration_source_path(&feed);
+    let xml_type_nodes = source_path.as_ref().and_then(|source_path| {
+        xml_type_nodes(target, &target_path, source_path, feed.source_key, builder)
+    });
     let sequence = feed
         .sequence_component
         .and_then(|index| builder.sequence_expr(index));
@@ -105,6 +182,15 @@ fn build_one(
                 args: vec![existing, udf_filter],
             }),
             None => udf_filter,
+        });
+    }
+    if let Some((type_filter, _)) = xml_type_nodes {
+        existing_filter = Some(match existing_filter {
+            Some(existing) => builder.alloc(Node::Call {
+                function: "and".into(),
+                args: vec![existing, type_filter],
+            }),
+            None => type_filter,
         });
     }
     if let Some(id) = join
@@ -248,6 +334,7 @@ fn build_one(
         sort_descending: ordinary_sort
             .map(|_| feed.sort_descending)
             .unwrap_or(database_descending),
+        sort_filter_order: feed.sort_filter_order,
         take,
     };
     if let Some(id) = join {
@@ -259,18 +346,22 @@ fn build_one(
     } else if let Some(sequence) = sequence {
         scopes.add_sequence(&target_path, sequence, nodes, iteration.output);
     } else if let Some(source_path) = &source_path {
-        let scope_source = if iteration.output == IterationOutput::MappedSequence {
-            builder
-                .sources
-                .get(source_path.source)
-                .map(|source| super::source::SourcePath {
-                    source: source_path.source,
-                    path: split_at_innermost_repeating(&source.schema, &source_path.path).0,
-                })
-                .unwrap_or_else(|| source_path.clone())
-        } else {
-            source_path.clone()
-        };
+        let structural_source = builder
+            .schema_node(source_path)
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Group { .. }));
+        let scope_source =
+            if iteration.output == IterationOutput::MappedSequence || structural_source {
+                builder
+                    .sources
+                    .get(source_path.source)
+                    .map(|source| super::source::SourcePath {
+                        source: source_path.source,
+                        path: split_at_innermost_repeating(&source.schema, &source_path.path).0,
+                    })
+                    .unwrap_or_else(|| source_path.clone())
+            } else {
+                source_path.clone()
+            };
         scopes.add_iteration(
             &target_path,
             &builder.context_path(&scope_source),
@@ -297,6 +388,47 @@ fn build_one(
         builder,
         scopes,
     );
+    if let Some((_, type_value)) = xml_type_nodes {
+        let mut marker_path = target_path;
+        marker_path.push(XML_TYPE_FIELD.to_string());
+        if let Some(target) = TargetLeaf::from_path(&marker_path) {
+            scopes.add_binding(target, type_value);
+        }
+    }
+}
+
+fn xml_type_nodes(
+    target: &SchemaComponent,
+    target_path: &[String],
+    source_path: &super::source::SourcePath,
+    source_port: u32,
+    builder: &mut GraphBuilder<'_>,
+) -> Option<(mapping::NodeId, mapping::NodeId)> {
+    let type_name = builder.xml_type_conditions.get(&source_port)?.clone();
+    let source_group = builder.schema_node(source_path)?;
+    let target_group = schema_node_at(&target.schema, target_path)?;
+    if !source_group
+        .alternatives()
+        .iter()
+        .any(|alternative| alternative.name == type_name)
+        || !target_group
+            .alternatives()
+            .iter()
+            .any(|alternative| alternative.name == type_name)
+    {
+        return None;
+    }
+    let mut marker_path = source_path.clone();
+    marker_path.path.push(XML_TYPE_FIELD.to_string());
+    let marker = builder.source_field_at(&marker_path)?;
+    let expected = builder.alloc(Node::Const {
+        value: Value::String(type_name),
+    });
+    let filter = builder.alloc(Node::Call {
+        function: "equal".into(),
+        args: vec![marker, expected],
+    });
+    Some((filter, expected))
 }
 
 fn reject_join_control(

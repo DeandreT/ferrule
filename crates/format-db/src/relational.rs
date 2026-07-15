@@ -1,8 +1,9 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode};
 use rusqlite::types::Value as SqlValue;
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, Transaction, params, params_from_iter};
 
 use super::{
     DbFormatError, ForeignKeyColumns, ForeignKeyRelation, ForeignKeySide, quote, read, read_value,
@@ -19,6 +20,7 @@ struct Relation<'a> {
     child: Box<TablePlan<'a>>,
     parent_key: String,
     child_key: String,
+    foreign_key_side: ForeignKeySide,
 }
 
 struct SelectedColumn {
@@ -176,7 +178,7 @@ pub(super) fn resolve_foreign_key_columns(
     relation_columns(&conn, parent_table, child_table, join_column)
 }
 
-fn is_flat_table(schema: &SchemaNode) -> bool {
+pub(super) fn is_flat_table(schema: &SchemaNode) -> bool {
     matches!(
         &schema.kind,
         SchemaKind::Group { children, .. }
@@ -184,6 +186,289 @@ fn is_flat_table(schema: &SchemaNode) -> bool {
                 .iter()
                 .all(|child| matches!(child.kind, SchemaKind::Scalar { .. }) && !child.repeating)
     )
+}
+
+pub(super) fn write_instance(
+    db_path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<(), DbFormatError> {
+    let mut conn = Connection::open(db_path)?;
+    let plans = write_plans(&conn, schema)?;
+    for plan in &plans {
+        validate_write_plan(&conn, plan)?;
+    }
+    conn.pragma_update(None, "foreign_keys", true)?;
+    let tx = conn.transaction()?;
+    tx.pragma_update(None, "defer_foreign_keys", true)?;
+    let mut deleted = BTreeSet::new();
+    for plan in &plans {
+        delete_tables(&tx, plan, &mut deleted)?;
+    }
+    match instance {
+        Instance::Repeated(rows) if schema.repeating && plans.len() == 1 => {
+            for (index, row) in rows.iter().enumerate() {
+                insert_row(&tx, &plans[0], row, None, index)?;
+            }
+        }
+        Instance::Group(fields) if !schema.repeating => {
+            for (plan, table) in plans.iter().zip(schema_children(schema)?) {
+                let rows = fields
+                    .iter()
+                    .find(|(name, _)| name == &table.name)
+                    .map(|(_, value)| value)
+                    .and_then(Instance::as_repeated)
+                    .ok_or_else(|| invalid_schema(table, "database table value must repeat"))?;
+                for (index, row) in rows.iter().enumerate() {
+                    insert_row(&tx, plan, row, None, index)?;
+                }
+            }
+        }
+        other => {
+            return Err(invalid_schema(
+                schema,
+                match other {
+                    Instance::Repeated(_) => "composite database value must be a group",
+                    _ if schema.repeating => "database table value must repeat",
+                    _ => "composite database value must be a group",
+                },
+            ));
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+fn write_plans<'a>(
+    conn: &Connection,
+    schema: &'a SchemaNode,
+) -> Result<Vec<TablePlan<'a>>, DbFormatError> {
+    if schema.repeating {
+        let physical = physical_table_name(&schema.name)?;
+        return Ok(vec![build_table_plan(conn, schema, physical)?]);
+    }
+    schema_children(schema)?
+        .iter()
+        .map(|table| build_table_plan(conn, table, &table.name))
+        .collect()
+}
+
+fn schema_children(schema: &SchemaNode) -> Result<&[SchemaNode], DbFormatError> {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Err(invalid_schema(schema, "database root must be a group"));
+    };
+    Ok(children)
+}
+
+fn validate_write_plan(conn: &Connection, plan: &TablePlan<'_>) -> Result<(), DbFormatError> {
+    if !plan.relations.is_empty() && !supports_rowid(conn, &plan.physical_table) {
+        return Err(invalid_schema(
+            plan.schema,
+            "relational writes require rowid tables when resolving relationship keys",
+        ));
+    }
+    for relation in &plan.relations {
+        if !supports_rowid(conn, &relation.child.physical_table) {
+            return Err(invalid_schema(
+                relation.child.schema,
+                "relational writes require rowid tables when resolving relationship keys",
+            ));
+        }
+        validate_write_plan(conn, &relation.child)?;
+    }
+    Ok(())
+}
+
+fn delete_tables(
+    tx: &Transaction<'_>,
+    plan: &TablePlan<'_>,
+    deleted: &mut BTreeSet<String>,
+) -> Result<(), DbFormatError> {
+    for relation in &plan.relations {
+        delete_tables(tx, &relation.child, deleted)?;
+    }
+    if !deleted.insert(plan.physical_table.to_ascii_lowercase()) {
+        return Ok(());
+    }
+    tx.execute(&format!("DELETE FROM {}", quote(&plan.physical_table)), [])?;
+    Ok(())
+}
+
+struct InsertedRow {
+    rowid: i64,
+}
+
+fn insert_row(
+    tx: &Transaction<'_>,
+    plan: &TablePlan<'_>,
+    instance: &Instance,
+    inherited: Option<(&str, SqlValue)>,
+    row_index: usize,
+) -> Result<InsertedRow, DbFormatError> {
+    let Instance::Group(fields) = instance else {
+        return Err(DbFormatError::RowShape {
+            row: row_index,
+            got: super::instance_type_name(instance),
+        });
+    };
+    validate_row_fields(plan, fields, row_index)?;
+
+    let mut overrides = inherited
+        .into_iter()
+        .map(|(name, value)| (name.to_string(), value))
+        .collect::<Vec<_>>();
+    for relation in &plan.relations {
+        if relation.foreign_key_side != ForeignKeySide::Parent {
+            continue;
+        }
+        let children = relation_rows(fields, relation)?;
+        let value = match children {
+            [] => SqlValue::Null,
+            [child] => {
+                let inserted = insert_row(tx, &relation.child, child, None, 0)?;
+                inserted_key(tx, &relation.child, &relation.child_key, inserted.rowid)?
+            }
+            _ => {
+                return Err(invalid_schema(
+                    relation.child.schema,
+                    "a parent-owned foreign key can reference at most one nested row",
+                ));
+            }
+        };
+        overrides.push((relation.parent_key.clone(), value));
+    }
+
+    let mut columns = Vec::new();
+    let mut values = Vec::new();
+    for (name, ty) in &plan.scalar_columns {
+        let value = fields
+            .iter()
+            .find(|(field, _)| field == name)
+            .and_then(|(_, value)| value.as_scalar())
+            .ok_or_else(|| DbFormatError::MissingField {
+                row: row_index,
+                column: (*name).to_string(),
+            })?;
+        if let Some((_, override_value)) = overrides
+            .iter()
+            .find(|(column, _)| name.eq_ignore_ascii_case(column))
+        {
+            columns.push((*name).to_string());
+            values.push(override_value.clone());
+        } else if *value != ir::Value::Null {
+            columns.push((*name).to_string());
+            values.push(super::to_sql_value(name, *ty, value)?);
+        }
+    }
+    for (foreign_key, inherited) in overrides {
+        if columns
+            .iter()
+            .any(|column| column.eq_ignore_ascii_case(&foreign_key))
+        {
+            continue;
+        }
+        columns.push(foreign_key);
+        values.push(inherited);
+    }
+    let sql = if columns.is_empty() {
+        format!("INSERT INTO {} DEFAULT VALUES", quote(&plan.physical_table))
+    } else {
+        let names = columns
+            .iter()
+            .map(|name| quote(name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let placeholders = (1..=columns.len())
+            .map(|index| format!("?{index}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "INSERT INTO {} ({names}) VALUES ({placeholders})",
+            quote(&plan.physical_table)
+        )
+    };
+    tx.execute(&sql, params_from_iter(values))?;
+    let inserted = InsertedRow {
+        rowid: tx.last_insert_rowid(),
+    };
+
+    for relation in &plan.relations {
+        if relation.foreign_key_side != ForeignKeySide::Child {
+            continue;
+        }
+        let parent_value = inserted_key(tx, plan, &relation.parent_key, inserted.rowid)?;
+        let children = relation_rows(fields, relation)?;
+        for (index, child) in children.iter().enumerate() {
+            insert_row(
+                tx,
+                &relation.child,
+                child,
+                Some((&relation.child_key, parent_value.clone())),
+                index,
+            )?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn validate_row_fields(
+    plan: &TablePlan<'_>,
+    fields: &[(String, Instance)],
+    row_index: usize,
+) -> Result<(), DbFormatError> {
+    let SchemaKind::Group { children, .. } = &plan.schema.kind else {
+        return Err(invalid_schema(plan.schema, "table must be a group"));
+    };
+    for (index, (name, _)) in fields.iter().enumerate() {
+        if !children.iter().any(|child| child.name == *name) {
+            return Err(DbFormatError::UnexpectedField {
+                row: row_index,
+                column: name.clone(),
+            });
+        }
+        if fields[..index].iter().any(|(previous, _)| previous == name) {
+            return Err(DbFormatError::DuplicateField {
+                row: row_index,
+                column: name.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn relation_rows<'a>(
+    fields: &'a [(String, Instance)],
+    relation: &Relation<'_>,
+) -> Result<&'a [Instance], DbFormatError> {
+    fields
+        .iter()
+        .find(|(name, _)| name == &relation.child.schema.name)
+        .map(|(_, value)| value)
+        .and_then(Instance::as_repeated)
+        .ok_or_else(|| {
+            invalid_schema(
+                relation.child.schema,
+                "relationship value must be a repeated group",
+            )
+        })
+}
+
+fn inserted_key(
+    tx: &Transaction<'_>,
+    plan: &TablePlan<'_>,
+    column: &str,
+    rowid: i64,
+) -> Result<SqlValue, DbFormatError> {
+    tx.query_row(
+        &format!(
+            "SELECT {} FROM {} WHERE rowid = ?1",
+            quote(column),
+            quote(&plan.physical_table)
+        ),
+        [rowid],
+        |row| row.get(0),
+    )
+    .map_err(Into::into)
 }
 
 fn build_table_plan<'a>(
@@ -360,12 +645,14 @@ fn resolve_relation<'a>(
         ));
     }
 
-    let columns = relation_columns(conn, parent_table, child_table, join_column)?;
+    let (columns, foreign_key_side) =
+        relation_columns_with_side(conn, parent_table, child_table, join_column)?;
     let child = build_table_plan(conn, schema, child_table)?;
     Ok(Relation {
         child: Box::new(child),
         parent_key: columns.parent_column,
         child_key: columns.child_column,
+        foreign_key_side,
     })
 }
 
@@ -375,6 +662,16 @@ fn relation_columns(
     child_table: &str,
     join_column: &str,
 ) -> Result<ForeignKeyColumns, DbFormatError> {
+    relation_columns_with_side(conn, parent_table, child_table, join_column)
+        .map(|(columns, _)| columns)
+}
+
+fn relation_columns_with_side(
+    conn: &Connection,
+    parent_table: &str,
+    child_table: &str,
+    join_column: &str,
+) -> Result<(ForeignKeyColumns, ForeignKeySide), DbFormatError> {
     let child_foreign_keys = foreign_keys(conn, child_table)?;
     let parent_foreign_keys = foreign_keys(conn, parent_table)?;
     let mut candidates = Vec::new();
@@ -382,17 +679,17 @@ fn relation_columns(
         if key.from.eq_ignore_ascii_case(join_column)
             && key.table.eq_ignore_ascii_case(parent_table)
         {
-            candidates.push((key.to, key.from));
+            candidates.push((key.to, key.from, ForeignKeySide::Child));
         }
     }
     for key in parent_foreign_keys {
         if key.from.eq_ignore_ascii_case(join_column) && key.table.eq_ignore_ascii_case(child_table)
         {
-            candidates.push((key.from, key.to));
+            candidates.push((key.from, key.to, ForeignKeySide::Parent));
         }
     }
 
-    let (parent_column, child_column) = match candidates.as_slice() {
+    let (parent_column, child_column, side) = match candidates.as_slice() {
         [] => {
             return Err(DbFormatError::MissingForeignKeyRelation {
                 parent_table: parent_table.to_string(),
@@ -409,10 +706,13 @@ fn relation_columns(
             });
         }
     };
-    Ok(ForeignKeyColumns {
-        parent_column,
-        child_column,
-    })
+    Ok((
+        ForeignKeyColumns {
+            parent_column,
+            child_column,
+        },
+        side,
+    ))
 }
 
 fn foreign_keys(conn: &Connection, table: &str) -> Result<Vec<ForeignKey>, DbFormatError> {

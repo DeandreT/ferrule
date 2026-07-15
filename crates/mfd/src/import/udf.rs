@@ -56,6 +56,7 @@ enum LookupSource {
 enum OutputExpr {
     Scalar(ScalarExpr),
     Lookup(LookupExpr),
+    CollectionFind(structured::FindRecipe),
     Structured(structured::Recipe),
 }
 
@@ -214,14 +215,16 @@ impl Registry {
         };
 
         active.push(key.clone());
-        let dependency_result =
-            nested_definition_keys(component)
-                .into_iter()
-                .try_for_each(|dependency| {
-                    if !declarations.contains_key(&dependency) {
-                        return Ok(());
-                    }
-                    self.resolve(&dependency, declarations, active, mfd_path, warnings)
+        let nested = nested_definition_keys(component);
+        let direct_recursive = nested.iter().any(|dependency| dependency == key);
+        let dependency_result = nested
+            .into_iter()
+            .filter(|dependency| dependency != key)
+            .try_for_each(|dependency| {
+                if !declarations.contains_key(&dependency) {
+                    return Ok(());
+                }
+                self.resolve(&dependency, declarations, active, mfd_path, warnings)
                     .map(|_| ())
                     .map_err(|reason| {
                         if reason.contains("definition dependency cycle")
@@ -236,8 +239,24 @@ impl Registry {
                             )
                         }
                     })
-                });
-        let result = dependency_result.and_then(|()| read_definition(&component, mfd_path, self));
+            });
+        let result = dependency_result.and_then(|()| {
+            if direct_recursive {
+                if let Some(definition) = structured::try_read_adjacency_tree(&component, mfd_path)?
+                {
+                    Ok(definition)
+                } else if let Some(definition) =
+                    structured::try_read_path_hierarchy(&component, mfd_path)?
+                {
+                    Ok(definition)
+                } else {
+                    structured::try_read_recursive(&component, mfd_path)?
+                        .ok_or_else(|| format!("definition is recursive: `{}` ({})", key.1, key.0))
+                }
+            } else {
+                read_definition(&component, mfd_path, self)
+            }
+        });
         active.pop();
 
         match result {
@@ -419,6 +438,71 @@ fn collect_call_entries<'a, 'input>(
     }
 }
 
+pub(super) fn refine_source_schemas(
+    components: &mut [super::schema::SchemaComponent],
+    calls: &[Call],
+    registry: &Registry,
+    edge_from: &BTreeMap<u32, u32>,
+) {
+    for call in calls {
+        let Some(definition) = registry.definition(call.definition) else {
+            continue;
+        };
+        for output in definition.outputs.values() {
+            let OutputExpr::CollectionFind(structured::FindRecipe {
+                source:
+                    structured::FindSource::Parameter {
+                        component_id,
+                        schema,
+                        ..
+                    },
+                ..
+            }) = output
+            else {
+                continue;
+            };
+            let Some(feed) = call
+                .structured_inputs
+                .get(component_id)
+                .into_iter()
+                .flatten()
+                .filter_map(|(_, input)| edge_from.get(input))
+                .next()
+                .copied()
+            else {
+                continue;
+            };
+            for component in components.iter_mut() {
+                let Some(path) = component.ports.get(&feed).cloned() else {
+                    continue;
+                };
+                let Some(target) = schema_node_at_mut(&mut component.schema, &path) else {
+                    continue;
+                };
+                let mut replacement = schema.clone();
+                replacement.name.clone_from(&target.name);
+                replacement.repeating = target.repeating;
+                *target = replacement;
+                break;
+            }
+        }
+    }
+}
+
+fn schema_node_at_mut<'a>(
+    schema: &'a mut ir::SchemaNode,
+    path: &[String],
+) -> Option<&'a mut ir::SchemaNode> {
+    let Some((segment, rest)) = path.split_first() else {
+        return Some(schema);
+    };
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return None;
+    };
+    let child = children.iter_mut().find(|child| &child.name == segment)?;
+    schema_node_at_mut(child, rest)
+}
+
 fn read_definition(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &std::path::Path,
@@ -437,18 +521,20 @@ fn read_definition(
         Err(scalar::ReadError::Shape(scalar_reason)) => {
             match read_lookup_definition(component, mfd_path) {
                 Ok(definition) => Ok(definition),
-                Err(_) => structured::read(component, mfd_path).map_err(|structured_reason| {
-                    if component.descendants().any(|node| {
-                        node.has_tag_name("properties")
-                            && node.attribute("UsageKind") == Some("output")
-                            || node.has_tag_name("parameter")
-                                && node.attribute("usageKind") == Some("output")
-                    }) {
-                        structured_reason
-                    } else {
-                        scalar_reason
-                    }
-                }),
+                Err(_) => {
+                    structured::read(component, mfd_path, registry).map_err(|structured_reason| {
+                        if component.descendants().any(|node| {
+                            node.has_tag_name("properties")
+                                && node.attribute("UsageKind") == Some("output")
+                                || node.has_tag_name("parameter")
+                                    && node.attribute("usageKind") == Some("output")
+                        }) {
+                            structured_reason
+                        } else {
+                            scalar_reason
+                        }
+                    })
+                }
             }
         }
     }
@@ -767,6 +853,9 @@ impl GraphBuilder<'_> {
             }
             OutputExpr::Lookup(expression) => {
                 self.instantiate_lookup(call_idx, &expression, &parameters)?
+            }
+            OutputExpr::CollectionFind(recipe) => {
+                structured::instantiate_find(call_idx, &recipe, &parameters, self)?
             }
             OutputExpr::Structured(_) => return None,
         };

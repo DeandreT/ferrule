@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use ir::{ScalarType, SchemaKind};
+use ir::{Instance, ScalarType, SchemaKind, Value};
 use mapping::{AggregateOp, Node};
 
 fn fixture(name: &str) -> PathBuf {
@@ -179,7 +179,7 @@ fn imports_fixed_record_and_table_as_a_composite_xml_source() {
         .iter()
         .find(|scope| scope.target_field == "Branch")
         .unwrap();
-    assert!(branch.source().is_some_and(|path| path == ["Branch"]));
+    assert_eq!(branch.source(), Some(&[][..]));
     assert!(branch.bindings.iter().any(|binding| {
         binding.target_field == "Name"
             && matches!(
@@ -203,6 +203,66 @@ fn imports_fixed_record_and_table_as_a_composite_xml_source() {
             )
     }));
     assert!(engine::validate(project).is_empty());
+
+    let source = Instance::Group(vec![
+        (
+            "Branch".into(),
+            Instance::Group(vec![
+                (
+                    "Name".into(),
+                    Instance::Scalar(Value::String("North".into())),
+                ),
+                (
+                    "City".into(),
+                    Instance::Scalar(Value::String("Seattle".into())),
+                ),
+            ]),
+        ),
+        (
+            "Roster".into(),
+            Instance::Repeated(vec![
+                Instance::Group(vec![
+                    (
+                        "First".into(),
+                        Instance::Scalar(Value::String("Ada".into())),
+                    ),
+                    (
+                        "Team".into(),
+                        Instance::Scalar(Value::String("Platform".into())),
+                    ),
+                ]),
+                Instance::Group(vec![
+                    (
+                        "First".into(),
+                        Instance::Scalar(Value::String("Lin".into())),
+                    ),
+                    (
+                        "Team".into(),
+                        Instance::Scalar(Value::String("Data".into())),
+                    ),
+                ]),
+            ]),
+        ),
+    ]);
+    let output = engine::run(project, &source).unwrap();
+    let branches = output
+        .field("Branch")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(branches.len(), 1);
+    assert_eq!(
+        branches[0].field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("North".into()))
+    );
+    let members = branches[0]
+        .field("Member")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(members.len(), 2);
+    assert_eq!(
+        members[1].field("First").and_then(Instance::as_scalar),
+        Some(&Value::String("Lin".into()))
+    );
 }
 
 #[test]

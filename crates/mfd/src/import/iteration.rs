@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use ir::SchemaNode;
+use mapping::SortFilterOrder;
 
 use super::source::SourcePath;
 
@@ -52,6 +53,7 @@ pub(super) struct IterationFeed {
     /// Whether a sort was crossed, including one with a missing key.
     pub(super) has_sort: bool,
     pub(super) sort_descending: bool,
+    pub(super) sort_filter_order: SortFilterOrder,
     /// A connected first-items count, or an absent count meaning the
     /// function's default of one item.
     pub(super) take_expr: Option<u32>,

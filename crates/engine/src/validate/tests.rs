@@ -1,8 +1,8 @@
 use super::*;
 use ir::{ScalarType, Value};
 use mapping::{
-    Binding, DynamicBinding, NamedSource, PdfCapture, PdfCommand, PdfLayout, PdfPageSelection,
-    PdfRegion, ScopeConstruction, SequenceExpr, XbrlBoundaryOptions,
+    Binding, DynamicBinding, DynamicSourcePath, NamedSource, PdfCapture, PdfCommand, PdfLayout,
+    PdfPageSelection, PdfRegion, ScopeConstruction, SequenceExpr, XbrlBoundaryOptions,
 };
 
 fn valid_project() -> Project {
@@ -22,6 +22,7 @@ fn valid_project() -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(Vec::new()),
@@ -45,6 +46,7 @@ fn accepts_a_valid_project_and_relative_source_paths() {
             vec![SchemaNode::scalar("code", ScalarType::String)],
         ),
         options: Default::default(),
+        dynamic_path: None,
     });
     project.graph.nodes.insert(
         1,
@@ -55,6 +57,30 @@ fn accepts_a_valid_project_and_relative_source_paths() {
     );
 
     assert!(validate(&project).is_empty());
+}
+
+#[test]
+fn validates_dynamic_extra_source_ownership() {
+    let mut project = valid_project();
+    project.extra_sources.push(NamedSource {
+        name: "reference".into(),
+        path: String::new(),
+        schema: SchemaNode::group("records", Vec::new()),
+        options: Default::default(),
+        dynamic_path: Some(DynamicSourcePath {
+            node: 99,
+            iteration: vec!["missing".into()],
+        }),
+    });
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "extra source `reference`" && issue.message.contains("missing node 99")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "extra source `reference`"
+            && issue.message.contains("matches no source path")
+    }));
 }
 
 #[test]
@@ -110,6 +136,7 @@ fn validates_xbrl_boundary_side_and_format_exclusivity() -> Result<(), Box<dyn s
             xbrl: Some(XbrlBoundaryOptions::external_target("taxonomy.xsd", None)?),
             ..mapping::FormatOptions::default()
         },
+        dynamic_path: None,
     });
     assert!(validate(&extra).iter().any(|issue| {
         issue.location == "extra source `taxonomy` format options"

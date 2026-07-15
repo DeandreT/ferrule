@@ -106,6 +106,7 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -261,6 +262,116 @@ fn mapped_sequence_preserves_zero_one_or_many_ordered_items() {
 }
 
 #[test]
+fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
+    let source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Domestic",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            )
+            .repeating(),
+            SchemaNode::group(
+                "International",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::group(
+            "Address",
+            vec![SchemaNode::scalar("Name", ScalarType::String)],
+        )],
+    );
+    let segment = |collection: &str, node| Scope {
+        iteration: mapping::ScopeIteration::Source(vec![collection.into()]),
+        iteration_output: IterationOutput::MappedSequence,
+        bindings: vec![Binding {
+            target_field: "Name".into(),
+            node,
+        }],
+        ..Scope::default()
+    };
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["Name".into()],
+                        frame: Some(vec!["Domestic".into()]),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["Name".into()],
+                        frame: Some(vec!["International".into()]),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Address".into(),
+                iteration: mapping::ScopeIteration::Concatenate(mapping::ScopeSequence::new(
+                    segment("Domestic", 0),
+                    vec![segment("International", 1)],
+                )),
+                iteration_output: IterationOutput::MappedSequence,
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+    let named = |name: &str| {
+        Instance::Group(vec![(
+            "Name".into(),
+            Instance::Scalar(Value::String(name.into())),
+        )])
+    };
+    let input = Instance::Group(vec![
+        (
+            "Domestic".into(),
+            Instance::Repeated(vec![named("North"), named("South")]),
+        ),
+        (
+            "International".into(),
+            Instance::Repeated(vec![named("East")]),
+        ),
+    ]);
+
+    let output = run(&project, &input).unwrap();
+    let addresses = output
+        .field("Address")
+        .and_then(Instance::as_mapped_sequence)
+        .unwrap();
+    let names = addresses
+        .iter()
+        .filter_map(|address| address.field("Name").and_then(Instance::as_scalar))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            &Value::String("North".into()),
+            &Value::String("South".into()),
+            &Value::String("East".into()),
+        ]
+    );
+}
+
+#[test]
 fn validation_rejects_invalid_mapped_sequence_scopes_and_targets() {
     let mut root = project_with_output(IterationOutput::MappedSequence);
     root.root.set_source(Some(vec!["Department".into()]));
@@ -334,6 +445,7 @@ fn first_output_does_not_evaluate_later_unused_bindings() {
         source_options: Default::default(),
         target_options: Default::default(),
         extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

@@ -13,9 +13,18 @@ use serde::{Deserialize, Serialize};
 /// Instance-field name used for an XML element's simple text content.
 pub const XML_TEXT_FIELD: &str = "#text";
 
+/// Reserved instance-group field carrying one validated expanded `xsi:type`
+/// QName. XML readers and writers preserve it as format metadata; it is not
+/// an ordinary schema child.
+pub const XML_TYPE_FIELD: &str = "\u{1f}ferrule-xml-type";
+
 /// Virtual repeating group used to expose arbitrary direct XML child
 /// elements while retaining their document order.
 pub const XML_ELEMENTS_FIELD: &str = "element()";
+
+/// Virtual repeating group used to expose arbitrary XML attributes on a
+/// generic element. Each item contains `LocalName` and `#text` scalars.
+pub const XML_ATTRIBUTES_FIELD: &str = "attribute()";
 
 /// Synthetic fields available on items in [`XML_ELEMENTS_FIELD`].
 pub const XML_LOCAL_NAME_FIELD: &str = "LocalName";
@@ -106,6 +115,14 @@ pub struct SchemaNode {
     pub name: String,
     #[serde(default)]
     pub repeating: bool,
+    /// Reuses the shape of the nearest concrete group with this name.
+    ///
+    /// XSD recursive element/type declarations cannot be expanded into a
+    /// finite tree. A recursive reference is therefore represented as an
+    /// empty group whose occurrence metadata remains local while its child
+    /// shape is resolved from this named anchor by recursive-aware formats.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recursive_ref: Option<String>,
     /// This node is an XML attribute of its parent group (always a scalar).
     /// Non-XML formats ignore it; in [`Instance`] trees an attribute is an
     /// ordinary named field of the parent group -- which means an attribute
@@ -142,6 +159,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             repeating: bool,
             #[serde(default)]
+            recursive_ref: Option<String>,
+            #[serde(default)]
             attribute: bool,
             #[serde(default)]
             text: bool,
@@ -156,15 +175,16 @@ impl<'de> Deserialize<'de> for SchemaNode {
         let node = Self {
             name: repr.name,
             repeating: repr.repeating,
+            recursive_ref: repr.recursive_ref,
             attribute: repr.attribute,
             text: repr.text,
             nillable: repr.nillable,
             fixed: repr.fixed,
             kind: repr.kind,
         };
-        if !node.alternatives_are_valid() {
+        if !node.alternatives_are_valid() || !node.recursive_ref_is_valid() {
             return Err(serde::de::Error::custom(
-                "group alternative metadata has duplicate or unknown names, members, or required fields",
+                "schema metadata contains invalid group alternatives or a malformed recursive reference",
             ));
         }
         Ok(node)
@@ -208,6 +228,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             repeating: false,
+            recursive_ref: None,
             attribute: false,
             text: false,
             nillable: false,
@@ -220,6 +241,7 @@ impl SchemaNode {
         Self {
             name: name.into(),
             repeating: false,
+            recursive_ref: None,
             attribute: false,
             text: false,
             nillable: false,
@@ -230,6 +252,31 @@ impl SchemaNode {
                 dynamic: None,
             },
         }
+    }
+
+    /// Creates a finite marker for an element whose group shape recursively
+    /// references `anchor`.
+    pub fn recursive_group(name: impl Into<String>, anchor: impl Into<String>) -> Self {
+        let mut node = Self::group(name, Vec::new());
+        node.recursive_ref = Some(anchor.into());
+        node
+    }
+
+    pub fn recursive_ref_is_valid(&self) -> bool {
+        let Some(anchor) = &self.recursive_ref else {
+            return true;
+        };
+        !anchor.is_empty()
+            && !self.attribute
+            && !self.text
+            && matches!(
+                &self.kind,
+                SchemaKind::Group {
+                    children,
+                    alternatives,
+                    dynamic,
+                } if children.is_empty() && alternatives.is_empty() && dynamic.is_none()
+            )
     }
 
     /// Declares a homogeneous computed-field value schema for this group.

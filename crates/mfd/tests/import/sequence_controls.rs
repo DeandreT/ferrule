@@ -596,19 +596,40 @@ fn exporting_one_position_at_multiple_iteration_stages_warns_once() {
 }
 
 #[test]
-fn noncanonical_ordinary_control_order_warns_once() {
+fn filter_then_sort_control_order_imports_executes_and_roundtrips() {
     let imported = mfd::import(&fixture("control-order.mfd")).unwrap();
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(
-        imported.warnings[0]
-            .contains("applies sort after filter, which cannot be represented exactly"),
-        "{:?}",
-        imported.warnings
-    );
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let item = &imported.project.root.children[0];
     assert!(item.sequence().is_some());
     assert!(item.filter.is_some());
     assert!(item.sort_by.is_some());
+    assert_eq!(
+        item.sort_filter_order,
+        mapping::SortFilterOrder::FilterThenSort
+    );
+
+    let source = format_xml::read(&fixture("generate.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let values = target
+        .field("Item")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .map(|item| scalar(item, "Value"))
+        .collect::<Vec<_>>();
+    assert_eq!(values, vec![Value::Int(5), Value::Int(4), Value::Int(3)]);
+
+    let dir = TempDir::new("filter_then_sort");
+    let exported = dir.0.join("mapping.mfd");
+    let warnings = mfd::export(&imported.project, &exported).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(
+        reimported.project.root.children[0].sort_filter_order,
+        mapping::SortFilterOrder::FilterThenSort
+    );
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), target);
 }
 
 #[test]

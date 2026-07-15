@@ -76,6 +76,7 @@ mod tests {
             source_options: Default::default(),
             target_options: Default::default(),
             extra_sources: Vec::new(),
+            extra_targets: Vec::new(),
             graph: Graph::default(),
             root: Scope::default(),
         }

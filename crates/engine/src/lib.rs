@@ -1,6 +1,7 @@
 //! Interprets a mapping graph against a source instance to produce a target instance.
 
 use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(test)]
 use ir::ScalarType;
@@ -10,6 +11,7 @@ use mapping::{Graph, IterationOutput, Node, Scope, ScopeConstruction};
 use mapping::{JoinId, NodeId, Project, RuntimeValue};
 use thiserror::Error;
 
+mod adjacency_tree;
 mod aggregate;
 mod context;
 mod dynamic_target;
@@ -18,6 +20,8 @@ mod eval_scope;
 mod grouping;
 mod iteration_output;
 mod join;
+mod path_hierarchy;
+mod recursive_filter;
 mod resolve;
 mod sequence;
 mod source_iteration;
@@ -25,11 +29,30 @@ mod validate;
 mod validate_join;
 
 #[cfg(test)]
+mod adjacency_tree_tests;
+#[cfg(test)]
+mod recursive_filter_tests;
+
+#[cfg(test)]
 use aggregate::{aggregate, value_ordering};
 use context::runtime_field;
 use eval_scope::eval_scope;
 
 pub use validate::{ValidationIssue, validate};
+
+/// One additional named target value produced by a project run.
+#[derive(Debug, Clone)]
+pub struct NamedOutput {
+    pub name: String,
+    pub instance: Instance,
+}
+
+/// Every target value produced by one project run.
+#[derive(Debug, Clone)]
+pub struct ExecutionOutputs {
+    pub primary: Instance,
+    pub extras: Vec<NamedOutput>,
+}
 
 #[derive(Debug, Error, PartialEq)]
 pub enum EngineError {
@@ -51,6 +74,19 @@ pub enum EngineError {
     ValueMapMiss { node: NodeId },
     #[error("execution context does not provide {0:?}")]
     MissingRuntimeValue(RuntimeValue),
+    #[error("dynamic source `{source_name}` requires a host source loader")]
+    MissingDynamicSourceLoader { source_name: String },
+    #[error("dynamic source `{source_name}` path expression produced {found}, expected a string")]
+    DynamicSourcePath {
+        source_name: String,
+        found: &'static str,
+    },
+    #[error("loading dynamic source `{source_name}` from `{path}` failed: {message}")]
+    DynamicSourceLoad {
+        source_name: String,
+        path: String,
+        message: String,
+    },
     #[error("a scope with `filter` but no `source` filtered out its only item")]
     FilteredNonRepeatingScope,
     #[error("node {node}: dynamic target property name must be a string, got {found}")]
@@ -67,8 +103,48 @@ pub enum EngineError {
     MappedSequenceDynamicTarget,
     #[error("copy-current-source construction requires a group item, got {found}")]
     CopyCurrentSourceRequiresGroup { found: &'static str },
+    #[error("concatenated scope segment produced {found} instead of a group or repeated groups")]
+    InvalidConcatenatedScopeItem { found: &'static str },
     #[error("generate-sequence requested {requested} items; maximum is {max}")]
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
+    #[error("recursive sequence exceeds the {limit}-group depth limit")]
+    RecursiveSequenceDepth { limit: usize },
+    #[error("recursive sequence produced more than {max} items")]
+    RecursiveSequenceTooLarge { max: u128 },
+    #[error("recursive filter exceeds the {limit}-group depth limit")]
+    RecursiveFilterDepth { limit: usize },
+    #[error("recursive filter requires a group item, got {found}")]
+    RecursiveFilterRequiresGroup { found: &'static str },
+    #[error("recursive filter field `{field}` requires a repeated collection, got {found}")]
+    RecursiveFilterRequiresCollection { field: String, found: &'static str },
+    #[error("path hierarchy input requires string values, got {found}")]
+    PathHierarchyValueType { found: &'static str },
+    #[error("path hierarchy exceeds the {limit}-directory depth limit")]
+    PathHierarchyDepth { limit: usize },
+    #[error("path hierarchy produced more than {max} directory and file items")]
+    PathHierarchyTooLarge { max: usize },
+    #[error("path hierarchy requires exactly one root directory, got {count}")]
+    PathHierarchyRootCount { count: usize },
+    #[error("adjacency-tree collection `{0}` is missing")]
+    MissingAdjacencyCollection(String),
+    #[error("adjacency tree produced more than {max} items")]
+    AdjacencyTreeTooLarge { max: u128 },
+    #[error("adjacency-tree key `{0}` occurs more than once")]
+    DuplicateAdjacencyKey(String),
+    #[error("adjacency-tree root requires a string or absent value, got {found}")]
+    InvalidAdjacencyRoot { found: &'static str },
+    #[error("adjacency tree requires exactly one selected root row, got {count}")]
+    AdjacencyRootCount { count: usize },
+    #[error("adjacency tree exceeds the {limit}-group depth limit")]
+    AdjacencyTreeDepth { limit: usize },
+    #[error("adjacency tree contains a cycle at key `{0}`")]
+    AdjacencyCycle(String),
+    #[error("adjacency-tree {role} field `{path}` requires a string or absent value, got {found}")]
+    InvalidAdjacencyField {
+        role: &'static str,
+        path: String,
+        found: &'static str,
+    },
     #[error("join {} is not active in the current scope", .join.get())]
     MissingJoinContext { join: JoinId },
     #[error("inner-join iteration cannot be combined with grouping controls")]
@@ -84,17 +160,28 @@ pub enum EngineError {
 /// Runs `project`'s scope tree against `source`, producing one target
 /// instance.
 pub fn run(project: &Project, source: &Instance) -> Result<Instance, EngineError> {
-    run_internal(project, source, Vec::new(), None)
+    Ok(run_outputs_internal(project, source, Vec::new(), None)?.primary)
+}
+
+/// Runs every target declared by `project`.
+pub fn run_outputs(project: &Project, source: &Instance) -> Result<ExecutionOutputs, EngineError> {
+    run_outputs_internal(project, source, Vec::new(), None)
 }
 
 /// Host values available to runtime graph nodes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct ExecutionContext<'a> {
     mapping_file_path: &'a Path,
     main_mapping_file_path: &'a Path,
     current_datetime: Option<&'a str>,
+    dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
 }
 
+/// Host boundary for typed secondary sources whose path is computed during
+/// mapping execution. Implementations should cache by source name and path.
+pub trait DynamicSourceLoader {
+    fn load(&self, source: &str, path: &str) -> Result<Arc<Instance>, String>;
+}
 impl<'a> ExecutionContext<'a> {
     /// Uses one path for both the active and top-level mapping.
     pub fn new(mapping_file_path: &'a Path) -> Self {
@@ -102,6 +189,7 @@ impl<'a> ExecutionContext<'a> {
             mapping_file_path,
             main_mapping_file_path: mapping_file_path,
             current_datetime: None,
+            dynamic_source_loader: None,
         }
     }
 
@@ -114,12 +202,19 @@ impl<'a> ExecutionContext<'a> {
             mapping_file_path,
             main_mapping_file_path,
             current_datetime: None,
+            dynamic_source_loader: None,
         }
     }
 
     /// Supplies one stable XML `dateTime` lexical value for the run.
     pub fn with_current_datetime(mut self, current_datetime: &'a str) -> Self {
         self.current_datetime = Some(current_datetime);
+        self
+    }
+
+    /// Supplies lazy typed-source loading for dynamic secondary inputs.
+    pub fn with_dynamic_source_loader(mut self, loader: &'a dyn DynamicSourceLoader) -> Self {
+        self.dynamic_source_loader = Some(loader);
         self
     }
 
@@ -144,7 +239,7 @@ pub fn run_with_context(
     source: &Instance,
     execution: &ExecutionContext<'_>,
 ) -> Result<Instance, EngineError> {
-    run_internal(project, source, Vec::new(), Some(execution))
+    Ok(run_outputs_internal(project, source, Vec::new(), Some(execution))?.primary)
 }
 
 /// Like [`run`], with named secondary sources. They form the outermost
@@ -156,7 +251,7 @@ pub fn run_with_sources(
     source: &Instance,
     extras: Vec<(String, Instance)>,
 ) -> Result<Instance, EngineError> {
-    run_internal(project, source, extras, None)
+    Ok(run_outputs_internal(project, source, extras, None)?.primary)
 }
 
 /// Like [`run_with_sources`], with host-provided runtime values.
@@ -166,15 +261,25 @@ pub fn run_with_sources_and_context(
     extras: Vec<(String, Instance)>,
     execution: &ExecutionContext<'_>,
 ) -> Result<Instance, EngineError> {
-    run_internal(project, source, extras, Some(execution))
+    Ok(run_outputs_internal(project, source, extras, Some(execution))?.primary)
 }
 
-fn run_internal(
+/// Like [`run_outputs`], with named secondary sources and host values.
+pub fn run_outputs_with_sources_and_context(
+    project: &Project,
+    source: &Instance,
+    extras: Vec<(String, Instance)>,
+    execution: &ExecutionContext<'_>,
+) -> Result<ExecutionOutputs, EngineError> {
+    run_outputs_internal(project, source, extras, Some(execution))
+}
+
+fn run_outputs_internal(
     project: &Project,
     source: &Instance,
     extras: Vec<(String, Instance)>,
     execution: Option<&ExecutionContext<'_>>,
-) -> Result<Instance, EngineError> {
+) -> Result<ExecutionOutputs, EngineError> {
     let runtime_frame = Instance::Group(
         execution
             .into_iter()
@@ -194,13 +299,35 @@ fn run_internal(
             .collect(),
     );
     let extras_frame = Instance::Group(extras);
-    eval_scope(
+    let context = [&runtime_frame, &extras_frame, source];
+    let primary = eval_scope(
         &project.graph,
         &project.root,
         Some(&project.target),
-        &[&runtime_frame, &extras_frame, source],
+        &context,
         &[],
-    )
+        &project.extra_sources,
+        execution.and_then(|execution| execution.dynamic_source_loader),
+    )?;
+    let mut targets = Vec::with_capacity(project.extra_targets.len());
+    for target in &project.extra_targets {
+        targets.push(NamedOutput {
+            name: target.name.clone(),
+            instance: eval_scope(
+                &project.graph,
+                &target.root,
+                Some(&target.schema),
+                &context,
+                &[],
+                &project.extra_sources,
+                execution.and_then(|execution| execution.dynamic_source_loader),
+            )?,
+        });
+    }
+    Ok(ExecutionOutputs {
+        primary,
+        extras: targets,
+    })
 }
 
 #[cfg(test)]
@@ -209,6 +336,8 @@ mod aggregate_tests;
 mod collection_tests;
 #[cfg(test)]
 mod core_tests;
+#[cfg(test)]
+mod dynamic_source_tests;
 #[cfg(test)]
 mod dynamic_target_tests;
 #[cfg(test)]
@@ -219,5 +348,7 @@ mod group_starting_tests;
 mod iteration_output_tests;
 #[cfg(test)]
 mod join_tests;
+#[cfg(test)]
+mod path_hierarchy_tests;
 #[cfg(test)]
 mod sequence_exists_tests;

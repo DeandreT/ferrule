@@ -395,6 +395,7 @@ mod tests {
                 ],
             ),
             options: Default::default(),
+            dynamic_path: None,
         };
         let catalog = SourcePathCatalog::new(&nested_source(), &[extra]);
         assert!(has_collection(&catalog, &["customers"]));
@@ -421,6 +422,7 @@ mod tests {
                 )],
             ),
             options: Default::default(),
+            dynamic_path: None,
         };
         let catalog = SourcePathCatalog::new(&nested_source(), &[extra]);
         assert!(!has_collection(&catalog, &["catalog"]));
