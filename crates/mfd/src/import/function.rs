@@ -505,6 +505,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "edifact-to-datetime" => "edifact_to_datetime",
         "substitute-missing" | "substitute-null" => "substitute_missing",
         "convertToISBN13" | "convertToEAN" => "isbn10_to_isbn13",
+        "sleep" => "delay_passthrough",
         _ => return None,
     })
 }
@@ -550,6 +551,7 @@ mod tests {
         assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
         assert_eq!(map_name("convertToISBN13"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("convertToEAN"), Some("isbn10_to_isbn13"));
+        assert_eq!(map_name("sleep"), Some("delay_passthrough"));
     }
 
     #[test]

@@ -9,19 +9,26 @@ use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
 mod adjacency;
+mod external_source;
 mod fixed_width;
 mod flextext;
 mod http;
+mod idoc;
 mod iteration;
 mod path_hierarchy;
 mod pdf;
 mod protobuf;
 mod recursive;
 mod scope_serde;
+mod swift;
 mod xbrl;
 mod xlsx_output;
 
 pub use adjacency::AdjacencyTreePlan;
+pub use external_source::{
+    ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
+    ExternalSourceOptionsError, ExternalSourceOrigin,
+};
 pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use flextext::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
@@ -29,6 +36,10 @@ pub use flextext::{
     MAX_FLEXTEXT_LAYOUT_STRING_BYTES, ManySplitter, OnceSplitter, StoreTrim, SwitchArm, TrimSide,
 };
 pub use http::{HttpGetOptions, HttpTimeoutSeconds};
+pub use idoc::{
+    IdocFieldLayout, IdocLayout, IdocLayoutError, IdocSegmentLayout, MAX_IDOC_FIELDS,
+    MAX_IDOC_RECORD_BYTES, MAX_IDOC_SEGMENTS,
+};
 pub use iteration::{
     JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource, JoinSourceCardinality,
     ScopeIteration, ScopeSequence,
@@ -43,7 +54,14 @@ pub use pdf::{
 };
 pub use protobuf::ProtobufOptions;
 pub use recursive::RecursiveFilterPlan;
-pub use xbrl::{XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError};
+pub use swift::{
+    SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
+    SwiftValueExpr,
+};
+pub use xbrl::{
+    XBRL_UNIT_FIELD_PREFIX, XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError,
+    XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding,
+};
 pub use xlsx_output::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
 };
@@ -686,6 +704,14 @@ pub struct FormatOptions {
     /// declared segments are never swallowed.
     #[serde(default)]
     pub lenient_segments: bool,
+    /// SAP IDoc: embedded fixed-record layout compiled from the external
+    /// parser configuration. This mode is input-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idoc: Option<IdocLayout>,
+    /// SWIFT MT: embedded selected-message field grammar. This mode is
+    /// input-only and takes precedence over the file extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swift_mt: Option<SwiftMtLayout>,
     /// CSV: the field delimiter (default `,`).
     #[serde(default)]
     pub delimiter: Option<char>,
@@ -708,6 +734,10 @@ pub struct FormatOptions {
     /// source path so callers can still override it with a local file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_get: Option<HttpGetOptions>,
+    /// Typed value captured outside ferrule from an opaque UDF or HTTP POST.
+    /// A local response file is executable; ferrule never invokes the owner.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_source: Option<ExternalSourceOptions>,
     /// JSON: read and write one root value per line instead of one enclosing
     /// JSON document.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -716,8 +746,7 @@ pub struct FormatOptions {
     /// This mode is output-only and takes precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protobuf: Option<ProtobufOptions>,
-    /// Opaque XBRL contract metadata. The visible schema remains available
-    /// for graph inspection, but native XBRL I/O is not executable yet.
+    /// XBRL taxonomy and table contract metadata used by the runtime adapter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xbrl: Option<XbrlBoundaryOptions>,
     /// XLSX: worksheet name. The first sheet is used when omitted.
@@ -766,8 +795,11 @@ mod tests {
         assert!(!defaults.json_lines);
         assert!(defaults.fixed_width.is_none());
         assert!(defaults.flextext.is_none());
+        assert!(defaults.idoc.is_none());
+        assert!(defaults.swift_mt.is_none());
         assert!(defaults.pdf.is_none());
         assert!(defaults.http_get.is_none());
+        assert!(defaults.external_source.is_none());
         assert!(defaults.protobuf.is_none());
         assert!(
             !serde_json::to_string(&defaults)

@@ -44,10 +44,7 @@ pub(crate) fn scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
             if let Instance::Repeated(items) = current {
                 match items.first() {
                     Some(first) => current = first,
-                    None => {
-                        found = false;
-                        break;
-                    }
+                    None => return Some(Value::Null),
                 }
             }
             match current.field(segment) {
@@ -64,7 +61,7 @@ pub(crate) fn scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
         if let Instance::Repeated(items) = current {
             match items.first() {
                 Some(first) => current = first,
-                None => continue,
+                None => return Some(Value::Null),
             }
         }
         if let Some(value) = current.as_scalar() {
@@ -156,4 +153,27 @@ pub(crate) fn context_for_position<'a>(
     context
         .get(context_offset + position_index + preceding_wrappers)
         .copied()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_uniterated_repetition_is_null_and_shadows_outer_values() {
+        let outer = Instance::Group(vec![(
+            "rows".into(),
+            Instance::Repeated(vec![Instance::Group(vec![(
+                "value".into(),
+                Instance::Scalar(Value::String("outer".into())),
+            )])]),
+        )]);
+        let inner = Instance::Group(vec![("rows".into(), Instance::Repeated(Vec::new()))]);
+
+        assert_eq!(
+            scalar(&[&outer, &inner], &["rows".into(), "value".into()]),
+            Some(Value::Null)
+        );
+        assert_eq!(scalar(&[&inner], &["rows".into()]), Some(Value::Null));
+    }
 }

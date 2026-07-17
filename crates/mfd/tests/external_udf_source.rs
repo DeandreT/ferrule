@@ -85,9 +85,8 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
     )?;
 
     let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("imported as an external source"));
-    assert!(imported.warnings[0].contains("must be supplied as the run input"));
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(imported.project.source_options.external_source.is_some());
     assert!(engine::validate(&imported.project).is_empty());
 
     let groups = imported

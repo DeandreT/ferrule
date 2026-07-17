@@ -3,7 +3,7 @@
 //! schema-guided recursive descent maps them onto the [`SchemaNode`] tree.
 //!
 //! Schema conventions:
-//! - A group named like a segment ID (2-3 uppercase alphanumeric chars,
+//! - A group named like a segment ID (2-30 uppercase alphanumeric chars,
 //!   starting with a letter -- `ISA`, `BEG`, `UNB`, `LIN`) whose children
 //!   are scalars and/or groups-of-scalars is a **segment** matcher. Scalar
 //!   children map positionally to elements 1..N; a group child is a
@@ -56,10 +56,16 @@ fn is_segment_id(name: &str) -> bool {
 
 fn schema_segment_id(name: &str) -> Option<&str> {
     let candidate = name.strip_prefix("MF_").unwrap_or(name);
+    let candidate = candidate
+        .rsplit_once('_')
+        .filter(|(_, suffix)| {
+            !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+        })
+        .map_or(candidate, |(base, _)| base);
     if is_edifact_segment_group(candidate) {
         return None;
     }
-    (2..=3).contains(&candidate.len()).then_some(())?;
+    (2..=30).contains(&candidate.len()).then_some(())?;
     candidate
         .chars()
         .next()
@@ -87,12 +93,7 @@ fn shape_of(node: &SchemaNode, is_root: bool) -> Result<Shape<'_>, EdiFormatErro
         return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
     };
     if !is_root && is_segment_id(&node.name) {
-        let valid_segment = children.iter().all(|c| match &c.kind {
-            SchemaKind::Scalar { .. } => true,
-            SchemaKind::Group { children, .. } => children
-                .iter()
-                .all(|cc| matches!(cc.kind, SchemaKind::Scalar { .. })),
-        });
+        let valid_segment = children.iter().all(is_scalar_tree);
         if valid_segment {
             return Ok(Shape::Segment(children));
         }
@@ -105,6 +106,13 @@ fn shape_of(node: &SchemaNode, is_root: bool) -> Result<Shape<'_>, EdiFormatErro
         Ok(Shape::Container(children))
     } else {
         Err(EdiFormatError::UnsupportedSchema(node.name.clone()))
+    }
+}
+
+fn is_scalar_tree(node: &SchemaNode) -> bool {
+    match &node.kind {
+        SchemaKind::Scalar { .. } => true,
+        SchemaKind::Group { children, .. } => children.iter().all(is_scalar_tree),
     }
 }
 
@@ -232,10 +240,59 @@ pub(crate) fn read_segments(
     schema: &SchemaNode,
     segments: &[Segment],
     component_join: char,
+    subcomponent: Option<char>,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    read_segments_with_syntax(
+        schema,
+        segments,
+        ReadSyntax {
+            component_join,
+            subcomponent,
+            subcomponent_escape: None,
+        },
+        lenient,
+    )
+}
+
+/// Reads segments whose subcomponent delimiter can also occur as an encoded
+/// literal. HL7 represents that case as `<escape>T<escape>`; decoding must
+/// happen after the structural subcomponent split.
+pub(crate) fn read_segments_with_subcomponent_escape(
+    schema: &SchemaNode,
+    segments: &[Segment],
+    component_join: char,
+    subcomponent: char,
+    escape: char,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    read_segments_with_syntax(
+        schema,
+        segments,
+        ReadSyntax {
+            component_join,
+            subcomponent: Some(subcomponent),
+            subcomponent_escape: Some(escape),
+        },
+        lenient,
+    )
+}
+
+#[derive(Clone, Copy)]
+struct ReadSyntax {
+    component_join: char,
+    subcomponent: Option<char>,
+    subcomponent_escape: Option<char>,
+}
+
+fn read_segments_with_syntax(
+    schema: &SchemaNode,
+    segments: &[Segment],
+    syntax: ReadSyntax,
     lenient: bool,
 ) -> Result<Instance, EdiFormatError> {
     let mut cursor = Cursor { segments, pos: 0 };
-    let instance = read_node(schema, &mut cursor, component_join, true, lenient, &[])?;
+    let instance = read_node(schema, &mut cursor, syntax, true, lenient, &[])?;
     if let Some(segment) = cursor.peek()
         && !lenient
     {
@@ -260,13 +317,13 @@ fn skip_unmatched(cursor: &mut Cursor, expectations: &[&SchemaNode]) {
 fn read_node(
     node: &SchemaNode,
     cursor: &mut Cursor,
-    component_join: char,
+    syntax: ReadSyntax,
     is_root: bool,
     lenient: bool,
     follow: &[&SchemaNode],
 ) -> Result<Instance, EdiFormatError> {
     match shape_of(node, is_root)? {
-        Shape::Segment(elements) => read_segment(node, elements, cursor, component_join),
+        Shape::Segment(elements) => read_segment(node, elements, cursor, syntax),
         Shape::Container(children) => {
             let mut fields = Vec::with_capacity(children.len());
             for (i, child) in children.iter().enumerate() {
@@ -299,7 +356,7 @@ fn read_node(
                         items.push(read_node(
                             child,
                             cursor,
-                            component_join,
+                            syntax,
                             false,
                             lenient,
                             &nested_follow,
@@ -313,14 +370,7 @@ fn read_node(
                     if cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
                         fields.push((
                             child.name.clone(),
-                            read_node(
-                                child,
-                                cursor,
-                                component_join,
-                                false,
-                                lenient,
-                                &child_follow,
-                            )?,
+                            read_node(child, cursor, syntax, false, lenient, &child_follow)?,
                         ));
                     } else {
                         return Err(EdiFormatError::UnexpectedSegment {
@@ -342,7 +392,7 @@ fn read_segment(
     node: &SchemaNode,
     element_schemas: &[SchemaNode],
     cursor: &mut Cursor,
-    component_join: char,
+    syntax: ReadSyntax,
 ) -> Result<Instance, EdiFormatError> {
     let segment = cursor
         .peek()
@@ -369,13 +419,13 @@ fn read_segment(
             let items = repeats
                 .iter()
                 .map(|components| {
-                    read_one_repeat(element_schema, components, &segment.id, i, component_join)
+                    read_one_repeat(element_schema, components, &segment.id, i, syntax)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Instance::Repeated(items)
         } else {
             let components = repeats.first().unwrap_or(&EMPTY_COMPONENTS);
-            read_one_repeat(element_schema, components, &segment.id, i, component_join)?
+            read_one_repeat(element_schema, components, &segment.id, i, syntax)?
         };
         fields.push((element_schema.name.clone(), instance));
     }
@@ -388,42 +438,97 @@ fn read_one_repeat(
     components: &[String],
     segment_id: &str,
     element_index: usize,
-    component_join: char,
+    syntax: ReadSyntax,
 ) -> Result<Instance, EdiFormatError> {
     match &element_schema.kind {
         SchemaKind::Scalar { ty } => {
             let raw = if components.len() > 1 {
-                components.join(&component_join.to_string())
+                components.join(&syntax.component_join.to_string())
             } else {
                 components.first().cloned().unwrap_or_default()
             };
+            let raw = decode_preserved_subcomponent(&raw, syntax);
             Ok(Instance::Scalar(parse_element(
                 segment_id,
                 element_index + 1,
                 *ty,
-                &raw,
+                raw.as_ref(),
             )?))
         }
-        SchemaKind::Group {
-            children: component_schemas,
-            ..
-        } => {
-            let mut parts = Vec::with_capacity(component_schemas.len());
-            for (j, component_schema) in component_schemas.iter().enumerate() {
-                let SchemaKind::Scalar { ty } = component_schema.kind else {
-                    return Err(EdiFormatError::UnsupportedSchema(format!(
-                        "{}/{}",
-                        element_schema.name, component_schema.name
-                    )));
-                };
+        SchemaKind::Group { children, .. } => {
+            let mut parts = Vec::with_capacity(children.len());
+            for (j, component_schema) in children.iter().enumerate() {
                 let raw = components.get(j).map_or("", String::as_str);
                 parts.push((
                     component_schema.name.clone(),
-                    Instance::Scalar(parse_element(segment_id, element_index + 1, ty, raw)?),
+                    read_nested_component(
+                        component_schema,
+                        raw,
+                        syntax.subcomponent,
+                        syntax,
+                        segment_id,
+                        element_index,
+                    )?,
                 ));
             }
             Ok(Instance::Group(parts))
         }
+    }
+}
+
+fn read_nested_component(
+    schema: &SchemaNode,
+    raw: &str,
+    separator: Option<char>,
+    syntax: ReadSyntax,
+    segment_id: &str,
+    element_index: usize,
+) -> Result<Instance, EdiFormatError> {
+    match &schema.kind {
+        SchemaKind::Scalar { ty } => {
+            let raw = decode_preserved_subcomponent(raw, syntax);
+            Ok(Instance::Scalar(parse_element(
+                segment_id,
+                element_index + 1,
+                *ty,
+                raw.as_ref(),
+            )?))
+        }
+        SchemaKind::Group { children, .. } => {
+            let parts = separator
+                .map(|separator| raw.split(separator).collect::<Vec<_>>())
+                .unwrap_or_else(|| vec![raw]);
+            let fields = children
+                .iter()
+                .enumerate()
+                .map(|(index, child)| {
+                    Ok((
+                        child.name.clone(),
+                        read_nested_component(
+                            child,
+                            parts.get(index).copied().unwrap_or_default(),
+                            None,
+                            syntax,
+                            segment_id,
+                            element_index,
+                        )?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, EdiFormatError>>()?;
+            Ok(Instance::Group(fields))
+        }
+    }
+}
+
+fn decode_preserved_subcomponent(raw: &str, syntax: ReadSyntax) -> std::borrow::Cow<'_, str> {
+    let (Some(separator), Some(escape)) = (syntax.subcomponent, syntax.subcomponent_escape) else {
+        return std::borrow::Cow::Borrowed(raw);
+    };
+    let encoded = format!("{escape}T{escape}");
+    if raw.contains(&encoded) {
+        std::borrow::Cow::Owned(raw.replace(&encoded, &separator.to_string()))
+    } else {
+        std::borrow::Cow::Borrowed(raw)
     }
 }
 
@@ -893,5 +998,14 @@ mod tests {
         );
 
         assert_eq!(root_trigger(&schema).unwrap(), "AK9");
+
+        let occurrence = SchemaNode::group(
+            "X12",
+            vec![SchemaNode::group(
+                "REF_8",
+                vec![SchemaNode::scalar("128", ScalarType::String)],
+            )],
+        );
+        assert_eq!(root_trigger(&occurrence).unwrap(), "REF");
     }
 }

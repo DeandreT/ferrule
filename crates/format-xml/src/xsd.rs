@@ -23,7 +23,7 @@ use roxmltree::Node;
 
 use crate::XmlFormatError;
 
-const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 256;
+const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ActiveDeclaration {

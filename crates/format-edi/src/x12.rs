@@ -13,10 +13,10 @@ use std::path::Path;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
 
-use crate::EdiFormatError;
 use crate::segments::{
     Segment, WriteOptions, read_segments, validate_instance_shape, write_segments,
 };
+use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '*',
@@ -33,6 +33,9 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
 }
 
 fn tokenize_with_component_separator(text: &str) -> Result<(Vec<Segment>, char), EdiFormatError> {
+    if text.len() > MAX_RUNTIME_INPUT_BYTES {
+        return Err(EdiFormatError::NotX12("input exceeds the 64 MiB limit"));
+    }
     let text = text.trim_start();
     if !text.starts_with("ISA") {
         return Err(EdiFormatError::NotX12("interchange must start with ISA"));
@@ -148,9 +151,14 @@ fn repetition_separator(isa11: &str, isa12: &str) -> Result<Option<char>, EdiFor
 /// `lenient`, segments the schema doesn't mention are skipped (bounded by
 /// the schema's own expectations) instead of erroring.
 pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance, EdiFormatError> {
-    let text = std::fs::read_to_string(path)?;
-    let (segments, component_separator) = tokenize_with_component_separator(&text)?;
-    read_segments(schema, &segments, component_separator, lenient)
+    let bytes = read_bounded_input(
+        path,
+        EdiFormatError::NotX12("input exceeds the 64 MiB limit"),
+    )?;
+    let text =
+        std::str::from_utf8(&bytes).map_err(|_| EdiFormatError::NotX12("input is not UTF-8"))?;
+    let (segments, component_separator) = tokenize_with_component_separator(text)?;
+    read_segments(schema, &segments, component_separator, None, lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as X12.

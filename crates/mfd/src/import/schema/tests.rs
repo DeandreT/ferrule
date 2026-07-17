@@ -5,7 +5,75 @@ use ir::{ScalarType, SchemaKind};
 
 use super::{
     db_table_schema, instance_root_segments, normalize_xml_entry_name, read_json_component,
+    read_schema_component,
 };
+
+#[test]
+fn oversized_xsd_targets_use_the_connected_entry_projection() {
+    use std::fmt::Write as _;
+
+    let dir =
+        std::env::temp_dir().join(format!("ferrule_mfd_projected_xsd_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut xsd = String::from(
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:complexType name="T0"><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType>"#,
+    );
+    for level in 1..=20 {
+        writeln!(
+            xsd,
+            r#"<xs:complexType name="T{level}"><xs:sequence><xs:element name="Left" type="T{}"/><xs:element name="Right" type="T{}"/></xs:sequence></xs:complexType>"#,
+            level - 1,
+            level - 1
+        )
+        .unwrap();
+    }
+    xsd.push_str(r#"<xs:element name="Root" type="T20"/></xs:schema>"#);
+    std::fs::write(dir.join("large.xsd"), xsd).unwrap();
+
+    let target_xml = r#"<component name="Target"><data>
+      <root><entry name="FileInstance"><entry name="document"><entry name="Root">
+        <entry name="Projected" type="attribute" inpkey="1"/>
+      </entry></entry></entry></root>
+      <document schema="large.xsd" outputinstance="out.xml" instanceroot="{}Root"/>
+    </data></component>"#;
+    let target_doc = roxmltree::Document::parse(target_xml).unwrap();
+    let mut target_warnings = Vec::new();
+    let target = read_schema_component(
+        &target_doc.root_element(),
+        &dir.join("mapping.mfd"),
+        &mut target_warnings,
+    )
+    .unwrap();
+    assert!(target_warnings.is_empty(), "{target_warnings:?}");
+    assert!(
+        target
+            .schema
+            .child("Projected")
+            .is_some_and(|node| node.attribute)
+    );
+
+    let source_xml = target_xml
+        .replace("Target", "Source")
+        .replace("inpkey", "outkey")
+        .replace("outputinstance", "inputinstance");
+    let source_doc = roxmltree::Document::parse(&source_xml).unwrap();
+    let mut source_warnings = Vec::new();
+    read_schema_component(
+        &source_doc.root_element(),
+        &dir.join("mapping.mfd"),
+        &mut source_warnings,
+    )
+    .unwrap();
+    assert!(
+        source_warnings
+            .iter()
+            .any(|warning| warning.contains("materialization limit")),
+        "{source_warnings:?}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
 
 #[test]
 fn instance_root_paths_do_not_split_namespace_uris() {

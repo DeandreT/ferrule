@@ -76,7 +76,7 @@ fn error_message(result: anyhow::Result<usize>) -> Result<String, Box<dyn Error>
 }
 
 #[test]
-fn external_xbrl_source_rejects_before_input_extension_dispatch() -> Result<(), Box<dyn Error>> {
+fn external_xbrl_source_dispatches_to_the_bounded_reader() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let mut project = project();
     project.source_options.xbrl = Some(XbrlBoundaryOptions::external_source("taxonomy.xsd")?);
@@ -84,18 +84,23 @@ fn external_xbrl_source_rejects_before_input_extension_dispatch() -> Result<(), 
     let output_path = dir.0.join("output.xml");
     write_project(&project_path, &project)?;
 
-    let message = error_message(cli::run_project(
-        &project_path,
-        &dir.0.join("missing.unsupported"),
-        &output_path,
-    ))?;
-    assert!(message.contains("XBRL source input is not executable"));
+    let input_path = dir.0.join("facts.xbrl");
+    std::fs::write(
+        &input_path,
+        r#"<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"/>"#,
+    )?;
+    let message = error_message(cli::run_project(&project_path, &input_path, &output_path))?;
+    assert!(
+        message.contains("reading XBRL input")
+            && !message.contains("unsupported input file extension"),
+        "{message}"
+    );
     assert!(!output_path.exists());
     Ok(())
 }
 
 #[test]
-fn external_xbrl_target_rejects_without_replacing_output() -> Result<(), Box<dyn Error>> {
+fn external_xbrl_target_validates_before_replacing_output() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let mut project = project();
     project.target_options.xbrl = Some(XbrlBoundaryOptions::external_target(
@@ -103,16 +108,14 @@ fn external_xbrl_target_rejects_without_replacing_output() -> Result<(), Box<dyn
         Some("table.sps"),
     )?);
     let project_path = dir.0.join("mapping.json");
+    let input_path = dir.0.join("input.xml");
     let output_path = dir.0.join("output.xml");
     write_project(&project_path, &project)?;
+    std::fs::write(&input_path, "<Source><value>test</value></Source>")?;
     std::fs::write(&output_path, "preserve")?;
 
-    let message = error_message(cli::run_project(
-        &project_path,
-        &dir.0.join("missing.xml"),
-        &output_path,
-    ))?;
-    assert!(message.contains("XBRL target output is not executable"));
+    let message = error_message(cli::run_project(&project_path, &input_path, &output_path))?;
+    assert!(message.contains("writing XBRL output"), "{message}");
     assert_eq!(std::fs::read_to_string(&output_path)?, "preserve");
     Ok(())
 }

@@ -12,8 +12,8 @@ use std::path::Path;
 
 use ir::{Instance, SchemaNode};
 
-use crate::EdiFormatError;
 use crate::segments::{Segment, WriteOptions, read_segments, write_segments};
+use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
 // No repetition separator: EDIFACT syntax v4 defines `*`, but most traffic
 // is v3 where a bare `*` is ordinary data -- splitting it by default would
@@ -52,6 +52,9 @@ pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
 }
 
 fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), EdiFormatError> {
+    if text.len() > MAX_RUNTIME_INPUT_BYTES {
+        return Err(EdiFormatError::NotEdifact("input exceeds the 64 MiB limit"));
+    }
     let text = text.trim_start();
     let (separators, body) = if let Some(rest) = text.strip_prefix("UNA") {
         let advice: Vec<char> = rest.chars().take(6).collect();
@@ -148,9 +151,14 @@ fn push_char(elements: &mut [Vec<Vec<String>>], c: char) -> Result<(), EdiFormat
 /// With `lenient`, segments the schema doesn't mention are skipped
 /// (bounded by the schema's own expectations) instead of erroring.
 pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance, EdiFormatError> {
-    let text = std::fs::read_to_string(path)?;
-    let (segments, separators) = tokenize_with_separators(&text)?;
-    read_segments(schema, &segments, separators.component, lenient)
+    let bytes = read_bounded_input(
+        path,
+        EdiFormatError::NotEdifact("input exceeds the 64 MiB limit"),
+    )?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| EdiFormatError::NotEdifact("input is not UTF-8"))?;
+    let (segments, separators) = tokenize_with_separators(text)?;
+    read_segments(schema, &segments, separators.component, None, lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as EDIFACT.

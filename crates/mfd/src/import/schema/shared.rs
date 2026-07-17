@@ -3,6 +3,21 @@ use std::path::{Path, PathBuf};
 
 use ir::SchemaNode;
 
+#[derive(Debug)]
+pub(in crate::import) enum XmlSchemaReadError {
+    Xsd(format_xml::XmlFormatError),
+    Other(String),
+}
+
+impl std::fmt::Display for XmlSchemaReadError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Xsd(error) => error.fmt(formatter),
+            Self::Other(error) => formatter.write_str(error),
+        }
+    }
+}
+
 pub(in crate::import) fn resolve_xml_schema_reference(
     mfd_path: &Path,
     relative: &str,
@@ -51,15 +66,16 @@ pub(in crate::import) fn resolve_xml_schema_reference(
 pub(in crate::import) fn read_xml_schema_file(
     schema_path: &Path,
     root: Option<&str>,
-) -> Result<SchemaNode, String> {
+) -> Result<SchemaNode, XmlSchemaReadError> {
     let extension = schema_path
         .extension()
         .and_then(|extension| extension.to_str())
         .unwrap_or_default();
     if extension.eq_ignore_ascii_case("dtd") {
-        format_xml::dtd::import_root(schema_path, root).map_err(|error| error.to_string())
+        format_xml::dtd::import_root(schema_path, root)
+            .map_err(|error| XmlSchemaReadError::Other(error.to_string()))
     } else {
-        format_xml::xsd::import_root(schema_path, root).map_err(|error| error.to_string())
+        format_xml::xsd::import_root(schema_path, root).map_err(XmlSchemaReadError::Xsd)
     }
 }
 
