@@ -4,7 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::{XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding};
 
-use super::schema_node_at;
+use super::super::schema_node_at;
 
 const MAX_SPS_BYTES: u64 = 32 * 1024 * 1024;
 

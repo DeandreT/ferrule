@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use mapping::XbrlNamespaceBinding;
 
-use super::normalize_xml_entry_name;
+use super::super::normalize_xml_entry_name;
 
 pub(super) fn bindings(
     root: &roxmltree::Node<'_, '_>,

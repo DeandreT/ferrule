@@ -1178,5 +1178,4 @@ fn optional_port(
 }
 
 #[cfg(test)]
-#[path = "join_tests.rs"]
 mod tests;

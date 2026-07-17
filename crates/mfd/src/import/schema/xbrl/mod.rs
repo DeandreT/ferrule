@@ -6,6 +6,9 @@ use mapping::{FormatOptions, XbrlBoundaryOptions};
 
 use super::{ComponentFormat, SchemaComponent, is_default_output, normalize_xml_entry_name};
 
+mod namespace;
+mod sps;
+
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
@@ -26,7 +29,7 @@ pub(super) fn read(
         return Err("XBRL component must expose exactly one entry-tree root".to_string());
     };
     let payload = document_payload(root)?;
-    let namespace_bindings = super::xbrl_namespace::bindings(root, &payload)?;
+    let namespace_bindings = namespace::bindings(root, &payload)?;
 
     let mut state = PortState::default();
     let mut schema = build_root_schema(&payload, &mut state)?;
@@ -42,7 +45,7 @@ pub(super) fn read(
     let fact_bindings = if is_source {
         Vec::new()
     } else if let Some(presentation) = metadata.attribute("sps") {
-        match super::xbrl_sps::fact_bindings(mfd_path, presentation, &schema, &namespace_bindings) {
+        match sps::fact_bindings(mfd_path, presentation, &schema, &namespace_bindings) {
             Ok(bindings) => bindings,
             Err(error) => {
                 warnings.push(format!(

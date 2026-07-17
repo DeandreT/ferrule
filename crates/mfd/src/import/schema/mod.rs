@@ -15,8 +15,6 @@ mod pdf;
 mod protobuf;
 mod shared;
 mod xbrl;
-mod xbrl_namespace;
-mod xbrl_sps;
 mod xlsx;
 mod xml_ports;
 
