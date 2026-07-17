@@ -13,7 +13,7 @@ use super::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 /// target iteration.
 pub(super) fn infer_singleton_messages(
     target: &SchemaComponent,
-    bindings: &[(TargetLeaf, u32)],
+    bindings: &[(TargetLeaf, u32, u32)],
     explicit_iterations: &BTreeSet<Vec<String>>,
     builder: &mut GraphBuilder<'_>,
     scopes: &mut ScopeBuilder,
@@ -24,7 +24,7 @@ pub(super) fn infer_singleton_messages(
     }
     let connected = bindings
         .iter()
-        .map(|(target, _)| target.path())
+        .map(|(target, _, _)| target.path())
         .collect::<BTreeSet<_>>();
     let mut singleton_messages = Vec::new();
     let mut repeated_scalars = Vec::new();

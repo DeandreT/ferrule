@@ -60,6 +60,21 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                 .to_string(),
         ));
     }
+    if project.source_options.external_source.is_some()
+        || project.target_options.external_source.is_some()
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| source.options.external_source.is_some())
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| target.options.external_source.is_some())
+    {
+        return Err(MfdError::Unsupported(
+            "captured external-response boundaries cannot be exported to .mfd".to_string(),
+        ));
+    }
     if project.source_options.flextext.is_some() || project.target_options.flextext.is_some() {
         return Err(MfdError::Unsupported(
             "FlexText component export is not supported; remove FlexText format options before exporting this project"
@@ -112,7 +127,6 @@ fn has_scalar_construction(scope: &Scope) -> bool {
     matches!(&scope.construction, ScopeConstruction::Scalar { .. })
         || nested_scopes(scope).any(has_scalar_construction)
 }
-
 fn has_recursive_filter(scope: &Scope) -> bool {
     matches!(
         &scope.construction,
@@ -149,6 +163,7 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
             || project.source_options.delimiter.is_some()
             || project.source_options.has_header_row.is_some()
             || project.source_options.fixed_width.is_some()
+            || project.source_options.external_source.is_some()
             || project.source_options.json_lines
             || project.source_options.xlsx_sheet.is_some()
             || project.source_options.xlsx_start_row.is_some()

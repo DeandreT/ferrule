@@ -32,6 +32,7 @@ mod json_serializer;
 mod materialize;
 mod output_parameter;
 mod protobuf_target;
+mod scalar_anchor;
 mod scalar_function;
 mod schema;
 mod scope;
@@ -54,7 +55,7 @@ use iteration::{
     IntermediateFeed, IterationFeed, note_iteration_control_order, split_at_innermost_repeating,
 };
 use schema::{
-    SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
+    ComponentFormat, SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
     read_edi_component, read_fixed_width_component, read_flextext_component,
     read_http_get_component, read_json_component, read_pdf_component, read_protobuf_component,
     read_schema_component, read_xbrl_component, read_xlsx_component, schema_node_at,
@@ -148,7 +149,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             None => warnings.push(format!("skipped csv component `{name}`")),
                         }
                     } else if flavor == "edi" {
-                        match read_edi_component(&component, &mut warnings) {
+                        match read_edi_component(&component, path, &mut warnings) {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped edi component `{name}`")),
                         }
@@ -259,7 +260,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     }
                 }
                 "xbrl" if component.attribute("kind") == Some("27") => {
-                    match read_xbrl_component(&component, &mut warnings) {
+                    match read_xbrl_component(&component, path, &mut warnings) {
                         Ok(component) => schema_components.push(component),
                         Err(reason) => {
                             note_skipped_library(&mut skipped_libraries, "xbrl");
@@ -333,7 +334,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &udf_registry,
         &edge_from,
     );
-    let copy_all_targets = read_copy_all_targets(&structure);
+    schema::restore_connected_structural_ports(&mut schema_components, &edge_from);
+    let copy_all_targets = read_copy_all_targets(&structure, Some(&wrapper));
+    refine_copied_json_root_schemas(&mut schema_components, &edge_from, &copy_all_targets);
 
     let output_failed = output_parameter::install_fallback(
         &mut schema_components,
@@ -355,9 +358,17 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &mut warnings,
     );
 
+    let connected_outputs = edge_from.values().copied().collect::<BTreeSet<_>>();
     let mut sources: Vec<&SchemaComponent> = schema_components
         .iter()
-        .filter(|c| !c.is_variable && c.is_source)
+        .filter(|c| {
+            !c.is_variable
+                && (c.is_source
+                    || c.format == ComponentFormat::Db
+                        && c.output_keys
+                            .iter()
+                            .any(|key| connected_outputs.contains(key)))
+        })
         .collect();
     let targets: Vec<&SchemaComponent> = schema_components
         .iter()
@@ -447,7 +458,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     // same framed suffix as the loader path expression.
     let mut dynamic_source_inputs: Vec<Option<(u32, SourcePath)>> = vec![None; sources.len()];
     for (index, extra) in sources.iter().enumerate().skip(1) {
-        if !extra.db_queries.is_empty() {
+        if extra.format == ComponentFormat::Db
+            || !extra.db_queries.is_empty()
+            || extra.options.external_source.is_some()
+        {
             continue;
         }
         let connected = extra
@@ -539,6 +553,39 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     })
 }
 
+fn refine_copied_json_root_schemas(
+    components: &mut [SchemaComponent],
+    edge_from: &BTreeMap<u32, u32>,
+    copy_all_targets: &BTreeSet<u32>,
+) {
+    let replacements = components
+        .iter()
+        .enumerate()
+        .filter(|(_, target)| {
+            !target.is_source
+                && target.format == ComponentFormat::Json
+                && matches!(target.schema.kind, SchemaKind::Scalar { .. })
+        })
+        .filter_map(|(target_index, target)| {
+            let feed = target
+                .ports
+                .iter()
+                .find(|(input, path)| path.is_empty() && copy_all_targets.contains(input))
+                .and_then(|(input, _)| edge_from.get(input))?;
+            let source_schema = components.iter().find_map(|source| {
+                let path = source.ports.get(feed)?;
+                let node = schema_node_at(&source.schema, path)?;
+                (!node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+                    .then(|| node.clone())
+            })?;
+            Some((target_index, source_schema))
+        })
+        .collect::<Vec<_>>();
+    for (target_index, schema) in replacements {
+        components[target_index].schema = schema;
+    }
+}
+
 fn build_target_scope(
     target: &SchemaComponent,
     edge_from: &BTreeMap<u32, u32>,
@@ -590,7 +637,7 @@ fn build_target_scope(
                 )
             }
             Some(_) => match TargetLeaf::from_path(target_path) {
-                Some(target) => bindings.push((target, from)),
+                Some(target) => bindings.push((target, from, inpkey)),
                 None => builder.warnings.push(
                     "connection into a scalar document root is not supported; binding skipped"
                         .to_string(),
@@ -611,8 +658,8 @@ fn build_target_scope(
         .collect::<BTreeSet<_>>();
     join::prepare_iterations(&iterations, builder, &mut scopes);
     for iteration in &iterations {
-        for feed_key in
-            std::iter::once(iteration.feed).chain(iteration.additional_feeds.iter().copied())
+        for feed_key in std::iter::once(iteration.feed)
+            .chain(iteration.additional_feeds.iter().map(|(feed, _, _)| *feed))
         {
             let feed = builder.resolve_iteration_feed(feed_key);
             if let Some(idx) = feed.sequence_component {
@@ -625,7 +672,7 @@ fn build_target_scope(
     }
     materialize::eager_functions(builder);
     let mut skipped_iteration_paths =
-        target_iteration::build(iterations, target, &bindings, builder, &mut scopes);
+        target_iteration::build(iterations, target, &mut bindings, builder, &mut scopes);
     protobuf_target::infer_singleton_messages(
         target,
         &bindings,
@@ -652,7 +699,7 @@ fn build_target_scope(
         builder,
         &mut scopes,
     );
-    for (target, from) in bindings {
+    for (target, from, _) in bindings {
         let target_path = target.path();
         if builder.join_dependency_rejected(from) {
             continue;
@@ -670,7 +717,8 @@ fn build_target_scope(
         {
             continue;
         }
-        let Some(node) = builder.binding_node(from, &target_path) else {
+        let active_anchor = scopes.enclosing_anchor(&target_path);
+        let Some(node) = builder.binding_node_at_anchor(from, &target_path, &active_anchor) else {
             continue;
         };
         scopes.add_binding(target, node);

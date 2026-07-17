@@ -4,7 +4,8 @@ use ir::{Instance, ScalarType, SchemaNode, Value};
 use umya_spreadsheet::structs::{Style, Worksheet};
 
 use super::{
-    MAX_WORKSHEET_ROW, XlsxFormatError, column_indexes, exact_f64, row_fields, validate_row,
+    MAX_WORKSHEET_ROW, XlsxFormatError, column_indexes, exact_f64, lexical_f64, lexical_i64,
+    row_fields, validate_row,
 };
 
 /// Replaces one selected table while preserving the rest of an existing
@@ -184,8 +185,21 @@ fn replace_value(
         (ScalarType::Float, Value::Float(value)) if value.is_finite() => {
             cell.set_value_number(*value);
         }
+        (ScalarType::Int, Value::String(value)) => {
+            cell.set_value_number(
+                lexical_i64(value)
+                    .and_then(exact_f64)
+                    .ok_or_else(|| bad("string"))?,
+            );
+        }
+        (ScalarType::Float, Value::String(value)) => {
+            cell.set_value_number(lexical_f64(value).ok_or_else(|| bad("string"))?);
+        }
         (ScalarType::Bool, Value::Bool(value)) => {
             cell.set_value_bool(*value);
+        }
+        (ScalarType::Bool, Value::String(value)) => {
+            cell.set_value_bool(value.trim().parse().map_err(|_| bad("string"))?);
         }
         (_, Value::Float(_)) => return Err(bad("non-finite float")),
         (_, other) => return Err(bad(other.type_name())),

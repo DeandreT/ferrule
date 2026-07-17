@@ -222,6 +222,36 @@ fn imports_multiple_top_level_tables_below_a_composite_root() {
 }
 
 #[test]
+fn ignores_disconnected_selected_tables_when_connected_tables_exist() {
+    let dir = TempDir::new("disconnected_table");
+    let db_path = dir.0.join("test.sqlite");
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE unused (id INTEGER); \
+             CREATE TABLE departments (id INTEGER, name TEXT); \
+             INSERT INTO departments VALUES (1, 'Engineering');",
+        )
+        .unwrap();
+    drop(connection);
+    let design = dir.0.join("disconnected-table.mfd");
+    write_design(
+        &design,
+        r#"<entry name="unused" type="table"/>
+        <entry name="departments" type="table" outkey="1">
+          <entry name="name" outkey="2"/>
+        </entry>"#,
+        2,
+    );
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.source.name, "departments");
+    assert!(imported.project.source.child("name").is_some());
+    assert!(imported.project.source.child("unused").is_none());
+}
+
+#[test]
 fn warns_when_nested_relationship_metadata_is_missing() {
     let dir = TempDir::new("missing_relation");
     let db_path = dir.0.join("test.sqlite");

@@ -6,12 +6,22 @@
 //! it -- the exact schema conventions are documented in [`segments`], and
 //! the dialect-specific tokenizing lives in [`x12`] and [`edifact`].
 
+pub mod config;
 pub mod edifact;
+pub mod hl7;
+pub mod idoc;
 mod segments;
+pub mod swift;
+pub mod tradacoms;
 pub mod x12;
+
+use std::io::Read;
+use std::path::Path;
 
 use ir::{ScalarType, SchemaNode};
 use thiserror::Error;
+
+pub(crate) const MAX_RUNTIME_INPUT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum EdiFormatError {
@@ -21,6 +31,24 @@ pub enum EdiFormatError {
     NotX12(&'static str),
     #[error("not an EDIFACT interchange: {0}")]
     NotEdifact(&'static str),
+    #[error("not an HL7 v2 message stream: {0}")]
+    NotHl7(&'static str),
+    #[error("not a TRADACOMS interchange: {0}")]
+    NotTradacoms(&'static str),
+    #[error("IDoc record {index}: unrecognized segment `{found}`")]
+    UnrecognizedIdocSegment { index: usize, found: String },
+    #[error("IDoc record {record}, field `{field}` is not valid UTF-8")]
+    InvalidIdocText { record: usize, field: String },
+    #[error("IDoc input exceeds the {0} limit")]
+    IdocLimit(&'static str),
+    #[error("not a SWIFT MT message stream: {0}")]
+    NotSwift(&'static str),
+    #[error("SWIFT message type `{0}` has no embedded layout")]
+    UnknownSwiftMessage(String),
+    #[error("SWIFT field `{tag}` value does not match its embedded grammar")]
+    SwiftFieldParse { tag: String },
+    #[error("SWIFT input exceeds the {0} limit")]
+    SwiftLimit(&'static str),
     #[error("segment {index}: expected `{expected}`, found `{found}`")]
     UnexpectedSegment {
         index: usize,
@@ -86,12 +114,28 @@ pub enum EdiFormatError {
     UnsupportedSchema(String),
 }
 
+pub(crate) fn read_bounded_input(
+    path: &Path,
+    too_large: EdiFormatError,
+) -> Result<Vec<u8>, EdiFormatError> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take((MAX_RUNTIME_INPUT_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_RUNTIME_INPUT_BYTES {
+        return Err(too_large);
+    }
+    Ok(bytes)
+}
+
 /// The EDI dialect a schema describes, decided by its first trigger
 /// segment: `ISA` means X12, `UNB` means EDIFACT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     X12,
     Edifact,
+    Hl7,
+    Tradacoms,
 }
 
 pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
@@ -104,6 +148,8 @@ pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
     match segments::root_trigger(schema)? {
         "ISA" => Ok(Dialect::X12),
         "UNB" => Ok(Dialect::Edifact),
+        "FHS" | "BHS" | "MSH" => Ok(Dialect::Hl7),
+        "STX" => Ok(Dialect::Tradacoms),
         other => Err(EdiFormatError::UnsupportedSchema(format!(
             "schema must start with ISA (X12) or UNB (EDIFACT), found `{other}`"
         ))),
@@ -115,7 +161,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn malformed_root_and_nested_composite_schemas_return_errors() {
+    fn malformed_roots_fail_while_nested_composites_select_the_dialect() {
         let scalar_root = SchemaNode::scalar("ISA", ScalarType::String);
         assert!(matches!(
             dialect_of(&scalar_root),
@@ -135,10 +181,7 @@ mod tests {
                 )],
             )],
         );
-        assert!(matches!(
-            dialect_of(&nested_composite),
-            Err(EdiFormatError::UnsupportedSchema(_))
-        ));
+        assert_eq!(dialect_of(&nested_composite).unwrap(), Dialect::X12);
     }
 
     #[test]

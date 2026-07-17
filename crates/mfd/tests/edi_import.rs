@@ -61,7 +61,7 @@ fn imports_edi_entry_tree_paths_and_honors_default_output() {
 }
 
 #[test]
-fn imports_unsupported_edi_dialect_as_non_executable_graph() {
+fn imports_hl7_without_external_config_as_non_executable_graph() {
     let imported = mfd::import(&fixture("edi-unsupported.mfd")).unwrap();
 
     assert_eq!(imported.project.source.name, "HL7");
@@ -70,15 +70,203 @@ fn imports_unsupported_edi_dialect_as_non_executable_graph() {
         Some("messages.hl7")
     );
     assert_eq!(imported.project.graph.nodes.len(), 1);
-    assert_eq!(imported.warnings.len(), 2, "{:?}", imported.warnings);
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported
             .warnings
             .iter()
             .any(|warning| warning.contains("entry-tree schema inferred"))
     );
-    assert!(imported.warnings.iter().any(|warning| {
-        warning.contains("mapping graph was imported")
-            && warning.contains("only EDIX12 and EDIFACT")
-    }));
+}
+
+#[test]
+fn compiles_relative_x12_configuration_into_an_executable_schema() {
+    let directory = TempDir::new("x12_config");
+    let config_directory = directory.path().join("X12");
+    std::fs::create_dir_all(&config_directory).unwrap();
+    std::fs::write(
+        config_directory.join("Defs.Segment"),
+        r#"<Config><Elements>
+          <Data name="F1" type="string"/>
+          <Segment name="ISA"><Data ref="F1"/></Segment>
+          <Segment name="GS"><Data ref="F1"/></Segment>
+          <Segment name="ST"><Data ref="F1"/></Segment>
+          <Segment name="SE"><Data ref="F1"/></Segment>
+          <Segment name="GE"><Data ref="F1"/></Segment>
+          <Segment name="IEA"><Data ref="F1"/></Segment>
+        </Elements></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config_directory.join("Envelope.Config"),
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Group name="Envelope"><Group name="Interchange" maxOccurs="unbounded">
+            <Segment ref="ISA"/><Group name="Group" maxOccurs="unbounded">
+              <Segment ref="GS"/><Select field="ST/F1"/><Segment ref="GE" minOccurs="0"/>
+            </Group><Segment ref="IEA" minOccurs="0"/>
+          </Group></Group></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config_directory.join("850.Config"),
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Message><MessageType>850</MessageType><Group name="Message_850" maxOccurs="unbounded">
+            <Segment ref="ST"/><Segment ref="SE"/>
+          </Group></Message></Config>"#,
+    )
+    .unwrap();
+    let mfd_path = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &mfd_path,
+        r#"<mapping version="22"><resources/><component name="defaultmap" uid="1">
+          <structure><children>
+            <component name="edi" library="text" uid="2" kind="16"><properties/><data>
+              <root><entry name="FileInstance"><entry name="document"><entry name="Envelope">
+                <entry name="Interchange"><entry name="Group"><entry name="Message">
+                  <entry name="ST"><entry name="F1" outkey="10"/></entry>
+                </entry></entry></entry>
+              </entry></entry></entry></root>
+              <text type="edi" kind="EDIX12" config="X12\850.Config" inputinstance="input.x12"/>
+            </data></component>
+            <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data>
+              <root><entry name="Outputs"><entry name="Value" inpkey="20"/></entry></root>
+            </data></component>
+          </children><graph directed="1"><vertices>
+            <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          </vertices></graph></structure>
+        </component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mfd_path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        format_edi::dialect_of(&imported.project.source).unwrap(),
+        format_edi::Dialect::X12
+    );
+    assert!(
+        imported
+            .project
+            .source
+            .child("Interchange")
+            .and_then(|node| node.child("Group"))
+            .and_then(|node| node.child("Message"))
+            .and_then(|node| node.child("ST"))
+            .and_then(|node| node.child("F1"))
+            .is_some()
+    );
+}
+
+#[test]
+fn compiles_and_embeds_relative_idoc_configuration() {
+    let directory = TempDir::new("idoc_config");
+    std::fs::write(
+        directory.path().join("parser.txt"),
+        "BEGIN_SEGMENT_SECTION\nBEGIN_IDOC TEST\nBEGIN_SEGMENT HEADER0001\nSTATUS MANDATORY\nLOOPMAX 1\nBEGIN_FIELDS\nNAME DOCNO\nTYPE CHARACTER\nBYTE_FIRST 12\nBYTE_LAST 16\nEND_FIELDS\nEND_SEGMENT\nEND_IDOC\nEND_SEGMENT_SECTION\n",
+    )
+    .unwrap();
+    let mfd_path = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &mfd_path,
+        r#"<mapping version="22"><resources/><component name="defaultmap" uid="1">
+          <structure><children>
+            <component name="idoc" library="text" uid="2" kind="16"><properties/><data>
+              <root><entry name="FileInstance"><entry name="document"><entry name="Envelope">
+                <entry name="HEADER0001"><entry name="DOCNO" outkey="10"/></entry>
+              </entry></entry></entry></root>
+              <text type="edi" kind="EDIFIXED" config="parser.txt" inputinstance="input.idoc"/>
+            </data></component>
+            <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data>
+              <root><entry name="Outputs"><entry name="Value" inpkey="20"/></entry></root>
+            </data></component>
+          </children><graph directed="1"><vertices>
+            <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          </vertices></graph></structure>
+        </component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mfd_path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.source.name, "IDOC");
+    let layout = imported.project.source_options.idoc.as_ref().unwrap();
+    assert_eq!(layout.segments().len(), 1);
+    assert_eq!(layout.segments()[0].fields()[0].name(), "DOCNO");
+
+    let encoded = serde_json::to_string(&imported.project).unwrap();
+    let decoded: mapping::Project = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        decoded.source_options.idoc,
+        imported.project.source_options.idoc
+    );
+}
+
+#[test]
+fn compiles_and_embeds_selected_swift_configuration() {
+    let directory = TempDir::new("swift_config");
+    let config = directory.path().join("SWIFT");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("Envelope.Config"),
+        r#"<Config><Format standard="SWIFTMT"/><Include href="Common.Config"/><GenericRoot ref="Envelope"/></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("Common.Config"),
+        r#"<Config><GenericItems><Choice name="Mark" type="string"><Constant value="C"/><Constant value="D"/></Choice></GenericItems></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("MT950.Config"),
+        r#"<Config><Format standard="SWIFTMT"/><GenericItems>
+          <SwiftField name="Reference" tag="20" format="16x"/>
+          <Sequence name="MT950"><SwiftField ref="Reference" nodeName="20"/></Sequence>
+        </GenericItems><Message><MessageType>MT950</MessageType><GenericRoot ref="MT950"/></Message></Config>"#,
+    )
+    .unwrap();
+    let mfd_path = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &mfd_path,
+        r#"<mapping version="22"><resources/><component name="defaultmap" uid="1"><structure><children>
+          <component name="swift" library="text" uid="2" kind="16"><properties/><data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Messages"><entry name="Message"><entry name="MT950"><entry name="20" outkey="10"/></entry></entry></entry></entry></entry></root>
+            <text type="edi" kind="SWIFTMT" config="SWIFT/Envelope.Config"><messages><message type="MT950"/></messages></text>
+          </data></component>
+          <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Outputs"><entry name="Value" inpkey="20"/></entry></root></data></component>
+        </children><graph directed="1"><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mfd_path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let layout = imported.project.source_options.swift_mt.as_ref().unwrap();
+    assert_eq!(layout.message("MT950").unwrap().fields().len(), 1);
+    let encoded = serde_json::to_string(&imported.project).unwrap();
+    let decoded: mapping::Project = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(
+        decoded.source_options.swift_mt,
+        imported.project.source_options.swift_mt
+    );
+}
+
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new(label: &str) -> Self {
+        let path =
+            std::env::temp_dir().join(format!("ferrule_mfd_edi_{label}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path).unwrap();
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }

@@ -914,6 +914,7 @@ dependencies = [
  "format-json",
  "format-pdf",
  "format-protobuf",
+ "format-xbrl",
  "format-xlsx",
  "format-xml",
  "ir",
@@ -1734,6 +1735,8 @@ name = "format-edi"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "mapping",
+ "roxmltree",
  "thiserror 2.0.18",
 ]
 
@@ -1770,6 +1773,17 @@ name = "format-protobuf"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "format-xbrl"
+version = "0.1.0"
+dependencies = [
+ "ir",
+ "mapping",
+ "quick-xml 0.41.0",
+ "roxmltree",
  "thiserror 2.0.18",
 ]
 
@@ -2752,10 +2766,12 @@ dependencies = [
  "engine",
  "format-csv",
  "format-db",
+ "format-edi",
  "format-flextext",
  "format-json",
  "format-pdf",
  "format-protobuf",
+ "format-xbrl",
  "format-xlsx",
  "format-xml",
  "ir",

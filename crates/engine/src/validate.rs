@@ -44,6 +44,17 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         XbrlBoundaryMode::ExternalSource,
         &mut issues,
     );
+    validate_external_source_options(
+        "source format options",
+        &project.source_options,
+        true,
+        &mut issues,
+    );
+    validate_structured_edi_source_options(
+        "source format options",
+        &project.source_options,
+        &mut issues,
+    );
     validate_target_options(
         "target format options",
         &project.target_options,
@@ -114,6 +125,17 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
             &format!("{location} format options"),
             &source.options,
             XbrlBoundaryMode::ExternalSource,
+            &mut issues,
+        );
+        validate_external_source_options(
+            &format!("{location} format options"),
+            &source.options,
+            true,
+            &mut issues,
+        );
+        validate_structured_edi_source_options(
+            &format!("{location} format options"),
+            &source.options,
             &mut issues,
         );
         if let Some(layout) = &source.options.pdf
@@ -188,6 +210,7 @@ fn validate_target_options(
     issues: &mut Vec<ValidationIssue>,
 ) {
     validate_xbrl_options(location, options, XbrlBoundaryMode::ExternalTarget, issues);
+    validate_external_source_options(location, options, false, issues);
     if options.http_get.is_some() {
         issues.push(ValidationIssue::new(
             location,
@@ -200,6 +223,122 @@ fn validate_target_options(
             "PDF extraction is valid only for mapping sources",
         ));
     }
+    if options.idoc.is_some() {
+        issues.push(ValidationIssue::new(
+            location,
+            "SAP IDoc layouts are valid only for mapping sources",
+        ));
+    }
+    if options.swift_mt.is_some() {
+        issues.push(ValidationIssue::new(
+            location,
+            "SWIFT MT layouts are valid only for mapping sources",
+        ));
+    }
+}
+
+fn validate_structured_edi_source_options(
+    location: &str,
+    options: &FormatOptions,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if options.idoc.is_some() && has_non_idoc_format_options(options) {
+        issues.push(ValidationIssue::new(
+            location,
+            "`idoc` cannot be combined with another format's options",
+        ));
+    }
+    if options.swift_mt.is_some() && has_non_swift_format_options(options) {
+        issues.push(ValidationIssue::new(
+            location,
+            "`swift_mt` cannot be combined with another format's options",
+        ));
+    }
+}
+
+fn has_non_idoc_format_options(options: &FormatOptions) -> bool {
+    options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.swift_mt.is_some()
+        || options.pdf.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_xlsx_format_options(options)
+}
+
+fn has_non_swift_format_options(options: &FormatOptions) -> bool {
+    options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.idoc.is_some()
+        || options.pdf.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_xlsx_format_options(options)
+}
+
+fn has_xlsx_format_options(options: &FormatOptions) -> bool {
+    options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
+}
+
+fn validate_external_source_options(
+    location: &str,
+    options: &FormatOptions,
+    source_side: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    if options.external_source.is_none() {
+        return;
+    }
+    if !source_side {
+        issues.push(ValidationIssue::new(
+            location,
+            "captured external responses are valid only for mapping sources",
+        ));
+    }
+    if has_non_external_source_format_options(options) {
+        issues.push(ValidationIssue::new(
+            location,
+            "`external_source` cannot be combined with another format's options",
+        ));
+    }
+}
+
+fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
+    options.lenient_segments
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.pdf.is_some()
+        || options.http_get.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
 }
 
 fn validate_xbrl_options(
@@ -239,8 +378,11 @@ fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
+        || options.external_source.is_some()
         || options.json_lines
         || options.protobuf.is_some()
         || options.xlsx_sheet.is_some()

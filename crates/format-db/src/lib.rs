@@ -203,7 +203,13 @@ fn sqlite_affinity(decl_type: &str) -> SqliteAffinity {
 
 /// Maps a SQLite declared column type to the closest [`ScalarType`].
 fn map_decl_type(decl_type: &str) -> ScalarType {
-    if decl_type.to_ascii_uppercase().contains("BOOL") {
+    let upper = decl_type.trim().to_ascii_uppercase();
+    if is_temporal_decl_type(&upper) {
+        // SQLite has no temporal storage class. In practice these declared
+        // types commonly contain ISO lexical values, which the string IR can
+        // preserve without guessing a timezone or numeric epoch convention.
+        ScalarType::String
+    } else if upper.contains("BOOL") {
         ScalarType::Bool
     } else {
         match sqlite_affinity(decl_type) {
@@ -212,6 +218,14 @@ fn map_decl_type(decl_type: &str) -> ScalarType {
             SqliteAffinity::Text | SqliteAffinity::Blob => ScalarType::String,
         }
     }
+}
+
+fn is_temporal_decl_type(decl_type: &str) -> bool {
+    let base = decl_type
+        .split(|character: char| character == '(' || character.is_ascii_whitespace())
+        .next()
+        .unwrap_or_default();
+    matches!(base, "DATE" | "DATETIME" | "TIME" | "TIMESTAMP")
 }
 
 fn column_sql_type(ty: ScalarType) -> &'static str {
@@ -502,7 +516,9 @@ fn validate_column_affinities(
             .find(|(declared_name, _)| declared_name.eq_ignore_ascii_case(name))
             .ok_or_else(|| DbFormatError::MissingColumn((*name).to_string()))?;
         let affinity = sqlite_affinity(decl_type);
-        if !affinity_preserves(*ty, affinity) {
+        let temporal_string = *ty == ScalarType::String
+            && is_temporal_decl_type(&decl_type.trim().to_ascii_uppercase());
+        if !temporal_string && !affinity_preserves(*ty, affinity) {
             return Err(DbFormatError::ColumnAffinity {
                 column: (*name).to_string(),
                 expected: *ty,
@@ -619,6 +635,54 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert_eq!(introspected, schema());
         assert!(matches!(missing, DbFormatError::NoSuchTable(t) if t == "nope"));
+    }
+
+    #[test]
+    fn introspect_preserves_temporal_lexicals_as_strings() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_temporal_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE events (created_at TIMESTAMP, event_date DATE); \
+             INSERT INTO events VALUES ('2026-07-16 12:34:56', '2026-07-16');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let schema = introspect(&path, "events").unwrap();
+        let rows = read(&path, &schema).unwrap();
+        write(&path, &schema, &rows).unwrap();
+        let roundtrip = read(&path, &schema).unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(
+            schema,
+            SchemaNode::group(
+                "events",
+                vec![
+                    SchemaNode::scalar("created_at", ScalarType::String),
+                    SchemaNode::scalar("event_date", ScalarType::String),
+                ],
+            )
+            .repeating()
+        );
+        assert_eq!(
+            rows,
+            vec![Instance::Group(vec![
+                (
+                    "created_at".into(),
+                    Instance::Scalar(Value::String("2026-07-16 12:34:56".into())),
+                ),
+                (
+                    "event_date".into(),
+                    Instance::Scalar(Value::String("2026-07-16".into())),
+                ),
+            ])]
+        );
+        assert_eq!(roundtrip, rows);
     }
 
     #[test]

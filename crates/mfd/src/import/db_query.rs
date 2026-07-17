@@ -333,6 +333,7 @@ fn read_uncorrelated_component(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys,
         output_keys,
         db_queries: vec![DbQuery {
@@ -675,6 +676,27 @@ fn ensure_unique_names(label: &str, names: &[String]) -> Result<(), String> {
 }
 
 impl GraphBuilder<'_> {
+    pub(super) fn binding_node_at_anchor(
+        &mut self,
+        key: u32,
+        target_path: &[String],
+        active_anchor: &[String],
+    ) -> Option<NodeId> {
+        let unscoped_query = self.sources.iter().enumerate().any(|(source, component)| {
+            component.ports.contains_key(&key)
+                && !component.db_queries.is_empty()
+                && !self.query_scope_sources.contains(&source)
+        });
+        if !unscoped_query && let Some(source_path) = self.source_abs_path(key) {
+            let source_path = self.source_value_path(source_path.source, source_path.path);
+            return self.source_field_at_anchor(&source_path, active_anchor);
+        }
+        if !unscoped_query && let Some(node) = self.scalar_node_at_anchor(key, active_anchor) {
+            return Some(node);
+        }
+        self.binding_node(key, target_path)
+    }
+
     pub(super) fn binding_node(&mut self, key: u32, target_path: &[String]) -> Option<NodeId> {
         if let Some((source, component)) = self
             .sources

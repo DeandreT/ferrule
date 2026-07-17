@@ -1,5 +1,5 @@
 //! Headless runner: loads a mapping project and runs it against an input
-//! file (delimited/fixed-width text, XLSX, XML, JSON, SQLite, PDF, or X12
+//! file (delimited/fixed-width text, XLSX, XML, JSON, SQLite, PDF, XBRL, or X12
 //! EDI, chosen by extension and format options) or a static HTTP(S) XML
 //! source to produce an output file. Split out from `main.rs` so it's
 //! testable without shelling out to the built binary.
@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
-use mapping::FormatOptions;
+use mapping::{ExternalPayloadFormat, FormatOptions};
 
 const DEFAULT_HTTP_TIMEOUT_SECONDS: u64 = 30;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
@@ -64,7 +64,6 @@ pub fn run_project_with_paths(
 ) -> anyhow::Result<RunOutcome> {
     let project = load_project(project_path)?;
     require_valid(&project)?;
-    reject_xbrl_boundaries(&project)?;
 
     let input_path = resolve_run_path(
         project_path,
@@ -343,6 +342,24 @@ fn write_output(
     instance: &Instance,
     options: &FormatOptions,
 ) -> anyhow::Result<usize> {
+    if options.xbrl.is_some() {
+        reject_xbrl_conflicts(options, "output")?;
+        let xbrl = options
+            .xbrl
+            .as_ref()
+            .context("missing XBRL target options")?;
+        format_xbrl::write(path, schema, instance, xbrl)
+            .with_context(|| format!("writing XBRL output {}", path.display()))?;
+        return Ok(1);
+    }
+    if options.idoc.is_some() {
+        reject_idoc_conflicts(options, "output")?;
+        bail!("SAP IDoc output is not supported; `idoc` is input-only");
+    }
+    if options.swift_mt.is_some() {
+        reject_swift_conflicts(options, "output")?;
+        bail!("SWIFT MT output is not supported; `swift_mt` is input-only");
+    }
     if options.pdf.is_some() {
         reject_pdf_conflicts(options, "output")?;
         bail!("PDF output is not supported; `pdf` is input-only");
@@ -447,10 +464,14 @@ fn write_output(
                 .with_context(|| format!("writing output {}", path.display()))?;
             Ok(instance.as_repeated().map_or(1, <[Instance]>::len))
         }
-        "edi" | "x12" | "edifact" => {
+        "edi" | "x12" | "edifact" | "hl7" => {
             let write = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => format_edi::x12::write,
                 format_edi::Dialect::Edifact => format_edi::edifact::write,
+                format_edi::Dialect::Hl7 => bail!("HL7 output is not yet supported"),
+                format_edi::Dialect::Tradacoms => {
+                    bail!("TRADACOMS output is not yet supported")
+                }
             };
             write(path, schema, instance)
                 .with_context(|| format!("writing output {}", path.display()))?;
@@ -472,7 +493,44 @@ fn read_instance(
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
     if options.xbrl.is_some() {
-        bail!("XBRL source input is not executable; native XBRL reading is not supported");
+        reject_xbrl_conflicts(options, "input")?;
+        let xbrl = options
+            .xbrl
+            .as_ref()
+            .context("missing XBRL source options")?;
+        return format_xbrl::read_with_options(path, schema, xbrl)
+            .with_context(|| format!("reading XBRL input {}", path.display()));
+    }
+
+    if let Some(layout) = &options.idoc {
+        reject_idoc_conflicts(options, "input")?;
+        return format_edi::idoc::read(path, schema, layout, options.lenient_segments)
+            .with_context(|| format!("reading SAP IDoc input {}", path.display()));
+    }
+
+    if let Some(layout) = &options.swift_mt {
+        reject_swift_conflicts(options, "input")?;
+        return format_edi::swift::read(path, schema, layout, options.lenient_segments)
+            .with_context(|| format!("reading SWIFT MT input {}", path.display()));
+    }
+
+    if let Some(boundary) = &options.external_source {
+        if let Some(url) = http_url(path) {
+            bail!(
+                "external HTTP POST response `{}` must be supplied as a local captured {} file; ferrule does not send POST requests",
+                sanitize_url(url),
+                match boundary.payload() {
+                    ExternalPayloadFormat::Json => "JSON",
+                    ExternalPayloadFormat::Xml => "XML",
+                }
+            );
+        }
+        return match boundary.payload() {
+            ExternalPayloadFormat::Json => format_json::read(path, schema)
+                .with_context(|| format!("reading captured JSON response {}", path.display())),
+            ExternalPayloadFormat::Xml => format_xml::read(path, schema)
+                .with_context(|| format!("reading captured XML response {}", path.display())),
+        };
     }
 
     if let Some(pdf) = &options.pdf {
@@ -572,14 +630,18 @@ fn read_instance(
         }
         "db" | "sqlite" | "sqlite3" => format_db::read_instance(path, schema)
             .with_context(|| format!("reading input {}", path.display()))?,
-        "edi" | "x12" | "edifact" => {
+        "edi" | "x12" | "edifact" | "hl7" => {
             let read = match format_edi::dialect_of(schema)? {
                 format_edi::Dialect::X12 => format_edi::x12::read,
                 format_edi::Dialect::Edifact => format_edi::edifact::read,
+                format_edi::Dialect::Hl7 => format_edi::hl7::read,
+                format_edi::Dialect::Tradacoms => format_edi::tradacoms::read,
             };
             read(path, schema, options.lenient_segments)
                 .with_context(|| format!("reading input {}", path.display()))?
         }
+        "idoc" => bail!("SAP IDoc input requires an embedded `idoc` layout"),
+        "fin" | "swift" => bail!("SWIFT MT input requires an embedded `swift_mt` layout"),
         "pdf" => bail!("PDF input requires embedded `pdf` extraction options"),
         other => bail!("unsupported input file extension: .{other}"),
     };
@@ -718,32 +780,60 @@ fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow
     Ok(())
 }
 
-fn reject_xbrl_boundaries(project: &mapping::Project) -> anyhow::Result<()> {
-    if project.source_options.xbrl.is_some() {
-        bail!("XBRL source input is not executable; native XBRL reading is not supported");
-    }
-    if let Some(source) = project
-        .extra_sources
-        .iter()
-        .find(|source| source.options.xbrl.is_some())
+fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.json_lines
+        || options.pdf.is_some()
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || options.swift_mt.is_some()
+        || has_any_xlsx_layout(options)
     {
-        bail!(
-            "extra source `{}` is an XBRL boundary; native XBRL reading is not supported",
-            source.name
-        );
+        bail!("`idoc` cannot be combined with another format's options for {side}");
     }
-    if project.target_options.xbrl.is_some() {
-        bail!("XBRL target output is not executable; native XBRL writing is not supported");
-    }
-    if let Some(target) = project
-        .extra_targets
-        .iter()
-        .find(|target| target.options.xbrl.is_some())
+    Ok(())
+}
+
+fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.idoc.is_some()
+        || options.json_lines
+        || options.pdf.is_some()
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_any_xlsx_layout(options)
     {
-        bail!(
-            "extra target `{}` is an XBRL boundary; native XBRL writing is not supported",
-            target.name
-        );
+        bail!("`swift_mt` cannot be combined with another format's options for {side}");
+    }
+    Ok(())
+}
+
+fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.lenient_segments
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.json_lines
+        || options.pdf.is_some()
+        || options.protobuf.is_some()
+        || has_any_xlsx_layout(options)
+    {
+        bail!("`xbrl` cannot be combined with another format's options for {side}");
     }
     Ok(())
 }
@@ -754,7 +844,10 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
         || options.http_get.is_some()
+        || options.external_source.is_some()
         || options.json_lines
         || options.pdf.is_some()
         || options.xbrl.is_some()
@@ -770,7 +863,10 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
         || options.http_get.is_some()
+        || options.external_source.is_some()
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -788,7 +884,10 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
         || options.http_get.is_some()
+        || options.external_source.is_some()
         || options.json_lines
         || options.protobuf.is_some()
         || options.xbrl.is_some()

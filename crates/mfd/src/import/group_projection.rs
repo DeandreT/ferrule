@@ -20,7 +20,8 @@ pub(super) enum Projection {
 pub(super) struct TargetIteration {
     pub(super) target_path: Vec<String>,
     pub(super) feed: u32,
-    pub(super) additional_feeds: Vec<u32>,
+    pub(super) target_port: Option<u32>,
+    pub(super) additional_feeds: Vec<(u32, u32, bool)>,
     pub(super) output: IterationOutput,
     pub(super) projects_whole_group: bool,
     pub(super) join: Option<JoinId>,
@@ -35,10 +36,11 @@ pub(super) struct TargetConnection<'a> {
 }
 
 impl TargetIteration {
-    fn repeated(target_path: &[String], feed: u32) -> Self {
+    fn repeated(target_path: &[String], feed: u32, target_port: u32) -> Self {
         Self {
             target_path: target_path.to_vec(),
             feed,
+            target_port: Some(target_port),
             additional_feeds: Vec::new(),
             output: IterationOutput::Repeated,
             projects_whole_group: false,
@@ -81,6 +83,7 @@ pub(super) fn classify_target_connection(
             iterations.push(TargetIteration {
                 target_path: target_path.to_vec(),
                 feed,
+                target_port: Some(input_key),
                 additional_feeds: Vec::new(),
                 output,
                 projects_whole_group: false,
@@ -99,7 +102,7 @@ pub(super) fn classify_target_connection(
     let copy_all = connection_role.copy_all;
     let mapped_xml_target =
         target.format.is_xml_like() && !target_path.is_empty() && !target_node.repeating;
-    if mapped_xml_target && connection_role.representative != input_key {
+    if mapped_xml_target && connection_role.driver_port != input_key {
         return;
     }
     let resolved = builder.resolve_iteration_feed(feed);
@@ -144,7 +147,7 @@ pub(super) fn classify_target_connection(
             ComponentFormat::Csv | ComponentFormat::Xlsx | ComponentFormat::Db
         ) || (target.format == ComponentFormat::Json && target_node.repeating);
         if row_shaped {
-            iterations.push(TargetIteration::repeated(target_path, feed));
+            iterations.push(TargetIteration::repeated(target_path, feed, input_key));
         } else if copy_all && has_connected_descendant(target, target_path, builder) {
             builder.warnings.push(
                 "copy-all document connection also has connected descendants; mapping skipped"
@@ -158,6 +161,7 @@ pub(super) fn classify_target_connection(
             iterations.push(TargetIteration {
                 target_path: target_path.to_vec(),
                 feed,
+                target_port: Some(input_key),
                 additional_feeds: Vec::new(),
                 output: IterationOutput::First,
                 projects_whole_group: false,
@@ -177,10 +181,50 @@ pub(super) fn classify_target_connection(
         return;
     }
     if target_node.repeating {
-        let mut iteration = TargetIteration::repeated(target_path, feed);
+        let mut repeated_feeds = structural_feeds.iter().collect::<Vec<_>>();
+        if target.format.is_xml_like() && repeated_feeds.len() > 1 {
+            repeated_feeds.sort_by_key(|(_, role)| role.representative);
+            let branch_coverage =
+                cloned_branch_coverage(target, target_path, builder, &repeated_feeds);
+            if branch_coverage == ClonedBranchCoverage::Complete {
+                if repeated_feeds
+                    .first()
+                    .is_some_and(|(_, role)| role.driver_port == input_key)
+                {
+                    let mut feeds = repeated_feeds
+                        .iter()
+                        .map(|(feed, role)| (**feed, role.representative, role.copy_all));
+                    if let Some((feed, target_port, projects_whole_group)) = feeds.next() {
+                        iterations.push(TargetIteration {
+                            target_path: target_path.to_vec(),
+                            feed,
+                            target_port: Some(target_port),
+                            additional_feeds: feeds.collect(),
+                            output: IterationOutput::Repeated,
+                            projects_whole_group,
+                            join: None,
+                        });
+                    }
+                }
+                return;
+            }
+            if branch_coverage == ClonedBranchCoverage::Incomplete {
+                if repeated_feeds
+                    .first()
+                    .is_some_and(|(_, role)| role.driver_port == input_key)
+                {
+                    builder.warnings.push(format!(
+                        "target group `{}` has multiple connected structural sequence feeds; iteration skipped",
+                        target_path.join("/")
+                    ));
+                }
+                return;
+            }
+        }
+        let mut iteration = TargetIteration::repeated(target_path, feed, input_key);
         iteration.projects_whole_group = copy_all;
         iterations.push(iteration);
-        if connection_role.representative == input_key
+        if connection_role.driver_port == input_key
             && is_xml_text_group(target, target_node)
             && !text_is_connected(target, target_path, builder)
             && builder.fn_by_output.contains_key(&feed)
@@ -209,27 +253,35 @@ pub(super) fn classify_target_connection(
         if mapped_feeds.len() > 1 {
             let mut mapped_feeds = mapped_feeds;
             mapped_feeds.sort_by_key(|(_, role)| role.representative);
+            let all_copy_all = mapped_feeds.iter().all(|(_, role)| role.copy_all);
+            let branches_are_exact =
+                exact_mapped_branches(target, target_path, builder, &mapped_feeds);
+            let branches_are_compatible = branches_are_exact
+                || (all_copy_all && !has_connected_descendant(target, target_path, builder));
             if mapped_feeds.first().is_some_and(|(_, role)| {
-                role.representative == input_key
-                    && mapped_feeds.iter().all(|(_, role)| role.copy_all)
+                role.driver_port == input_key
+                    && branches_are_compatible
                     && mapped_feeds.iter().all(|(feed, role)| {
-                        matching_xml_type_conditions(builder, **feed, role.representative)
+                        matching_xml_type_conditions(builder, **feed, role.driver_port)
                     })
             }) {
-                let mut feeds = mapped_feeds.iter().map(|(feed, _)| **feed);
-                if let Some(feed) = feeds.next() {
+                let mut feeds = mapped_feeds
+                    .iter()
+                    .map(|(feed, role)| (**feed, role.representative, role.copy_all));
+                if let Some((feed, target_port, projects_whole_group)) = feeds.next() {
                     iterations.push(TargetIteration {
                         target_path: target_path.to_vec(),
                         feed,
+                        target_port: Some(target_port),
                         additional_feeds: feeds.collect(),
                         output: IterationOutput::MappedSequence,
-                        projects_whole_group: true,
+                        projects_whole_group,
                         join: None,
                     });
                 }
             } else if mapped_feeds
                 .first()
-                .is_some_and(|(_, role)| role.representative == input_key)
+                .is_some_and(|(_, role)| role.driver_port == input_key)
             {
                 builder.warnings.push(format!(
                     "target group `{}` has multiple connected structural sequence feeds; iteration skipped",
@@ -241,6 +293,7 @@ pub(super) fn classify_target_connection(
         iterations.push(TargetIteration {
             target_path: target_path.to_vec(),
             feed,
+            target_port: Some(input_key),
             additional_feeds: Vec::new(),
             output: IterationOutput::MappedSequence,
             projects_whole_group: copy_all,
@@ -258,6 +311,100 @@ pub(super) fn classify_target_connection(
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ClonedBranchCoverage {
+    None,
+    Incomplete,
+    Complete,
+}
+
+fn cloned_branch_coverage(
+    target: &SchemaComponent,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    feeds: &[(&u32, &StructuralFeedRole)],
+) -> ClonedBranchCoverage {
+    let representatives = feeds
+        .iter()
+        .map(|(_, role)| role.representative)
+        .collect::<BTreeSet<_>>();
+    let mut covered = BTreeSet::new();
+    for (input, path) in &target.ports {
+        if path.len() <= target_path.len()
+            || !path.starts_with(target_path)
+            || !builder.edge_from.contains_key(input)
+        {
+            continue;
+        }
+        let owners = target
+            .input_ancestors
+            .get(input)
+            .into_iter()
+            .flatten()
+            .filter(|ancestor| representatives.contains(ancestor))
+            .copied()
+            .collect::<Vec<_>>();
+        match owners.as_slice() {
+            [] => {}
+            [owner] => {
+                covered.insert(*owner);
+            }
+            _ => return ClonedBranchCoverage::None,
+        }
+    }
+    if covered.is_empty() {
+        ClonedBranchCoverage::None
+    } else if covered == representatives {
+        ClonedBranchCoverage::Complete
+    } else {
+        ClonedBranchCoverage::Incomplete
+    }
+}
+
+fn exact_mapped_branches(
+    target: &SchemaComponent,
+    target_path: &[String],
+    builder: &GraphBuilder<'_>,
+    feeds: &[(&u32, &StructuralFeedRole)],
+) -> bool {
+    let representatives = feeds
+        .iter()
+        .map(|(_, role)| role.representative)
+        .collect::<BTreeSet<_>>();
+    let mut branches_with_content = BTreeSet::new();
+    for (input, path) in &target.ports {
+        if path.len() <= target_path.len()
+            || !path.starts_with(target_path)
+            || !builder.edge_from.contains_key(input)
+        {
+            continue;
+        }
+        if !schema_node_at(&target.schema, path)
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+        {
+            return false;
+        }
+        let owners = target
+            .input_ancestors
+            .get(input)
+            .into_iter()
+            .flatten()
+            .filter(|ancestor| representatives.contains(ancestor))
+            .copied()
+            .collect::<Vec<_>>();
+        match owners.as_slice() {
+            [] => {}
+            [owner] => {
+                branches_with_content.insert(*owner);
+            }
+            _ => return false,
+        }
+    }
+    feeds
+        .iter()
+        .all(|(_, role)| role.copy_all || branches_with_content.contains(&role.representative))
+}
+
 fn matching_xml_type_conditions(builder: &GraphBuilder<'_>, feed: u32, target_port: u32) -> bool {
     let source_port = builder.resolve_iteration_feed(feed).source_key;
     builder.xml_type_conditions.get(&source_port) == builder.xml_type_conditions.get(&target_port)
@@ -265,7 +412,15 @@ fn matching_xml_type_conditions(builder: &GraphBuilder<'_>, feed: u32, target_po
 
 struct StructuralFeedRole {
     representative: u32,
+    driver_port: u32,
     copy_all: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum StructuralBranch {
+    Marker(u32),
+    SharedXbrl,
+    Port(u32),
 }
 
 fn connected_structural_feeds(
@@ -274,7 +429,7 @@ fn connected_structural_feeds(
     builder: &GraphBuilder<'_>,
     copy_all_targets: &BTreeSet<u32>,
 ) -> BTreeMap<u32, StructuralFeedRole> {
-    let mut feeds = BTreeMap::new();
+    let mut branches = BTreeMap::<StructuralBranch, Vec<(u32, u32, bool)>>::new();
     for (key, path) in &target.ports {
         if path != target_path {
             continue;
@@ -282,11 +437,64 @@ fn connected_structural_feeds(
         let Some(feed) = builder.edge_from.get(key) else {
             continue;
         };
-        let role = feeds.entry(*feed).or_insert(StructuralFeedRole {
-            representative: *key,
-            copy_all: false,
+        let branch = target
+            .input_ancestors
+            .get(key)
+            .into_iter()
+            .flatten()
+            .rev()
+            .find(|ancestor| !target.input_keys.contains(ancestor))
+            .copied();
+        let branch = match branch {
+            Some(marker) => StructuralBranch::Marker(marker),
+            None if target.format == ComponentFormat::Xbrl => StructuralBranch::SharedXbrl,
+            None => StructuralBranch::Port(*key),
+        };
+        branches
+            .entry(branch)
+            .or_default()
+            .push((*key, *feed, copy_all_targets.contains(key)));
+    }
+
+    let mut feeds = BTreeMap::new();
+    for (branch, candidates) in branches {
+        let representative = match branch {
+            StructuralBranch::Marker(marker) | StructuralBranch::Port(marker) => marker,
+            StructuralBranch::SharedXbrl => {
+                let Some(port) = candidates.iter().map(|(port, _, _)| *port).min() else {
+                    continue;
+                };
+                port
+            }
+        };
+        let copy_all = candidates.iter().any(|(_, _, copy_all)| *copy_all);
+        let selected = candidates.iter().max_by_key(|(port, feed, _)| {
+            let resolved = builder.resolve_iteration_feed(*feed);
+            let controlled = resolved.sequence_component.is_some()
+                || resolved.db_where_component.is_some()
+                || resolved.has_filter
+                || resolved.has_key_grouping
+                || resolved.has_start_grouping
+                || resolved.has_block_grouping
+                || resolved.distinct_key.is_some()
+                || resolved.has_sort
+                || resolved.take_expr.is_some()
+                || resolved.take_default_one;
+            let depth = builder
+                .iteration_source_path(&resolved)
+                .map_or(0, |source| source.path.len());
+            (controlled, depth, std::cmp::Reverse(*port))
         });
-        role.copy_all |= copy_all_targets.contains(key);
+        if let Some((driver_port, feed, _)) = selected {
+            feeds.insert(
+                *feed,
+                StructuralFeedRole {
+                    representative,
+                    driver_port: *driver_port,
+                    copy_all,
+                },
+            );
+        }
     }
     feeds
 }

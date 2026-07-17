@@ -570,6 +570,12 @@ fn write_cell(
             let number = exact_f64(*value).ok_or_else(|| bad("int outside the exact f64 range"))?;
             worksheet.write_number(row, column, number)?;
         }
+        (ScalarType::Int, Value::String(value)) => {
+            let number = lexical_i64(value)
+                .and_then(exact_f64)
+                .ok_or_else(|| bad("string"))?;
+            worksheet.write_number(row, column, number)?;
+        }
         (ScalarType::Float, Value::Int(value)) => {
             let number = exact_f64(*value).ok_or_else(|| bad("int outside the exact f64 range"))?;
             worksheet.write_number(row, column, number)?;
@@ -577,8 +583,16 @@ fn write_cell(
         (ScalarType::Float, Value::Float(value)) if value.is_finite() => {
             worksheet.write_number(row, column, *value)?;
         }
+        (ScalarType::Float, Value::String(value)) => {
+            let number = lexical_f64(value).ok_or_else(|| bad("string"))?;
+            worksheet.write_number(row, column, number)?;
+        }
         (ScalarType::Bool, Value::Bool(value)) => {
             worksheet.write_boolean(row, column, *value)?;
+        }
+        (ScalarType::Bool, Value::String(value)) => {
+            let boolean = value.trim().parse::<bool>().map_err(|_| bad("string"))?;
+            worksheet.write_boolean(row, column, boolean)?;
         }
         (_, value) => return Err(bad(value.type_name())),
     }
@@ -589,6 +603,18 @@ fn exact_f64(value: i64) -> Option<f64> {
     (-MAX_EXACT_F64_INTEGER..=MAX_EXACT_F64_INTEGER)
         .contains(&value)
         .then_some(value as f64)
+}
+
+fn lexical_i64(value: &str) -> Option<i64> {
+    value.trim().parse().ok()
+}
+
+fn lexical_f64(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 fn instance_type_name(instance: &Instance) -> &'static str {
@@ -720,6 +746,41 @@ mod tests {
         )])];
         let error = to_bytes(&float_schema, &non_finite, None, 1, &[], false).unwrap_err();
         assert!(matches!(error, XlsxFormatError::ValueType { field, .. } if field == "amount"));
+    }
+
+    #[test]
+    fn byte_writer_coerces_typed_lexicals() {
+        let schema = SchemaNode::group(
+            "rows",
+            vec![
+                SchemaNode::scalar("id", ScalarType::Int),
+                SchemaNode::scalar("amount", ScalarType::Float),
+                SchemaNode::scalar("active", ScalarType::Bool),
+            ],
+        );
+        let rows = vec![Instance::Group(vec![
+            ("id".into(), Instance::Scalar(Value::String(" 42 ".into()))),
+            (
+                "amount".into(),
+                Instance::Scalar(Value::String("12.5".into())),
+            ),
+            (
+                "active".into(),
+                Instance::Scalar(Value::String("true".into())),
+            ),
+        ])];
+
+        let bytes = to_bytes(&schema, &rows, None, 1, &[], false).unwrap();
+        let actual = from_bytes(&bytes, &schema, None, 1, &[], false).unwrap();
+
+        assert_eq!(
+            actual,
+            vec![Instance::Group(vec![
+                ("id".into(), Instance::Scalar(Value::Int(42))),
+                ("amount".into(), Instance::Scalar(Value::Float(12.5))),
+                ("active".into(), Instance::Scalar(Value::Bool(true))),
+            ])]
+        );
     }
 
     #[test]

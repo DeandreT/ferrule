@@ -12,37 +12,95 @@ use super::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
 pub(super) fn build(
     iterations: Vec<TargetIteration>,
     target: &SchemaComponent,
-    bindings: &[(TargetLeaf, u32)],
+    bindings: &mut Vec<(TargetLeaf, u32, u32)>,
     builder: &mut GraphBuilder<'_>,
     scopes: &mut ScopeBuilder,
 ) -> Vec<Vec<String>> {
-    let connected: BTreeSet<Vec<String>> =
-        bindings.iter().map(|(target, _)| target.path()).collect();
+    let connected: BTreeSet<Vec<String>> = bindings
+        .iter()
+        .map(|(target, _, _)| target.path())
+        .collect();
     let mut skipped = builder.rejected_join_paths.iter().cloned().collect();
+    let mut claimed_bindings = BTreeSet::new();
     for iteration in iterations {
         if iteration.additional_feeds.is_empty() {
             build_one(iteration, target, &connected, builder, scopes, &mut skipped);
         } else {
-            build_concatenated(iteration, target, &connected, builder, scopes, &mut skipped);
+            build_concatenated(
+                iteration,
+                target,
+                bindings,
+                builder,
+                scopes,
+                &mut skipped,
+                &mut claimed_bindings,
+            );
         }
     }
+    let mut index = 0;
+    bindings.retain(|_| {
+        let keep = !claimed_bindings.contains(&index);
+        index += 1;
+        keep
+    });
     skipped
 }
 
 fn build_concatenated(
     iteration: TargetIteration,
     target: &SchemaComponent,
-    connected: &BTreeSet<Vec<String>>,
+    bindings: &[(TargetLeaf, u32, u32)],
     builder: &mut GraphBuilder<'_>,
     scopes: &mut ScopeBuilder,
     skipped: &mut Vec<Vec<String>>,
+    claimed_bindings: &mut BTreeSet<usize>,
 ) {
     let target_path = iteration.target_path.clone();
-    let feeds = std::iter::once(iteration.feed)
-        .chain(iteration.additional_feeds.iter().copied())
-        .collect::<Vec<_>>();
+    let feeds = std::iter::once((
+        iteration.feed,
+        iteration.target_port,
+        iteration.projects_whole_group,
+    ))
+    .chain(
+        iteration
+            .additional_feeds
+            .iter()
+            .map(|(feed, target_port, copy_all)| (*feed, Some(*target_port), *copy_all)),
+    )
+    .collect::<Vec<_>>();
+    let branch_ports = feeds
+        .iter()
+        .filter_map(|(_, target_port, _)| *target_port)
+        .collect::<BTreeSet<_>>();
     let mut segments = Vec::with_capacity(feeds.len());
-    for feed in feeds {
+    let mut segment_binding_indices = BTreeSet::new();
+    for (feed, target_port, projects_whole_group) in feeds {
+        let branch_bindings = target_port.map_or_else(Vec::new, |target_port| {
+            bindings
+                .iter()
+                .enumerate()
+                .filter(|(_, (binding, _, input))| {
+                    let path = binding.path();
+                    if path.len() <= target_path.len() || !path.starts_with(&target_path) {
+                        return false;
+                    }
+                    let owners = target
+                        .input_ancestors
+                        .get(input)
+                        .into_iter()
+                        .flatten()
+                        .filter(|ancestor| branch_ports.contains(ancestor))
+                        .copied()
+                        .collect::<Vec<_>>();
+                    owners.is_empty() || owners == [target_port]
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>()
+        });
+        let connected = branch_bindings
+            .iter()
+            .map(|index| bindings[*index].0.path())
+            .collect::<BTreeSet<_>>();
         let mut segment_builder = ScopeBuilder {
             root: mapping::Scope::default(),
             anchors: scopes.anchors.clone(),
@@ -52,17 +110,26 @@ fn build_concatenated(
             TargetIteration {
                 target_path: target_path.clone(),
                 feed,
+                target_port,
                 additional_feeds: Vec::new(),
                 output: iteration.output,
-                projects_whole_group: iteration.projects_whole_group,
+                projects_whole_group,
                 join: iteration.join,
             },
             target,
-            connected,
+            &connected,
             builder,
             &mut segment_builder,
             &mut segment_skipped,
         );
+        for index in &branch_bindings {
+            let (binding, feed, _) = &bindings[*index];
+            let path = binding.path();
+            let active_anchor = segment_builder.enclosing_anchor(&path);
+            if let Some(node) = builder.binding_node_at_anchor(*feed, &path, &active_anchor) {
+                segment_builder.add_binding(binding.clone(), node);
+            }
+        }
         let Some(mut segment) = take_scope(&mut segment_builder.root, &target_path) else {
             if !segment_skipped.iter().any(|path| path == &target_path) {
                 skipped.push(target_path.clone());
@@ -75,12 +142,14 @@ fn build_concatenated(
         }
         segment.target_field.clear();
         segments.push(segment);
+        segment_binding_indices.extend(branch_bindings);
     }
     let mut segments = segments.into_iter();
     let Some(first) = segments.next() else {
         return;
     };
     scopes.add_concatenated(&target_path, first, segments.collect(), iteration.output);
+    claimed_bindings.extend(segment_binding_indices);
 }
 
 fn take_scope(root: &mut mapping::Scope, target_path: &[String]) -> Option<mapping::Scope> {
@@ -158,6 +227,27 @@ fn build_one(
         ));
     }
     let source_path = builder.iteration_source_path(&feed);
+    let scope_source = source_path.as_ref().map(|source_path| {
+        let structural_source = builder
+            .schema_node(source_path)
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Group { .. }));
+        if iteration.output == IterationOutput::MappedSequence || structural_source {
+            builder
+                .sources
+                .get(source_path.source)
+                .map(|source| super::source::SourcePath {
+                    source: source_path.source,
+                    path: split_at_innermost_repeating(&source.schema, &source_path.path).0,
+                })
+                .unwrap_or_else(|| source_path.clone())
+        } else {
+            source_path.clone()
+        }
+    });
+    let iteration_anchor = scope_source.as_ref().map_or_else(
+        || scopes.enclosing_anchor(&target_path),
+        |source| builder.context_path(source),
+    );
     let xml_type_nodes = source_path.as_ref().and_then(|source_path| {
         xml_type_nodes(target, &target_path, source_path, feed.source_key, builder)
     });
@@ -171,7 +261,9 @@ fn build_one(
         ));
         return;
     }
-    let mut existing_filter = feed.filter_expr.and_then(|key| builder.value_node(key));
+    let mut existing_filter = feed
+        .filter_expr
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
     for output in &feed.udf_filters {
         let Some(udf_filter) = builder.udf_iteration_filter_node(*output) else {
             continue;
@@ -238,15 +330,19 @@ fn build_one(
         skipped.push(target_path);
         return;
     }
-    let distinct = feed.distinct_key.and_then(|key| builder.value_node(key));
+    let distinct = feed
+        .distinct_key
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
     let group = feed
         .group_key
-        .and_then(|key| builder.value_node(key))
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
         .or(distinct);
-    let resolved_block = feed.block_size.and_then(|key| builder.value_node(key));
+    let resolved_block = feed
+        .block_size
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
     let start_group = feed
         .group_starting_with
-        .and_then(|key| builder.value_node(key));
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
     if feed.has_start_grouping && start_group.is_none() {
         builder.warnings.push(format!(
             "group-starting-with feeding `{}` has a missing or unsupported predicate; iteration skipped",
@@ -277,7 +373,9 @@ fn build_one(
             None => exists,
         });
     }
-    let ordinary_sort = feed.sort_expr.and_then(|key| builder.value_node(key));
+    let ordinary_sort = feed
+        .sort_expr
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
     if let Some(id) = join
         && feed.has_sort
         && ordinary_sort.is_none()
@@ -303,7 +401,7 @@ fn build_one(
         }))
     } else {
         feed.take_expr
-            .and_then(|key| builder.value_node(key))
+            .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
             .or_else(|| {
                 feed.take_default_one.then(|| {
                     builder.alloc(Node::Const {
@@ -345,26 +443,10 @@ fn build_one(
         scopes.add_join(&target_path, id, plan, nodes, iteration.output);
     } else if let Some(sequence) = sequence {
         scopes.add_sequence(&target_path, sequence, nodes, iteration.output);
-    } else if let Some(source_path) = &source_path {
-        let structural_source = builder
-            .schema_node(source_path)
-            .is_some_and(|node| matches!(node.kind, SchemaKind::Group { .. }));
-        let scope_source =
-            if iteration.output == IterationOutput::MappedSequence || structural_source {
-                builder
-                    .sources
-                    .get(source_path.source)
-                    .map(|source| super::source::SourcePath {
-                        source: source_path.source,
-                        path: split_at_innermost_repeating(&source.schema, &source_path.path).0,
-                    })
-                    .unwrap_or_else(|| source_path.clone())
-            } else {
-                source_path.clone()
-            };
+    } else if let Some(scope_source) = &scope_source {
         scopes.add_iteration(
             &target_path,
-            &builder.context_path(&scope_source),
+            &builder.context_path(scope_source),
             nodes,
             iteration.output,
         );

@@ -5,7 +5,8 @@
 //! connection graph. [`import`] converts the supported subset -- XML
 //! components (resolvable XSDs incl. local includes/imports, bounded DTDs,
 //! attributes, simple-content values, and element refs), requestless static
-//! HTTP GET calls with typed XML responses, JSON
+//! HTTP GET calls with typed XML responses, captured-response HTTP POST calls
+//! with typed JSON request/response projections, JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
 //! fallback), CSV text components (inline delimiter/header settings), and EDI
 //! text component graphs (entry-tree fallback, explicitly non-executable
@@ -19,13 +20,14 @@
 //! ferrule [`mapping::Project`], collecting a warning for every construct
 //! it has to skip rather than failing. [`export`] writes a ferrule project
 //! back out as a `.mfd` (plus generated XSD / JSON Schema files next to
-//! it) for the same subset, picking each side's component family from the
+//! it) for the exportable subset, picking each side's component family from the
 //! project's instance-path extension. Static HTTP XML sources and complete
 //! document-copy edges also round-trip through their canonical components.
+//! Captured-response boundaries reject export rather than publishing a
+//! design that would imply live POST or opaque UDF execution.
 //! A source-less design driven by one opaque user call can retain that call's
-//! JSON-shaped public result as a typed external input; the imported project
-//! warns that the component body was not executed and requires a captured
-//! result instance at run time.
+//! JSON-shaped public result as a typed external input that requires a local
+//! captured result instance at run time.
 //!
 //! The format knowledge comes from reading real `.mfd` files; nothing here
 //! embeds or copies ReferenceSamples content. MapForce is a trademark of ReferenceSamples

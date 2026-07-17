@@ -109,6 +109,7 @@ pub(super) fn read(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys,
         db_queries: Vec::new(),

@@ -35,13 +35,6 @@ fn missing(description: &str) -> std::io::Error {
     std::io::Error::other(description)
 }
 
-fn assert_boundary_warning(warnings: &[String], direction: &str) {
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert!(warnings[0].contains("typed external"));
-    assert!(warnings[0].contains(direction));
-    assert!(warnings[0].contains("file execution remains disabled"));
-}
-
 #[test]
 fn xbrl_source_boundary_retains_paths_and_xml_binding() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
@@ -77,7 +70,7 @@ fn xbrl_source_boundary_retains_paths_and_xml_binding() -> Result<(), Box<dyn Er
     )?;
 
     let imported = mfd::import(&dir.0.join("source-boundary.mfd"))?;
-    assert_boundary_warning(&imported.warnings, "source boundary");
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
     assert_eq!(
@@ -121,6 +114,11 @@ fn xbrl_source_boundary_retains_paths_and_xml_binding() -> Result<(), Box<dyn Er
 #[test]
 fn xbrl_target_boundary_retains_presentation_and_nested_binding() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
+    std::fs::create_dir_all(dir.0.join("presentation"))?;
+    write(
+        &dir.0.join("presentation/table.sps"),
+        r#"<structure xmlns:ex="urn:example"><template subtype="xbrl-concept-aspect" match="ex:Amount"><children><calltemplate subtype="named" match="monetaryItemType"/></children></template></structure>"#,
+    )?;
     write(
         &dir.0.join("source.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
@@ -153,7 +151,7 @@ fn xbrl_target_boundary_retains_presentation_and_nested_binding() -> Result<(), 
     )?;
 
     let imported = mfd::import(&dir.0.join("target-boundary.mfd"))?;
-    assert_boundary_warning(&imported.warnings, "target boundary");
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
     assert_eq!(imported.project.source_path.as_deref(), Some("input.xml"));

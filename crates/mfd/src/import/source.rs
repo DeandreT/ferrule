@@ -567,6 +567,7 @@ mod tests {
             is_variable: false,
             compute_when_key: None,
             ports: BTreeMap::from([(port.0, port.1.into_iter().map(str::to_string).collect())]),
+            input_ancestors: BTreeMap::new(),
             input_keys: BTreeSet::new(),
             output_keys: BTreeSet::from([port.0]),
             db_queries: Vec::new(),

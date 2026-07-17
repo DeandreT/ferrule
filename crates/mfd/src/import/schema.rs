@@ -15,18 +15,27 @@ mod pdf;
 mod protobuf;
 mod shared;
 mod xbrl;
+mod xbrl_namespace;
+mod xbrl_sps;
 mod xlsx;
 mod xml_ports;
 
 pub(super) use shared::{
-    entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
+    XmlSchemaReadError, entry_key_sets, is_default_output, parse_u32, read_xml_schema_file,
     resolve_xml_schema_reference,
 };
 
 use csv::select_block as select_csv_block;
 pub(crate) use csv::{SingletonPosition as CsvSingletonPosition, split_singleton_port};
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
-use xml_ports::normalize_xml_text_ports;
+use xml_ports::{normalize_xml_text_ports, reconcile_explicit_text_entries};
+
+pub(super) fn restore_connected_structural_ports(
+    components: &mut [SchemaComponent],
+    edge_from: &BTreeMap<u32, u32>,
+) {
+    xml_ports::restore_connected_structural_ports(components, edge_from);
+}
 
 pub(super) fn read_xlsx_component(
     component: &roxmltree::Node<'_, '_>,
@@ -75,9 +84,10 @@ pub(super) fn read_pdf_component(
 
 pub(super) fn read_xbrl_component(
     component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
-    xbrl::read(component, warnings)
+    xbrl::read(component, mfd_path, warnings)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -115,6 +125,9 @@ pub(super) struct SchemaComponent {
     pub(super) compute_when_key: Option<u32>,
     /// Port key -> absolute entry path (segments below the schema root).
     pub(super) ports: BTreeMap<u32, Vec<String>>,
+    /// Input port -> enclosing input ports, outermost first. This preserves
+    /// cloned target-entry branch identity when several ports share one path.
+    pub(super) input_ancestors: BTreeMap<u32, Vec<u32>>,
     pub(super) input_keys: BTreeSet<u32>,
     pub(super) output_keys: BTreeSet<u32>,
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
@@ -196,6 +209,7 @@ pub(super) fn read_schema_component(
         &mut out_count,
         &mut in_count,
     );
+    let input_ancestors = input_port_ancestors(&entry);
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
@@ -239,6 +253,9 @@ pub(super) fn read_schema_component(
                         }
                     }
                 }
+                Err(XmlSchemaReadError::Xsd(
+                    format_xml::XmlFormatError::SchemaMaterializationLimit { .. },
+                )) if !is_source => None,
                 Err(e) => {
                     warnings.push(format!(
                         "component `{name}`: could not read schema `{rel}` ({e}); \
@@ -264,6 +281,7 @@ pub(super) fn read_schema_component(
         );
     }
     merge_generic_xml_entries(&entry, &mut schema);
+    reconcile_explicit_text_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);
 
     Some(SchemaComponent {
@@ -291,6 +309,7 @@ pub(super) fn read_schema_component(
             })
             .and_then(|entry| parse_u32(entry.attribute("inpkey"))),
         ports,
+        input_ancestors,
         input_keys,
         output_keys,
         db_queries: Vec::new(),
@@ -466,6 +485,7 @@ pub(super) fn read_json_component(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
         db_queries: Vec::new(),
@@ -823,19 +843,33 @@ pub(super) fn read_csv_component(
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
+    let nested_instance = |role| {
+        root_el
+            .descendants()
+            .find(|node| node.has_tag_name("file") && node.attribute("role") == Some(role))
+            .and_then(|node| node.attribute("name"))
+            .map(str::to_string)
+    };
 
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Csv,
         schema,
-        input_instance: text_el.attribute("inputinstance").map(str::to_string),
-        output_instance: text_el.attribute("outputinstance").map(str::to_string),
+        input_instance: text_el
+            .attribute("inputinstance")
+            .map(str::to_string)
+            .or_else(|| nested_instance("inputinstance")),
+        output_instance: text_el
+            .attribute("outputinstance")
+            .map(str::to_string)
+            .or_else(|| nested_instance("outputinstance")),
         options,
         is_source,
         is_default_output: is_default_output(component),
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
         db_queries: Vec::new(),
@@ -849,9 +883,10 @@ pub(super) fn read_csv_component(
 /// types, qualifiers, and exact cardinalities.
 pub(super) fn read_edi_component(
     component: &roxmltree::Node,
+    mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    edi::read(component, warnings, true)
+    edi::read(component, mfd_path, warnings, true)
 }
 
 /// Reads an internal structured UDF parameter as a schema declaration only.
@@ -898,6 +933,38 @@ fn collect_entry_ports(
     }
 }
 
+fn input_port_ancestors(entry: &roxmltree::Node<'_, '_>) -> BTreeMap<u32, Vec<u32>> {
+    let mut result = BTreeMap::new();
+    let mut ancestors = Vec::new();
+    if let Some(key) = parse_u32(entry.attribute("inpkey")) {
+        result.insert(key, Vec::new());
+        ancestors.push(key);
+    }
+    collect_input_port_ancestors(entry, &mut ancestors, &mut result);
+    result
+}
+
+fn collect_input_port_ancestors(
+    entry: &roxmltree::Node<'_, '_>,
+    ancestors: &mut Vec<u32>,
+    result: &mut BTreeMap<u32, Vec<u32>>,
+) {
+    for child in entry
+        .children()
+        .filter(|node| node.is_element() && node.has_tag_name("entry"))
+    {
+        let key = parse_u32(child.attribute("inpkey"));
+        if let Some(key) = key {
+            result.insert(key, ancestors.clone());
+            ancestors.push(key);
+        }
+        collect_input_port_ancestors(&child, ancestors, result);
+        if key.is_some() {
+            ancestors.pop();
+        }
+    }
+}
+
 /// Fallback schema straight from the entry tree: groups where there are
 /// children, string scalars at the leaves (attribute entries flagged as
 /// such), no repeating flags.
@@ -910,11 +977,25 @@ fn entry_tree_schema(entry: &roxmltree::Node) -> SchemaNode {
     if legacy_attribute || entry.attribute("type") == Some("attribute") {
         return SchemaNode::scalar(name, ir::ScalarType::String).attribute();
     }
-    let children: Vec<SchemaNode> = entry
+    let entry_children = entry
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
-        .map(|c| entry_tree_schema(&c))
-        .collect();
+        .collect::<Vec<_>>();
+    let simple_content = (entry.attribute("inpkey").is_some()
+        || entry.attribute("outkey").is_some())
+        && !entry_children.is_empty()
+        && entry_children.iter().all(|child| {
+            let (_, legacy_attribute) =
+                normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
+            legacy_attribute || child.attribute("type") == Some("attribute")
+        });
+    let mut children = entry_children
+        .iter()
+        .map(|child| entry_tree_schema(child))
+        .collect::<Vec<_>>();
+    if simple_content {
+        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+    }
     if children.is_empty() {
         SchemaNode::scalar(name, ir::ScalarType::String)
     } else {
@@ -1003,17 +1084,33 @@ pub(super) fn read_db_component(
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
         .collect();
-    let tables: Vec<roxmltree::Node> = entries
+    let all_tables: Vec<roxmltree::Node> = entries
         .iter()
         .copied()
         .filter(|entry| entry.attribute("type") == Some("table"))
         .collect();
-    if tables.is_empty() {
+    if all_tables.is_empty() {
         warnings.push(format!(
             "skipped database component `{name}`: it contains no table entries"
         ));
         return None;
     }
+    let connected_tables = all_tables
+        .iter()
+        .copied()
+        .filter(|table| {
+            let (inputs, outputs) = entry_key_sets(table);
+            !inputs.is_empty() || !outputs.is_empty()
+        })
+        .collect::<Vec<_>>();
+    // Database designers retain selected but disconnected tables in the
+    // entry tree. Once any connected branch exists, those empty branches
+    // have no mapping semantics and must not become invalid runtime tables.
+    let tables = if connected_tables.is_empty() {
+        all_tables
+    } else {
+        connected_tables
+    };
     if container.descendants().any(|entry| {
         entry.has_tag_name("entry")
             && entry
@@ -1137,6 +1234,7 @@ pub(super) fn read_db_component(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys,
         output_keys,
         db_queries: Vec::new(),

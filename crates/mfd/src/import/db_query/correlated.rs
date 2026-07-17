@@ -234,6 +234,7 @@ fn read_correlated_component(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys,
         output_keys,
         db_queries: queries,

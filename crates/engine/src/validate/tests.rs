@@ -4,6 +4,7 @@ use mapping::{
     Binding, DynamicBinding, DynamicSourcePath, NamedSource, PdfCapture, PdfCommand, PdfLayout,
     PdfPageSelection, PdfRegion, ScopeConstruction, SequenceExpr, XbrlBoundaryOptions,
 };
+use std::num::NonZeroU32;
 
 fn valid_project() -> Project {
     let mut graph = Graph::default();
@@ -89,6 +90,52 @@ fn rejects_http_transport_metadata_on_a_target() {
     project.target_options.http_get = Some(mapping::HttpGetOptions::default());
 
     assert!(validate(&project).iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("only for mapping sources")
+    }));
+}
+
+#[test]
+fn validates_idoc_direction_and_format_exclusivity() {
+    let field = mapping::IdocFieldLayout::new(
+        "value",
+        NonZeroU32::new(12).unwrap(),
+        NonZeroU32::new(20).unwrap(),
+    )
+    .unwrap();
+    let segment = mapping::IdocSegmentLayout::new("HEADER0001", vec![field]).unwrap();
+    let layout = mapping::IdocLayout::new(vec![segment]).unwrap();
+
+    let mut source = valid_project();
+    source.source_options.idoc = Some(layout.clone());
+    source.source_options.delimiter = Some('|');
+    assert!(validate(&source).iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("`idoc` cannot be combined")
+    }));
+
+    let mut swift_source = valid_project();
+    swift_source.source_options.swift_mt = Some(
+        mapping::SwiftMtLayout::new(vec![mapping::SwiftMessageLayout::new("MT950", Vec::new())])
+            .unwrap(),
+    );
+    swift_source.source_options.fixed_width = Some(
+        mapping::FixedWidthLayout::new(
+            vec![mapping::FixedFieldWidth::new(1).unwrap()],
+            ' ',
+            true,
+            true,
+        )
+        .unwrap(),
+    );
+    assert!(validate(&swift_source).iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("`swift_mt` cannot be combined")
+    }));
+
+    let mut target = valid_project();
+    target.target_options.idoc = Some(layout);
+    assert!(validate(&target).iter().any(|issue| {
         issue.location == "target format options"
             && issue.message.contains("only for mapping sources")
     }));

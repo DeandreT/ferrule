@@ -8,4 +8,6 @@ description = "EDI (ANSI X12) schema-guided instance read/write"
 
 [dependencies]
 ir = { workspace = true }
+mapping = { workspace = true }
+roxmltree = { workspace = true }
 thiserror = { workspace = true }

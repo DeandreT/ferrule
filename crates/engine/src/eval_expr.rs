@@ -100,12 +100,12 @@ pub(crate) fn eval_expr(
             let value = input_type
                 .and_then(|ty| coerce_value_map_input(&value, ty))
                 .unwrap_or(value);
-            table
+            Ok(table
                 .iter()
                 .find(|(from, _)| *from == value)
                 .map(|(_, to)| to.clone())
                 .or_else(|| default.clone())
-                .ok_or(EngineError::ValueMapMiss { node: node_id })
+                .unwrap_or(Value::Null))
         }
         Node::Lookup {
             collection,

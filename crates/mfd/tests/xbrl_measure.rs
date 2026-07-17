@@ -116,8 +116,7 @@ fn xbrl_measure_helpers_retain_qname_bindings() -> Result<(), Box<dyn Error>> {
     )?;
 
     let imported = mfd::import(&dir.0.join("measure.mfd"))?;
-    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("typed external target boundary"));
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
     let currency_node = binding_node(&imported.project.root, "CurrencyMeasure")
@@ -190,15 +189,7 @@ fn malformed_xbrl_measure_pins_retain_a_null_binding() -> Result<(), Box<dyn Err
     )?;
 
     let imported = mfd::import(&dir.0.join("malformed.mfd"))?;
-    assert_eq!(imported.warnings.len(), 2, "{:?}", imported.warnings);
-    assert_eq!(
-        imported
-            .warnings
-            .iter()
-            .filter(|warning| warning.contains("typed external target boundary"))
-            .count(),
-        1
-    );
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert_eq!(
         imported
             .warnings
