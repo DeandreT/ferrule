@@ -53,7 +53,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 120/120 warning-free imports, 108 engine-valid imports, and 52 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
+| `.mfd` | 120/120 warning-free imports, 115 engine-valid imports, and 52 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams

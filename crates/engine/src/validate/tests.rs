@@ -61,6 +61,36 @@ fn accepts_a_valid_project_and_relative_source_paths() {
 }
 
 #[test]
+fn accepts_scalar_paths_through_recursive_schema_anchors() {
+    let mut project = valid_project();
+    let section = SchemaNode::group(
+        "MainSection",
+        vec![
+            SchemaNode::scalar("Trademark", ScalarType::String).repeating(),
+            SchemaNode::recursive_group("SubSection", "MainSection").repeating(),
+        ],
+    );
+    project.source = SchemaNode::group(
+        "Page",
+        vec![SchemaNode::group("Item", vec![section]).repeating()],
+    );
+    project.graph.nodes.insert(
+        0,
+        Node::SourceField {
+            frame: Some(vec!["Item".into()]),
+            path: vec![
+                "MainSection".into(),
+                "SubSection".into(),
+                "Trademark".into(),
+            ],
+        },
+    );
+    project.root.set_source(Some(vec!["Item".into()]));
+
+    assert!(validate(&project).is_empty());
+}
+
+#[test]
 fn validates_dynamic_extra_source_ownership() {
     let mut project = valid_project();
     project.extra_sources.push(NamedSource {

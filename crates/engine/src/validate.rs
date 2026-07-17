@@ -1671,7 +1671,13 @@ fn validate_scope(
 
     let mut bound_fields = BTreeSet::new();
     for binding in &scope.bindings {
-        if !bound_fields.insert(&binding.target_field) {
+        let duplicate = !bound_fields.insert(&binding.target_field);
+        let repeating_scalar = target
+            .and_then(|target| target.child(&binding.target_field))
+            .is_some_and(|field| {
+                field.repeating && matches!(field.kind, SchemaKind::Scalar { .. })
+            });
+        if duplicate && !repeating_scalar {
             issues.push(ValidationIssue::new(
                 &location,
                 format!(
@@ -1860,10 +1866,18 @@ fn source_schema_at<'a>(
 }
 
 fn find_schema_path<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    follow_schema(schema, path).or_else(|| match &schema.kind {
+    find_schema_path_from(schema, schema, path)
+}
+
+fn find_schema_path_from<'a>(
+    root: &'a SchemaNode,
+    schema: &'a SchemaNode,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
+    follow_schema_from(root, schema, path).or_else(|| match &schema.kind {
         SchemaKind::Group { children, .. } => children
             .iter()
-            .find_map(|child| find_schema_path(child, path)),
+            .find_map(|child| find_schema_path_from(root, child, path)),
         SchemaKind::Scalar { .. } => None,
     })
 }
@@ -1897,23 +1911,58 @@ fn any_schema_path(
     path: &[String],
     predicate: impl Fn(&SchemaNode) -> bool + Copy,
 ) -> bool {
-    if follow_schema(schema, path).is_some_and(predicate) {
+    any_schema_path_from(schema, schema, path, predicate)
+}
+
+fn any_schema_path_from(
+    root: &SchemaNode,
+    schema: &SchemaNode,
+    path: &[String],
+    predicate: impl Fn(&SchemaNode) -> bool + Copy,
+) -> bool {
+    if follow_schema_from(root, schema, path).is_some_and(predicate) {
         return true;
     }
     match &schema.kind {
         SchemaKind::Group { children, .. } => children
             .iter()
-            .any(|child| any_schema_path(child, path, predicate)),
+            .any(|child| any_schema_path_from(root, child, path, predicate)),
         SchemaKind::Scalar { .. } => false,
     }
 }
 
 fn follow_schema<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    follow_schema_from(schema, schema, path)
+}
+
+fn follow_schema_from<'a>(
+    root: &'a SchemaNode,
+    schema: &'a SchemaNode,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
     let mut current = schema;
     for segment in path {
+        if let Some(anchor) = &current.recursive_ref {
+            current = find_concrete_schema_group(root, anchor)?;
+        }
         current = current.child(segment)?;
     }
     Some(current)
+}
+
+fn find_concrete_schema_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
+    if schema.recursive_ref.is_none()
+        && schema.name == anchor
+        && matches!(schema.kind, SchemaKind::Group { .. })
+    {
+        return Some(schema);
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return None;
+    };
+    children
+        .iter()
+        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 pub(super) fn display_path(path: &[String]) -> String {

@@ -50,6 +50,18 @@ fn mapping() -> &'static str {
     </vertices></graph></structure></component></mapping>"#
 }
 
+fn collection_mapping() -> &'static str {
+    r#"<mapping version="26"><component name="map"><structure><children>
+      <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Tool" outkey="10"><entry name="Code" outkey="11"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+      <component name="exists" library="core" kind="5"><sources><datapoint key="37"/></sources><targets><datapoint key="38"/></targets></component>
+      <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Row" inpkey="50"><entry name="Code" inpkey="51"/><entry name="Member" inpkey="52"/></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+    </children><graph><vertices>
+      <vertex vertexkey="10"><edges><edge vertexkey="37"/><edge vertexkey="50"/></edges></vertex>
+      <vertex vertexkey="11"><edges><edge vertexkey="51"/></edges></vertex>
+      <vertex vertexkey="38"><edges><edge vertexkey="52"/></edges></vertex>
+    </vertices></graph></structure></component></mapping>"#
+}
+
 fn setup(mfd: &str) -> TempDir {
     let dir = TempDir::new();
     write(
@@ -127,6 +139,37 @@ fn imports_filtered_token_existence_and_sibling_scalar_lookup() {
         rows[2].field("Member").and_then(Instance::as_scalar),
         Some(&Value::Bool(false))
     );
+}
+
+#[test]
+fn imports_repeating_source_existence_as_a_collection_reducer() {
+    let dir = setup(collection_mapping());
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(node, Node::Aggregate {
+            function: mapping::AggregateOp::Count,
+            collection,
+            value,
+            expression: None,
+            arg: None,
+        } if collection == &["Tool".to_string()] && value.is_empty())
+    }));
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let source = Instance::Group(vec![(
+        "Tool".into(),
+        Instance::Repeated(vec![
+            record(&[("Code", Value::String("AA".into()))]),
+            record(&[("Code", Value::String("BB".into()))]),
+        ]),
+    )]);
+    let output = engine::run(&imported.project, &source).unwrap();
+    let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|row| {
+        row.field("Member").and_then(Instance::as_scalar) == Some(&Value::Bool(true))
+    }));
 }
 
 #[test]
