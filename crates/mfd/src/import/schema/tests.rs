@@ -1,12 +1,41 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use ir::{ScalarType, SchemaKind};
+use ir::{ScalarType, SchemaKind, SchemaNode};
 
 use super::{
     db_table_schema, instance_root_segments, normalize_xml_entry_name, read_json_component,
-    read_schema_component,
+    read_schema_component, schema_node_at, schema_node_at_resolved,
 };
+
+#[test]
+fn schema_paths_follow_recursive_group_anchors() {
+    let section = SchemaNode::group(
+        "Section",
+        vec![
+            SchemaNode::scalar("Value", ScalarType::String),
+            SchemaNode::recursive_group("Child", "Section").repeating(),
+        ],
+    );
+    let schema = SchemaNode::group("Root", vec![section]);
+
+    let path = [
+        "Section".to_string(),
+        "Child".to_string(),
+        "Value".to_string(),
+    ];
+    assert!(matches!(
+        schema_node_at(&schema, &path).map(|node| &node.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::String
+        })
+    ));
+    assert_eq!(
+        schema_node_at_resolved(&schema, &["Section".into(), "Child".into()])
+            .map(|node| node.name.as_str()),
+        Some("Section")
+    );
+}
 
 #[test]
 fn oversized_xsd_targets_use_the_connected_entry_projection() {

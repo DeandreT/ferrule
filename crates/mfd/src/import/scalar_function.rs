@@ -1,5 +1,5 @@
 use ir::{ScalarType, Value};
-use mapping::{Node, NodeId, RuntimeValue};
+use mapping::{AggregateOp, Node, NodeId, RuntimeValue};
 
 use super::function::{aggregate_op, map_name as map_function_name, parse_constant};
 use super::graph::GraphBuilder;
@@ -22,10 +22,15 @@ impl GraphBuilder<'_> {
         if name == "exists"
             && self.fn_components[idx].library == "core"
             && self.fn_components[idx].kind == 5
-            && let Some(node) = self.sequence_exists_node(idx)
         {
-            self.graph.nodes.insert(id, node);
-            return id;
+            if let Some(node) = self.sequence_exists_node(idx) {
+                self.graph.nodes.insert(id, node);
+                return id;
+            }
+            if let Some(node) = self.source_collection_exists_node(idx) {
+                self.graph.nodes.insert(id, node);
+                return id;
+            }
         }
         if let Some(op) = aggregate_op(&name).filter(|_| self.fn_components[idx].kind == 5) {
             let node = match self.aggregate_node(op, idx) {
@@ -176,6 +181,32 @@ impl GraphBuilder<'_> {
         };
         self.graph.nodes.insert(id, node);
         id
+    }
+
+    fn source_collection_exists_node(&mut self, idx: usize) -> Option<Node> {
+        let feed = self.input_feed(idx, 0)?;
+        let source_path = self.source_abs_path(feed)?;
+        if !self
+            .schema_node(&source_path)
+            .is_some_and(|node| node.repeating)
+        {
+            return None;
+        }
+        let collection = self.collection_path(source_path.source, &source_path.path)?;
+        let count = self.alloc(Node::Aggregate {
+            function: AggregateOp::Count,
+            collection,
+            value: Vec::new(),
+            expression: None,
+            arg: None,
+        });
+        let zero = self.alloc(Node::Const {
+            value: Value::Int(0),
+        });
+        Some(Node::Call {
+            function: "greater_than".to_string(),
+            args: vec![count, zero],
+        })
     }
 
     fn db_null_predicate_node(&mut self, idx: usize, name: &str) -> Node {

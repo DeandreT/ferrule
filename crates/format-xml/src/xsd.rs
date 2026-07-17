@@ -42,7 +42,8 @@ struct DeclarationQuery {
 #[derive(Default)]
 struct ParseState {
     active: Vec<ActiveDeclaration>,
-    complex_types: BTreeMap<ActiveDeclaration, Vec<SchemaNode>>,
+    complex_types: BTreeMap<ActiveDeclaration, CachedComplexType>,
+    complex_type_anchors: Vec<String>,
     declaration_paths: BTreeMap<DeclarationQuery, Option<PathBuf>>,
     materialized_elements: usize,
     materialization_limit_reached: bool,
@@ -52,6 +53,12 @@ struct ParseState {
 enum ComplexTypeResolution {
     Children(Vec<SchemaNode>),
     Recursive(String),
+}
+
+#[derive(Clone)]
+struct CachedComplexType {
+    children: Vec<SchemaNode>,
+    anchor: String,
 }
 
 impl ParseState {
@@ -74,17 +81,6 @@ impl ParseState {
 
     fn leave(&mut self) {
         self.active.pop();
-    }
-
-    fn recursive_anchor(&self, fallback: &str) -> String {
-        self.active
-            .iter()
-            .rev()
-            .find(|declaration| declaration.kind == "element")
-            .map_or_else(
-                || fallback.to_string(),
-                |declaration| declaration.name.clone(),
-            )
     }
 
     fn reserve_element(&mut self) -> bool {
@@ -282,9 +278,9 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
             (Some(namespace), local)
         });
     let children = match namespace {
-        None => resolve_complex_type(type_name, &schema_el, path, &mut state),
+        None => resolve_complex_type(type_name, &schema_el, path, &mut state, Some(local)),
         Some(namespace) if schema_el.attribute("targetNamespace") == Some(namespace) => {
-            resolve_complex_type(local, &schema_el, path, &mut state)
+            resolve_complex_type(local, &schema_el, path, &mut state, Some(local))
         }
         Some(namespace) => {
             let mut visited = BTreeSet::new();
@@ -310,6 +306,7 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
                     &external_path,
                     local,
                     &mut state,
+                    Some(local),
                 )
             })
         }
@@ -360,7 +357,8 @@ fn parse_element(
     {
         SchemaNode::scalar(name, simple_type_scalar(&simple_type))
     } else if let Some(ty) = el.attribute("type") {
-        if let Some(resolved) = resolve_complex_type(ty, schema_el, schema_path, state) {
+        if let Some(resolved) = resolve_complex_type(ty, schema_el, schema_path, state, Some(&name))
+        {
             match resolved {
                 ComplexTypeResolution::Children(children) => SchemaNode::group(name, children),
                 ComplexTypeResolution::Recursive(anchor) => {
@@ -433,12 +431,20 @@ fn resolve_complex_type(
     schema_el: &Node,
     schema_path: &Path,
     state: &mut ParseState,
+    occurrence_anchor: Option<&str>,
 ) -> Option<ComplexTypeResolution> {
     let local = local_name(qname);
     if is_local_qname(schema_el, qname)
         && let Some(declaration) = top_level(schema_el, "complexType", local)
     {
-        return parse_complex_type_declaration(&declaration, schema_el, schema_path, local, state);
+        return parse_complex_type_declaration(
+            &declaration,
+            schema_el,
+            schema_path,
+            local,
+            state,
+            occurrence_anchor,
+        );
     }
 
     let path = state.find_external_declaration(schema_el, schema_path, "complexType", qname)?;
@@ -446,7 +452,14 @@ fn resolve_complex_type(
     let doc = roxmltree::Document::parse(&text).ok()?;
     let external_schema = doc.root_element();
     let declaration = top_level(&external_schema, "complexType", local)?;
-    parse_complex_type_declaration(&declaration, &external_schema, &path, local, state)
+    parse_complex_type_declaration(
+        &declaration,
+        &external_schema,
+        &path,
+        local,
+        state,
+        occurrence_anchor,
+    )
 }
 
 fn parse_complex_type_declaration(
@@ -455,22 +468,54 @@ fn parse_complex_type_declaration(
     schema_path: &Path,
     name: &str,
     state: &mut ParseState,
+    occurrence_anchor: Option<&str>,
 ) -> Option<ComplexTypeResolution> {
     let identity = ParseState::declaration(schema_path, "complexType", name);
-    if let Some(children) = state.complex_types.get(&identity).cloned() {
+    if let Some(cached) = state.complex_types.get(&identity).cloned() {
+        let anchor = occurrence_anchor.unwrap_or(&cached.anchor);
+        let mut children = cached.children;
+        rebase_recursive_anchor(&mut children, &cached.anchor, anchor);
         return state
             .reserve_elements(children.iter().map(schema_node_count).sum())
             .then_some(ComplexTypeResolution::Children(children));
     }
     if !state.enter(schema_path, "complexType", name) {
-        return Some(ComplexTypeResolution::Recursive(
-            state.recursive_anchor(name),
-        ));
+        let anchor = state
+            .complex_type_anchors
+            .last()
+            .map_or_else(|| name.to_string(), Clone::clone);
+        return Some(ComplexTypeResolution::Recursive(anchor));
     }
+    let anchor = occurrence_anchor
+        .map(str::to_string)
+        .or_else(|| state.complex_type_anchors.last().cloned())
+        .unwrap_or_else(|| name.to_string());
+    state.complex_type_anchors.push(anchor.clone());
     let children = parse_complex_type(declaration, schema_el, schema_path, state);
+    state.complex_type_anchors.pop();
     state.leave();
-    state.complex_types.insert(identity, children.clone());
+    state.complex_types.insert(
+        identity,
+        CachedComplexType {
+            children: children.clone(),
+            anchor,
+        },
+    );
     Some(ComplexTypeResolution::Children(children))
+}
+
+fn rebase_recursive_anchor(children: &mut [SchemaNode], from: &str, to: &str) {
+    if from == to {
+        return;
+    }
+    for child in children {
+        if child.recursive_ref.as_deref() == Some(from) {
+            child.recursive_ref = Some(to.to_string());
+        }
+        if let ir::SchemaKind::Group { children, .. } = &mut child.kind {
+            rebase_recursive_anchor(children, from, to);
+        }
+    }
 }
 
 fn schema_node_count(node: &SchemaNode) -> usize {
@@ -677,7 +722,7 @@ fn parse_complex_type(
                 {
                     if let Some(base) = ext.attribute("base")
                         && let Some(ComplexTypeResolution::Children(base_children)) =
-                            resolve_complex_type(base, schema_el, schema_path, state)
+                            resolve_complex_type(base, schema_el, schema_path, state, None)
                     {
                         children.extend(base_children);
                     }
@@ -692,7 +737,7 @@ fn parse_complex_type(
                     let mut resolved_base = false;
                     if let Some(base) = content.attribute("base") {
                         if let Some(ComplexTypeResolution::Children(base_children)) =
-                            resolve_complex_type(base, schema_el, schema_path, state)
+                            resolve_complex_type(base, schema_el, schema_path, state, None)
                         {
                             children.extend(base_children);
                             resolved_base = true;

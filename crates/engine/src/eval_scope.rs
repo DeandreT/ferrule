@@ -596,14 +596,17 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 &mut in_progress,
             )?;
-            let value = match target.and_then(|schema| schema.child(&binding.target_field)) {
-                Some(field) if field.repeating => match value {
+            let repeating = target
+                .and_then(|schema| schema.child(&binding.target_field))
+                .is_some_and(|field| field.repeating);
+            let value = match repeating {
+                true => match value {
                     Value::Null => Instance::Repeated(Vec::new()),
                     value => Instance::Repeated(vec![Instance::Scalar(value)]),
                 },
-                _ => Instance::Scalar(value),
+                false => Instance::Scalar(value),
             };
-            insert_target_field(&mut fields, binding.target_field.clone(), value)?;
+            insert_static_binding(&mut fields, binding.target_field.clone(), value, repeating)?;
         }
         for binding in &scope.dynamic_bindings {
             let key = eval_dynamic_key(graph, binding.key, context, output_positions)?;
@@ -654,6 +657,27 @@ impl ItemEvaluator<'_> {
         }
         Ok(Some(Instance::Group(fields)))
     }
+}
+
+fn insert_static_binding(
+    fields: &mut Vec<(String, Instance)>,
+    name: String,
+    value: Instance,
+    repeating: bool,
+) -> Result<(), EngineError> {
+    if repeating {
+        let Instance::Repeated(mut additions) = value else {
+            return insert_target_field(fields, name, value);
+        };
+        if let Some((_, Instance::Repeated(existing))) =
+            fields.iter_mut().find(|(field, _)| field == &name)
+        {
+            existing.append(&mut additions);
+            return Ok(());
+        }
+        return insert_target_field(fields, name, Instance::Repeated(additions));
+    }
+    insert_target_field(fields, name, value)
 }
 
 fn passes_filter(

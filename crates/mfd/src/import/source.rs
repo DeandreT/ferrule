@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
+use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::NodeId;
 
 use super::function::{
@@ -11,7 +11,7 @@ use super::function::{
 };
 use super::graph::GraphBuilder;
 use super::iteration::{IterationFeed, split_at_innermost_repeating};
-use super::schema::{ComponentFormat, SchemaComponent, schema_node_at};
+use super::schema::{ComponentFormat, SchemaComponent, schema_node_at, schema_node_at_resolved};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SourcePath {
@@ -248,19 +248,18 @@ impl GraphBuilder<'_> {
         supported
     }
 
-    /// Atomizes a generic XML element port when it is consumed as a scalar.
+    /// Atomizes an XML element port when it is consumed as a scalar.
     /// Structural iteration continues to use the group path itself.
     pub(super) fn source_value_path(&self, source: usize, mut path: Vec<String>) -> SourcePath {
-        let has_generic_text = path.last().is_some_and(|name| name == XML_ELEMENTS_FIELD)
-            && self.sources.get(source).is_some_and(|component| {
-                schema_node_at(&component.schema, &path).is_some_and(|node| {
-                    matches!(node.kind, SchemaKind::Group { .. })
-                        && node.child(XML_TEXT_FIELD).is_some_and(|text| {
-                            !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
-                        })
-                })
-            });
-        if has_generic_text {
+        let has_scalar_text = self.sources.get(source).is_some_and(|component| {
+            schema_node_at_resolved(&component.schema, &path).is_some_and(|node| {
+                matches!(node.kind, SchemaKind::Group { .. })
+                    && node.child(XML_TEXT_FIELD).is_some_and(|text| {
+                        !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
+                    })
+            })
+        });
+        if has_scalar_text {
             path.push(XML_TEXT_FIELD.to_string());
         }
         SourcePath { source, path }

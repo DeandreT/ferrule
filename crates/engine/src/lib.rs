@@ -351,4 +351,6 @@ mod join_tests;
 #[cfg(test)]
 mod path_hierarchy_tests;
 #[cfg(test)]
+mod repeated_scalar_tests;
+#[cfg(test)]
 mod sequence_exists_tests;
