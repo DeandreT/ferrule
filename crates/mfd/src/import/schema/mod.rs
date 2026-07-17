@@ -1371,9 +1371,38 @@ pub(super) fn schema_node_at<'a>(
 ) -> Option<&'a SchemaNode> {
     let mut node = schema;
     for segment in path {
+        if let Some(anchor) = &node.recursive_ref {
+            node = find_concrete_schema_group(schema, anchor)?;
+        }
         node = node.child(segment)?;
     }
     Some(node)
+}
+
+pub(super) fn schema_node_at_resolved<'a>(
+    schema: &'a SchemaNode,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
+    let node = schema_node_at(schema, path)?;
+    match &node.recursive_ref {
+        Some(anchor) => find_concrete_schema_group(schema, anchor),
+        None => Some(node),
+    }
+}
+
+fn find_concrete_schema_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
+    if schema.recursive_ref.is_none()
+        && schema.name == anchor
+        && matches!(schema.kind, SchemaKind::Group { .. })
+    {
+        return Some(schema);
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return None;
+    };
+    children
+        .iter()
+        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 pub(super) fn collect_matching_scalar_paths(

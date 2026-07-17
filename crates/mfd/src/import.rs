@@ -533,24 +533,23 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     }
 
     warnings.extend(builder.warnings);
-    Ok(Imported {
-        project: Project {
-            source: primary.schema.clone(),
-            target: target.schema.clone(),
-            source_path: primary.input_instance.clone(),
-            target_path: target
-                .output_instance
-                .clone()
-                .or_else(|| target.input_instance.clone()),
-            source_options: primary.options.clone(),
-            target_options: target.options.clone(),
-            extra_sources,
-            extra_targets,
-            graph: builder.graph,
-            root,
-        },
-        warnings,
-    })
+    let mut project = Project {
+        source: primary.schema.clone(),
+        target: target.schema.clone(),
+        source_path: primary.input_instance.clone(),
+        target_path: target
+            .output_instance
+            .clone()
+            .or_else(|| target.input_instance.clone()),
+        source_options: primary.options.clone(),
+        target_options: target.options.clone(),
+        extra_sources,
+        extra_targets,
+        graph: builder.graph,
+        root,
+    };
+    project.prune_unreachable_nodes();
+    Ok(Imported { project, warnings })
 }
 
 fn refine_copied_json_root_schemas(
@@ -863,6 +862,7 @@ impl GraphBuilder<'_> {
             }
             let mut source_path = self.sequence_source_path(intermediate.feed)?;
             source_path.path.extend(intermediate.suffix);
+            let source_path = self.source_value_path(source_path.source, source_path.path);
             return self.source_field_at(&source_path);
         }
         if let Some(&(call_idx, component_id)) = self.udf_by_output.get(&key) {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::from_str;
 use ir::SchemaKind;
 
 #[test]
@@ -259,6 +260,52 @@ fn resolves_top_level_element_refs_and_retains_recursive_cycles() {
     let recursive = office.child("Office").unwrap();
     assert_eq!(recursive.recursive_ref.as_deref(), Some("Office"));
     assert!(matches!(recursive.kind, SchemaKind::Group { .. }));
+}
+
+#[test]
+fn recursive_named_types_anchor_to_their_concrete_element() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_named_recursion_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Page"><xs:complexType><xs:sequence>
+    <xs:element name="MainSection" type="SectionType"/>
+  </xs:sequence></xs:complexType></xs:element>
+  <xs:complexType name="SectionType" mixed="true"><xs:choice minOccurs="0" maxOccurs="unbounded">
+    <xs:element name="Trademark" type="xs:string"/>
+    <xs:element name="SubSection" type="SectionType"/>
+  </xs:choice></xs:complexType>
+</xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("Page")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let main = schema.child("MainSection").unwrap();
+    let subsection = main.child("SubSection").unwrap();
+    assert_eq!(subsection.recursive_ref.as_deref(), Some("MainSection"));
+
+    let instance = from_str(
+        "<Page><MainSection>intro<SubSection><Trademark>Ferrule</Trademark></SubSection></MainSection></Page>",
+        &schema,
+    )
+    .unwrap();
+    let nested = instance
+        .field("MainSection")
+        .and_then(|section| section.field("SubSection"))
+        .and_then(ir::Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        nested[0]
+            .field("Trademark")
+            .and_then(ir::Instance::as_repeated)
+            .and_then(|values| values.first())
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String("Ferrule".into()))
+    );
 }
 
 #[test]

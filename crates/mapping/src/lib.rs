@@ -18,6 +18,7 @@ mod iteration;
 mod path_hierarchy;
 mod pdf;
 mod protobuf;
+mod reachable;
 mod recursive;
 mod scope_serde;
 mod swift;
