@@ -1,6 +1,6 @@
 # Ferrule MapForce Workflow-Parity Roadmap
 
-Updated: 2026-07-15
+Updated: 2026-07-17
 
 ## Goal
 
@@ -18,8 +18,8 @@ clean-room interoperability, and extensible adapters.
 ## Current Baseline
 
 - Formats, both directions: XML, JSON, CSV/fixed-width/FlexText, SQLite, XLSX,
-  X12, and EDIFACT; Protocol Buffers are target-only and visual PDF extraction
-  is source-only.
+  XBRL instances, X12, and EDIFACT; Protocol Buffers are target-only and visual
+  PDF extraction is source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, generated tokenizer and integer-range sequences,
   bounded existential reduction over generated scalar sequences,
@@ -32,9 +32,13 @@ clean-room interoperability, and extensible adapters.
   constructions, and an expanding scalar function library.
 - Interfaces: CLI runner/validator/importers with JSON Lines diagnostics,
   stored endpoint defaults, native graph editor with dirty-state guards,
-  undo/redo, and persisted canvas layout; plus a WASM XML playground.
-- `.mfd` survey: all 120 local MapForce 2026 samples import; 100 import without
-  warnings. The survey is diagnostic, not a compatibility claim.
+  undo/redo, and persisted canvas layout; plus a WASM XML/JSON/CSV/XBRL
+  playground.
+- `.mfd` survey: all 120 local MapForce 2026 samples import without warnings;
+  108 are engine-valid, 52 export, 38 export without loss warnings, and 48 are
+  engine-valid after export/re-import. Execution and reference-output comparison
+  are not measured yet, so these remain diagnostic counts rather than a
+  compatibility claim.
 - Known architectural constraints: one primary driver input per run, scalar graph
   outputs, no general endpoint/stage DAG, no trace API, and no project-level
   reusable functions.
@@ -48,13 +52,13 @@ clean-room interoperability, and extensible adapters.
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, and static/correlated queries | General query model, insert/update/delete, PostgreSQL |
 | EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | XLSX including hierarchical and update-existing targets, Protobuf targets, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL plus remaining PDF extraction variants and PDF targets |
+| Other formats | XLSX including hierarchical and update-existing targets, native XBRL instance boundaries, Protobuf targets, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/formula/linkbase execution plus remaining PDF extraction variants and PDF targets |
 | Dataflow | One primary driver plus named static/dynamic sources and multiple mapped targets | Fully general named N-to-M endpoints, runtime parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
-| Authoring | Existing-project graph/scope editor | Blank-project authoring, undo/layout, schema wizards, auto-connect, preview |
+| Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | Executable common subset including structured inner equijoins | Executable common profile plus actionable repair workflow |
+| `.mfd` | 120/120 warning-free imports, 108 engine-valid imports, and 52 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams
@@ -95,12 +99,20 @@ a computed scalar expression, including aggregate-only joins with an independent
 plan. Nested non-repeating target projections reuse the owning tuple, while rejected
 join shapes suppress redundant downstream warnings. Canonical export round-trips
 root-context joins whose collections all belong to the primary source.
+The versioned compatibility survey now records import, engine validation,
+export, re-import, and post-export validation separately. Its first expanded
+baseline exposed 12 warning-free but invalid imports and a 52-project exportable
+subset; execution and reference matching remain explicitly unmeasured.
 
-- Normalize legacy and namespace-indexed XML entry encodings.
-- Add first-class generated sequences: `distinct-values`, `tokenize`,
-  `tokenize-by-length`, `generate-sequence`, and sequence slicing.
-- Expand high-value conversion, date/time, math, and node functions.
-- Import static generic XML type selections and inline graph-backed UDFs.
+- Eliminate validation defects in warning-free imports before expanding the
+  supported component surface further.
+- Add safely redirected sample execution and semantic reference comparison
+  without writing into the read-only vendor sample tree.
+- Grow clean export/re-import coverage from measured failure categories, led by
+  mapped XML sequences, relational database shapes, extra targets, concatenated
+  scopes, FlexText, and PDF sources.
+- Add first-class sequence slicing and reusable graph-backed UDFs instead of
+  further one-off lowering paths.
 - Complete namespace and JSON union semantics.
 - Keep every fixture self-authored; use vendor samples only as black-box
   behavioral references.
@@ -108,7 +120,10 @@ root-context joins whose collections all belong to the primary source.
 Exit criteria:
 
 - A curated XML/JSON/CSV common-profile suite executes with equivalent values.
-- At least 50 of the currently importable 73 survey mappings are warning-free.
+- All warning-free imported survey projects pass engine validation.
+- The survey records redirected execution and reference comparison separately
+  from syntactic import success.
+- Supported export profiles re-import without warnings and remain engine-valid.
 - Unsupported constructs retain one actionable warning and partial import.
 
 #### A2. N-to-M Endpoint and Stage Model
@@ -265,13 +280,15 @@ Five release journeys require no hand-edited project JSON:
 Update these numbers with each parity increment:
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
-- `.mfd` survey: 120/120 import, 100 warning-free, zero rejected.
-- Unsupported-function warnings: 1 (`sleep`) across the expanded importable set.
-- Target-path mismatch warnings: 1 across the expanded importable set.
-- Generic unsupported binding/iteration warnings: 3/3 across the expanded
-  importable set.
-- Unresolvable aggregate warnings: 1.
-- Multiple structural-sequence-feed warnings: 2 across the expanded importable set.
+- `.mfd` import: 120/120 imported, 120 warning-free, zero rejected.
+- `.mfd` validation: 108/120 imported projects are engine-valid.
+- `.mfd` export: 52/120 export, including 38 without export warnings.
+- `.mfd` re-import: all 52 exported designs re-import; 44 do so without
+  warnings, and 48 are engine-valid after re-import.
+- `.mfd` execution/reference comparison: not yet measured. The survey reports
+  both stages as skipped rather than inferring compatibility from import.
+- Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
+  compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export
   warnings, runtime failures, and invalid command usage.
 - CLI run paths: explicit flags override project-relative `source_path` and
