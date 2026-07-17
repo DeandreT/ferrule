@@ -4908,6 +4908,7 @@ dependencies = [
  "engine",
  "format-csv",
  "format-json",
+ "format-xbrl",
  "format-xml",
  "ir",
  "js-sys",

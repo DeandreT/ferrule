@@ -88,7 +88,8 @@ Designs built on general namespace identity or `xsi:type` polymorphism,
 scalar-key/keyless correlated joins,
 multi-source or nested join export, joined aggregate export, general SQL/database
 composition, or other endpoints (unsupported Excel/PDF layout variants, PDF targets,
-XBRL, or unsupported FlexText/EDI configuration variants)
+general XBRL taxonomy/linkbase execution or `.mfd` export, or unsupported
+FlexText/EDI configuration variants)
 are not converted yet.
 
 ```sh
