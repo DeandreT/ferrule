@@ -1,8 +1,8 @@
 use super::*;
 
-const TWO_WAY: &str = include_str!("../../tests/fixtures/join-two-way.mfd");
-const THREE_WAY: &str = include_str!("../../tests/fixtures/join-three-way.mfd");
-const MALFORMED: &str = include_str!("../../tests/fixtures/join-malformed.mfd");
+const TWO_WAY: &str = include_str!("../../../tests/fixtures/join-two-way.mfd");
+const THREE_WAY: &str = include_str!("../../../tests/fixtures/join-three-way.mfd");
+const MALFORMED: &str = include_str!("../../../tests/fixtures/join-malformed.mfd");
 
 fn parse_fixture(text: &str) -> Result<ParsedJoin, String> {
     let document = roxmltree::Document::parse(text).map_err(|error| error.to_string())?;
