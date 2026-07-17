@@ -138,37 +138,65 @@ pub(super) fn read_edges(
     edge_from
 }
 
-pub(super) fn read_copy_all_targets(structure: &roxmltree::Node<'_, '_>) -> BTreeSet<u32> {
-    let Some(graph) = structure
+pub(super) fn read_copy_all_targets(
+    structure: &roxmltree::Node<'_, '_>,
+    legacy_parent: Option<&roxmltree::Node<'_, '_>>,
+) -> BTreeSet<u32> {
+    let modern = structure
         .children()
         .find(|node| node.is_element() && node.has_tag_name("graph"))
-    else {
-        return BTreeSet::new();
-    };
-    let copy_edges = graph
+        .map(|graph| {
+            let copy_edges = graph
+                .children()
+                .find(|node| node.is_element() && node.has_tag_name("edges"))
+                .into_iter()
+                .flat_map(|edges| edges.children().filter(|node| node.has_tag_name("edge")))
+                .filter(|edge| {
+                    edge.descendants().any(|node| {
+                        node.has_tag_name("dataconnection") && node.attribute("type") == Some("2")
+                    })
+                })
+                .filter_map(|edge| super::schema::parse_u32(edge.attribute("edgekey")))
+                .collect::<BTreeSet<_>>();
+            graph
+                .descendants()
+                .filter(|node| node.has_tag_name("vertex"))
+                .flat_map(|vertex| {
+                    vertex
+                        .descendants()
+                        .filter(|node| node.has_tag_name("edge"))
+                })
+                .filter(|edge| {
+                    super::schema::parse_u32(edge.attribute("edgekey"))
+                        .is_some_and(|key| copy_edges.contains(&key))
+                })
+                .filter_map(|edge| super::schema::parse_u32(edge.attribute("vertexkey")))
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let legacy = structure
         .children()
-        .find(|node| node.is_element() && node.has_tag_name("edges"))
-        .into_iter()
-        .flat_map(|edges| edges.children().filter(|node| node.has_tag_name("edge")))
-        .filter(|edge| {
-            edge.descendants().any(|node| {
-                node.has_tag_name("dataconnection") && node.attribute("type") == Some("2")
+        .find(|node| node.is_element() && node.has_tag_name("connections"))
+        .or_else(|| {
+            legacy_parent.and_then(|parent| {
+                parent
+                    .children()
+                    .find(|node| node.is_element() && node.has_tag_name("connections"))
             })
         })
-        .filter_map(|edge| super::schema::parse_u32(edge.attribute("edgekey")))
-        .collect::<BTreeSet<_>>();
-    graph
-        .descendants()
-        .filter(|node| node.has_tag_name("vertex"))
-        .flat_map(|vertex| {
-            vertex
-                .descendants()
-                .filter(|node| node.has_tag_name("edge"))
+        .into_iter()
+        .flat_map(|connections| {
+            connections
+                .children()
+                .filter(|node| node.is_element() && node.has_tag_name("edge"))
         })
         .filter(|edge| {
-            super::schema::parse_u32(edge.attribute("edgekey"))
-                .is_some_and(|key| copy_edges.contains(&key))
+            edge.children().any(|node| {
+                node.is_element()
+                    && node.has_tag_name("data")
+                    && node.attribute("type") == Some("2")
+            })
         })
-        .filter_map(|edge| super::schema::parse_u32(edge.attribute("vertexkey")))
-        .collect()
+        .filter_map(|edge| super::schema::parse_u32(edge.attribute("to")));
+    modern.into_iter().chain(legacy).collect()
 }

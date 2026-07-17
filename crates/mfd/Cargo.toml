@@ -12,6 +12,7 @@ mapping = { workspace = true }
 format-xml = { workspace = true }
 format-json = { workspace = true }
 format-db = { workspace = true }
+format-edi = { workspace = true }
 format-protobuf = { workspace = true }
 roxmltree = { workspace = true }
 serde_json = { workspace = true }
@@ -23,5 +24,6 @@ format-csv = { workspace = true }
 format-pdf = { workspace = true }
 format-xlsx = { workspace = true }
 format-flextext = { workspace = true }
+format-xbrl = { workspace = true }
 rusqlite = { workspace = true }
 rust_xlsxwriter = { workspace = true }

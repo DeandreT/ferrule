@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use mapping::FormatOptions;
+use mapping::{ExternalPayloadFormat, ExternalSourceOptions, FormatOptions};
 
 use super::function::FnComponent;
 use super::schema::{
@@ -19,7 +19,15 @@ pub(super) struct Candidate {
 impl Candidate {
     pub(super) fn read(component: &roxmltree::Node<'_, '_>, reason: &str) -> Option<Self> {
         let mut warnings = Vec::new();
-        let source = read_json_output_source(component, &mut warnings)?;
+        let mut source = read_json_output_source(component, &mut warnings)?;
+        source.options.external_source = Some(
+            ExternalSourceOptions::user_function(
+                source.name.clone(),
+                reason,
+                ExternalPayloadFormat::Json,
+            )
+            .ok()?,
+        );
         let input_keys = component
             .descendants()
             .filter(|node| node.has_tag_name("entry"))
@@ -152,6 +160,7 @@ fn read_json_output_source(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys: BTreeSet::new(),
         output_keys,
         db_queries: Vec::new(),
@@ -212,10 +221,6 @@ pub(super) fn install_fallback(
     for (index, candidate) in candidates.into_iter().enumerate() {
         if selected == Some(index) {
             warnings.extend(candidate.warnings);
-            warnings.push(format!(
-                "user-defined function `{}` cannot execute in ferrule ({}); its declared JSON result was imported as an external source and must be supplied as the run input",
-                candidate.name, candidate.reason
-            ));
             components.push(candidate.component);
         } else {
             warnings.push(format!(
@@ -410,8 +415,8 @@ mod tests {
         assert_eq!(components.len(), 1);
         assert!(components[0].is_source);
         assert_eq!(components[0].name, "ExternalRows");
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("imported as an external source"));
+        assert!(warnings.is_empty());
+        assert!(components[0].options.external_source.is_some());
         Ok(())
     }
 }

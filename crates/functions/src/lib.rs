@@ -106,7 +106,11 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "isbn10_to_isbn13",
 ];
 
-const INTERNAL_NAMES: &[&str] = &["json_serialize_object", "flextext_parse_field"];
+const INTERNAL_NAMES: &[&str] = &[
+    "json_serialize_object",
+    "flextext_parse_field",
+    "delay_passthrough",
+];
 
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
 pub fn is_known(name: &str) -> bool {
@@ -158,6 +162,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "format_number" => format_number::format_number(args),
         "exists" => exists(args),
         "round" => round(args),
+        "delay_passthrough" => delay_passthrough(args),
         "date_from_datetime" => date_from_datetime(args),
         "year_from_datetime" => year_from_datetime(args),
         "month_from_datetime" => month_from_datetime(args),
@@ -566,47 +571,27 @@ fn numeric(
     f_int: impl Fn(i64, i64) -> Option<i64>,
     f_float: impl Fn(f64, f64) -> f64,
 ) -> Result<Value, FunctionError> {
-    match args {
-        [Value::Int(a), Value::Int(b)] => f_int(*a, *b)
-            .map(Value::Int)
-            .ok_or(FunctionError::IntegerOverflow { function: name }),
-        [Value::Float(a), Value::Float(b)] => Ok(Value::Float(f_float(*a, *b))),
-        [Value::Int(a), Value::Float(b)] => Ok(Value::Float(f_float(*a as f64, *b))),
-        [Value::Float(a), Value::Int(b)] => Ok(Value::Float(f_float(*a, *b as f64))),
-        [Value::Int(_) | Value::Float(_), b] => Err(FunctionError::TypeMismatch {
-            function: name,
-            got: b.type_name(),
-        }),
-        [a, _] => Err(FunctionError::TypeMismatch {
-            function: name,
-            got: a.type_name(),
-        }),
-        _ => Err(FunctionError::ArityMismatch {
+    let [a, b] = args else {
+        return Err(FunctionError::ArityMismatch {
             function: name,
             expected: 2,
             got: args.len(),
-        }),
+        });
+    };
+    match (numeric_operand(a, name)?, numeric_operand(b, name)?) {
+        (NumericOperand::Int(a), NumericOperand::Int(b)) => f_int(a, b)
+            .map(Value::Int)
+            .ok_or(FunctionError::IntegerOverflow { function: name }),
+        (a, b) => Ok(Value::Float(f_float(a.as_f64(), b.as_f64()))),
     }
 }
 
 fn divide(args: &[Value]) -> Result<Value, FunctionError> {
     let (a, b) = match args {
-        [Value::Int(a), Value::Int(b)] => (*a as f64, *b as f64),
-        [Value::Float(a), Value::Float(b)] => (*a, *b),
-        [Value::Int(a), Value::Float(b)] => (*a as f64, *b),
-        [Value::Float(a), Value::Int(b)] => (*a, *b as f64),
-        [Value::Int(_) | Value::Float(_), b] => {
-            return Err(FunctionError::TypeMismatch {
-                function: "divide",
-                got: b.type_name(),
-            });
-        }
-        [a, _] => {
-            return Err(FunctionError::TypeMismatch {
-                function: "divide",
-                got: a.type_name(),
-            });
-        }
+        [a, b] => (
+            numeric_operand(a, "divide")?.as_f64(),
+            numeric_operand(b, "divide")?.as_f64(),
+        ),
         _ => {
             return Err(FunctionError::ArityMismatch {
                 function: "divide",
@@ -619,6 +604,47 @@ fn divide(args: &[Value]) -> Result<Value, FunctionError> {
         return Err(FunctionError::DivideByZero);
     }
     Ok(Value::Float(a / b))
+}
+
+#[derive(Clone, Copy)]
+enum NumericOperand {
+    Int(i64),
+    Float(f64),
+}
+
+impl NumericOperand {
+    fn as_f64(self) -> f64 {
+        match self {
+            Self::Int(value) => value as f64,
+            Self::Float(value) => value,
+        }
+    }
+}
+
+fn numeric_operand(value: &Value, function: &'static str) -> Result<NumericOperand, FunctionError> {
+    match value {
+        Value::Int(value) => Ok(NumericOperand::Int(*value)),
+        Value::Float(value) => Ok(NumericOperand::Float(*value)),
+        Value::String(value) => {
+            let value = value.trim();
+            if let Ok(value) = value.parse::<i64>() {
+                return Ok(NumericOperand::Int(value));
+            }
+            value
+                .parse::<f64>()
+                .ok()
+                .filter(|value| value.is_finite())
+                .map(NumericOperand::Float)
+                .ok_or(FunctionError::TypeMismatch {
+                    function,
+                    got: "string",
+                })
+        }
+        other => Err(FunctionError::TypeMismatch {
+            function,
+            got: other.type_name(),
+        }),
+    }
 }
 
 fn number_arg(value: &Value, name: &'static str) -> Result<f64, FunctionError> {
@@ -726,6 +752,27 @@ fn round(args: &[Value]) -> Result<Value, FunctionError> {
             got: args.len(),
         }),
     }
+}
+
+/// Retains MapForce's value dependency across a `sleep(value, seconds)`
+/// component. External calls remain captured-response boundaries, so the
+/// pure engine validates the delay but does not pause wall-clock execution.
+fn delay_passthrough(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value, duration] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "delay_passthrough",
+            expected: 2,
+            got: args.len(),
+        });
+    };
+    let duration = number_arg(duration, "delay_passthrough")?;
+    if !duration.is_finite() || duration < 0.0 {
+        return Err(FunctionError::InvalidArgument {
+            function: "delay_passthrough",
+            message: "requires a finite nonnegative duration",
+        });
+    }
+    Ok(value.clone())
 }
 
 /// The date part of an ISO datetime string ("2024-03-01T10:30:00" ->
@@ -1163,6 +1210,38 @@ mod tests {
     }
 
     #[test]
+    fn numeric_arithmetic_coerces_finite_lexical_numbers() {
+        assert_eq!(
+            call(
+                "add",
+                &[Value::String(" 20 ".into()), Value::String("22".into())]
+            ),
+            Ok(Value::Int(42))
+        );
+        assert_eq!(
+            call("multiply", &[Value::String("2.5".into()), Value::Int(4)]),
+            Ok(Value::Float(10.0))
+        );
+        assert_eq!(
+            call(
+                "divide",
+                &[Value::String("12.5".into()), Value::String("2.5".into())]
+            ),
+            Ok(Value::Float(5.0))
+        );
+        assert!(matches!(
+            call(
+                "subtract",
+                &[Value::String("not-a-number".into()), Value::Int(1)]
+            ),
+            Err(FunctionError::TypeMismatch {
+                function: "subtract",
+                got: "string"
+            })
+        ));
+    }
+
+    #[test]
     fn upper_rejects_non_string_argument() {
         assert_eq!(
             call("upper", &[Value::Int(1)]),
@@ -1170,6 +1249,24 @@ mod tests {
                 function: "upper",
                 got: "int"
             })
+        );
+    }
+
+    #[test]
+    fn delay_passthrough_validates_duration_without_sleeping() {
+        assert_eq!(
+            call(
+                "delay_passthrough",
+                &[Value::String("response".into()), Value::Float(3.0)]
+            ),
+            Ok(Value::String("response".into()))
+        );
+        assert!(
+            call(
+                "delay_passthrough",
+                &[Value::String("response".into()), Value::Int(-1)]
+            )
+            .is_err()
         );
     }
 

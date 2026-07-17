@@ -18,7 +18,7 @@ pub(super) fn read(
                 .descendants()
                 .any(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi")) =>
         {
-            super::edi::read(component, warnings, false)
+            super::edi::read(component, mfd_path, warnings, false)
         }
         Some("db") => read_db(component, warnings),
         _ => None,
@@ -103,6 +103,7 @@ fn read_db(component: &roxmltree::Node, warnings: &mut Vec<String>) -> Option<Sc
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys,
         output_keys,
         db_queries: Vec::new(),

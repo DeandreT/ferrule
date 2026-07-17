@@ -664,6 +664,55 @@ fn value_map_falls_back_to_default_on_miss() {
 }
 
 #[test]
+fn value_map_without_a_default_returns_null_on_miss() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::Const {
+                value: Value::String("missing".into()),
+            },
+        ),
+        (
+            1,
+            Node::ValueMap {
+                input: 0,
+                input_type: None,
+                table: vec![(Value::String("known".into()), Value::String("value".into()))],
+                default: None,
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: SchemaNode::group(
+            "target",
+            vec![SchemaNode::scalar("out", ScalarType::String)],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "out".into(),
+                node: 1,
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let target = run(&project, &Instance::Group(vec![])).unwrap();
+
+    assert_eq!(
+        target.field("out").and_then(Instance::as_scalar),
+        Some(&Value::Null)
+    );
+}
+
+#[test]
 fn value_map_coerces_input_to_its_declared_type() {
     let graph = graph_from(vec![
         (

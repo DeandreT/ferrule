@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::{FormatOptions, XbrlBoundaryOptions};
@@ -7,6 +8,7 @@ use super::{ComponentFormat, SchemaComponent, is_default_output, normalize_xml_e
 
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     if component.attribute("kind") != Some("27") {
@@ -24,15 +26,33 @@ pub(super) fn read(
         return Err("XBRL component must expose exactly one entry-tree root".to_string());
     };
     let payload = document_payload(root)?;
+    let namespace_bindings = super::xbrl_namespace::bindings(root, &payload)?;
 
     let mut state = PortState::default();
-    let schema = build_root_schema(&payload, &mut state)?;
+    let mut schema = build_root_schema(&payload, &mut state)?;
+    let input_ancestors = input_port_ancestors(&payload, &state.input_keys)?;
     let is_source = match (state.input_keys.is_empty(), state.output_keys.is_empty()) {
         (true, false) => true,
         (false, true) => false,
         _ => {
             return Err("XBRL component must expose ports in exactly one direction".to_string());
         }
+    };
+
+    let fact_bindings = if is_source {
+        Vec::new()
+    } else if let Some(presentation) = metadata.attribute("sps") {
+        match super::xbrl_sps::fact_bindings(mfd_path, presentation, &schema, &namespace_bindings) {
+            Ok(bindings) => bindings,
+            Err(error) => {
+                warnings.push(format!(
+                    "XBRL component `{name}` could not compile numeric fact metadata from `{presentation}` ({error}); numeric target facts require explicit item-type metadata before execution"
+                ));
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
     };
 
     let boundary = if is_source {
@@ -46,12 +66,15 @@ pub(super) fn read(
         }
         XbrlBoundaryOptions::external_target(taxonomy, metadata.attribute("sps"))
     }
+    .and_then(|boundary| boundary.with_namespace_bindings(namespace_bindings))
+    .and_then(|boundary| boundary.with_fact_bindings(fact_bindings))
     .map_err(|error| format!("invalid XBRL boundary metadata ({error})"))?;
 
-    let direction = if is_source { "source" } else { "target" };
-    warnings.push(format!(
-        "XBRL component `{name}` was imported as a typed external {direction} boundary; XBRL taxonomy and table runtime is unavailable, so file execution remains disabled"
-    ));
+    if is_source {
+        normalize_source_table(&mut schema, &state.output_keys, &state.ports)?;
+    } else {
+        normalize_target_tables(&mut schema, &mut state)?;
+    }
 
     Ok(SchemaComponent {
         name,
@@ -72,11 +95,259 @@ pub(super) fn read(
         is_variable: false,
         compute_when_key: None,
         ports: state.ports,
+        input_ancestors,
         input_keys: state.input_keys,
         output_keys: state.output_keys,
         db_queries: Vec::new(),
         dynamic_json: None,
     })
+}
+
+fn normalize_source_table(
+    schema: &mut SchemaNode,
+    output_keys: &BTreeSet<u32>,
+    ports: &BTreeMap<u32, Vec<String>>,
+) -> Result<(), String> {
+    let paths = output_keys
+        .iter()
+        .filter_map(|key| ports.get(key))
+        .collect::<Vec<_>>();
+    let [first, rest @ ..] = paths.as_slice() else {
+        return Err("XBRL source table has no connected output paths".to_string());
+    };
+    let common_length = rest.iter().fold(first.len(), |length, path| {
+        length.min(
+            first
+                .iter()
+                .zip(path.iter())
+                .take_while(|(left, right)| left == right)
+                .count(),
+        )
+    });
+    let mut row_length = common_length;
+    while row_length > 0
+        && !schema_at_path(schema, &first[..row_length])
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Group { .. }))
+    {
+        row_length -= 1;
+    }
+    if row_length == 0 {
+        return Err("connected XBRL outputs do not share a table row group".to_string());
+    }
+    clear_repeating(schema);
+    let row_path = &first[..row_length];
+    let row = schema_at_path_mut(schema, row_path).ok_or_else(|| {
+        format!(
+            "connected XBRL table row `{}` is missing from its projected schema",
+            row_path.join("/")
+        )
+    })?;
+    if !matches!(row.kind, SchemaKind::Group { .. }) {
+        return Err(format!(
+            "connected XBRL table row `{}` is not a group",
+            row_path.join("/")
+        ));
+    }
+    row.repeating = true;
+    Ok(())
+}
+
+fn normalize_target_tables(schema: &mut SchemaNode, state: &mut PortState) -> Result<(), String> {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Err("XBRL target document root is not a group".to_string());
+    };
+    let row_paths = children
+        .iter()
+        .filter(|branch| !branch.attribute && contains_repeating_group(branch))
+        .filter_map(|branch| {
+            let paths = state
+                .input_keys
+                .iter()
+                .filter_map(|key| state.ports.get(key))
+                .filter(|path| path.first() == Some(&branch.name))
+                .filter(|path| !path.iter().any(|segment| segment == "defaults"))
+                .map(Vec::as_slice)
+                .collect::<Vec<_>>();
+            common_group_path(schema, &paths)
+        })
+        .collect::<Vec<_>>();
+
+    for row_path in row_paths {
+        let structural_keys = state
+            .input_keys
+            .iter()
+            .filter(|key| !state.scalar_value_keys.contains(key))
+            .filter(|key| {
+                state
+                    .ports
+                    .get(key)
+                    .is_some_and(|path| path.starts_with(&row_path))
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        let branch_path = &row_path[..1];
+        let branch = schema_at_path_mut(schema, branch_path).ok_or_else(|| {
+            format!(
+                "connected XBRL table branch `{}` is missing from its projected schema",
+                branch_path.join("/")
+            )
+        })?;
+        clear_repeating(branch);
+
+        let row = schema_at_path_mut(schema, &row_path).ok_or_else(|| {
+            format!(
+                "connected XBRL table row `{}` is missing from its projected schema",
+                row_path.join("/")
+            )
+        })?;
+        if !matches!(row.kind, SchemaKind::Group { .. }) {
+            return Err(format!(
+                "connected XBRL table row `{}` is not a group",
+                row_path.join("/")
+            ));
+        }
+        row.repeating = true;
+        for key in structural_keys {
+            state.ports.insert(key, row_path.clone());
+        }
+    }
+    Ok(())
+}
+
+fn common_group_path(schema: &SchemaNode, paths: &[&[String]]) -> Option<Vec<String>> {
+    let [first, rest @ ..] = paths else {
+        return None;
+    };
+    let common_length = rest.iter().fold(first.len(), |length, path| {
+        length.min(
+            first
+                .iter()
+                .zip(path.iter())
+                .take_while(|(left, right)| left == right)
+                .count(),
+        )
+    });
+    (1..=common_length).rev().find_map(|length| {
+        let path = &first[..length];
+        schema_at_path(schema, path)
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Group { .. }))
+            .then(|| path.to_vec())
+    })
+}
+
+fn contains_repeating_group(schema: &SchemaNode) -> bool {
+    if schema.repeating && matches!(schema.kind, SchemaKind::Group { .. }) {
+        return true;
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return false;
+    };
+    children.iter().any(contains_repeating_group)
+}
+
+fn input_port_ancestors(
+    root: &roxmltree::Node<'_, '_>,
+    input_keys: &BTreeSet<u32>,
+) -> Result<BTreeMap<u32, Vec<u32>>, String> {
+    fn collect(
+        entry: &roxmltree::Node<'_, '_>,
+        input_keys: &BTreeSet<u32>,
+        ancestors: &mut Vec<u32>,
+        result: &mut BTreeMap<u32, Vec<u32>>,
+        next_branch: &mut u32,
+    ) -> Result<(), String> {
+        let key = entry
+            .attribute("inpkey")
+            .and_then(|raw| raw.parse::<u32>().ok())
+            .filter(|key| input_keys.contains(key));
+        if let Some(key) = key {
+            result.insert(key, ancestors.clone());
+            ancestors.push(key);
+        }
+        let children = entry
+            .children()
+            .filter(|node| node.has_tag_name("entry"))
+            .collect::<Vec<_>>();
+        let mut name_counts = BTreeMap::new();
+        for child in &children {
+            let normalized = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
+            *name_counts.entry(normalized).or_insert(0usize) += 1;
+        }
+        for child in children {
+            let normalized = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
+            let duplicate_branch = name_counts.get(&normalized).copied().unwrap_or_default() > 1;
+            if duplicate_branch {
+                let branch = *next_branch;
+                *next_branch = next_branch.checked_add(1).ok_or(
+                    "XBRL target has too many cloned entry branches to preserve their identity",
+                )?;
+                ancestors.push(branch);
+            }
+            collect(&child, input_keys, ancestors, result, next_branch)?;
+            if duplicate_branch {
+                ancestors.pop();
+            }
+        }
+        if key.is_some() {
+            ancestors.pop();
+        }
+        Ok(())
+    }
+
+    let mut result = BTreeMap::new();
+    let mut next_branch = input_keys
+        .last()
+        .copied()
+        .unwrap_or_default()
+        .checked_add(1)
+        .ok_or("XBRL target input port range leaves no room for cloned branch identities")?;
+    collect(
+        root,
+        input_keys,
+        &mut Vec::new(),
+        &mut result,
+        &mut next_branch,
+    )?;
+    Ok(result)
+}
+
+fn schema_at_path<'a>(mut schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    for segment in path {
+        let SchemaKind::Group { children, .. } = &schema.kind else {
+            return None;
+        };
+        schema = children
+            .iter()
+            .find(|child| child.name == *segment && !child.attribute)
+            .or_else(|| children.iter().find(|child| child.name == *segment))?;
+    }
+    Some(schema)
+}
+
+fn clear_repeating(schema: &mut SchemaNode) {
+    schema.repeating = false;
+    if let SchemaKind::Group { children, .. } = &mut schema.kind {
+        for child in children {
+            clear_repeating(child);
+        }
+    }
+}
+
+fn schema_at_path_mut<'a>(
+    mut schema: &'a mut SchemaNode,
+    path: &[String],
+) -> Option<&'a mut SchemaNode> {
+    for segment in path {
+        let SchemaKind::Group { children, .. } = &mut schema.kind else {
+            return None;
+        };
+        let index = children
+            .iter()
+            .position(|child| child.name == *segment && !child.attribute)
+            .or_else(|| children.iter().position(|child| child.name == *segment))?;
+        schema = &mut children[index];
+    }
+    Some(schema)
 }
 
 #[derive(Default)]
@@ -85,6 +356,7 @@ struct PortState {
     input_keys: BTreeSet<u32>,
     output_keys: BTreeSet<u32>,
     scalar_value_keys: BTreeSet<u32>,
+    promotable_value_keys: BTreeSet<u32>,
 }
 
 impl PortState {
@@ -105,8 +377,11 @@ impl PortState {
         attribute: bool,
     ) -> Result<(), String> {
         let keys = self.record(entry, path)?;
-        if !attribute {
-            self.scalar_value_keys.extend(keys.into_iter().flatten());
+        for key in keys.into_iter().flatten() {
+            self.scalar_value_keys.insert(key);
+            if !attribute {
+                self.promotable_value_keys.insert(key);
+            }
         }
         Ok(())
     }
@@ -140,7 +415,7 @@ impl PortState {
     }
 
     fn promote_scalar_path(&mut self, path: &[String]) {
-        for key in &self.scalar_value_keys {
+        for key in &self.promotable_value_keys {
             if let Some(port_path) = self.ports.get_mut(key)
                 && port_path == path
             {
@@ -176,8 +451,15 @@ fn build_root_schema(
     let _ = state.record(root, &[])?;
     let mut children = Vec::new();
     let mut path = Vec::new();
+    let mut unit_index = 0usize;
     for entry in root.children().filter(|node| node.has_tag_name("entry")) {
-        if let Some(node) = build_entry(&entry, &mut path, state)? {
+        let (name, attribute) =
+            normalize_xml_entry_name(entry.attribute("name").unwrap_or_default());
+        let override_name = (name == "unit" && !attribute).then(|| {
+            unit_index += 1;
+            format!("{}{unit_index}", mapping::XBRL_UNIT_FIELD_PREFIX)
+        });
+        if let Some(node) = build_entry_named(&entry, &mut path, state, override_name)? {
             merge_child(&mut children, node, state, &path)?;
         }
     }
@@ -192,6 +474,15 @@ fn build_entry(
     path: &mut Vec<String>,
     state: &mut PortState,
 ) -> Result<Option<SchemaNode>, String> {
+    build_entry_named(entry, path, state, None)
+}
+
+fn build_entry_named(
+    entry: &roxmltree::Node<'_, '_>,
+    path: &mut Vec<String>,
+    state: &mut PortState,
+    override_name: Option<String>,
+) -> Result<Option<SchemaNode>, String> {
     if !has_connected_port(entry) {
         return Ok(None);
     }
@@ -200,7 +491,7 @@ fn build_entry(
     if name.is_empty() {
         return Err("connected XBRL entry has no name".to_string());
     }
-    let name = name.to_string();
+    let name = override_name.unwrap_or_else(|| name.to_string());
     path.push(name.clone());
 
     let mut children = Vec::new();
@@ -344,7 +635,11 @@ mod tests {
     fn parse(xml: &str) -> Result<(super::SchemaComponent, Vec<String>), String> {
         let document = roxmltree::Document::parse(xml).map_err(|error| error.to_string())?;
         let mut warnings = Vec::new();
-        let component = read(&document.root_element(), &mut warnings)?;
+        let component = read(
+            &document.root_element(),
+            std::path::Path::new("mapping.mfd"),
+            &mut warnings,
+        )?;
         Ok((component, warnings))
     }
 
@@ -431,8 +726,7 @@ mod tests {
                 && boundary.taxonomy() == "taxonomy/report.xsd"
                 && boundary.presentation().is_none()
         }));
-        assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("external source boundary"));
+        assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(component.output_keys.len(), 4);
         assert!(component.input_keys.is_empty());
         assert_eq!(
@@ -488,7 +782,7 @@ mod tests {
                 && boundary.presentation() == Some("income-view.sps")
         }));
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("external target boundary"));
+        assert!(warnings[0].contains("could not compile numeric fact metadata"));
         assert_eq!(
             component.input_keys,
             [20, 21, 22, 23, 24].into_iter().collect()
@@ -525,6 +819,125 @@ mod tests {
             identifier
                 .child("scheme")
                 .is_some_and(|scheme| scheme.attribute)
+        );
+    }
+
+    #[test]
+    fn target_tables_lift_descendant_repetition_without_repeating_static_branches() {
+        let xml = r#"<component name="Report" library="xbrl" kind="27"><data>
+            <root><entry name="xbrl">
+              <entry name="IncomeTable"><entry name="tableset">
+                <entry name="defaults">
+                  <entry name="monetary"><entry name="decimals" type="attribute" inpkey="1"/></entry>
+                </entry>
+                <entry name="row">
+                  <entry name="period" inpkey="2">
+                    <entry name="startDate" inpkey="3"/>
+                    <entry name="endDate" inpkey="4"/>
+                  </entry>
+                  <entry name="facts"><entry name="Revenue" inpkey="5"/></entry>
+                </entry>
+              </entry></entry>
+              <entry name="BalanceTable"><entry name="row">
+                <entry name="identifier" inpkey="6">
+                  <entry name="scheme" type="attribute" inpkey="7"/>
+                </entry>
+                <entry name="aspects">
+                  <entry name="period" inpkey="8"><entry name="instant" inpkey="9"/></entry>
+                  <entry name="context" inpkey="10"><entry name="Assets" inpkey="11"/></entry>
+                </entry>
+              </entry></entry>
+              <entry name="unit">
+                <entry name="id" type="attribute" inpkey="12"/>
+                <entry name="measure" inpkey="13"/>
+              </entry>
+            </entry></root>
+            <xbrl schema="report.xsd" sps="report.sps"/>
+          </data></component>"#;
+        let Ok((component, warnings)) = parse(xml) else {
+            panic!("self-authored XBRL target tables must import");
+        };
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("could not compile numeric fact metadata"));
+
+        let Some(income_row) = component
+            .schema
+            .child("IncomeTable")
+            .and_then(|table| table.child("tableset"))
+            .and_then(|table| table.child("row"))
+        else {
+            panic!("income table row must remain projected");
+        };
+        assert!(income_row.repeating);
+        assert!(
+            income_row
+                .child("period")
+                .is_some_and(|period| !period.repeating)
+        );
+
+        let Some(balance_row) = component
+            .schema
+            .child("BalanceTable")
+            .and_then(|table| table.child("row"))
+        else {
+            panic!("balance table row must remain projected");
+        };
+        assert!(balance_row.repeating);
+        let Some(aspects) = balance_row.child("aspects") else {
+            panic!("balance table aspects must remain projected");
+        };
+        assert!(!aspects.repeating);
+        assert!(
+            aspects
+                .child("period")
+                .is_some_and(|period| !period.repeating)
+        );
+        assert!(
+            aspects
+                .child("context")
+                .is_some_and(|context| !context.repeating)
+        );
+
+        assert!(
+            component
+                .schema
+                .child("IncomeTable")
+                .and_then(|table| table.child("tableset"))
+                .and_then(|tableset| tableset.child("defaults"))
+                .is_some_and(|defaults| !defaults.repeating)
+        );
+        assert!(matches!(
+            &component.schema.kind,
+            SchemaKind::Group { children, .. }
+                if children.iter().any(|unit| {
+                    unit.name.starts_with(mapping::XBRL_UNIT_FIELD_PREFIX) && !unit.repeating
+                })
+        ));
+        assert_eq!(
+            component.ports.get(&2).map(|path| path.join("/")),
+            Some("IncomeTable/tableset/row".to_string())
+        );
+        assert_eq!(
+            component.ports.get(&8).map(|path| path.join("/")),
+            Some("BalanceTable/row".to_string())
+        );
+        assert_eq!(
+            component.ports.get(&10).map(|path| path.join("/")),
+            Some("BalanceTable/row".to_string())
+        );
+        assert_eq!(
+            component.ports.get(&11).map(|path| path.join("/")),
+            Some("BalanceTable/row/aspects/context/Assets".to_string())
+        );
+        assert_eq!(
+            component.ports.get(&7).map(|path| path.join("/")),
+            Some("BalanceTable/row/identifier/scheme".to_string())
+        );
+        assert!(
+            component
+                .input_ancestors
+                .get(&11)
+                .is_some_and(|ancestors| ancestors.contains(&10))
         );
     }
 

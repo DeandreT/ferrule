@@ -1,17 +1,41 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use mapping::{FormatOptions, HttpGetOptions, HttpTimeoutSeconds};
-
-use super::{
-    ComponentFormat, SchemaComponent, collect_entry_ports, entry_key_sets, entry_tree_schema,
-    is_default_output, merge_generic_xml_entries, normalize_xml_text_ports, read_xml_schema_file,
-    record_entry_keys, resolve_xml_schema_reference,
+use mapping::{
+    ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
+    FormatOptions, HttpGetOptions, HttpTimeoutSeconds,
 };
 
-/// Imports the executable subset of MapForce's web-service component family:
-/// a requestless manual GET whose single response body is typed XML.
+use super::{
+    ComponentFormat, SchemaComponent, collect_entry_ports, collect_json_ports, entry_key_sets,
+    entry_tree_schema, is_default_output, json_entry_value_schema, merge_generic_xml_entries,
+    normalize_xml_text_ports, read_xml_schema_file, record_entry_keys,
+    resolve_xml_schema_reference,
+};
+
 pub(super) fn read(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    let call = component
+        .children()
+        .find(|node| node.has_tag_name("data"))
+        .and_then(|data| data.children().find(|node| node.has_tag_name("wsdl")))
+        .ok_or_else(|| "HTTP component has no call metadata".to_string())?;
+    match call.attribute("httpmethod") {
+        Some(method) if method.eq_ignore_ascii_case("GET") => {
+            read_get(component, mfd_path, warnings)
+        }
+        Some(method) if method.eq_ignore_ascii_case("POST") => {
+            read_post(component, mfd_path, warnings)
+        }
+        _ => Err("only HTTP GET and captured-response POST calls are supported".to_string()),
+    }
+}
+
+/// Imports a requestless manual GET whose single response body is typed XML.
+fn read_get(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
     warnings: &mut Vec<String>,
@@ -120,7 +144,10 @@ pub(super) fn read(
         .filter(|root| !root.is_empty())
         .unwrap_or_else(|| payload.attribute("name").unwrap_or("root"));
     let schema = resolve_xml_schema_reference(mfd_path, schema_file)
-        .and_then(|schema_path| read_xml_schema_file(&schema_path, Some(root_name)));
+        .map_err(|error| error.to_string())
+        .and_then(|schema_path| {
+            read_xml_schema_file(&schema_path, Some(root_name)).map_err(|error| error.to_string())
+        });
     let mut schema = match schema {
         Ok(schema) => schema,
         Err(error) => {
@@ -166,11 +193,229 @@ pub(super) fn read(
         is_variable: false,
         compute_when_key: None,
         ports,
+        input_ancestors: BTreeMap::new(),
         input_keys: payload_inputs,
         output_keys: payload_outputs,
         db_queries: Vec::new(),
         dynamic_json: None,
     })
+}
+
+/// Imports a POST as a typed captured-response boundary. Request structure is
+/// retained for inspection, but ferrule never sends the request or stores
+/// header values.
+fn read_post(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    let name = component.attribute("name").unwrap_or_default().to_string();
+    if component.attribute("kind") != Some("20") {
+        return Err("only kind=20 HTTP call components are supported".to_string());
+    }
+    let data = component
+        .children()
+        .find(|node| node.has_tag_name("data"))
+        .ok_or_else(|| "HTTP component has no data block".to_string())?;
+    let call = data
+        .children()
+        .find(|node| node.has_tag_name("wsdl"))
+        .ok_or_else(|| "HTTP component has no call metadata".to_string())?;
+    if call.attribute("kind") != Some("call") {
+        return Err("HTTP POST metadata is not a call".to_string());
+    }
+    let mode = match call.attribute("sourceMode") {
+        Some("manual") => ExternalHttpMode::Manual,
+        Some("graphql") => ExternalHttpMode::Graphql,
+        _ => return Err("HTTP POST source mode must be manual or GraphQL".to_string()),
+    };
+    let url = call
+        .attribute("url")
+        .filter(|url| valid_http_url(url))
+        .ok_or_else(|| {
+            "HTTP POST URL must be an HTTP(S) URL without credentials or a fragment".to_string()
+        })?;
+    let timeout = match call.attribute("timeout") {
+        Some(value) => value
+            .parse::<u16>()
+            .ok()
+            .and_then(HttpTimeoutSeconds::new)
+            .ok_or_else(|| {
+                format!(
+                    "HTTP timeout must be between 1 and {} seconds",
+                    HttpTimeoutSeconds::MAX
+                )
+            })?,
+        None => HttpTimeoutSeconds::default(),
+    };
+
+    let roots = data
+        .children()
+        .filter(|node| node.has_tag_name("root"))
+        .collect::<Vec<_>>();
+    let documents = roots
+        .iter()
+        .flat_map(|root| {
+            root.descendants()
+                .filter(|entry| {
+                    entry.has_tag_name("entry") && entry.attribute("type") == Some("doc-json")
+                })
+                .filter_map(|entry| {
+                    let document = entry
+                        .children()
+                        .find(|node| node.has_tag_name("document"))?;
+                    let payload = entry.children().find(|node| node.has_tag_name("entry"))?;
+                    Some((*root, entry, document, payload))
+                })
+        })
+        .collect::<Vec<_>>();
+    let response_documents = documents
+        .iter()
+        .filter(|(root, _, _, _)| !entry_key_sets(root).1.is_empty())
+        .collect::<Vec<_>>();
+    let [(response_root, _, response_document, response_payload)] = response_documents.as_slice()
+    else {
+        return Err("HTTP POST must expose exactly one connected JSON response body".to_string());
+    };
+    ensure_utf8(response_document)?;
+    let (response_inputs, response_outputs) = entry_key_sets(response_payload);
+    if !response_inputs.is_empty() || response_outputs.is_empty() {
+        return Err("HTTP POST response body must expose output ports only".to_string());
+    }
+    if entry_key_sets(response_root).1 != response_outputs {
+        return Err("HTTP POST response status or header outputs are not supported".to_string());
+    }
+
+    let request_documents = documents
+        .iter()
+        .filter(|(root, _, _, _)| !entry_key_sets(root).0.is_empty())
+        .collect::<Vec<_>>();
+    let (request_format, request_schema) = match request_documents.as_slice() {
+        [] => (None, None),
+        [(.., document, payload)] => {
+            ensure_utf8(document)?;
+            (
+                Some(ExternalPayloadFormat::Json),
+                Some(read_json_request_schema(
+                    &name, document, payload, mfd_path, warnings,
+                )),
+            )
+        }
+        _ => return Err("HTTP POST must expose at most one JSON request body".to_string()),
+    };
+    let request_inputs = roots
+        .iter()
+        .filter(|root| **root != *response_root)
+        .flat_map(|root| entry_key_sets(root).0)
+        .collect::<BTreeSet<_>>();
+
+    // A captured response is intentionally the connected entry-tree
+    // projection. Referenced schemas can be open or substantially broader;
+    // importing them would claim fields the graph can never observe.
+    let schema = json_entry_value_schema(&name, response_payload);
+    let mut ports = BTreeMap::new();
+    let mut output_count = 0usize;
+    let mut input_count = 0usize;
+    record_entry_keys(
+        response_payload,
+        &[],
+        &mut ports,
+        &mut output_count,
+        &mut input_count,
+    );
+    collect_json_ports(
+        response_payload,
+        &mut Vec::new(),
+        &mut ports,
+        &mut output_count,
+        &mut input_count,
+        warnings,
+    );
+    if input_count != 0 || output_count == 0 {
+        return Err("HTTP POST response JSON ports are invalid".to_string());
+    }
+
+    let headers = call
+        .children()
+        .filter(|node| node.has_tag_name("parameter") && node.attribute("style") == Some("header"))
+        .map(|parameter| {
+            ExternalHttpHeader::new(
+                parameter.attribute("name").unwrap_or_default(),
+                parameter.attribute("required") == Some("1"),
+                parameter.attribute("mappable") == Some("1"),
+            )
+            .map_err(|error| format!("invalid HTTP POST header declaration: {error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let external_source = ExternalSourceOptions::http_post(
+        mode,
+        timeout,
+        request_format,
+        request_schema,
+        ExternalPayloadFormat::Json,
+        headers,
+    )
+    .map_err(|error| format!("invalid HTTP POST boundary: {error}"))?;
+
+    Ok(SchemaComponent {
+        name,
+        format: ComponentFormat::Json,
+        schema,
+        input_instance: Some(url.to_string()),
+        output_instance: None,
+        options: FormatOptions {
+            external_source: Some(external_source),
+            ..FormatOptions::default()
+        },
+        is_source: true,
+        is_default_output: is_default_output(component),
+        is_variable: false,
+        compute_when_key: None,
+        ports,
+        input_keys: request_inputs,
+        input_ancestors: BTreeMap::new(),
+        output_keys: response_outputs,
+        db_queries: Vec::new(),
+        dynamic_json: None,
+    })
+}
+
+fn read_json_request_schema(
+    component_name: &str,
+    document: &roxmltree::Node<'_, '_>,
+    payload: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> ir::SchemaNode {
+    document
+        .attribute("schemafile")
+        .and_then(|relative| {
+            let path = mfd_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(relative);
+            match format_json::json_schema::import(&path) {
+                Ok(schema) => Some(schema),
+                Err(error) => {
+                    warnings.push(format!(
+                        "HTTP component `{component_name}`: could not read request schema `{relative}` ({error}); falling back to the entry tree"
+                    ));
+                    None
+                }
+            }
+        })
+        .unwrap_or_else(|| json_entry_value_schema(component_name, payload))
+}
+
+fn ensure_utf8(document: &roxmltree::Node<'_, '_>) -> Result<(), String> {
+    if document
+        .attribute("encoding")
+        .is_some_and(|encoding| !encoding.eq_ignore_ascii_case("UTF-8"))
+    {
+        Err("only UTF-8 JSON request and response bodies are supported".to_string())
+    } else {
+        Ok(())
+    }
 }
 
 fn valid_http_url(url: &str) -> bool {
@@ -247,12 +492,50 @@ mod tests {
     #[test]
     fn unsupported_request_and_response_shapes_are_rejected_before_fallback() {
         let post = component("POST", "", "");
-        assert!(rejection(&post).contains("requestless manual GET"));
+        assert!(rejection(&post).contains("connected JSON response"));
 
         let dynamic_request = component("GET", r#"<entry name="HTTPHeader" inpkey="4"/>"#, "");
         assert!(rejection(&dynamic_request).contains("dynamic request URL"));
 
         let response_metadata = component("GET", "", r#"<entry name="HTTPStatus" outkey="5"/>"#);
         assert!(rejection(&response_metadata).contains("status or header outputs"));
+    }
+
+    #[test]
+    fn post_is_a_typed_captured_response_without_header_values() {
+        let xml = r#"<component name="post" library="webservice" kind="20">
+          <data>
+            <root><entry name="HTTPMessage" inpkey="1"><entry name="Token" inpkey="2"/>
+              <entry name="HTTPBody"><entry name="document" type="doc-json">
+                <document encoding="UTF-8"/><entry name="root"><entry name="object">
+                  <entry name="query" type="json-property"><entry name="string" inpkey="3"/></entry>
+                </entry></entry>
+              </entry></entry>
+            </entry></root>
+            <root rootindex="1"><entry name="HTTPMessage"><entry name="HTTPBody">
+              <entry name="document" type="doc-json"><document encoding="UTF-8"/>
+                <entry name="root"><entry name="object">
+                  <entry name="answer" type="json-property"><entry name="string" outkey="10"/></entry>
+                </entry></entry>
+              </entry>
+            </entry></entry></root>
+            <wsdl kind="call" sourceMode="manual" url="https://example.test/api" timeout="20" httpmethod="POST">
+              <parameter name="Token" value="must-not-be-retained" style="header" required="1" mappable="1"/>
+            </wsdl>
+          </data>
+        </component>"#;
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let boundary = read(
+            &document.root_element(),
+            Path::new("/tmp/mapping.mfd"),
+            &mut Vec::new(),
+        )
+        .unwrap();
+
+        assert_eq!(boundary.ports.get(&10), Some(&vec!["answer".to_string()]));
+        assert!(boundary.input_keys.contains(&1));
+        let encoded = serde_json::to_string(&boundary.options).unwrap();
+        assert!(encoded.contains("Token"));
+        assert!(!encoded.contains("must-not-be-retained"));
     }
 }

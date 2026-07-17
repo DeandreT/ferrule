@@ -134,6 +134,7 @@ fn build(
         input_keys: ports.keys().copied().collect(),
         output_keys: BTreeSet::new(),
         ports,
+        input_ancestors: BTreeMap::new(),
         db_queries: Vec::new(),
         dynamic_json: None,
     });

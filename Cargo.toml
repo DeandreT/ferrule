@@ -14,6 +14,7 @@ members = [
     "crates/format-flextext",
     "crates/format-pdf",
     "crates/format-protobuf",
+    "crates/format-xbrl",
     "crates/mfd",
     "crates/cli",
     "crates/gui",
@@ -40,6 +41,7 @@ format-edi = { path = "crates/format-edi" }
 format-flextext = { path = "crates/format-flextext" }
 format-pdf = { path = "crates/format-pdf" }
 format-protobuf = { path = "crates/format-protobuf" }
+format-xbrl = { path = "crates/format-xbrl" }
 mfd = { path = "crates/mfd" }
 cli = { path = "crates/cli" }
 
