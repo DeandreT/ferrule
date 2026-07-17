@@ -1,7 +1,7 @@
 //! Browser playground for ferrule: a small eframe app around the real
 //! `mapping` + `engine` crates, compiled to WebAssembly for the website
 //! (and runnable natively for local testing). The browser editor supports
-//! project JSON, XML/JSON/CSV instance text, validation, and live execution.
+//! project JSON, XML/JSON/CSV/XBRL instance text, validation, and live execution.
 
 use eframe::egui;
 use egui_snarl::ui::{PinInfo, SnarlViewer, SnarlWidget};
@@ -12,7 +12,7 @@ use mapping::{
 };
 use web_demo::browser_download::download_utf8_text;
 use web_demo::project_document::{self, ProjectDocumentError};
-use web_demo::runtime::{self, DataFormat};
+use web_demo::runtime::{self, DataFormat, DataSide};
 
 const SAMPLE_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <Orders>
@@ -572,6 +572,10 @@ impl DemoApp {
                 let mut bindings = Vec::new();
                 flat_bindings(&project.root, "", &mut bindings);
                 self.snarl = build_snarl(&project, &bindings, self.canvas_compact);
+                self.source_format =
+                    boundary_format(&project, DataSide::Source, self.source_format);
+                self.target_format =
+                    boundary_format(&project, DataSide::Target, self.target_format);
                 self.project = project;
                 self.bindings = bindings;
                 self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
@@ -830,7 +834,12 @@ fn format_picker(ui: &mut egui::Ui, id: &str, format: &mut DataFormat) -> bool {
     egui::ComboBox::from_id_salt(id)
         .selected_text(format.to_string())
         .show_ui(ui, |ui| {
-            for choice in [DataFormat::Xml, DataFormat::Json, DataFormat::Csv] {
+            for choice in [
+                DataFormat::Xml,
+                DataFormat::Json,
+                DataFormat::Csv,
+                DataFormat::Xbrl,
+            ] {
                 ui.selectable_value(format, choice, choice.to_string());
             }
         });
@@ -842,6 +851,21 @@ fn format_extension(format: DataFormat) -> &'static str {
         DataFormat::Xml => "xml",
         DataFormat::Json => "json",
         DataFormat::Csv => "csv",
+        DataFormat::Xbrl => "xbrl",
+    }
+}
+
+fn boundary_format(project: &Project, side: DataSide, current: DataFormat) -> DataFormat {
+    let has_xbrl = match side {
+        DataSide::Source => project.source_options.xbrl.is_some(),
+        DataSide::Target => project.target_options.xbrl.is_some(),
+    };
+    if has_xbrl {
+        DataFormat::Xbrl
+    } else if current == DataFormat::Xbrl {
+        DataFormat::Xml
+    } else {
+        current
     }
 }
 
@@ -906,6 +930,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mapping::XbrlBoundaryOptions;
 
     #[test]
     fn demo_project_runs_on_the_sample_input() {
@@ -922,5 +947,24 @@ mod tests {
             app.output
         );
         assert!(app.output.contains("<Total>10</Total>"), "{}", app.output);
+    }
+
+    #[test]
+    fn project_boundaries_select_xbrl_without_leaking_previous_xbrl_state() {
+        let mut project = demo_project();
+        project.source_options.xbrl = XbrlBoundaryOptions::external_source("taxonomy.xsd").ok();
+
+        assert_eq!(
+            boundary_format(&project, DataSide::Source, DataFormat::Json),
+            DataFormat::Xbrl
+        );
+        assert_eq!(
+            boundary_format(&project, DataSide::Target, DataFormat::Xbrl),
+            DataFormat::Xml
+        );
+        assert_eq!(
+            boundary_format(&project, DataSide::Target, DataFormat::Csv),
+            DataFormat::Csv
+        );
     }
 }
