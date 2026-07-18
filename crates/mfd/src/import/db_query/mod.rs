@@ -331,6 +331,7 @@ fn read_uncorrelated_component(
         is_source: true,
         is_default_output: false,
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),

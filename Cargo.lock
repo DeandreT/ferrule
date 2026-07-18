@@ -1814,6 +1814,7 @@ name = "functions"
 version = "0.1.0"
 dependencies = [
  "format-flextext",
+ "format-json",
  "ir",
  "mapping",
  "serde_json",

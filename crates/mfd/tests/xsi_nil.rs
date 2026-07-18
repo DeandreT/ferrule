@@ -45,7 +45,7 @@ fn setup() -> TempDir {
           <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Row" outkey="10"><entry name="Name" outkey="11"/><entry name="State" outkey="12"/><entry name="Detail" outkey="13"/></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
           <component name="set-xsi-nil" library="core" kind="5"><targets><datapoint pos="0" key="20"/></targets></component>
           <component name="is-xsi-nil" library="core" kind="5"><sources><datapoint pos="0" key="21"/></sources><targets><datapoint pos="0" key="22"/></targets></component>
-          <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="23"/><datapoint pos="1" key="24"/></sources><targets><datapoint/><datapoint pos="1" key="25"/></targets></component>
+          <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="23"/><datapoint pos="1" key="24"/></sources><targets><datapoint pos="0" key="25"/><datapoint pos="1"/></targets></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="Item" inpkey="30"><entry name="NilValue" inpkey="31"/><entry name="Detail" inpkey="34"/></entry><entry name="NilRow" inpkey="32"><entry name="Name" inpkey="33"/></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
         </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices>
           <vertex vertexkey="10"><edges><edge vertexkey="30"/><edge vertexkey="23"/></edges></vertex>

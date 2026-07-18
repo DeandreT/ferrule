@@ -278,6 +278,82 @@ fn inner_join_preserves_duplicate_matches() {
 }
 
 #[test]
+fn structural_join_branch_projects_compatible_descendants() {
+    let dir = setup();
+    let structural = mapping()
+        .replace(
+            "<entry name=\"Left\" inpkey=\"10\">",
+            "<entry name=\"Left\" inpkey=\"10\" outkey=\"11\">",
+        )
+        .replace(
+            "<component name=\"first-items\" library=\"core\" uid=\"33\" kind=\"5\"><sources><datapoint pos=\"0\" key=\"30\"/></sources><targets><datapoint pos=\"0\" key=\"31\"/></targets></component>",
+            "",
+        )
+        .replace(
+            "<component name=\"position\" library=\"core\" uid=\"34\" kind=\"5\"><sources><datapoint pos=\"0\" key=\"32\"/></sources><targets><datapoint pos=\"0\" key=\"33\"/></targets></component>",
+            "",
+        )
+        .replace(
+            "<vertex vertexkey=\"90\"><edges><edge vertexkey=\"30\"/><edge vertexkey=\"32\"/></edges></vertex><vertex vertexkey=\"31\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+            "<vertex vertexkey=\"11\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        )
+        .replace(
+            "<vertex vertexkey=\"12\"><edges><edge vertexkey=\"41\"/></edges></vertex><vertex vertexkey=\"22\"><edges><edge vertexkey=\"42\"/></edges></vertex><vertex vertexkey=\"33\"><edges><edge vertexkey=\"43\"/></edges></vertex>",
+            "",
+        );
+    write(&dir.0.join("mapping.mfd"), &structural);
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let validation = engine::validate(&imported.project);
+    assert!(validation.is_empty(), "{validation:?}");
+    let row_scope = &imported.project.root.children[0];
+    let label = row_scope
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Label")
+        .and_then(|binding| imported.project.graph.nodes.get(&binding.node));
+    assert!(matches!(
+        label,
+        Some(Node::JoinField {
+            collection,
+            path,
+            ..
+        }) if collection == &["Left"] && path == &["Label"]
+    ));
+
+    let (left, right) = sources();
+    let extras = vec![(imported.project.extra_sources[0].name.clone(), right)];
+    let output = engine::run_with_sources(&imported.project, &left, extras).unwrap();
+    let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(rows.len(), 4);
+    assert_eq!(
+        rows.iter()
+            .filter_map(|row| row.field("Label").and_then(Instance::as_scalar))
+            .collect::<Vec<_>>(),
+        vec![
+            &Value::String("L1".into()),
+            &Value::String("L1".into()),
+            &Value::String("L2".into()),
+            &Value::String("L2".into()),
+        ]
+    );
+
+    let exported = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &exported).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let (left, right) = sources();
+    let extras = vec![(reimported.project.extra_sources[0].name.clone(), right)];
+    assert_eq!(
+        engine::run_with_sources(&reimported.project, &left, extras).unwrap(),
+        output
+    );
+}
+
+#[test]
 fn joined_tuple_count_and_computed_sum_import_and_execute() {
     let dir = aggregate_setup();
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();

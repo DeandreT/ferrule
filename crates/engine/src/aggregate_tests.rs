@@ -75,6 +75,25 @@ fn average_of_large_finite_values_stays_finite() {
 }
 
 #[test]
+fn average_uses_compensated_arithmetic() {
+    let values = [13.6, 15.6, 16.2, 10.0, 7.3, 7.6, 13.6, 7.1].map(Value::Float);
+
+    assert_eq!(
+        aggregate(AggregateOp::Avg, values.len(), &values, None),
+        Ok(Value::Float(11.375))
+    );
+
+    let values = [
+        -3.2, -0.3, 6.5, 10.6, 19.0, 20.3, 22.3, 20.7, 19.2, 12.9, 8.1, 1.9,
+    ]
+    .map(Value::Float);
+    assert_eq!(
+        aggregate(AggregateOp::Avg, values.len(), &values, None),
+        Ok(Value::Float(11.5))
+    );
+}
+
+#[test]
 fn mixed_sum_returns_a_finite_float() {
     assert_eq!(
         aggregate(

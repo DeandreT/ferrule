@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
-    FormatOptions, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxRow,
-    XlsxTableRegion,
+    FormatOptions, TabularBoundaryKind, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell,
+    XlsxFixedRecord, XlsxRow, XlsxTableRegion,
 };
 
 use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32};
@@ -177,6 +177,7 @@ pub(super) fn read(
             (
                 fields,
                 FormatOptions {
+                    tabular_kind: Some(TabularBoundaryKind::Xlsx),
                     has_header_row: Some(has_header),
                     xlsx_sheet: table.sheet,
                     xlsx_start_row: start_row,
@@ -211,6 +212,7 @@ pub(super) fn read(
             (
                 fields,
                 FormatOptions {
+                    tabular_kind: Some(TabularBoundaryKind::Xlsx),
                     has_header_row: Some(false),
                     xlsx_sheet: table.sheet,
                     xlsx_rows,
@@ -231,6 +233,7 @@ pub(super) fn read(
             is_source,
             is_default_output: is_default_output(component),
             is_variable: false,
+            is_pass_through: false,
             compute_when_key: None,
             ports,
             input_ancestors: BTreeMap::new(),
@@ -372,6 +375,7 @@ fn read_composite(
         input_instance: excel.attribute("inputinstance").map(str::to_string),
         output_instance: excel.attribute("outputinstance").map(str::to_string),
         options: FormatOptions {
+            tabular_kind: Some(TabularBoundaryKind::Xlsx),
             xlsx_composite: Some(XlsxCompositeLayout {
                 table: XlsxTableRegion {
                     path: table_path,
@@ -387,6 +391,7 @@ fn read_composite(
         is_source,
         is_default_output,
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),

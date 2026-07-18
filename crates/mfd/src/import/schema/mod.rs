@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
-use mapping::FormatOptions;
+use mapping::{FormatOptions, TabularBoundaryKind};
 
 mod csv;
 mod definition_parameter;
@@ -123,6 +123,7 @@ pub(super) struct SchemaComponent {
     pub(super) is_source: bool,
     pub(super) is_default_output: bool,
     pub(super) is_variable: bool,
+    pub(super) is_pass_through: bool,
     /// Input key of a variable component's compute-when control entry.
     pub(super) compute_when_key: Option<u32>,
     /// Port key -> absolute entry path (segments below the schema root).
@@ -136,12 +137,20 @@ pub(super) struct SchemaComponent {
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
 }
 
+impl SchemaComponent {
+    pub(super) fn is_target(&self) -> bool {
+        (!self.is_variable && !self.is_source) || self.is_pass_through
+    }
+}
+
 const JSON_DYNAMIC_NAME_PORT: &str = "\u{1f}ferrule-json-dynamic-name";
 const JSON_DYNAMIC_BOOL_PORT: &str = "\u{1f}ferrule-json-dynamic-bool";
 const JSON_DYNAMIC_INT_PORT: &str = "\u{1f}ferrule-json-dynamic-int";
 const JSON_DYNAMIC_FLOAT_PORT: &str = "\u{1f}ferrule-json-dynamic-float";
 const JSON_DYNAMIC_STRING_PORT: &str = "\u{1f}ferrule-json-dynamic-string";
 pub(super) const SOURCE_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-document-path";
+pub(super) const SOURCE_INPUT_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-input-document-path";
+pub(super) const TARGET_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-target-document-path";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum JsonDynamicPort {
@@ -188,7 +197,11 @@ pub(super) fn read_schema_component(
         .descendants()
         .find(|node| node.has_tag_name("entry") && node.attribute("name") == Some("document"));
     let mut entry = document_entry
-        .and_then(|document| document.children().find(|node| node.has_tag_name("entry")))
+        .and_then(|document| {
+            document
+                .children()
+                .find(|node| node.has_tag_name("entry") && !is_document_decoration_entry(node))
+        })
         .or_else(|| root_el.children().find(|node| node.has_tag_name("entry")))?;
     while matches!(
         entry.attribute("name"),
@@ -306,6 +319,33 @@ pub(super) fn read_schema_component(
     {
         ports.insert(key, vec![SOURCE_DOCUMENT_PATH_PORT.to_string()]);
     }
+    if is_source
+        && let Some(key) = root_el
+            .descendants()
+            .find(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("name") == Some("FileInstance")
+                    && entry.attribute("inpkey").is_some()
+            })
+            .and_then(|entry| parse_u32(entry.attribute("inpkey")))
+    {
+        ports.insert(key, vec![SOURCE_INPUT_DOCUMENT_PATH_PORT.to_string()]);
+    }
+    if !is_source
+        && let Some(key) = root_el
+            .descendants()
+            .find(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("name") == Some("FileInstance")
+                    && entry.attribute("inpkey").is_some()
+            })
+            .and_then(|entry| parse_u32(entry.attribute("inpkey")))
+    {
+        ports.insert(key, vec![TARGET_DOCUMENT_PATH_PORT.to_string()]);
+    }
+    let is_pass_through = component
+        .children()
+        .any(|node| node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1"));
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Xml,
@@ -323,9 +363,8 @@ pub(super) fn read_schema_component(
         is_default_output: is_default_output(component),
         is_variable: data.descendants().any(|node| {
             node.has_tag_name("parameter") && node.attribute("usageKind") == Some("variable")
-        }) || component.children().any(|node| {
-            node.has_tag_name("properties") && node.attribute("PassThrough") == Some("1")
-        }),
+        }) || is_pass_through,
+        is_pass_through,
         compute_when_key: root_el
             .descendants()
             .find(|node| {
@@ -560,6 +599,7 @@ pub(super) fn read_json_component(
         is_source,
         is_default_output: is_default_output(component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
@@ -849,7 +889,10 @@ pub(super) fn read_csv_component(
         .unwrap_or(&name);
     let schema = SchemaNode::group(root_name, fields);
 
-    let mut options = FormatOptions::default();
+    let mut options = FormatOptions {
+        tabular_kind: Some(TabularBoundaryKind::Csv),
+        ..FormatOptions::default()
+    };
     if let Some(settings) = settings {
         if let Some(separator) = settings.attribute("separator") {
             let mut chars = separator.chars();
@@ -944,6 +987,7 @@ pub(super) fn read_csv_component(
         is_source,
         is_default_output: is_default_output(component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
@@ -988,6 +1032,9 @@ fn collect_entry_ports(
         .children()
         .filter(|n| n.is_element() && n.tag_name().name() == "entry")
     {
+        if is_document_decoration_entry(&child) {
+            continue;
+        }
         let raw_name = child.attribute("name").unwrap_or_default();
         let (name, _) = normalize_xml_entry_name(raw_name);
         if child.attribute("type") == Some("xml-type") && name != XML_TEXT_FIELD {
@@ -1044,7 +1091,9 @@ fn collect_input_port_ancestors(
 ) {
     let children = entry
         .children()
-        .filter(|node| node.is_element() && node.has_tag_name("entry"))
+        .filter(|node| {
+            node.is_element() && node.has_tag_name("entry") && !is_document_decoration_entry(node)
+        })
         .collect::<Vec<_>>();
     let mut name_counts = BTreeMap::new();
     for child in &children {
@@ -1071,6 +1120,18 @@ fn collect_input_port_ancestors(
             ancestors.pop();
         }
     }
+}
+
+fn is_document_decoration_entry(entry: &roxmltree::Node<'_, '_>) -> bool {
+    matches!(
+        entry.attribute("type"),
+        Some(
+            "comment-before"
+                | "comment-after"
+                | "processing-instruction-before"
+                | "processing-instruction-after"
+        )
+    )
 }
 
 fn take_branch_marker(input_keys: &BTreeSet<u32>, next_branch: &mut u32) -> u32 {
@@ -1338,15 +1399,23 @@ pub(super) fn read_db_component(
         }
     } else {
         let mut introspected_types = BTreeMap::new();
+        let mut introspected_generation = BTreeMap::new();
         if let Some(path) = db_path.as_deref() {
-            collect_db_column_types(path, &tables, &name, warnings, &mut introspected_types);
+            collect_db_column_types(
+                path,
+                &tables,
+                &name,
+                warnings,
+                &mut introspected_types,
+                &mut introspected_generation,
+            );
         }
         let types = if db_path.is_some() {
             &introspected_types
         } else {
             embedded_types.as_ref().unwrap_or(&introspected_types)
         };
-        if tables.len() == 1 {
+        let mut schema = if tables.len() == 1 {
             db_table_schema(&tables[0], types)
         } else {
             SchemaNode::group(
@@ -1356,7 +1425,11 @@ pub(super) fn read_db_component(
                     .map(|table| db_table_schema(table, types))
                     .collect(),
             )
+        };
+        if db_path.is_some() {
+            apply_introspected_value_generation(&tables, &mut schema, &introspected_generation);
         }
+        schema
     };
     if !single_plain_table
         && let Some(path) = db_path.as_deref()
@@ -1378,6 +1451,7 @@ pub(super) fn read_db_component(
         is_source,
         is_default_output: is_default_output(component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors,
@@ -1474,6 +1548,7 @@ fn collect_db_column_types(
     component_name: &str,
     warnings: &mut Vec<String>,
     types: &mut BTreeMap<String, BTreeMap<String, ir::ScalarType>>,
+    generated: &mut BTreeMap<String, BTreeSet<String>>,
 ) {
     for entry in tables {
         let physical_table = entry
@@ -1487,17 +1562,24 @@ fn collect_db_column_types(
         if !types.contains_key(physical_table) {
             match format_db::introspect(db_path, physical_table) {
                 Ok(schema) => {
+                    let mut generated_columns = BTreeSet::new();
                     let column_types = match schema.kind {
                         SchemaKind::Group { children, .. } => children
                             .into_iter()
                             .filter_map(|column| match column.kind {
-                                SchemaKind::Scalar { ty } => Some((column.name, ty)),
+                                SchemaKind::Scalar { ty } => {
+                                    if column.value_generation.is_some() {
+                                        generated_columns.insert(column.name.clone());
+                                    }
+                                    Some((column.name, ty))
+                                }
                                 SchemaKind::Group { .. } => None,
                             })
                             .collect(),
                         SchemaKind::Scalar { .. } => BTreeMap::new(),
                     };
                     types.insert(physical_table.to_string(), column_types);
+                    generated.insert(physical_table.to_string(), generated_columns);
                 }
                 Err(error) => {
                     warnings.push(format!(
@@ -1512,7 +1594,83 @@ fn collect_db_column_types(
             .children()
             .filter(|node| node.has_tag_name("entry") && node.attribute("type") == Some("table"))
             .collect::<Vec<_>>();
-        collect_db_column_types(db_path, &nested, component_name, warnings, types);
+        collect_db_column_types(db_path, &nested, component_name, warnings, types, generated);
+    }
+}
+
+fn apply_introspected_value_generation(
+    table_entries: &[roxmltree::Node<'_, '_>],
+    schema: &mut SchemaNode,
+    generated: &BTreeMap<String, BTreeSet<String>>,
+) {
+    if table_entries.len() == 1 && schema.repeating {
+        apply_table_generation(&table_entries[0], schema, generated);
+        return;
+    }
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return;
+    };
+    for table in table_entries {
+        let Some(name) = table.attribute("name") else {
+            continue;
+        };
+        if let Some(child) = children.iter_mut().find(|child| child.name == name) {
+            apply_table_generation(table, child, generated);
+        }
+    }
+}
+
+fn apply_table_generation(
+    table: &roxmltree::Node<'_, '_>,
+    schema: &mut SchemaNode,
+    generated: &BTreeMap<String, BTreeSet<String>>,
+) {
+    let physical_table = table
+        .attribute("name")
+        .unwrap_or_default()
+        .split_once('|')
+        .map_or_else(
+            || table.attribute("name").unwrap_or_default(),
+            |(table, _)| table,
+        );
+    let generated_columns = generated.iter().find_map(|(table, columns)| {
+        table
+            .eq_ignore_ascii_case(physical_table)
+            .then_some(columns)
+    });
+    let entries = table
+        .children()
+        .filter(|entry| entry.is_element() && entry.has_tag_name("entry"))
+        .collect::<Vec<_>>();
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return;
+    };
+    for child in children {
+        if matches!(child.kind, SchemaKind::Scalar { .. }) {
+            let explicitly_exposed = entries.iter().any(|entry| {
+                entry.attribute("type") != Some("table")
+                    && entry
+                        .attribute("name")
+                        .is_some_and(|name| name.eq_ignore_ascii_case(&child.name))
+            });
+            if !explicitly_exposed
+                && generated_columns.is_some_and(|columns| {
+                    columns
+                        .iter()
+                        .any(|column| column.eq_ignore_ascii_case(&child.name))
+                })
+            {
+                child.value_generation = Some(ir::ValueGeneration::MaxNumber);
+            }
+            continue;
+        }
+        let Some(entry) = entries.iter().find(|entry| {
+            entry.attribute("type") == Some("table")
+                && entry.attribute("name") == Some(child.name.as_str())
+        }) else {
+            continue;
+        };
+        apply_table_generation(entry, child, generated);
     }
 }
 
@@ -1541,6 +1699,11 @@ fn apply_db_value_generation(table: &roxmltree::Node<'_, '_>, schema: &mut Schem
             apply_db_value_generation(&entry, child);
         } else if entry.attribute("valuekeygeneration") == Some("maxnumber") {
             child.value_generation = Some(ir::ValueGeneration::MaxNumber);
+        } else {
+            // Live SQLite introspection marks implicit rowid primary keys as
+            // generated. An explicitly exposed MFD column remains caller-
+            // supplied unless the design itself requests maxnumber.
+            child.value_generation = None;
         }
     }
 }

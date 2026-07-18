@@ -12,7 +12,9 @@ const MAX_EXPRESSION_DEPTH: usize = 256;
 #[derive(Clone)]
 pub(super) enum Expr {
     Input,
+    FractionDigits,
     Const(Value),
+    Default(String),
     Call {
         function: String,
         args: Vec<Expr>,
@@ -21,6 +23,12 @@ pub(super) enum Expr {
         condition: Box<Expr>,
         then: Box<Expr>,
         else_: Box<Expr>,
+    },
+    ValueMap {
+        input: Box<Expr>,
+        input_type: Option<ScalarType>,
+        table: Vec<(Value, Value)>,
+        default: Option<Value>,
     },
 }
 
@@ -31,6 +39,7 @@ pub(super) struct Rule {
 }
 
 pub(super) type Rules = BTreeMap<u32, Vec<Rule>>;
+pub(super) type Definitions = BTreeMap<String, Expr>;
 
 /// Reads scalar output-node rules attached to schema entries. Unsupported
 /// definitions remain inert, matching the importer's historical behavior.
@@ -43,7 +52,7 @@ pub(super) fn read(mapping: &roxmltree::Node<'_, '_>) -> Rules {
         })
         .filter_map(|component| {
             let name = component.attribute("name")?.to_string();
-            read_definition(component).map(|definition| (name, definition))
+            read_definition(component, false).map(|definition| (name, definition))
         })
         .collect::<BTreeMap<_, _>>();
     let mut rules = BTreeMap::new();
@@ -62,6 +71,135 @@ pub(super) fn read(mapping: &roxmltree::Node<'_, '_>) -> Rules {
         }
     }
     rules
+}
+
+pub(super) fn read_target_definitions(
+    mapping: &roxmltree::Node<'_, '_>,
+    registry: &super::udf::Registry,
+) -> Definitions {
+    mapping
+        .children()
+        .filter(|node| {
+            node.has_tag_name("component")
+                && node.attribute("library") == Some("mapforce_nodefunction")
+        })
+        .filter_map(|component| {
+            let name = component.attribute("name")?.to_string();
+            read_definition(component, true)
+                .or_else(|| read_registered_definition(component, registry))
+                .map(|definition| (name, definition))
+        })
+        .collect()
+}
+
+fn read_registered_definition(
+    component: roxmltree::Node<'_, '_>,
+    registry: &super::udf::Registry,
+) -> Option<Expr> {
+    let name = component.attribute("name")?;
+    let (parameters, expression) =
+        registry.scalar_expression_named("mapforce_nodefunction", name)?;
+    let structure = component
+        .children()
+        .find(|node| node.has_tag_name("structure"))?;
+    let children = structure
+        .children()
+        .find(|node| node.has_tag_name("children"))?;
+    let input_components = children
+        .children()
+        .filter(|node| node.has_tag_name("component"))
+        .filter_map(|node| {
+            let function = read_function(&node);
+            (function.library == "core" && function.kind == 6).then_some((node, function))
+        })
+        .collect::<Vec<_>>();
+    let mut substitutions = BTreeMap::new();
+    for (node, _) in &input_components {
+        let component_id = parse_u32(node.attribute("uid"))?;
+        if !parameters.contains(&component_id) {
+            continue;
+        }
+        let parameter_name = node
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("parameter") && node.attribute("usageKind") == Some("input")
+            })
+            .and_then(|parameter| parameter.attribute("name"))
+            .or_else(|| node.attribute("name"))
+            .unwrap_or_default();
+        let replacement = if parameter_name == "node_fractionDigits" {
+            Expr::FractionDigits
+        } else if input_components.len() == 1 || parameter_name == "raw_value" {
+            Expr::Input
+        } else {
+            return None;
+        };
+        substitutions.insert(component_id, replacement);
+    }
+    if substitutions.len() != parameters.len() {
+        return None;
+    }
+    convert_scalar_expression(&expression, &substitutions, 0)
+}
+
+fn convert_scalar_expression(
+    expression: &super::udf::ScalarExpr,
+    substitutions: &BTreeMap<u32, Expr>,
+    depth: usize,
+) -> Option<Expr> {
+    if depth >= MAX_EXPRESSION_DEPTH {
+        return None;
+    }
+    match expression {
+        super::udf::ScalarExpr::Parameter(component_id) => substitutions.get(component_id).cloned(),
+        super::udf::ScalarExpr::DefaultedParameter {
+            component_id,
+            default,
+        } => {
+            let input = substitutions.get(component_id)?.clone();
+            let default = convert_scalar_expression(default, substitutions, depth + 1)?;
+            Some(Expr::If {
+                condition: Box::new(Expr::Call {
+                    function: "exists".to_string(),
+                    args: vec![input.clone()],
+                }),
+                then: Box::new(input),
+                else_: Box::new(default),
+            })
+        }
+        super::udf::ScalarExpr::Const(value) => Some(Expr::Const(value.clone())),
+        super::udf::ScalarExpr::Call { function, args } => Some(Expr::Call {
+            function: function.clone(),
+            args: args
+                .iter()
+                .map(|arg| convert_scalar_expression(arg, substitutions, depth + 1))
+                .collect::<Option<Vec<_>>>()?,
+        }),
+        super::udf::ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } => Some(Expr::If {
+            condition: Box::new(convert_scalar_expression(
+                condition,
+                substitutions,
+                depth + 1,
+            )?),
+            then: Box::new(convert_scalar_expression(then, substitutions, depth + 1)?),
+            else_: Box::new(convert_scalar_expression(else_, substitutions, depth + 1)?),
+        }),
+        super::udf::ScalarExpr::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => Some(Expr::ValueMap {
+            input: Box::new(convert_scalar_expression(input, substitutions, depth + 1)?),
+            input_type: *input_type,
+            table: table.clone(),
+            default: default.clone(),
+        }),
+    }
 }
 
 fn collect_entry_rules(
@@ -113,8 +251,16 @@ fn read_rule(
     rule: roxmltree::Node<'_, '_>,
     definitions: &BTreeMap<String, Expr>,
 ) -> Option<(String, Rule)> {
-    let function = rule.children().find(|node| node.has_tag_name("function"))?;
-    let expression = definitions.get(function.attribute("name")?)?.clone();
+    let expression = if let Some(value) = rule
+        .children()
+        .find(|node| node.has_tag_name("default"))
+        .and_then(|default| default.attribute("value"))
+    {
+        Expr::Default(value.to_string())
+    } else {
+        let function = rule.children().find(|node| node.has_tag_name("function"))?;
+        definitions.get(function.attribute("name")?)?.clone()
+    };
     let datatype = rule
         .children()
         .find(|node| node.has_tag_name("filter"))
@@ -142,7 +288,7 @@ fn scalar_type(value: &str) -> Option<ScalarType> {
     }
 }
 
-fn read_definition(component: roxmltree::Node<'_, '_>) -> Option<Expr> {
+fn read_definition(component: roxmltree::Node<'_, '_>, allow_target_context: bool) -> Option<Expr> {
     let structure = component
         .children()
         .find(|node| node.has_tag_name("structure"))?;
@@ -156,14 +302,38 @@ fn read_definition(component: roxmltree::Node<'_, '_>) -> Option<Expr> {
         .collect::<Vec<_>>();
     let inputs = functions
         .iter()
-        .filter(|function| function.library == "core" && function.kind == 6)
+        .enumerate()
+        .filter(|(_, function)| function.library == "core" && function.kind == 6)
         .collect::<Vec<_>>();
-    let [input] = inputs.as_slice() else {
+    let mut parameters = BTreeMap::new();
+    for (index, input) in &inputs {
+        let [output] = input.outputs.as_slice() else {
+            return None;
+        };
+        let component = children
+            .children()
+            .filter(|node| node.has_tag_name("component"))
+            .nth(*index)?;
+        let parameter_name = component
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("parameter") && node.attribute("usageKind") == Some("input")
+            })
+            .and_then(|parameter| parameter.attribute("name"))
+            .or_else(|| component.attribute("name"))
+            .unwrap_or_default();
+        let expression = if allow_target_context && parameter_name == "node_fractionDigits" {
+            Expr::FractionDigits
+        } else if inputs.len() == 1 || parameter_name == "raw_value" {
+            Expr::Input
+        } else {
+            return None;
+        };
+        parameters.insert(*output, expression);
+    }
+    if parameters.is_empty() {
         return None;
-    };
-    let [input_output] = input.outputs.as_slice() else {
-        return None;
-    };
+    }
     let outputs = functions
         .iter()
         .filter(|function| function.library == "core" && function.kind == 7)
@@ -189,7 +359,7 @@ fn read_definition(component: roxmltree::Node<'_, '_>) -> Option<Expr> {
         .collect::<BTreeMap<_, _>>();
     expression(
         feed,
-        *input_output,
+        &parameters,
         &functions,
         &by_output,
         &edge_from,
@@ -200,15 +370,15 @@ fn read_definition(component: roxmltree::Node<'_, '_>) -> Option<Expr> {
 
 fn expression(
     feed: u32,
-    input: u32,
+    parameters: &BTreeMap<u32, Expr>,
     functions: &[FnComponent],
     by_output: &BTreeMap<u32, usize>,
     edge_from: &BTreeMap<u32, u32>,
     active: &mut BTreeSet<u32>,
     depth: usize,
 ) -> Option<Expr> {
-    if feed == input {
-        return Some(Expr::Input);
+    if let Some(parameter) = parameters.get(&feed) {
+        return Some(parameter.clone());
     }
     if depth >= MAX_EXPRESSION_DEPTH || !active.insert(feed) {
         return None;
@@ -226,7 +396,7 @@ fn expression(
                 .map_or(Some(Expr::Const(Value::Null)), |feed| {
                     expression(
                         feed,
-                        input,
+                        parameters,
                         functions,
                         by_output,
                         edge_from,
@@ -316,23 +486,49 @@ impl GraphBuilder<'_> {
         };
         for rule in rules {
             if rule.expected.is_none_or(|expected| expected == ty) {
-                input = instantiate(&rule.expression, input, self);
+                input = instantiate(&rule.expression, input, ty, None, self);
             }
         }
         input
     }
 }
 
-fn instantiate(expression: &Expr, input: NodeId, builder: &mut GraphBuilder<'_>) -> NodeId {
+fn instantiate(
+    expression: &Expr,
+    input: NodeId,
+    ty: ScalarType,
+    fraction_digits: Option<u32>,
+    builder: &mut GraphBuilder<'_>,
+) -> NodeId {
     match expression {
         Expr::Input => input,
+        Expr::FractionDigits => builder.alloc(Node::Const {
+            value: fraction_digits
+                .map(i64::from)
+                .map(Value::Int)
+                .unwrap_or(Value::Null),
+        }),
         Expr::Const(value) => builder.alloc(Node::Const {
             value: value.clone(),
         }),
+        Expr::Default(value) => {
+            let fallback = builder.alloc(Node::Const {
+                value: typed_default(value, ty),
+            });
+            let condition = builder.alloc(Node::Call {
+                function: "exists".to_string(),
+                args: vec![input],
+            });
+            builder.alloc(Node::If {
+                condition,
+                then: input,
+                else_: fallback,
+            })
+        }
         Expr::Call { function, args } => {
             let args = args
                 .iter()
-                .map(|argument| instantiate(argument, input, builder))
+                .map(|argument| instantiate(argument, input, ty, fraction_digits, builder))
                 .collect();
             builder.alloc(Node::Call {
                 function: function.clone(),
@@ -344,14 +540,56 @@ fn instantiate(expression: &Expr, input: NodeId, builder: &mut GraphBuilder<'_>)
             then,
             else_,
         } => {
-            let condition = instantiate(condition, input, builder);
-            let then = instantiate(then, input, builder);
-            let else_ = instantiate(else_, input, builder);
+            let condition = instantiate(condition, input, ty, fraction_digits, builder);
+            let then = instantiate(then, input, ty, fraction_digits, builder);
+            let else_ = instantiate(else_, input, ty, fraction_digits, builder);
             builder.alloc(Node::If {
                 condition,
                 then,
                 else_,
             })
         }
+        Expr::ValueMap {
+            input: expression_input,
+            input_type,
+            table,
+            default,
+        } => {
+            let input = instantiate(expression_input, input, ty, fraction_digits, builder);
+            builder.alloc(Node::ValueMap {
+                input,
+                input_type: *input_type,
+                table: table.clone(),
+                default: default.clone(),
+            })
+        }
+    }
+}
+
+pub(super) fn instantiate_target(
+    expression: &Expr,
+    input: NodeId,
+    ty: ScalarType,
+    fraction_digits: Option<u32>,
+    builder: &mut GraphBuilder<'_>,
+) -> NodeId {
+    instantiate(expression, input, ty, fraction_digits, builder)
+}
+
+fn typed_default(value: &str, ty: ScalarType) -> Value {
+    match ty {
+        ScalarType::String => Value::String(value.to_string()),
+        ScalarType::Bool => match value {
+            "true" | "1" => Value::Bool(true),
+            "false" | "0" => Value::Bool(false),
+            _ => Value::Null,
+        },
+        ScalarType::Int => value.parse().map(Value::Int).unwrap_or(Value::Null),
+        ScalarType::Float => value
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(Value::Float)
+            .unwrap_or(Value::Null),
     }
 }

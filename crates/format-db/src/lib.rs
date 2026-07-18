@@ -157,17 +157,53 @@ pub fn introspect(db_path: &Path, table: &str) -> Result<SchemaNode, DbFormatErr
         .query_map([], |row| {
             let name: String = row.get("name")?;
             let decl_type: String = row.get("type")?;
-            Ok((name, decl_type))
+            let primary_key_position: i64 = row.get("pk")?;
+            Ok((name, decl_type, primary_key_position))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     if columns.is_empty() {
         return Err(DbFormatError::NoSuchTable(table.to_string()));
     }
+    let rowid_primary_key = rowid_primary_key(&conn, &canonical, &columns)?;
     let children = columns
         .into_iter()
-        .map(|(name, decl_type)| SchemaNode::scalar(name, map_decl_type(&decl_type)))
+        .map(|(name, decl_type, _)| {
+            let mut schema = SchemaNode::scalar(name.clone(), map_decl_type(&decl_type));
+            if rowid_primary_key.as_deref() == Some(name.as_str()) {
+                schema.value_generation = Some(ValueGeneration::MaxNumber);
+            }
+            schema
+        })
         .collect();
     Ok(SchemaNode::group(canonical, children).repeating())
+}
+
+fn rowid_primary_key(
+    conn: &Connection,
+    table: &str,
+    columns: &[(String, String, i64)],
+) -> Result<Option<String>, DbFormatError> {
+    let primary_keys = columns
+        .iter()
+        .filter(|(_, _, position)| *position > 0)
+        .collect::<Vec<_>>();
+    let [primary_key] = primary_keys.as_slice() else {
+        return Ok(None);
+    };
+    if !primary_key.1.trim().eq_ignore_ascii_case("INTEGER")
+        || conn
+            .prepare(&format!("SELECT rowid FROM {} LIMIT 0", quote(table)))
+            .is_err()
+    {
+        return Ok(None);
+    }
+    let mut indexes = conn.prepare(&format!("PRAGMA index_list({})", quote(table)))?;
+    let has_primary_key_index = indexes
+        .query_map([], |row| row.get::<_, String>("origin"))?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .any(|origin| origin == "pk");
+    Ok((!has_primary_key_index).then(|| primary_key.0.clone()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -717,6 +753,53 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert_eq!(introspected, schema());
         assert!(matches!(missing, DbFormatError::NoSuchTable(t) if t == "nope"));
+    }
+
+    #[test]
+    fn introspect_marks_only_implicit_integer_rowid_primary_keys_as_generated() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_primary_key_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE generated (Id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT); \
+             CREATE TABLE explicit (A INTEGER, B INTEGER, PRIMARY KEY (A, B)); \
+             CREATE TABLE descending (Id INTEGER PRIMARY KEY DESC, Name TEXT);",
+        )
+        .unwrap();
+        drop(conn);
+
+        let generated = introspect(&path, "generated").unwrap();
+        let explicit = introspect(&path, "explicit").unwrap();
+        let descending = introspect(&path, "descending").unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(
+            generated
+                .child("Id")
+                .and_then(|column| column.value_generation),
+            Some(ValueGeneration::MaxNumber)
+        );
+        let SchemaKind::Group {
+            children: explicit_columns,
+            ..
+        } = &explicit.kind
+        else {
+            panic!("introspection should return a group schema");
+        };
+        assert!(
+            explicit_columns
+                .iter()
+                .all(|column| column.value_generation.is_none())
+        );
+        assert_eq!(
+            descending
+                .child("Id")
+                .and_then(|column| column.value_generation),
+            None
+        );
     }
 
     #[test]

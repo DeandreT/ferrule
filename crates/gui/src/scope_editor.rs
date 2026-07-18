@@ -420,7 +420,9 @@ pub fn show_scope_editor(
             });
             return;
         }
-        ScopeIteration::None | ScopeIteration::Source(_) => {
+        ScopeIteration::None
+        | ScopeIteration::Source(_)
+        | ScopeIteration::DynamicDocuments { .. } => {
             ui.horizontal(|ui| {
                 ui.label("source path:");
                 let mut has_source = scope.source().is_some();
@@ -435,6 +437,14 @@ pub fn show_scope_editor(
                 });
             }
         }
+    }
+
+    if let Some(mut output_path) = scope.output_path() {
+        ui.horizontal(|ui| {
+            ui.label("output path node:");
+            node_picker(ui, "scope_output_path_node", &mut output_path, graph);
+        });
+        scope.set_output_path(Some(output_path));
     }
 
     if scope_iterates(scope) {

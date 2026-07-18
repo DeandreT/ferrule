@@ -120,7 +120,7 @@ fn unruled_rows_fold_wrapped_lines_around_a_trailing_column() {
             bottom: 100.0,
         },
         glyphs: vec![
-            glyph("Long", 10.0, 5.0, 34.0, 15.0),
+            glyph("Long ", 10.0, 5.0, 34.0, 15.0),
             glyph("A", 180.0, 12.0, 190.0, 22.0),
             glyph("title", 10.0, 18.0, 36.0, 28.0),
             glyph("Second", 10.0, 45.0, 48.0, 55.0),
@@ -169,7 +169,7 @@ fn unruled_rows_fold_wrapped_lines_around_a_trailing_column() {
     assert_eq!(rows.len(), 2);
     assert_eq!(
         rows[0].field("Title").and_then(Instance::as_scalar),
-        Some(&Value::String("Long title".into()))
+        Some(&Value::String("Long\ntitle".into()))
     );
     assert_eq!(
         rows[1].field("Key").and_then(Instance::as_scalar),

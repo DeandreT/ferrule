@@ -9,6 +9,7 @@ use egui_snarl::{InPin, InPinId, OutPin, OutPinId, Snarl};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
     AggregateOp, Binding, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
+    TabularBoundaryKind,
 };
 use web_demo::browser_download::download_utf8_text;
 use web_demo::project_document::{self, ProjectDocumentError};
@@ -125,6 +126,7 @@ fn demo_project() -> Project {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -143,6 +145,7 @@ fn demo_project() -> Project {
                 group_into_blocks: None,
                 sort_by: None,
                 sort_descending: false,
+                sort_then_by: Vec::new(),
                 sort_filter_order: Default::default(),
                 take: None,
                 iteration_output: Default::default(),
@@ -868,6 +871,8 @@ fn boundary_format(project: &Project, side: DataSide, current: DataFormat) -> Da
         DataFormat::Xml
     } else if options.json_document || options.json_lines {
         DataFormat::Json
+    } else if options.tabular_kind == Some(TabularBoundaryKind::Csv) {
+        DataFormat::Csv
     } else if current == DataFormat::Xbrl {
         DataFormat::Xml
     } else {
@@ -991,6 +996,13 @@ mod tests {
         assert_eq!(
             boundary_format(&project, DataSide::Target, DataFormat::Json),
             DataFormat::Xml
+        );
+
+        project.target_options.xml_document = false;
+        project.target_options.tabular_kind = Some(TabularBoundaryKind::Csv);
+        assert_eq!(
+            boundary_format(&project, DataSide::Target, DataFormat::Xml),
+            DataFormat::Csv
         );
     }
 }

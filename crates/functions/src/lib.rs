@@ -108,6 +108,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
 
 const INTERNAL_NAMES: &[&str] = &[
     "json_serialize_object",
+    "json_parse_field",
     "flextext_parse_field",
     "delay_passthrough",
 ];
@@ -184,6 +185,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "is_xml_nil" => is_xml_nil(args),
         "isbn10_to_isbn13" => isbn10_to_isbn13(args),
         "json_serialize_object" => json::serialize_object(args),
+        "json_parse_field" => json::parse_field(args),
         "flextext_parse_field" => flextext::parse_field(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
@@ -1122,7 +1124,7 @@ fn iso_days_in_month(year: &str, month: u32) -> u32 {
 
 fn substitute_missing(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
-        [Value::Null, replacement] => Ok(replacement.clone()),
+        [Value::Null | Value::XmlNil(_), replacement] => Ok(replacement.clone()),
         [value, _] => Ok(value.clone()),
         _ => Err(FunctionError::ArityMismatch {
             function: "substitute_missing",
@@ -1154,6 +1156,9 @@ fn comparison(
     matches: impl Fn(std::cmp::Ordering) -> bool,
 ) -> Result<Value, FunctionError> {
     match args {
+        [Value::Null | Value::XmlNil(_), _] | [_, Value::Null | Value::XmlNil(_)] => {
+            Ok(Value::Bool(false))
+        }
         [a, b] => match value_ordering(a, b) {
             Some(ordering) => Ok(Value::Bool(matches(ordering))),
             None => Err(FunctionError::TypeMismatch {
@@ -1375,6 +1380,25 @@ mod tests {
             call("less_than", &[Value::Int(4), Value::String("12".into())]).unwrap(),
             Value::Bool(false)
         );
+        for name in [
+            "equal",
+            "not_equal",
+            "less_than",
+            "greater_than",
+            "less_or_equal",
+            "greater_or_equal",
+        ] {
+            assert_eq!(
+                call(name, &[Value::Null, Value::Int(0)]).unwrap(),
+                Value::Bool(false),
+                "{name}"
+            );
+            assert_eq!(
+                call(name, &[Value::Int(0), Value::xml_nil()]).unwrap(),
+                Value::Bool(false),
+                "{name}"
+            );
+        }
     }
 
     #[test]
@@ -2077,7 +2101,15 @@ mod tests {
     }
 
     #[test]
-    fn substitute_missing_only_replaces_absent_values() {
+    fn substitute_missing_replaces_absent_and_xml_nil_values() {
+        assert_eq!(
+            call(
+                "substitute_missing",
+                &[Value::xml_nil(), Value::String("fallback".into())]
+            )
+            .unwrap(),
+            Value::String("fallback".into())
+        );
         assert_eq!(
             call(
                 "substitute_missing",

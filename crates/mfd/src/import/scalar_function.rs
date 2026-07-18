@@ -127,11 +127,7 @@ impl GraphBuilder<'_> {
             ("set-xsi-nil", _) => Node::Const {
                 value: Value::xml_nil(),
             },
-            ("if-else", _) => Node::If {
-                condition: input_or_null(self, 0),
-                then: input_or_null(self, 1),
-                else_: input_or_null(self, 2),
-            },
+            ("if-else", _) => self.if_else_node(&input_ids),
             ("value-map", _) => {
                 let value_map = fc.valuemap.clone().unwrap_or_default();
                 Node::ValueMap {
@@ -178,6 +174,39 @@ impl GraphBuilder<'_> {
         };
         self.graph.nodes.insert(id, node);
         id
+    }
+
+    fn if_else_node(&mut self, inputs: &[Option<NodeId>]) -> Node {
+        let paired_len = inputs.len() - inputs.len() % 2;
+        if paired_len < 2 {
+            return Node::Const { value: Value::Null };
+        }
+        let input_or_null = |builder: &mut Self, index: usize| {
+            inputs
+                .get(index)
+                .copied()
+                .flatten()
+                .unwrap_or_else(|| builder.const_null())
+        };
+        let mut otherwise = if inputs.len() % 2 == 1 {
+            input_or_null(self, inputs.len() - 1)
+        } else {
+            self.const_null()
+        };
+        for condition in (2..paired_len).step_by(2).rev() {
+            let then = input_or_null(self, condition + 1);
+            let condition = input_or_null(self, condition);
+            otherwise = self.alloc(Node::If {
+                condition,
+                then,
+                else_: otherwise,
+            });
+        }
+        Node::If {
+            condition: input_or_null(self, 0),
+            then: input_or_null(self, 1),
+            else_: otherwise,
+        }
     }
 
     fn source_collection_exists_node(&mut self, idx: usize) -> Option<Node> {

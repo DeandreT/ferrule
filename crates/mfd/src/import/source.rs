@@ -347,6 +347,37 @@ impl GraphBuilder<'_> {
         })
     }
 
+    /// Makes a collection relative to the repetition frame that is actually
+    /// active where an expression is consumed. Other target branches may
+    /// frame deeper repetitions globally, but those frames must not shorten
+    /// a sibling scalar aggregate's path.
+    pub(super) fn collection_path_at_anchor(
+        &self,
+        source: usize,
+        collection: &[String],
+        active_anchor: &[String],
+    ) -> Option<Vec<String>> {
+        let schema = &self.sources.get(source)?.schema;
+        let Some((last, prefix)) = collection.split_last() else {
+            return Some(self.context_prefix(source, &[]));
+        };
+        let mut suffix_start = 0;
+        let mut node = schema;
+        for (index, segment) in prefix.iter().enumerate() {
+            let Some(child) = node.child(segment) else {
+                break;
+            };
+            let frame = self.context_prefix(source, &prefix[..=index]);
+            if child.repeating && active_anchor.starts_with(&frame) {
+                suffix_start = index + 1;
+            }
+            node = child;
+        }
+        let mut relative = collection[suffix_start..prefix.len()].to_vec();
+        relative.push(last.clone());
+        Some(relative)
+    }
+
     pub(super) fn note_framed_prefixes(&mut self, source_path: &SourcePath) {
         let Some(source) = self.sources.get(source_path.source) else {
             return;
@@ -525,6 +556,7 @@ fn dependency_collection(component: &SchemaComponent, path: &[String]) -> Option
         return Some(collection);
     }
     let externally_repeated = component.schema.repeating
+        || component.options.local_xml_file_set
         || component.format == ComponentFormat::Csv
         || component.format == ComponentFormat::Xlsx && component.options.xlsx_composite.is_none();
     externally_repeated.then(Vec::new)
@@ -571,6 +603,7 @@ mod tests {
             is_source: true,
             is_default_output: false,
             is_variable: false,
+            is_pass_through: false,
             compute_when_key: None,
             ports: BTreeMap::from([(port.0, port.1.into_iter().map(str::to_string).collect())]),
             input_ancestors: BTreeMap::new(),
@@ -589,9 +622,10 @@ mod tests {
             inputs: vec![Some(10)],
             outputs: vec![11],
             output_pins: vec![Some(11)],
+            input_type: None,
             constant: None,
             valuemap: None,
-            sort_descending: None,
+            sort_directions: None,
             db_where: None,
             recursive: None,
         }
@@ -756,9 +790,10 @@ mod tests {
             inputs: vec![Some(80)],
             outputs: vec![81],
             output_pins: vec![Some(81)],
+            input_type: None,
             constant: None,
             valuemap: None,
-            sort_descending: None,
+            sort_directions: None,
             db_where: None,
             recursive: None,
         };
@@ -833,7 +868,7 @@ mod tests {
         let mut edge_from = BTreeMap::new();
         let mut components = Vec::new();
         let mut upstream = 1;
-        for (index, (library, name, kind, sort_descending)) in controls.into_iter().enumerate() {
+        for (index, (library, name, kind, sort_directions)) in controls.into_iter().enumerate() {
             let input = 100 + index as u32;
             let output = 200 + index as u32;
             edge_from.insert(input, upstream);
@@ -844,9 +879,10 @@ mod tests {
                 inputs: vec![Some(input)],
                 outputs: vec![output],
                 output_pins: vec![Some(output)],
+                input_type: None,
                 constant: None,
                 valuemap: None,
-                sort_descending,
+                sort_directions: sort_directions.map(|descending| vec![descending]),
                 db_where: None,
                 recursive: None,
             });

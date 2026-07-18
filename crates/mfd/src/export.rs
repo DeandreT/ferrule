@@ -60,6 +60,7 @@ struct TargetExport<'a> {
     component_uid: u32,
     sibling_suffix: String,
     default_output: bool,
+    document_path_port: Option<u32>,
 }
 
 struct TargetSpec<'a> {
@@ -103,6 +104,7 @@ impl<'a> TargetExport<'a> {
         let component_uid = u32::try_from(sources.len() + index + 2).map_err(|_| {
             MfdError::Unsupported("too many target components for .mfd export".to_string())
         })?;
+        let document_path_port = spec.root.output_path().map(|_| keys.next());
         let copy_document_root = spec.root.construction == ScopeConstruction::CopyCurrentSource;
         let force_root_port = copy_document_root
             || recursive::requires_root_port(spec.root)
@@ -139,6 +141,7 @@ impl<'a> TargetExport<'a> {
                 format!("target-{}", index + 1)
             },
             default_output: index == 0,
+            document_path_port,
         })
     }
 }
@@ -231,6 +234,17 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         &mut components,
         &mut edges,
     )?;
+    for target in &targets {
+        let (Some(node), Some(to)) = (target.root.output_path(), target.document_path_port) else {
+            continue;
+        };
+        let from = node_out_key.get(&node).copied().ok_or_else(|| {
+            MfdError::Unsupported(format!(
+                "dynamic target path references unexported node {node}"
+            ))
+        })?;
+        edges.push((from, to));
+    }
     for source in sources.iter() {
         let Some(node) = source.dynamic_path_node else {
             continue;
@@ -540,7 +554,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 &target.sibling_suffix,
                 target.default_output,
                 &used_ports,
-                None,
+                target.document_path_port,
             )?
         };
         out.push_str(&rendered.xml);
@@ -610,7 +624,7 @@ fn pair_mixed_databases(
                     (!claimed_targets.contains(&target_index)
                         && target.format == SideFormat::Db
                         && source.path == target.path
-                        && source.schema == target.schema
+                        && database_target_view_compatible(source.schema, target.schema)
                         && source.options == target.options)
                         .then_some(target_index)
                 })?;
@@ -618,4 +632,29 @@ fn pair_mixed_databases(
             Some((source_index, target_index))
         })
         .collect()
+}
+
+fn database_target_view_compatible(source: &ir::SchemaNode, target: &ir::SchemaNode) -> bool {
+    if source == target {
+        return true;
+    }
+    let Some(source) = schema::db_layout(source) else {
+        return false;
+    };
+    let Some(target) = schema::db_layout(target) else {
+        return false;
+    };
+    let source_tables = match source {
+        schema::DbLayout::Table(table) => vec![table],
+        schema::DbLayout::Database(tables) => tables.iter().collect(),
+    };
+    let target_tables = match target {
+        schema::DbLayout::Table(table) => vec![table],
+        schema::DbLayout::Database(tables) => tables.iter().collect(),
+    };
+    target_tables.iter().all(|target| {
+        source_tables
+            .iter()
+            .any(|source| source.name == target.name && source.kind == target.kind)
+    })
 }

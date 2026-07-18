@@ -108,6 +108,7 @@ pub(super) fn read(
         is_source: true,
         is_default_output: is_default_output(component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
