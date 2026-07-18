@@ -785,3 +785,57 @@ fn tokenizer_scalar_use_emits_an_actionable_warning() {
         imported.warnings
     );
 }
+
+#[test]
+fn generated_sequence_item_at_imports_executes_and_roundtrips() {
+    let imported = mfd::import(&fixture("generated-item-at.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            Node::SequenceItemAt {
+                sequence: SequenceExpr::TokenizeRegex { .. },
+                ..
+            }
+        )
+    }));
+
+    let source =
+        format_xml::read(&fixture("tokenize-regexp.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(scalar(&target, "Value"), Value::String("beta".into()));
+
+    let dir = TempDir::new("generated_item_at");
+    let exported = dir.0.join("mapping.mfd");
+    let warnings = mfd::export(&imported.project, &exported).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&exported).unwrap();
+    let document = roxmltree::Document::parse(&xml).unwrap();
+    let item_at = document
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("name") == Some("item-at"))
+        .unwrap();
+    let positions = item_at
+        .children()
+        .find(|node| node.has_tag_name("sources"))
+        .unwrap()
+        .children()
+        .filter(|node| node.has_tag_name("datapoint"))
+        .map(|node| node.attribute("pos"))
+        .collect::<Vec<_>>();
+    assert_eq!(positions, [Some("0"), Some("1")]);
+
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert!(
+        reimported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::SequenceItemAt { .. }))
+    );
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), target);
+}

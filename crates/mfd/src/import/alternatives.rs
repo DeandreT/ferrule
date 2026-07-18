@@ -184,6 +184,7 @@ fn merge_alternatives_at(
                 name: base_name.clone(),
                 members: children.iter().map(|child| child.name.clone()).collect(),
                 required: Vec::new(),
+                constraints: Vec::new(),
             });
         }
         for (type_name, _, derived_children) in imported {
@@ -216,6 +217,7 @@ fn merge_alternatives_at(
                     name: type_name,
                     members,
                     required: Vec::new(),
+                    constraints: Vec::new(),
                 }),
             }
         }

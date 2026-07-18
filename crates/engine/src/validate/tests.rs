@@ -341,6 +341,7 @@ fn rejects_inconsistent_deserialized_group_alternatives() {
         name: "broken".into(),
         members: vec!["missing".into()],
         required: vec!["missing".into()],
+        constraints: Vec::new(),
     }];
 
     let issues = validate(&project);

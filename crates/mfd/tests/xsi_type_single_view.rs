@@ -30,7 +30,7 @@ fn write(path: &Path, contents: &str) {
 }
 
 #[test]
-fn one_conditioned_derived_view_extends_its_base_schema_and_executes() {
+fn conditioned_transitive_derived_view_executes_and_roundtrips() {
     let directory = TempDir::new();
     write(
         &directory.0.join("source.xsd"),
@@ -40,13 +40,16 @@ fn one_conditioned_derived_view_extends_its_base_schema_and_executes() {
           <xs:complexType name="Address"><xs:sequence>
             <xs:element name="name" type="xs:string"/>
           </xs:sequence></xs:complexType>
+          <xs:complexType name="RegionalAddress" abstract="true"><xs:complexContent>
+            <xs:extension base="t:Address"/>
+          </xs:complexContent></xs:complexType>
           <xs:complexType name="EuropeanAddress"><xs:complexContent>
-            <xs:extension base="t:Address"><xs:sequence>
+            <xs:extension base="t:RegionalAddress"><xs:sequence>
               <xs:element name="postcode" type="xs:string"/>
             </xs:sequence></xs:extension>
           </xs:complexContent></xs:complexType>
           <xs:complexType name="AmericanAddress"><xs:complexContent>
-            <xs:extension base="t:Address"><xs:sequence>
+            <xs:extension base="t:RegionalAddress"><xs:sequence>
               <xs:element name="state" type="xs:string"/>
             </xs:sequence></xs:extension>
           </xs:complexContent></xs:complexType>
@@ -121,15 +124,12 @@ fn one_conditioned_derived_view_extends_its_base_schema_and_executes() {
         ))
     );
 
-    let source = format_xml::from_str(
-        r#"<Order xmlns="urn:ferrule:address"
+    let european_xml = r#"<Order xmlns="urn:ferrule:address"
              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
              xmlns:t="urn:ferrule:address">
           <shipTo xsi:type="t:EuropeanAddress"><name>Ada</name><postcode>AB12</postcode></shipTo>
-        </Order>"#,
-        &imported.project.source,
-    )
-    .unwrap();
+        </Order>"#;
+    let source = format_xml::from_str(european_xml, &imported.project.source).unwrap();
     assert_eq!(
         source
             .field("shipTo")
@@ -140,6 +140,36 @@ fn one_conditioned_derived_view_extends_its_base_schema_and_executes() {
         ))
     );
     let target = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(
+        target.field("Postcode").and_then(Instance::as_scalar),
+        Some(&Value::String("AB12".into()))
+    );
+
+    let exported_path = directory.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &exported_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let roundtripped = mfd::import(&exported_path).unwrap();
+    assert!(
+        roundtripped.warnings.is_empty(),
+        "{:?}",
+        roundtripped.warnings
+    );
+    assert!(
+        engine::validate(&roundtripped.project).is_empty(),
+        "{:?}",
+        engine::validate(&roundtripped.project)
+    );
+    assert_eq!(
+        roundtripped
+            .project
+            .source
+            .child("shipTo")
+            .unwrap()
+            .alternatives(),
+        address.alternatives()
+    );
+    let source = format_xml::from_str(european_xml, &roundtripped.project.source).unwrap();
+    let target = engine::run(&roundtripped.project, &source).unwrap();
     assert_eq!(
         target.field("Postcode").and_then(Instance::as_scalar),
         Some(&Value::String("AB12".into()))

@@ -1675,6 +1675,40 @@ impl GraphBuilder<'_> {
 
     fn sequence_expr(&mut self, idx: usize) -> Option<SequenceExpr> {
         let item = self.sequence_item(idx);
+        if let Some(function::RecursiveComponent::Collect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+        }) = self
+            .fn_components
+            .get(idx)
+            .and_then(|component| component.recursive.clone())
+        {
+            let source = self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.source_abs_path(feed))?;
+            if self.context_path(&source) != collection {
+                return None;
+            }
+            let prefix = self
+                .input_feed(idx, 1)
+                .and_then(|feed| self.sequence_scalar_input(feed))?;
+            let separator = self
+                .input_feed(idx, 2)
+                .and_then(|feed| self.sequence_scalar_input(feed))?;
+            return Some(SequenceExpr::RecursiveCollect {
+                collection,
+                children,
+                descent_value,
+                values,
+                value,
+                prefix,
+                separator,
+                item,
+            });
+        }
         Some(match self.fn_components[idx].name.as_str() {
             "tokenize" => {
                 let input = self

@@ -75,6 +75,12 @@ impl GraphBuilder<'_> {
         if arg_feed.is_some_and(|feed| self.join_dependency_any(feed)) {
             return Err("aggregate argument depends on a joined tuple".to_string());
         }
+        if two_pin_item_at
+            && let Some(node) = arg_feed
+                .and_then(|index_feed| self.sequence_item_at_node(sequence_feed, index_feed))
+        {
+            return Ok(Some(node));
+        }
         let arg = arg_feed.and_then(|feed| self.value_node(feed));
 
         if let Some((join, plan, expression)) = self.join_aggregate_sequence(sequence_feed)? {

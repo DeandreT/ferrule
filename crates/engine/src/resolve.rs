@@ -182,7 +182,7 @@ pub(crate) fn source_document_path<'a>(
                 instance
                     .as_document_set()?
                     .first()
-                    .map(ir::DocumentMember::path)
+                    .map(ir::DocumentMember::source_path)
             })
         })
 }

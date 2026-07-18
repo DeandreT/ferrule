@@ -248,6 +248,213 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
 }
 
 #[test]
+fn imports_transitive_derived_types_through_an_abstract_intermediate() {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_transitive_alternatives_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let root = dir.join("orders.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:o="urn:ferrule:transitive" targetNamespace="urn:ferrule:transitive">
+          <xs:include schemaLocation="address-types.xsd"/>
+          <xs:element name="Order"><xs:complexType><xs:sequence>
+            <xs:element name="shipTo" type="o:Address"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("address-types.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:o="urn:ferrule:transitive" targetNamespace="urn:ferrule:transitive">
+          <xs:complexType name="Address" abstract="true"><xs:sequence>
+            <xs:element name="name" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="RegionalAddress" abstract="true"><xs:complexContent>
+            <xs:extension base="o:Address"><xs:sequence>
+              <xs:element name="region" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:complexType name="DomesticAddress"><xs:complexContent>
+            <xs:extension base="o:RegionalAddress"><xs:sequence>
+              <xs:element name="state" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:complexType name="InternationalAddress"><xs:complexContent>
+            <xs:extension base="o:RegionalAddress"><xs:sequence>
+              <xs:element name="postcode" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&root, Some("{urn:ferrule:transitive}Order")).unwrap();
+    let ship_to = schema.child("shipTo").unwrap();
+    assert_eq!(
+        ship_to
+            .alternatives()
+            .iter()
+            .map(|alternative| alternative.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "{urn:ferrule:transitive}DomesticAddress",
+            "{urn:ferrule:transitive}InternationalAddress",
+        ]
+    );
+    assert!(ship_to.child("region").is_some());
+    assert!(ship_to.child("state").is_some());
+    assert!(ship_to.child("postcode").is_some());
+
+    let domestic = from_str(
+        r#"<Order xmlns="urn:ferrule:transitive"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:o="urn:ferrule:transitive">
+          <shipTo xsi:type="o:DomesticAddress"><name>Ada</name><region>west</region><state>WA</state></shipTo>
+        </Order>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        domestic
+            .field("shipTo")
+            .and_then(|address| address.field(ir::XML_TYPE_FIELD))
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String(
+            "{urn:ferrule:transitive}DomesticAddress".into()
+        ))
+    );
+    assert!(matches!(
+        from_str(
+            r#"<Order xmlns="urn:ferrule:transitive"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xmlns:o="urn:ferrule:transitive">
+              <shipTo xsi:type="o:DomesticAddress"><name>Ada</name><region>west</region><postcode>AB12</postcode></shipTo>
+            </Order>"#,
+            &schema,
+        ),
+        Err(crate::XmlFormatError::NoMatchingAlternative { .. })
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn cyclic_type_derivations_fail_closed_without_recursing_forever() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_cyclic_derivations_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:cycle" targetNamespace="urn:ferrule:cycle">
+          <xs:complexType name="A"><xs:complexContent>
+            <xs:extension base="t:B"><xs:sequence>
+              <xs:element name="AValue" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:complexType name="B"><xs:complexContent>
+            <xs:extension base="t:A"><xs:sequence>
+              <xs:element name="BValue" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Root" type="t:A"/>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("{urn:ferrule:cycle}Root")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(schema.alternatives().is_empty());
+}
+
+#[test]
+fn conflicting_derived_type_identities_leave_the_base_view_unchanged() {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_conflicting_derivations_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:conflict" targetNamespace="urn:ferrule:conflict">
+          <xs:include schemaLocation="first.xsd"/>
+          <xs:include schemaLocation="second.xsd"/>
+          <xs:complexType name="Base"><xs:sequence>
+            <xs:element name="Value" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:element name="Root" type="t:Base"/>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    for (file, field) in [("first.xsd", "First"), ("second.xsd", "Second")] {
+        std::fs::write(
+            dir.join(file),
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                        xmlns:t="urn:ferrule:conflict" targetNamespace="urn:ferrule:conflict">
+                  <xs:complexType name="Derived"><xs:complexContent>
+                    <xs:extension base="t:Base"><xs:sequence>
+                      <xs:element name="{field}" type="xs:string"/>
+                    </xs:sequence></xs:extension>
+                  </xs:complexContent></xs:complexType>
+                </xs:schema>"#
+            ),
+        )
+        .unwrap();
+    }
+
+    let schema = import_root(&root, Some("{urn:ferrule:conflict}Root")).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert!(schema.alternatives().is_empty());
+    assert!(schema.child("Value").is_some());
+    assert!(schema.child("First").is_none());
+    assert!(schema.child("Second").is_none());
+}
+
+#[test]
+fn bounds_derived_type_discovery_with_the_schema_materialization_limit() {
+    use std::fmt::Write as _;
+
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_bounded_derivations_{}.xsd",
+        std::process::id()
+    ));
+    let mut xsd = String::from(
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:complexType name="Base"><xs:sequence>
+            <xs:element name="Value" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+"#,
+    );
+    for index in 0..=MAX_MATERIALIZED_SCHEMA_ELEMENTS {
+        writeln!(
+            xsd,
+            r#"  <xs:complexType name="Derived{index}"><xs:complexContent><xs:extension base="Base"/></xs:complexContent></xs:complexType>"#
+        )
+        .unwrap();
+    }
+    xsd.push_str("  <xs:element name=\"Root\" type=\"Base\"/>\n</xs:schema>");
+    std::fs::write(&path, xsd).unwrap();
+
+    let result = import_root(&path, Some("Root"));
+    std::fs::remove_file(path).unwrap();
+    assert!(matches!(
+        result,
+        Err(XmlFormatError::SchemaMaterializationLimit {
+            limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS
+        })
+    ));
+}
+
+#[test]
 fn imports_nested_repeating_groups() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("ferrule_xsd_test_{}.xsd", std::process::id()));

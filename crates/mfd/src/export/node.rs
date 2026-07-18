@@ -51,7 +51,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut sequences = Vec::new();
     collect_scope_sequences(&project.root, &mut sequences);
     for node in project.graph.nodes.values() {
-        if let Node::SequenceExists { sequence, .. } = node {
+        if let Node::SequenceExists { sequence, .. } | Node::SequenceItemAt { sequence, .. } = node
+        {
             sequences.push(sequence);
         }
     }
@@ -490,6 +491,29 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     filter_predicate,
                 });
             }
+            Node::SequenceItemAt { sequence, .. } => {
+                let Some(&sequence_output) = node_out_key.get(&sequence.item()) else {
+                    warnings.push(format!(
+                        "sequence item-at node {id} references an unexported sequence item; skipped"
+                    ));
+                    continue;
+                };
+                let sequence_input = keys.next();
+                let index_input = keys.next();
+                let output = keys.next();
+                node_out_key.insert(id, output);
+                fn_inputs.insert(id, vec![index_input]);
+                edges.push((sequence_output, sequence_input));
+                render_sequence_component(
+                    "item-at",
+                    "core",
+                    &[sequence_input, index_input],
+                    output,
+                    None,
+                    uid,
+                    components,
+                );
+            }
             Node::Aggregate {
                 function,
                 collection,
@@ -878,6 +902,7 @@ fn connect_inputs(
                 expression, arg, ..
             } => expression.iter().chain(arg).copied().collect(),
             Node::SequenceExists { .. } => continue,
+            Node::SequenceItemAt { index, .. } => vec![*index],
             _ => continue,
         };
         for (index, arg) in args.iter().enumerate() {

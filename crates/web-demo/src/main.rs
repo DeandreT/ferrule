@@ -276,6 +276,12 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
             .map(Some)
             .chain([Some(*predicate)])
             .collect(),
+        Node::SequenceItemAt { sequence, index } => sequence
+            .inputs()
+            .into_iter()
+            .map(Some)
+            .chain([Some(*index)])
+            .collect(),
         Node::Aggregate {
             expression, arg, ..
         }
@@ -317,6 +323,9 @@ fn node_title(node: &Node) -> String {
         }
         Node::SequenceExists { sequence, .. } => {
             format!("exists · {}", sequence_label(sequence))
+        }
+        Node::SequenceItemAt { sequence, .. } => {
+            format!("item-at · {}", sequence_label(sequence))
         }
         Node::Aggregate {
             function,
@@ -460,6 +469,13 @@ impl SnarlViewer<CanvasNode> for DemoViewer<'_> {
                     sequence,
                     predicate: _,
                 }) => sequence_pin_label(sequence, pin.id.input),
+                Some(Node::SequenceItemAt { sequence, .. }) => {
+                    if pin.id.input == sequence.inputs().len() {
+                        "index".to_string()
+                    } else {
+                        sequence_pin_label(sequence, pin.id.input)
+                    }
+                }
                 _ => format!("arg {}", pin.id.input),
             },
         };

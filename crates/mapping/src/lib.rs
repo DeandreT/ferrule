@@ -109,9 +109,8 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         frame: Option<Vec<String>>,
     },
-    /// Reads the local path retained by the nearest active document-set
-    /// member. This is metadata from a typed source boundary, not a schema
-    /// field, and therefore cannot collide with user data.
+    /// Reads the resolved location retained by the nearest active source
+    /// document. This is boundary metadata, not a schema field.
     SourceDocumentPath,
     /// Returns the 1-based position of the current item in `collection`'s
     /// iteration. An empty collection selects the innermost iteration frame.
@@ -201,6 +200,13 @@ pub enum Node {
     SequenceExists {
         sequence: SequenceExpr,
         predicate: NodeId,
+    },
+    /// Selects one 1-based scalar from a generated sequence. The sequence's
+    /// item node is owned by this expression, while `index` is evaluated in
+    /// the enclosing context rather than once per generated item.
+    SequenceItemAt {
+        sequence: SequenceExpr,
+        index: NodeId,
     },
     /// Reduces a repeating collection to one scalar. `collection` is
     /// resolved with the same outward fallback as `Lookup`; `value` picks
@@ -293,10 +299,10 @@ pub struct DynamicChild {
 
 /// A scalar sequence generated in the enclosing scope context.
 ///
-/// Sequence expressions live on a scope instead of in [`Node`] because graph
-/// nodes produce one scalar value. Each generated value becomes the scope's
-/// current scalar iteration frame, and `item` identifies the empty-path
-/// [`Node::SourceField`] used by downstream graph expressions to read it.
+/// Each generated value can become a scope's current scalar iteration frame
+/// or belong to a scalar reducer node. In either case, `item` identifies the
+/// uniquely owned empty-path [`Node::SourceField`] used by expressions in
+/// that generated-item context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SequenceExpr {
@@ -1674,6 +1680,32 @@ mod tests {
             }
         ));
         assert_eq!(predicate, 4);
+    }
+
+    #[test]
+    fn sequence_item_at_roundtrips() {
+        let node = Node::SequenceItemAt {
+            sequence: SequenceExpr::Generate {
+                from: Some(1),
+                to: 2,
+                item: 3,
+            },
+            index: 4,
+        };
+        let encoded = serde_json::to_string(&node).unwrap();
+        assert!(encoded.contains(r#""kind":"sequence_item_at""#));
+        let decoded: Node = serde_json::from_str(&encoded).unwrap();
+        assert!(matches!(
+            decoded,
+            Node::SequenceItemAt {
+                sequence: SequenceExpr::Generate {
+                    from: Some(1),
+                    to: 2,
+                    item: 3
+                },
+                index: 4
+            }
+        ));
     }
 
     #[test]

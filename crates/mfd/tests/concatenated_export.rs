@@ -196,11 +196,13 @@ fn typed_address(name: &str) -> SchemaNode {
             name: identity("Domestic"),
             members: vec!["Name".into(), "State".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         GroupAlternative {
             name: identity("International"),
             members: vec!["Name".into(), "Postcode".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap()

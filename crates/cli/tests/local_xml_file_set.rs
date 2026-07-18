@@ -80,6 +80,13 @@ fn runs_a_sorted_bounded_local_xml_file_set() -> Result<(), Box<dyn Error>> {
                     },
                 ),
                 (1, Node::SourceDocumentPath),
+                (
+                    2,
+                    Node::Call {
+                        function: "remove_folder".into(),
+                        args: vec![1],
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -93,7 +100,7 @@ fn runs_a_sorted_bounded_local_xml_file_set() -> Result<(), Box<dyn Error>> {
                     },
                     Binding {
                         target_field: "FileName".into(),
-                        node: 1,
+                        node: 2,
                     },
                 ],
                 ..Scope::default()

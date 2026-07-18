@@ -47,6 +47,9 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         // connected explicitly when the filter/exists chain is emitted.
         // Its sequence arguments still execute in the enclosing scope.
         Node::SequenceExists { sequence, .. } => sequence.inputs(),
+        Node::SequenceItemAt { sequence, index } => {
+            sequence.inputs().into_iter().chain([*index]).collect()
+        }
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
