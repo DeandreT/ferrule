@@ -8,10 +8,11 @@ use super::join::JoinExports;
 use super::mapped_sequence::ScopePlans;
 use super::position::connect_scope_position_roots;
 use super::schema::{KeyAlloc, PortTree};
+use super::source::SourceExports;
 
 pub(super) struct ConnectArgs<'a> {
     pub(super) scope: &'a Scope,
-    pub(super) source_ports: &'a PortTree,
+    pub(super) sources: &'a SourceExports<'a>,
     pub(super) target_ports: &'a PortTree,
     pub(super) target_root_iterable: bool,
     pub(super) graph: &'a Graph,
@@ -32,7 +33,7 @@ pub(super) struct ConnectArgs<'a> {
 pub(super) fn connect(args: ConnectArgs<'_>) {
     let ConnectArgs {
         scope,
-        source_ports,
+        sources,
         target_ports,
         target_root_iterable,
         graph,
@@ -53,7 +54,7 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
         scope,
         &mut Vec::new(),
         &mut Vec::new(),
-        source_ports,
+        sources,
         target_ports,
         target_root_iterable,
         graph,
@@ -476,7 +477,7 @@ fn collect_scope_edges(
     scope: &Scope,
     chain: &mut Vec<String>,
     anchor: &mut Vec<String>,
-    source_ports: &PortTree,
+    sources: &SourceExports<'_>,
     target_ports: &PortTree,
     target_root_iterable: bool,
     graph: &Graph,
@@ -504,7 +505,7 @@ fn collect_scope_edges(
                 segment,
                 chain,
                 anchor,
-                source_ports,
+                sources,
                 target_ports,
                 target_root_iterable,
                 graph,
@@ -533,7 +534,7 @@ fn collect_scope_edges(
     let anchor_len = anchor.len();
     if scope.construction == ScopeConstruction::CopyCurrentSource && scope.source().is_none() {
         match (
-            source_ports.key_for_abs(anchor),
+            sources.key_for_abs(anchor),
             target_key(target_ports, target_branches, target_branch, chain),
         ) {
             (Some(from), Some(to)) => {
@@ -658,7 +659,7 @@ fn collect_scope_edges(
             .and_then(|plan| plan.source().map(|(_, group)| group))
             .unwrap_or(&abs);
         match (
-            source_ports.key_for_abs(structural_source),
+            sources.key_for_abs(structural_source),
             target_key(target_ports, target_branches, target_branch, chain),
         ) {
             (Some(from), Some(to)) => {
@@ -742,7 +743,7 @@ fn collect_scope_edges(
             child,
             chain,
             anchor,
-            source_ports,
+            sources,
             target_ports,
             target_root_iterable,
             graph,

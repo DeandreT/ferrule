@@ -7,6 +7,11 @@ use super::schema::side_format;
 use super::{concatenation, external_source, flextext, xbrl};
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    if project.extra_sources.len() > 256 {
+        return Err(MfdError::Unsupported(
+            "projects with more than 256 additional sources cannot be exported to .mfd".to_string(),
+        ));
+    }
     if project.extra_targets.len() > 256 {
         return Err(MfdError::Unsupported(
             "projects with more than 256 additional targets cannot be exported to .mfd".to_string(),
@@ -46,6 +51,14 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         mapping::XbrlBoundaryMode::ExternalSource,
         "source",
     )?;
+    for source in &project.extra_sources {
+        xbrl::validate_side(
+            &source.schema,
+            &source.options,
+            mapping::XbrlBoundaryMode::ExternalSource,
+            "additional source",
+        )?;
+    }
     xbrl::validate_side(
         &project.target,
         &project.target_options,
@@ -62,11 +75,18 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     }
     external_source::validate(project)?;
     flextext::validate_side(&project.source, &project.source_options, "source")?;
+    for source in &project.extra_sources {
+        flextext::validate_side(&source.schema, &source.options, "additional source")?;
+    }
     flextext::validate_side(&project.target, &project.target_options, "target")?;
     for target in &project.extra_targets {
         flextext::validate_side(&target.schema, &target.options, "additional target")?;
     }
     if project.source_options.protobuf.is_some()
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| source.options.protobuf.is_some())
         || project.target_options.protobuf.is_some()
         || project
             .extra_targets
@@ -79,6 +99,10 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         ));
     }
     if project.source_options.pdf.is_some()
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| source.options.pdf.is_some())
         || project.target_options.pdf.is_some()
         || project
             .extra_targets
@@ -105,6 +129,28 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             "HTTP GET XML sources cannot combine transport metadata with another format's options"
                 .to_string(),
         ));
+    }
+    for source in &project.extra_sources {
+        if source.dynamic_path.is_some() {
+            let path = (!source.path.is_empty()).then_some(source.path.clone());
+            if side_format(&path, &source.options) != super::schema::SideFormat::Xml
+                || source.options.http_get.is_some()
+                || source.options.external_source.is_some()
+                || source.options.xbrl.is_some()
+            {
+                return Err(MfdError::Unsupported(format!(
+                    "dynamic extra source `{}` is exportable only as a local XML document component",
+                    source.name
+                )));
+            }
+            let node = source.dynamic_path.as_ref().map(|dynamic| dynamic.node);
+            if node.is_none_or(|node| !project.graph.nodes.contains_key(&node)) {
+                return Err(MfdError::Unsupported(format!(
+                    "dynamic extra source `{}` references a missing path node",
+                    source.name
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -204,20 +250,24 @@ fn nested_scopes(scope: &Scope) -> impl Iterator<Item = &Scope> {
 }
 
 fn has_conflicting_http_source_options(project: &Project) -> bool {
-    project.source_options.http_get.is_some()
-        && (project.source_options.lenient_segments
-            || project.source_options.delimiter.is_some()
-            || project.source_options.has_header_row.is_some()
-            || project.source_options.fixed_width.is_some()
-            || project.source_options.external_source.is_some()
-            || project.source_options.json_lines
-            || project.source_options.xlsx_sheet.is_some()
-            || project.source_options.xlsx_start_row.is_some()
-            || !project.source_options.xlsx_columns.is_empty()
-            || !project.source_options.xlsx_rows.is_empty()
-            || project.source_options.xlsx_composite.is_some()
-            || project.source_options.xlsx_grid.is_some()
-            || project.source_options.xlsx_hierarchical.is_some())
+    std::iter::once(&project.source_options)
+        .chain(project.extra_sources.iter().map(|source| &source.options))
+        .any(|options| {
+            options.http_get.is_some()
+                && (options.lenient_segments
+                    || options.delimiter.is_some()
+                    || options.has_header_row.is_some()
+                    || options.fixed_width.is_some()
+                    || options.external_source.is_some()
+                    || options.json_lines
+                    || options.xlsx_sheet.is_some()
+                    || options.xlsx_start_row.is_some()
+                    || !options.xlsx_columns.is_empty()
+                    || !options.xlsx_rows.is_empty()
+                    || options.xlsx_composite.is_some()
+                    || options.xlsx_grid.is_some()
+                    || options.xlsx_hierarchical.is_some())
+        })
 }
 
 fn validate_copy_current_source(

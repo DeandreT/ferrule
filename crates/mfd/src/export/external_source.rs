@@ -27,25 +27,38 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             "captured external responses are source-only and cannot be attached to an .mfd target",
         ));
     }
-    if let Some(source) = project
-        .extra_sources
-        .iter()
-        .find(|source| source.options.external_source.is_some())
-    {
-        return Err(unsupported(format!(
-            "captured external response in secondary source `{}` cannot be exported losslessly until .mfd multi-source component ports are retained and wired",
-            source.name
-        )));
+    validate_boundary(
+        &project.source,
+        &project.source_options,
+        project.source_path.as_deref(),
+        "primary source",
+    )?;
+    for source in &project.extra_sources {
+        validate_boundary(
+            &source.schema,
+            &source.options,
+            (!source.path.is_empty()).then_some(source.path.as_str()),
+            &format!("secondary source `{}`", source.name),
+        )?;
     }
-    let Some(boundary) = project.source_options.external_source.as_ref() else {
+    Ok(())
+}
+
+fn validate_boundary(
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    path: Option<&str>,
+    role: &str,
+) -> Result<(), MfdError> {
+    let Some(boundary) = options.external_source.as_ref() else {
         return Ok(());
     };
-    if has_conflicting_options(&project.source_options) {
+    if has_conflicting_options(options) {
         return Err(unsupported(
             "captured external responses cannot be combined with another source format option",
         ));
     }
-    validate_json_schema(&project.source, "response")?;
+    validate_json_schema(schema, "response")?;
     match boundary.origin() {
         ExternalSourceOrigin::UserFunction { name, .. } => Err(unsupported(format!(
             "opaque user-function source `{name}` cannot be exported losslessly: the project retains its result contract but not the original call and definition body"
@@ -73,8 +86,10 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             if let Some(schema) = request_schema {
                 validate_json_schema(schema, "request")?;
             }
-            let url = project.source_path.as_deref().ok_or_else(|| {
-                unsupported("captured HTTP POST export requires its URL in source_path")
+            let url = path.ok_or_else(|| {
+                unsupported(format!(
+                    "captured HTTP POST {role} requires its retained URL"
+                ))
             })?;
             if !valid_http_url(url) {
                 return Err(unsupported(

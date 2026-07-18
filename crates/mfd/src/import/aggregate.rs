@@ -74,16 +74,16 @@ impl GraphBuilder<'_> {
                 let schema = &self.sources.get(source_path.source)?.schema;
                 let (collection, value) = split_at_innermost_repeating(schema, &source_path.path);
                 (source_path.source, collection, value, None)
+            } else if let Some(context) = self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.sequence_source_path(feed))
+            {
+                let frame = self.context_path(&context);
+                let expression = self.value_node_in_collection(sequence_feed, &frame)?;
+                (context.source, context.path, Vec::new(), Some(expression))
             } else {
                 let source_schema = self.sources.first()?.schema.clone();
-                let mut dependencies = self.sequence_dependency_paths(sequence_feed);
-                if let Some(context) = self
-                    .input_feed(idx, 0)
-                    .and_then(|feed| self.sequence_source_path(feed))
-                    .filter(|path| path.source == 0)
-                {
-                    dependencies.push(context.path);
-                }
+                let dependencies = self.sequence_dependency_paths(sequence_feed);
                 let collection = compatible_collection(&source_schema, &dependencies)?;
                 let expression = self.value_node_in_collection(sequence_feed, &collection)?;
                 (0, collection, Vec::new(), Some(expression))

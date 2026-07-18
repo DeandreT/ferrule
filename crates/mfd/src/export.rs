@@ -23,6 +23,7 @@ mod preflight;
 mod schema;
 mod scope;
 mod sequence;
+mod source;
 #[cfg(test)]
 mod tests;
 mod xbrl;
@@ -63,19 +64,15 @@ struct TargetSpec<'a> {
 impl<'a> TargetExport<'a> {
     fn build(
         project: &'a Project,
+        sources: &source::SourceExports<'_>,
         spec: TargetSpec<'a>,
         index: usize,
         keys: &mut KeyAlloc,
     ) -> Result<Self, MfdError> {
         let format = side_format(spec.path, spec.options);
-        let mapped_scope_plans = preflight_mapped_sequences(
-            &project.graph,
-            &project.source,
-            spec.schema,
-            spec.root,
-            format,
-        )?;
-        let component_uid = u32::try_from(index + 3).map_err(|_| {
+        let mapped_scope_plans =
+            preflight_mapped_sequences(&project.graph, sources, spec.schema, spec.root, format)?;
+        let component_uid = u32::try_from(sources.len() + index + 2).map_err(|_| {
             MfdError::Unsupported("too many target components for .mfd export".to_string())
         })?;
         let copy_document_root = spec.root.construction == ScopeConstruction::CopyCurrentSource;
@@ -122,26 +119,12 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     preflight::validate(project)?;
 
-    if !project.extra_sources.is_empty() {
-        warnings.push(
-            "extra sources are not exported; MapForce multi-input wiring must be redone"
-                .to_string(),
-        );
-    }
-
-    let source_format = if project.source_options.http_get.is_some() {
-        SideFormat::Xml
-    } else {
-        side_format(&project.source_path, &project.source_options)
-    };
     let mut keys = KeyAlloc { next: 1 };
-    let source_explicit_text = xbrl::explicit_text_ports(&project.source, &project.source_options);
-    let source_ports =
-        PortTree::build_with_explicit_text(&project.source, &mut keys, &source_explicit_text);
-    let external_request_ports = external_source::request_ports(&project.source_options, &mut keys);
+    let sources = source::SourceExports::build(project, &mut keys)?;
     let mut targets = Vec::with_capacity(project.extra_targets.len() + 1);
     targets.push(TargetExport::build(
         project,
+        &sources,
         TargetSpec {
             component_name: &project.target.name,
             schema: &project.target,
@@ -155,6 +138,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     for (index, target) in project.extra_targets.iter().enumerate() {
         targets.push(TargetExport::build(
             project,
+            &sources,
             TargetSpec {
                 component_name: &target.name,
                 schema: &target.schema,
@@ -172,12 +156,12 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut components = String::new();
     let mut edges: Vec<(u32, u32)> = Vec::new();
     let mut structural_edges = BTreeSet::new();
-    let mut uid = u32::try_from(project.extra_targets.len() + 3)
+    let mut uid = u32::try_from(sources.len() + targets.len() + 2)
         .map_err(|_| MfdError::Unsupported("too many components for .mfd export".to_string()))?
         .max(100);
     let joins = join::render(join::RenderJoinArgs {
         project,
-        source_ports: &source_ports,
+        source_ports: sources.primary_ports(),
         target_ports: &primary_target.ports,
         target_root_iterable: primary_target.root_iterable,
         keys: &mut keys,
@@ -192,7 +176,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         sequence_exists_pins,
     } = node::render(node::RenderArgs {
         project,
-        source_ports: &source_ports,
+        sources: &sources,
         joins: &joins,
         keys: &mut keys,
         uid: &mut uid,
@@ -201,6 +185,21 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         edges: &mut edges,
         warnings: &mut warnings,
     });
+    for source in sources.iter() {
+        let Some(node) = source.dynamic_path_node else {
+            continue;
+        };
+        let from = node_out_key.get(&node).copied().ok_or_else(|| {
+            MfdError::Unsupported(format!(
+                "dynamic extra source `{}` references an unexported path node {node}",
+                source.name
+            ))
+        })?;
+        let to = source
+            .ports
+            .required_key_for_abs(&[], "dynamic source path input")?;
+        edges.push((from, to));
+    }
 
     let mut scope_components = String::new();
     let mut position_contexts: BTreeMap<NodeId, Option<u32>> = BTreeMap::new();
@@ -228,7 +227,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         let prior_position_contexts = position_contexts.clone();
         scope::connect(scope::ConnectArgs {
             scope: target.root,
-            source_ports: &source_ports,
+            sources: &sources,
             target_ports: &target.ports,
             target_root_iterable: target.root_iterable,
             graph: &project.graph,
@@ -270,7 +269,9 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     // Database components reference a mapping-level datasource.
     let mut datasources: Vec<(String, String)> = Vec::new();
-    for (format, instance) in std::iter::once((source_format, project.source_path.as_deref()))
+    for (format, instance) in sources
+        .iter()
+        .map(|source| (source.format, source.path))
         .chain(targets.iter().map(|target| (target.format, target.path)))
     {
         if format == SideFormat::Db
@@ -316,56 +317,57 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
          \t\t<structure>\n\
          \t\t\t<children>\n"
     );
-    let source_component = if project.source_options.external_source.is_some() {
-        let request_schema = external_source::request_schema_artifact(
-            &project.source_options,
-            path,
-            "source-request",
-        );
-        let xml = external_source::render_http_post(external_source::RenderHttpPostArgs {
-            component_name: &project.source.name,
-            response_schema: &project.source,
-            response_ports: &source_ports,
-            request_ports: external_request_ports.as_ref(),
-            request_schema_file: request_schema
-                .as_ref()
-                .map(|artifact| artifact.file_name.as_str()),
-            options: &project.source_options,
-            url: project.source_path.as_deref(),
-            uid: 2,
-        })?;
-        RenderedSchemaComponent {
-            xml,
-            siblings: request_schema
-                .into_iter()
-                .map(|artifact| schema::GeneratedSibling {
-                    path: artifact.path,
-                    contents: artifact.contents,
-                })
-                .collect(),
-        }
-    } else {
-        render_schema_component(
-            &project.source,
-            source_format,
-            &source_ports,
-            Side::Source,
-            project.source_path.as_deref(),
-            &project.source_options,
-            path,
-            targets.iter().any(|target| target.force_root_port)
-                || targets
-                    .iter()
-                    .any(|target| concatenation::needs_source_root_port(target.root)),
-            None,
-            &project.source.name,
-            2,
-            "source",
-            false,
-            &used_ports,
-        )?
-    };
-    out.push_str(&source_component.xml);
+    let mut source_components = Vec::with_capacity(sources.len());
+    for source in sources.iter() {
+        let rendered = if source.options.external_source.is_some() {
+            let request_suffix = format!("{}-request", source.sibling_suffix);
+            let request_schema =
+                external_source::request_schema_artifact(source.options, path, &request_suffix);
+            let xml = external_source::render_http_post(external_source::RenderHttpPostArgs {
+                component_name: source.name,
+                response_schema: source.schema,
+                response_ports: &source.ports,
+                request_ports: source.request_ports.as_ref(),
+                request_schema_file: request_schema
+                    .as_ref()
+                    .map(|artifact| artifact.file_name.as_str()),
+                options: source.options,
+                url: source.path,
+                uid: source.component_uid,
+            })?;
+            RenderedSchemaComponent {
+                xml,
+                siblings: request_schema
+                    .into_iter()
+                    .map(|artifact| schema::GeneratedSibling {
+                        path: artifact.path,
+                        contents: artifact.contents,
+                    })
+                    .collect(),
+            }
+        } else {
+            let root_key = source.ports.key_for_abs(&[]);
+            render_schema_component(
+                source.schema,
+                source.format,
+                &source.ports,
+                Side::Source,
+                source.path,
+                source.options,
+                path,
+                root_key.is_some_and(|key| used_ports.contains(&key)),
+                source.dynamic_path_node.is_some(),
+                None,
+                source.name,
+                source.component_uid,
+                &source.sibling_suffix,
+                false,
+                &used_ports,
+            )?
+        };
+        out.push_str(&rendered.xml);
+        source_components.push(rendered);
+    }
     let mut target_components = Vec::with_capacity(targets.len());
     for target in &targets {
         let rendered = render_schema_component(
@@ -377,6 +379,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
             target.options,
             path,
             target.force_root_port,
+            false,
             Some(&target.branches),
             target.component_name,
             target.component_uid,
@@ -419,11 +422,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     );
 
     let mut artifacts = Vec::new();
-    for sibling in source_component.siblings.into_iter().chain(
-        target_components
-            .into_iter()
-            .flat_map(|component| component.siblings),
-    ) {
+    for sibling in source_components
+        .into_iter()
+        .chain(target_components)
+        .flat_map(|component| component.siblings)
+    {
         artifacts.push((sibling.path, sibling.contents));
     }
     // Publish the design after its schema siblings reach their final paths.

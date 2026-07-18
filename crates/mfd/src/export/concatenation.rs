@@ -75,21 +75,6 @@ pub(super) fn validate(
     validate_scope(root, target, format, &mut Vec::new(), false)
 }
 
-pub(super) fn needs_source_root_port(scope: &Scope) -> bool {
-    scope
-        .concatenated()
-        .is_some_and(|segments| segments.iter().any(segment_uses_empty_source))
-        || scope.children.iter().any(needs_source_root_port)
-}
-
-fn segment_uses_empty_source(scope: &Scope) -> bool {
-    scope.source() == Some(&[])
-        || scope.children.iter().any(segment_uses_empty_source)
-        || scope
-            .concatenated()
-            .is_some_and(|segments| segments.iter().any(segment_uses_empty_source))
-}
-
 fn validate_scope(
     scope: &Scope,
     target: &SchemaNode,

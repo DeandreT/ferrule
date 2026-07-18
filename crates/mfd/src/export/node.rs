@@ -9,12 +9,13 @@ use super::function::{
 };
 use super::join::JoinExports;
 use super::position::render_component;
-use super::schema::{KeyAlloc, PortMatch, PortTree, xml_escape};
+use super::schema::{KeyAlloc, PortMatch, PortPairMatch, xml_escape};
 use super::sequence::{SequenceExistsPins, collect_scope_sequences};
+use super::source::SourceExports;
 
 pub(super) struct RenderArgs<'a> {
     pub(super) project: &'a Project,
-    pub(super) source_ports: &'a PortTree,
+    pub(super) sources: &'a SourceExports<'a>,
     pub(super) joins: &'a JoinExports,
     pub(super) keys: &'a mut KeyAlloc,
     pub(super) uid: &'a mut u32,
@@ -32,7 +33,7 @@ pub(super) struct RenderedNodes {
 pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let RenderArgs {
         project,
-        source_ports,
+        sources,
         joins,
         keys,
         uid,
@@ -108,14 +109,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 }
                 let mut absolute = frame.clone().unwrap_or_default();
                 absolute.extend(path.iter().cloned());
-                let port_match = if frame.is_some() {
-                    source_ports
-                        .key_for_abs(&absolute)
-                        .map_or(PortMatch::Missing, PortMatch::Unique)
-                } else {
-                    source_ports.match_suffix(&absolute)
-                };
-                match port_match {
+                match sources.match_field(&absolute, frame.is_some()) {
                     PortMatch::Unique(key) => {
                         node_out_key.insert(id, key);
                     }
@@ -148,18 +142,21 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 matches: _,
                 value,
             } => {
-                let mut key_path = collection.clone();
-                key_path.extend(key.iter().cloned());
-                let mut value_path = collection.clone();
-                value_path.extend(value.iter().cloned());
-                let (Some(key_output), Some(value_output)) = (
-                    source_ports.key_for_abs(&key_path),
-                    source_ports.key_for_abs(&value_path),
-                ) else {
-                    warnings.push(format!(
-                        "lookup node {id} key/value paths do not match primary source leaves; skipped"
-                    ));
-                    continue;
+                let (key_output, value_output) = match sources.lookup_ports(collection, key, value)
+                {
+                    PortPairMatch::Unique(key_output, value_output) => (key_output, value_output),
+                    PortPairMatch::Missing => {
+                        warnings.push(format!(
+                            "lookup node {id} key/value paths match no source collection; skipped"
+                        ));
+                        continue;
+                    }
+                    PortPairMatch::Ambiguous => {
+                        warnings.push(format!(
+                                "lookup node {id} key/value paths match multiple source collections; skipped"
+                            ));
+                        continue;
+                    }
                 };
 
                 let equal_key = keys.next();
@@ -273,12 +270,32 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 let in_sequence = keys.next();
                 let out = keys.next();
                 let mut dynamic_inputs = Vec::new();
-                if expression.is_some() {
+                let context_input = if expression.is_some() {
+                    let input = keys.next();
+                    let collection_key = match sources.match_sequence(collection) {
+                        PortMatch::Unique(key) => key,
+                        PortMatch::Missing => {
+                            warnings.push(format!(
+                                "computed aggregate over `{}` matches no source collection; its connections are skipped",
+                                collection.join("/")
+                            ));
+                            continue;
+                        }
+                        PortMatch::Ambiguous => {
+                            warnings.push(format!(
+                                "computed aggregate over `{}` matches multiple source collections; its connections are skipped",
+                                collection.join("/")
+                            ));
+                            continue;
+                        }
+                    };
+                    edges.push((collection_key, input));
                     dynamic_inputs.push(in_sequence);
+                    Some(input)
                 } else {
                     let mut sequence = collection.clone();
                     sequence.extend(value.iter().cloned());
-                    let sequence_key = match source_ports.match_suffix(&sequence) {
+                    let sequence_key = match sources.match_sequence(&sequence) {
                         PortMatch::Unique(key) => key,
                         PortMatch::Missing => {
                             warnings.push(format!(
@@ -298,9 +315,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                         }
                     };
                     edges.push((sequence_key, in_sequence));
-                }
+                    None
+                };
                 node_out_key.insert(id, out);
-                let mut pins = format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>");
+                let mut pins = context_input.map_or_else(
+                    || format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"),
+                    |context| {
+                        format!(
+                            "<datapoint pos=\"0\" key=\"{context}\"/><datapoint pos=\"1\" key=\"{in_sequence}\"/>"
+                        )
+                    },
+                );
                 if arg.is_some() {
                     let in_arg = keys.next();
                     dynamic_inputs.push(in_arg);

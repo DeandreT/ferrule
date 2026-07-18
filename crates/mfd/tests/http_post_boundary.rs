@@ -178,20 +178,34 @@ fn post_response_is_an_executable_captured_json_boundary() -> Result<(), Box<dyn
     let target = engine::run_with_sources(
         &imported.project,
         &input,
-        vec![(response_source.name.clone(), response)],
+        vec![(response_source.name.clone(), response.clone())],
     )?;
     assert_eq!(
         target.field("Answer").and_then(Instance::as_scalar),
         Some(&Value::String("ready".into()))
     );
 
-    let exported = dir.0.join("unsupported.mfd");
-    assert!(matches!(
-        mfd::export(&imported.project, &exported),
-        Err(mfd::MfdError::Unsupported(message))
-            if message.contains("captured external response in secondary source")
-    ));
-    assert!(!exported.exists());
+    let exported = dir.0.join("roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &exported)?.is_empty());
+    let roundtrip = mfd::import(&exported)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let roundtrip_source = roundtrip
+        .project
+        .extra_sources
+        .iter()
+        .find(|source| source.options.external_source.is_some())
+        .ok_or("roundtrip lost the captured HTTP response")?;
+    assert_eq!(
+        roundtrip_source.options.external_source,
+        response_source.options.external_source
+    );
+    let roundtrip_target = engine::run_with_sources(
+        &roundtrip.project,
+        &input,
+        vec![(roundtrip_source.name.clone(), response)],
+    )?;
+    assert_eq!(roundtrip_target, target);
     Ok(())
 }
 

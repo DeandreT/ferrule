@@ -105,6 +105,7 @@ pub(super) fn render_schema_component(
     options: &FormatOptions,
     mfd_path: &Path,
     force_root_port: bool,
+    source_root_input: bool,
     target_branches: Option<&TargetBranches>,
     component_name: &str,
     component_uid: u32,
@@ -205,7 +206,7 @@ pub(super) fn render_schema_component(
                     xml_escape(&schema.name),
                     xml_escape(&schema_file),
                     xml_escape(&instance_root),
-                    ports.entries_xml(schema, attr, 10, true, target_branches),
+                    ports.entries_xml(schema, attr, 10, true, None, target_branches),
                     xml_escape(url),
                     http.timeout_seconds().get(),
                 );
@@ -231,7 +232,14 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),
-                ports.entries_xml(schema, attr, 9, force_root_port, target_branches),
+                ports.entries_xml(
+                    schema,
+                    attr,
+                    9,
+                    force_root_port,
+                    source_root_input.then_some("inpkey"),
+                    target_branches,
+                ),
                 xml_escape(&schema_file),
                 xml_escape(&instance_root),
             );
@@ -507,7 +515,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),
-                ports.entries_xml(schema, attr, 9, force_root_port, target_branches),
+                ports.entries_xml(schema, attr, 9, force_root_port, None, target_branches),
                 xml_escape(&config_file),
                 u8::from(layout.write_bom()),
             );
@@ -943,6 +951,12 @@ pub(super) enum PortMatch {
     Ambiguous,
 }
 
+pub(super) enum PortPairMatch {
+    Missing,
+    Unique(u32, u32),
+    Ambiguous,
+}
+
 impl PortTree {
     pub(super) fn build(schema: &SchemaNode, keys: &mut KeyAlloc) -> Self {
         Self::build_with_explicit_text(schema, keys, &BTreeSet::new())
@@ -1023,6 +1037,38 @@ impl PortTree {
         }
     }
 
+    /// Resolves two descendants below one uniquely matched collection. Matching
+    /// the descendants independently could silently pair fields from different
+    /// same-named collections.
+    pub(super) fn match_collection_pair(
+        &self,
+        collection: &[String],
+        first: &[String],
+        second: &[String],
+    ) -> PortPairMatch {
+        let mut matches = self.by_abs.keys().filter_map(|candidate| {
+            if !candidate.ends_with(collection) {
+                return None;
+            }
+            let mut first_path = candidate.clone();
+            first_path.extend(first.iter().cloned());
+            let mut second_path = candidate.clone();
+            second_path.extend(second.iter().cloned());
+            Some((
+                self.key_for_abs(&first_path)?,
+                self.key_for_abs(&second_path)?,
+            ))
+        });
+        let Some(first) = matches.next() else {
+            return PortPairMatch::Missing;
+        };
+        if matches.next().is_some() {
+            PortPairMatch::Ambiguous
+        } else {
+            PortPairMatch::Unique(first.0, first.1)
+        }
+    }
+
     /// Entry-tree XML for a schema with `attr` (outkey/inpkey) on every
     /// entry.
     fn entries_xml(
@@ -1031,6 +1077,7 @@ impl PortTree {
         attr: &str,
         indent: usize,
         force_root_port: bool,
+        root_attr: Option<&str>,
         target_branches: Option<&TargetBranches>,
     ) -> String {
         let mut out = String::new();
@@ -1112,7 +1159,10 @@ impl PortTree {
         }
         // The document root itself is one entry level wrapping the children.
         let pad = "\t".repeat(indent);
-        let root_port = if force_root_port || schema.text_child().is_some() {
+        let root_port = if let Some(root_attr) = root_attr {
+            let key = self.by_abs[&Vec::<String>::new()];
+            format!(" {root_attr}=\"{key}\"")
+        } else if force_root_port || schema.text_child().is_some() {
             let key = self.by_abs[&Vec::<String>::new()];
             format!(" {attr}=\"{key}\"")
         } else {
