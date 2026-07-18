@@ -1205,15 +1205,19 @@ pub(super) fn read_db_component(
         ));
     }
 
+    let embedded_types = embedded_db_column_types(&tables);
+
     let db_path = connection.as_deref().and_then(|conn| {
         let path = mfd_path.parent().unwrap_or(Path::new(".")).join(conn);
         if path.exists() {
             Some(path)
         } else {
-            warnings.push(format!(
-                "component `{name}`: database `{conn}` not found next to the \
-                 design; falling back to untyped columns"
-            ));
+            if embedded_types.is_none() {
+                warnings.push(format!(
+                    "component `{name}`: database `{conn}` not found next to the \
+                     design; falling back to untyped columns"
+                ));
+            }
             None
         }
     });
@@ -1224,33 +1228,44 @@ pub(super) fn read_db_component(
     let schema = if single_plain_table {
         let table = tables[0];
         let table_name = table.attribute("name").unwrap_or_default();
-        db_path
-            .as_deref()
-            .and_then(|path| match format_db::introspect(path, table_name) {
-                Ok(schema) => Some(schema),
-                Err(error) => {
-                    warnings.push(format!(
-                        "component `{name}`: could not introspect `{}` ({error}); \
+        let introspected =
+            db_path
+                .as_deref()
+                .and_then(|path| match format_db::introspect(path, table_name) {
+                    Ok(schema) => Some(schema),
+                    Err(error) => {
+                        warnings.push(format!(
+                            "component `{name}`: could not introspect `{}` ({error}); \
                          falling back to untyped columns",
-                        connection.as_deref().unwrap_or_default()
-                    ));
-                    None
-                }
-            })
-            .unwrap_or_else(|| db_table_schema(&table, &BTreeMap::new()))
-    } else {
-        let mut types = BTreeMap::new();
-        if let Some(path) = db_path.as_deref() {
-            collect_db_column_types(path, &tables, &name, warnings, &mut types);
+                            connection.as_deref().unwrap_or_default()
+                        ));
+                        None
+                    }
+                });
+        if let Some(schema) = introspected {
+            schema
+        } else {
+            let empty = BTreeMap::new();
+            db_table_schema(&table, embedded_types.as_ref().unwrap_or(&empty))
         }
+    } else {
+        let mut introspected_types = BTreeMap::new();
+        if let Some(path) = db_path.as_deref() {
+            collect_db_column_types(path, &tables, &name, warnings, &mut introspected_types);
+        }
+        let types = if db_path.is_some() {
+            &introspected_types
+        } else {
+            embedded_types.as_ref().unwrap_or(&introspected_types)
+        };
         if tables.len() == 1 {
-            db_table_schema(&tables[0], &types)
+            db_table_schema(&tables[0], types)
         } else {
             SchemaNode::group(
                 "database",
                 tables
                     .iter()
-                    .map(|table| db_table_schema(table, &types))
+                    .map(|table| db_table_schema(table, types))
                     .collect(),
             )
         }
@@ -1283,6 +1298,64 @@ pub(super) fn read_db_component(
         db_queries: Vec::new(),
         dynamic_json: None,
     })
+}
+
+/// Reads ferrule's canonical self-describing database entry metadata. The
+/// metadata is trusted only when every selected scalar entry has a supported
+/// type and repeated declarations agree, so ordinary database designs still
+/// require live introspection.
+fn embedded_db_column_types(
+    tables: &[roxmltree::Node<'_, '_>],
+) -> Option<BTreeMap<String, BTreeMap<String, ScalarType>>> {
+    fn collect(
+        table: &roxmltree::Node<'_, '_>,
+        types: &mut BTreeMap<String, BTreeMap<String, ScalarType>>,
+        leaf_count: &mut usize,
+    ) -> Option<()> {
+        let name = table.attribute("name")?;
+        let physical_table = name.split_once('|').map_or(name, |(table, _)| table);
+        if physical_table.is_empty() {
+            return None;
+        }
+        for entry in table.children().filter(|node| node.has_tag_name("entry")) {
+            match entry.attribute("type") {
+                Some("table") => collect(&entry, types, leaf_count)?,
+                None => {
+                    let column = entry.attribute("name")?;
+                    if column.is_empty() {
+                        return None;
+                    }
+                    let ty = match entry.attribute("datatype")? {
+                        "string" => ScalarType::String,
+                        "integer" | "int" | "long" => ScalarType::Int,
+                        "decimal" | "double" | "float" | "number" => ScalarType::Float,
+                        "boolean" => ScalarType::Bool,
+                        _ => return None,
+                    };
+                    let columns = types.entry(physical_table.to_string()).or_default();
+                    if let Some(existing) = columns
+                        .iter()
+                        .find(|(name, _)| name.eq_ignore_ascii_case(column))
+                        .map(|(_, ty)| *ty)
+                        && existing != ty
+                    {
+                        return None;
+                    }
+                    columns.insert(column.to_string(), ty);
+                    *leaf_count += 1;
+                }
+                Some(_) => return None,
+            }
+        }
+        Some(())
+    }
+
+    let mut types = BTreeMap::new();
+    let mut leaf_count = 0;
+    for table in tables {
+        collect(table, &mut types, &mut leaf_count)?;
+    }
+    (leaf_count > 0).then_some(types)
 }
 
 fn collect_db_ports(

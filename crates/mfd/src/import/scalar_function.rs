@@ -1,7 +1,7 @@
 use ir::{ScalarType, Value};
 use mapping::{AggregateOp, Node, NodeId, RuntimeValue};
 
-use super::function::{aggregate_op, map_name as map_function_name, parse_constant};
+use super::function::{aggregate_op, map_component_name, parse_constant};
 use super::graph::GraphBuilder;
 use super::schema::{JsonDynamicPort, split_json_dynamic_port};
 use super::source::SourcePath;
@@ -142,7 +142,7 @@ impl GraphBuilder<'_> {
                 }
             }
             (name, _) => {
-                let function = match map_function_name(name) {
+                let function = match map_component_name(fc) {
                     Some(mapped) => mapped.to_string(),
                     None => {
                         self.warnings.push(format!(

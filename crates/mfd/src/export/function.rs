@@ -1,6 +1,8 @@
 use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
+use crate::canonical_function;
+
 pub(super) fn aggregate_component_name(op: AggregateOp) -> &'static str {
     match op {
         AggregateOp::Count => "count",
@@ -96,6 +98,9 @@ pub(super) fn unmap_function_name(name: &str) -> String {
 }
 
 pub(super) fn function_library(name: &str) -> &'static str {
+    if canonical_function::is_internal(name) {
+        return "ferrule";
+    }
     match name {
         "left_trim"
         | "right_trim"
@@ -129,5 +134,8 @@ mod tests {
         assert_eq!(function_library("is_empty"), "lang");
         assert_eq!(unmap_function_name("delay_passthrough"), "sleep");
         assert_eq!(function_library("delay_passthrough"), "lang");
+        assert_eq!(function_library("to_number"), "ferrule");
+        assert_eq!(function_library("sql_like"), "ferrule");
+        assert_eq!(function_library("json_serialize_object"), "ferrule");
     }
 }
