@@ -140,6 +140,7 @@ fn json_lines_component_sets_runtime_format_option_without_a_downgrade_warning()
     )
     .unwrap();
 
+    assert!(component.options.json_document);
     assert!(component.options.json_lines);
     assert!(
         warnings

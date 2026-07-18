@@ -71,6 +71,30 @@ pub(crate) fn scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
     None
 }
 
+/// Resolves an absolute path against the deepest active collection that owns
+/// its prefix before falling back to ordinary innermost-first lookup. This is
+/// needed by collection-local expressions that read both the current item and
+/// one of its repeated ancestors.
+pub(crate) fn scalar_in_active_collection(
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    path: &[String],
+) -> Option<Value> {
+    for (position_index, position) in positions.iter().enumerate().rev() {
+        if position.collection.is_empty() || !path.starts_with(&position.collection) {
+            continue;
+        }
+        let Some(instance) = context_for_position(context, positions, position_index) else {
+            continue;
+        };
+        let suffix = &path[position.collection.len()..];
+        if let Some(value) = scalar(&[instance], suffix) {
+            return Some(value);
+        }
+    }
+    scalar(context, path)
+}
+
 pub(crate) fn scalar_in_frame(
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -83,6 +107,24 @@ pub(crate) fn scalar_in_frame(
     })?;
     let instance = context_for_position(context, positions, position_index)?;
     scalar(&[instance], path)
+}
+
+pub(crate) fn source_document_path<'a>(
+    context: &'a [&Instance],
+    positions: &'a [PositionFrame],
+) -> Option<&'a str> {
+    positions
+        .iter()
+        .rev()
+        .find_map(|position| position.document_path.as_deref())
+        .or_else(|| {
+            context.iter().rev().find_map(|instance| {
+                instance
+                    .as_document_set()?
+                    .first()
+                    .map(ir::DocumentMember::path)
+            })
+        })
 }
 
 pub(crate) fn dynamic_scalar(
@@ -175,5 +217,44 @@ mod tests {
             Some(Value::Null)
         );
         assert_eq!(scalar(&[&inner], &["rows".into()]), Some(Value::Null));
+    }
+
+    #[test]
+    fn absolute_path_prefers_its_active_collection_ancestor() {
+        let root = Instance::Group(vec![(
+            "items".into(),
+            Instance::Repeated(vec![
+                Instance::Group(vec![(
+                    "name".into(),
+                    Instance::Scalar(Value::String("first".into())),
+                )]),
+                Instance::Group(vec![(
+                    "name".into(),
+                    Instance::Scalar(Value::String("second".into())),
+                )]),
+            ]),
+        )]);
+        let second = root
+            .field("items")
+            .and_then(Instance::as_repeated)
+            .and_then(|items| items.get(1))
+            .expect("the self-authored fixture has a second item");
+        let positions = [PositionFrame {
+            collection: vec!["items".into()],
+            index: 2,
+            grouped: false,
+            join: None,
+            join_position: None,
+            document_path: None,
+        }];
+
+        assert_eq!(
+            scalar_in_active_collection(
+                &[&root, second],
+                &positions,
+                &["items".into(), "name".into()]
+            ),
+            Some(Value::String("second".into()))
+        );
     }
 }

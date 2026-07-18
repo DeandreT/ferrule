@@ -270,6 +270,34 @@ fn exact_repeating_group_descendants_are_copied_as_complete_items() {
         .unwrap();
     assert_eq!(tags.len(), 2);
     assert_eq!(scalar(&tags[1], "Value"), &Value::String("y".into()));
+
+    let design = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&design).unwrap();
+    assert!(exported.contains(r#"<dataconnection type="2"/>"#));
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let roundtrip_wrapper = reimported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Wrapper")
+        .unwrap();
+    let roundtrip_item = roundtrip_wrapper
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Item")
+        .unwrap();
+    assert_eq!(
+        roundtrip_item.construction,
+        mapping::ScopeConstruction::CopyCurrentSource
+    );
+    let roundtrip = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(roundtrip, target);
 }
 
 #[test]

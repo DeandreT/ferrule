@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use ir::{SchemaKind, SchemaNode, Value};
+use ir::{SchemaKind, SchemaNode, Value, XML_TYPE_FIELD};
 use mapping::{Graph, IterationOutput, Node, Scope};
 
 use crate::MfdError;
@@ -9,15 +9,20 @@ use crate::MfdError;
 use super::schema::{KeyAlloc, SideFormat};
 use super::source::SourceExports;
 
+#[derive(PartialEq, Eq)]
 pub(super) struct ScopePlan {
     source: Option<SourcePlan>,
     explicit_text_port: bool,
 }
 
+#[derive(PartialEq, Eq)]
 struct SourcePlan {
     collection: Vec<String>,
     group: Vec<String>,
     copy_all: bool,
+    alternative: Option<String>,
+    absorbed_filter: Option<mapping::NodeId>,
+    absorbed_marker: Option<mapping::NodeId>,
 }
 
 impl ScopePlan {
@@ -30,25 +35,44 @@ impl ScopePlan {
     pub(super) fn copy_all(&self) -> bool {
         self.source.as_ref().is_some_and(|source| source.copy_all)
     }
+
+    pub(super) fn alternative(&self) -> Option<&str> {
+        self.source
+            .as_ref()
+            .and_then(|source| source.alternative.as_deref())
+    }
+
+    pub(super) fn absorbed_filter(&self) -> Option<mapping::NodeId> {
+        self.source
+            .as_ref()
+            .and_then(|source| source.absorbed_filter)
+    }
 }
 
 #[derive(Default)]
-pub(super) struct ScopePlans(BTreeMap<Vec<String>, ScopePlan>);
+pub(super) struct ScopePlans(BTreeMap<(Vec<String>, Option<usize>), ScopePlan>);
 
 impl ScopePlans {
-    pub(super) fn get(&self, path: &[String]) -> Option<&ScopePlan> {
-        self.0.get(path)
+    pub(super) fn get(&self, path: &[String], branch: Option<usize>) -> Option<&ScopePlan> {
+        self.0.get(&(path.to_vec(), branch))
     }
 
     pub(super) fn explicit_text_ports(&self) -> BTreeSet<Vec<String>> {
         self.0
             .iter()
             .filter(|(_, plan)| plan.explicit_text_port)
-            .map(|(path, _)| {
+            .map(|((path, _), _)| {
                 let mut text = path.clone();
                 text.push(ir::XML_TEXT_FIELD.to_string());
                 text
             })
+            .collect()
+    }
+
+    pub(super) fn absorbed_nodes(&self) -> BTreeSet<mapping::NodeId> {
+        self.0
+            .values()
+            .filter_map(|plan| plan.source.as_ref()?.absorbed_marker)
             .collect()
     }
 }
@@ -87,6 +111,7 @@ pub(super) fn preflight_mapped_sequences(
         target,
         &mut Vec::new(),
         &[],
+        None,
         &mut plans,
     ) {
         return Err(MfdError::Unsupported(
@@ -124,12 +149,18 @@ fn scope_has_dynamic_mapping(scope: &Scope) -> bool {
 
 fn scope_has_output(scope: &Scope, output: IterationOutput) -> bool {
     scope.iteration_output == output
+        || scope.concatenated().is_some_and(|segments| {
+            segments
+                .iter()
+                .any(|segment| scope_has_output(segment, output))
+        })
         || scope
             .children
             .iter()
             .any(|child| scope_has_output(child, output))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_scope_plans(
     scope: &Scope,
     graph: &Graph,
@@ -137,8 +168,23 @@ fn collect_scope_plans(
     target_schema: &SchemaNode,
     chain: &mut Vec<String>,
     anchor: &[String],
+    branch: Option<usize>,
     plans: &mut ScopePlans,
 ) -> bool {
+    if let Some(segments) = scope.concatenated() {
+        return segments.iter().enumerate().all(|(index, segment)| {
+            collect_scope_plans(
+                segment,
+                graph,
+                sources,
+                target_schema,
+                chain,
+                anchor,
+                Some(index),
+                plans,
+            )
+        });
+    }
     let scope_anchor = scope.source().map_or_else(
         || anchor.to_vec(),
         |source| {
@@ -155,7 +201,9 @@ fn collect_scope_plans(
         else {
             return false;
         };
-        plans.0.insert(chain.clone(), plan);
+        if plans.0.insert((chain.clone(), branch), plan).is_some() {
+            return false;
+        }
     }
     for child in &scope.children {
         chain.push(child.target_field.clone());
@@ -166,6 +214,7 @@ fn collect_scope_plans(
             target_schema,
             chain,
             &scope_anchor,
+            branch,
             plans,
         ) {
             return false;
@@ -208,7 +257,30 @@ fn mapped_scope_plan(
             explicit_text_port,
         });
     }
+    if let Some((_, join)) = scope.join() {
+        let constructs_fields = !scope.bindings.is_empty() || !scope.children.is_empty();
+        if !constructs_fields {
+            let matching_sources = join
+                .sources()
+                .filter(|source| {
+                    source.cardinality() == mapping::JoinSourceCardinality::Repeating
+                        && sources
+                            .schema_node_at(source.collection())
+                            .is_some_and(|source| exact_join_group(source, target_group))
+                })
+                .count();
+            if matching_sources != 1 {
+                return None;
+            }
+        }
+        return Some(ScopePlan {
+            source: None,
+            explicit_text_port,
+        });
+    }
     scope.source()?;
+    let alternative = super::concatenation::exact_type_condition(scope, graph, target_group);
+    let absorbed_marker = super::concatenation::exact_type_marker(scope, graph, target_group);
 
     let source_collection = sources.schema_node_at(collection)?;
     if !matches!(source_collection.kind, SchemaKind::Group { .. }) {
@@ -222,20 +294,38 @@ fn mapped_scope_plan(
         target_group,
         collection,
         explicit_text_port,
+        alternative.as_deref(),
+        absorbed_marker,
     ) {
         return Some(plan);
     }
 
+    let absorbed_filter = alternative.as_ref().and(scope.filter);
     Some(ScopePlan {
         source: Some(SourcePlan {
             collection: collection.to_vec(),
             group: collection.to_vec(),
             copy_all: false,
+            alternative,
+            absorbed_filter,
+            absorbed_marker,
         }),
         explicit_text_port,
     })
 }
 
+fn exact_join_group(source: &SchemaNode, target: &SchemaNode) -> bool {
+    source.name == target.name
+        && source.repeating
+        && !target.repeating
+        && source.attribute == target.attribute
+        && source.nillable == target.nillable
+        && source.text == target.text
+        && source.fixed == target.fixed
+        && source.kind == target.kind
+}
+
+#[allow(clippy::too_many_arguments)]
 fn mapped_copy_plan(
     scope: &Scope,
     graph: &Graph,
@@ -243,6 +333,8 @@ fn mapped_copy_plan(
     target_group: &SchemaNode,
     collection: &[String],
     explicit_text_port: bool,
+    alternative: Option<&str>,
+    absorbed_marker: Option<mapping::NodeId>,
 ) -> Option<ScopePlan> {
     let mut bindings = Vec::new();
     collect_mapped_bindings(scope, graph, &mut Vec::new(), &mut bindings)?;
@@ -257,6 +349,14 @@ fn mapped_copy_plan(
     }
     let source_group_node = sources.schema_node_at(&source_group)?;
     if !matches!(source_group_node.kind, SchemaKind::Group { .. }) {
+        return None;
+    }
+    if alternative.is_some_and(|name| {
+        !source_group_node
+            .alternatives()
+            .iter()
+            .any(|candidate| candidate.name == name)
+    }) {
         return None;
     }
 
@@ -280,6 +380,9 @@ fn mapped_copy_plan(
             collection: collection.to_vec(),
             group: source_group,
             copy_all,
+            alternative: alternative.map(str::to_string),
+            absorbed_filter: alternative.and(scope.filter),
+            absorbed_marker,
         }),
         explicit_text_port: explicit_text_port && !copy_all,
     })
@@ -370,6 +473,9 @@ fn collect_mapped_bindings(
         return None;
     }
     for binding in &scope.bindings {
+        if binding.target_field == XML_TYPE_FIELD {
+            continue;
+        }
         relative.push(binding.target_field.clone());
         let Node::SourceField { path, frame } = graph.nodes.get(&binding.node)? else {
             relative.pop();

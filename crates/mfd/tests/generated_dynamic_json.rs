@@ -141,6 +141,18 @@ fn generated_tokens_build_a_nested_dynamic_object() -> Result<(), Box<dyn std::e
         actual,
         serde_json::json!({"rates": {"USD": 1.25, "JPY": 150.5}})
     );
+
+    let export_path = dir.0.join("generated-dynamic-export.mfd");
+    let warnings = mfd::export(&imported.project, &export_path)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let roundtrip = mfd::import(&export_path)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(
+        output,
+        engine::run(&roundtrip.project, &source)?,
+        "generated dynamic object changed after export/re-import"
+    );
     Ok(())
 }
 

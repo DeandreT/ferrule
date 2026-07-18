@@ -207,6 +207,9 @@ fn collect_instances<'a>(instance: &'a Instance, path: &[String], output: &mut V
                 output.extend(items.iter());
             }
             Instance::Scalar(_) | Instance::Group(_) => output.push(instance),
+            Instance::DocumentSet(documents) => {
+                output.extend(documents.iter().map(ir::DocumentMember::value));
+            }
         }
         return;
     }
@@ -219,6 +222,11 @@ fn collect_instances<'a>(instance: &'a Instance, path: &[String], output: &mut V
         Instance::Repeated(items) | Instance::MappedSequence(items) => {
             for item in items {
                 collect_instances(item, path, output);
+            }
+        }
+        Instance::DocumentSet(documents) => {
+            for document in documents {
+                collect_instances(document.value(), path, output);
             }
         }
         Instance::Scalar(_) => {}
@@ -237,6 +245,9 @@ fn scalar_at<'a>(instance: &'a Instance, path: &[String]) -> Option<&'a Value> {
         Instance::Repeated(items) | Instance::MappedSequence(items) => {
             items.first().and_then(|item| scalar_at(item, path))
         }
+        Instance::DocumentSet(documents) => documents
+            .first()
+            .and_then(|document| scalar_at(document.value(), path)),
         Instance::Scalar(_) => None,
     }
 }
@@ -276,6 +287,7 @@ pub(super) fn eval_sequence_exists(
             grouped: false,
             join: None,
             join_position: None,
+            document_path: None,
         });
         match eval_expr(
             graph,

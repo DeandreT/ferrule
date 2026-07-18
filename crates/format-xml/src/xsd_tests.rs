@@ -147,6 +147,107 @@ fn expanded_type_names_keep_their_namespace_during_resolution() {
 }
 
 #[test]
+fn imported_derived_types_select_xsi_type_across_an_include() {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_included_alternatives_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let root = dir.join("orders.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:o="urn:ferrule:orders" targetNamespace="urn:ferrule:orders">
+          <xs:include schemaLocation="addresses.xsd"/>
+          <xs:element name="Order"><xs:complexType><xs:sequence>
+            <xs:element name="shipTo" type="o:Address"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("addresses.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:o="urn:ferrule:orders" targetNamespace="urn:ferrule:orders">
+          <xs:complexType name="Address"><xs:sequence>
+            <xs:element name="name" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="Domestic"><xs:complexContent>
+            <xs:extension base="o:Address"><xs:sequence>
+              <xs:element name="state" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:complexType name="International"><xs:complexContent>
+            <xs:extension base="o:Address"><xs:sequence>
+              <xs:element name="postcode" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&root, Some("{urn:ferrule:orders}Order")).unwrap();
+    let ship_to = schema.child("shipTo").unwrap();
+    assert_eq!(
+        ship_to
+            .alternatives()
+            .iter()
+            .map(|alternative| alternative.name.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "{urn:ferrule:orders}Address",
+            "{urn:ferrule:orders}Domestic",
+            "{urn:ferrule:orders}International",
+        ]
+    );
+    let international = from_str(
+        r#"<Order xmlns="urn:ferrule:orders"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:o="urn:ferrule:orders">
+          <shipTo xsi:type="o:International"><name>Ada</name><postcode>AB12</postcode></shipTo>
+        </Order>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        international
+            .field("shipTo")
+            .and_then(|address| address.field(ir::XML_TYPE_FIELD))
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String(
+            "{urn:ferrule:orders}International".into()
+        ))
+    );
+    let base = from_str(
+        r#"<Order xmlns="urn:ferrule:orders"><shipTo><name>Ada</name></shipTo></Order>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        base.field("shipTo")
+            .and_then(|address| address.field(ir::XML_TYPE_FIELD))
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String("{urn:ferrule:orders}Address".into()))
+    );
+    assert!(matches!(
+        from_str(
+            r#"<Order xmlns="urn:ferrule:orders" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><shipTo xsi:type="Missing"><name>Ada</name></shipTo></Order>"#,
+            &schema,
+        ),
+        Err(crate::XmlFormatError::UnknownXmlType { .. })
+    ));
+    assert!(matches!(
+        from_str(
+            r#"<Order xmlns="urn:ferrule:orders" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:o="urn:ferrule:orders"><shipTo xsi:type="o:Domestic"><name>Ada</name><postcode>AB12</postcode></shipTo></Order>"#,
+            &schema,
+        ),
+        Err(crate::XmlFormatError::NoMatchingAlternative { .. })
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn imports_nested_repeating_groups() {
     let dir = std::env::temp_dir();
     let path = dir.join(format!("ferrule_xsd_test_{}.xsd", std::process::id()));
@@ -956,6 +1057,65 @@ fn export_roundtrips_different_derived_views_of_one_base_type() {
 
     let path = std::env::temp_dir().join(format!(
         "ferrule_xsd_asymmetric_alternatives_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_reuses_an_implicit_base_from_an_overlapping_derived_view() {
+    let identity = |local: &str| format!("{{urn:ferrule:implicit-base}}{local}");
+    let shipping = SchemaNode::group(
+        "Shipping",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("state", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        ir::GroupAlternative {
+            name: identity("Address"),
+            members: vec!["name".into()],
+            required: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: identity("Domestic"),
+            members: vec!["name".into(), "state".into()],
+            required: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let billing = SchemaNode::group(
+        "Billing",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("state", ScalarType::String),
+            SchemaNode::scalar("postcode", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        ir::GroupAlternative {
+            name: identity("International"),
+            members: vec!["name".into(), "postcode".into()],
+            required: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: identity("Domestic"),
+            members: vec!["name".into(), "state".into()],
+            required: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let schema = SchemaNode::group("Root", vec![shipping, billing]);
+
+    let xsd = export(&schema).unwrap();
+    assert_eq!(xsd.matches(r#"name="Address""#).count(), 1, "{xsd}");
+    assert!(xsd.contains(r#"name="International""#), "{xsd}");
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_implicit_alternative_base_{}.xsd",
         std::process::id()
     ));
     std::fs::write(&path, xsd).unwrap();

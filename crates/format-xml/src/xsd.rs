@@ -532,26 +532,26 @@ fn attach_direct_type_alternatives(
     schema_path: &Path,
     state: &mut ParseState,
 ) {
-    let base_local = local_name(base_qname);
-    let base_declaration = top_level(schema_el, "complexType", base_local);
-    let base_is_abstract = base_declaration
-        .as_ref()
-        .and_then(|declaration| declaration.attribute("abstract"))
-        .is_some_and(|value| matches!(value, "true" | "1"));
-    let derived_names = schema_el
-        .children()
-        .filter(|candidate| {
-            candidate.is_element()
-                && candidate.tag_name().name() == "complexType"
-                && candidate.attribute("name").is_some()
-                && direct_extension_base(candidate).is_some_and(|base| {
-                    local_name(&base) == base_local && is_local_qname(schema_el, &base)
-                })
-        })
-        .filter_map(|candidate| candidate.attribute("name"))
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    if derived_names.is_empty() {
+    let base_identity = expanded_qname_identity(
+        schema_el,
+        schema_el.attribute("targetNamespace"),
+        base_qname,
+    );
+    let Some(base_identity) = base_identity else {
+        return;
+    };
+    let base_is_abstract = complex_type_is_abstract(schema_el, schema_path, base_qname, state);
+    let mut visited = BTreeSet::new();
+    let mut derived = Vec::new();
+    collect_direct_derived_types(
+        schema_el,
+        schema_path,
+        schema_el.attribute("targetNamespace"),
+        &base_identity,
+        &mut visited,
+        &mut derived,
+    );
+    if derived.is_empty() {
         return;
     }
 
@@ -568,13 +568,28 @@ fn attach_direct_type_alternatives(
         .collect::<Vec<_>>();
     let original_children = base_children.clone();
     let mut resolved = Vec::new();
-    for name in derived_names {
-        let Some(ComplexTypeResolution::Children(children)) =
-            resolve_complex_type(&name, schema_el, schema_path, state, None)
-        else {
+    for derived in derived {
+        let Ok(text) = read_xml_text(&derived.path) else {
             return;
         };
-        resolved.push((type_identity(schema_el, &name), children));
+        let Ok(document) = roxmltree::Document::parse(&text) else {
+            return;
+        };
+        let derived_schema = document.root_element();
+        let Some(declaration) = top_level(&derived_schema, "complexType", &derived.local) else {
+            return;
+        };
+        let Some(ComplexTypeResolution::Children(children)) = parse_complex_type_declaration(
+            &declaration,
+            &derived_schema,
+            &derived.path,
+            &derived.local,
+            state,
+            None,
+        ) else {
+            return;
+        };
+        resolved.push((derived.identity, children));
     }
     let alternative_count = resolved.len() + usize::from(!base_is_abstract);
     if alternative_count < 2 {
@@ -596,7 +611,7 @@ fn attach_direct_type_alternatives(
     let mut alternatives = Vec::with_capacity(alternative_count);
     if !base_is_abstract {
         alternatives.push(ir::GroupAlternative {
-            name: type_identity(schema_el, base_local),
+            name: base_identity,
             members: base_members,
             required: Vec::new(),
         });
@@ -620,6 +635,155 @@ fn attach_direct_type_alternatives(
     }
 }
 
+#[derive(Debug)]
+struct DerivedTypeDeclaration {
+    path: PathBuf,
+    local: String,
+    identity: String,
+}
+
+fn complex_type_is_abstract(
+    schema_el: &Node,
+    schema_path: &Path,
+    qname: &str,
+    state: &mut ParseState,
+) -> bool {
+    let local = local_name(qname);
+    if is_local_qname(schema_el, qname)
+        && let Some(declaration) = top_level(schema_el, "complexType", local)
+    {
+        return declaration
+            .attribute("abstract")
+            .is_some_and(|value| matches!(value, "true" | "1"));
+    }
+    let Some(path) = state.find_external_declaration(schema_el, schema_path, "complexType", qname)
+    else {
+        return false;
+    };
+    let Ok(text) = read_xml_text(&path) else {
+        return false;
+    };
+    let Ok(document) = roxmltree::Document::parse(&text) else {
+        return false;
+    };
+    top_level(&document.root_element(), "complexType", local)
+        .and_then(|declaration| declaration.attribute("abstract"))
+        .is_some_and(|value| matches!(value, "true" | "1"))
+}
+
+fn collect_direct_derived_types(
+    schema_el: &Node,
+    schema_path: &Path,
+    inherited_namespace: Option<&str>,
+    base_identity: &str,
+    visited: &mut BTreeSet<PathBuf>,
+    out: &mut Vec<DerivedTypeDeclaration>,
+) {
+    let path = normalized_path(schema_path);
+    if !visited.insert(path.clone()) {
+        return;
+    }
+    let effective_namespace = schema_el
+        .attribute("targetNamespace")
+        .or(inherited_namespace);
+    for declaration in schema_el.children().filter(|candidate| {
+        candidate.is_element()
+            && candidate.tag_name().name() == "complexType"
+            && candidate.attribute("abstract") != Some("true")
+            && candidate.attribute("abstract") != Some("1")
+    }) {
+        let Some(local) = declaration.attribute("name") else {
+            continue;
+        };
+        let Some(base) = direct_extension_base(&declaration) else {
+            continue;
+        };
+        if expanded_qname_identity(schema_el, effective_namespace, &base).as_deref()
+            != Some(base_identity)
+        {
+            continue;
+        }
+        let Some(identity) = type_identity_in_namespace(effective_namespace, local) else {
+            continue;
+        };
+        if out.iter().any(|derived| derived.identity == identity) {
+            continue;
+        }
+        out.push(DerivedTypeDeclaration {
+            path: path.clone(),
+            local: local.to_string(),
+            identity,
+        });
+    }
+
+    for link in schema_el
+        .children()
+        .filter(|node| node.is_element() && matches!(node.tag_name().name(), "include" | "import"))
+    {
+        let Some(location) = link.attribute("schemaLocation") else {
+            continue;
+        };
+        if location.contains("://") {
+            continue;
+        }
+        let dependency = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(location);
+        let Ok(text) = read_xml_text(&dependency) else {
+            continue;
+        };
+        let Ok(document) = roxmltree::Document::parse(&text) else {
+            continue;
+        };
+        let dependency_schema = document.root_element();
+        let dependency_inherited = (link.tag_name().name() == "include")
+            .then_some(effective_namespace)
+            .flatten();
+        collect_direct_derived_types(
+            &dependency_schema,
+            &dependency,
+            dependency_inherited,
+            base_identity,
+            visited,
+            out,
+        );
+    }
+}
+
+fn expanded_qname_identity(
+    schema_el: &Node,
+    effective_namespace: Option<&str>,
+    qname: &str,
+) -> Option<String> {
+    if let Some((namespace, local)) = expanded_name(qname) {
+        return (!namespace.is_empty() && !local.is_empty())
+            .then(|| format!("{{{namespace}}}{local}"));
+    }
+    match qname.split_once(':') {
+        Some((prefix, local)) if !prefix.is_empty() && !local.is_empty() => schema_el
+            .lookup_namespace_uri(Some(prefix))
+            .filter(|namespace| !namespace.is_empty())
+            .map(|namespace| format!("{{{namespace}}}{local}")),
+        Some(_) => None,
+        None => type_identity_in_namespace(effective_namespace, qname),
+    }
+}
+
+fn type_identity_in_namespace(namespace: Option<&str>, local: &str) -> Option<String> {
+    if local.is_empty() {
+        return None;
+    }
+    Some(
+        namespace
+            .filter(|namespace| !namespace.is_empty())
+            .map_or_else(
+                || local.to_string(),
+                |namespace| format!("{{{namespace}}}{local}"),
+            ),
+    )
+}
+
 fn direct_extension_base(declaration: &Node<'_, '_>) -> Option<String> {
     declaration
         .children()
@@ -628,16 +792,6 @@ fn direct_extension_base(declaration: &Node<'_, '_>) -> Option<String> {
         .find(|child| child.is_element() && child.tag_name().name() == "extension")?
         .attribute("base")
         .map(str::to_string)
-}
-
-fn type_identity(schema_el: &Node, local: &str) -> String {
-    schema_el
-        .attribute("targetNamespace")
-        .filter(|namespace| !namespace.is_empty())
-        .map_or_else(
-            || local.to_string(),
-            |namespace| format!("{{{namespace}}}{local}"),
-        )
 }
 
 /// Finds a named top-level declaration (`xs:complexType name=..` etc.).

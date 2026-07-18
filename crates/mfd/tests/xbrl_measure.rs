@@ -63,6 +63,9 @@ fn scalar_field<'a>(instance: &'a Instance, wanted: &str) -> Option<&'a Value> {
         Instance::Repeated(items) | Instance::MappedSequence(items) => {
             items.iter().find_map(|item| scalar_field(item, wanted))
         }
+        Instance::DocumentSet(documents) => documents
+            .iter()
+            .find_map(|document| scalar_field(document.value(), wanted)),
     }
 }
 

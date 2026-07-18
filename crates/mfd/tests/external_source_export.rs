@@ -124,7 +124,7 @@ fn captured_http_post_roundtrips_and_executes_identically() -> Result<(), Box<dy
 }
 
 #[test]
-fn opaque_user_function_rejects_before_replacing_the_design() -> Result<(), Box<dyn Error>> {
+fn captured_user_function_roundtrips_its_result_contract() -> Result<(), Box<dyn Error>> {
     let mut project = project_with_http_source()?;
     project.source_options.external_source = Some(ExternalSourceOptions::user_function(
         "FetchInventory",
@@ -136,13 +136,17 @@ fn opaque_user_function_rejects_before_replacing_the_design() -> Result<(), Box<
     let design = temp.0.join("opaque.mfd");
     std::fs::write(&design, "keep design")?;
 
-    let error = mfd::export(&project, &design).expect_err("opaque UDF export must fail");
-    assert!(
-        error
-            .to_string()
-            .contains("not the original call and definition body")
+    assert!(mfd::export(&project, &design)?.is_empty());
+    assert_ne!(std::fs::read_to_string(&design)?, "keep design");
+    let roundtrip = mfd::import(&design)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert_eq!(roundtrip.project.source, project.source);
+    assert_eq!(roundtrip.project.source_path, project.source_path);
+    assert_eq!(
+        roundtrip.project.source_options.external_source,
+        project.source_options.external_source
     );
-    assert_eq!(std::fs::read_to_string(design)?, "keep design");
+    assert!(engine::validate(&roundtrip.project).is_empty());
     Ok(())
 }
 

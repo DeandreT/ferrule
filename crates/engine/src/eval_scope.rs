@@ -65,6 +65,11 @@ pub(crate) fn eval_scope(
                 Instance::Scalar(_) => {
                     return Err(EngineError::InvalidConcatenatedScopeItem { found: "a scalar" });
                 }
+                Instance::DocumentSet(_) => {
+                    return Err(EngineError::InvalidConcatenatedScopeItem {
+                        found: "a document set",
+                    });
+                }
             }
         }
         return Ok(match scope.iteration_output {
@@ -463,7 +468,11 @@ pub(crate) fn eval_scope(
         }
     }
 
-    finalize_scope_output(scope, produced)
+    finalize_scope_output(
+        scope,
+        target.is_some_and(|target| target.repeating),
+        produced,
+    )
 }
 
 fn renumber_extension(positions: &mut [PositionFrame], index: usize) {
@@ -573,6 +582,11 @@ impl ItemEvaluator<'_> {
                 Some(Instance::MappedSequence(_)) => {
                     Err(EngineError::CopyCurrentSourceRequiresGroup {
                         found: "mapped sequence",
+                    })
+                }
+                Some(Instance::DocumentSet(_)) => {
+                    Err(EngineError::CopyCurrentSourceRequiresGroup {
+                        found: "document set",
                     })
                 }
                 None => Err(EngineError::CopyCurrentSourceRequiresGroup {

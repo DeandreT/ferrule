@@ -120,7 +120,7 @@ fn write_legacy_copy_fixture(dir: &Path) -> Result<PathBuf, std::io::Error> {
       <root><entry name="FileInstance"><entry name="document"><entry name="root">
         <entry name="object" inpkey="20"/>
       </entry></entry></entry></root>
-      <json schema="any.schema.json" outputinstance="preview.json"/>
+      <json schema="any.schema.json"/>
     </data>
   </component>
 </children></structure><connections>
@@ -220,6 +220,8 @@ fn legacy_copy_all_refines_an_unconstrained_json_preview() -> Result<(), Box<dyn
         imported.project.root.construction,
         mapping::ScopeConstruction::CopyCurrentSource
     );
+    assert!(imported.project.target_options.json_document);
+    assert!(imported.project.target_path.is_none());
     assert!(engine::validate(&imported.project).is_empty());
 
     let source = format_xml::from_str(
@@ -227,5 +229,20 @@ fn legacy_copy_all_refines_an_unconstrained_json_preview() -> Result<(), Box<dyn
         &imported.project.source,
     )?;
     assert_eq!(engine::run(&imported.project, &source)?, source);
+
+    let exported = dir.0.join("legacy-copy-roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &exported)?.is_empty());
+    let rendered = std::fs::read_to_string(&exported)?;
+    assert!(rendered.contains("library=\"json\""));
+    assert!(!rendered.contains("library=\"xml\" uid=\"3\""));
+    let roundtrip = mfd::import(&exported)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(roundtrip.project.target, imported.project.target);
+    assert_eq!(
+        roundtrip.project.root.construction,
+        mapping::ScopeConstruction::CopyCurrentSource
+    );
+    assert_eq!(engine::run(&roundtrip.project, &source)?, source);
     Ok(())
 }

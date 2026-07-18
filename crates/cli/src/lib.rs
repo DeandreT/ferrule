@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
-use mapping::{ExternalPayloadFormat, FormatOptions};
+use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
 
 const DEFAULT_HTTP_TIMEOUT_SECONDS: u64 = 30;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
@@ -342,6 +342,12 @@ fn write_output(
     instance: &Instance,
     options: &FormatOptions,
 ) -> anyhow::Result<usize> {
+    if options.local_xml_file_set && !options.xml_document {
+        bail!("`local_xml_file_set` requires `xml_document` for output");
+    }
+    if options.local_xml_file_set {
+        bail!("`local_xml_file_set` is input-only");
+    }
     if options.xbrl.is_some() {
         reject_xbrl_conflicts(options, "output")?;
         let xbrl = options
@@ -377,6 +383,27 @@ fn write_output(
         format_protobuf::write(path, &layout, &protobuf.root_message, instance)
             .with_context(|| format!("writing output {}", path.display()))?;
         return Ok(1);
+    }
+    if let Some(kind) = options.edi_kind {
+        reject_edi_conflicts(options, "output")?;
+        return write_edi_output(path, schema, instance, options, kind);
+    }
+    if options.xml_document {
+        reject_xml_conflicts(options, "output")?;
+        format_xml::write(path, schema, instance)
+            .with_context(|| format!("writing XML output {}", path.display()))?;
+        return Ok(1);
+    }
+    if options.json_document || options.json_lines {
+        reject_json_conflicts(options, "output")?;
+        let write = if options.json_lines {
+            format_json::write_lines
+        } else {
+            format_json::write
+        };
+        write(path, schema, instance)
+            .with_context(|| format!("writing JSON output {}", path.display()))?;
+        return Ok(instance.as_repeated().map_or(1, <[Instance]>::len));
     }
     if let Some(layout) = &options.fixed_width {
         reject_fixed_width_csv_options(options, "output")?;
@@ -492,6 +519,9 @@ fn read_instance(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> anyhow::Result<Instance> {
+    if options.local_xml_file_set && !options.xml_document {
+        bail!("`local_xml_file_set` requires `xml_document` for input");
+    }
     if options.xbrl.is_some() {
         reject_xbrl_conflicts(options, "input")?;
         let xbrl = options
@@ -515,6 +545,7 @@ fn read_instance(
     }
 
     if let Some(boundary) = &options.external_source {
+        reject_external_source_conflicts(options, "input")?;
         if let Some(url) = http_url(path) {
             bail!(
                 "external HTTP POST response `{}` must be supplied as a local captured {} file; ferrule does not send POST requests",
@@ -548,6 +579,49 @@ fn read_instance(
     if options.protobuf.is_some() {
         reject_protobuf_conflicts(options, "input")?;
         bail!("Protocol Buffers input is not supported; `protobuf` is output-only");
+    }
+
+    if let Some(kind) = options.edi_kind {
+        reject_edi_conflicts(options, "input")?;
+        return read_edi_input(path, schema, options, kind);
+    }
+
+    if options.xml_document {
+        reject_xml_conflicts(options, "input")?;
+        if options.local_xml_file_set {
+            let base = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .unwrap_or_else(|| Path::new("."));
+            let pattern = path
+                .file_name()
+                .map(Path::new)
+                .context("local XML file-set input has no filename pattern")?;
+            return format_xml::read_local_file_set(
+                base,
+                pattern,
+                schema,
+                format_xml::LocalFileSetLimits::default(),
+            )
+            .map(|loaded| loaded.instance)
+            .with_context(|| format!("reading local XML file set {}", path.display()));
+        }
+        if let Some(url) = http_url(path) {
+            return read_http_xml(url, schema, options);
+        }
+        return format_xml::read(path, schema)
+            .with_context(|| format!("reading XML input {}", path.display()));
+    }
+
+    if options.json_document || options.json_lines {
+        reject_json_conflicts(options, "input")?;
+        let read = if options.json_lines {
+            format_json::read_lines
+        } else {
+            format_json::read
+        };
+        return read(path, schema)
+            .with_context(|| format!("reading JSON input {}", path.display()));
     }
 
     if let Some(url) = http_url(path) {
@@ -772,21 +846,32 @@ fn sanitize_uri(uri: &ureq::http::Uri) -> String {
 }
 
 fn reject_fixed_width_csv_options(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.delimiter.is_some() || options.has_header_row.is_some() {
+    if options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+    {
         bail!(
-            "`fixed_width` cannot be combined with CSV `delimiter` or `has_header_row` options for {side}"
+            "`fixed_width` cannot be combined with `delimiter`, `has_header_row`, \
+             `xml_document`, or `local_xml_file_set` for {side}"
         );
     }
     Ok(())
 }
 
 fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.delimiter.is_some()
+    if options
+        .edi_kind
+        .is_some_and(|kind| kind != EdiBoundaryKind::Idoc)
+        || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -800,13 +885,19 @@ fn reject_idoc_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
 }
 
 fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
-    if options.delimiter.is_some()
+    if options
+        .edi_kind
+        .is_some_and(|kind| kind != EdiBoundaryKind::SwiftMt)
+        || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
         || options.flextext.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
         || options.idoc.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -820,6 +911,7 @@ fn reject_swift_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result
 
 fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
     if options.lenient_segments
+        || options.edi_kind.is_some()
         || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -828,6 +920,9 @@ fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
         || options.swift_mt.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -840,6 +935,7 @@ fn reject_xbrl_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<
 
 fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
     if options.lenient_segments
+        || options.edi_kind.is_some()
         || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -848,6 +944,9 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.swift_mt.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.pdf.is_some()
         || options.xbrl.is_some()
@@ -860,6 +959,7 @@ fn reject_protobuf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
 
 fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
     if options.lenient_segments
+        || options.edi_kind.is_some()
         || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -867,6 +967,9 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
         || options.swift_mt.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.pdf.is_some()
         || options.protobuf.is_some()
@@ -880,6 +983,7 @@ fn reject_flextext_conflicts(options: &FormatOptions, side: &str) -> anyhow::Res
 
 fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
     if options.lenient_segments
+        || options.edi_kind.is_some()
         || options.delimiter.is_some()
         || options.has_header_row.is_some()
         || options.fixed_width.is_some()
@@ -888,6 +992,9 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         || options.swift_mt.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.protobuf.is_some()
         || options.xbrl.is_some()
@@ -896,6 +1003,196 @@ fn reject_pdf_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<(
         bail!("`pdf` cannot be combined with another format's options for {side}");
     }
     Ok(())
+}
+
+fn reject_edi_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    let kind = options
+        .edi_kind
+        .context("missing EDI boundary kind during runtime dispatch")?;
+    if matches!(kind, EdiBoundaryKind::Idoc | EdiBoundaryKind::SwiftMt) {
+        bail!("`edi_kind` `{kind:?}` requires its embedded runtime layout for {side}");
+    }
+    if options.x12_separators.is_some() && kind != EdiBoundaryKind::X12 {
+        bail!("X12 separator metadata requires `edi_kind` `X12` for {side}");
+    }
+    if options.x12_interchange_version.is_some() && kind != EdiBoundaryKind::X12 {
+        bail!("X12 interchange version requires `edi_kind` `X12` for {side}");
+    }
+    if options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
+        || options.json_lines
+        || options.pdf.is_some()
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_any_xlsx_layout(options)
+    {
+        bail!("`edi_kind` cannot be combined with another format's options for {side}");
+    }
+    Ok(())
+}
+
+fn reject_json_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    if options.lenient_segments
+        || options.edi_kind.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.pdf.is_some()
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_any_xlsx_layout(options)
+    {
+        bail!(
+            "`json_document`/`json_lines` cannot be combined with another format's options for {side}"
+        );
+    }
+    Ok(())
+}
+
+fn reject_xml_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    let external_xml = options
+        .external_source
+        .as_ref()
+        .is_some_and(|boundary| boundary.payload() == ExternalPayloadFormat::Xml);
+    if options.lenient_segments
+        || options.edi_kind.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.pdf.is_some()
+        || options.json_document
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_any_xlsx_layout(options)
+        || (options.external_source.is_some() && !external_xml)
+        || (options.local_xml_file_set && side == "output")
+        || (options.local_xml_file_set
+            && (options.http_get.is_some() || options.external_source.is_some()))
+        || (side == "output" && options.http_get.is_some())
+        || (options.http_get.is_some() && options.external_source.is_some())
+    {
+        bail!("`xml_document` cannot be combined with another format's options for {side}");
+    }
+    Ok(())
+}
+
+fn reject_external_source_conflicts(options: &FormatOptions, side: &str) -> anyhow::Result<()> {
+    let boundary = options
+        .external_source
+        .as_ref()
+        .context("missing captured external source metadata")?;
+    let owns_identity = match boundary.payload() {
+        ExternalPayloadFormat::Json => !options.xml_document,
+        ExternalPayloadFormat::Xml => !options.json_document && !options.json_lines,
+    };
+    if !owns_identity
+        || options.lenient_segments
+        || options.edi_kind.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.http_get.is_some()
+        || options.local_xml_file_set
+        || options.pdf.is_some()
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_any_xlsx_layout(options)
+    {
+        bail!(
+            "captured external source metadata conflicts with another format's options for {side}"
+        );
+    }
+    Ok(())
+}
+
+fn read_edi_input(
+    path: &Path,
+    schema: &SchemaNode,
+    options: &FormatOptions,
+    kind: EdiBoundaryKind,
+) -> anyhow::Result<Instance> {
+    let instance = match kind {
+        EdiBoundaryKind::X12 => format_edi::x12::read_with_separators(
+            path,
+            schema,
+            options.lenient_segments,
+            options.x12_separators.map(x12_separators),
+        ),
+        EdiBoundaryKind::Edifact => {
+            format_edi::edifact::read(path, schema, options.lenient_segments)
+        }
+        EdiBoundaryKind::Hl7 => format_edi::hl7::read(path, schema, options.lenient_segments),
+        EdiBoundaryKind::Tradacoms => {
+            format_edi::tradacoms::read(path, schema, options.lenient_segments)
+        }
+        EdiBoundaryKind::Idoc | EdiBoundaryKind::SwiftMt => {
+            bail!("EDI boundary `{kind:?}` requires an embedded runtime layout")
+        }
+    };
+    instance.with_context(|| format!("reading input {}", path.display()))
+}
+
+fn write_edi_output(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &FormatOptions,
+    kind: EdiBoundaryKind,
+) -> anyhow::Result<usize> {
+    match kind {
+        EdiBoundaryKind::X12 => format_edi::x12::write_with_syntax(
+            path,
+            schema,
+            instance,
+            options
+                .x12_separators
+                .map(x12_separators)
+                .unwrap_or_default(),
+            options.x12_interchange_version.as_deref(),
+        ),
+        EdiBoundaryKind::Edifact => format_edi::edifact::write(path, schema, instance),
+        EdiBoundaryKind::Hl7 => bail!("HL7 output is not yet supported"),
+        EdiBoundaryKind::Tradacoms => bail!("TRADACOMS output is not yet supported"),
+        EdiBoundaryKind::Idoc => bail!("SAP IDoc output is not supported; IDoc is input-only"),
+        EdiBoundaryKind::SwiftMt => {
+            bail!("SWIFT MT output is not supported; SWIFT MT is input-only")
+        }
+    }
+    .with_context(|| format!("writing EDI output {}", path.display()))?;
+    Ok(1)
+}
+
+fn x12_separators(separators: mapping::X12Separators) -> format_edi::x12::Separators {
+    format_edi::x12::Separators {
+        element: separators.element,
+        component: separators.component,
+        segment: separators.segment,
+        repetition: separators.repetition,
+        release: separators.release,
+    }
 }
 
 fn has_any_xlsx_layout(options: &FormatOptions) -> bool {

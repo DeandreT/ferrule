@@ -85,8 +85,9 @@ pub(super) fn read(
         .attribute("name")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "PDF input instance has no file name".to_string())?;
-    let input_path = resolve_reference(mfd_path, input_name, "PDF input instance")?;
-    let input_instance = portable_instance_path(mfd_path, &input_path);
+    let input_instance = resolve_reference(mfd_path, input_name, "PDF input instance")
+        .map(|path| portable_instance_path(mfd_path, &path))
+        .unwrap_or_else(|_| input_name.replace('\\', "/"));
     let output_keys = ports.keys().copied().collect();
     warnings.extend(
         layout_warnings
@@ -167,6 +168,9 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
     if !root.has_tag_name("Document") {
         return Err("PDF template root is not <Document>".to_string());
     }
+    if let Some(layout) = child(&root, "FerruleLayout") {
+        return parse_canonical_layout(&layout, expected_root);
+    }
     let model_root = child(&root, "Template")
         .and_then(|template| child(&template, "Model"))
         .and_then(|model| child(&model, "Root"))
@@ -193,6 +197,29 @@ fn parse_layout(path: &Path, expected_root: &str) -> Result<(PdfLayout, Vec<Stri
     }
     let layout = PdfLayout::new(root_name, PdfPageSelection::All, commands)
         .map_err(|error| format!("invalid PDF extraction layout ({error})"))?;
+    Ok((layout, Vec::new()))
+}
+
+fn parse_canonical_layout(
+    node: &roxmltree::Node<'_, '_>,
+    expected_root: &str,
+) -> Result<(PdfLayout, Vec<String>), String> {
+    if node.attribute("version") != Some("1") {
+        return Err("PDF FerruleLayout has an unsupported version".to_string());
+    }
+    let encoded = node
+        .text()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "PDF FerruleLayout is empty".to_string())?;
+    let layout = serde_json::from_str::<PdfLayout>(encoded)
+        .map_err(|error| format!("invalid PDF FerruleLayout ({error})"))?;
+    if layout.root_name() != expected_root {
+        return Err(format!(
+            "PDF template root `{}` does not match document root `{expected_root}`",
+            layout.root_name()
+        ));
+    }
     Ok((layout, Vec::new()))
 }
 

@@ -5,6 +5,7 @@ use super::{EngineError, dynamic_target::merge_dynamic_fragments};
 
 pub(super) fn finalize_scope_output(
     scope: &Scope,
+    target_repeating: bool,
     produced: Vec<Instance>,
 ) -> Result<Instance, EngineError> {
     let iterates = scope.iterates();
@@ -12,10 +13,15 @@ pub(super) fn finalize_scope_output(
         if scope.iteration_output == IterationOutput::First {
             return Err(EngineError::FirstOutputWithoutIteration);
         }
-        return produced
+        let produced = produced
             .into_iter()
             .next()
-            .ok_or(EngineError::FilteredNonRepeatingScope);
+            .ok_or(EngineError::FilteredNonRepeatingScope)?;
+        return Ok(if target_repeating {
+            Instance::Repeated(vec![produced])
+        } else {
+            produced
+        });
     }
     if scope.merge_dynamic_fields {
         if scope.iteration_output != IterationOutput::Repeated {

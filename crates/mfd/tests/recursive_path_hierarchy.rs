@@ -115,9 +115,15 @@ fn imports_and_executes_bounded_recursive_path_grouping() -> Result<(), Box<dyn 
     assert_eq!(scalar(&directories[0], "name"), Some("src"));
     assert_eq!(scalar(&directories[1], "name"), Some("tests"));
 
-    let export = dir.0.join("rejected.mfd");
-    write(&export, "sentinel")?;
-    assert!(mfd::export(&imported.project, &export).is_err());
-    assert_eq!(std::fs::read_to_string(export)?, "sentinel");
+    let export = dir.0.join("roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &export)?.is_empty());
+    let reimported = mfd::import(&export)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(matches!(
+        reimported.project.root.construction,
+        ScopeConstruction::PathHierarchy { .. }
+    ));
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &input)?, output);
     Ok(())
 }

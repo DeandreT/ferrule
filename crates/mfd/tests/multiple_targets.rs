@@ -190,7 +190,7 @@ fn rejects_unretained_additional_edi_boundary_atomically() -> Result<(), Box<dyn
     project.extra_targets[0].options.lenient_segments = true;
 
     let error = mfd::export(&project, &design).expect_err("EDI target should be rejected");
-    assert!(format!("{error:#}").contains("configuration and dialect are not retained"));
+    assert!(format!("{error:#}").contains("dialect marker is missing"));
     assert_eq!(std::fs::read_to_string(&design)?, "sentinel");
     assert!(!dir.0.join("mapping-source.xsd").exists());
     assert!(!dir.0.join("mapping-target.xsd").exists());

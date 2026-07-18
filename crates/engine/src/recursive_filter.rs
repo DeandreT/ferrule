@@ -127,6 +127,7 @@ fn position(collection: &str, index: usize) -> PositionFrame {
         grouped: false,
         join: None,
         join_position: None,
+        document_path: None,
     }
 }
 
@@ -136,5 +137,6 @@ fn instance_kind(instance: &Instance) -> &'static str {
         Instance::Group(_) => "group",
         Instance::Repeated(_) => "repeated collection",
         Instance::MappedSequence(_) => "mapped sequence",
+        Instance::DocumentSet(_) => "document set",
     }
 }

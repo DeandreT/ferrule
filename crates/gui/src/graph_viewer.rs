@@ -329,6 +329,7 @@ impl GraphViewer<'_> {
                 expression, arg, ..
             } => expression.iter().chain(arg).nth(idx).copied(),
             Node::SourceField { .. }
+            | Node::SourceDocumentPath
             | Node::Position { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
@@ -501,6 +502,7 @@ impl GraphViewer<'_> {
     fn input_count(node: &Node) -> usize {
         match node {
             Node::SourceField { .. }
+            | Node::SourceDocumentPath
             | Node::Position { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
@@ -538,6 +540,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .unwrap_or_default();
                     format!("Source: {owner}{}", path.join("/"))
                 }
+                Some(Node::SourceDocumentPath) => "Source document path".to_string(),
                 Some(Node::Position { collection }) if collection.is_empty() => {
                     "Position".to_string()
                 }
@@ -691,6 +694,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .filter(|s| !s.is_empty())
                             .collect();
                     }
+                }
+                Node::SourceDocumentPath => {
+                    ui.label("current source document path");
                 }
                 Node::Position { collection } => {
                     self.source_paths.show_collection_picker(

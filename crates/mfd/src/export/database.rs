@@ -235,6 +235,9 @@ fn render_table(
             SchemaKind::Scalar { ty } => {
                 let mut keys = String::new();
                 for direction in [source, target].into_iter().flatten() {
+                    if direction.attr == "inpkey" && child.value_generation.is_some() {
+                        continue;
+                    }
                     let key = port_key(direction.ports, direction.branch, path, args).ok_or_else(
                         || {
                             MfdError::Unsupported(format!(
@@ -245,9 +248,15 @@ fn render_table(
                     )?;
                     let _ = write!(keys, " {}=\"{key}\"", direction.attr);
                 }
+                let generation = child
+                    .value_generation
+                    .map(|generation| match generation {
+                        ir::ValueGeneration::MaxNumber => " valuekeygeneration=\"maxnumber\"",
+                    })
+                    .unwrap_or_default();
                 let _ = writeln!(
                     output,
-                    "{pad}\t<entry name=\"{}\"{keys} datatype=\"{}\"/>",
+                    "{pad}\t<entry name=\"{}\"{keys}{generation} datatype=\"{}\"/>",
                     xml_escape(&child.name),
                     db_type_name(ty)
                 );

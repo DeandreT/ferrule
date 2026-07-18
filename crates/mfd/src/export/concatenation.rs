@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::{SchemaKind, SchemaNode};
-use mapping::{IterationOutput, Scope, ScopeConstruction, ScopeIteration};
+use ir::{SchemaKind, SchemaNode, Value, XML_TYPE_FIELD};
+use mapping::{Graph, IterationOutput, Node, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::MfdError;
 
@@ -15,12 +15,14 @@ pub(super) struct TargetBranches {
 struct BranchSet {
     extra_ports: Vec<BTreeMap<Vec<String>, u32>>,
     iterating: Vec<bool>,
+    conditions: Vec<Option<String>>,
 }
 
 impl TargetBranches {
     pub(super) fn build(
         schema: &SchemaNode,
         scope: &Scope,
+        graph: &Graph,
         keys: &mut KeyAlloc,
         explicit_text: &BTreeSet<Vec<String>>,
     ) -> Self {
@@ -28,12 +30,17 @@ impl TargetBranches {
         collect_branches(
             schema,
             scope,
+            graph,
             &mut Vec::new(),
             keys,
             explicit_text,
             &mut branches,
         );
         branches
+    }
+
+    pub(super) fn condition(&self, root: &[String], index: usize) -> Option<&str> {
+        self.by_root.get(root)?.conditions.get(index)?.as_deref()
     }
 
     pub(super) fn count(&self, root: &[String]) -> Option<usize> {
@@ -70,14 +77,16 @@ impl TargetBranches {
 pub(super) fn validate(
     root: &Scope,
     target: &SchemaNode,
+    graph: &Graph,
     format: SideFormat,
 ) -> Result<(), MfdError> {
-    validate_scope(root, target, format, &mut Vec::new(), false)
+    validate_scope(root, target, graph, format, &mut Vec::new(), false)
 }
 
 fn validate_scope(
     scope: &Scope,
     target: &SchemaNode,
+    graph: &Graph,
     format: SideFormat,
     path: &mut Vec<String>,
     inside_concatenation: bool,
@@ -89,11 +98,23 @@ fn validate_scope(
                 "nested concatenation is not representable",
             ));
         }
-        validate_container(scope, path)?;
+        let output = scope.iteration_output;
+        validate_container(scope, path, output)?;
         match format {
-            SideFormat::Xml | SideFormat::Xbrl | SideFormat::Db
-                if !path.is_empty() && (format != SideFormat::Db || path.len() == 1) =>
-            {
+            SideFormat::Xml | SideFormat::Xbrl if !path.is_empty() => {
+                let node = schema_node_at(target, path)
+                    .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
+                let compatible = matches!(node.kind, SchemaKind::Group { .. })
+                    && (node.repeating && output == IterationOutput::Repeated
+                        || !node.repeating && output == IterationOutput::MappedSequence);
+                if !compatible {
+                    return Err(unsupported(
+                        path,
+                        "XML concatenation requires a repeating group or a mapped sequence into a non-repeating group",
+                    ));
+                }
+            }
+            SideFormat::Db if !path.is_empty() && (format != SideFormat::Db || path.len() == 1) => {
                 let node = schema_node_at(target, path)
                     .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
                 if !node.repeating || !matches!(node.kind, SchemaKind::Group { .. }) {
@@ -128,22 +149,26 @@ fn validate_scope(
             ));
         }
         for segment in segments.iter() {
-            validate_segment(segment, target, format, path)?;
+            validate_segment(segment, target, graph, format, path, output)?;
         }
         return Ok(());
     }
 
     for child in &scope.children {
         path.push(child.target_field.clone());
-        validate_scope(child, target, format, path, inside_concatenation)?;
+        validate_scope(child, target, graph, format, path, inside_concatenation)?;
         path.pop();
     }
     Ok(())
 }
 
-fn validate_container(scope: &Scope, path: &[String]) -> Result<(), MfdError> {
+fn validate_container(
+    scope: &Scope,
+    path: &[String],
+    output: IterationOutput,
+) -> Result<(), MfdError> {
     if scope.construction != ScopeConstruction::Constructed
-        || scope.iteration_output != IterationOutput::Repeated
+        || scope.iteration_output != output
         || scope.filter.is_some()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
@@ -167,12 +192,14 @@ fn validate_container(scope: &Scope, path: &[String]) -> Result<(), MfdError> {
 fn validate_segment(
     scope: &Scope,
     target: &SchemaNode,
+    graph: &Graph,
     format: SideFormat,
     path: &mut Vec<String>,
+    output: IterationOutput,
 ) -> Result<(), MfdError> {
     if !scope.target_field.is_empty()
         || scope.construction != ScopeConstruction::Constructed
-        || scope.iteration_output != IterationOutput::Repeated
+        || scope.iteration_output != output
         || matches!(
             scope.iteration,
             ScopeIteration::InnerJoin { .. } | ScopeIteration::Concatenate(_)
@@ -183,7 +210,7 @@ fn validate_segment(
     {
         return Err(unsupported(
             path,
-            "segments require ordinary repeated construction without joins or dynamic fields",
+            "segments require ordinary construction with matching output cardinality and without joins or dynamic fields",
         ));
     }
     if format == SideFormat::Csv
@@ -201,9 +228,19 @@ fn validate_segment(
             "CSV singleton segments must be flat and uncontrolled",
         ));
     }
+    if output == IterationOutput::MappedSequence {
+        let target_node = schema_node_at(target, path)
+            .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
+        if exact_type_condition(scope, graph, target_node).is_none() {
+            return Err(unsupported(
+                path,
+                "mapped-sequence segments require an exact xsi:type alternative filter and matching type binding",
+            ));
+        }
+    }
     for child in &scope.children {
         path.push(child.target_field.clone());
-        validate_scope(child, target, format, path, true)?;
+        validate_scope(child, target, graph, format, path, true)?;
         if contains_non_repeated_output(child) {
             return Err(unsupported(
                 path,
@@ -234,6 +271,7 @@ fn unsupported(path: &[String], reason: &str) -> MfdError {
 fn collect_branches(
     schema: &SchemaNode,
     scope: &Scope,
+    graph: &Graph,
     path: &mut Vec<String>,
     keys: &mut KeyAlloc,
     explicit_text: &BTreeSet<Vec<String>>,
@@ -256,15 +294,87 @@ fn collect_branches(
             BranchSet {
                 extra_ports,
                 iterating: segments.iter().map(Scope::iterates).collect(),
+                conditions: segments
+                    .iter()
+                    .map(|segment| exact_type_condition(segment, graph, node))
+                    .collect(),
             },
         );
         return;
     }
     for child in &scope.children {
         path.push(child.target_field.clone());
-        collect_branches(schema, child, path, keys, explicit_text, branches);
+        collect_branches(schema, child, graph, path, keys, explicit_text, branches);
         path.pop();
     }
+}
+
+pub(super) fn exact_type_condition(
+    scope: &Scope,
+    graph: &Graph,
+    target: &SchemaNode,
+) -> Option<String> {
+    let filter = scope.filter?;
+    let Node::Call { function, args } = graph.nodes.get(&filter)? else {
+        return None;
+    };
+    let [first, second] = args.as_slice() else {
+        return None;
+    };
+    if function != "equal" {
+        return None;
+    }
+    let (condition, _) = type_condition_operands(graph, *first, *second)
+        .or_else(|| type_condition_operands(graph, *second, *first))?;
+    if !target
+        .alternatives()
+        .iter()
+        .any(|alternative| alternative.name == condition)
+    {
+        return None;
+    }
+    scope
+        .bindings
+        .iter()
+        .any(|binding| {
+            binding.target_field == XML_TYPE_FIELD
+                && matches!(
+                    graph.nodes.get(&binding.node),
+                    Some(Node::Const {
+                        value: Value::String(value)
+                    }) if value == &condition
+                )
+        })
+        .then_some(condition)
+}
+
+pub(super) fn exact_type_marker(scope: &Scope, graph: &Graph, target: &SchemaNode) -> Option<u32> {
+    exact_type_condition(scope, graph, target)?;
+    let Node::Call { args, .. } = graph.nodes.get(&scope.filter?)? else {
+        return None;
+    };
+    let [first, second] = args.as_slice() else {
+        return None;
+    };
+    type_condition_operands(graph, *first, *second)
+        .or_else(|| type_condition_operands(graph, *second, *first))
+        .map(|(_, marker)| marker)
+}
+
+fn type_condition_operands(graph: &Graph, marker: u32, expected: u32) -> Option<(String, u32)> {
+    let Node::SourceField { path, .. } = graph.nodes.get(&marker)? else {
+        return None;
+    };
+    if path.last().is_none_or(|field| field != XML_TYPE_FIELD) {
+        return None;
+    }
+    let Node::Const {
+        value: Value::String(expected),
+    } = graph.nodes.get(&expected)?
+    else {
+        return None;
+    };
+    Some((expected.clone(), marker))
 }
 
 fn allocate_subtree(

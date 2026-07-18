@@ -204,9 +204,23 @@ impl<'a> AlternativeExportPlan<'a> {
                     .iter()
                     .all(|member| common_names.contains(member.as_str()))
         });
-        let (base_name, abstract_type) = match base_index {
-            Some(index) => (identities[index].1.clone(), false),
-            None => (synthetic_base_name(&identities[0].1, reserved), true),
+        let inferred_base = base_index
+            .is_none()
+            .then(|| {
+                identities.iter().find_map(|(_, local)| {
+                    let base = self.definitions.get(local)?.base.as_ref()?;
+                    let definition = self.definitions.get(base)?;
+                    (definition.base.is_none()
+                        && definition.members == common
+                        && definition.required.is_empty())
+                    .then(|| base.clone())
+                })
+            })
+            .flatten();
+        let (base_name, abstract_type, define_base) = match (base_index, inferred_base) {
+            (Some(index), _) => (identities[index].1.clone(), false, true),
+            (None, Some(base)) => (base, false, false),
+            (None, None) => (synthetic_base_name(&identities[0].1, reserved), true, true),
         };
         let identity_set = identities
             .iter()
@@ -216,16 +230,18 @@ impl<'a> AlternativeExportPlan<'a> {
             .entry(base_name.clone())
             .or_default()
             .extend(identity_set);
-        self.insert_definition(
-            node,
-            base_name.clone(),
-            TypeDefinition {
-                base: None,
-                abstract_type,
-                members: common,
-                required: BTreeSet::new(),
-            },
-        )?;
+        if define_base {
+            self.insert_definition(
+                node,
+                base_name.clone(),
+                TypeDefinition {
+                    base: None,
+                    abstract_type,
+                    members: common,
+                    required: BTreeSet::new(),
+                },
+            )?;
+        }
 
         for (index, alternative) in alternatives.iter().enumerate() {
             if Some(index) == base_index {

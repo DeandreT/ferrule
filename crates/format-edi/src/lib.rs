@@ -77,6 +77,16 @@ pub enum EdiFormatError {
         expected: char,
         found: String,
     },
+    #[error("invalid X12 separator configuration: {0}")]
+    InvalidX12Separators(String),
+    #[error(
+        "configured X12 {kind} separator `{expected}` does not match interchange separator `{found}`"
+    )]
+    X12SeparatorMismatch {
+        kind: &'static str,
+        expected: char,
+        found: char,
+    },
     #[error("ISA element `{element}` has invalid value `{value}`: {reason}")]
     InvalidEnvelopeElement {
         element: String,
@@ -129,7 +139,7 @@ pub(crate) fn read_bounded_input(
 }
 
 /// The EDI dialect a schema describes, decided by its first trigger
-/// segment: `ISA` means X12, `UNB` means EDIFACT.
+/// segment: `ISA` means X12, while `UNB` or standalone `UNH` means EDIFACT.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     X12,
@@ -147,11 +157,11 @@ pub fn dialect_of(schema: &SchemaNode) -> Result<Dialect, EdiFormatError> {
     }
     match segments::root_trigger(schema)? {
         "ISA" => Ok(Dialect::X12),
-        "UNB" => Ok(Dialect::Edifact),
+        "UNB" | "UNH" => Ok(Dialect::Edifact),
         "FHS" | "BHS" | "MSH" => Ok(Dialect::Hl7),
         "STX" => Ok(Dialect::Tradacoms),
         other => Err(EdiFormatError::UnsupportedSchema(format!(
-            "schema must start with ISA (X12) or UNB (EDIFACT), found `{other}`"
+            "schema must start with ISA (X12), UNB/UNH (EDIFACT), an HL7 header, or STX (TRADACOMS), found `{other}`"
         ))),
     }
 }

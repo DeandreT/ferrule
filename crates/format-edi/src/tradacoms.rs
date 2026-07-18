@@ -175,4 +175,77 @@ mod tests {
             Some(&Value::Int(1))
         );
     }
+
+    #[test]
+    fn reads_nested_message_loops_selected_by_a_fixed_header() {
+        let message_header = SchemaNode::group(
+            "MHD",
+            vec![
+                SchemaNode::scalar("Reference", ScalarType::Int),
+                SchemaNode::group(
+                    "Type",
+                    vec![
+                        SchemaNode::scalar("Code", ScalarType::String).fixed("ORDER"),
+                        SchemaNode::scalar("Version", ScalarType::Int).fixed("1"),
+                    ],
+                ),
+            ],
+        );
+        let message = SchemaNode::group(
+            "Message_ORDER",
+            vec![SchemaNode::group(
+                "ORDER",
+                vec![
+                    message_header,
+                    SchemaNode::group("ODT", vec![SchemaNode::scalar("Date", ScalarType::Int)]),
+                ],
+            )],
+        )
+        .repeating();
+        let schema = SchemaNode::group(
+            "Envelope",
+            vec![
+                SchemaNode::group(
+                    "Interchange",
+                    vec![
+                        SchemaNode::group(
+                            "STX",
+                            vec![SchemaNode::scalar("Syntax", ScalarType::String)],
+                        ),
+                        SchemaNode::group("Batch", vec![message]).repeating(),
+                        SchemaNode::group(
+                            "END",
+                            vec![SchemaNode::scalar("Count", ScalarType::Int)],
+                        ),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_tradacoms_nested_{}.edi",
+            std::process::id()
+        ));
+        std::fs::write(&path, "STX=ANA'MHD=1+ORDER:1'ODT=250101'END=1'").unwrap();
+        let instance = read(&path, &schema, true).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        assert_eq!(
+            instance
+                .field("Interchange")
+                .and_then(Instance::as_repeated)
+                .and_then(|items| items.first())
+                .and_then(|interchange| interchange.field("Batch"))
+                .and_then(Instance::as_repeated)
+                .and_then(|items| items.first())
+                .and_then(|batch| batch.field("Message_ORDER"))
+                .and_then(Instance::as_repeated)
+                .and_then(|items| items.first())
+                .and_then(|message| message.field("ORDER"))
+                .and_then(|order| order.field("ODT"))
+                .and_then(|date| date.field("Date"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::Int(250101))
+        );
+    }
 }

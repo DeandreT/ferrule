@@ -15,6 +15,10 @@ const MAX_NESTED_UDF_DEPTH: usize = 64;
 #[derive(Clone)]
 pub(super) enum ScalarExpr {
     Parameter(u32),
+    DefaultedParameter {
+        component_id: u32,
+        default: Box<ScalarExpr>,
+    },
     Const(Value),
     Call {
         function: String,
@@ -98,7 +102,8 @@ impl ScalarExpr {
 
     fn collect_parameters(&self, parameters: &mut BTreeSet<u32>) {
         match self {
-            ScalarExpr::Parameter(component_id) => {
+            ScalarExpr::Parameter(component_id)
+            | ScalarExpr::DefaultedParameter { component_id, .. } => {
                 parameters.insert(*component_id);
             }
             ScalarExpr::Const(_) => {}
@@ -796,12 +801,10 @@ impl GraphBuilder<'_> {
             .collect::<Vec<_>>();
         let mut parameters = BTreeMap::new();
         for (parameter, port) in input_ports {
-            let node = self
-                .edge_from
-                .get(&port)
-                .copied()
-                .and_then(|feed| self.value_node(feed))
-                .unwrap_or_else(|| self.const_null());
+            let Some(feed) = self.edge_from.get(&port).copied() else {
+                continue;
+            };
+            let node = self.value_node(feed).unwrap_or_else(|| self.const_null());
             parameters.insert(parameter, node);
         }
         let predicate = instantiate(
@@ -837,12 +840,10 @@ impl GraphBuilder<'_> {
             .collect();
         let mut parameters = BTreeMap::new();
         for (parameter, port) in input_ports {
-            let node = self
-                .edge_from
-                .get(&port)
-                .copied()
-                .and_then(|feed| self.value_node(feed))
-                .unwrap_or_else(|| self.const_null());
+            let Some(feed) = self.edge_from.get(&port).copied() else {
+                continue;
+            };
+            let node = self.value_node(feed).unwrap_or_else(|| self.const_null());
             parameters.insert(parameter, node);
         }
         let definition = self.udf_registry.definition(call.definition)?;
@@ -962,6 +963,13 @@ fn instantiate(
             .get(component_id)
             .copied()
             .unwrap_or_else(|| alloc_node(graph, next_id, Node::Const { value: Value::Null })),
+        ScalarExpr::DefaultedParameter {
+            component_id,
+            default,
+        } => parameters
+            .get(component_id)
+            .copied()
+            .unwrap_or_else(|| instantiate(default, parameters, graph, next_id)),
         ScalarExpr::Const(value) => alloc_node(
             graph,
             next_id,

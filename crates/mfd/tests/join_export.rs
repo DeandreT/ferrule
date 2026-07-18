@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
-    AggregateOp, Binding, Graph, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, Node,
-    Project, Scope, ScopeIteration,
+    AggregateOp, Binding, Graph, IterationOutput, JoinConditions, JoinId, JoinKey, JoinPlan,
+    JoinSource, JoinSourceCardinality, NamedSource, Node, Project, Scope, ScopeIteration,
 };
 
 struct TempDir(PathBuf);
@@ -373,13 +373,13 @@ fn unsupported_join_plan_is_not_partially_exported() {
     };
     let warnings = mfd::export(&project, &output).unwrap();
     assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert!(warnings[0].contains("not in the primary source schema"));
+    assert!(warnings[0].contains("not in an exported source schema"));
     let xml = fs::read_to_string(output).unwrap();
     assert!(!xml.contains("kind=\"32\""));
 }
 
 #[test]
-fn join_aggregate_warns_once_while_the_structured_join_exports() {
+fn join_aggregate_round_trips_with_the_structured_join() {
     let dir = TempDir::new("aggregate");
     let output = dir.path("mapping.mfd");
     let mut project = two_way_project();
@@ -402,10 +402,152 @@ fn join_aggregate_warns_once_while_the_structured_join_exports() {
         },
     );
     project.root.children[0].children[0].bindings[0].node = 5;
+    let expected = engine::run(&project, &two_way_source()).unwrap();
     let warnings = mfd::export(&project, &output).unwrap();
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert!(warnings[0].contains("aggregate over inner join 8 is not exported"));
+    assert!(warnings.is_empty(), "{warnings:?}");
     let xml = fs::read_to_string(output).unwrap();
     assert!(xml.contains("kind=\"32\""));
-    assert!(!xml.contains("component name=\"string\""));
+    assert!(xml.contains("component name=\"count\""));
+    assert!(xml.contains("component name=\"string\""));
+
+    let imported = import_exported(&dir.path("mapping.mfd"));
+    assert!(
+        imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::JoinAggregate { .. }))
+    );
+    assert_eq!(
+        engine::run(&imported.project, &two_way_source()).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
+    let dir = TempDir::new("mapped-named-singleton");
+    let output = dir.path("mapping.mfd");
+    let join = JoinId::new(21);
+    let plan = JoinPlan::new(
+        JoinSource::singleton(vec!["Order".into(), "CustomerNumber".into()]),
+        JoinSource::new(vec!["Customer".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["Order".into(), "CustomerNumber".into()],
+            Vec::new(),
+            vec!["Number".into()],
+        )),
+    )
+    .unwrap();
+    let customer = SchemaNode::group(
+        "Customer",
+        vec![
+            SchemaNode::scalar("Number", ScalarType::String),
+            SchemaNode::scalar("Name", ScalarType::String),
+        ],
+    );
+    let mut project = Project {
+        source: SchemaNode::group("Customers", vec![customer.clone().repeating()]),
+        target: SchemaNode::group("Result", vec![customer]),
+        source_path: Some("customers.xml".into()),
+        target_path: Some("result.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![NamedSource {
+            name: "Order".into(),
+            path: "order.xml".into(),
+            schema: SchemaNode::group(
+                "Order",
+                vec![SchemaNode::scalar("CustomerNumber", ScalarType::String)],
+            ),
+            options: Default::default(),
+            dynamic_path: None,
+        }],
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Customer".into()],
+                        path: vec!["Number".into()],
+                    },
+                ),
+                (
+                    1,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Customer".into()],
+                        path: vec!["Name".into()],
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Customer".into(),
+                iteration: ScopeIteration::InnerJoin {
+                    id: join,
+                    plan: plan.clone(),
+                },
+                iteration_output: IterationOutput::MappedSequence,
+                bindings: vec![
+                    Binding {
+                        target_field: "Number".into(),
+                        node: 0,
+                    },
+                    Binding {
+                        target_field: "Name".into(),
+                        node: 1,
+                    },
+                ],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    let primary = Instance::Group(vec![(
+        "Customer".into(),
+        Instance::Repeated(vec![
+            row(&[("Number", "A"), ("Name", "Ada")]),
+            row(&[("Number", "B"), ("Name", "Bea")]),
+        ]),
+    )]);
+    let extras = vec![(
+        "Order".into(),
+        Instance::Group(vec![scalar("CustomerNumber", "B")]),
+    )];
+    let expected = engine::run_with_sources(&project, &primary, extras.clone()).unwrap();
+
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let imported = import_exported(&output);
+    let scope = &imported.project.root.children[0];
+    assert_eq!(scope.iteration_output, IterationOutput::MappedSequence);
+    let Some((_, imported_plan)) = scope.join() else {
+        panic!("expected the mapped target to retain its join");
+    };
+    assert_eq!(
+        imported_plan.sources().next().map(JoinSource::cardinality),
+        Some(JoinSourceCardinality::Singleton)
+    );
+    assert_eq!(
+        engine::run_with_sources(&imported.project, &primary, extras).unwrap(),
+        expected
+    );
+
+    project.graph.nodes.clear();
+    project.root.children[0].bindings.clear();
+    let structural_output = dir.path("structural.mfd");
+    let warnings = mfd::export(&project, &structural_output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = fs::read_to_string(&structural_output).unwrap();
+    assert_eq!(xml.matches("<dataconnection type=\"2\"/>").count(), 1);
+    let structural = import_exported(&structural_output);
+    assert_eq!(
+        structural.project.root.children[0].iteration_output,
+        IterationOutput::MappedSequence
+    );
 }

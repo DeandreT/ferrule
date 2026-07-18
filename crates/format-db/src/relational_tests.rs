@@ -1,4 +1,4 @@
-use ir::{Instance, ScalarType, SchemaNode, Value};
+use ir::{Instance, ScalarType, SchemaNode, Value, ValueGeneration};
 use rusqlite::Connection;
 
 use super::{
@@ -101,6 +101,63 @@ fn writes_child_owned_relations_with_generated_keys_idempotently() {
     assert_ne!(parent_id, &Value::Null);
     assert_eq!(scalar_value(&children[0], "parent_id"), parent_id);
     assert_eq!(scalar_value(&children[1], "parent_id"), parent_id);
+}
+
+#[test]
+fn generated_relational_keys_are_materialized_and_propagated() {
+    let path = test_path("generated_relations");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON; \
+         CREATE TABLE parents (id INTEGER PRIMARY KEY, name TEXT NOT NULL); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER NOT NULL, value TEXT, \
+             FOREIGN KEY(parent_id) REFERENCES parents(id));",
+    )
+    .unwrap();
+    drop(conn);
+    let generated = |name| {
+        scalar(name, ScalarType::Int)
+            .with_value_generation(ValueGeneration::MaxNumber)
+            .unwrap()
+    };
+    let schema = table(
+        "parents",
+        vec![
+            generated("id"),
+            scalar("name", ScalarType::String),
+            table(
+                "children|parent_id",
+                vec![
+                    generated("id"),
+                    scalar("parent_id", ScalarType::Int),
+                    scalar("value", ScalarType::String),
+                ],
+            ),
+        ],
+    );
+    let instance = Instance::Repeated(vec![Instance::Group(vec![
+        value("name", Value::String("Parent".into())),
+        (
+            "children|parent_id".into(),
+            Instance::Repeated(vec![Instance::Group(vec![value(
+                "value",
+                Value::String("Child".into()),
+            )])]),
+        ),
+    ])]);
+
+    write_instance(&path, &schema, &instance).unwrap();
+    write_instance(&path, &schema, &instance).unwrap();
+    let result = read_instance(&path, &schema).unwrap();
+    let parents = result.as_repeated().unwrap();
+    let children = field(&parents[0], "children|parent_id")
+        .as_repeated()
+        .unwrap();
+    assert_eq!(scalar_value(&parents[0], "id"), &Value::Int(1));
+    assert_eq!(scalar_value(&children[0], "id"), &Value::Int(1));
+    assert_eq!(scalar_value(&children[0], "parent_id"), &Value::Int(1));
+    std::fs::remove_file(&path).unwrap();
 }
 
 #[test]

@@ -13,6 +13,8 @@ pub(super) struct PositionFrame {
     /// Flattened tuple position stored without adding a synthetic context
     /// frame. The raw source `index` remains independently addressable.
     pub(super) join_position: Option<(JoinId, usize)>,
+    /// Local path retained by a document-set boundary for this source frame.
+    pub(super) document_path: Option<String>,
 }
 
 pub(super) struct WalkExtension<'a> {
@@ -35,6 +37,27 @@ pub(super) fn walk<'a>(
 ) -> Vec<WalkExtension<'a>> {
     match path.split_first() {
         None => match base {
+            Instance::DocumentSet(documents) => documents
+                .iter()
+                .enumerate()
+                .map(|(index, document)| {
+                    let mut next_instances = acc.to_vec();
+                    next_instances.push(document.value());
+                    let mut next_positions = positions.to_vec();
+                    next_positions.push(PositionFrame {
+                        collection: prefix.to_vec(),
+                        index: index + 1,
+                        grouped: false,
+                        join: None,
+                        join_position: None,
+                        document_path: Some(document.path().to_string()),
+                    });
+                    WalkExtension {
+                        instances: next_instances,
+                        positions: next_positions,
+                    }
+                })
+                .collect(),
             Instance::Repeated(items) => items
                 .iter()
                 .enumerate()
@@ -48,6 +71,7 @@ pub(super) fn walk<'a>(
                         grouped: false,
                         join: None,
                         join_position: None,
+                        document_path: None,
                     });
                     WalkExtension {
                         instances: next_instances,
@@ -65,6 +89,32 @@ pub(super) fn walk<'a>(
             }
         },
         Some((segment, rest)) => {
+            if let Instance::DocumentSet(documents) = base {
+                return documents
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(index, document)| {
+                        let mut next_instances = acc.to_vec();
+                        next_instances.push(document.value());
+                        let mut next_positions = positions.to_vec();
+                        next_positions.push(PositionFrame {
+                            collection: prefix.to_vec(),
+                            index: index + 1,
+                            grouped: false,
+                            join: None,
+                            join_position: None,
+                            document_path: Some(document.path().to_string()),
+                        });
+                        walk(
+                            document.value(),
+                            path,
+                            prefix,
+                            &next_instances,
+                            &next_positions,
+                        )
+                    })
+                    .collect();
+            }
             let mut collection_path = prefix.to_vec();
             collection_path.push(segment.clone());
             match base.field(segment) {
@@ -82,6 +132,7 @@ pub(super) fn walk<'a>(
                             grouped: false,
                             join: None,
                             join_position: None,
+                            document_path: None,
                         });
                         if rest.is_empty() {
                             vec![WalkExtension {
@@ -102,5 +153,51 @@ pub(super) fn walk<'a>(
                 Some(other) => walk(other, rest, &collection_path, acc, positions),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ir::{DocumentMember, Instance, Value};
+
+    use super::walk;
+
+    #[test]
+    fn walks_descendants_across_a_document_set_and_retains_paths() {
+        let document = |path: &str, value: &str| {
+            DocumentMember::new(
+                path,
+                Instance::Group(vec![(
+                    "items".into(),
+                    Instance::Repeated(vec![Instance::Scalar(Value::String(value.into()))]),
+                )]),
+            )
+        };
+        let Some(first) = document("a.xml", "a") else {
+            panic!("valid first document member")
+        };
+        let Some(second) = document("b.xml", "b") else {
+            panic!("valid second document member")
+        };
+        let source = Instance::DocumentSet(vec![first, second]);
+
+        let walked = walk(&source, &["items".into()], &[], &[], &[]);
+
+        assert_eq!(walked.len(), 2);
+        assert_eq!(walked[0].instances.len(), 2);
+        assert_eq!(walked[1].instances.len(), 2);
+        assert_eq!(walked[0].positions[0].collection, Vec::<String>::new());
+        assert_eq!(walked[0].positions[0].index, 1);
+        assert_eq!(walked[1].positions[0].index, 2);
+        assert_eq!(
+            walked[0].positions[0].document_path.as_deref(),
+            Some("a.xml")
+        );
+        assert_eq!(
+            walked[1].positions[0].document_path.as_deref(),
+            Some("b.xml")
+        );
+        assert_eq!(walked[0].positions[1].collection, ["items"]);
+        assert_eq!(walked[1].positions[1].index, 1);
     }
 }

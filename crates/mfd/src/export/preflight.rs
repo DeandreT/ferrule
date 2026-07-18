@@ -1,10 +1,10 @@
-use ir::SchemaNode;
-use mapping::{FormatOptions, Project, Scope, ScopeConstruction};
+use ir::{SchemaKind, SchemaNode};
+use mapping::{ExternalPayloadFormat, FormatOptions, Project, Scope, ScopeConstruction};
 
 use crate::MfdError;
 
 use super::schema::side_format;
-use super::{concatenation, external_source, flextext, protobuf, xbrl};
+use super::{concatenation, edi, external_source, flextext, pdf, protobuf, recursive, xbrl};
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if project.extra_sources.len() > 256 {
@@ -16,6 +16,14 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         return Err(MfdError::Unsupported(
             "projects with more than 256 additional targets cannot be exported to .mfd".to_string(),
         ));
+    }
+    validate_xml_identity(&project.source_options, "source", true)?;
+    for source in &project.extra_sources {
+        validate_xml_identity(&source.options, "additional source", true)?;
+    }
+    validate_xml_identity(&project.target_options, "target", false)?;
+    for target in &project.extra_targets {
+        validate_xml_identity(&target.options, "additional target", false)?;
     }
     validate_target(
         project,
@@ -34,16 +42,6 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             &target.root,
             true,
         )?;
-    }
-    if project
-        .graph
-        .nodes
-        .values()
-        .any(|node| matches!(node, mapping::Node::DynamicSourceField { .. }))
-    {
-        return Err(MfdError::Unsupported(
-            "runtime-named JSON source field export is not supported".to_string(),
-        ));
     }
     xbrl::validate_side(
         &project.source,
@@ -73,6 +71,14 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             "additional target",
         )?;
     }
+    edi::validate_side(&project.source, &project.source_options, "source")?;
+    for source in &project.extra_sources {
+        edi::validate_side(&source.schema, &source.options, "additional source")?;
+    }
+    edi::validate_side(&project.target, &project.target_options, "target")?;
+    for target in &project.extra_targets {
+        edi::validate_side(&target.schema, &target.options, "additional target")?;
+    }
     external_source::validate(project)?;
     flextext::validate_side(&project.source, &project.source_options, "source")?;
     for source in &project.extra_sources {
@@ -82,6 +88,34 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     for target in &project.extra_targets {
         flextext::validate_side(&target.schema, &target.options, "additional target")?;
     }
+    pdf::validate_side(
+        &project.source,
+        &project.source_options,
+        super::schema::Side::Source,
+        "source",
+    )?;
+    for source in &project.extra_sources {
+        pdf::validate_side(
+            &source.schema,
+            &source.options,
+            super::schema::Side::Source,
+            "additional source",
+        )?;
+    }
+    pdf::validate_side(
+        &project.target,
+        &project.target_options,
+        super::schema::Side::Target,
+        "target",
+    )?;
+    for target in &project.extra_targets {
+        pdf::validate_side(
+            &target.schema,
+            &target.options,
+            super::schema::Side::Target,
+            "additional target",
+        )?;
+    }
     if project.source_options.protobuf.is_some()
         || project
             .extra_sources
@@ -90,22 +124,6 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     {
         return Err(MfdError::Unsupported(
             "protobuf source component export is not supported; protobuf is an output-only format"
-                .to_string(),
-        ));
-    }
-    if project.source_options.pdf.is_some()
-        || project
-            .extra_sources
-            .iter()
-            .any(|source| source.options.pdf.is_some())
-        || project.target_options.pdf.is_some()
-        || project
-            .extra_targets
-            .iter()
-            .any(|target| target.options.pdf.is_some())
-    {
-        return Err(MfdError::Unsupported(
-            "PDF component export is not supported; remove PDF format options before exporting this project"
                 .to_string(),
         ));
     }
@@ -150,6 +168,57 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     Ok(())
 }
 
+fn validate_xml_identity(
+    options: &FormatOptions,
+    side_name: &str,
+    source: bool,
+) -> Result<(), MfdError> {
+    if options.local_xml_file_set && (!options.xml_document || !source) {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} local XML file set is valid only on an XML source boundary"
+        )));
+    }
+    if !options.xml_document {
+        return Ok(());
+    }
+    let external_xml = options
+        .external_source
+        .as_ref()
+        .is_some_and(|boundary| boundary.payload() == ExternalPayloadFormat::Xml);
+    let transport_conflict = options.http_get.is_some() && options.external_source.is_some();
+    if options.lenient_segments
+        || options.edi_kind.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.pdf.is_some()
+        || options.json_document
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || options.xlsx_update_existing
+        || !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
+        || (options.local_xml_file_set
+            && (options.http_get.is_some() || options.external_source.is_some()))
+        || (options.external_source.is_some() && (!source || !external_xml))
+        || transport_conflict
+    {
+        return Err(MfdError::Unsupported(format!(
+            "the {side_name} XML boundary conflicts with another format's options"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_target(
     project: &Project,
     schema: &SchemaNode,
@@ -159,73 +228,20 @@ fn validate_target(
     additional: bool,
 ) -> Result<(), MfdError> {
     protobuf::validate_target(schema, options)?;
-    if additional && options.lenient_segments {
+    if additional && options.lenient_segments && options.edi_kind.is_none() {
         return Err(MfdError::Unsupported(
-            "an additional EDI target cannot be exported because its configuration and dialect are not retained in the project"
+            "an additional EDI target cannot be exported because its dialect marker is missing"
                 .to_string(),
         ));
     }
-    concatenation::validate(root, schema, side_format(path, options))?;
-    for (present, message) in [
-        (
-            has_recursive_sequence(root),
-            "recursive scalar sequence export is not supported",
-        ),
-        (
-            has_scalar_construction(root),
-            "scalar scope construction export is not supported",
-        ),
-        (
-            has_recursive_filter(root),
-            "recursive-filter scope construction export is not supported",
-        ),
-        (
-            has_path_hierarchy(root),
-            "path-hierarchy scope construction export is not supported",
-        ),
-        (
-            has_adjacency_tree(root),
-            "adjacency-tree scope construction export is not supported",
-        ),
-    ] {
-        if present {
-            return Err(MfdError::Unsupported(message.to_string()));
-        }
-    }
+    concatenation::validate(root, schema, &project.graph, side_format(path, options))?;
+    recursive::validate_target(project, schema, root)?;
     if additional && has_join(root) {
         return Err(MfdError::Unsupported(
             "inner joins owned by additional targets cannot be exported to .mfd yet".to_string(),
         ));
     }
-    validate_copy_current_source(&project.source, schema, root)
-}
-
-fn has_recursive_sequence(scope: &Scope) -> bool {
-    matches!(
-        scope.sequence(),
-        Some(mapping::SequenceExpr::RecursiveCollect { .. })
-    ) || nested_scopes(scope).any(has_recursive_sequence)
-}
-
-fn has_scalar_construction(scope: &Scope) -> bool {
-    matches!(&scope.construction, ScopeConstruction::Scalar { .. })
-        || nested_scopes(scope).any(has_scalar_construction)
-}
-fn has_recursive_filter(scope: &Scope) -> bool {
-    matches!(
-        &scope.construction,
-        ScopeConstruction::RecursiveFilter { .. }
-    ) || nested_scopes(scope).any(has_recursive_filter)
-}
-
-fn has_path_hierarchy(scope: &Scope) -> bool {
-    matches!(&scope.construction, ScopeConstruction::PathHierarchy { .. })
-        || nested_scopes(scope).any(has_path_hierarchy)
-}
-
-fn has_adjacency_tree(scope: &Scope) -> bool {
-    matches!(&scope.construction, ScopeConstruction::AdjacencyTree { .. })
-        || nested_scopes(scope).any(has_adjacency_tree)
+    validate_copy_current_source(project, schema, root)
 }
 
 fn has_join(scope: &Scope) -> bool {
@@ -255,6 +271,8 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
                     || options.has_header_row.is_some()
                     || options.fixed_width.is_some()
                     || options.external_source.is_some()
+                    || options.local_xml_file_set
+                    || options.json_document
                     || options.json_lines
                     || options.xlsx_sheet.is_some()
                     || options.xlsx_start_row.is_some()
@@ -267,84 +285,210 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
 }
 
 fn validate_copy_current_source(
-    source: &SchemaNode,
+    project: &Project,
     target: &SchemaNode,
     root: &Scope,
 ) -> Result<(), MfdError> {
-    if root.construction != ScopeConstruction::CopyCurrentSource {
-        if has_copy(root) {
-            return Err(MfdError::Unsupported(
-                "copy-current-source construction is exportable only at the document root"
-                    .to_string(),
-            ));
+    validate_copy_scope(
+        project,
+        root,
+        Some(&project.source),
+        Some(target),
+        &mut Vec::new(),
+    )
+}
+
+fn validate_copy_scope(
+    project: &Project,
+    scope: &Scope,
+    parent_source: Option<&SchemaNode>,
+    target: Option<&SchemaNode>,
+    path: &mut Vec<String>,
+) -> Result<(), MfdError> {
+    if let Some(segments) = scope.concatenated() {
+        for segment in segments.iter() {
+            validate_copy_scope(project, segment, parent_source, target, path)?;
         }
         return Ok(());
     }
-    if root.source().is_some()
-        || root.sequence().is_some()
-        || root.join().is_some()
-        || root.filter.is_some()
-        || root.sort_by.is_some()
-        || root.take.is_some()
-        || root.group_by.is_some()
-        || root.group_starting_with.is_some()
-        || root.group_into_blocks.is_some()
-        || !root.bindings.is_empty()
-        || !root.children.is_empty()
-        || !root.dynamic_bindings.is_empty()
-        || !root.dynamic_children.is_empty()
-        || root.merge_dynamic_fields
-    {
-        return Err(MfdError::Unsupported(
-            "copy-current-source export requires an uncontrolled document-root copy".to_string(),
-        ));
+
+    let current_source = scope_source_schema(project, parent_source, scope);
+    if scope.construction == ScopeConstruction::CopyCurrentSource {
+        validate_copy_scope_shape(scope, current_source, target, path)?;
     }
-    if source != target {
-        return Err(MfdError::Unsupported(
-            "copy-current-source export requires identical source and target root schemas"
-                .to_string(),
-        ));
+
+    for child in &scope.children {
+        path.push(child.target_field.clone());
+        validate_copy_scope(
+            project,
+            child,
+            current_source,
+            target.and_then(|node| node.child(&child.target_field)),
+            path,
+        )?;
+        path.pop();
+    }
+    for child in &scope.dynamic_children {
+        path.push("*".to_string());
+        validate_copy_scope(
+            project,
+            &child.scope,
+            current_source,
+            target.and_then(SchemaNode::dynamic_fields),
+            path,
+        )?;
+        path.pop();
     }
     Ok(())
 }
 
-fn has_copy(scope: &Scope) -> bool {
-    scope.construction == ScopeConstruction::CopyCurrentSource
-        || scope.children.iter().any(has_copy)
-        || scope
-            .dynamic_children
+fn validate_copy_scope_shape(
+    scope: &Scope,
+    source: Option<&SchemaNode>,
+    target: Option<&SchemaNode>,
+    path: &[String],
+) -> Result<(), MfdError> {
+    if path.is_empty() && scope.source().is_some() {
+        return Err(MfdError::Unsupported(
+            "copy-current-source export requires an uncontrolled document-root copy".to_string(),
+        ));
+    }
+    if scope.sequence().is_some()
+        || scope.join().is_some()
+        || scope.filter.is_some()
+        || scope.sort_by.is_some()
+        || scope.take.is_some()
+        || scope.group_by.is_some()
+        || scope.group_starting_with.is_some()
+        || scope.group_into_blocks.is_some()
+        || !scope.bindings.is_empty()
+        || !scope.children.is_empty()
+        || !scope.dynamic_bindings.is_empty()
+        || !scope.dynamic_children.is_empty()
+        || scope.merge_dynamic_fields
+    {
+        return Err(MfdError::Unsupported(format!(
+            "copy-current-source scope `{}` requires a plain source group with no controls, bindings, or children",
+            display_scope_path(path)
+        )));
+    }
+    let (Some(source), Some(target)) = (source, target) else {
+        return Err(MfdError::Unsupported(format!(
+            "copy-current-source scope `{}` does not resolve to exact source and target groups",
+            display_scope_path(path)
+        )));
+    };
+    if !matches!(source.kind, SchemaKind::Group { .. })
+        || !matches!(target.kind, SchemaKind::Group { .. })
+        || if path.is_empty() {
+            source != target
+        } else {
+            source.kind != target.kind
+        }
+    {
+        return Err(MfdError::Unsupported(format!(
+            "copy-current-source scope `{}` requires matching source and target group fields",
+            display_scope_path(path)
+        )));
+    }
+    Ok(())
+}
+
+fn scope_source_schema<'a>(
+    project: &'a Project,
+    parent: Option<&'a SchemaNode>,
+    scope: &Scope,
+) -> Option<&'a SchemaNode> {
+    let Some(path) = scope.source() else {
+        return if scope.sequence().is_none() && scope.join().is_none() {
+            parent
+        } else {
+            None
+        };
+    };
+    if let Some((name, rest)) = path.split_first()
+        && let Some(extra) = project
+            .extra_sources
             .iter()
-            .any(|child| has_copy(&child.scope))
-        || scope
-            .concatenated()
-            .is_some_and(|segments| segments.iter().any(has_copy))
+            .find(|source| source.name == *name)
+    {
+        return follow_schema(&extra.schema, rest);
+    }
+    parent.and_then(|schema| follow_schema(schema, path))
+}
+
+fn follow_schema<'a>(mut schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    for segment in path {
+        schema = schema.child(segment)?;
+    }
+    Some(schema)
+}
+
+fn display_scope_path(path: &[String]) -> String {
+    if path.is_empty() {
+        "<root>".to_string()
+    } else {
+        path.join("/")
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use mapping::{AdjacencyTreePlan, Scope, ScopeConstruction};
+    use ir::{ScalarType, SchemaNode};
+    use mapping::{Scope, ScopeConstruction};
 
-    use super::has_adjacency_tree;
+    use super::validate_copy_scope_shape;
 
     #[test]
-    fn detects_nested_adjacency_tree_construction() {
-        let mut root = Scope::default();
-        root.children.push(Scope {
-            target_field: "tree".into(),
-            construction: ScopeConstruction::AdjacencyTree {
-                plan: AdjacencyTreePlan::new(
-                    vec!["row".into()],
-                    vec!["name".into()],
-                    vec!["base".into()],
-                    "name".into(),
-                    "children".into(),
-                    None,
-                )
-                .unwrap(),
-            },
+    fn nested_copy_rejects_mismatched_group_fields() {
+        let source = SchemaNode::group(
+            "Item",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let target = SchemaNode::group(
+            "Item",
+            vec![SchemaNode::scalar("Other", ScalarType::String)],
+        );
+        let scope = Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
             ..Scope::default()
-        });
+        };
 
-        assert!(has_adjacency_tree(&root));
+        let result = validate_copy_scope_shape(
+            &scope,
+            Some(&source),
+            Some(&target),
+            &["Rows".into(), "Item".into()],
+        );
+        assert!(matches!(
+            result,
+            Err(crate::MfdError::Unsupported(message))
+                if message.contains("matching source and target group fields")
+        ));
+    }
+
+    #[test]
+    fn nested_copy_rejects_scope_controls() {
+        let item = SchemaNode::group(
+            "Item",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let scope = Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            filter: Some(7),
+            ..Scope::default()
+        };
+
+        let result = validate_copy_scope_shape(
+            &scope,
+            Some(&item),
+            Some(&item),
+            &["Rows".into(), "Item".into()],
+        );
+        assert!(matches!(
+            result,
+            Err(crate::MfdError::Unsupported(message))
+                if message.contains("no controls, bindings, or children")
+        ));
     }
 }

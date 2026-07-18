@@ -51,6 +51,7 @@ fn imports_static_get_xml_and_executes_with_a_captured_response() {
             .map(|options| options.timeout_seconds().get()),
         Some(40)
     );
+    assert!(imported.project.source_options.xml_document);
     assert!(imported.project.source.child("Item").unwrap().repeating);
 
     let source = format_xml::read(&fixture("http-feed.xml"), &imported.project.source).unwrap();
@@ -110,6 +111,7 @@ fn static_get_xml_export_generates_a_canonical_response_component() {
             .map(|options| options.timeout_seconds().get()),
         Some(40)
     );
+    assert!(reimported.project.source_options.xml_document);
     assert_eq!(reimported.project.source_path, imported.project.source_path);
 
     let source = format_xml::read(&fixture("http-feed.xml"), &reimported.project.source).unwrap();

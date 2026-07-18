@@ -171,12 +171,15 @@ fn merge_alternatives_at(
         imported.push((type_name, base_name, derived_children));
     }
 
-    let mut metadata = Vec::with_capacity(entries.len() + usize::from(entries.len() == 1));
+    let mut metadata = node.alternatives().to_vec();
+    metadata.reserve(entries.len() + usize::from(entries.len() == 1));
     {
         let SchemaKind::Group { children, .. } = &mut node.kind else {
             return Err("the base schema node is not a group".to_string());
         };
-        if let [(.., Some(base_name), _)] = imported.as_slice() {
+        if metadata.is_empty()
+            && let [(.., Some(base_name), _)] = imported.as_slice()
+        {
             metadata.push(GroupAlternative {
                 name: base_name.clone(),
                 members: children.iter().map(|child| child.name.clone()).collect(),
@@ -199,11 +202,22 @@ fn merge_alternatives_at(
                     children.push(child);
                 }
             }
-            metadata.push(GroupAlternative {
-                name: type_name,
-                members,
-                required: Vec::new(),
-            });
+            match metadata
+                .iter()
+                .find(|alternative| alternative.name == type_name)
+            {
+                Some(alternative) if alternative.members != members => {
+                    return Err(format!(
+                        "type `{type_name}` has incompatible members in the imported schema"
+                    ));
+                }
+                Some(_) => {}
+                None => metadata.push(GroupAlternative {
+                    name: type_name,
+                    members,
+                    required: Vec::new(),
+                }),
+            }
         }
     }
     if metadata.len() < 2 {

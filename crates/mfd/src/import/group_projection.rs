@@ -525,7 +525,9 @@ fn mapped_group_sequence(
     let Some(source_path) = builder.iteration_source_path(feed) else {
         return false;
     };
-    if enclosing_iteration_owns_source(target, target_path, builder, &source_path) {
+    if enclosing_iteration_owns_source(target, target_path, builder, &source_path)
+        && !builder.xml_type_conditions.contains_key(&feed.source_key)
+    {
         return false;
     }
     let Some(source_group) = builder.schema_node(&source_path) else {

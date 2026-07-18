@@ -50,6 +50,7 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

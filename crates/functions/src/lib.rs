@@ -418,11 +418,7 @@ fn unary_bool(
 
 fn length(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
-        [Value::String(s)] => Ok(Value::Int(s.chars().count() as i64)),
-        [other] => Err(FunctionError::TypeMismatch {
-            function: "length",
-            got: other.type_name(),
-        }),
+        [value] => Ok(Value::Int(scalar_text(value).chars().count() as i64)),
         _ => Err(FunctionError::ArityMismatch {
             function: "length",
             expected: 1,
@@ -571,18 +567,84 @@ fn numeric(
     f_int: impl Fn(i64, i64) -> Option<i64>,
     f_float: impl Fn(f64, f64) -> f64,
 ) -> Result<Value, FunctionError> {
-    let [a, b] = args else {
+    let Some((first, rest)) = args.split_first().filter(|(_, rest)| !rest.is_empty()) else {
         return Err(FunctionError::ArityMismatch {
             function: name,
             expected: 2,
             got: args.len(),
         });
     };
-    match (numeric_operand(a, name)?, numeric_operand(b, name)?) {
-        (NumericOperand::Int(a), NumericOperand::Int(b)) => f_int(a, b)
-            .map(Value::Int)
-            .ok_or(FunctionError::IntegerOverflow { function: name }),
-        (a, b) => Ok(Value::Float(f_float(a.as_f64(), b.as_f64()))),
+    let mut operands = Vec::with_capacity(args.len());
+    operands.push(numeric_operand(first, name)?);
+    for value in rest {
+        operands.push(numeric_operand(value, name)?);
+    }
+
+    if operands
+        .iter()
+        .any(|operand| matches!(operand, NumericOperand::Float(_)))
+    {
+        let mut operands = operands.into_iter();
+        let mut result = operands.next().map_or(0.0, NumericOperand::as_f64);
+        for operand in operands {
+            result = f_float(result, operand.as_f64());
+        }
+        return Ok(Value::Float(result));
+    }
+
+    let mut operands = operands.into_iter();
+    let mut result = match operands.next() {
+        Some(NumericOperand::Int(value)) => value,
+        Some(NumericOperand::Float(_)) | None => unreachable!("numeric operands were prevalidated"),
+    };
+    for operand in operands {
+        let NumericOperand::Int(value) = operand else {
+            unreachable!("floating operands were handled before integer folding");
+        };
+        result = f_int(result, value).ok_or(FunctionError::IntegerOverflow { function: name })?;
+    }
+    Ok(Value::Int(result))
+}
+
+#[cfg(test)]
+fn assert_numeric_call(name: &str, args: &[Value], expected: Value) {
+    assert_eq!(call(name, args), Ok(expected));
+}
+
+#[cfg(test)]
+mod growable_arithmetic_tests {
+    use super::*;
+
+    #[test]
+    fn folds_growable_arithmetic_inputs_from_left_to_right() {
+        assert_numeric_call(
+            "add",
+            &[Value::Int(20), Value::Int(10), Value::Int(12)],
+            Value::Int(42),
+        );
+        assert_numeric_call(
+            "subtract",
+            &[Value::Int(50), Value::Int(5), Value::Int(3)],
+            Value::Int(42),
+        );
+        assert_numeric_call(
+            "multiply",
+            &[
+                Value::String("2.5".into()),
+                Value::Int(4),
+                Value::Float(2.0),
+            ],
+            Value::Float(20.0),
+        );
+        assert_numeric_call(
+            "add",
+            &[Value::Int(i64::MAX), Value::Int(1), Value::Float(0.5)],
+            Value::Float(i64::MAX as f64 + 1.5),
+        );
+        assert_eq!(
+            call("add", &[Value::Int(i64::MAX), Value::Int(1)]),
+            Err(FunctionError::IntegerOverflow { function: "add" })
+        );
     }
 }
 
@@ -1340,6 +1402,9 @@ mod tests {
             call("length", &[Value::String("Jane".into())]).unwrap(),
             Value::Int(4)
         );
+        assert_eq!(call("length", &[Value::Int(120)]), Ok(Value::Int(3)));
+        assert_eq!(call("length", &[Value::Bool(false)]), Ok(Value::Int(5)));
+        assert_eq!(call("length", &[Value::Null]), Ok(Value::Int(0)));
     }
 
     #[test]

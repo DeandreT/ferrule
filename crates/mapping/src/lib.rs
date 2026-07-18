@@ -9,6 +9,7 @@ use ir::{ScalarType, SchemaNode, Value};
 use serde::{Deserialize, Serialize};
 
 mod adjacency;
+mod edi;
 mod external_source;
 mod fixed_width;
 mod flextext;
@@ -26,6 +27,8 @@ mod xbrl;
 mod xlsx_output;
 
 pub use adjacency::AdjacencyTreePlan;
+pub use edi::EdiBoundaryKind;
+pub use edi::X12Separators;
 pub use external_source::{
     ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
     ExternalSourceOptionsError, ExternalSourceOrigin,
@@ -102,6 +105,10 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         frame: Option<Vec<String>>,
     },
+    /// Reads the local path retained by the nearest active document-set
+    /// member. This is metadata from a typed source boundary, not a schema
+    /// field, and therefore cannot collide with user data.
+    SourceDocumentPath,
     /// Returns the 1-based position of the current item in `collection`'s
     /// iteration. An empty collection selects the innermost iteration frame.
     Position {
@@ -705,6 +712,19 @@ pub struct FormatOptions {
     /// declared segments are never swallowed.
     #[serde(default)]
     pub lenient_segments: bool,
+    /// EDI document family retained independently of the instance extension.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edi_kind: Option<EdiBoundaryKind>,
+    /// ANSI X12 syntax retained from the mapping boundary. These separators
+    /// override the writer defaults and provide the optional release character
+    /// that cannot be discovered from an ISA envelope.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x12_separators: Option<X12Separators>,
+    /// ANSI X12 interchange version used to complete an unbound ISA12 field.
+    /// When present it is exactly five ASCII digits retained from the mapping
+    /// boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub x12_interchange_version: Option<String>,
     /// SAP IDoc: embedded fixed-record layout compiled from the external
     /// parser configuration. This mode is input-only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -713,6 +733,19 @@ pub struct FormatOptions {
     /// input-only and takes precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swift_mt: Option<SwiftMtLayout>,
+    /// XML document identity retained when no instance filename is available
+    /// to carry an `.xml` extension.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub xml_document: bool,
+    /// XML: the source path names a bounded local wildcard file set rather
+    /// than one document. Hosts expand it beneath their declared input base
+    /// and present the documents as one ordered source sequence.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub local_xml_file_set: bool,
+    /// JSON component identity retained when no instance filename is available
+    /// to carry a `.json`, `.jsonl`, or `.ndjson` extension.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub json_document: bool,
     /// CSV: the field delimiter (default `,`).
     #[serde(default)]
     pub delimiter: Option<char>,
@@ -794,6 +827,12 @@ mod tests {
     fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
         let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
         assert!(!defaults.json_lines);
+        assert!(defaults.edi_kind.is_none());
+        assert!(defaults.x12_separators.is_none());
+        assert!(defaults.x12_interchange_version.is_none());
+        assert!(!defaults.xml_document);
+        assert!(!defaults.local_xml_file_set);
+        assert!(!defaults.json_document);
         assert!(defaults.fixed_width.is_none());
         assert!(defaults.flextext.is_none());
         assert!(defaults.idoc.is_none());
@@ -816,6 +855,55 @@ mod tests {
         assert!(encoded.contains("\"json_lines\":true"));
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
         assert!(decoded.json_lines);
+    }
+
+    #[test]
+    fn xml_document_identity_roundtrips() {
+        let options = FormatOptions {
+            xml_document: true,
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        assert!(encoded.contains("\"xml_document\":true"));
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert!(decoded.xml_document);
+    }
+
+    #[test]
+    fn local_xml_file_set_identity_roundtrips() {
+        let options = FormatOptions {
+            xml_document: true,
+            local_xml_file_set: true,
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        assert!(encoded.contains("\"local_xml_file_set\":true"));
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert!(decoded.local_xml_file_set);
+    }
+
+    #[test]
+    fn edi_boundary_kind_roundtrips() {
+        let options = FormatOptions {
+            lenient_segments: true,
+            edi_kind: Some(EdiBoundaryKind::X12),
+            x12_separators: Some(X12Separators {
+                element: '+',
+                component: ':',
+                segment: '\'',
+                repetition: Some('!'),
+                release: Some('?'),
+            }),
+            x12_interchange_version: Some("00505".into()),
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+
+        assert_eq!(decoded, options);
     }
 
     #[test]

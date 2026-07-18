@@ -19,6 +19,8 @@ const XLSX_MAX_COLUMN: u32 = 16_384;
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SideFormat {
     Xbrl,
+    Edi,
+    Pdf,
     Xml,
     Json,
     Csv,
@@ -31,6 +33,12 @@ pub(super) enum SideFormat {
 pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOptions) -> SideFormat {
     if options.xbrl.is_some() {
         return SideFormat::Xbrl;
+    }
+    if options.edi_kind.is_some() {
+        return SideFormat::Edi;
+    }
+    if options.pdf.is_some() {
+        return SideFormat::Pdf;
     }
     if options.flextext.is_some() {
         return SideFormat::FlexText;
@@ -48,6 +56,8 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
         Some("csv") | Some("txt") => SideFormat::Csv,
         Some("xlsx") => SideFormat::Xlsx,
         Some("db") | Some("sqlite") | Some("sqlite3") => SideFormat::Db,
+        _ if options.json_document || options.json_lines => SideFormat::Json,
+        _ if options.xml_document => SideFormat::Xml,
         _ if options.delimiter.is_some() || options.has_header_row.is_some() => SideFormat::Csv,
         _ => SideFormat::Xml,
     }
@@ -112,6 +122,7 @@ pub(super) fn render_schema_component(
     sibling_suffix: &str,
     default_output: bool,
     used_ports: &BTreeSet<u32>,
+    source_document_path_port: Option<u32>,
 ) -> Result<RenderedSchemaComponent, MfdError> {
     if options.protobuf.is_some() {
         return super::protobuf::render(super::protobuf::RenderArgs {
@@ -133,6 +144,9 @@ pub(super) fn render_schema_component(
         .and_then(|s| s.to_str())
         .unwrap_or("mapping");
     let dir = mfd_path.parent().unwrap_or(Path::new("."));
+    let file_instance_output = source_document_path_port
+        .map(|key| format!(" outkey=\"{key}\""))
+        .unwrap_or_default();
     let (side_name, header, view) = match side {
         Side::Source => ("source", "", "<view rbx=\"300\" rby=\"400\"/>"),
         Side::Target => (
@@ -154,6 +168,33 @@ pub(super) fn render_schema_component(
     let mut out = String::new();
     let mut sibling = None;
     match format {
+        SideFormat::Pdf => {
+            return super::pdf::render(super::pdf::RenderArgs {
+                schema,
+                ports,
+                side,
+                instance_path,
+                options,
+                mfd_path,
+                component_name,
+                component_uid,
+                sibling_suffix,
+                force_root_port,
+            });
+        }
+        SideFormat::Edi => {
+            return super::edi::render(super::edi::RenderArgs {
+                schema,
+                ports,
+                side,
+                instance_path,
+                options,
+                component_name,
+                component_uid,
+                force_root_port,
+                default_output,
+            });
+        }
         SideFormat::Xbrl => {
             return super::xbrl::render(super::xbrl::RenderArgs {
                 schema,
@@ -237,7 +278,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t<data>\n\
                  \t\t\t\t\t\t<root>\n\
                  \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
-                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\"{file_instance_output} expanded=\"1\">\n\
                  \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
                  {}\
                  \t\t\t\t\t\t\t\t</entry>\n\
@@ -541,20 +582,26 @@ pub(super) fn render_schema_component(
                     "the {side_name} XLSX layout is hierarchical; hierarchical XLSX export is not supported"
                 )));
             }
-            if options.xlsx_grid.is_some() {
+            let retained_source_layout = options.xlsx_grid.is_some()
+                || options.xlsx_composite.is_some()
+                || !options.xlsx_rows.is_empty();
+            if retained_source_layout && side != Side::Source {
                 return Err(MfdError::Unsupported(format!(
-                    "the {side_name} XLSX layout is a grid; grid XLSX export is not supported"
+                    "the {side_name} XLSX layout is source-only and cannot be exported as a target"
                 )));
             }
-            if options.xlsx_composite.is_some() {
-                return Err(MfdError::Unsupported(format!(
-                    "the {side_name} XLSX layout is composite; composite XLSX export is not supported"
-                )));
-            }
-            if !options.xlsx_rows.is_empty() {
-                return Err(MfdError::Unsupported(format!(
-                    "the {side_name} XLSX layout is transposed; transposed XLSX export is not supported"
-                )));
+            if let Some(xml) = super::xlsx::render(super::xlsx::RenderArgs {
+                schema,
+                ports,
+                instance_path,
+                options,
+                component_name,
+                component_uid,
+            })? {
+                return Ok(RenderedSchemaComponent {
+                    xml,
+                    siblings: Vec::new(),
+                });
             }
             let fields = csv_fields(schema).ok_or_else(|| {
                 MfdError::Unsupported(format!(
@@ -827,10 +874,23 @@ fn render_db_table(
         path.push(child.name.clone());
         match child.kind {
             SchemaKind::Scalar { ty } => {
-                let key = branch_key(ports, branches, branch, path, "database column")?;
+                let key = if attr == "inpkey" && child.value_generation.is_some() {
+                    String::new()
+                } else {
+                    format!(
+                        " {attr}=\"{}\"",
+                        branch_key(ports, branches, branch, path, "database column")?
+                    )
+                };
+                let generation = child
+                    .value_generation
+                    .map(|generation| match generation {
+                        ir::ValueGeneration::MaxNumber => " valuekeygeneration=\"maxnumber\"",
+                    })
+                    .unwrap_or_default();
                 let _ = writeln!(
                     output,
-                    "{pad}\t<entry name=\"{}\" {attr}=\"{key}\" datatype=\"{}\"/>",
+                    "{pad}\t<entry name=\"{}\"{key}{generation} datatype=\"{}\"/>",
                     xml_escape(&child.name),
                     db_type_name(ty)
                 );
@@ -968,6 +1028,7 @@ impl KeyAlloc {
 /// path.
 pub(super) struct PortTree {
     by_abs: BTreeMap<Vec<String>, u32>,
+    by_alternative: BTreeMap<(Vec<String>, String), u32>,
 }
 
 // Recursive schemas are represented in the IR by finite references. Entry
@@ -1020,6 +1081,7 @@ impl PortTree {
         explicit_text: &BTreeSet<Vec<String>>,
     ) -> Self {
         let mut by_abs = BTreeMap::new();
+        let mut by_alternative = BTreeMap::new();
         let anchors = concrete_group_anchors(schema);
         let mut recursive_elements = 0;
         // The document root itself: rendered as a port only by row/array
@@ -1031,6 +1093,7 @@ impl PortTree {
             path: &mut Vec<String>,
             keys: &mut KeyAlloc,
             by_abs: &mut BTreeMap<Vec<String>, u32>,
+            by_alternative: &mut BTreeMap<(Vec<String>, String), u32>,
             explicit_text: &BTreeSet<Vec<String>>,
             anchors: &BTreeMap<&'a str, Option<&'a SchemaNode>>,
             recursive_depth: usize,
@@ -1055,6 +1118,10 @@ impl PortTree {
                         continue;
                     }
                     by_abs.insert(path.clone(), keys.next());
+                    for alternative in child.alternatives() {
+                        by_alternative
+                            .insert((path.clone(), alternative.name.clone()), keys.next());
+                    }
                     match child.recursive_ref.as_deref() {
                         Some(anchor) if recursive_depth < MAX_RECURSIVE_PORT_DEPTH => {
                             if let Some(Some(anchor)) = anchors.get(anchor) {
@@ -1063,6 +1130,7 @@ impl PortTree {
                                     path,
                                     keys,
                                     by_abs,
+                                    by_alternative,
                                     explicit_text,
                                     anchors,
                                     recursive_depth + 1,
@@ -1076,6 +1144,7 @@ impl PortTree {
                             path,
                             keys,
                             by_abs,
+                            by_alternative,
                             explicit_text,
                             anchors,
                             recursive_depth,
@@ -1091,16 +1160,26 @@ impl PortTree {
             &mut Vec::new(),
             keys,
             &mut by_abs,
+            &mut by_alternative,
             explicit_text,
             &anchors,
             0,
             &mut recursive_elements,
         );
-        Self { by_abs }
+        Self {
+            by_abs,
+            by_alternative,
+        }
     }
 
     pub(super) fn key_for_abs(&self, abs: &[String]) -> Option<u32> {
         self.by_abs.get(abs).copied()
+    }
+
+    pub(super) fn key_for_alternative(&self, abs: &[String], name: &str) -> Option<u32> {
+        self.by_alternative
+            .get(&(abs.to_vec(), name.to_string()))
+            .copied()
     }
 
     pub(super) fn required_key_for_abs(&self, abs: &[String], kind: &str) -> Result<u32, MfdError> {
@@ -1246,6 +1325,11 @@ impl PortTree {
                             out.push_str("/>\n");
                         } else {
                             out.push_str(">\n");
+                            if let Some(condition) = branch
+                                .and_then(|(root, index)| target_branches?.condition(root, index))
+                            {
+                                append_xml_type_condition(out, indent + 1, condition);
+                            }
                             let shape = child
                                 .recursive_ref
                                 .as_deref()
@@ -1263,6 +1347,22 @@ impl PortTree {
                                 anchors,
                                 out,
                             );
+                            let _ = writeln!(out, "{pad}</entry>");
+                        }
+                    }
+                    if attr == "outkey" && target_branches.is_none() {
+                        let pad = "\t".repeat(indent);
+                        for alternative in child.alternatives() {
+                            let Some(key) = ports.key_for_alternative(path, &alternative.name)
+                            else {
+                                continue;
+                            };
+                            let _ = writeln!(
+                                out,
+                                "{pad}<entry name=\"{}\" {attr}=\"{key}\" expanded=\"1\" clone=\"1\">",
+                                xml_escape(&child.name)
+                            );
+                            append_xml_type_condition(out, indent + 1, &alternative.name);
                             let _ = writeln!(out, "{pad}</entry>");
                         }
                     }
@@ -1439,6 +1539,15 @@ fn json_type_name(ty: ScalarType) -> &'static str {
         ScalarType::Float => "number",
         ScalarType::Bool => "boolean",
     }
+}
+
+fn append_xml_type_condition(output: &mut String, indent: usize, type_name: &str) {
+    let pad = "\t".repeat(indent);
+    let _ = writeln!(
+        output,
+        "{pad}<condition><expression><function name=\"equal\" library=\"core\"><expression><attribute ns=\"http://www.w3.org/2001/XMLSchema-instance\" name=\"type\"/></expression><expression><constant value=\"{}\" datatype=\"QName\"/></expression></function></expression></condition>",
+        xml_escape(type_name)
+    );
 }
 
 pub(super) fn xml_escape(text: &str) -> String {

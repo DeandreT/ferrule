@@ -443,6 +443,7 @@ mod tests {
             valuemap: None,
             sort_descending: None,
             db_where: None,
+            recursive: None,
         }
     }
 

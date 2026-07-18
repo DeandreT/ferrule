@@ -178,6 +178,7 @@ fn expanded_name(full_name: &str) -> String {
 
 fn has_conflicting_options(options: &FormatOptions) -> bool {
     options.lenient_segments
+        || options.edi_kind.is_some()
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
@@ -187,6 +188,9 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
         || options.pdf.is_some()
         || options.http_get.is_some()
         || options.external_source.is_some()
+        || options.xml_document
+        || options.local_xml_file_set
+        || options.json_document
         || options.json_lines
         || options.xbrl.is_some()
         || options.xlsx_sheet.is_some()

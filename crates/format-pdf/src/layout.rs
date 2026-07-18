@@ -1074,6 +1074,7 @@ fn instance_has_content(instance: &Instance) -> bool {
         Instance::Repeated(items) | Instance::MappedSequence(items) => {
             items.iter().any(instance_has_content)
         }
+        Instance::DocumentSet(_) => true,
     }
 }
 

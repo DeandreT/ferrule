@@ -134,6 +134,7 @@ pub(super) fn build(
                     Instance::Repeated(_) => "repeated collection",
                     Instance::MappedSequence(_) => "mapped sequence",
                     Instance::Scalar(_) => "scalar",
+                    Instance::DocumentSet(_) => "document set",
                 },
             }),
         });

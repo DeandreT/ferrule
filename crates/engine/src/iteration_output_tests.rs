@@ -223,6 +223,60 @@ fn validation_rejects_invalid_first_output_cardinality() {
 }
 
 #[test]
+fn non_iterating_scope_constructs_one_item_for_a_repeating_target_group() {
+    let project = Project {
+        source: SchemaNode::group("Source", Vec::new()),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group(
+                    "Entry",
+                    vec![SchemaNode::scalar("Label", ScalarType::String)],
+                )
+                .repeating(),
+            ],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::Const {
+                    value: Value::String("static".into()),
+                },
+            )]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Entry".into(),
+                bindings: vec![Binding {
+                    target_field: "Label".into(),
+                    node: 0,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
+
+    let output = run(&project, &Instance::Group(Vec::new())).unwrap();
+    let entries = output
+        .field("Entry")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].field("Label").and_then(Instance::as_scalar),
+        Some(&Value::String("static".into()))
+    );
+}
+
+#[test]
 fn mapped_sequence_preserves_zero_one_or_many_ordered_items() {
     let project = project_with_output(IterationOutput::MappedSequence);
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));

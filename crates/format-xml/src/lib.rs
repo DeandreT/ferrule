@@ -1,8 +1,11 @@
 //! XSD-lite and bounded DTD-lite schema import plus XML instance read/write.
 
 pub mod dtd;
+mod file_set;
 mod generic;
 pub mod xsd;
+
+pub use file_set::{LocalFileSetError, LocalFileSetLimits, LocalXmlFileSet, read_local_file_set};
 
 use std::io::Cursor;
 use std::path::Path;
@@ -631,6 +634,9 @@ fn instance_has_value(instance: &Instance) -> bool {
         Instance::Group(fields) => fields.iter().any(|(_, value)| instance_has_value(value)),
         Instance::Repeated(items) => items.iter().any(instance_has_value),
         Instance::MappedSequence(items) => items.iter().any(instance_has_value),
+        Instance::DocumentSet(documents) => documents
+            .iter()
+            .any(|document| instance_has_value(document.value())),
     }
 }
 
@@ -670,6 +676,7 @@ fn shape_error(schema: &SchemaNode, expected: &'static str, instance: &Instance)
         Instance::Group(_) => "an element group",
         Instance::Repeated(_) => "repeating elements",
         Instance::MappedSequence(_) => "a mapped element sequence",
+        Instance::DocumentSet(_) => "a document set",
     };
     XmlFormatError::Shape {
         name: schema.name.clone(),

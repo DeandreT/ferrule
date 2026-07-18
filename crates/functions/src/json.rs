@@ -60,6 +60,14 @@ fn scalar_value(scalar_type: &str, value: &Value) -> Result<serde_json::Value, F
             Ok(serde_json::Value::String(value.to_string()))
         }
         ("integer", Value::Int(value)) => Ok(serde_json::Value::Number((*value).into())),
+        ("integer", Value::Float(value))
+            if value.is_finite()
+                && value.fract() == 0.0
+                && *value >= i64::MIN as f64
+                && *value < -(i64::MIN as f64) =>
+        {
+            Ok(serde_json::Value::Number((*value as i64).into()))
+        }
         ("integer", Value::String(value)) => value
             .trim()
             .parse::<i64>()
@@ -146,5 +154,33 @@ mod tests {
                 r#"{"Shares":3.5,"Leaves":{"Total":7}}"#.into()
             ))
         );
+    }
+
+    #[test]
+    fn serializes_exact_integral_float_properties_as_integers() {
+        assert_eq!(
+            serialize_object(&[
+                Value::String(r#"["Shares"]"#.into()),
+                Value::String("integer".into()),
+                Value::Float(42.0),
+            ]),
+            Ok(Value::String(r#"{"Shares":42}"#.into()))
+        );
+
+        for value in [
+            Value::Float(42.5),
+            Value::Float(f64::NAN),
+            Value::Float(f64::INFINITY),
+            Value::Float(i64::MAX as f64),
+        ] {
+            assert!(
+                serialize_object(&[
+                    Value::String(r#"["Shares"]"#.into()),
+                    Value::String("integer".into()),
+                    value,
+                ])
+                .is_err()
+            );
+        }
     }
 }

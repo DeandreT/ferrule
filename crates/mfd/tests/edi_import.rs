@@ -1,11 +1,28 @@
 use std::path::{Path, PathBuf};
 
-use mapping::Node;
+use mapping::{EdiBoundaryKind, Node, X12Separators};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(name)
+}
+
+fn assert_source_boundary_roundtrip(project: &mapping::Project, directory: &Path) {
+    let design = directory.join("roundtrip.mfd");
+    let warnings = mfd::export(project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&design).unwrap();
+    assert!(exported.contains("library=\"text\""));
+    assert!(exported.contains("type=\"edi\""));
+    assert!(exported.contains("ferrule-repeating="));
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(reimported.project.source, project.source);
+    assert_eq!(reimported.project.source_options, project.source_options);
+    assert_eq!(reimported.project.source_path, project.source_path);
 }
 
 #[test]
@@ -16,6 +33,10 @@ fn imports_edi_entry_tree_paths_and_honors_default_output() {
     assert_eq!(project.source.name, "MFD-EDIFACT");
     assert_eq!(project.source_path.as_deref(), Some("orders.edi"));
     assert!(project.source_options.lenient_segments);
+    assert_eq!(
+        project.source_options.edi_kind,
+        Some(EdiBoundaryKind::Edifact)
+    );
     assert_eq!(project.target.name, "People");
     assert_eq!(project.target_path.as_deref(), Some("people.xml"));
     assert_eq!(project.extra_targets.len(), 1);
@@ -70,6 +91,10 @@ fn imports_hl7_without_external_config_as_non_executable_graph() {
         Some("messages.hl7")
     );
     assert_eq!(imported.project.graph.nodes.len(), 1);
+    assert_eq!(
+        imported.project.source_options.edi_kind,
+        Some(EdiBoundaryKind::Hl7)
+    );
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(
         imported
@@ -77,6 +102,53 @@ fn imports_hl7_without_external_config_as_non_executable_graph() {
             .iter()
             .any(|warning| warning.contains("entry-tree schema inferred"))
     );
+}
+
+#[test]
+fn imports_self_describing_edi_entry_tree_without_external_config() {
+    let directory = TempDir::new("embedded_schema");
+    let design = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="messages" library="text" kind="16"><data>
+            <root><entry name="FileInstance"><entry name="document">
+              <entry name="Envelope" ferrule-repeating="0">
+                <entry name="Message" ferrule-repeating="1" outkey="10">
+                  <entry name="Code" ferrule-repeating="0" ferrule-fixed="A" datatype="string" outkey="11"/>
+                  <entry name="Count" ferrule-repeating="0" datatype="integer" outkey="12"/>
+                </entry>
+              </entry>
+            </entry></entry></root>
+            <text type="edi" kind="EDIHL7" inputinstance="messages.hl7"/>
+          </data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="Result"><entry name="Code" inpkey="20"/><entry name="Count" inpkey="21"/></entry></root>
+            <document outputinstance="result.xml" instanceroot="{}Result"/>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="21"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported.project.source_options.edi_kind,
+        Some(EdiBoundaryKind::Hl7)
+    );
+    let message = imported.project.source.child("Message").unwrap();
+    assert!(message.repeating);
+    assert_eq!(message.child("Code").unwrap().fixed.as_deref(), Some("A"));
+    assert!(matches!(
+        message.child("Count").unwrap().kind,
+        ir::SchemaKind::Scalar {
+            ty: ir::ScalarType::Int
+        }
+    ));
+    assert_source_boundary_roundtrip(&imported.project, directory.path());
 }
 
 #[test]
@@ -137,7 +209,9 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
                   <entry name="MF_AK9" outkey="35"><entry name="F715" outkey="14"/></entry>
                 </entry></entry></entry>
               </entry></entry></entry></root>
-              <text type="edi" kind="EDIX12" config="X12\850.Config" inputinstance="input.x12"/>
+              <text type="edi" kind="EDIX12" config="X12\850.Config" inputinstance="input.x12">
+                <settings interchangecontrolversionnumber="00505"><separators dataelement="+" component=":" segment="%27" repetition="%21" escape="%3F"/></settings>
+              </text>
             </data></component>
             <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data>
               <root><entry name="Outputs">
@@ -159,6 +233,28 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
 
     let imported = mfd::import(&mfd_path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported.project.source_options.edi_kind,
+        Some(EdiBoundaryKind::X12)
+    );
+    assert_eq!(
+        imported.project.source_options.x12_separators,
+        Some(X12Separators {
+            element: '+',
+            component: ':',
+            segment: '\'',
+            repetition: Some('!'),
+            release: Some('?'),
+        })
+    );
+    assert_eq!(
+        imported
+            .project
+            .source_options
+            .x12_interchange_version
+            .as_deref(),
+        Some("00505")
+    );
     assert_eq!(
         format_edi::dialect_of(&imported.project.source).unwrap(),
         format_edi::Dialect::X12
@@ -218,6 +314,7 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
         "{:?}",
         engine::validate(&imported.project)
     );
+    assert_source_boundary_roundtrip(&imported.project, directory.path());
 }
 
 #[test]
@@ -262,6 +359,7 @@ fn compiles_and_embeds_relative_idoc_configuration() {
         decoded.source_options.idoc,
         imported.project.source_options.idoc
     );
+    assert_source_boundary_roundtrip(&imported.project, directory.path());
 }
 
 #[test]
@@ -310,6 +408,7 @@ fn compiles_and_embeds_selected_swift_configuration() {
         decoded.source_options.swift_mt,
         imported.project.source_options.swift_mt
     );
+    assert_source_boundary_roundtrip(&imported.project, directory.path());
 }
 
 struct TempDir(PathBuf);

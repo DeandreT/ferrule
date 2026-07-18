@@ -132,6 +132,7 @@ fn source_rows<'a>(
                             grouped: false,
                             join: Some(join),
                             join_position: None,
+                            document_path: None,
                         });
                     } else {
                         for position in &mut positions {

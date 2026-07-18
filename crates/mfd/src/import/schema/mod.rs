@@ -141,6 +141,7 @@ const JSON_DYNAMIC_BOOL_PORT: &str = "\u{1f}ferrule-json-dynamic-bool";
 const JSON_DYNAMIC_INT_PORT: &str = "\u{1f}ferrule-json-dynamic-int";
 const JSON_DYNAMIC_FLOAT_PORT: &str = "\u{1f}ferrule-json-dynamic-float";
 const JSON_DYNAMIC_STRING_PORT: &str = "\u{1f}ferrule-json-dynamic-string";
+pub(super) const SOURCE_DOCUMENT_PATH_PORT: &str = "\u{1f}ferrule-source-document-path";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum JsonDynamicPort {
@@ -286,17 +287,38 @@ pub(super) fn read_schema_component(
     reconcile_explicit_text_entries(&entry, &mut schema);
     normalize_xml_text_ports(&schema, &mut ports);
 
+    let input_instance = document
+        .and_then(|document| document.attribute("inputinstance"))
+        .map(str::to_string);
+    let local_xml_file_set = input_instance
+        .as_deref()
+        .is_some_and(is_local_file_set_pattern);
+    if local_xml_file_set
+        && is_source
+        && let Some(key) = root_el
+            .descendants()
+            .find(|entry| {
+                entry.has_tag_name("entry")
+                    && entry.attribute("name") == Some("FileInstance")
+                    && entry.attribute("outkey").is_some()
+            })
+            .and_then(|entry| parse_u32(entry.attribute("outkey")))
+    {
+        ports.insert(key, vec![SOURCE_DOCUMENT_PATH_PORT.to_string()]);
+    }
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Xml,
         schema,
-        input_instance: document
-            .and_then(|d| d.attribute("inputinstance"))
-            .map(str::to_string),
+        input_instance,
         output_instance: document
             .and_then(|d| d.attribute("outputinstance"))
             .map(str::to_string),
-        options: FormatOptions::default(),
+        options: FormatOptions {
+            xml_document: true,
+            local_xml_file_set,
+            ..FormatOptions::default()
+        },
         is_source,
         is_default_output: is_default_output(component),
         is_variable: data.descendants().any(|node| {
@@ -317,6 +339,14 @@ pub(super) fn read_schema_component(
         db_queries: Vec::new(),
         dynamic_json: None,
     })
+}
+
+fn is_local_file_set_pattern(path: &str) -> bool {
+    !path.contains("://")
+        && Path::new(path.replace('\\', "/").as_str())
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.contains(['*', '?']))
 }
 
 fn instance_root_segments(root: &str) -> Vec<String> {
@@ -399,6 +429,49 @@ pub(super) fn read_json_component(
     }
 
     let json_lines = json_el.is_some_and(|json| json.attribute("jsonlines") == Some("1"));
+    let external_source = json_el.and_then(|json| {
+        let metadata = json
+            .children()
+            .find(|node| node.has_tag_name("ferrule-external-source"))?;
+        if metadata.attribute("version") != Some("1") {
+            warnings.push(format!(
+                "captured user-function JSON source `{name}` has an unsupported provenance metadata version; imported as an ordinary JSON component"
+            ));
+            return None;
+        }
+        let source = metadata
+            .text()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "metadata is empty".to_string())
+            .and_then(|encoded| {
+                serde_json::from_str::<mapping::ExternalSourceOptions>(encoded)
+                    .map_err(|error| error.to_string())
+            });
+        match source {
+            Ok(source)
+                if source.payload() == mapping::ExternalPayloadFormat::Json
+                    && matches!(
+                        source.origin(),
+                        mapping::ExternalSourceOrigin::UserFunction { .. }
+                    ) =>
+            {
+                Some(source)
+            }
+            Ok(_) => {
+                warnings.push(format!(
+                    "captured user-function JSON source `{name}` has provenance for a different boundary kind; imported as an ordinary JSON component"
+                ));
+                None
+            }
+            Err(error) => {
+                warnings.push(format!(
+                    "captured user-function JSON source `{name}` has invalid provenance metadata ({error}); imported as an ordinary JSON component"
+                ));
+                None
+            }
+        }
+    });
 
     let dynamic_json = match super::dynamic_json::read_target(&entry) {
         Ok(target) => target,
@@ -479,6 +552,8 @@ pub(super) fn read_json_component(
             .and_then(|j| j.attribute("outputinstance"))
             .map(str::to_string),
         options: FormatOptions {
+            external_source,
+            json_document: true,
             json_lines,
             ..FormatOptions::default()
         },
@@ -1207,6 +1282,18 @@ pub(super) fn read_db_component(
 
     let embedded_types = embedded_db_column_types(&tables);
 
+    for generation in root_el.descendants().filter(|entry| {
+        entry.has_tag_name("entry") && entry.attribute("valuekeygeneration").is_some()
+    }) {
+        if generation.attribute("valuekeygeneration") != Some("maxnumber") {
+            warnings.push(format!(
+                "component `{name}`: database column `{}` uses unsupported value generation `{}`; a mapped value is required",
+                generation.attribute("name").unwrap_or_default(),
+                generation.attribute("valuekeygeneration").unwrap_or_default()
+            ));
+        }
+    }
+
     let db_path = connection.as_deref().and_then(|conn| {
         let path = mfd_path.parent().unwrap_or(Path::new(".")).join(conn);
         if path.exists() {
@@ -1242,7 +1329,8 @@ pub(super) fn read_db_component(
                         None
                     }
                 });
-        if let Some(schema) = introspected {
+        if let Some(mut schema) = introspected {
+            apply_db_value_generation(&table, &mut schema);
             schema
         } else {
             let empty = BTreeMap::new();
@@ -1435,6 +1523,28 @@ fn db_table_schema(
     db_table_schema_with_complete_row(table, types, false)
 }
 
+fn apply_db_value_generation(table: &roxmltree::Node<'_, '_>, schema: &mut SchemaNode) {
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return;
+    };
+    for entry in table
+        .children()
+        .filter(|node| node.is_element() && node.has_tag_name("entry"))
+    {
+        let Some(name) = entry.attribute("name") else {
+            continue;
+        };
+        let Some(child) = children.iter_mut().find(|child| child.name == name) else {
+            continue;
+        };
+        if entry.attribute("type") == Some("table") {
+            apply_db_value_generation(&entry, child);
+        } else if entry.attribute("valuekeygeneration") == Some("maxnumber") {
+            child.value_generation = Some(ir::ValueGeneration::MaxNumber);
+        }
+    }
+}
+
 fn db_table_schema_with_complete_row(
     table: &roxmltree::Node,
     types: &BTreeMap<String, BTreeMap<String, ir::ScalarType>>,
@@ -1465,7 +1575,11 @@ fn db_table_schema_with_complete_row(
                             .map(|(_, ty)| *ty)
                     })
                     .unwrap_or(ir::ScalarType::String);
-                Some(SchemaNode::scalar(column, ty))
+                let mut schema = SchemaNode::scalar(column, ty);
+                if entry.attribute("valuekeygeneration") == Some("maxnumber") {
+                    schema.value_generation = Some(ir::ValueGeneration::MaxNumber);
+                }
+                Some(schema)
             }
             Some(_) => None,
         })

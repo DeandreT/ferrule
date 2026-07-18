@@ -59,6 +59,38 @@ pub(super) struct FnComponent {
     pub(super) valuemap: Option<ValueMapData>,
     pub(super) sort_descending: Option<bool>,
     pub(super) db_where: Option<DbWhereComponent>,
+    pub(super) recursive: Option<RecursiveComponent>,
+}
+
+#[derive(Clone)]
+pub(super) enum RecursiveComponent {
+    Invalid,
+    Collect {
+        collection: Vec<String>,
+        children: Vec<String>,
+        descent_value: Vec<String>,
+        values: Vec<String>,
+        value: Vec<String>,
+    },
+    Filter {
+        children: String,
+        items: String,
+    },
+    PathHierarchy {
+        collection: Vec<String>,
+        separator: String,
+        directories: String,
+        files: String,
+        name: String,
+    },
+    AdjacencyTree {
+        collection: Vec<String>,
+        key: Vec<String>,
+        parent: Vec<String>,
+        target_key: String,
+        target_children: String,
+        has_root: bool,
+    },
 }
 
 pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
@@ -185,6 +217,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         valuemap,
         sort_descending,
         db_where,
+        recursive: None,
     }
 }
 
@@ -412,11 +445,30 @@ pub(super) fn is_distinct_values(component: &FnComponent) -> bool {
 }
 
 pub(super) fn is_sequence_producer(component: &FnComponent) -> bool {
-    component.library == "core"
+    component.kind == 5
+        && ((component.library == "core"
+            && matches!(
+                component.name.as_str(),
+                "tokenize" | "tokenize-by-length" | "generate-sequence"
+            ))
+            || (component.library == "ferrule"
+                && matches!(
+                    component.recursive,
+                    Some(RecursiveComponent::Collect { .. })
+                )))
+}
+
+pub(super) fn is_recursive_construction(component: &FnComponent) -> bool {
+    component.library == "ferrule"
         && component.kind == 5
         && matches!(
-            component.name.as_str(),
-            "tokenize" | "tokenize-by-length" | "generate-sequence"
+            component.recursive,
+            Some(
+                RecursiveComponent::Filter { .. }
+                    | RecursiveComponent::PathHierarchy { .. }
+                    | RecursiveComponent::AdjacencyTree { .. }
+                    | RecursiveComponent::Invalid
+            )
         )
 }
 

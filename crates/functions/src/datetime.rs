@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ir::Value;
 
 use crate::FunctionError;
@@ -76,8 +78,8 @@ pub(super) fn parse_datetime(args: &[Value]) -> Result<Value, FunctionError> {
 }
 
 pub(super) fn parse_time(args: &[Value]) -> Result<Value, FunctionError> {
-    let (value, picture) = string_pair(args, "parse_time")?;
-    let parsed = parse_picture(value, picture, "parse_time")?;
+    let (value, picture) = lexical_pair(args, "parse_time")?;
+    let parsed = parse_picture(&value, picture, "parse_time")?;
     let (hour, minute, second) = parsed.time("parse_time", false)?;
     let mut output = format!("{hour:02}:{minute:02}:{second:02}");
     append_time_suffix(&mut output, &parsed);
@@ -436,6 +438,33 @@ fn string_pair<'a>(
                 got: bad.type_name(),
             })
         }
+        _ => Err(FunctionError::ArityMismatch {
+            function,
+            expected: 2,
+            got: args.len(),
+        }),
+    }
+}
+
+/// MapForce's parse-time input boundary accepts ordinary atomic values and
+/// applies their canonical lexical form before interpreting the picture. The
+/// picture itself remains a required string.
+fn lexical_pair<'a>(
+    args: &'a [Value],
+    function: &'static str,
+) -> Result<(Cow<'a, str>, &'a str), FunctionError> {
+    match args {
+        [value, Value::String(picture)] => {
+            let value = match value {
+                Value::String(value) => Cow::Borrowed(value.as_str()),
+                value => Cow::Owned(super::scalar_text(value)),
+            };
+            Ok((value, picture))
+        }
+        [_, other] => Err(FunctionError::TypeMismatch {
+            function,
+            got: other.type_name(),
+        }),
         _ => Err(FunctionError::ArityMismatch {
             function,
             expected: 2,
@@ -1017,6 +1046,18 @@ mod tests {
             ])
             .unwrap(),
             text("15:02:39.25+01:00")
+        );
+    }
+
+    #[test]
+    fn parse_time_uses_atomic_numeric_lexical_forms() {
+        assert_eq!(
+            parse_time(&[Value::Float(953.0), text("[H,1-1][m,2-2]"),]).unwrap(),
+            text("09:53:00")
+        );
+        assert_eq!(
+            parse_time(&[Value::Int(1703), text("[H,2-2][m,2-2]")]).unwrap(),
+            text("17:03:00")
         );
     }
 

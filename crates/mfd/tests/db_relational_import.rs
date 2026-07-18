@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use ir::{Instance, ScalarType, SchemaKind, Value};
+use ir::{Instance, ScalarType, SchemaKind, Value, ValueGeneration};
 use mapping::Node;
 use rusqlite::Connection;
 
@@ -330,4 +330,77 @@ fn relational_database_targets_use_the_executable_writer() {
         !warning.contains("relational database target component `database` is non-executable")
             && !warning.contains("cannot write")
     }));
+}
+
+#[test]
+fn database_max_number_columns_roundtrip_as_generated_metadata() {
+    let dir = TempDir::new("max_number");
+    let db_path = dir.0.join("test.sqlite");
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute_batch("CREATE TABLE People (Id INTEGER PRIMARY KEY, Name TEXT NOT NULL);")
+        .unwrap();
+    drop(connection);
+    let design = dir.0.join("generated.mfd");
+    std::fs::write(
+        &design,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26">
+  <resources><datasources><datasource name="test-db">
+    <database_connection database_kind="SQLite" import_kind="SQLite"
+      ConnectionString="test.sqlite" name="test-db" path="test-db"/>
+  </datasource></datasources></resources>
+  <component name="defaultmap" uid="1" editable="1"><structure><children>
+    <component name="Source" library="xml" uid="2" kind="14"><data>
+      <root><header><namespaces><namespace/></namespaces></header>
+        <entry name="document"><entry name="Rows" outkey="10">
+          <entry name="Name" outkey="11"/>
+        </entry></entry>
+      </root>
+    </data></component>
+    <component name="database" library="db" uid="3" kind="15">
+      <properties XSLTDefaultOutput="1"/><data>
+        <root><header><namespaces><namespace/></namespaces></header>
+          <entry name="document"><entry name="People" type="table" inpkey="20">
+            <entry name="Id" valuekeygeneration="maxnumber"/>
+            <entry name="Name" inpkey="21"/>
+          </entry></entry>
+        </root><database ref="test-db"/>
+      </data>
+    </component>
+  </children><graph directed="1"><edges/><vertices>
+    <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+    <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+  </vertices></graph></structure></component>
+</mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported
+            .project
+            .target
+            .child("Id")
+            .and_then(|column| column.value_generation),
+        Some(ValueGeneration::MaxNumber)
+    );
+
+    let exported_path = dir.0.join("generated-roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &exported_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let text = std::fs::read_to_string(&exported_path).unwrap();
+    assert!(text.contains(r#"name="Id" valuekeygeneration="maxnumber""#));
+
+    let reimported = mfd::import(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(
+        reimported
+            .project
+            .target
+            .child("Id")
+            .and_then(|column| column.value_generation),
+        Some(ValueGeneration::MaxNumber)
+    );
 }

@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
-use mapping::{Node, NodeId};
+use ir::Value;
+use mapping::{AggregateOp, Node, NodeId};
 
 use super::function::{
     is_db_where, is_distinct_values, is_filter, is_first_items, is_group_into_blocks,
@@ -104,6 +105,22 @@ impl GraphBuilder<'_> {
                     default,
                 })
             }
+            Node::JoinAggregate { function, plan, .. }
+                if !active_anchor.is_empty()
+                    && plan
+                        .sources()
+                        .any(|source| active_anchor.starts_with(source.collection())) =>
+            {
+                if self.warned_correlated_join_aggregates.insert(original_id) {
+                    self.warnings.push(format!(
+                        "aggregate `{}` filters across an enclosing source iteration; imported as its empty-sequence result because correlated join aggregates are not representable yet",
+                        aggregate_name(function)
+                    ));
+                }
+                return Some(self.alloc(Node::Const {
+                    value: empty_aggregate_value(function),
+                }));
+            }
             _ => {
                 let component = self.fn_components.get(index)?;
                 let position = if is_filter(component)
@@ -116,7 +133,7 @@ impl GraphBuilder<'_> {
                 {
                     0
                 } else if component.name == "group-by" {
-                    usize::from(component.outputs.get(1) == Some(&key))
+                    usize::from(component.output_pins.get(1).copied().flatten() == Some(key))
                 } else {
                     return None;
                 };
@@ -128,5 +145,28 @@ impl GraphBuilder<'_> {
             }
         }?;
         Some(self.alloc(node))
+    }
+}
+
+const fn aggregate_name(function: AggregateOp) -> &'static str {
+    match function {
+        AggregateOp::Count => "count",
+        AggregateOp::Sum => "sum",
+        AggregateOp::Avg => "avg",
+        AggregateOp::Min => "min",
+        AggregateOp::Max => "max",
+        AggregateOp::Join => "join",
+        AggregateOp::ItemAt => "item-at",
+    }
+}
+
+const fn empty_aggregate_value(function: AggregateOp) -> Value {
+    match function {
+        AggregateOp::Count | AggregateOp::Sum => Value::Int(0),
+        AggregateOp::Avg
+        | AggregateOp::Min
+        | AggregateOp::Max
+        | AggregateOp::Join
+        | AggregateOp::ItemAt => Value::Null,
     }
 }

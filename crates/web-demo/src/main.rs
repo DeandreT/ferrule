@@ -232,6 +232,7 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String 
 fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Const { .. }
         | Node::RuntimeValue { .. }
         | Node::Position { .. }
@@ -269,6 +270,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
 fn node_title(node: &Node) -> String {
     match node {
         Node::SourceField { path, .. } => format!("field · {}", path.join("/")),
+        Node::SourceDocumentPath => "source document path".to_string(),
         Node::Position { collection } => format!("position · {}", collection.join("/")),
         Node::JoinField {
             join,
@@ -856,12 +858,16 @@ fn format_extension(format: DataFormat) -> &'static str {
 }
 
 fn boundary_format(project: &Project, side: DataSide, current: DataFormat) -> DataFormat {
-    let has_xbrl = match side {
-        DataSide::Source => project.source_options.xbrl.is_some(),
-        DataSide::Target => project.target_options.xbrl.is_some(),
+    let options = match side {
+        DataSide::Source => &project.source_options,
+        DataSide::Target => &project.target_options,
     };
-    if has_xbrl {
+    if options.xbrl.is_some() {
         DataFormat::Xbrl
+    } else if options.xml_document {
+        DataFormat::Xml
+    } else if options.json_document || options.json_lines {
+        DataFormat::Json
     } else if current == DataFormat::Xbrl {
         DataFormat::Xml
     } else {
@@ -965,6 +971,26 @@ mod tests {
         assert_eq!(
             boundary_format(&project, DataSide::Target, DataFormat::Csv),
             DataFormat::Csv
+        );
+
+        project.target_options.json_document = true;
+        assert_eq!(
+            boundary_format(&project, DataSide::Target, DataFormat::Xml),
+            DataFormat::Json
+        );
+
+        project.target_options.json_document = false;
+        project.target_options.json_lines = true;
+        assert_eq!(
+            boundary_format(&project, DataSide::Target, DataFormat::Xml),
+            DataFormat::Json
+        );
+
+        project.target_options.json_lines = false;
+        project.target_options.xml_document = true;
+        assert_eq!(
+            boundary_format(&project, DataSide::Target, DataFormat::Json),
+            DataFormat::Xml
         );
     }
 }

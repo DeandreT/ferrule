@@ -689,7 +689,19 @@ impl GraphBuilder<'_> {
         });
         if !unscoped_query && let Some(source_path) = self.source_abs_path(key) {
             let source_path = self.source_value_path(source_path.source, source_path.path);
-            return self.source_field_at_anchor(&source_path, active_anchor);
+            let ty = self
+                .schema_node(&source_path)
+                .and_then(|node| match &node.kind {
+                    SchemaKind::Scalar { ty } => Some(*ty),
+                    SchemaKind::Group { .. } => None,
+                });
+            let input = self.source_field_at_anchor(&source_path, active_anchor)?;
+            return Some(match ty {
+                Some(ty) if self.has_source_node_functions(key) => {
+                    self.apply_source_node_functions(key, ty, input)
+                }
+                Some(_) | None => input,
+            });
         }
         if !unscoped_query && let Some(node) = self.scalar_node_at_anchor(key, active_anchor) {
             return Some(node);

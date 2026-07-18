@@ -8,7 +8,8 @@ use crate::aggregate::aggregate;
 use crate::context::runtime_field;
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
 use crate::resolve::{
-    dynamic_scalar, field_scalar, join_scalar, repeated, scalar, scalar_in_frame,
+    dynamic_scalar, field_scalar, join_scalar, repeated, scalar_in_active_collection,
+    scalar_in_frame, source_document_path,
 };
 use crate::sequence::eval_sequence_exists;
 use crate::source_iteration::PositionFrame;
@@ -33,7 +34,7 @@ pub(crate) fn eval_expr(
         Node::SourceField { path, frame } => {
             let value = match frame {
                 Some(frame) => scalar_in_frame(context, positions, frame, path),
-                None => scalar(context, path),
+                None => scalar_in_active_collection(context, positions, path),
             };
             value.ok_or_else(|| {
                 let mut display = frame.clone().unwrap_or_default();
@@ -41,6 +42,9 @@ pub(crate) fn eval_expr(
                 EngineError::MissingSourceField(display.join("/"))
             })
         }
+        Node::SourceDocumentPath => source_document_path(context, positions)
+            .map(|path| Value::String(path.to_string()))
+            .ok_or_else(|| EngineError::MissingSourceField("<document-path>".into())),
         Node::Position { collection } => Ok(Value::Int(position(positions, collection) as i64)),
         Node::JoinField {
             join,
@@ -170,6 +174,7 @@ pub(crate) fn eval_expr(
                         grouped: false,
                         join: None,
                         join_position: None,
+                        document_path: None,
                     });
                     eval_expr(
                         graph,
@@ -276,6 +281,7 @@ fn visit_collection_find<'a>(
                 grouped: false,
                 join: None,
                 join_position: None,
+                document_path: None,
             });
             let found = visit_collection_find(
                 graph,
