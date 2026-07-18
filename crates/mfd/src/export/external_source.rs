@@ -1,0 +1,325 @@
+use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
+
+use ir::{SchemaKind, SchemaNode};
+use mapping::{
+    ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOrigin, FormatOptions, Project,
+};
+
+use crate::MfdError;
+
+use super::schema::{KeyAlloc, PortTree, xml_escape};
+
+pub(super) struct RequestSchemaArtifact {
+    pub(super) file_name: String,
+    pub(super) path: PathBuf,
+    pub(super) contents: String,
+}
+
+pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    if project.target_options.external_source.is_some()
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| target.options.external_source.is_some())
+    {
+        return Err(unsupported(
+            "captured external responses are source-only and cannot be attached to an .mfd target",
+        ));
+    }
+    if let Some(source) = project
+        .extra_sources
+        .iter()
+        .find(|source| source.options.external_source.is_some())
+    {
+        return Err(unsupported(format!(
+            "captured external response in secondary source `{}` cannot be exported losslessly until .mfd multi-source component ports are retained and wired",
+            source.name
+        )));
+    }
+    let Some(boundary) = project.source_options.external_source.as_ref() else {
+        return Ok(());
+    };
+    if has_conflicting_options(&project.source_options) {
+        return Err(unsupported(
+            "captured external responses cannot be combined with another source format option",
+        ));
+    }
+    validate_json_schema(&project.source, "response")?;
+    match boundary.origin() {
+        ExternalSourceOrigin::UserFunction { name, .. } => Err(unsupported(format!(
+            "opaque user-function source `{name}` cannot be exported losslessly: the project retains its result contract but not the original call and definition body"
+        ))),
+        ExternalSourceOrigin::HttpPost {
+            request_format,
+            request_schema,
+            ..
+        } => {
+            if boundary.payload() != ExternalPayloadFormat::Json {
+                return Err(unsupported(
+                    "captured HTTP POST export currently requires a JSON response contract",
+                ));
+            }
+            if !matches!(request_format, None | Some(ExternalPayloadFormat::Json)) {
+                return Err(unsupported(
+                    "captured HTTP POST export currently requires a JSON request contract",
+                ));
+            }
+            if request_format.is_some() != request_schema.is_some() {
+                return Err(unsupported(
+                    "captured HTTP POST request format and schema must both be present or absent",
+                ));
+            }
+            if let Some(schema) = request_schema {
+                validate_json_schema(schema, "request")?;
+            }
+            let url = project.source_path.as_deref().ok_or_else(|| {
+                unsupported("captured HTTP POST export requires its URL in source_path")
+            })?;
+            if !valid_http_url(url) {
+                return Err(unsupported(
+                    "captured HTTP POST export requires an HTTP(S) URL without credentials or a fragment",
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError> {
+    if schema.attribute
+        || schema.text
+        || schema.nillable
+        || schema.fixed.is_some()
+        || schema.recursive_ref.is_some()
+    {
+        return Err(unsupported(format!(
+            "captured HTTP POST {role} schema `{}` uses metadata the canonical JSON entry tree cannot preserve",
+            schema.name
+        )));
+    }
+    if let SchemaKind::Group {
+        children,
+        alternatives,
+        dynamic,
+    } = &schema.kind
+    {
+        if !alternatives.is_empty() || dynamic.is_some() {
+            return Err(unsupported(format!(
+                "captured HTTP POST {role} schema `{}` uses alternatives or dynamic fields the canonical JSON entry tree cannot preserve",
+                schema.name
+            )));
+        }
+        for child in children {
+            validate_json_schema(child, role)?;
+        }
+    }
+    Ok(())
+}
+
+fn has_conflicting_options(options: &FormatOptions) -> bool {
+    options.lenient_segments
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.pdf.is_some()
+        || options.http_get.is_some()
+        || options.json_lines
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || options.xlsx_update_existing
+        || !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
+}
+
+pub(super) fn request_ports(options: &FormatOptions, keys: &mut KeyAlloc) -> Option<PortTree> {
+    let boundary = options.external_source.as_ref()?;
+    let ExternalSourceOrigin::HttpPost {
+        request_schema: Some(schema),
+        ..
+    } = boundary.origin()
+    else {
+        return None;
+    };
+    Some(PortTree::build(schema, keys))
+}
+
+pub(super) fn request_schema_artifact(
+    options: &FormatOptions,
+    mfd_path: &Path,
+    suffix: &str,
+) -> Option<RequestSchemaArtifact> {
+    let boundary = options.external_source.as_ref()?;
+    let ExternalSourceOrigin::HttpPost {
+        request_schema: Some(schema),
+        ..
+    } = boundary.origin()
+    else {
+        return None;
+    };
+    let stem = mfd_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("mapping");
+    let file_name = format!("{stem}-{suffix}.schema.json");
+    let path = mfd_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(&file_name);
+    Some(RequestSchemaArtifact {
+        file_name,
+        path,
+        contents: format_json::json_schema::export(schema),
+    })
+}
+
+pub(super) struct RenderHttpPostArgs<'a> {
+    pub(super) component_name: &'a str,
+    pub(super) response_schema: &'a ir::SchemaNode,
+    pub(super) response_ports: &'a PortTree,
+    pub(super) request_ports: Option<&'a PortTree>,
+    pub(super) request_schema_file: Option<&'a str>,
+    pub(super) options: &'a FormatOptions,
+    pub(super) url: Option<&'a str>,
+    pub(super) uid: u32,
+}
+
+pub(super) fn render_http_post(args: RenderHttpPostArgs<'_>) -> Result<String, MfdError> {
+    let RenderHttpPostArgs {
+        component_name,
+        response_schema,
+        response_ports,
+        request_ports,
+        request_schema_file,
+        options,
+        url,
+        uid,
+    } = args;
+    let boundary = options.external_source.as_ref().ok_or_else(|| {
+        unsupported("internal captured HTTP POST component has no boundary metadata")
+    })?;
+    let ExternalSourceOrigin::HttpPost {
+        mode,
+        timeout_seconds,
+        request_format,
+        request_schema,
+        headers,
+    } = boundary.origin()
+    else {
+        return Err(unsupported(
+            "internal external source is not a captured HTTP POST",
+        ));
+    };
+    if boundary.payload() != ExternalPayloadFormat::Json
+        || !matches!(request_format, None | Some(ExternalPayloadFormat::Json))
+    {
+        return Err(unsupported(
+            "captured HTTP POST export supports JSON request and response contracts only",
+        ));
+    }
+    let url = url.ok_or_else(|| unsupported("captured HTTP POST source has no URL"))?;
+    if !valid_http_url(url) {
+        return Err(unsupported("captured HTTP POST source has an invalid URL"));
+    }
+
+    let mut roots = String::new();
+    if let (Some(schema), Some(ports)) = (request_schema.as_ref(), request_ports) {
+        let schema_file = request_schema_file.ok_or_else(|| {
+            unsupported("captured HTTP POST request schema artifact was not prepared")
+        })?;
+        let _ = write!(
+            roots,
+            "\t\t\t\t\t\t<root>\n\
+             \t\t\t\t\t\t\t<entry name=\"HTTPMessage\" expanded=\"1\">\n\
+             \t\t\t\t\t\t\t\t<entry name=\"HTTPBody\" expanded=\"1\">\n\
+             \t\t\t\t\t\t\t\t\t<entry name=\"document\" type=\"doc-json\" expanded=\"1\">\n\
+             \t\t\t\t\t\t\t\t\t\t<document schemafile=\"{}\" encoding=\"UTF-8\"/>\n\
+             \t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" expanded=\"1\">\n\
+             {}\
+             \t\t\t\t\t\t\t\t\t\t</entry>\n\
+             \t\t\t\t\t\t\t\t\t</entry>\n\
+             \t\t\t\t\t\t\t\t</entry>\n\
+             \t\t\t\t\t\t\t</entry>\n\
+             \t\t\t\t\t\t</root>\n",
+            xml_escape(schema_file),
+            xml_escape(&schema.name),
+            ports.json_entries_xml(schema, "inpkey", 11),
+        );
+    }
+    let _ = write!(
+        roots,
+        "\t\t\t\t\t\t<root rootindex=\"1\">\n\
+         \t\t\t\t\t\t\t<entry name=\"HTTPMessage\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t<entry name=\"HTTPBody\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t<entry name=\"document\" type=\"doc-json\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t\t<document encoding=\"UTF-8\"/>\n\
+         \t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" expanded=\"1\">\n\
+         {}\
+         \t\t\t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t</root>\n",
+        xml_escape(&response_schema.name),
+        response_ports.json_entries_xml(response_schema, "outkey", 11),
+    );
+
+    let mode = match mode {
+        ExternalHttpMode::Manual => "manual",
+        ExternalHttpMode::Graphql => "graphql",
+    };
+    let mut parameters = String::new();
+    for header in headers {
+        let _ = writeln!(
+            parameters,
+            "\t\t\t\t\t\t\t<parameter name=\"{}\" style=\"header\" required=\"{}\" mappable=\"{}\"/>",
+            xml_escape(header.name()),
+            u8::from(header.required()),
+            u8::from(header.mapped()),
+        );
+    }
+    Ok(format!(
+        "\t\t\t\t<component name=\"{}\" library=\"webservice\" uid=\"{uid}\" kind=\"20\">\n\
+         \t\t\t\t\t<properties/>\n\
+         \t\t\t\t\t<view rbx=\"300\" rby=\"400\"/>\n\
+         \t\t\t\t\t<data>\n\
+         {roots}\
+         \t\t\t\t\t\t<wsdl kind=\"call\" sourceMode=\"{mode}\" url=\"{}\" timeout=\"{}\" httpmethod=\"POST\">\n\
+         {parameters}\
+         \t\t\t\t\t\t</wsdl>\n\
+         \t\t\t\t\t</data>\n\
+         \t\t\t\t</component>\n",
+        xml_escape(component_name),
+        xml_escape(url),
+        timeout_seconds.get(),
+    ))
+}
+
+fn valid_http_url(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return false;
+    }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.is_empty()
+        && !authority.contains('@')
+        && !url.contains('#')
+        && url.is_ascii()
+        && !url
+            .bytes()
+            .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+}
+
+fn unsupported(message: impl Into<String>) -> MfdError {
+    MfdError::Unsupported(message.into())
+}

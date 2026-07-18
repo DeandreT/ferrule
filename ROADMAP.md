@@ -53,7 +53,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 120/120 warning-free and engine-valid imports, and 78 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
+| `.mfd` | 120/120 warning-free and engine-valid imports, and 91 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams
@@ -104,8 +104,8 @@ subset; execution and reference matching remain explicitly unmeasured.
 - Add safely redirected sample execution and semantic reference comparison
   without writing into the read-only vendor sample tree.
 - Grow clean export/re-import coverage from measured failure categories, led by
-  mapped XML sequences, extra targets, FlexText/PDF sources, external-response
-  boundaries, and XBRL.
+  multi-source port ownership, mapped XML construction, PDF sources, dynamic
+  JSON export, and advanced XLSX source shapes.
 - Add first-class sequence slicing and reusable graph-backed UDFs instead of
   further one-off lowering paths.
 - Complete namespace and JSON union semantics.

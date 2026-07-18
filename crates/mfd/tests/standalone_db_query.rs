@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
-use mapping::IterationOutput;
+use mapping::{IterationOutput, Node};
 use rusqlite::Connection;
 
 struct TempDir(PathBuf);
@@ -126,6 +126,55 @@ fn all_columns_descending_limit_one_imports_the_winner() {
     );
     let xml = format_xml::to_string(&project.target, &output).unwrap();
     assert!(xml.contains("<Name>Monitor</Name>"), "{xml}");
+
+    let exported = dir.0.join("roundtrip.mfd");
+    assert!(mfd::export(&project, &exported).unwrap().is_empty());
+    let design = std::fs::read_to_string(&exported).unwrap();
+    assert!(design.contains("component name=\"sort\""), "{design}");
+    assert!(
+        design.contains("component name=\"first-items\""),
+        "{design}"
+    );
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(
+        engine::validate(&reimported.project).is_empty(),
+        "{:?}",
+        engine::validate(&reimported.project)
+    );
+    assert_eq!(
+        reimported.project.root.iteration_output,
+        IterationOutput::First
+    );
+    let source =
+        format_db::read_instance(&dir.0.join("inventory.sqlite"), &reimported.project.source)
+            .unwrap();
+    assert_eq!(output, engine::run(&reimported.project, &source).unwrap());
+}
+
+#[test]
+fn root_first_export_rejects_more_than_one_item_atomically() {
+    let dir = TempDir::new();
+    let design = prepare(&dir.0, true);
+    let (mut project, _) = run(&dir.0, &design);
+    let take = project.root.take.unwrap();
+    project.graph.nodes.insert(
+        take,
+        Node::Const {
+            value: Value::Int(2),
+        },
+    );
+
+    let exported = dir.0.join("rejected.mfd");
+    std::fs::write(&exported, "existing design").unwrap();
+    assert!(matches!(
+        mfd::export(&project, &exported),
+        Err(mfd::MfdError::Unsupported(message)) if message.contains("first-item")
+    ));
+    assert_eq!(
+        std::fs::read_to_string(exported).unwrap(),
+        "existing design"
+    );
 }
 
 #[test]
