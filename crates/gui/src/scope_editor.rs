@@ -684,6 +684,9 @@ fn node_label(node: &mapping::Node) -> String {
         mapping::Node::SequenceExists { sequence, .. } => {
             format!("exists {}", generated_sequence_label(sequence))
         }
+        mapping::Node::SequenceItemAt { sequence, .. } => {
+            format!("item-at {}", generated_sequence_label(sequence))
+        }
         mapping::Node::Aggregate {
             function,
             collection,

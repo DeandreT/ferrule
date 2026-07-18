@@ -13,7 +13,7 @@ pub(super) struct PositionFrame {
     /// Flattened tuple position stored without adding a synthetic context
     /// frame. The raw source `index` remains independently addressable.
     pub(super) join_position: Option<(JoinId, usize)>,
-    /// Local path retained by a document-set boundary for this source frame.
+    /// Resolved path retained by a document-set boundary for this source frame.
     pub(super) document_path: Option<String>,
 }
 
@@ -72,7 +72,7 @@ pub(super) fn walk<'a>(
                         grouped: false,
                         join: None,
                         join_position: None,
-                        document_path: Some(document.path().to_string()),
+                        document_path: Some(document.source_path().to_string()),
                     });
                     WalkExtension {
                         instances: next_instances,
@@ -125,7 +125,7 @@ pub(super) fn walk<'a>(
                             grouped: false,
                             join: None,
                             join_position: None,
-                            document_path: Some(document.path().to_string()),
+                            document_path: Some(document.source_path().to_string()),
                         });
                         walk(
                             document.value(),

@@ -1,5 +1,10 @@
 use super::*;
 
+use std::collections::BTreeMap;
+
+use ir::{GroupAlternative, GroupAlternativeConstraint};
+use mapping::{Binding, Graph, Project, Scope, ScopeIteration};
+
 #[test]
 fn object_one_of_subtypes_import_execute_and_select_xml_types() {
     let imported = mfd::import(&fixture("json-alternatives.mfd")).unwrap();
@@ -65,4 +70,118 @@ fn object_one_of_subtypes_import_execute_and_select_xml_types() {
     assert!(xml.contains("xsi:type=\"ft:International\""), "{xml}");
     assert!(xml.contains("<state>WA</state>"), "{xml}");
     assert!(xml.contains("<postcode>SW1</postcode>"), "{xml}");
+}
+
+#[test]
+fn required_string_const_json_alternatives_export_reimport_and_execute() {
+    let event = SchemaNode::group(
+        "Event",
+        vec![
+            SchemaNode::scalar("kind", ScalarType::String),
+            SchemaNode::scalar("value", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        GroupAlternative {
+            name: "created".into(),
+            members: vec!["kind".into(), "value".into()],
+            required: vec!["kind".into(), "value".into()],
+            constraints: vec![GroupAlternativeConstraint {
+                member: "kind".into(),
+                value: "created".into(),
+            }],
+        },
+        GroupAlternative {
+            name: "deleted".into(),
+            members: vec!["kind".into(), "value".into()],
+            required: vec!["kind".into(), "value".into()],
+            constraints: vec![GroupAlternativeConstraint {
+                member: "kind".into(),
+                value: "deleted".into(),
+            }],
+        },
+    ])
+    .unwrap()
+    .repeating();
+    let project = Project {
+        source: SchemaNode::group("Events", vec![event]),
+        target: SchemaNode::group(
+            "Result",
+            vec![
+                SchemaNode::group(
+                    "Row",
+                    vec![
+                        SchemaNode::scalar("Kind", ScalarType::String),
+                        SchemaNode::scalar("Value", ScalarType::String),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        source_path: Some("events.json".into()),
+        target_path: Some("result.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["kind".into()],
+                        frame: Some(vec!["Event".into()]),
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["value".into()],
+                        frame: Some(vec!["Event".into()]),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Row".into(),
+                iteration: ScopeIteration::Source(vec!["Event".into()]),
+                bindings: vec![
+                    Binding {
+                        target_field: "Kind".into(),
+                        node: 0,
+                    },
+                    Binding {
+                        target_field: "Value".into(),
+                        node: 1,
+                    },
+                ],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let temp = TempDir::new("json_const_alternatives");
+    let design = temp.0.join("events.mfd");
+    let warnings = mfd::export(&project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let schema_text = std::fs::read_to_string(temp.0.join("events-source.schema.json")).unwrap();
+    assert!(schema_text.contains(r#""const": "created""#));
+    assert!(schema_text.contains(r#""const": "deleted""#));
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(reimported.project.source, project.source);
+    let source = format_json::from_str(
+        r#"{"Event":[{"kind":"created","value":"one"},{"kind":"deleted","value":"two"}]}"#,
+        &reimported.project.source,
+    )
+    .unwrap();
+    let output = engine::run(&reimported.project, &source).unwrap();
+    let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(scalar(&rows[0], "Kind"), Value::String("created".into()));
+    assert_eq!(scalar(&rows[1], "Value"), Value::String("two".into()));
 }

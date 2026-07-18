@@ -292,6 +292,14 @@ impl GraphViewer<'_> {
                     *predicate = from_id;
                 }
             }
+            Node::SequenceItemAt { sequence, index } => {
+                let sequence_inputs = sequence.inputs().len();
+                if idx < sequence_inputs {
+                    set_sequence_input(sequence, idx, from_id);
+                } else if idx == sequence_inputs {
+                    *index = from_id;
+                }
+            }
             Node::Aggregate {
                 expression, arg, ..
             }
@@ -347,6 +355,8 @@ impl GraphViewer<'_> {
                 predicate,
             } => sequence_input_at(sequence, idx)
                 .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
+            Node::SequenceItemAt { sequence, index } => sequence_input_at(sequence, idx)
+                .or_else(|| (idx == sequence.inputs().len()).then_some(*index)),
             Node::Aggregate {
                 expression, arg, ..
             }
@@ -542,6 +552,7 @@ impl GraphViewer<'_> {
                 sequence,
                 predicate: _,
             } => sequence.inputs().len() + 1,
+            Node::SequenceItemAt { sequence, .. } => sequence.inputs().len() + 1,
             Node::Aggregate {
                 expression, arg, ..
             }
@@ -606,6 +617,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Some(Node::SequenceExists { sequence, .. }) => {
                     format!("Exists: {}", sequence_label(sequence))
+                }
+                Some(Node::SequenceItemAt { sequence, .. }) => {
+                    format!("Item at: {}", sequence_label(sequence))
                 }
                 Some(Node::Aggregate {
                     function,
@@ -678,6 +692,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::CollectionFind { .. }) => ["predicate", "value"][idx].to_string(),
                     Some(Node::SequenceExists { sequence, .. }) => {
                         sequence_pin_label(sequence, idx).to_string()
+                    }
+                    Some(Node::SequenceItemAt { sequence, .. }) => {
+                        if idx == sequence.inputs().len() {
+                            "index".to_string()
+                        } else {
+                            sequence_pin_label(sequence, idx).to_string()
+                        }
                     }
                     Some(
                         Node::Aggregate { expression, .. } | Node::JoinAggregate { expression, .. },
@@ -844,6 +865,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Node::SequenceExists { sequence, .. } => {
                     ui.label(format!("any {} item matches", sequence_label(sequence)));
+                }
+                Node::SequenceItemAt { sequence, .. } => {
+                    ui.label(format!("select one {} item", sequence_label(sequence)));
                 }
                 Node::Aggregate {
                     function,

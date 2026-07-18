@@ -22,7 +22,7 @@ clean-room interoperability, and extensible adapters.
   and proto2/proto3 Protocol Buffers; visual PDF extraction is source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
-  bounded existential reduction over generated scalar sequences,
+  bounded existential reduction and 1-based scalar selection over generated sequences,
   stable sorting, item limits, conditionals, value maps, lookups,
   duplicate-preserving multi-source inner equijoins, positions, seven
   aggregates, computed aggregate expressions, root and nested dynamic JSON target
@@ -49,8 +49,8 @@ clean-room interoperability, and extensible adapters.
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, includes/imports, attributes, simple and ordered mixed content, `xsi:nil`, generic elements, selected derived-type output | Namespace identity and general derived-type input identity |
-| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`/`anyOf`, typed dynamic properties | Scalar/array and nested union composition, mixed arrays, unconstrained dynamic values |
+| XML | XSD subset, includes/imports, attributes, simple and ordered mixed content, `xsi:nil`, generic elements, and bounded transitive derived-type input/output | Namespace identity and remaining derived-type input shapes |
+| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`/`anyOf` with required string-const discriminators, typed dynamic properties | Scalar/array and nested union composition, non-string or optional discriminators, mixed arrays, unconstrained dynamic values |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
@@ -74,8 +74,10 @@ Build breadth only where imported mappings can execute equivalently.
 Progress: legacy indexed XML names, stable `distinct-values` pipelines, first-class
 `tokenize`/`tokenize-by-length` sequences, and inclusive `generate-sequence` ranges
 are implemented. Generated scopes export sort/filter/group/take controls and
-stage-correct positions. Compatible JSON object alternatives can drive exact
-derived XML type output, database WHERE/ORDER controls lower into runtime scopes,
+stage-correct positions, while generated sequences can feed scalar `item-at`.
+Compatible JSON object alternatives preserve required string-const discriminators and
+can drive exact derived XML type output. Transitive concrete XSD descendants are
+discovered through abstract include/import intermediates. Database WHERE/ORDER controls lower into runtime scopes,
 static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
 standalone max-one queries preserve empty/single document-root cardinality,
@@ -118,9 +120,10 @@ are not inferred from structural success.
   without writing into the read-only vendor sample tree.
 - Expand behavioral reference coverage across format-specific and mixed-content edge
   cases, especially workflows whose vendor outputs require unavailable services.
-- Add first-class sequence slicing and reusable graph-backed UDFs instead of
+- Add first-class sequence windowing and reusable graph-backed UDFs instead of
   further one-off lowering paths.
-- Complete namespace identity and the remaining scalar/array/nested JSON union semantics.
+- Complete namespace identity, remaining derived-type input shapes, and the remaining
+  scalar/array/nested or non-string-discriminated JSON union semantics.
 - Keep every fixture self-authored; use vendor samples only as black-box
   behavioral references.
 
@@ -221,7 +224,7 @@ Exit criteria:
 Prioritize connectors that align existing strengths before product-catalog
 breadth.
 
-1. Complete namespace identity, general `xsi:type`, and remaining JSON union semantics.
+1. Complete namespace identity, remaining `xsi:type` shapes, and remaining JSON union semantics.
 2. Add a general query/database mutation IR and PostgreSQL adapter.
 3. Expand remaining XLSX, FlexText, EDI, and PDF layout variants by measured demand.
 4. Add generic HTTP/OpenAPI/GraphQL endpoints and dynamic protobuf document sources.

@@ -383,3 +383,6 @@ mod repeated_scalar_tests;
 #[cfg(test)]
 #[path = "tests/sequence_exists.rs"]
 mod sequence_exists_tests;
+#[cfg(test)]
+#[path = "tests/sequence_item_at.rs"]
+mod sequence_item_at_tests;

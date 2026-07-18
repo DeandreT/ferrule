@@ -196,10 +196,11 @@ pub fn read_local_file_set(
                     base: canonical_base.clone(),
                 })?;
         let relative = relative.to_string_lossy().replace('\\', "/");
-        let member = DocumentMember::new(relative, value).ok_or_else(|| {
+        let source_path = path.to_string_lossy().into_owned();
+        let member = DocumentMember::new_source(relative, source_path, value).ok_or_else(|| {
             LocalFileSetError::InvalidPattern {
                 pattern: pattern.display().to_string(),
-                reason: "a matched file has no relative document path",
+                reason: "a matched file has no usable document path",
             }
         })?;
         documents.push(member);
@@ -344,6 +345,10 @@ mod tests {
         };
         assert_eq!(documents.len(), 2);
         assert_eq!(documents[0].path(), "item-a.xml");
+        assert_eq!(
+            documents[0].source_path(),
+            directory.0.join("item-a.xml").to_string_lossy()
+        );
         assert_eq!(
             documents[0]
                 .value()
