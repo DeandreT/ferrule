@@ -10,7 +10,11 @@ pub use file_set::{LocalFileSetError, LocalFileSetLimits, LocalXmlFileSet, read_
 use std::io::Cursor;
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD, XML_TYPE_FIELD};
+use ir::{
+    Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD,
+    XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+    XML_TYPE_FIELD,
+};
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use thiserror::Error;
@@ -53,6 +57,8 @@ pub enum XmlFormatError {
     UnexpectedField { group: String, field: String },
     #[error("element `{group}` has duplicate field `{field}`")]
     DuplicateField { group: String, field: String },
+    #[error("element `{group}` has invalid mixed-content metadata: {reason}")]
+    InvalidMixedContent { group: String, reason: String },
     #[error("element `{name}` matches no declared schema alternative")]
     NoMatchingAlternative { name: String },
     #[error("element `{name}` matches more than one declared schema alternative")]
@@ -255,7 +261,7 @@ fn validate_alternative_fields(
     fields: &[(String, Instance)],
 ) -> Result<(), XmlFormatError> {
     if fields.iter().any(|(name, instance)| {
-        name != XML_TYPE_FIELD
+        !is_xml_metadata_field(name)
             && instance_has_value(instance)
             && !alternative.members.contains(name)
     }) || alternative.required.iter().any(|required| {
@@ -509,11 +515,28 @@ fn write_single_node<W: std::io::Write>(
                             ));
                         };
                         let text = format_scalar(&child_schema.name, ty, value)?;
-                        start.push_attribute((child_schema.name.as_str(), text.as_str()));
+                        push_attribute(&mut start, &child_schema.name, &text);
                     }
                 }
             }
+            if children.iter().any(|child| child.text)
+                && !group_has_serialized_content(children, fields)
+            {
+                writer.write_event(Event::Empty(start))?;
+                return Ok(());
+            }
             writer.write_event(Event::Start(start))?;
+            if write_ordered_mixed_content(
+                writer,
+                schema,
+                children,
+                root_schema,
+                fields,
+                recursion_depth,
+            )? {
+                writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
+                return Ok(());
+            }
             for child_schema in children.iter().filter(|child| child.text) {
                 if let Some((_, child_instance)) =
                     fields.iter().find(|(name, _)| name == &child_schema.name)
@@ -563,6 +586,186 @@ fn write_single_node<W: std::io::Write>(
     }
 }
 
+pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    root_schema: &SchemaNode,
+    fields: &[(String, Instance)],
+    recursion_depth: usize,
+) -> Result<bool, XmlFormatError> {
+    let Some((_, mixed_content)) = fields
+        .iter()
+        .find(|(name, _)| name == XML_MIXED_CONTENT_FIELD)
+    else {
+        return Ok(false);
+    };
+    let Instance::Repeated(items) = mixed_content else {
+        return Err(invalid_mixed_content(
+            schema,
+            "the ordered content field must be a repeated sequence",
+        ));
+    };
+    for (index, item) in items.iter().enumerate() {
+        let Instance::Group(item_fields) = item else {
+            return Err(invalid_mixed_content(
+                schema,
+                format!("item {index} must be a group"),
+            ));
+        };
+        let name = item_fields
+            .iter()
+            .find(|(name, _)| name == XML_NODE_NAME_FIELD)
+            .and_then(|(_, instance)| instance.as_scalar())
+            .and_then(|value| match value {
+                Value::String(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                invalid_mixed_content(schema, format!("item {index} has no string node name"))
+            })?;
+        if name.is_empty() {
+            let text = item_fields
+                .iter()
+                .find(|(name, _)| name == XML_TEXT_FIELD)
+                .and_then(|(_, instance)| instance.as_scalar())
+                .and_then(|value| match value {
+                    Value::String(text) => Some(text.as_str()),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    invalid_mixed_content(
+                        schema,
+                        format!("text item {index} has no string text value"),
+                    )
+                })?;
+            if !text.is_empty() {
+                writer.write_event(Event::Text(BytesText::new(text)))?;
+            }
+            continue;
+        }
+        let child_schema = children
+            .iter()
+            .find(|child| !child.attribute && !child.text && child.name == name)
+            .or_else(|| {
+                children
+                    .iter()
+                    .find(|child| child.name == XML_ELEMENTS_FIELD)
+            })
+            .ok_or_else(|| {
+                invalid_mixed_content(
+                    schema,
+                    format!("item {index} names undeclared child `{name}`"),
+                )
+            })?;
+        let child_instance = item_fields
+            .iter()
+            .find(|(name, _)| name == XML_MIXED_CONTENT_VALUE_FIELD)
+            .map(|(_, instance)| instance)
+            .ok_or_else(|| {
+                invalid_mixed_content(
+                    schema,
+                    format!("element item {index} has no typed child value"),
+                )
+            })?;
+        if child_schema.name == XML_ELEMENTS_FIELD {
+            write_generic_element(
+                writer,
+                child_schema,
+                root_schema,
+                child_instance,
+                recursion_depth,
+            )?;
+        } else {
+            let child_depth = recursion_depth + usize::from(child_schema.recursive_ref.is_some());
+            let resolved_child;
+            let child_schema = if let Some(anchor) = &child_schema.recursive_ref {
+                if child_depth >= MAX_XML_RECURSION_DEPTH {
+                    return Err(XmlFormatError::RecursionLimit {
+                        limit: MAX_XML_RECURSION_DEPTH,
+                    });
+                }
+                resolved_child = resolve_recursive_schema(child_schema, root_schema, anchor)?;
+                &resolved_child
+            } else {
+                child_schema
+            };
+            write_single_node(
+                writer,
+                child_schema,
+                root_schema,
+                child_instance,
+                child_depth,
+            )?;
+        }
+    }
+    Ok(true)
+}
+
+fn invalid_mixed_content(schema: &SchemaNode, reason: impl Into<String>) -> XmlFormatError {
+    XmlFormatError::InvalidMixedContent {
+        group: schema.name.clone(),
+        reason: reason.into(),
+    }
+}
+
+fn group_has_serialized_content(children: &[SchemaNode], fields: &[(String, Instance)]) -> bool {
+    if fields
+        .iter()
+        .any(|(name, _)| name == XML_MIXED_CONTENT_FIELD)
+    {
+        return true;
+    }
+    children
+        .iter()
+        .filter(|child| !child.attribute)
+        .any(|child| {
+            let Some((_, instance)) = fields.iter().find(|(name, _)| name == &child.name) else {
+                return false;
+            };
+            if child.text {
+                return match instance {
+                    Instance::Scalar(Value::Null) => false,
+                    Instance::Scalar(Value::String(value)) if value.is_empty() => false,
+                    _ => true,
+                };
+            }
+            match instance {
+                Instance::Scalar(Value::Null) => false,
+                Instance::Repeated(items)
+                    if items.is_empty()
+                        && (child.repeating || child.name == XML_ELEMENTS_FIELD) =>
+                {
+                    false
+                }
+                Instance::MappedSequence(items)
+                    if items.is_empty()
+                        && !child.repeating
+                        && matches!(child.kind, SchemaKind::Group { .. }) =>
+                {
+                    false
+                }
+                _ => true,
+            }
+        })
+}
+
+fn push_attribute(start: &mut BytesStart<'_>, name: &str, value: &str) {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\t' => escaped.push_str("&#x9;"),
+            '\n' => escaped.push_str("&#xA;"),
+            '\r' => escaped.push_str("&#xD;"),
+            _ => escaped.push(character),
+        }
+    }
+    start.push_attribute((name.as_bytes(), escaped.as_bytes()));
+}
+
 fn select_group_alternative<'a>(
     schema: &SchemaNode,
     alternatives: &'a [ir::GroupAlternative],
@@ -590,7 +793,7 @@ fn select_group_alternative<'a>(
     }
     let populated: Vec<&str> = fields
         .iter()
-        .filter(|(name, instance)| name != XML_TYPE_FIELD && instance_has_value(instance))
+        .filter(|(name, instance)| !is_xml_metadata_field(name) && instance_has_value(instance))
         .map(|(name, _)| name.as_str())
         .collect();
     let matches = alternatives
@@ -654,7 +857,12 @@ fn validate_group_fields(
 ) -> Result<(), XmlFormatError> {
     for (index, (name, _)) in fields.iter().enumerate() {
         let xml_type_marker = name == XML_TYPE_FIELD && !alternatives.is_empty();
-        if !xml_type_marker && !children.iter().any(|child| child.name == *name) {
+        let mixed_content_marker =
+            name == XML_MIXED_CONTENT_FIELD && children.iter().any(|child| child.text);
+        if !xml_type_marker
+            && !mixed_content_marker
+            && !children.iter().any(|child| child.name == *name)
+        {
             return Err(XmlFormatError::UnexpectedField {
                 group: schema.name.clone(),
                 field: name.clone(),
@@ -668,6 +876,10 @@ fn validate_group_fields(
         }
     }
     Ok(())
+}
+
+fn is_xml_metadata_field(name: &str) -> bool {
+    matches!(name, XML_TYPE_FIELD | XML_MIXED_CONTENT_FIELD)
 }
 
 fn shape_error(schema: &SchemaNode, expected: &'static str, instance: &Instance) -> XmlFormatError {
@@ -923,6 +1135,61 @@ mod tests {
         let read_back = read(&path, &schema).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(read_back, instance);
+    }
+
+    #[test]
+    fn attribute_newlines_and_xml_metacharacters_roundtrip_exactly() {
+        let schema = SchemaNode::group(
+            "Book",
+            vec![SchemaNode::scalar("Title", ScalarType::String).attribute()],
+        );
+        let title = "The Mystery of Edwin\nDrood & \"Others\"";
+        let instance = Instance::Group(vec![(
+            "Title".into(),
+            Instance::Scalar(Value::String(title.into())),
+        )]);
+
+        let xml = to_string(&schema, &instance).unwrap();
+
+        assert!(
+            xml.contains("Edwin&#xA;Drood &amp; &quot;Others&quot;"),
+            "{xml}"
+        );
+        assert_eq!(from_str(&xml, &schema).unwrap(), instance);
+    }
+
+    #[test]
+    fn absent_simple_content_does_not_capture_pretty_print_indentation() {
+        let telecom = SchemaNode::group(
+            "telecom",
+            vec![
+                SchemaNode::scalar("value", ScalarType::String).attribute(),
+                SchemaNode::scalar("#text", ScalarType::String).text(),
+            ],
+        );
+        let schema = SchemaNode::group("Root", vec![telecom]);
+        let instance = Instance::Group(vec![(
+            "telecom".into(),
+            Instance::Group(vec![
+                (
+                    "value".into(),
+                    Instance::Scalar(Value::String("1111111".into())),
+                ),
+                ("#text".into(), Instance::Scalar(Value::Null)),
+            ]),
+        )]);
+
+        let xml = to_string(&schema, &instance).unwrap();
+        let parsed = from_str(&xml, &schema).unwrap();
+
+        assert!(xml.contains("<telecom value=\"1111111\"/>"));
+        assert_eq!(
+            parsed
+                .field("telecom")
+                .and_then(|value| value.field("#text"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(String::new()))
+        );
     }
 
     #[test]

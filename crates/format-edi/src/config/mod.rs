@@ -13,6 +13,7 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
+use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind};
 use thiserror::Error;
 
 const MAX_FILES: usize = 32;
@@ -48,7 +49,16 @@ pub enum ConfigError {
 /// A message configuration is wrapped in its sibling `Envelope.Config`.
 /// An envelope configuration uses `selected_messages` to resolve and embed
 /// each concrete message selected by the `.mfd` component.
-pub fn import_config(path: &Path, selected_messages: &[String]) -> Result<SchemaNode, ConfigError> {
+pub struct CompiledConfig {
+    pub schema: SchemaNode,
+    pub implied_decimals: Vec<EdiImpliedDecimal>,
+    pub lexical_formats: Vec<EdiLexicalFormat>,
+}
+
+pub fn import_config(
+    path: &Path,
+    selected_messages: &[String],
+) -> Result<CompiledConfig, ConfigError> {
     let mut files = Files::default();
     let mut definitions = Definitions::default();
     load_definitions(path, &mut files, &mut definitions)?;
@@ -78,19 +88,20 @@ pub fn import_config(path: &Path, selected_messages: &[String]) -> Result<Schema
                 .and_then(|node| node.text())
                 .ok_or_else(|| ConfigError::Invalid("HL7 Message has no MessageType".into()))?;
             message.name = message_type.to_string();
-            return Ok(message);
+            return Ok(compiled_config(message, &definitions));
         }
         let envelope_path = resolve_sibling(path, "Envelope.Config")?;
         load_definitions(&envelope_path, &mut files, &mut definitions)?;
         let envelope_text = files.read(&envelope_path)?;
         let envelope_doc = parse_document(&envelope_path, &envelope_text)?;
-        return build_envelope(
+        let schema = build_envelope(
             envelope_doc.root_element(),
             standard,
             vec![message],
             &definitions,
             &mut schema_nodes,
-        );
+        )?;
+        return Ok(compiled_config(schema, &definitions));
     }
 
     let envelope = root
@@ -135,7 +146,8 @@ pub fn import_config(path: &Path, selected_messages: &[String]) -> Result<Schema
             &mut schema_nodes,
         )?);
     }
-    build_envelope(root, standard, messages, &definitions, &mut schema_nodes)
+    let schema = build_envelope(root, standard, messages, &definitions, &mut schema_nodes)?;
+    Ok(compiled_config(schema, &definitions))
 }
 
 #[derive(Default)]
@@ -200,6 +212,8 @@ struct FieldDef {
     fixed: Option<String>,
     inline_fields: Option<Vec<FieldDef>>,
     inline_type: Option<ScalarType>,
+    inline_implicit_decimals: Option<u8>,
+    inline_lexical_kind: Option<EdiLexicalKind>,
 }
 
 #[derive(Clone, Copy)]
@@ -212,6 +226,8 @@ enum FieldKind {
 struct DataDef {
     name: String,
     ty: ScalarType,
+    implicit_decimals: Option<u8>,
+    lexical_kind: Option<EdiLexicalKind>,
 }
 
 #[derive(Clone)]
@@ -236,6 +252,52 @@ struct Definitions {
 impl Definitions {
     fn len(&self) -> usize {
         self.data.len() + self.composites.len() + self.segments.len()
+    }
+
+    fn implied_decimal_names(&self) -> BTreeMap<String, u8> {
+        let mut names = BTreeMap::new();
+        let mut ambiguous = BTreeSet::new();
+        for data in self.data.values() {
+            if let Some(places) = data.implicit_decimals {
+                insert_decimal_name(&mut names, &mut ambiguous, &data.name, places);
+            }
+        }
+        for fields in self
+            .segments
+            .values()
+            .map(|segment| segment.fields.as_slice())
+            .chain(
+                self.composites
+                    .values()
+                    .map(|composite| composite.fields.as_slice()),
+            )
+        {
+            collect_decimal_aliases(fields, self, &mut names, &mut ambiguous);
+        }
+        names
+    }
+
+    fn lexical_format_names(&self) -> BTreeMap<String, EdiLexicalKind> {
+        let mut names = BTreeMap::new();
+        let mut ambiguous = BTreeSet::new();
+        for data in self.data.values() {
+            if let Some(kind) = data.lexical_kind {
+                insert_named_format(&mut names, &mut ambiguous, &data.name, kind);
+            }
+        }
+        for fields in self
+            .segments
+            .values()
+            .map(|segment| segment.fields.as_slice())
+            .chain(
+                self.composites
+                    .values()
+                    .map(|composite| composite.fields.as_slice()),
+            )
+        {
+            collect_lexical_aliases(fields, self, &mut names, &mut ambiguous);
+        }
+        names
     }
 }
 
@@ -267,6 +329,8 @@ fn load_definitions(
                         DataDef {
                             name: name.to_string(),
                             ty: scalar_type(node.attribute("type").unwrap_or("string")),
+                            implicit_decimals: read_implicit_decimals(node)?,
+                            lexical_kind: read_lexical_kind(node)?,
                         },
                     );
                 }
@@ -357,9 +421,90 @@ fn read_field_defs(node: roxmltree::Node<'_, '_>) -> Result<Vec<FieldDef>, Confi
                     .transpose()?
                     .filter(|fields| !fields.is_empty()),
                 inline_type: child.attribute("type").map(scalar_type),
+                inline_implicit_decimals: read_implicit_decimals(child)?,
+                inline_lexical_kind: read_lexical_kind(child)?,
             })
         })
         .collect()
+}
+
+fn read_lexical_kind(node: roxmltree::Node<'_, '_>) -> Result<Option<EdiLexicalKind>, ConfigError> {
+    let ty = node.attribute("type").unwrap_or_default();
+    if !matches!(
+        ty.to_ascii_lowercase().as_str(),
+        "date" | "time" | "decimal"
+    ) {
+        return Ok(None);
+    }
+    let read_width = |attribute| {
+        node.attribute(attribute)
+            .map(|raw| {
+                raw.parse::<u8>().map_err(|_| {
+                    ConfigError::Invalid(format!("Data field has invalid {attribute} `{raw}`"))
+                })
+            })
+            .transpose()
+    };
+    let min = read_width("minLength")?;
+    let max = read_width("maxLength")?;
+    match ty.to_ascii_lowercase().as_str() {
+        "date" => match (min, max) {
+            (Some(6), Some(6)) => Ok(Some(EdiLexicalKind::CompactDate6)),
+            (Some(8), Some(8)) => Ok(Some(EdiLexicalKind::CompactDate8)),
+            (None, None) => Ok(None),
+            _ => Err(ConfigError::Invalid(
+                "date Data fields must declare an exact compact length of 6 or 8".into(),
+            )),
+        },
+        "time" => match (min, max) {
+            (Some(min_digits), Some(max_digits))
+                if EdiLexicalFormat::new(
+                    vec!["field".into()],
+                    EdiLexicalKind::CompactTime {
+                        min_digits,
+                        max_digits,
+                    },
+                )
+                .is_some() =>
+            {
+                Ok(Some(EdiLexicalKind::CompactTime {
+                    min_digits,
+                    max_digits,
+                }))
+            }
+            (None, None) => Ok(None),
+            _ => Err(ConfigError::Invalid(
+                "time Data fields must declare compact lengths within 4..=8".into(),
+            )),
+        },
+        "decimal" if read_implicit_decimals(node)?.is_some() => Ok(None),
+        "decimal" => match max {
+            Some(max_chars) if max_chars > 0 => Ok(Some(EdiLexicalKind::Decimal { max_chars })),
+            None => Ok(None),
+            _ => Err(ConfigError::Invalid(
+                "decimal Data fields must declare a positive maxLength".into(),
+            )),
+        },
+        _ => Ok(None),
+    }
+}
+
+fn read_implicit_decimals(node: roxmltree::Node<'_, '_>) -> Result<Option<u8>, ConfigError> {
+    let Some(raw) = node.attribute("implicitDecimals") else {
+        return Ok(None);
+    };
+    let places = raw.parse::<u8>().map_err(|_| {
+        ConfigError::Invalid(format!("Data field has invalid implicitDecimals `{raw}`"))
+    })?;
+    if places == 0 {
+        return Ok(None);
+    }
+    if places > 18 {
+        return Err(ConfigError::Invalid(format!(
+            "Data field implicitDecimals `{raw}` exceeds the 18-place runtime limit"
+        )));
+    }
+    Ok(Some(places))
 }
 
 fn single_allowed_value(node: roxmltree::Node<'_, '_>) -> Option<String> {
@@ -378,6 +523,200 @@ fn scalar_type(name: &str) -> ScalarType {
         "integer" | "int" | "long" | "short" => ScalarType::Int,
         "boolean" | "bool" => ScalarType::Bool,
         _ => ScalarType::String,
+    }
+}
+
+fn compiled_config(schema: SchemaNode, definitions: &Definitions) -> CompiledConfig {
+    let names = definitions.implied_decimal_names();
+    let mut implied_decimals = Vec::new();
+    collect_implied_decimal_paths(
+        &schema,
+        &names,
+        &mut Vec::new(),
+        true,
+        &mut implied_decimals,
+    );
+    let lexical_names = definitions.lexical_format_names();
+    let mut lexical_formats = Vec::new();
+    collect_lexical_format_paths(
+        &schema,
+        &lexical_names,
+        &mut Vec::new(),
+        true,
+        &mut lexical_formats,
+    );
+    CompiledConfig {
+        schema,
+        implied_decimals,
+        lexical_formats,
+    }
+}
+
+fn collect_lexical_format_paths(
+    node: &SchemaNode,
+    names: &BTreeMap<String, EdiLexicalKind>,
+    path: &mut Vec<String>,
+    root: bool,
+    output: &mut Vec<EdiLexicalFormat>,
+) {
+    if !root {
+        path.push(node.name.clone());
+    }
+    match &node.kind {
+        SchemaKind::Scalar { .. } => {
+            if let Some(kind) = names.get(&node.name)
+                && let Some(format) = EdiLexicalFormat::new(path.clone(), *kind)
+            {
+                output.push(format);
+            }
+        }
+        SchemaKind::Group { children, .. } => {
+            for child in children {
+                collect_lexical_format_paths(child, names, path, false, output);
+            }
+        }
+    }
+    if !root {
+        path.pop();
+    }
+}
+
+fn collect_implied_decimal_paths(
+    node: &SchemaNode,
+    names: &BTreeMap<String, u8>,
+    path: &mut Vec<String>,
+    root: bool,
+    output: &mut Vec<EdiImpliedDecimal>,
+) {
+    if !root {
+        path.push(node.name.clone());
+    }
+    match &node.kind {
+        SchemaKind::Scalar { .. } => {
+            if let Some(places) = names.get(&node.name)
+                && let Some(format) = EdiImpliedDecimal::new(path.clone(), *places)
+            {
+                output.push(format);
+            }
+        }
+        SchemaKind::Group { children, .. } => {
+            for child in children {
+                collect_implied_decimal_paths(child, names, path, false, output);
+            }
+        }
+    }
+    if !root {
+        path.pop();
+    }
+}
+
+fn collect_decimal_aliases(
+    fields: &[FieldDef],
+    definitions: &Definitions,
+    names: &mut BTreeMap<String, u8>,
+    ambiguous: &mut BTreeSet<String>,
+) {
+    for field in fields {
+        if matches!(field.kind, FieldKind::Data) {
+            let data = definitions.data.get(&field.reference);
+            let places = field
+                .inline_implicit_decimals
+                .or_else(|| data.and_then(|data| data.implicit_decimals));
+            if let Some(places) = places {
+                let base_name = field
+                    .node_name
+                    .as_deref()
+                    .or_else(|| data.map(|data| data.name.as_str()))
+                    .unwrap_or(&field.reference);
+                for index in 0..field.merged_entries {
+                    let name = if index == 0 {
+                        base_name.to_string()
+                    } else {
+                        format!("{base_name}_{}", index + 1)
+                    };
+                    insert_decimal_name(names, ambiguous, &name, places);
+                }
+            }
+        }
+        if let Some(inline) = &field.inline_fields {
+            collect_decimal_aliases(inline, definitions, names, ambiguous);
+        }
+    }
+}
+
+fn collect_lexical_aliases(
+    fields: &[FieldDef],
+    definitions: &Definitions,
+    names: &mut BTreeMap<String, EdiLexicalKind>,
+    ambiguous: &mut BTreeSet<String>,
+) {
+    for field in fields {
+        if matches!(field.kind, FieldKind::Data) {
+            let data = definitions.data.get(&field.reference);
+            let kind = field
+                .inline_lexical_kind
+                .or_else(|| data.and_then(|data| data.lexical_kind));
+            if let Some(kind) = kind {
+                let base_name = field
+                    .node_name
+                    .as_deref()
+                    .or_else(|| data.map(|data| data.name.as_str()))
+                    .unwrap_or(&field.reference);
+                for index in 0..field.merged_entries {
+                    let name = if index == 0 {
+                        base_name.to_string()
+                    } else {
+                        format!("{base_name}_{}", index + 1)
+                    };
+                    insert_named_format(names, ambiguous, &name, kind);
+                }
+            }
+        }
+        if let Some(inline) = &field.inline_fields {
+            collect_lexical_aliases(inline, definitions, names, ambiguous);
+        }
+    }
+}
+
+fn insert_decimal_name(
+    names: &mut BTreeMap<String, u8>,
+    ambiguous: &mut BTreeSet<String>,
+    name: &str,
+    places: u8,
+) {
+    if ambiguous.contains(name) {
+        return;
+    }
+    match names.get(name) {
+        Some(existing) if *existing != places => {
+            names.remove(name);
+            ambiguous.insert(name.to_string());
+        }
+        Some(_) => {}
+        None => {
+            names.insert(name.to_string(), places);
+        }
+    }
+}
+
+fn insert_named_format<T: Copy + Eq>(
+    names: &mut BTreeMap<String, T>,
+    ambiguous: &mut BTreeSet<String>,
+    name: &str,
+    format: T,
+) {
+    if ambiguous.contains(name) {
+        return;
+    }
+    match names.get(name) {
+        Some(existing) if *existing != format => {
+            names.remove(name);
+            ambiguous.insert(name.to_string());
+        }
+        Some(_) => {}
+        None => {
+            names.insert(name.to_string(), format);
+        }
     }
 }
 
@@ -417,7 +756,7 @@ fn set_fixed_descendant(
     path: &[&str],
     value: &str,
 ) -> Result<(), ConfigError> {
-    if set_fixed(node, path.iter().copied(), value).is_ok() {
+    if set_fixed_if_missing(node, path.iter().copied(), value).is_ok() {
         return Ok(());
     }
     let SchemaKind::Group { children, .. } = &mut node.kind else {
@@ -435,6 +774,34 @@ fn set_fixed_descendant(
         "fixed-value path `{}` not found",
         path.join("/")
     )))
+}
+
+fn set_fixed_if_missing<'a>(
+    node: &mut SchemaNode,
+    mut path: impl Iterator<Item = &'a str>,
+    value: &str,
+) -> Result<(), ConfigError> {
+    let Some(segment) = path.next() else {
+        return Err(ConfigError::Invalid("empty fixed-value path".into()));
+    };
+    let SchemaKind::Group { children, .. } = &mut node.kind else {
+        return Err(ConfigError::Invalid(format!(
+            "fixed-value path crosses scalar `{}`",
+            node.name
+        )));
+    };
+    let child = children
+        .iter_mut()
+        .find(|child| child.name == segment)
+        .ok_or_else(|| ConfigError::Invalid(format!("fixed-value path `{segment}` not found")))?;
+    let remaining = path.collect::<Vec<_>>();
+    if remaining.is_empty() {
+        if child.fixed.is_none() {
+            child.fixed = Some(value.to_string());
+        }
+        return Ok(());
+    }
+    set_fixed_if_missing(child, remaining.into_iter(), value)
 }
 
 fn build_envelope(
@@ -540,7 +907,16 @@ fn build_group_with_messages(
                 }
                 children.push(build_segment(child, definitions, depth + 1, count)?);
             }
-            "Select" => children.extend(messages.iter().cloned()),
+            "Select" => {
+                // Each selected message is one alternative of the configured
+                // choice. An alternative can therefore be absent even when
+                // the Select itself is required, and a repeated Select can
+                // contain the same alternative more than once.
+                children.extend(messages.iter().cloned().map(|mut message| {
+                    message.repeating = true;
+                    message
+                }));
+            }
             _ => {}
         }
     }
@@ -895,7 +1271,10 @@ mod tests {
             &directory.join("Defs.Segment"),
             r#"<Config><Elements>
                 <Data name="F1" type="string"/>
-                <Data name="F2" type="decimal"/>
+                <Data name="F2" type="decimal" implicitDecimals="2"/>
+                <Data name="FDecimal" type="decimal" minLength="1" maxLength="10"/>
+                <Data name="FDate" type="date" minLength="8" maxLength="8"/>
+                <Data name="FTime" type="time" minLength="4" maxLength="8"/>
                 <Composite name="C1" id="C1-GUIDE"><Data ref="F1"/><Data ref="F2"/></Composite>
                 <Segment name="ISA"><Data ref="F1"/></Segment>
                 <Segment name="GS"><Data ref="F1"/></Segment>
@@ -903,6 +1282,7 @@ mod tests {
                 <Segment name="N1" id="N1-GUIDE">
                   <Composite ref="C1-GUIDE"/>
                   <Data ref="F1" mergedEntries="2"><Values><Value Code="AA"/></Values></Data>
+                  <Data ref="FDate"/><Data ref="FTime" nodeName="Clock"/><Data ref="FDecimal"/>
                   <Composite name="C-MISSING" minOccurs="0" maxOccurs="0"/>
                 </Segment>
                 <Segment name="SE"><Data ref="F2"/></Segment>
@@ -928,7 +1308,36 @@ mod tests {
               </Group></Message></Config>"#,
         );
 
-        let schema = import_config(&message_path, &[]).unwrap();
+        let compiled = import_config(&message_path, &[]).unwrap();
+        assert!(compiled.implied_decimals.iter().any(|format| {
+            format.places() == 2 && format.path().last().is_some_and(|segment| segment == "F2")
+        }));
+        assert!(compiled.lexical_formats.iter().any(|format| {
+            format.kind() == EdiLexicalKind::CompactDate8
+                && format
+                    .path()
+                    .last()
+                    .is_some_and(|segment| segment == "FDate")
+        }));
+        assert!(compiled.lexical_formats.iter().any(|format| {
+            format.kind() == EdiLexicalKind::Decimal { max_chars: 10 }
+                && format
+                    .path()
+                    .last()
+                    .is_some_and(|segment| segment == "FDecimal")
+        }));
+        assert!(compiled.lexical_formats.iter().any(|format| {
+            format.kind()
+                == EdiLexicalKind::CompactTime {
+                    min_digits: 4,
+                    max_digits: 8,
+                }
+                && format
+                    .path()
+                    .last()
+                    .is_some_and(|segment| segment == "Clock")
+        }));
+        let schema = compiled.schema;
         assert_eq!(schema.name, "Envelope");
         let message = at(&schema, &["Interchange", "Group", "Message"]);
         assert!(message.repeating);
@@ -954,7 +1363,8 @@ mod tests {
         write(
             &directory.join("Defs.Segment"),
             r#"<Config><Elements>
-              <Data name="F143" type="string"/><Data name="F2" type="string"/>
+              <Data name="F143" type="string"/><Data name="F1705" type="string"/>
+              <Data name="F2" type="string"/>
               <Segment name="ISA"><Data ref="F2"/></Segment>
               <Segment name="GS"><Data ref="F2"/></Segment>
               <Segment name="ST"><Data ref="F143"/></Segment>
@@ -966,23 +1376,28 @@ mod tests {
             &envelope,
             r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
               <Group name="Envelope"><Group name="Interchange"><Segment ref="ISA"/>
-                <Group name="Group"><Segment ref="GS"/><Select field="ST/F143"/></Group>
+                <Group name="Group"><Segment ref="GS"/><Select field="ST/F143" maxOccurs="unbounded"/></Group>
               </Group></Group></Config>"#,
         );
         write(
             &directory.join("dental.Config"),
             r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
               <Message><MessageType>837-Q2</MessageType><Group name="Message_837-Q2">
-                <Segment ref="ST"/><Segment ref="SE"/>
+                <Segment name="ST"><Condition path="F1705" value="005010X224A2"/>
+                  <Data ref="F143"><Values><Value Code="837"/></Values></Data>
+                  <Data ref="F1705"/>
+                </Segment><Segment ref="SE"/>
               </Group></Message></Config>"#,
         );
 
-        let schema = import_config(&envelope, &["837-Q2".into()]).unwrap();
+        let schema = import_config(&envelope, &["837-Q2".into()]).unwrap().schema;
         let message = at(&schema, &["Interchange", "Group", "Message_837-Q2"]);
+        assert_eq!(at(message, &["ST", "F143"]).fixed.as_deref(), Some("837"));
         assert_eq!(
-            at(message, &["ST", "F143"]).fixed.as_deref(),
-            Some("837-Q2")
+            at(message, &["ST", "F1705"]).fixed.as_deref(),
+            Some("005010X224A2")
         );
+        assert!(message.repeating);
         std::fs::remove_dir_all(directory).unwrap();
     }
 

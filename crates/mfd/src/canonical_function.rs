@@ -12,6 +12,7 @@ pub(crate) fn is_internal(name: &str) -> bool {
             | "json_serialize_object"
             | "json_parse_field"
             | "flextext_parse_field"
+            | "coerce_datetime"
     )
 }
 
@@ -22,6 +23,7 @@ mod tests {
     #[test]
     fn list_excludes_similarly_named_vendor_functions() {
         assert!(is_internal("to_number"));
+        assert!(is_internal("coerce_datetime"));
         assert!(!is_internal("to-number"));
         assert!(!is_internal("convertToISBN13"));
     }

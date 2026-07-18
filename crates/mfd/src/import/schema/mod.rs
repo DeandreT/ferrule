@@ -1303,12 +1303,15 @@ pub(super) fn read_db_component(
         && !tables[0]
             .children()
             .any(|n| n.attribute("type") == Some("table"));
+    let canonical_database_wrapper = tables.len() == 1
+        && !single_plain_table
+        && container.attribute("ferrule-database-wrapper") == Some("1");
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
     let mut in_count = 0usize;
     for table in &tables {
-        let mut path = if single_plain_table || tables.len() == 1 {
+        let mut path = if single_plain_table || tables.len() == 1 && !canonical_database_wrapper {
             Vec::new()
         } else {
             vec![table.attribute("name").unwrap_or_default().to_string()]
@@ -1415,7 +1418,7 @@ pub(super) fn read_db_component(
         } else {
             embedded_types.as_ref().unwrap_or(&introspected_types)
         };
-        let mut schema = if tables.len() == 1 {
+        let mut schema = if tables.len() == 1 && !canonical_database_wrapper {
             db_table_schema(&tables[0], types)
         } else {
             SchemaNode::group(

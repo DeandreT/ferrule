@@ -10,12 +10,14 @@ use super::schema::{KeyAlloc, PortTree, SideFormat};
 #[derive(Default)]
 pub(super) struct TargetBranches {
     by_root: BTreeMap<Vec<String>, BranchSet>,
+    binding_clones: BTreeMap<Vec<String>, Vec<u32>>,
 }
 
 struct BranchSet {
     extra_ports: Vec<BTreeMap<Vec<String>, u32>>,
     iterating: Vec<bool>,
     conditions: Vec<Option<String>>,
+    binding_clones: Vec<BTreeMap<Vec<String>, Vec<u32>>>,
 }
 
 impl TargetBranches {
@@ -35,6 +37,13 @@ impl TargetBranches {
             keys,
             explicit_text,
             &mut branches,
+        );
+        collect_binding_clones(
+            schema,
+            scope,
+            &mut Vec::new(),
+            keys,
+            &mut branches.binding_clones,
         );
         branches
     }
@@ -71,6 +80,39 @@ impl TargetBranches {
             .get(index - 1)?
             .get(path)
             .copied()
+    }
+
+    pub(super) fn binding_key(
+        &self,
+        base: &PortTree,
+        branch: Option<(&[String], usize)>,
+        path: &[String],
+        occurrence: usize,
+    ) -> Option<u32> {
+        if occurrence == 0 {
+            return branch
+                .and_then(|(root, index)| self.key_for(base, root, index, path))
+                .or_else(|| base.key_for_abs(path));
+        }
+        self.binding_clone_keys(branch, path)
+            .get(occurrence - 1)
+            .copied()
+    }
+
+    pub(super) fn binding_clone_keys(
+        &self,
+        branch: Option<(&[String], usize)>,
+        path: &[String],
+    ) -> &[u32] {
+        let clones = match branch {
+            Some((root, index)) => self
+                .by_root
+                .get(root)
+                .and_then(|set| set.binding_clones.get(index))
+                .and_then(|clones| clones.get(path)),
+            None => self.binding_clones.get(path),
+        };
+        clones.map(Vec::as_slice).unwrap_or_default()
     }
 }
 
@@ -298,6 +340,14 @@ fn collect_branches(
                     .iter()
                     .map(|segment| exact_type_condition(segment, graph, node))
                     .collect(),
+                binding_clones: segments
+                    .iter()
+                    .map(|segment| {
+                        let mut clones = BTreeMap::new();
+                        collect_binding_clones(schema, segment, path, keys, &mut clones);
+                        clones
+                    })
+                    .collect(),
             },
         );
         return;
@@ -309,23 +359,48 @@ fn collect_branches(
     }
 }
 
+fn collect_binding_clones(
+    schema: &SchemaNode,
+    scope: &Scope,
+    path: &mut Vec<String>,
+    keys: &mut KeyAlloc,
+    clones: &mut BTreeMap<Vec<String>, Vec<u32>>,
+) {
+    if scope.concatenated().is_some() {
+        return;
+    }
+    let pushed = !scope.target_field.is_empty();
+    if pushed {
+        path.push(scope.target_field.clone());
+    }
+    let mut occurrences = BTreeMap::<&str, usize>::new();
+    for binding in &scope.bindings {
+        let occurrence = occurrences.entry(&binding.target_field).or_default();
+        if *occurrence > 0 {
+            path.push(binding.target_field.clone());
+            if schema_node_at(schema, path).is_some_and(|node| {
+                node.repeating && !node.attribute && matches!(node.kind, SchemaKind::Scalar { .. })
+            }) {
+                clones.entry(path.clone()).or_default().push(keys.next());
+            }
+            path.pop();
+        }
+        *occurrence += 1;
+    }
+    for child in &scope.children {
+        collect_binding_clones(schema, child, path, keys, clones);
+    }
+    if pushed {
+        path.pop();
+    }
+}
+
 pub(super) fn exact_type_condition(
     scope: &Scope,
     graph: &Graph,
     target: &SchemaNode,
 ) -> Option<String> {
-    let filter = scope.filter?;
-    let Node::Call { function, args } = graph.nodes.get(&filter)? else {
-        return None;
-    };
-    let [first, second] = args.as_slice() else {
-        return None;
-    };
-    if function != "equal" {
-        return None;
-    }
-    let (condition, _) = type_condition_operands(graph, *first, *second)
-        .or_else(|| type_condition_operands(graph, *second, *first))?;
+    let (condition, _, _) = source_type_condition(scope, graph)?;
     if !target
         .alternatives()
         .iter()
@@ -350,19 +425,33 @@ pub(super) fn exact_type_condition(
 
 pub(super) fn exact_type_marker(scope: &Scope, graph: &Graph, target: &SchemaNode) -> Option<u32> {
     exact_type_condition(scope, graph, target)?;
-    let Node::Call { args, .. } = graph.nodes.get(&scope.filter?)? else {
+    source_type_condition(scope, graph).map(|(_, marker, _)| marker)
+}
+
+pub(super) fn source_type_condition(
+    scope: &Scope,
+    graph: &Graph,
+) -> Option<(String, u32, Vec<String>)> {
+    let filter = scope.filter?;
+    let Node::Call { function, args } = graph.nodes.get(&filter)? else {
         return None;
     };
     let [first, second] = args.as_slice() else {
         return None;
     };
+    if function != "equal" {
+        return None;
+    }
     type_condition_operands(graph, *first, *second)
         .or_else(|| type_condition_operands(graph, *second, *first))
-        .map(|(_, marker)| marker)
 }
 
-fn type_condition_operands(graph: &Graph, marker: u32, expected: u32) -> Option<(String, u32)> {
-    let Node::SourceField { path, .. } = graph.nodes.get(&marker)? else {
+fn type_condition_operands(
+    graph: &Graph,
+    marker: u32,
+    expected: u32,
+) -> Option<(String, u32, Vec<String>)> {
+    let Node::SourceField { path, frame } = graph.nodes.get(&marker)? else {
         return None;
     };
     if path.last().is_none_or(|field| field != XML_TYPE_FIELD) {
@@ -374,7 +463,9 @@ fn type_condition_operands(graph: &Graph, marker: u32, expected: u32) -> Option<
     else {
         return None;
     };
-    Some((expected.clone(), marker))
+    let mut group = frame.clone().unwrap_or_default();
+    group.extend(path[..path.len() - 1].iter().cloned());
+    Some((expected.clone(), marker, group))
 }
 
 fn allocate_subtree(

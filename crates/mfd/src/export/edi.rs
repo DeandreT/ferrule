@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{EdiBoundaryKind, FormatOptions};
+use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
 use crate::MfdError;
 
@@ -100,6 +100,22 @@ pub(super) fn validate_side(
             "the {side_name} non-X12 EDI boundary retains an X12 interchange version"
         )));
     }
+    if let Some(autocomplete) = options.edi_autocomplete.as_ref() {
+        let compatible = matches!(
+            (kind, autocomplete),
+            (EdiBoundaryKind::X12, EdiAutocomplete::X12(_))
+                | (EdiBoundaryKind::Edifact, EdiAutocomplete::Edifact(_))
+                | (EdiBoundaryKind::Hl7, EdiAutocomplete::Hl7)
+                | (EdiBoundaryKind::Tradacoms, EdiAutocomplete::Tradacoms)
+                | (EdiBoundaryKind::Idoc, EdiAutocomplete::Idoc)
+                | (EdiBoundaryKind::SwiftMt, EdiAutocomplete::SwiftMt)
+        );
+        if !compatible {
+            return Err(MfdError::Unsupported(format!(
+                "the {side_name} EDI boundary retains autocomplete metadata for a different dialect"
+            )));
+        }
+    }
     if let Some(version) = options.x12_interchange_version.as_deref()
         && (version.len() != 5 || !version.bytes().all(|byte| byte.is_ascii_digit()))
     {
@@ -180,10 +196,31 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
 }
 
 fn retained_settings_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> String {
+    let autocomplete = options.edi_autocomplete.is_some();
     if kind != EdiBoundaryKind::X12 {
-        return String::new();
+        return match options.edi_autocomplete.as_ref() {
+            Some(EdiAutocomplete::Edifact(config)) => {
+                let attribute = |name: &str, value: Option<&str>| {
+                    value
+                        .map(|value| format!(" {name}=\"{}\"", xml_escape(value)))
+                        .unwrap_or_default()
+                };
+                format!(
+                    "\n\t\t\t\t\t\t\t<settings autocompletedata=\"true\"{}{}{}{} />",
+                    attribute("syntaxlevel", config.syntax_level.as_deref()),
+                    attribute("syntaxversionnumber", config.syntax_version.as_deref()),
+                    attribute("controllingagency", config.controlling_agency.as_deref()),
+                    attribute("ferrulemessagetype", config.message_type.as_deref()),
+                )
+            }
+            Some(_) => "\n\t\t\t\t\t\t\t<settings autocompletedata=\"true\"/>".to_string(),
+            None => String::new(),
+        };
     }
-    if options.x12_separators.is_none() && options.x12_interchange_version.is_none() {
+    if options.x12_separators.is_none()
+        && options.x12_interchange_version.is_none()
+        && !autocomplete
+    {
         return String::new();
     }
     let separators = options.x12_separators.unwrap_or(mapping::X12Separators {
@@ -200,8 +237,24 @@ fn retained_settings_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Stri
         .as_deref()
         .map(|value| format!(" interchangecontrolversionnumber=\"{}\"", xml_escape(value)))
         .unwrap_or_default();
+    let (autocomplete, acknowledgement, transaction_set) = match options.edi_autocomplete.as_ref() {
+        Some(EdiAutocomplete::X12(config)) => (
+            " autocompletedata=\"true\"",
+            if config.request_acknowledgement {
+                " requestacknowledgement=\"true\""
+            } else {
+                " requestacknowledgement=\"false\""
+            },
+            config
+                .transaction_set
+                .as_deref()
+                .map(|value| format!(" ferruletransactionset=\"{}\"", xml_escape(value)))
+                .unwrap_or_default(),
+        ),
+        _ => ("", "", String::new()),
+    };
     format!(
-        "\n\t\t\t\t\t\t\t<settings{version}><separators dataelement=\"{}\" component=\"{}\" segment=\"{}\" repetition=\"{}\" escape=\"{}\"/></settings>",
+        "\n\t\t\t\t\t\t\t<settings{autocomplete}{acknowledgement}{transaction_set}{version}><separators dataelement=\"{}\" component=\"{}\" segment=\"{}\" repetition=\"{}\" escape=\"{}\"/></settings>",
         xml_escape(&separators.element.to_string()),
         xml_escape(&separators.component.to_string()),
         xml_escape(&separators.segment.to_string()),
@@ -357,7 +410,7 @@ fn retained_layout_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Result
             .map(|layout| ("swift_mt", layout)),
         _ => None,
     };
-    Ok(serialized.map_or_else(
+    let mut output = serialized.map_or_else(
         || "\n".to_string(),
         |(kind, layout)| {
             format!(
@@ -365,7 +418,18 @@ fn retained_layout_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Result
                 xml_escape(&layout)
             )
         },
-    ))
+    );
+    if !options.edi_lexical_formats.is_empty() {
+        let formats = serde_json::to_string(&options.edi_lexical_formats).map_err(|error| {
+            MfdError::Unsupported(format!("could not serialize EDI lexical formats: {error}"))
+        })?;
+        let _ = writeln!(
+            output,
+            "\t\t\t\t\t\t\t<ferrule-lexical-formats>{}</ferrule-lexical-formats>",
+            xml_escape(&formats)
+        );
+    }
+    Ok(output)
 }
 
 const fn mfd_kind(kind: EdiBoundaryKind) -> &'static str {

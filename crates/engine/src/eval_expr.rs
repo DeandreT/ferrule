@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use ir::{Instance, ScalarType, Value};
+use ir::{
+    Instance, ScalarType, Value, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD,
+    XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+};
 use mapping::{Graph, Node, NodeId};
 
 use crate::EngineError;
@@ -8,8 +11,8 @@ use crate::aggregate::aggregate;
 use crate::context::runtime_field;
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
 use crate::resolve::{
-    dynamic_scalar, field_scalar, join_scalar, repeated, scalar_in_active_collection,
-    scalar_in_frame, source_document_path,
+    dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
+    repeated, scalar_in_active_collection, scalar_in_frame, source_document_path,
 };
 use crate::sequence::eval_sequence_exists;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
@@ -136,6 +139,19 @@ pub(crate) fn eval_expr(
                     .unwrap_or(Value::Null),
             )
         }
+        Node::XmlMixedContent {
+            path,
+            frame,
+            replacements,
+        } => eval_xml_mixed_content(
+            graph,
+            path,
+            frame.as_deref(),
+            replacements,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::CollectionFind {
             collection,
             predicate,
@@ -219,6 +235,89 @@ pub(crate) fn eval_expr(
 
     in_progress.remove(&node_id);
     result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn eval_xml_mixed_content(
+    graph: &Graph,
+    path: &[String],
+    frame: Option<&[String]>,
+    replacements: &[mapping::XmlMixedContentReplacement],
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let group = match frame {
+        Some(frame) => instance_in_frame(context, positions, frame, path),
+        None => instance_in_active_collection(context, positions, path),
+    }
+    .ok_or_else(|| EngineError::MissingSourceField(path.join("/")))?;
+    let Some(items) = group
+        .field(XML_MIXED_CONTENT_FIELD)
+        .and_then(Instance::as_repeated)
+    else {
+        return Ok(group
+            .field(XML_TEXT_FIELD)
+            .and_then(Instance::as_scalar)
+            .cloned()
+            .unwrap_or(Value::Null));
+    };
+    let mut output = String::new();
+    let mut occurrences = std::collections::BTreeMap::<&str, usize>::new();
+    for item in items {
+        let name = item
+            .field(XML_NODE_NAME_FIELD)
+            .and_then(Instance::as_scalar)
+            .and_then(|value| match value {
+                Value::String(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let text = item
+            .field(XML_TEXT_FIELD)
+            .and_then(Instance::as_scalar)
+            .and_then(|value| match value {
+                Value::String(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let Some(replacement) = replacements.iter().find(|rule| rule.element == name) else {
+            output.push_str(text);
+            continue;
+        };
+        let mut item_context = context.to_vec();
+        let mut item_positions = positions.to_vec();
+        if !replacement.collection.is_empty()
+            && let Some(value) = item.field(XML_MIXED_CONTENT_VALUE_FIELD)
+        {
+            let index = occurrences.entry(name).or_default();
+            *index += 1;
+            item_context.push(value);
+            item_positions.push(PositionFrame {
+                collection: replacement.collection.clone(),
+                index: *index,
+                grouped: false,
+                join: None,
+                join_position: None,
+                document_path: None,
+            });
+        }
+        let value = eval_expr(
+            graph,
+            replacement.expression,
+            &item_context,
+            &item_positions,
+            in_progress,
+        )?;
+        match value {
+            Value::Null | Value::XmlNil(_) => {}
+            Value::String(value) => output.push_str(&value),
+            Value::Bool(value) => output.push_str(if value { "true" } else { "false" }),
+            Value::Int(value) => output.push_str(&value.to_string()),
+            Value::Float(value) => output.push_str(&value.to_string()),
+        }
+    }
+    Ok(Value::String(output))
 }
 
 fn aggregate_items<'a>(context: &[&'a Instance], collection: &[String]) -> Vec<WalkExtension<'a>> {

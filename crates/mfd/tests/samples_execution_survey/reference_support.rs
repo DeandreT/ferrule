@@ -148,6 +148,107 @@ pub(super) fn first_instance_difference(expected: &Instance, actual: &Instance) 
         .unwrap_or_else(|| "values differ but no structural difference was located".into())
 }
 
+pub(super) fn instances_semantically_equal(expected: &Instance, actual: &Instance) -> bool {
+    instances_equal_by(
+        expected,
+        actual,
+        |expected, actual| expected == actual,
+        false,
+    )
+}
+
+pub(super) fn host_path_instances_equal(expected: &Instance, actual: &Instance) -> bool {
+    instances_equal_by(
+        expected,
+        actual,
+        |expected, actual| match (expected, actual) {
+            (ir::Value::String(expected), ir::Value::String(actual)) => {
+                normalize_host_path_text(expected) == normalize_host_path_text(actual)
+            }
+            _ => expected == actual,
+        },
+        true,
+    )
+}
+
+fn instances_equal_by(
+    expected: &Instance,
+    actual: &Instance,
+    scalar_equal: fn(&ir::Value, &ir::Value) -> bool,
+    normalize_document_paths: bool,
+) -> bool {
+    match (expected, actual) {
+        (Instance::Scalar(expected), Instance::Scalar(actual)) => scalar_equal(expected, actual),
+        (Instance::Group(expected), Instance::Group(actual)) => {
+            groups_equal_by(expected, actual, scalar_equal, normalize_document_paths)
+        }
+        (Instance::Repeated(expected), Instance::Repeated(actual))
+        | (Instance::MappedSequence(expected), Instance::MappedSequence(actual)) => {
+            expected.len() == actual.len()
+                && expected.iter().zip(actual).all(|(expected, actual)| {
+                    instances_equal_by(expected, actual, scalar_equal, normalize_document_paths)
+                })
+        }
+        (Instance::DocumentSet(expected), Instance::DocumentSet(actual)) => {
+            expected.len() == actual.len()
+                && expected.iter().zip(actual).all(|(expected, actual)| {
+                    let same_path = if normalize_document_paths {
+                        normalize_host_path_text(expected.path())
+                            == normalize_host_path_text(actual.path())
+                    } else {
+                        expected.path() == actual.path()
+                    };
+                    same_path
+                        && instances_equal_by(
+                            expected.value(),
+                            actual.value(),
+                            scalar_equal,
+                            normalize_document_paths,
+                        )
+                })
+        }
+        _ => false,
+    }
+}
+
+fn groups_equal_by(
+    expected: &[(String, Instance)],
+    actual: &[(String, Instance)],
+    scalar_equal: fn(&ir::Value, &ir::Value) -> bool,
+    normalize_document_paths: bool,
+) -> bool {
+    if expected.len() != actual.len() {
+        return false;
+    }
+    if !group_names_are_unique(expected) || !group_names_are_unique(actual) {
+        return expected.iter().zip(actual).all(
+            |((expected_name, expected), (actual_name, actual))| {
+                expected_name == actual_name
+                    && instances_equal_by(expected, actual, scalar_equal, normalize_document_paths)
+            },
+        );
+    }
+    expected.iter().all(|(expected_name, expected)| {
+        actual
+            .iter()
+            .find(|(actual_name, _)| actual_name == expected_name)
+            .is_some_and(|(_, actual)| {
+                instances_equal_by(expected, actual, scalar_equal, normalize_document_paths)
+            })
+    })
+}
+
+fn group_names_are_unique(fields: &[(String, Instance)]) -> bool {
+    fields
+        .iter()
+        .enumerate()
+        .all(|(index, (name, _))| fields[..index].iter().all(|(previous, _)| previous != name))
+}
+
+fn normalize_host_path_text(value: &str) -> String {
+    value.replace('\\', "/").replace("Z:/", "/")
+}
+
 fn instance_difference(
     path: &str,
     expected: &Instance,
@@ -165,6 +266,32 @@ fn instance_difference(
             "{path}: expected {expected:?}, produced {actual:?}"
         )),
         (Instance::Group(expected), Instance::Group(actual)) => {
+            if group_names_are_unique(expected) && group_names_are_unique(actual) {
+                for (expected_name, expected) in expected {
+                    let Some((_, actual)) = actual
+                        .iter()
+                        .find(|(actual_name, _)| actual_name == expected_name)
+                    else {
+                        return Some(format!(
+                            "{path}: expected field `{expected_name}` is missing"
+                        ));
+                    };
+                    let child_path = format!("{path}.{expected_name}");
+                    if let Some(difference) =
+                        instance_difference(&child_path, expected, actual, depth + 1)
+                    {
+                        return Some(difference);
+                    }
+                }
+                if let Some((actual_name, _)) = actual.iter().find(|(actual_name, _)| {
+                    !expected
+                        .iter()
+                        .any(|(expected_name, _)| expected_name == actual_name)
+                }) {
+                    return Some(format!("{path}: produced unexpected field `{actual_name}`"));
+                }
+                return None;
+            }
             for (index, ((expected_name, expected), (actual_name, actual))) in
                 expected.iter().zip(actual).enumerate()
             {
@@ -239,5 +366,91 @@ fn instance_kind(instance: &Instance) -> &'static str {
         Instance::Repeated(_) => "repeated sequence",
         Instance::DocumentSet(_) => "document set",
         Instance::MappedSequence(_) => "mapped sequence",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ir::{Instance, Value};
+
+    use super::{
+        first_instance_difference, host_path_instances_equal, instances_semantically_equal,
+    };
+
+    #[test]
+    fn equates_wine_and_native_host_paths_only_when_the_surrounding_values_match() {
+        let expected = Instance::Scalar(Value::String(
+            "read from file: Z:\\work\\inputs\\one.xml".into(),
+        ));
+        let actual = Instance::Scalar(Value::String("read from file: /work/inputs/one.xml".into()));
+        let other = Instance::Scalar(Value::String("read from file: /work/inputs/two.xml".into()));
+
+        assert!(host_path_instances_equal(&expected, &actual));
+        assert!(!host_path_instances_equal(&expected, &other));
+    }
+
+    #[test]
+    fn group_field_order_is_semantic_free_but_sequence_order_is_not() {
+        let scalar = |value| Instance::Scalar(Value::Int(value));
+        let expected = Instance::Group(vec![
+            (
+                "nested".into(),
+                Instance::Group(vec![
+                    ("first".into(), scalar(1)),
+                    ("second".into(), scalar(2)),
+                ]),
+            ),
+            (
+                "items".into(),
+                Instance::Repeated(vec![scalar(3), scalar(4)]),
+            ),
+        ]);
+        let reordered = Instance::Group(vec![
+            (
+                "items".into(),
+                Instance::Repeated(vec![scalar(3), scalar(4)]),
+            ),
+            (
+                "nested".into(),
+                Instance::Group(vec![
+                    ("second".into(), scalar(2)),
+                    ("first".into(), scalar(1)),
+                ]),
+            ),
+        ]);
+        assert!(instances_semantically_equal(&expected, &reordered));
+
+        let reordered_items = Instance::Group(vec![
+            (
+                "items".into(),
+                Instance::Repeated(vec![scalar(4), scalar(3)]),
+            ),
+            (
+                "nested".into(),
+                Instance::Group(vec![
+                    ("second".into(), scalar(2)),
+                    ("first".into(), scalar(1)),
+                ]),
+            ),
+        ]);
+        assert!(!instances_semantically_equal(&expected, &reordered_items));
+        assert!(
+            first_instance_difference(&expected, &reordered_items)
+                .contains("$.items[0]: expected Int(3), produced Int(4)")
+        );
+    }
+
+    #[test]
+    fn duplicate_group_names_retain_positional_comparison() {
+        let expected = Instance::Group(vec![
+            ("value".into(), Instance::Scalar(Value::Int(1))),
+            ("value".into(), Instance::Scalar(Value::Int(2))),
+        ]);
+        let reordered = Instance::Group(vec![
+            ("value".into(), Instance::Scalar(Value::Int(2))),
+            ("value".into(), Instance::Scalar(Value::Int(1))),
+        ]);
+
+        assert!(!instances_semantically_equal(&expected, &reordered));
     }
 }

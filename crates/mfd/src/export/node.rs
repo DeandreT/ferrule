@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use mapping::{Node, NodeId, Project, RuntimeValue, SequenceExpr};
+use ir::{Value, XML_TEXT_FIELD};
+use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
 use super::auto_number::{self, AutoNumbers};
 use super::function::{
@@ -86,6 +87,32 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     "tokenize-by-length",
                     "core",
                     &[first_key, second_key],
+                    out,
+                    None,
+                    uid,
+                    components,
+                );
+            }
+            SequenceExpr::TokenizeRegex {
+                input,
+                pattern,
+                flags,
+                ..
+            } => {
+                let input_key = keys.next();
+                let pattern_key = keys.next();
+                let flags_key = keys.next();
+                let out = keys.next();
+                node_out_key.insert(sequence.item(), out);
+                sequence_inputs.push((*input, input_key));
+                sequence_inputs.push((*pattern, pattern_key));
+                if let Some(flags) = flags {
+                    sequence_inputs.push((*flags, flags_key));
+                }
+                render_sequence_component(
+                    "tokenize-regexp",
+                    "core",
+                    &[input_key, pattern_key, flags_key],
                     out,
                     None,
                     uid,
@@ -184,6 +211,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     PortMatch::Unique(key) => {
                         node_out_key.insert(id, key);
                     }
+                    PortMatch::Missing
+                        if xml_type_marker_is_exported(id, &project.graph, sources) => {}
                     PortMatch::Missing => warnings.push(format!(
                         "source field `{}` matches no source leaf; its connections \
                          are skipped",
@@ -322,6 +351,82 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     "dynamic source field node {id} is not exportable; skipped"
                 ));
                 continue;
+            }
+            Node::XmlMixedContent {
+                path,
+                frame,
+                replacements,
+            } => {
+                let mut absolute = frame.clone().unwrap_or_default();
+                absolute.extend(path.iter().cloned());
+                let source_group = match sources.match_sequence(&absolute) {
+                    PortMatch::Unique(key) => key,
+                    PortMatch::Missing => {
+                        warnings.push(format!(
+                            "XML mixed-content source `{}` matches no source group; skipped",
+                            absolute.join("/")
+                        ));
+                        continue;
+                    }
+                    PortMatch::Ambiguous => {
+                        warnings.push(format!(
+                            "XML mixed-content source `{}` matches multiple source groups; skipped",
+                            absolute.join("/")
+                        ));
+                        continue;
+                    }
+                };
+                let mut text_path = absolute.clone();
+                text_path.push(XML_TEXT_FIELD.to_string());
+                let source_text = match sources.match_field(&text_path, frame.is_some()) {
+                    PortMatch::Unique(key) => key,
+                    PortMatch::Missing | PortMatch::Ambiguous => {
+                        warnings.push(format!(
+                            "XML mixed-content source `{}` has no unique text port; skipped",
+                            absolute.join("/")
+                        ));
+                        continue;
+                    }
+                };
+                let root_input = keys.next();
+                let output = keys.next();
+                let text_input = keys.next();
+                let replacement_inputs = replacements
+                    .iter()
+                    .map(|_| keys.next())
+                    .collect::<Vec<_>>();
+                node_out_key.insert(id, output);
+                fn_inputs.insert(id, replacement_inputs.clone());
+                edges.extend([(source_group, root_input), (source_text, text_input)]);
+                *uid += 1;
+                let mut entries = format!(
+                    "\t\t\t\t\t\t\t\t\t<entry name=\"#text\" inpkey=\"{text_input}\"/>\n"
+                );
+                for input in &replacement_inputs {
+                    let _ = writeln!(
+                        entries,
+                        "\t\t\t\t\t\t\t\t\t<entry name=\"#text\" inpkey=\"{input}\" clone=\"1\"/>"
+                    );
+                }
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"MixedContent\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
+                     \t\t\t\t\t<properties/>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"160\" rby=\"120\"/>\n\
+                     \t\t\t\t\t<data>\n\
+                     \t\t\t\t\t\t<root>\n\
+                     \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                     \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                     \t\t\t\t\t\t\t\t<entry name=\"MixedContent\" inpkey=\"{root_input}\" outkey=\"{output}\" expanded=\"1\">\n\
+                     {entries}\
+                     \t\t\t\t\t\t\t\t</entry>\n\
+                     \t\t\t\t\t\t\t</entry>\n\
+                     \t\t\t\t\t\t</root>\n\
+                     \t\t\t\t\t\t<document/>\n\
+                     \t\t\t\t\t\t<parameter usageKind=\"variable\"/>\n\
+                     \t\t\t\t\t</data>\n\
+                     \t\t\t\t</component>\n"
+                );
             }
             Node::CollectionFind {
                 predicate, value, ..
@@ -470,6 +575,18 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     aggregate_component_name(*function)
                 );
             }
+            Node::Const { value: Value::Null } => {
+                let out = keys.next();
+                node_out_key.insert(id, out);
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"set-empty\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+            }
             Node::Const { value } if value.is_xml_nil() => {
                 let out = keys.next();
                 node_out_key.insert(id, out);
@@ -515,6 +632,24 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 );
             }
             Node::Call { function, args } => {
+                if let Some(alternative) =
+                    xml_type_alternative_port(node, &project.graph, sources)
+                {
+                    let input = keys.next();
+                    let out = keys.next();
+                    node_out_key.insert(id, out);
+                    edges.push((alternative, input));
+                    render_sequence_component(
+                        "exists",
+                        "core",
+                        &[input],
+                        out,
+                        None,
+                        uid,
+                        components,
+                    );
+                    continue;
+                }
                 let ins: Vec<u32> = args.iter().map(|_| keys.next()).collect();
                 let out = keys.next();
                 node_out_key.insert(id, out);
@@ -632,6 +767,54 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     }
 }
 
+fn xml_type_alternative_port(
+    node: &Node,
+    graph: &Graph,
+    sources: &SourceExports<'_>,
+) -> Option<u32> {
+    let Node::Call { function, args } = node else {
+        return None;
+    };
+    let [first, second] = args.as_slice() else {
+        return None;
+    };
+    if function != "equal" {
+        return None;
+    }
+    xml_type_alternative_operand(graph, sources, *first, *second)
+        .or_else(|| xml_type_alternative_operand(graph, sources, *second, *first))
+}
+
+fn xml_type_marker_is_exported(marker: NodeId, graph: &Graph, sources: &SourceExports<'_>) -> bool {
+    graph.nodes.values().any(|node| {
+        matches!(node, Node::Call { args, .. } if args.contains(&marker))
+            && xml_type_alternative_port(node, graph, sources).is_some()
+    })
+}
+
+fn xml_type_alternative_operand(
+    graph: &Graph,
+    sources: &SourceExports<'_>,
+    marker: NodeId,
+    expected: NodeId,
+) -> Option<u32> {
+    let Node::SourceField { path, frame } = graph.nodes.get(&marker)? else {
+        return None;
+    };
+    if path.last().is_none_or(|field| field != ir::XML_TYPE_FIELD) {
+        return None;
+    }
+    let Node::Const {
+        value: Value::String(expected),
+    } = graph.nodes.get(&expected)?
+    else {
+        return None;
+    };
+    let mut group = frame.clone().unwrap_or_default();
+    group.extend(path[..path.len() - 1].iter().cloned());
+    sources.key_for_alternative(&group, expected)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_sequence_component(
     name: &str,
@@ -681,6 +864,10 @@ fn connect_inputs(
             Node::ValueMap { input, .. } => vec![*input],
             Node::Lookup { matches, .. } => vec![*matches],
             Node::DynamicSourceField { key, .. } => vec![*key],
+            Node::XmlMixedContent { replacements, .. } => replacements
+                .iter()
+                .map(|replacement| replacement.expression)
+                .collect(),
             Node::CollectionFind {
                 predicate, value, ..
             } => vec![*value, *predicate],

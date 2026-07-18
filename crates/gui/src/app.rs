@@ -255,6 +255,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
         Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],

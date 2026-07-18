@@ -893,7 +893,7 @@ fn install_optional_text_occurrence(
     scope.iteration_output = IterationOutput::MappedSequence;
 }
 
-enum GroupProjectionStep {
+pub(super) enum GroupProjectionStep {
     BindScalar(Vec<String>),
     CopyRepeatedGroup(Vec<String>),
     UnsupportedRepetition,
@@ -907,12 +907,12 @@ enum ProjectionCoverage {
 }
 
 #[derive(Default)]
-struct GroupProjectionPlan {
+pub(super) struct GroupProjectionPlan {
     steps: Vec<GroupProjectionStep>,
 }
 
 impl GroupProjectionPlan {
-    fn between(source: &SchemaNode, target: &SchemaNode) -> Self {
+    pub(super) fn between(source: &SchemaNode, target: &SchemaNode) -> Self {
         let mut plan = Self::default();
         collect_steps(source, target, &mut Vec::new(), &mut plan);
         plan
@@ -937,7 +937,7 @@ impl GroupProjectionPlan {
         }
     }
 
-    fn into_ordered_steps(mut self) -> impl Iterator<Item = GroupProjectionStep> {
+    pub(super) fn into_ordered_steps(mut self) -> impl Iterator<Item = GroupProjectionStep> {
         self.steps.sort_by_key(GroupProjectionStep::order_key);
         self.steps.into_iter()
     }

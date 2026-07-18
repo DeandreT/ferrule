@@ -24,7 +24,7 @@ pub(super) fn validate_target(
     target: &SchemaNode,
     root: &Scope,
 ) -> Result<(), MfdError> {
-    validate_scope(project, target, root, &mut Vec::new())
+    validate_scope(project, target, root, &mut Vec::new(), &[])
 }
 
 pub(super) fn requires_root_port(scope: &Scope) -> bool {
@@ -219,7 +219,17 @@ fn validate_scope(
     target: &SchemaNode,
     scope: &Scope,
     chain: &mut Vec<String>,
+    source_anchor: &[String],
 ) -> Result<(), MfdError> {
+    let source_collection = scope.source().map(|source| {
+        if is_named_source_path(project, source) {
+            source.to_vec()
+        } else {
+            let mut absolute = source_anchor.to_vec();
+            absolute.extend_from_slice(source);
+            absolute
+        }
+    });
     match &scope.construction {
         ScopeConstruction::Scalar { value } => match scope.sequence() {
             Some(SequenceExpr::RecursiveCollect {
@@ -260,9 +270,14 @@ fn validate_scope(
                 }
             }
             _ => {
-                return Err(unsupported(
-                    "scalar scope construction export is supported only for recursive-collect",
-                ));
+                validate_scalar_identity_scope(
+                    project,
+                    target,
+                    scope,
+                    chain,
+                    source_collection.as_deref(),
+                    *value,
+                )?;
             }
         },
         ScopeConstruction::RecursiveFilter { plan } => {
@@ -287,24 +302,95 @@ fn validate_scope(
                 ));
             }
         }
-        ScopeConstruction::Constructed | ScopeConstruction::CopyCurrentSource => {}
+        ScopeConstruction::Constructed
+        | ScopeConstruction::CopyCurrentSource
+        | ScopeConstruction::XmlMixedContent { .. } => {}
     }
     for child in &scope.children {
         chain.push(child.target_field.clone());
-        validate_scope(project, target, child, chain)?;
+        validate_scope(
+            project,
+            target,
+            child,
+            chain,
+            source_collection.as_deref().unwrap_or(source_anchor),
+        )?;
         chain.pop();
     }
     for child in &scope.dynamic_children {
         chain.push(child.scope.target_field.clone());
-        validate_scope(project, target, &child.scope, chain)?;
+        validate_scope(
+            project,
+            target,
+            &child.scope,
+            chain,
+            source_collection.as_deref().unwrap_or(source_anchor),
+        )?;
         chain.pop();
     }
     if let Some(segments) = scope.concatenated() {
         for segment in segments.iter() {
-            validate_scope(project, target, segment, chain)?;
+            validate_scope(project, target, segment, chain, source_anchor)?;
         }
     }
     Ok(())
+}
+
+fn validate_scalar_identity_scope(
+    project: &Project,
+    target: &SchemaNode,
+    scope: &Scope,
+    target_path: &[String],
+    source_collection: Option<&[String]>,
+    value: NodeId,
+) -> Result<(), MfdError> {
+    let source_collection = source_collection
+        .ok_or_else(|| unsupported("scalar scope construction requires a source collection"))?;
+    let source = source_node(project, source_collection)
+        .filter(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .ok_or_else(|| {
+            unsupported("scalar scope construction requires a repeating scalar source")
+        })?;
+    let target = target_node(target, target_path)
+        .filter(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        .ok_or_else(|| {
+            unsupported("scalar scope construction requires a repeating scalar target")
+        })?;
+    let _ = (source, target);
+    if !scope.bindings.is_empty()
+        || !scope.dynamic_bindings.is_empty()
+        || !scope.children.is_empty()
+        || !scope.dynamic_children.is_empty()
+        || scope.merge_dynamic_fields
+        || scope.join().is_some()
+        || scope.concatenated().is_some()
+    {
+        return Err(unsupported(
+            "scalar identity construction cannot contain fields, joins, or concatenated branches",
+        ));
+    }
+    let Some(Node::SourceField { path, frame }) = project.graph.nodes.get(&value) else {
+        return Err(unsupported(
+            "scalar scope construction export requires the exact current source value",
+        ));
+    };
+    let mut absolute = frame.clone().unwrap_or_default();
+    absolute.extend(path.iter().cloned());
+    if absolute != source_collection {
+        return Err(unsupported(
+            "scalar scope construction export requires the exact current source value",
+        ));
+    }
+    Ok(())
+}
+
+fn is_named_source_path(project: &Project, path: &[String]) -> bool {
+    path.first().is_some_and(|name| {
+        project
+            .extra_sources
+            .iter()
+            .any(|source| source.name == *name)
+    })
 }
 
 fn collect_filter_contexts(scope: &Scope, contexts: &mut Vec<(NodeId, Vec<String>)>) {
@@ -342,6 +428,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
         Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],
@@ -401,8 +491,32 @@ fn source_node<'a>(project: &'a Project, path: &[String]) -> Option<&'a SchemaNo
 }
 
 fn target_node<'a>(root: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
-    path.iter()
-        .try_fold(root, |node, segment| node.child(segment))
+    let mut node = root;
+    for segment in path {
+        if let Some(anchor) = &node.recursive_ref {
+            node = find_concrete_schema_group(root, anchor)?;
+        }
+        node = node.child(segment)?;
+    }
+    match &node.recursive_ref {
+        Some(anchor) => find_concrete_schema_group(root, anchor),
+        None => Some(node),
+    }
+}
+
+fn find_concrete_schema_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
+    if schema.recursive_ref.is_none()
+        && schema.name == anchor
+        && matches!(schema.kind, SchemaKind::Group { .. })
+    {
+        return Some(schema);
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return None;
+    };
+    children
+        .iter()
+        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 fn render_component(

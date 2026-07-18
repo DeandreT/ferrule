@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// Portable Protocol Buffers target metadata.
+/// Portable Protocol Buffers boundary metadata.
 ///
 /// The schema source is embedded when a design is imported so execution does
 /// not depend on the original `.proto` file remaining beside the project.

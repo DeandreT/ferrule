@@ -35,6 +35,131 @@ fn scalar<'a>(instance: &'a Instance, name: &str) -> Option<&'a Value> {
     instance.field(name).and_then(Instance::as_scalar)
 }
 
+fn protobuf_directory() -> Instance {
+    let record = |code, label: &str, rank| {
+        Instance::Group(vec![
+            ("code".into(), Instance::Scalar(Value::Int(code))),
+            (
+                "label".into(),
+                Instance::Scalar(Value::String(label.into())),
+            ),
+            ("rank".into(), Instance::Scalar(Value::Int(rank))),
+            ("notes".into(), Instance::Repeated(Vec::new())),
+        ])
+    };
+    Instance::Group(vec![
+        (
+            "title".into(),
+            Instance::Scalar(Value::String("Imported".into())),
+        ),
+        (
+            "records".into(),
+            Instance::Repeated(vec![record(4, "Four", 1), record(8, "Eight", 0)]),
+        ),
+    ])
+}
+
+#[test]
+fn protobuf_source_imports_exports_reimports_and_executes_equivalently() {
+    let imported = mfd::import(&fixture("protobuf-source.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert_eq!(
+        imported.project.source_path.as_deref(),
+        Some("directory.bin")
+    );
+    assert_eq!(
+        imported.project.target_path.as_deref(),
+        Some("protobuf-source-output.xml")
+    );
+
+    let options = imported.project.source_options.protobuf.as_ref().unwrap();
+    assert_eq!(options.root_message, "ferrule.fixture.Directory");
+    assert_eq!(
+        options.schema,
+        std::fs::read_to_string(fixture("protobuf-target.proto")).unwrap()
+    );
+    let layout = format_protobuf::Layout::parse(&options.schema).unwrap();
+    let bytes =
+        format_protobuf::to_vec(&layout, &options.root_message, &protobuf_directory()).unwrap();
+    let source = format_protobuf::from_slice(&layout, &options.root_message, &bytes).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(
+        scalar(&output, "Title"),
+        Some(&Value::String("Imported".into()))
+    );
+    let records = output
+        .field("Record")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(records.len(), 2);
+    assert_eq!(scalar(&records[0], "Code"), Some(&Value::Int(4)));
+    assert_eq!(
+        scalar(&records[1], "Label"),
+        Some(&Value::String("Eight".into()))
+    );
+
+    let temp = TempDir::new();
+    let design = temp.0.join("mapping.mfd");
+    let warnings = mfd::export(&imported.project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        std::fs::read_to_string(temp.0.join("mapping-source.proto")).unwrap(),
+        options.schema
+    );
+    let exported = std::fs::read_to_string(&design).unwrap();
+    let document = roxmltree::Document::parse(&exported).unwrap();
+    let component = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("component")
+                && node.attribute("library") == Some("binary")
+                && node.attribute("kind") == Some("33")
+        })
+        .unwrap();
+    let binary = component
+        .descendants()
+        .find(|node| node.has_tag_name("binary"))
+        .unwrap();
+    assert_eq!(binary.attribute("inputinstance"), Some("directory.bin"));
+    assert_eq!(binary.attribute("outputinstance"), None);
+    assert!(component.descendants().any(|node| {
+        node.has_tag_name("entry")
+            && node.attribute("name") == Some("title")
+            && node.attribute("outkey").is_some()
+            && node.attribute("inpkey").is_none()
+    }));
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(reimported.project.source, imported.project.source);
+    assert_eq!(
+        reimported.project.source_options,
+        imported.project.source_options
+    );
+    assert_eq!(reimported.project.source_path, imported.project.source_path);
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
+}
+
+#[test]
+fn unsupported_protobuf_source_options_do_not_replace_existing_artifacts() {
+    let mut imported = mfd::import(&fixture("protobuf-source.mfd")).unwrap();
+    imported.project.source_options.delimiter = Some(';');
+    let temp = TempDir::new();
+    let design = temp.0.join("mapping.mfd");
+    let schema = temp.0.join("mapping-source.proto");
+    std::fs::write(&design, "keep this design").unwrap();
+    std::fs::write(&schema, "keep this schema").unwrap();
+
+    let result = mfd::export(&imported.project, &design);
+    assert!(
+        matches!(result, Err(mfd::MfdError::Unsupported(message)) if message.contains("a protobuf source cannot combine"))
+    );
+    assert_eq!(std::fs::read_to_string(design).unwrap(), "keep this design");
+    assert_eq!(std::fs::read_to_string(schema).unwrap(), "keep this schema");
+}
+
 #[test]
 fn imports_executes_and_encodes_proto2_target() {
     let imported = mfd::import(&fixture("protobuf-target.mfd")).unwrap();

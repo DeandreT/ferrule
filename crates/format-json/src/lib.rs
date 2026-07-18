@@ -12,7 +12,7 @@ pub mod json_schema;
 
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{GroupAlternativeMode, Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use thiserror::Error;
 
 const MAX_EXACT_F64_INTEGER: u64 = 1_u64 << f64::MANTISSA_DIGITS;
@@ -426,13 +426,16 @@ fn validate_alternative_fields<'a>(
         })
         .count();
     match matches {
-        1 => Ok(()),
         0 => Err(JsonFormatError::NoMatchingAlternative {
             name: schema.name.clone(),
         }),
-        _ => Err(JsonFormatError::AmbiguousAlternative {
-            name: schema.name.clone(),
-        }),
+        1 => Ok(()),
+        _ if schema.alternative_mode() == GroupAlternativeMode::Exclusive => {
+            Err(JsonFormatError::AmbiguousAlternative {
+                name: schema.name.clone(),
+            })
+        }
+        _ => Ok(()),
     }
 }
 

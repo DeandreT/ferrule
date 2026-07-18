@@ -164,6 +164,26 @@ fn imports_nested_tables_with_relational_names_ports_and_types() {
         field(&engineering[0], "name").as_scalar(),
         Some(&Value::String("Ada".into()))
     );
+    let mut project = imported.project;
+    project
+        .root
+        .set_source(Some(vec!["people|department_id".into()]));
+    assert!(engine::validate(&project).is_empty());
+    let output = engine::run(&project, &instance).unwrap();
+    let rows = output.as_repeated().unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        field(&rows[0], "Value").as_scalar(),
+        Some(&Value::String("Ada".into()))
+    );
+    assert_eq!(
+        field(&rows[1], "Value").as_scalar(),
+        Some(&Value::String("Grace".into()))
+    );
+    assert_eq!(
+        field(&rows[2], "Value").as_scalar(),
+        Some(&Value::String("Linus".into()))
+    );
 }
 
 #[test]

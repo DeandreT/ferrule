@@ -419,6 +419,7 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
                 | "mfd-filepath"
                 | "main-mfd-filepath"
                 | "now"
+                | "set-empty"
                 | "set-xsi-nil"
                 | "auto-number"
         )
@@ -475,7 +476,7 @@ pub(super) fn is_sequence_producer(component: &FnComponent) -> bool {
         && ((component.library == "core"
             && matches!(
                 component.name.as_str(),
-                "tokenize" | "tokenize-by-length" | "generate-sequence"
+                "tokenize" | "tokenize-regexp" | "tokenize-by-length" | "generate-sequence"
             ))
             || (component.library == "ferrule"
                 && matches!(
@@ -561,8 +562,8 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "string-length" => "length",
         "contains" => "contains",
         "starts-with" => "starts_with",
-        "upper-case" => "upper",
-        "lower-case" => "lower",
+        "upper-case" | "uppercase" => "upper",
+        "lower-case" | "lowercase" => "lower",
         "string" => "string",
         "numeric" => "is_numeric",
         "format-number" => "format_number",

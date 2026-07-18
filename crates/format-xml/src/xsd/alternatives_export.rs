@@ -134,6 +134,9 @@ impl<'a> AlternativeExportPlan<'a> {
             return Ok(());
         };
         if !alternatives.is_empty() {
+            if node.alternative_mode() == ir::GroupAlternativeMode::Inclusive {
+                return Err(unsupported(node));
+            }
             self.collect_group(node, children, alternatives, reserved)?;
         }
         for child in children {

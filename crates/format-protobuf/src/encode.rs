@@ -85,7 +85,7 @@ fn encode_message(
                 }
                 encode_occurrence(layout, field, value, &field_path, depth, output)?;
             }
-            Cardinality::Optional => {
+            Cardinality::Optional | Cardinality::Implicit => {
                 if let Some(value) = value
                     && !is_null(value)
                 {

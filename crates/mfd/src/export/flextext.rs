@@ -72,18 +72,10 @@ fn validate_command(command: &FlexCommand, side: &str) -> Result<(), MfdError> {
             second,
             ..
         } => {
-            match splitter {
-                OnceSplitter::LineStartingWith(_) => {
-                    return Err(unsupported(format!(
-                        "the {side} FlexText layout uses a line-starting single split, which has no lossless canonical .mft representation"
-                    )));
-                }
-                OnceSplitter::FixedColumns(width) if width.get() == u32::MAX => {
-                    return Err(unsupported(format!(
-                        "the {side} FlexText layout has a fixed-column split whose lower bound overflows the .mft coordinate range"
-                    )));
-                }
-                _ => {}
+            if matches!(splitter, OnceSplitter::LineStartingWith(_)) {
+                return Err(unsupported(format!(
+                    "the {side} FlexText layout uses a line-starting single split, which has no lossless canonical .mft representation"
+                )));
             }
             validate_command(first, side)?;
             validate_command(second, side)
@@ -153,14 +145,9 @@ fn render_command(
                     let _ = writeln!(output, "{pad}  <Lower/>");
                 }
                 OnceSplitter::FixedColumns(width) => {
-                    let lower = width.get().checked_add(1).ok_or_else(|| {
-                        unsupported(format!(
-                            "the {side} FlexText layout has a fixed-column split whose lower bound overflows the .mft coordinate range"
-                        ))
-                    })?;
                     let _ = writeln!(output, "{pad}<SplitSingle Orientation=\"Vertical\">");
                     let _ = writeln!(output, "{pad}  <Upper Offset=\"1\"/>");
-                    let _ = writeln!(output, "{pad}  <Lower Offset=\"{lower}\"/>");
+                    let _ = writeln!(output, "{pad}  <Lower Offset=\"{}\"/>", width.get());
                 }
                 OnceSplitter::Delimiter(separator) => {
                     let _ = writeln!(output, "{pad}<SplitSingle Mode=\"DynF\">");

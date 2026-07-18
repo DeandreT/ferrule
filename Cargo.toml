@@ -64,3 +64,4 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 jiff = "0.2.32"
 ureq = { version = "3.3", default-features = false, features = ["rustls"] }
 pdf-extract = "0.12"
+regex = "1"

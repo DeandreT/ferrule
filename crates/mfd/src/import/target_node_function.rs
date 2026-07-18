@@ -4,7 +4,7 @@ use std::path::Path;
 use ir::{ScalarType, SchemaKind};
 
 use super::graph::GraphBuilder;
-use super::schema::{SchemaComponent, normalize_xml_entry_name, schema_node_at};
+use super::schema::{ComponentFormat, SchemaComponent, normalize_xml_entry_name, schema_node_at};
 use super::scope::ScopeBuilder;
 use super::source_node_function::{Definitions, Expr, instantiate_target};
 
@@ -93,7 +93,7 @@ fn owns_target_port(component: roxmltree::Node<'_, '_>, target: &SchemaComponent
         .descendants()
         .filter(|node| node.has_tag_name("entry"))
         .filter_map(|entry| super::schema::parse_u32(entry.attribute("inpkey")))
-        .any(|key| target.input_keys.contains(&key))
+        .any(|key| target.input_keys.contains(&key) || target.ports.contains_key(&key))
 }
 
 fn collect(
@@ -106,7 +106,10 @@ fn collect(
 ) {
     let (name, _) = normalize_xml_entry_name(entry.attribute("name").unwrap_or_default());
     let wrapper = matches!(name, "FileInstance" | "document")
-        || parent.is_empty() && name == target.schema.name;
+        || parent.is_empty()
+            && (name == target.schema.name
+                || matches!(target.format, ComponentFormat::Csv | ComponentFormat::Xlsx)
+                    && entry.children().any(|child| child.has_tag_name("entry")));
     let mut path = parent.to_vec();
     if !wrapper && !name.is_empty() {
         path.push(name.to_string());
@@ -282,6 +285,83 @@ fn fraction_digits_for_path(
         element = child_element(schema, element, segment, 0)?;
     }
     element_fraction_digits(schema, element, &mut BTreeSet::new(), 0)
+}
+
+pub(super) fn path_requires_datetime(
+    schema: roxmltree::Node<'_, '_>,
+    root_name: &str,
+    path: &[String],
+) -> bool {
+    let Some(mut element) = top_level_element(schema, root_name) else {
+        return false;
+    };
+    for segment in path {
+        let Some(child) = child_element(schema, element, segment, 0) else {
+            return false;
+        };
+        element = child;
+    }
+    element_requires_datetime(schema, element, &mut BTreeSet::new(), 0)
+}
+
+fn element_requires_datetime(
+    schema: roxmltree::Node<'_, '_>,
+    element: roxmltree::Node<'_, '_>,
+    active: &mut BTreeSet<String>,
+    depth: usize,
+) -> bool {
+    if depth >= MAX_SCHEMA_DEPTH {
+        return false;
+    }
+    let Some(element) = resolve_element(schema, element) else {
+        return false;
+    };
+    if let Some(simple) = element
+        .children()
+        .find(|node| node.has_tag_name("simpleType"))
+    {
+        return simple_requires_datetime(schema, simple, active, depth + 1);
+    }
+    let Some(name) = element.attribute("type").map(local_name) else {
+        return false;
+    };
+    let Some(simple) = named_type(schema, "simpleType", name) else {
+        return name == "dateTime";
+    };
+    if !active.insert(name.to_string()) {
+        return false;
+    }
+    let result = simple_requires_datetime(schema, simple, active, depth + 1);
+    active.remove(name);
+    result
+}
+
+fn simple_requires_datetime(
+    schema: roxmltree::Node<'_, '_>,
+    simple: roxmltree::Node<'_, '_>,
+    active: &mut BTreeSet<String>,
+    depth: usize,
+) -> bool {
+    if depth >= MAX_SCHEMA_DEPTH {
+        return false;
+    }
+    let Some(base) = simple
+        .children()
+        .find(|node| node.has_tag_name("restriction"))
+        .and_then(|restriction| restriction.attribute("base"))
+        .map(local_name)
+    else {
+        return false;
+    };
+    let Some(parent) = named_type(schema, "simpleType", base) else {
+        return base == "dateTime";
+    };
+    if !active.insert(base.to_string()) {
+        return false;
+    }
+    let result = simple_requires_datetime(schema, parent, active, depth + 1);
+    active.remove(base);
+    result
 }
 
 fn top_level_element<'a, 'input>(
@@ -477,5 +557,36 @@ mod tests {
             fraction_digits_for_path(document.root_element(), "Root", &["Label".to_string()]),
             None
         );
+    }
+
+    #[test]
+    fn resolves_builtin_and_restricted_datetime_leaves_by_path() {
+        let document = roxmltree::Document::parse(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+              <xs:simpleType name="Timestamp"><xs:restriction base="xs:dateTime"/></xs:simpleType>
+              <xs:element name="Root"><xs:complexType><xs:sequence>
+                <xs:element name="Direct" type="xs:dateTime"/>
+                <xs:element name="Derived" type="Timestamp"/>
+                <xs:element name="Date" type="xs:date"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"#,
+        )
+        .unwrap();
+        let schema = document.root_element();
+        assert!(path_requires_datetime(
+            schema,
+            "Root",
+            &["Direct".to_string()]
+        ));
+        assert!(path_requires_datetime(
+            schema,
+            "Root",
+            &["Derived".to_string()]
+        ));
+        assert!(!path_requires_datetime(
+            schema,
+            "Root",
+            &["Date".to_string()]
+        ));
     }
 }

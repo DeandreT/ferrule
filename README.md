@@ -17,14 +17,16 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
   targets with repeated runtime-named worksheets and ordered row ranges, and
   update-in-place writes that preserve unrelated workbook content
 - **XML** — hierarchical documents, with an XSD importer to bootstrap schemas
-- **JSON** — hierarchical documents, with a JSON Schema importer
+- **JSON** — hierarchical documents, with a JSON Schema importer supporting local
+  references, compatible closed-object `oneOf`/`anyOf`, and typed dynamic properties
 - **SQLite** — table introspection plus idempotent flat or relational multi-table reads
   and full-replace writes
-- **EDI** — ANSI X12 and UN/EDIFACT: separator discovery from the envelope, composite
-  elements, repetition separators, qualifier-driven loops (HIPAA-style `HL`/`NM1`
-  hierarchies), and a lenient mode that skips segments your schema doesn't mention
-- **Protocol Buffers** (target) — bounded proto2 schema import and dynamic binary
-  encoding for nested messages, enums, required/optional/repeated fields, and packed scalars
+- **EDI** — bounded ANSI X12, UN/EDIFACT, HL7 v2, and TRADACOMS I/O, plus embedded
+  IDoc and SWIFT MT layouts; X12/EDIFACT support includes custom separators,
+  composites, repetitions, qualifier-driven loops, and lenient schema-guided parsing
+- **Protocol Buffers** — bounded proto2/proto3 schema import and binary decoding/encoding
+  for nested messages, enums, required/optional/repeated fields, implicit proto3 defaults,
+  and packed scalars
 - **FlexText layouts** — bounded recursive split/store/switch pipelines with fixed-width
   and delimited records; embedded layouts work as both sources and targets, and MapForce
   `.mft` configurations compile into portable project data during import
@@ -32,6 +34,9 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
   embedded visual layouts, including fixed captures, exact and open-ended page groups,
   independent or vertical-collage region merges, anchors, marker-delimited nested groups,
   and ruled, text-derived, or multiline unruled table rows
+- **XBRL** — typed instance input/output with contexts, dimensions, units, and
+  namespace-qualified facts; taxonomy formula and linkbase execution are outside the
+  current runtime
 
 ## How a mapping works
 
@@ -47,8 +52,9 @@ A project file (plain JSON) holds these core pieces:
   loops over it (a path may cross several repeating levels at once, flattening nested
   repetition), `filter` drops items, and field references fall back outward through
   enclosing scopes so parent-level values broadcast into child rows; scopes can also
-  generate scalar sequences with `tokenize`, `tokenize-by-length`, and
-  inclusive integer ranges (capped at 1,000,000 materialized items per scope), or
+  generate scalar sequences with `tokenize`, `tokenize-by-length`, bounded
+  `tokenize-regexp`, and inclusive integer ranges (capped at 1,000,000 materialized
+  items per scope), or
   iterate a typed multi-source equijoin
 - optional **extra sources** — named secondary inputs that any scope or lookup can
   address; a source path may also be computed per driver item to load a typed document
@@ -67,7 +73,7 @@ local `$ref` support, or the design's entry tree as a fallback), CSV text compon
 string-parser components, flat and
 hierarchical XLSX targets, visual PDF sources using supported external `.pxt` layouts,
 including page selection, named multi-page table regions, vertical collages, and
-marker-delimited nested records, proto2 binary targets,
+marker-delimited nested records, proto2/proto3 binary sources and targets,
 SQLite database components, including relational table graphs (schemas are
 introspected from the referenced database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
@@ -85,12 +91,14 @@ writes the exportable subset back out as `.mfd` plus generated XSD / JSON Schema
 picking each side's component kind from the project's instance paths. Named static
 sources, per-item dynamic XML sources, and typed captured HTTP response boundaries
 retain their component ownership. Canonical structured-join export covers root-context
-collections inside the primary source.
+collections inside the primary source. Static typed protobuf sources and targets export
+canonically with generated `.proto` siblings; dynamic per-item protobuf sources remain
+unsupported.
 Designs built on general namespace identity or `xsi:type` polymorphism,
 scalar-key/keyless correlated joins,
-multi-source or nested join export, joined aggregate export, general SQL/database
+multi-source or nested join export, general SQL/database
 composition, or other endpoints (unsupported Excel/PDF layout variants, PDF targets,
-general XBRL taxonomy/linkbase execution or `.mfd` export, or unsupported
+general XBRL taxonomy/linkbase execution, or unsupported
 FlexText/EDI configuration variants)
 are not converted yet.
 
@@ -145,6 +153,10 @@ against a JSON reference file. See `crates/cli/tests/fixtures/`.
 - `crates/format-xlsx` — flat Excel worksheet row read/write
 - `crates/format-db` — database schema introspection and read/write (SQLite)
 - `crates/format-edi` — EDI (ANSI X12 and UN/EDIFACT) schema-guided read/write
+- `crates/format-protobuf` — bounded proto2/proto3 schema and binary instance read/write
+- `crates/format-flextext` — embedded recursive structured-text layout read/write
+- `crates/format-pdf` — bounded layout-driven PDF text extraction
+- `crates/format-xbrl` — typed XBRL instance read/write
 - `crates/cli` — headless runner (`ferrule` binary): run a project file against inputs
 - `crates/gui` — visual mapping editor (`ferrule-gui` binary): schema trees, node-graph canvas,
   persisted layout sidecars, dirty-state guards, and project undo/redo
