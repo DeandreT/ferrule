@@ -590,17 +590,32 @@ fn select_group_alternative<'a>(
         .filter(|(name, instance)| name != XML_TYPE_FIELD && instance_has_value(instance))
         .map(|(name, _)| name.as_str())
         .collect();
-    let mut matches = alternatives.iter().filter(|alternative| {
-        populated
-            .iter()
-            .all(|field| alternative.members.iter().any(|member| member == field))
-    });
-    let Some(selected) = matches.next() else {
+    let matches = alternatives
+        .iter()
+        .filter(|alternative| {
+            populated
+                .iter()
+                .all(|field| alternative.members.iter().any(|member| member == field))
+        })
+        .collect::<Vec<_>>();
+    let Some(member_count) = matches
+        .iter()
+        .map(|alternative| alternative.members.len())
+        .min()
+    else {
         return Err(XmlFormatError::NoMatchingAlternative {
             name: schema.name.clone(),
         });
     };
-    if matches.next().is_some() {
+    let mut narrowest = matches
+        .into_iter()
+        .filter(|alternative| alternative.members.len() == member_count);
+    let Some(selected) = narrowest.next() else {
+        return Err(XmlFormatError::NoMatchingAlternative {
+            name: schema.name.clone(),
+        });
+    };
+    if narrowest.next().is_some() {
         return Err(XmlFormatError::AmbiguousAlternative {
             name: schema.name.clone(),
         });

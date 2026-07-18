@@ -106,6 +106,10 @@ impl ComponentFormat {
     pub(super) const fn is_xml_like(self) -> bool {
         matches!(self, Self::Xml | Self::Xbrl)
     }
+
+    pub(super) const fn supports_cloned_target_branches(self) -> bool {
+        matches!(self, Self::Xml | Self::Db | Self::Xbrl)
+    }
 }
 
 /// One schema (source or target) component's extracted facts.
@@ -207,7 +211,7 @@ pub(super) fn read_schema_component(
         &mut out_count,
         &mut in_count,
     );
-    let input_ancestors = input_port_ancestors(&entry);
+    let input_ancestors = input_port_ancestors(&entry, &input_keys);
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
@@ -931,36 +935,76 @@ fn collect_entry_ports(
     }
 }
 
-fn input_port_ancestors(entry: &roxmltree::Node<'_, '_>) -> BTreeMap<u32, Vec<u32>> {
+fn input_port_ancestors(
+    entry: &roxmltree::Node<'_, '_>,
+    input_keys: &BTreeSet<u32>,
+) -> BTreeMap<u32, Vec<u32>> {
     let mut result = BTreeMap::new();
     let mut ancestors = Vec::new();
+    let mut next_branch = input_keys
+        .last()
+        .copied()
+        .and_then(|key| key.checked_add(1))
+        .unwrap_or_default();
     if let Some(key) = parse_u32(entry.attribute("inpkey")) {
         result.insert(key, Vec::new());
         ancestors.push(key);
     }
-    collect_input_port_ancestors(entry, &mut ancestors, &mut result);
+    collect_input_port_ancestors(
+        entry,
+        input_keys,
+        &mut next_branch,
+        &mut ancestors,
+        &mut result,
+    );
     result
 }
 
 fn collect_input_port_ancestors(
     entry: &roxmltree::Node<'_, '_>,
+    input_keys: &BTreeSet<u32>,
+    next_branch: &mut u32,
     ancestors: &mut Vec<u32>,
     result: &mut BTreeMap<u32, Vec<u32>>,
 ) {
-    for child in entry
+    let children = entry
         .children()
         .filter(|node| node.is_element() && node.has_tag_name("entry"))
-    {
+        .collect::<Vec<_>>();
+    let mut name_counts = BTreeMap::new();
+    for child in &children {
+        let normalized = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
+        *name_counts.entry(normalized).or_insert(0usize) += 1;
+    }
+    for child in children {
+        let normalized = normalize_xml_entry_name(child.attribute("name").unwrap_or_default());
+        let duplicate_branch = name_counts.get(&normalized).copied().unwrap_or_default() > 1;
+        let branch = duplicate_branch.then(|| take_branch_marker(input_keys, next_branch));
+        if let Some(branch) = branch {
+            ancestors.push(branch);
+        }
         let key = parse_u32(child.attribute("inpkey"));
         if let Some(key) = key {
             result.insert(key, ancestors.clone());
             ancestors.push(key);
         }
-        collect_input_port_ancestors(&child, ancestors, result);
+        collect_input_port_ancestors(&child, input_keys, next_branch, ancestors, result);
         if key.is_some() {
             ancestors.pop();
         }
+        if branch.is_some() {
+            ancestors.pop();
+        }
     }
+}
+
+fn take_branch_marker(input_keys: &BTreeSet<u32>, next_branch: &mut u32) -> u32 {
+    while input_keys.contains(next_branch) {
+        *next_branch = next_branch.wrapping_add(1);
+    }
+    let marker = *next_branch;
+    *next_branch = next_branch.wrapping_add(1);
+    marker
 }
 
 /// Fallback schema straight from the entry tree: groups where there are
@@ -1140,6 +1184,7 @@ pub(super) fn read_db_component(
     }
     let is_source = out_count >= in_count;
     let (input_keys, output_keys) = entry_key_sets(&root_el);
+    let input_ancestors = input_port_ancestors(&root_el, &input_keys);
     // The connection string lives in the mapping's datasource registry,
     // linked from the component by name.
     let connection = data
@@ -1232,7 +1277,7 @@ pub(super) fn read_db_component(
         is_variable: false,
         compute_when_key: None,
         ports,
-        input_ancestors: BTreeMap::new(),
+        input_ancestors,
         input_keys,
         output_keys,
         db_queries: Vec::new(),

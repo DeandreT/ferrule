@@ -182,3 +182,81 @@ fn structural_branch_without_content_is_not_silently_concatenated()
     );
     Ok(())
 }
+
+#[test]
+fn scalar_only_cloned_occurrences_keep_document_order_around_sequences()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let design = write_fixture(&dir.0)?;
+    let mut mapping = std::fs::read_to_string(&design)?;
+    mapping = mapping.replace(
+        r#"<entry name="Header" inpkey="50"/>"#,
+        r#"<entry name="Header" inpkey="50"/>
+      <entry name="Bal"><entry name="Kind" inpkey="34"/></entry>"#,
+    );
+    mapping = mapping.replace(
+        r#"<entry name="Bal" inpkey="40"><entry name="Amt" inpkey="41"><entry name="Ccy" type="attribute" inpkey="42"/></entry><entry name="Kind" inpkey="43"/></entry>"#,
+        r#"<entry name="Bal" inpkey="40"><entry name="Amt" inpkey="41"><entry name="Ccy" type="attribute" inpkey="42"/></entry><entry name="Kind" inpkey="43"/></entry>
+      <entry name="Bal"><entry name="Kind" inpkey="44"/></entry>"#,
+    );
+    mapping = mapping.replace(
+        r#"</data></component>
+</children><graph>"#,
+        r#"</data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="70"/></targets><data><constant value="S1" datatype="string"/></data></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint key="71"/></targets><data><constant value="S4" datatype="string"/></data></component>
+</children><graph>"#,
+    );
+    mapping = mapping.replace(
+        r#"<graph><vertices>"#,
+        r#"<graph><vertices>
+  <vertex vertexkey="70"><edges><edge vertexkey="34"/></edges></vertex>
+  <vertex vertexkey="71"><edges><edge vertexkey="44"/></edges></vertex>"#,
+    );
+    std::fs::write(&design, mapping)?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let validation = engine::validate(&imported.project);
+    assert!(validation.is_empty(), "{validation:?}");
+    let balance_scope = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Bal")
+        .ok_or("missing balance scope")?;
+    assert_eq!(
+        balance_scope
+            .concatenated()
+            .ok_or("balance branches were not concatenated")?
+            .len(),
+        4
+    );
+
+    let source = format_xml::from_str(
+        r#"<Source><Debit><Amt Ccy="USD">10.5</Amt><Kind>D1</Kind></Debit><Debit><Amt Ccy="EUR">20</Amt><Kind>D2</Kind></Debit><Credit><Amt Ccy="GBP">7</Amt><Kind>C1</Kind></Credit></Source>"#,
+        &imported.project.source,
+    )?;
+    let target = engine::run(&imported.project, &source)?;
+    let balances = target
+        .field("Bal")
+        .and_then(Instance::as_repeated)
+        .ok_or("target balances are not repeated")?;
+    let kinds = balances
+        .iter()
+        .filter_map(|balance| balance.field("Kind"))
+        .filter_map(Instance::as_scalar)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        kinds,
+        [
+            &Value::String("S1".into()),
+            &Value::String("D1".into()),
+            &Value::String("D2".into()),
+            &Value::String("C1".into()),
+            &Value::String("S4".into()),
+        ]
+    );
+    Ok(())
+}

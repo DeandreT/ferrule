@@ -20,6 +20,7 @@ mod alternatives;
 mod db_query;
 mod db_where;
 mod dynamic_json;
+mod dynamic_xml_variable;
 mod external_udf;
 mod flextext_parser;
 mod function;
@@ -856,6 +857,9 @@ impl GraphBuilder<'_> {
             }
         }
         // A transparent output of a variable schema component?
+        if let Some(node) = self.dynamic_xml_variable_lookup_node(key) {
+            return Some(node);
+        }
         if let Some(intermediate) = self.intermediate_feed(key) {
             if intermediate.suffix.is_empty() {
                 return self.value_node(intermediate.feed);

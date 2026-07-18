@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
-use ir::SchemaNode;
+use ir::{SchemaKind, SchemaNode};
 use mapping::FormatOptions;
 
 use super::{ComponentFormat, SchemaComponent};
@@ -85,7 +85,11 @@ pub(super) fn read(
     } else {
         None
     };
-    let (schema, idoc, swift_mt) = compiled.unwrap_or((fallback_schema, None, None));
+    let has_compiled_schema = compiled.is_some();
+    let (mut schema, idoc, swift_mt) = compiled.unwrap_or((fallback_schema, None, None));
+    if has_compiled_schema && kind == "EDIX12" {
+        merge_parser_error_entries(&entry, &mut schema);
+    }
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
@@ -145,6 +149,31 @@ pub(super) fn read(
         db_queries: Vec::new(),
         dynamic_json: None,
     })
+}
+
+/// MapForce exposes parser-generated acknowledgement details as virtual X12
+/// entry branches. They are not part of the message configuration, but their
+/// connected scalar ports still need schema identities for graph validation.
+fn merge_parser_error_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) {
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return;
+    };
+    let parent_is_segment = entry.attribute("name").is_some_and(is_inferred_segment);
+    for child_entry in entry.children().filter(|node| node.has_tag_name("entry")) {
+        let name = child_entry.attribute("name").unwrap_or_default();
+        if name.starts_with("ParserErrors_") {
+            if children.iter().all(|child| child.name != name)
+                && let Some(parser_errors) =
+                    entry_tree_schema(&child_entry, false, parent_is_segment)
+            {
+                children.push(parser_errors);
+            }
+            continue;
+        }
+        if let Some(child_schema) = children.iter_mut().find(|child| child.name == name) {
+            merge_parser_error_entries(&child_entry, child_schema);
+        }
+    }
 }
 
 fn resolve_config(mfd_path: &Path, declared: &str) -> Result<PathBuf, String> {
