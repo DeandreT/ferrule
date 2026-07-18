@@ -6,6 +6,26 @@ use mapping::SortFilterOrder;
 use super::schema::schema_node_at;
 use super::source::SourcePath;
 
+#[derive(Debug, Clone)]
+pub(super) enum SequenceWindowFeed {
+    SkipFirst {
+        count: Option<u32>,
+    },
+    First {
+        count: Option<u32>,
+    },
+    From {
+        position: Option<u32>,
+    },
+    FromTo {
+        first: Option<u32>,
+        last: Option<u32>,
+    },
+    Last {
+        count: Option<u32>,
+    },
+}
+
 pub(super) struct IterationFeed {
     /// Output key of the underlying source entry (or whatever else feeds
     /// the chain -- callers check it against the source ports).
@@ -57,16 +77,26 @@ pub(super) struct IterationFeed {
     /// Whether a sort was crossed, including one with a missing key.
     pub(super) has_sort: bool,
     pub(super) sort_filter_order: SortFilterOrder,
-    /// A connected first-items count, or an absent count meaning the
-    /// function's default of one item.
-    pub(super) take_expr: Option<u32>,
-    pub(super) take_default_one: bool,
+    /// Sequence windows ordered from the underlying source toward the target.
+    pub(super) windows: Vec<SequenceWindowFeed>,
     /// A transparent variable projects the connected source group as a
     /// constructed value, so matching scalar descendants must be copied.
     pub(super) projects_whole_group: bool,
     /// Scalar descendant inputs used to construct an intermediate group,
     /// keyed by their path relative to that group's output.
     pub(super) projections: BTreeMap<Vec<String>, u32>,
+}
+
+impl IterationFeed {
+    pub(super) fn has_windows(&self) -> bool {
+        !self.windows.is_empty()
+    }
+
+    pub(super) fn has_default_first(&self) -> bool {
+        self.windows
+            .iter()
+            .any(|window| matches!(window, SequenceWindowFeed::First { count: None }))
+    }
 }
 
 pub(super) fn note_iteration_control_order(

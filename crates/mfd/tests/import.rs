@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_TEXT_FIELD};
-use mapping::{Node, SequenceExpr};
+use mapping::{Node, SequenceExpr, SequenceWindow};
 
 #[path = "import/json_alternatives.rs"]
 mod json_alternatives;
@@ -1179,8 +1179,11 @@ fn sorted_first_items_import_run_and_roundtrip() {
         &project.graph.nodes[&top.sort_by.unwrap()],
         Node::SourceField { path, .. } if path == &["Points"]
     ));
+    let [SequenceWindow::First { count: top_count }] = top.windows.as_slice() else {
+        panic!("Top should have one first-items window")
+    };
     assert!(matches!(
-        &project.graph.nodes[&top.take.unwrap()],
+        &project.graph.nodes[top_count],
         Node::Const {
             value: Value::Int(2)
         }
@@ -1191,8 +1194,11 @@ fn sorted_first_items_import_run_and_roundtrip() {
         .iter()
         .find(|scope| scope.target_field == "Best")
         .unwrap();
+    let [SequenceWindow::First { count: best_count }] = best.windows.as_slice() else {
+        panic!("Best should have one first-items window")
+    };
     assert!(matches!(
-        &project.graph.nodes[&best.take.unwrap()],
+        &project.graph.nodes[best_count],
         Node::Const {
             value: Value::Int(1)
         }
@@ -1204,7 +1210,7 @@ fn sorted_first_items_import_run_and_roundtrip() {
         .find(|scope| scope.target_field == "Distinct")
         .unwrap();
     assert!(distinct.group_by.is_some());
-    assert!(distinct.take.is_none());
+    assert!(distinct.windows.is_empty());
     assert_eq!(distinct.bindings.len(), 2);
 
     let source = format_xml::read(&fixture("ranked.xml"), &project.source).unwrap();

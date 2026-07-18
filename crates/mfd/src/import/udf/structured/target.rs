@@ -646,7 +646,7 @@ fn build_catalog_target(
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
         },
         IterationOutput::MappedSequence,
     );
@@ -689,8 +689,7 @@ fn build_aggregate_target(
         || control.distinct_key.is_some()
         || control.order_issue.is_some()
         || control.has_sort
-        || control.take_expr.is_some()
-        || control.take_default_one
+        || control.has_windows()
     {
         return Err("its sequence parameter uses controls beyond one optional filter".to_string());
     }
@@ -757,7 +756,7 @@ fn build_aggregate_target(
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
         },
         IterationOutput::Repeated,
     );

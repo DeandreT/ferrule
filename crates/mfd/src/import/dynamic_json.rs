@@ -348,8 +348,7 @@ impl RootDynamicJsonTarget {
             || feed.distinct_key.is_some()
             || feed.order_issue.is_some()
             || !feed.sort_keys.is_empty()
-            || feed.take_expr.is_some()
-            || feed.take_default_one
+            || feed.has_windows()
             || !allow_group && feed.group_key.is_some();
         if unsupported {
             Err(
@@ -405,8 +404,7 @@ impl DynamicObjectTarget {
             || control.distinct_key.is_some()
             || control.order_issue.is_some()
             || control.has_sort
-            || control.take_expr.is_some()
-            || control.take_default_one
+            || control.has_windows()
         {
             return Err(
                 "nested computed properties currently support only plain source or generated-sequence iteration"
@@ -456,7 +454,7 @@ impl DynamicObjectTarget {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
         };
         if let Some(index) = control.sequence_component {
             builder.sequence_scope_components.insert(index);
@@ -529,7 +527,7 @@ fn scope_is_unconfigured(scope: &Scope) -> bool {
         && scope.group_into_blocks.is_none()
         && scope.sort_by.is_none()
         && !scope.sort_descending
-        && scope.take.is_none()
+        && scope.windows.is_empty()
         && scope.bindings.is_empty()
         && scope.children.is_empty()
         && scope.dynamic_bindings.is_empty()

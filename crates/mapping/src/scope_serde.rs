@@ -2,8 +2,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     Binding, DynamicBinding, DynamicChild, IterationOutput, JoinId, JoinPlan, NodeId, Scope,
-    ScopeConstruction, ScopeIteration, ScopeSequence, SequenceExpr, SortFilterOrder, SortKey,
-    is_constructed_scope, is_false, is_repeated_output,
+    ScopeConstruction, ScopeIteration, ScopeSequence, SequenceExpr, SequenceWindow,
+    SortFilterOrder, SortKey, is_constructed_scope, is_false, is_repeated_output,
 };
 
 #[derive(Serialize)]
@@ -45,8 +45,8 @@ struct ScopeRef<'a> {
     sort_then_by: &'a [SortKey],
     #[serde(skip_serializing_if = "is_default_sort_filter_order")]
     sort_filter_order: SortFilterOrder,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    take: Option<NodeId>,
+    #[serde(skip_serializing_if = "<[SequenceWindow]>::is_empty")]
+    windows: &'a [SequenceWindow],
     #[serde(skip_serializing_if = "Option::is_none")]
     output_path: Option<NodeId>,
     #[serde(skip_serializing_if = "is_repeated_output")]
@@ -92,7 +92,7 @@ struct ScopeOwned {
     #[serde(default)]
     sort_filter_order: SortFilterOrder,
     #[serde(default)]
-    take: Option<NodeId>,
+    windows: Vec<SequenceWindow>,
     #[serde(default)]
     output_path: Option<NodeId>,
     #[serde(default)]
@@ -139,7 +139,7 @@ impl Serialize for Scope {
             sort_descending: self.sort_descending,
             sort_then_by: &self.sort_then_by,
             sort_filter_order: self.sort_filter_order,
-            take: self.take,
+            windows: &self.windows,
             output_path: self.output_path(),
             iteration_output: self.iteration_output,
             bindings: &self.bindings,
@@ -206,7 +206,7 @@ impl<'de> Deserialize<'de> for Scope {
             sort_descending: wire.sort_descending,
             sort_then_by: wire.sort_then_by,
             sort_filter_order: wire.sort_filter_order,
-            take: wire.take,
+            windows: wire.windows,
             iteration_output: wire.iteration_output,
             bindings: wire.bindings,
             dynamic_bindings: wire.dynamic_bindings,

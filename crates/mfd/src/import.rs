@@ -52,16 +52,17 @@ mod udf;
 
 use db_query::is_routine_catalog;
 use function::{
-    is_db_function_component, is_db_where as is_db_where_component,
+    SequenceWindowComponent, is_db_function_component, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
-    is_first_items as is_first_items_component, is_group_into_blocks, is_group_starting_with,
-    is_input as is_input_component, is_isbn_converter_component, is_sequence_producer,
-    is_sort as is_sort_component, is_xbrl_measure_component, map_name as map_function_name,
-    read as read_fn_component, read_isbn_converter_component,
+    is_group_into_blocks, is_group_starting_with, is_input as is_input_component,
+    is_isbn_converter_component, is_sequence_producer, is_sort as is_sort_component,
+    is_xbrl_measure_component, map_name as map_function_name, read as read_fn_component,
+    read_isbn_converter_component, sequence_window_component,
 };
 use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use iteration::{
-    IntermediateFeed, IterationFeed, note_iteration_control_order, split_at_innermost_repeating,
+    IntermediateFeed, IterationFeed, SequenceWindowFeed, note_iteration_control_order,
+    split_at_innermost_repeating,
 };
 use schema::{
     ComponentFormat, SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
@@ -1272,7 +1273,7 @@ impl GraphBuilder<'_> {
             }
             return Some(self.sequence_item(idx));
         }
-        if is_first_items_component(&self.fn_components[idx]) {
+        if sequence_window_component(&self.fn_components[idx]).is_some() {
             return self
                 .input_feed(idx, 0)
                 .and_then(|feed| self.value_node(feed));
@@ -1368,8 +1369,7 @@ impl GraphBuilder<'_> {
         let mut nearest_control = None;
         let mut sort_keys = Vec::new();
         let mut has_sort = false;
-        let mut take_expr = None;
-        let mut take_default_one = false;
+        let mut windows = Vec::new();
         let mut projects_whole_group = false;
         let mut projections = BTreeMap::new();
         let mut source_suffix = Vec::new();
@@ -1434,8 +1434,11 @@ impl GraphBuilder<'_> {
                         sort_keys = control.sort_keys;
                     }
                     has_sort |= control.has_sort;
-                    take_expr = take_expr.or(control.take_expr);
-                    take_default_one |= control.take_default_one;
+                    if !control.windows.is_empty() {
+                        let mut upstream = control.windows;
+                        upstream.extend(windows);
+                        windows = upstream;
+                    }
                 }
                 let mut suffix = intermediate.suffix;
                 suffix.extend(source_suffix);
@@ -1510,28 +1513,44 @@ impl GraphBuilder<'_> {
                         .collect();
                 }
                 from = nodes_feed;
-            } else if is_first_items_component(fc) {
+            } else if let Some(window) = sequence_window_component(fc) {
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
                 note_iteration_control_order(3, &mut nearest_control, &mut order_issue);
                 if distinct_key.is_some() {
                     order_issue.get_or_insert(
-                        "applies first-items before distinct-values, which cannot be represented exactly",
+                        "applies a sequence window before distinct-values, which cannot be represented exactly",
                     );
                 }
                 // A variable driven by group-by uses first-items to select
                 // the first member inside each group. Grouped scope frames
                 // already expose that member to scalar bindings, so an
-                // outer item limit would incorrectly truncate the groups.
-                if group_key.is_none()
-                    && group_starting_with.is_none()
-                    && block_size.is_none()
-                    && take_expr.is_none()
-                    && !take_default_one
-                {
-                    take_expr = self.input_feed(idx, 1);
-                    take_default_one = take_expr.is_none();
+                // outer sequence window would incorrectly truncate the groups.
+                let grouped_first_member = window == SequenceWindowComponent::First
+                    && (group_key.is_some()
+                        || group_starting_with.is_some()
+                        || block_size.is_some());
+                if !grouped_first_member {
+                    let feed = match window {
+                        SequenceWindowComponent::SkipFirst => SequenceWindowFeed::SkipFirst {
+                            count: self.input_feed(idx, 1),
+                        },
+                        SequenceWindowComponent::First => SequenceWindowFeed::First {
+                            count: self.input_feed(idx, 1),
+                        },
+                        SequenceWindowComponent::From => SequenceWindowFeed::From {
+                            position: self.input_feed(idx, 1),
+                        },
+                        SequenceWindowComponent::FromTo => SequenceWindowFeed::FromTo {
+                            first: self.input_feed(idx, 1),
+                            last: self.input_feed(idx, 2),
+                        },
+                        SequenceWindowComponent::Last => SequenceWindowFeed::Last {
+                            count: self.input_feed(idx, 1),
+                        },
+                    };
+                    windows.insert(0, feed);
                 }
                 from = nodes_feed;
             } else if is_group_starting_with(fc) {
@@ -1666,8 +1685,7 @@ impl GraphBuilder<'_> {
             sort_keys,
             has_sort,
             sort_filter_order,
-            take_expr,
-            take_default_one,
+            windows,
             projects_whole_group,
             projections,
         }

@@ -128,7 +128,7 @@ fn demo_project() -> Project {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "AllIds".into(),
@@ -147,7 +147,7 @@ fn demo_project() -> Project {
                 sort_descending: false,
                 sort_then_by: Vec::new(),
                 sort_filter_order: Default::default(),
-                take: None,
+                windows: Vec::new(),
                 iteration_output: Default::default(),
                 bindings: vec![
                     Binding {

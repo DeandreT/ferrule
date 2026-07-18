@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use mapping::{
     Binding, IterationOutput, JoinId, JoinPlan, NodeId, Scope, ScopeConstruction, ScopeIteration,
-    ScopeSequence, SequenceExpr, SortFilterOrder, SortKey,
+    ScopeSequence, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey,
 };
 
 #[derive(Clone)]
@@ -46,7 +46,7 @@ pub(super) struct IterationNodes {
     pub(super) sort_descending: bool,
     pub(super) sort_then_by: Vec<SortKey>,
     pub(super) sort_filter_order: SortFilterOrder,
-    pub(super) take: Option<NodeId>,
+    pub(super) windows: Vec<SequenceWindow>,
 }
 
 impl ScopeBuilder {
@@ -108,7 +108,7 @@ impl ScopeBuilder {
         scope.sort_descending = nodes.sort_descending;
         scope.sort_then_by = nodes.sort_then_by;
         scope.sort_filter_order = nodes.sort_filter_order;
-        scope.take = nodes.take;
+        scope.windows = nodes.windows;
         scope.iteration_output = output;
     }
 
@@ -139,7 +139,7 @@ impl ScopeBuilder {
         scope.sort_descending = nodes.sort_descending;
         scope.sort_then_by = nodes.sort_then_by;
         scope.sort_filter_order = nodes.sort_filter_order;
-        scope.take = nodes.take;
+        scope.windows = nodes.windows;
         scope.iteration_output = output;
     }
 
@@ -158,7 +158,7 @@ impl ScopeBuilder {
         scope.sort_descending = nodes.sort_descending;
         scope.sort_then_by = nodes.sort_then_by;
         scope.sort_filter_order = nodes.sort_filter_order;
-        scope.take = nodes.take;
+        scope.windows = nodes.windows;
         scope.iteration_output = output;
     }
 

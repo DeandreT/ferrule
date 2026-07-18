@@ -114,6 +114,11 @@ pub(super) fn try_read(
                 function.name.as_str(),
                 "group-by"
                     | "first-items"
+                    | "skip-first-items"
+                    | "items-from"
+                    | "items-from-to"
+                    | "items-from-till"
+                    | "last-items"
                     | "distinct-values"
                     | "tokenize"
                     | "tokenize-regexp"
@@ -338,8 +343,7 @@ pub(super) fn build_target(
         || control.distinct_key.is_some()
         || control.order_issue.is_some()
         || control.has_sort
-        || control.take_expr.is_some()
-        || control.take_default_one
+        || control.has_windows()
         || control.projects_whole_group
         || !control.projections.is_empty()
     {
@@ -416,7 +420,7 @@ pub(super) fn build_target(
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
         },
         output,
     );

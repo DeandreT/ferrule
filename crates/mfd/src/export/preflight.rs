@@ -452,7 +452,7 @@ fn validate_copy_scope_shape(
         || scope.join().is_some()
         || scope.filter.is_some()
         || scope.sort_by.is_some()
-        || scope.take.is_some()
+        || !scope.windows.is_empty()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
         || scope.group_into_blocks.is_some()

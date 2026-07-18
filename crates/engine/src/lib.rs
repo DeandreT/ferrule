@@ -386,3 +386,6 @@ mod sequence_exists_tests;
 #[cfg(test)]
 #[path = "tests/sequence_item_at.rs"]
 mod sequence_item_at_tests;
+#[cfg(test)]
+#[path = "tests/sequence_windows.rs"]
+mod sequence_windows_tests;

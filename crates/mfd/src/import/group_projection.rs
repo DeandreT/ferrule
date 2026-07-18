@@ -115,8 +115,7 @@ pub(super) fn classify_target_connection(
         && resolved.distinct_key.is_none()
         && resolved.order_issue.is_none()
         && !resolved.has_sort
-        && resolved.take_expr.is_none()
-        && !resolved.take_default_one
+        && !resolved.has_windows()
         && resolved.projections.is_empty();
     // Iteration resolution intentionally stops at the repeated owner. A
     // structural copy can target a non-repeating descendant of that owner,
@@ -156,7 +155,7 @@ pub(super) fn classify_target_connection(
                     .to_string(),
             );
         } else if target.format.is_xml_like()
-            && (max_one_database_source || resolved.take_default_one)
+            && (max_one_database_source || resolved.has_default_first())
             && matches!(target_node.kind, SchemaKind::Group { .. })
             && has_connected_descendant(target, target_path, builder)
         {
@@ -481,8 +480,7 @@ fn connected_structural_feeds(
                 || resolved.has_block_grouping
                 || resolved.distinct_key.is_some()
                 || resolved.has_sort
-                || resolved.take_expr.is_some()
-                || resolved.take_default_one;
+                || resolved.has_windows();
             let depth = builder
                 .iteration_source_path(&resolved)
                 .map_or(0, |source| source.path.len());

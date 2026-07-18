@@ -1,6 +1,6 @@
 use super::*;
 use ir::SchemaNode;
-use mapping::{Binding, SequenceExpr};
+use mapping::{Binding, SequenceExpr, SequenceWindow};
 
 use crate::sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length, tokenize_regex,
@@ -81,7 +81,7 @@ fn group_by_partitions_iterated_items() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
-            take: None,
+            windows: Vec::new(),
             bindings: vec![],
             children: vec![Scope {
                 target_field: "Year".into(),
@@ -92,7 +92,7 @@ fn group_by_partitions_iterated_items() {
                 group_into_blocks: None,
                 sort_by: None,
                 sort_descending: false,
-                take: None,
+                windows: Vec::new(),
                 bindings: vec![
                     Binding {
                         target_field: "Label".into(),
@@ -209,7 +209,7 @@ fn filter_removes_candidates_before_grouping() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
-            take: None,
+            windows: Vec::new(),
             bindings: vec![],
             children: vec![Scope {
                 target_field: "Row".into(),
@@ -220,7 +220,7 @@ fn filter_removes_candidates_before_grouping() {
                 group_into_blocks: None,
                 sort_by: None,
                 sort_descending: false,
-                take: None,
+                windows: Vec::new(),
                 bindings: vec![
                     Binding {
                         target_field: "Category".into(),
@@ -339,7 +339,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
-            take: None,
+            windows: Vec::new(),
             bindings: vec![],
             children: vec![Scope {
                 target_field: "OrderOut".into(),
@@ -350,7 +350,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
                 group_into_blocks: None,
                 sort_by: None,
                 sort_descending: false,
-                take: None,
+                windows: Vec::new(),
                 bindings: vec![],
                 children: vec![Scope {
                     target_field: "CategoryOut".into(),
@@ -361,7 +361,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
                     group_into_blocks: None,
                     sort_by: None,
                     sort_descending: false,
-                    take: None,
+                    windows: Vec::new(),
                     bindings: vec![
                         Binding {
                             target_field: "Category".into(),
@@ -665,7 +665,7 @@ fn aggregates_reduce_collections_in_context() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
-            take: None,
+            windows: Vec::new(),
             bindings: vec![Binding {
                 target_field: "AllIds".into(),
                 node: 3,
@@ -679,7 +679,7 @@ fn aggregates_reduce_collections_in_context() {
                 group_into_blocks: None,
                 sort_by: None,
                 sort_descending: false,
-                take: None,
+                windows: Vec::new(),
                 bindings: vec![
                     Binding {
                         target_field: "ItemCount".into(),
@@ -835,7 +835,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
                         delimiter: 1,
                         item: 2,
                     }),
-                    take: Some(5),
+                    windows: vec![SequenceWindow::First { count: 5 }],
                     bindings: vec![
                         Binding {
                             target_field: "Value".into(),

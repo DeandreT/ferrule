@@ -5,8 +5,8 @@ use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::NodeId;
 
 use super::function::{
-    FnComponent, aggregate_op, is_db_where, is_distinct_values, is_filter, is_first_items,
-    is_group_into_blocks, is_group_starting_with, is_input, is_sequence_producer, is_sort,
+    FnComponent, aggregate_op, is_db_where, is_distinct_values, is_filter, is_group_into_blocks,
+    is_group_starting_with, is_input, is_sequence_producer, is_sequence_window, is_sort,
     produces_scalar,
 };
 use super::graph::GraphBuilder;
@@ -120,7 +120,7 @@ fn iteration_source_feed(
         if !(is_filter(component)
             || is_db_where(component)
             || is_sort(component)
-            || is_first_items(component)
+            || is_sequence_window(component)
             || is_group_into_blocks(component)
             || is_group_starting_with(component)
             || is_distinct_values(component)
@@ -468,7 +468,7 @@ impl GraphBuilder<'_> {
             let passes_nodes = is_filter(component)
                 || is_db_where(component)
                 || is_sort(component)
-                || is_first_items(component)
+                || is_sequence_window(component)
                 || is_group_into_blocks(component)
                 || is_group_starting_with(component)
                 || component.name == "group-by"
@@ -537,7 +537,7 @@ fn is_plain_scalar_expression(component: &FnComponent) -> bool {
         && !is_filter(component)
         && !is_db_where(component)
         && !is_sort(component)
-        && !is_first_items(component)
+        && !is_sequence_window(component)
         && !is_group_into_blocks(component)
         && !is_group_starting_with(component)
         && !is_distinct_values(component)
@@ -856,7 +856,11 @@ mod tests {
             ("core", "sort", 30, Some(false)),
             ("core", "group-by", 5, None),
             ("core", "group-into-blocks", 5, None),
+            ("core", "skip-first-items", 5, None),
             ("core", "first-items", 5, None),
+            ("core", "items-from", 5, None),
+            ("core", "items-from-to", 5, None),
+            ("core", "last-items", 5, None),
             ("core", "distinct-values", 5, None),
             ("core", "input", 6, None),
         ];

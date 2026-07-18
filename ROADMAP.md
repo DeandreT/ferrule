@@ -23,7 +23,8 @@ clean-room interoperability, and extensible adapters.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
   bounded existential reduction and 1-based scalar selection over generated sequences,
-  stable sorting, item limits, conditionals, value maps, lookups,
+  stable sorting, ordered skip/first/from/range/last sequence windows,
+  conditionals, value maps, lookups,
   duplicate-preserving multi-source inner equijoins, positions, seven
   aggregates, computed aggregate expressions, root and nested dynamic JSON target
   properties, per-item dynamic typed document sources, multiple mapped outputs,
@@ -50,14 +51,14 @@ clean-room interoperability, and extensible adapters.
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
 | XML | XSD subset, includes/imports, attributes, simple and ordered mixed content, `xsi:nil`, generic elements, and bounded transitive derived-type input/output | Namespace identity and remaining derived-type input shapes |
-| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`/`anyOf` with required string-const discriminators, typed dynamic properties | Scalar/array and nested union composition, non-string or optional discriminators, mixed arrays, unconstrained dynamic values |
+| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`/`anyOf` with required string, boolean, signed-integer, or finite-number `const` discriminators, typed dynamic properties | Scalar/array and nested union composition, optional or null discriminators, mixed arrays, unconstrained dynamic values |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
 | Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/formula/linkbase execution plus remaining PDF extraction variants and PDF targets |
 | Dataflow | One primary driver plus named static/dynamic and wildcard document sources, multiple mapped targets, and dynamic per-document output paths | Fully general named N-to-M endpoints, runtime parameters, ordered stage DAG |
-| Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
-| Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
+| Functions | Scalar subset plus aggregates, generated-sequence reducers, and ordered scope sequence windows | General sequence composition, conversion/date/math coverage, reusable graph UDFs |
+| Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, documented library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
 | `.mfd` | 120/120 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
@@ -73,10 +74,11 @@ Build breadth only where imported mappings can execute equivalently.
 
 Progress: legacy indexed XML names, stable `distinct-values` pipelines, first-class
 `tokenize`/`tokenize-by-length` sequences, and inclusive `generate-sequence` ranges
-are implemented. Generated scopes export sort/filter/group/take controls and
-stage-correct positions, while generated sequences can feed scalar `item-at`.
-Compatible JSON object alternatives preserve required string-const discriminators and
-can drive exact derived XML type output. Transitive concrete XSD descendants are
+are implemented. Generated and source-backed scopes execute and export ordered
+skip/first/from/range/last windows after sort/filter/group controls with stage-correct
+positions, while generated sequences can feed scalar `item-at`.
+Compatible JSON object alternatives preserve required typed scalar `const`
+discriminators and can drive exact derived XML type output. Transitive concrete XSD descendants are
 discovered through abstract include/import intermediates. Database WHERE/ORDER controls lower into runtime scopes,
 static and foreign-key-correlated queries recover executable SQLite sources,
 embedded correlated catalog queries recover executable relational sources,
@@ -98,12 +100,13 @@ High-value date/time/duration/missing-value functions execute natively. Non-repr
 operator order produces an actionable warning instead of silently claiming exact
 conversion. Core kind-32 joins lower to typed left-deep plans with composite equality
 keys, duplicate-preserving execution, projected fields, flattened positions, and
-filter/sort/item-limit controls. Naked joined tuples can be counted or reduced through
+filter/sort/window controls. Naked joined tuples can be counted or reduced through
 a computed scalar expression, including aggregate-only joins with an independent root
 plan. Nested non-repeating target projections reuse the owning tuple, while rejected
 join shapes suppress redundant downstream warnings. Canonical export round-trips
-root-context joins whose collections all belong to the primary source. Named static
-XML, JSON, flat-file, and database sources now retain separate component ownership
+root-context joins whose collections all belong to the primary source, including raw
+tuple counts and computed joined aggregate values with parent-context scalar arguments.
+Named static XML, JSON, flat-file, and database sources now retain separate component ownership
 during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.
 The versioned compatibility survey records import, engine validation, export,
@@ -120,10 +123,10 @@ are not inferred from structural success.
   without writing into the read-only vendor sample tree.
 - Expand behavioral reference coverage across format-specific and mixed-content edge
   cases, especially workflows whose vendor outputs require unavailable services.
-- Add first-class sequence windowing and reusable graph-backed UDFs instead of
-  further one-off lowering paths.
+- Add general sequence composition and reusable graph-backed UDFs instead of further
+  one-off lowering paths.
 - Complete namespace identity, remaining derived-type input shapes, and the remaining
-  scalar/array/nested or non-string-discriminated JSON union semantics.
+  scalar/array/nested or optional/null-discriminated JSON union semantics.
 - Keep every fixture self-authored; use vendor samples only as black-box
   behavioral references.
 
@@ -233,8 +236,9 @@ breadth.
 Runtime support proceeds in parallel:
 
 - Mapping package containing project, schemas, and relative resources.
-- Stable Rust library API, JSON diagnostics/traces, stdin/stdout, parameters,
-  and deterministic CLI exit codes.
+- Evolving Rust library API, JSON diagnostics/traces, stdin/stdout, parameters,
+  and deterministic CLI exit codes. Stabilization follows the mapping and endpoint
+  model rather than constraining pre-1.0 refactors.
 - HTTP service adapter. External schedulers remain preferred over building a
   FlowForce equivalent.
 

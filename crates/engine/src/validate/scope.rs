@@ -90,7 +90,7 @@ pub(super) fn validate_scope(
             || scope.group_starting_with.is_some()
             || scope.group_into_blocks.is_some()
             || scope.sort_by.is_some()
-            || scope.take.is_some()
+            || !scope.windows.is_empty()
             || scope.iteration_output == IterationOutput::First
             || !scope.bindings.is_empty()
             || !scope.dynamic_bindings.is_empty()
@@ -352,7 +352,7 @@ pub(super) fn validate_scope(
             || scope.group_starting_with.is_some()
             || scope.group_into_blocks.is_some()
             || scope.sort_by.is_some()
-            || scope.take.is_some()
+            || !scope.windows.is_empty()
         {
             issues.push(ValidationIssue::new(
                 &location,
@@ -453,7 +453,7 @@ pub(super) fn validate_scope(
             || scope.group_starting_with.is_some()
             || scope.group_into_blocks.is_some()
             || scope.sort_by.is_some()
-            || scope.take.is_some()
+            || !scope.windows.is_empty()
         {
             issues.push(ValidationIssue::new(
                 &location,
@@ -548,7 +548,7 @@ pub(super) fn validate_scope(
             || scope.group_starting_with.is_some()
             || scope.group_into_blocks.is_some()
             || scope.sort_by.is_some()
-            || scope.take.is_some()
+            || !scope.windows.is_empty()
         {
             issues.push(ValidationIssue::new(
                 &location,
@@ -625,7 +625,12 @@ pub(super) fn validate_scope(
             ));
         }
     }
-    let mut parent_roots = scope.take.into_iter().collect::<Vec<_>>();
+    let mut parent_roots = scope
+        .windows
+        .iter()
+        .copied()
+        .flat_map(|window| window.nodes())
+        .collect::<Vec<_>>();
     if let Some(sequence) = scope.sequence() {
         parent_roots.extend(sequence.inputs());
     }
@@ -679,7 +684,6 @@ pub(super) fn validate_scope(
         ("group-starting-with predicate", scope.group_starting_with),
         ("group block size", scope.group_into_blocks),
         ("sort key", scope.sort_by),
-        ("take count", scope.take),
         ("dynamic target path", scope.output_path()),
     ] {
         if let Some(node) = node
@@ -689,6 +693,19 @@ pub(super) fn validate_scope(
                 &location,
                 format!("{label} references missing node {node}"),
             ));
+        }
+    }
+    for (index, window) in scope.windows.iter().copied().enumerate() {
+        for node in window.nodes() {
+            if !project.graph.nodes.contains_key(&node) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "sequence window {} references missing bound node {node}",
+                        index + 1
+                    ),
+                ));
+            }
         }
     }
     for (index, key) in scope.sort_then_by.iter().enumerate() {
@@ -803,10 +820,10 @@ pub(super) fn validate_scope(
             "sort key has no iterated source",
         ));
     }
-    if !iterates && scope.take.is_some() {
+    if !iterates && !scope.windows.is_empty() {
         issues.push(ValidationIssue::new(
             &location,
-            "take count has no iterated source",
+            "sequence window has no iterated source",
         ));
     }
     if scope.merge_dynamic_fields && !iterates {

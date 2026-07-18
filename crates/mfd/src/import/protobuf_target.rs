@@ -61,7 +61,7 @@ pub(super) fn infer_singleton_messages(
                 sort_descending: false,
                 sort_then_by: Vec::new(),
                 sort_filter_order: Default::default(),
-                take: None,
+                windows: Vec::new(),
             },
             IterationOutput::Repeated,
         );

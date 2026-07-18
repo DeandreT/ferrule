@@ -455,8 +455,33 @@ pub(super) fn is_sort(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 30 && component.sort_directions.is_some()
 }
 
-pub(super) fn is_first_items(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 5 && component.name == "first-items"
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SequenceWindowComponent {
+    SkipFirst,
+    First,
+    From,
+    FromTo,
+    Last,
+}
+
+pub(super) fn sequence_window_component(
+    component: &FnComponent,
+) -> Option<SequenceWindowComponent> {
+    if component.library != "core" || component.kind != 5 {
+        return None;
+    }
+    match component.name.as_str() {
+        "skip-first-items" => Some(SequenceWindowComponent::SkipFirst),
+        "first-items" => Some(SequenceWindowComponent::First),
+        "items-from" => Some(SequenceWindowComponent::From),
+        "items-from-to" | "items-from-till" => Some(SequenceWindowComponent::FromTo),
+        "last-items" => Some(SequenceWindowComponent::Last),
+        _ => None,
+    }
+}
+
+pub(super) fn is_sequence_window(component: &FnComponent) -> bool {
+    sequence_window_component(component).is_some()
 }
 
 pub(super) fn is_group_into_blocks(component: &FnComponent) -> bool {

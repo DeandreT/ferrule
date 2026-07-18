@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
-use mapping::{Binding, Graph, IterationOutput, Node, Project, Scope};
+use mapping::{Binding, Graph, IterationOutput, Node, Project, Scope, SequenceWindow};
 
 use super::{EngineError, run, validate};
 
@@ -80,7 +80,7 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
         target_field: "Selected".into(),
         iteration: mapping::ScopeIteration::Source(vec!["Person".into()]),
         filter: Some(1),
-        take: Some(2),
+        windows: vec![SequenceWindow::First { count: 2 }],
         iteration_output,
         bindings: vec![
             Binding {
@@ -136,7 +136,7 @@ fn department(people: Vec<Instance>) -> Instance {
 }
 
 #[test]
-fn first_output_applies_filter_and_take_and_preserves_nested_positions() {
+fn first_output_applies_filter_and_window_and_preserves_nested_positions() {
     let project = project();
     assert!(validate(&project).is_empty(), "{:?}", validate(&project));
     let source = Instance::Group(vec![(

@@ -443,7 +443,7 @@ fn first_outputs_are_exportable(
             && scope.group_starting_with.is_none()
             && scope.group_into_blocks.is_none()
             && scope.sort_by.is_none()
-            && scope.take.is_none();
+            && scope.windows.is_empty();
         let ordinary_root = path.is_empty()
             && matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
             && scope.source() == Some(&[])
@@ -452,14 +452,10 @@ fn first_outputs_are_exportable(
             && scope.group_by.is_none()
             && scope.group_starting_with.is_none()
             && scope.group_into_blocks.is_none()
-            && scope.take.is_some_and(|take| {
-                matches!(
-                    graph.nodes.get(&take),
-                    Some(Node::Const {
-                        value: Value::Int(1)
-                    })
-                )
-            });
+            && matches!(scope.windows.as_slice(), [mapping::SequenceWindow::First { count }] if matches!(
+                graph.nodes.get(count),
+                Some(Node::Const { value: Value::Int(1) })
+            ));
         if !mixed_content && !ordinary_root {
             return false;
         }
@@ -517,7 +513,7 @@ fn collect_mapped_bindings(
         || scope.group_starting_with.is_some()
         || scope.group_into_blocks.is_some()
         || scope.sort_by.is_some() && !relative.is_empty()
-        || scope.take.is_some() && !relative.is_empty()
+        || !scope.windows.is_empty() && !relative.is_empty()
     {
         return None;
     }

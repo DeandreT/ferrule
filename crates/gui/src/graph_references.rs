@@ -64,10 +64,14 @@ pub(super) fn references_to(
             (scope.group_starting_with, "group-starting predicate"),
             (scope.group_into_blocks, "group block size"),
             (scope.sort_by, "sort key"),
-            (scope.take, "take count"),
         ] {
             if reference == Some(needle) {
                 found.insert(format!("{label} {description}"));
+            }
+        }
+        for (index, window) in scope.windows.iter().copied().enumerate() {
+            if window.nodes().any(|node| node == needle) {
+                found.insert(format!("{label} sequence window {}", index + 1));
             }
         }
         if let Some(sequence) = scope.sequence() {

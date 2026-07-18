@@ -1,11 +1,11 @@
 use std::collections::BTreeSet;
 
 use ir::{SchemaKind, Value, XML_TYPE_FIELD};
-use mapping::{IterationOutput, Node, NodeId, ScopeConstruction};
+use mapping::{IterationOutput, Node, NodeId, ScopeConstruction, SequenceWindow};
 
 use super::graph::GraphBuilder;
 use super::group_projection::{GroupProjectionPlan, GroupProjectionStep, TargetIteration};
-use super::iteration::split_at_innermost_repeating;
+use super::iteration::{SequenceWindowFeed, split_at_innermost_repeating};
 use super::schema::{
     ComponentFormat, SchemaComponent, collect_matching_scalar_paths, schema_node_at,
 };
@@ -393,15 +393,11 @@ fn build_one(
                         target_path.join("/")
                     ));
                     skipped.push(target_path);
-                } else if feed.has_filter
-                    || feed.has_sort
-                    || feed.take_expr.is_some()
-                    || feed.take_default_one
-                {
+                } else if feed.has_filter || feed.has_sort || feed.has_windows() {
                     builder.rejected_join_paths.insert(target_path.clone());
                     if builder.warned_join_controls.insert(id) {
                         builder.warnings.push(format!(
-                            "join projection into `{}` has independent filter, sort, or item-limit controls; projection skipped",
+                            "join projection into `{}` has independent filter, sort, or sequence-window controls; projection skipped",
                             target_path.join("/")
                         ));
                     }
@@ -555,8 +551,7 @@ fn build_one(
             || feed.has_block_grouping
             || feed.distinct_key.is_some()
             || feed.has_sort
-            || feed.take_expr.is_some()
-            || feed.take_default_one
+            || feed.has_windows()
             || feed.order_issue.is_some())
     {
         builder.warnings.push(format!(
@@ -654,32 +649,34 @@ fn build_one(
         });
     }
     let primary_sort = sort_keys.first().copied();
-    let take = if query_at_most_one {
-        Some(builder.alloc(Node::Const {
-            value: Value::Int(1),
-        }))
+    let windows = if query_at_most_one {
+        Some(vec![SequenceWindow::First {
+            count: builder.alloc(Node::Const {
+                value: Value::Int(1),
+            }),
+        }])
     } else {
-        feed.take_expr
-            .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
-            .or_else(|| {
-                feed.take_default_one.then(|| {
-                    builder.alloc(Node::Const {
-                        value: Value::Int(1),
-                    })
-                })
-            })
+        materialize_windows(builder, &feed.windows, &iteration_anchor)
     };
     if let Some(id) = join
-        && feed.take_expr.is_some()
-        && take.is_none()
+        && feed.has_windows()
+        && windows.is_none()
     {
         reject_join_control(
             builder,
             skipped,
             id,
             target_path,
-            "has an unsupported item-limit count",
+            "has an unsupported sequence-window bound",
         );
+        return;
+    }
+    if join.is_none() && feed.has_windows() && windows.is_none() {
+        builder.warnings.push(format!(
+            "sequence window feeding `{}` has a missing or unsupported bound; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
         return;
     }
     let nodes = IterationNodes {
@@ -691,7 +688,7 @@ fn build_one(
         sort_descending: primary_sort.is_some_and(|key| key.descending),
         sort_then_by: sort_keys.into_iter().skip(1).collect(),
         sort_filter_order: feed.sort_filter_order,
-        take,
+        windows: windows.unwrap_or_default(),
     };
     let copies_current_source =
         source_path.as_ref() == scope_source.as_ref() && join.is_none() && sequence.is_none();
@@ -746,6 +743,41 @@ fn build_one(
             scopes.add_binding(target, type_value);
         }
     }
+}
+
+fn materialize_windows(
+    builder: &mut GraphBuilder<'_>,
+    windows: &[SequenceWindowFeed],
+    anchor: &[String],
+) -> Option<Vec<SequenceWindow>> {
+    let mut materialized = Vec::with_capacity(windows.len());
+    for window in windows {
+        let count_or_one = |builder: &mut GraphBuilder<'_>, feed: Option<u32>| match feed {
+            Some(key) => builder.scalar_node_at_anchor(key, anchor),
+            None => Some(builder.alloc(Node::Const {
+                value: Value::Int(1),
+            })),
+        };
+        materialized.push(match *window {
+            SequenceWindowFeed::SkipFirst { count } => SequenceWindow::SkipFirst {
+                count: count_or_one(builder, count)?,
+            },
+            SequenceWindowFeed::First { count } => SequenceWindow::First {
+                count: count_or_one(builder, count)?,
+            },
+            SequenceWindowFeed::From { position } => SequenceWindow::From {
+                position: builder.scalar_node_at_anchor(position?, anchor)?,
+            },
+            SequenceWindowFeed::FromTo { first, last } => SequenceWindow::FromTo {
+                first: builder.scalar_node_at_anchor(first?, anchor)?,
+                last: builder.scalar_node_at_anchor(last?, anchor)?,
+            },
+            SequenceWindowFeed::Last { count } => SequenceWindow::Last {
+                count: count_or_one(builder, count)?,
+            },
+        });
+    }
+    Some(materialized)
 }
 
 fn edi_structural_presence_filter(
@@ -955,7 +987,7 @@ fn project_whole_group(
         && scope.group_starting_with.is_none()
         && scope.group_into_blocks.is_none()
         && scope.sort_by.is_none()
-        && scope.take.is_none()
+        && scope.windows.is_empty()
         && scope.bindings.is_empty()
         && scope.children.is_empty()
         && scope.dynamic_bindings.is_empty()

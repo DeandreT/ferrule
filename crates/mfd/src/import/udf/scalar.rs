@@ -147,6 +147,11 @@ pub(super) fn read(
                 function.name.as_str(),
                 "group-by"
                     | "first-items"
+                    | "skip-first-items"
+                    | "items-from"
+                    | "items-from-to"
+                    | "items-from-till"
+                    | "last-items"
                     | "distinct-values"
                     | "tokenize"
                     | "tokenize-regexp"

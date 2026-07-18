@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
-use mapping::{IterationOutput, Node};
+use mapping::{IterationOutput, Node, SequenceWindow};
 use rusqlite::Connection;
 
 struct TempDir(PathBuf);
@@ -98,7 +98,10 @@ fn run(dir: &Path, design: &Path) -> (mapping::Project, Instance) {
         IterationOutput::First
     );
     assert_eq!(imported.project.root.source(), Some([].as_slice()));
-    assert!(imported.project.root.take.is_some());
+    assert!(matches!(
+        imported.project.root.windows.as_slice(),
+        [SequenceWindow::First { .. }]
+    ));
     assert!(engine::validate(&imported.project).is_empty());
     let source =
         format_db::read_instance(&dir.join("inventory.sqlite"), &imported.project.source).unwrap();
@@ -157,9 +160,11 @@ fn root_first_export_rejects_more_than_one_item_atomically() {
     let dir = TempDir::new();
     let design = prepare(&dir.0, true);
     let (mut project, _) = run(&dir.0, &design);
-    let take = project.root.take.unwrap();
+    let [SequenceWindow::First { count }] = project.root.windows.as_slice() else {
+        panic!("standalone LIMIT 1 query should import one first-items window")
+    };
     project.graph.nodes.insert(
-        take,
+        *count,
         Node::Const {
             value: Value::Int(2),
         },

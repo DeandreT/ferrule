@@ -5,8 +5,8 @@ use ir::{
     XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
 };
 use mapping::{
-    Graph, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SortFilterOrder,
-    XmlMixedContentElement,
+    Graph, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SequenceWindow,
+    SortFilterOrder, XmlMixedContentElement,
 };
 
 use crate::aggregate::value_ordering;
@@ -297,14 +297,15 @@ pub(crate) fn eval_scope(
             .collect();
     }
 
-    let take = scope
-        .take
-        .map(|node| eval_item_count(graph, node, context, positions))
-        .transpose()?;
-    let take = match scope.iteration_output {
-        IterationOutput::Repeated | IterationOutput::MappedSequence => take,
-        IterationOutput::First => Some(take.unwrap_or(1).min(1)),
-    };
+    let mut windows = scope
+        .windows
+        .iter()
+        .copied()
+        .map(|window| eval_sequence_window(graph, window, context, positions))
+        .collect::<Result<Vec<_>, _>>()?;
+    if scope.iteration_output == IterationOutput::First {
+        windows.push(EvaluatedWindow::First(1));
+    }
     let grouping_count = [
         scope.group_by,
         scope.group_starting_with,
@@ -330,7 +331,7 @@ pub(crate) fn eval_scope(
     } else {
         None
     };
-    let mut produced = Vec::with_capacity(take.unwrap_or(extensions.len()).min(extensions.len()));
+    let mut produced = Vec::new();
     let item_evaluator = ItemEvaluator {
         graph,
         scope,
@@ -418,10 +419,9 @@ pub(crate) fn eval_scope(
                 }
             })
             .collect();
+        let owned = apply_sequence_windows(owned, &windows);
+        produced.reserve(owned.len());
         for group in &owned {
-            if take.is_some_and(|limit| produced.len() >= limit) {
-                break;
-            }
             let parent_wrappers = positions.iter().filter(|position| position.grouped).count();
             let parent_frame_start = context
                 .len()
@@ -446,12 +446,24 @@ pub(crate) fn eval_scope(
             }
         }
     } else {
-        let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
-        let renumber_output = scope.filter.is_some() || scope.has_sort() || scope.take.is_some();
-        for extension in &extensions {
-            if take.is_some_and(|limit| produced.len() >= limit) {
-                break;
+        if !windows.is_empty() && !filter_before_sort {
+            let mut filtered = Vec::with_capacity(extensions.len());
+            for extension in extensions {
+                let mut item_context = context.to_vec();
+                item_context.extend(extension.instances.iter().copied());
+                let mut item_positions = positions.to_vec();
+                item_positions.extend(extension.positions.iter().cloned());
+                if passes_filter(graph, scope.filter, &item_context, &item_positions)? {
+                    filtered.push(extension);
+                }
             }
+            extensions = filtered;
+        }
+        extensions = apply_sequence_windows(extensions, &windows);
+        produced.reserve(extensions.len());
+        let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
+        let renumber_output = scope.filter.is_some() || scope.has_sort() || !windows.is_empty();
+        for extension in &extensions {
             let mut next_context = context.to_vec();
             next_context.extend(extension.instances.iter().copied());
             let mut candidate_positions = positions.to_vec();
@@ -483,7 +495,7 @@ pub(crate) fn eval_scope(
                 &next_context,
                 &candidate_positions,
                 &output_positions,
-                !filter_before_sort,
+                !filter_before_sort && windows.is_empty(),
             )? {
                 if !joined && renumber_output && !extension.positions.is_empty() {
                     compact_positions.insert(parent_key, next_position);
@@ -515,6 +527,63 @@ pub(crate) fn eval_scope(
                 .collect(),
         )
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum EvaluatedWindow {
+    SkipFirst(usize),
+    First(usize),
+    From(usize),
+    FromTo { first: usize, last: usize },
+    Last(usize),
+}
+
+fn eval_sequence_window(
+    graph: &Graph,
+    window: SequenceWindow,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+) -> Result<EvaluatedWindow, EngineError> {
+    Ok(match window {
+        SequenceWindow::SkipFirst { count } => {
+            EvaluatedWindow::SkipFirst(eval_item_count(graph, count, context, positions)?)
+        }
+        SequenceWindow::First { count } => {
+            EvaluatedWindow::First(eval_item_count(graph, count, context, positions)?)
+        }
+        SequenceWindow::From { position } => {
+            EvaluatedWindow::From(eval_item_count(graph, position, context, positions)?)
+        }
+        SequenceWindow::FromTo { first, last } => EvaluatedWindow::FromTo {
+            first: eval_item_count(graph, first, context, positions)?,
+            last: eval_item_count(graph, last, context, positions)?,
+        },
+        SequenceWindow::Last { count } => {
+            EvaluatedWindow::Last(eval_item_count(graph, count, context, positions)?)
+        }
+    })
+}
+
+fn apply_sequence_windows<T>(mut items: Vec<T>, windows: &[EvaluatedWindow]) -> Vec<T> {
+    for window in windows {
+        items = match *window {
+            EvaluatedWindow::SkipFirst(count) => items.into_iter().skip(count).collect(),
+            EvaluatedWindow::First(count) => items.into_iter().take(count).collect(),
+            EvaluatedWindow::From(position) => {
+                items.into_iter().skip(position.saturating_sub(1)).collect()
+            }
+            EvaluatedWindow::FromTo { first, last } => {
+                let skip = first.saturating_sub(1);
+                let count = last.saturating_sub(skip);
+                items.into_iter().skip(skip).take(count).collect()
+            }
+            EvaluatedWindow::Last(count) => {
+                let skip = items.len().saturating_sub(count);
+                items.into_iter().skip(skip).collect()
+            }
+        };
+    }
+    items
 }
 
 fn renumber_extension(positions: &mut [PositionFrame], index: usize) {

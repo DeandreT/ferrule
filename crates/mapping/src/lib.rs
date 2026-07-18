@@ -436,6 +436,36 @@ pub enum SortFilterOrder {
     FilterThenSort,
 }
 
+/// One ordered window applied to an iterated sequence after ordinary
+/// sorting, filtering, and grouping controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum SequenceWindow {
+    /// Drop the first `count` items.
+    SkipFirst { count: NodeId },
+    /// Retain at most the first `count` items.
+    First { count: NodeId },
+    /// Retain items beginning at the one-based `position`.
+    From { position: NodeId },
+    /// Retain the inclusive one-based range from `first` through `last`.
+    FromTo { first: NodeId, last: NodeId },
+    /// Retain at most the final `count` items.
+    Last { count: NodeId },
+}
+
+impl SequenceWindow {
+    pub fn nodes(self) -> impl Iterator<Item = NodeId> {
+        let nodes = match self {
+            Self::SkipFirst { count } | Self::First { count } | Self::Last { count } => {
+                [Some(count), None]
+            }
+            Self::From { position } => [Some(position), None],
+            Self::FromTo { first, last } => [Some(first), Some(last)],
+        };
+        nodes.into_iter().flatten()
+    }
+}
+
 /// Populates one target group.
 ///
 /// [`ScopeIteration::Source`] follows a path from the parent scope's current
@@ -447,14 +477,14 @@ pub enum SortFilterOrder {
 /// group or return only the first surviving group. First-item output returns
 /// an empty group when no item survives. Mapped-sequence output retains zero
 /// or more XML element occurrences without changing schema cardinality.
-/// Sorting, filtering, grouping, and `take` are applied before output
+/// Sorting, filtering, grouping, and ordered windows are applied before output
 /// cardinality is selected.
 ///
 /// If `filter` is set, it is evaluated in the same per-item context as
 /// `bindings`; items for which it returns `false` are dropped. `sort_by`
-/// stably orders candidates before filtering/grouping, and `take` limits the
-/// number of produced items after filtering/grouping. These controls apply to
-/// both source-backed and generated iteration.
+/// stably orders candidates before filtering/grouping. `windows` then applies
+/// zero or more ordered prefix, suffix, or range selections. These controls
+/// apply to both source-backed and generated iteration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SortKey {
     pub node: NodeId,
@@ -498,9 +528,9 @@ pub struct Scope {
     /// primary `sort_by` key.
     pub sort_then_by: Vec<SortKey>,
     pub sort_filter_order: SortFilterOrder,
-    /// Expression evaluated once in the parent context to determine the
-    /// maximum number of output items.
-    pub take: Option<NodeId>,
+    /// Ordered sequence windows whose bounds are evaluated once in the parent
+    /// context. Window order is semantically significant.
+    pub windows: Vec<SequenceWindow>,
     /// Cardinality of an iterating scope's target value. Older projects omit
     /// this field and retain the original repeated behavior.
     pub iteration_output: IterationOutput,
@@ -1571,6 +1601,23 @@ mod tests {
                 descending: false
             }]
         );
+    }
+
+    #[test]
+    fn ordered_sequence_windows_roundtrip() {
+        let scope = Scope {
+            iteration: ScopeIteration::Source(vec!["Rows".into()]),
+            windows: vec![
+                SequenceWindow::SkipFirst { count: 4 },
+                SequenceWindow::FromTo { first: 5, last: 6 },
+                SequenceWindow::Last { count: 7 },
+            ],
+            ..Scope::default()
+        };
+
+        let encoded = serde_json::to_string(&scope).unwrap();
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.windows, scope.windows);
     }
 
     #[test]

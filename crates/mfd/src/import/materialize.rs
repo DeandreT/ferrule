@@ -1,6 +1,7 @@
 use super::function::{
-    aggregate_op, is_db_where, is_distinct_values, is_filter, is_first_items, is_group_into_blocks,
-    is_group_starting_with, is_input, is_recursive_construction, is_sequence_producer, is_sort,
+    aggregate_op, is_db_where, is_distinct_values, is_filter, is_group_into_blocks,
+    is_group_starting_with, is_input, is_recursive_construction, is_sequence_producer,
+    is_sequence_window, is_sort,
 };
 use super::graph::GraphBuilder;
 
@@ -39,7 +40,7 @@ pub(super) fn eager_functions(builder: &mut GraphBuilder<'_>) {
             || is_db_where(component)
             || is_input(component)
             || is_sort(component)
-            || is_first_items(component)
+            || is_sequence_window(component)
             || is_group_into_blocks(component)
             || is_group_starting_with(component)
             || is_distinct_values(component)

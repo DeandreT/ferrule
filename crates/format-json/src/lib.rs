@@ -12,7 +12,10 @@ pub mod json_schema;
 
 use std::path::Path;
 
-use ir::{GroupAlternativeMode, Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{
+    GroupAlternativeConstraintValue, GroupAlternativeMode, Instance, ScalarType, SchemaKind,
+    SchemaNode, Value,
+};
 use thiserror::Error;
 
 const MAX_EXACT_F64_INTEGER: u64 = 1_u64 << f64::MANTISSA_DIGITS;
@@ -413,9 +416,9 @@ fn validate_alternative_fields(
                     .keys()
                     .all(|field| alternative.members.iter().any(|member| member == field))
                 && alternative.constraints.iter().all(|constraint| {
-                    fields.get(&constraint.member).is_some_and(
-                        |value| matches!(value, serde_json::Value::String(actual) if actual == &constraint.value),
-                    )
+                    fields
+                        .get(&constraint.member)
+                        .is_some_and(|value| constraint_matches(&constraint.value, value))
                 })
         })
         .count();
@@ -430,6 +433,27 @@ fn validate_alternative_fields(
             })
         }
         _ => Ok(()),
+    }
+}
+
+fn constraint_matches(
+    expected: &GroupAlternativeConstraintValue,
+    actual: &serde_json::Value,
+) -> bool {
+    match (expected, actual) {
+        (GroupAlternativeConstraintValue::String(expected), serde_json::Value::String(actual)) => {
+            expected == actual
+        }
+        (GroupAlternativeConstraintValue::Int(expected), serde_json::Value::Number(actual)) => {
+            actual.as_i64() == Some(*expected)
+        }
+        (GroupAlternativeConstraintValue::Float(expected), serde_json::Value::Number(actual)) => {
+            actual.as_f64() == Some(expected.get())
+        }
+        (GroupAlternativeConstraintValue::Bool(expected), serde_json::Value::Bool(actual)) => {
+            expected == actual
+        }
+        _ => false,
     }
 }
 
@@ -661,7 +685,7 @@ mod tests {
                 required: vec!["kind".into(), "value".into()],
                 constraints: vec![ir::GroupAlternativeConstraint {
                     member: "kind".into(),
-                    value: "created".into(),
+                    value: GroupAlternativeConstraintValue::String("created".into()),
                 }],
             },
             ir::GroupAlternative {
@@ -670,7 +694,7 @@ mod tests {
                 required: vec!["kind".into(), "value".into()],
                 constraints: vec![ir::GroupAlternativeConstraint {
                     member: "kind".into(),
-                    value: "deleted".into(),
+                    value: GroupAlternativeConstraintValue::String("deleted".into()),
                 }],
             },
         ])

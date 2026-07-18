@@ -479,7 +479,7 @@ fn build_root_target(
         || root.group_starting_with.is_some()
         || root.group_into_blocks.is_some()
         || root.sort_by.is_some()
-        || root.take.is_some()
+        || !root.windows.is_empty()
         || !root.bindings.is_empty()
         || !root.children.is_empty()
         || !root.dynamic_bindings.is_empty()
@@ -498,7 +498,7 @@ fn build_root_target(
         || item_scope.group_starting_with.is_some()
         || item_scope.group_into_blocks.is_some()
         || item_scope.sort_by.is_some()
-        || item_scope.take.is_some()
+        || !item_scope.windows.is_empty()
         || !item_scope.bindings.is_empty()
         || !item_scope.children.is_empty()
         || !item_scope.dynamic_children.is_empty()
@@ -616,7 +616,7 @@ fn collect_nested_targets(
             || scope.group_starting_with.is_some()
             || scope.group_into_blocks.is_some()
             || scope.sort_by.is_some()
-            || scope.take.is_some()
+            || !scope.windows.is_empty()
             || scope.join().is_some()
         {
             return Err(dynamic_target_error(
