@@ -84,7 +84,7 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
 </mapping>"#,
     )?;
 
-    let imported = mfd::import(&dir.0.join("mapping.mfd"))?;
+    let mut imported = mfd::import(&dir.0.join("mapping.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.source_options.external_source.is_some());
     assert!(engine::validate(&imported.project).is_empty());
@@ -137,6 +137,29 @@ fn opaque_json_udf_result_becomes_an_executable_external_source()
         scalar(&rows[2], "Name"),
         Some(&Value::String("spade".to_owned()))
     );
+
+    imported.project.source_options.external_source =
+        Some(mapping::ExternalSourceOptions::user_function(
+            "FetchInventory",
+            "opaque body\nretained captured contract",
+            mapping::ExternalPayloadFormat::Json,
+        )?);
+
+    let exported = dir.0.join("roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &exported)?.is_empty());
+    let rendered = std::fs::read_to_string(&exported)?;
+    assert!(rendered.contains("library=\"json\""));
+    assert!(rendered.contains("<ferrule-external-source version=\"1\">"));
+    let roundtrip = mfd::import(&exported)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(
+        roundtrip.project.source_options.external_source,
+        imported.project.source_options.external_source
+    );
+    assert_eq!(roundtrip.project.source, imported.project.source);
+    let roundtrip_output = engine::run(&roundtrip.project, &source)?;
+    assert_eq!(roundtrip_output, output);
     Ok(())
 }
 

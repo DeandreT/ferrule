@@ -8,7 +8,7 @@ use mapping::{
 
 use crate::MfdError;
 
-use super::schema::{KeyAlloc, PortTree, xml_escape};
+use super::schema::{GeneratedSibling, KeyAlloc, PortTree, RenderedSchemaComponent, xml_escape};
 
 pub(super) struct RequestSchemaArtifact {
     pub(super) file_name: String,
@@ -60,9 +60,19 @@ fn validate_boundary(
     }
     validate_json_schema(schema, "response")?;
     match boundary.origin() {
-        ExternalSourceOrigin::UserFunction { name, .. } => Err(unsupported(format!(
-            "opaque user-function source `{name}` cannot be exported losslessly: the project retains its result contract but not the original call and definition body"
-        ))),
+        ExternalSourceOrigin::UserFunction { .. } => {
+            if boundary.payload() != ExternalPayloadFormat::Json {
+                return Err(unsupported(
+                    "captured user-function export currently requires a JSON result contract",
+                ));
+            }
+            if path.is_some_and(valid_http_url) {
+                return Err(unsupported(
+                    "a captured user-function source path must identify a local JSON instance",
+                ));
+            }
+            Ok(())
+        }
         ExternalSourceOrigin::HttpPost {
             request_format,
             request_schema,
@@ -109,7 +119,7 @@ fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError>
         || schema.recursive_ref.is_some()
     {
         return Err(unsupported(format!(
-            "captured HTTP POST {role} schema `{}` uses metadata the canonical JSON entry tree cannot preserve",
+            "captured external {role} schema `{}` uses metadata the canonical JSON entry tree cannot preserve",
             schema.name
         )));
     }
@@ -121,7 +131,7 @@ fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError>
     {
         if !alternatives.is_empty() || dynamic.is_some() {
             return Err(unsupported(format!(
-                "captured HTTP POST {role} schema `{}` uses alternatives or dynamic fields the canonical JSON entry tree cannot preserve",
+                "captured external {role} schema `{}` uses alternatives or dynamic fields the canonical JSON entry tree cannot preserve",
                 schema.name
             )));
         }
@@ -134,6 +144,7 @@ fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError>
 
 fn has_conflicting_options(options: &FormatOptions) -> bool {
     options.lenient_segments
+        || options.edi_kind.is_some()
         || options.idoc.is_some()
         || options.swift_mt.is_some()
         || options.delimiter.is_some()
@@ -142,6 +153,7 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
         || options.flextext.is_some()
         || options.pdf.is_some()
         || options.http_get.is_some()
+        || options.local_xml_file_set
         || options.json_lines
         || options.protobuf.is_some()
         || options.xbrl.is_some()
@@ -205,6 +217,87 @@ pub(super) struct RenderHttpPostArgs<'a> {
     pub(super) options: &'a FormatOptions,
     pub(super) url: Option<&'a str>,
     pub(super) uid: u32,
+}
+
+pub(super) struct RenderUserFunctionArgs<'a> {
+    pub(super) component_name: &'a str,
+    pub(super) schema: &'a SchemaNode,
+    pub(super) ports: &'a PortTree,
+    pub(super) options: &'a FormatOptions,
+    pub(super) instance_path: Option<&'a str>,
+    pub(super) mfd_path: &'a Path,
+    pub(super) sibling_suffix: &'a str,
+    pub(super) uid: u32,
+}
+
+pub(super) fn render_user_function(
+    args: RenderUserFunctionArgs<'_>,
+) -> Result<RenderedSchemaComponent, MfdError> {
+    let boundary = args.options.external_source.as_ref().ok_or_else(|| {
+        unsupported("internal captured user-function component has no boundary metadata")
+    })?;
+    let ExternalSourceOrigin::UserFunction { .. } = boundary.origin() else {
+        return Err(unsupported(
+            "internal external source is not a captured user-function result",
+        ));
+    };
+    if boundary.payload() != ExternalPayloadFormat::Json {
+        return Err(unsupported(
+            "captured user-function export supports JSON result contracts only",
+        ));
+    }
+    let provenance = serde_json::to_string(boundary).map_err(|error| {
+        unsupported(format!(
+            "could not serialize captured user-function provenance ({error})"
+        ))
+    })?;
+    let stem = args
+        .mfd_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("mapping");
+    let schema_file = format!("{stem}-{}.schema.json", args.sibling_suffix);
+    let schema_path = args
+        .mfd_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(&schema_file);
+    let instance = args
+        .instance_path
+        .map(|path| format!(" inputinstance=\"{}\"", xml_escape(path)))
+        .unwrap_or_default();
+    let xml = format!(
+        "\t\t\t\t<component name=\"{}\" library=\"json\" uid=\"{}\" kind=\"31\">\n\
+         \t\t\t\t\t<view rbx=\"300\" rby=\"400\"/>\n\
+         \t\t\t\t\t<data>\n\
+         \t\t\t\t\t\t<root>\n\
+         \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+         \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t<entry name=\"root\" expanded=\"1\">\n\
+         {}\
+         \t\t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t</root>\n\
+         \t\t\t\t\t\t<json schema=\"{}\"{instance}>\n\
+         \t\t\t\t\t\t\t<ferrule-external-source version=\"1\">{}</ferrule-external-source>\n\
+         \t\t\t\t\t\t</json>\n\
+         \t\t\t\t\t</data>\n\
+         \t\t\t\t</component>\n",
+        xml_escape(args.component_name),
+        args.uid,
+        args.ports.json_entries_xml(args.schema, "outkey", 10),
+        xml_escape(&schema_file),
+        xml_escape(&provenance),
+    );
+    Ok(RenderedSchemaComponent {
+        xml,
+        siblings: vec![GeneratedSibling {
+            path: schema_path,
+            contents: format_json::json_schema::export(args.schema),
+        }],
+    })
 }
 
 pub(super) fn render_http_post(args: RenderHttpPostArgs<'_>) -> Result<String, MfdError> {

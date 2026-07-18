@@ -241,6 +241,7 @@ impl CanvasLayout {
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

@@ -12,9 +12,11 @@
 //!   missing/empty ones read as `Null`. Declaring a composite element as a
 //!   plain scalar reads its raw text (components joined by the component
 //!   separator).
-//! - Any other group is a **loop/container**: it matches when its first
-//!   segment descendant (the trigger) matches the cursor, and `repeating:
-//!   true` means 0..N occurrences (also the v1 spelling for optional).
+//! - Any other group is a **loop/container**: it matches when one of its
+//!   leading segment descendants matches the cursor. Leading children marked
+//!   `repeating: true` may be absent, so a later required child can also start
+//!   the container. `repeating: true` means 0..N occurrences (also the v1
+//!   spelling for optional).
 //!   Because segments are recognized by their ID-shaped names, container
 //!   names must NOT look like segment IDs -- use descriptive names
 //!   (`Item`, `Party`, `Loop2000A`).
@@ -48,10 +50,8 @@ pub(crate) struct WriteOptions {
     pub terminator: char,
     pub release: Option<char>,
     pub repetition: Option<char>,
-}
-
-fn is_segment_id(name: &str) -> bool {
-    schema_segment_id(name).is_some()
+    /// Five ASCII digits used only when ISA12 is absent from the instance.
+    pub interchange_version: Option<[u8; 5]>,
 }
 
 fn schema_segment_id(name: &str) -> Option<&str> {
@@ -92,7 +92,20 @@ fn shape_of(node: &SchemaNode, is_root: bool) -> Result<Shape<'_>, EdiFormatErro
     let SchemaKind::Group { children, .. } = &node.kind else {
         return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
     };
-    if !is_root && is_segment_id(&node.name) {
+    let segment_id = (!is_root).then(|| schema_segment_id(&node.name)).flatten();
+    // Configured message bodies can have an all-uppercase type name such as
+    // `INVOICE`, while holding only segment groups. Supported interchange
+    // segment IDs are at most three characters; longer ID-shaped names with
+    // only group children are therefore containers. Long flat names remain
+    // valid for IDoc record schemas, which share this shape validator.
+    if segment_id.is_some_and(|id| id.len() > 3)
+        && children
+            .iter()
+            .all(|child| matches!(child.kind, SchemaKind::Group { .. }))
+    {
+        return Ok(Shape::Container(children));
+    }
+    if segment_id.is_some() {
         let valid_segment = children.iter().all(is_scalar_tree);
         if valid_segment {
             return Ok(Shape::Segment(children));
@@ -116,18 +129,38 @@ fn is_scalar_tree(node: &SchemaNode) -> bool {
     }
 }
 
-/// The segment schema that signals the start of `node` (for a container,
-/// its first segment descendant).
-fn trigger_of(node: &SchemaNode) -> Result<&SchemaNode, EdiFormatError> {
-    match shape_of(node, false)? {
-        Shape::Segment(_) => Ok(node),
+/// Segment schemas that can begin `node`. A repeating leading child is also
+/// the IR spelling for an optional child, so every following sibling remains
+/// a possible start until the first required child is reached.
+fn leading_triggers(node: &SchemaNode) -> Result<Vec<&SchemaNode>, EdiFormatError> {
+    let mut triggers = Vec::new();
+    collect_leading_triggers(node, false, &mut triggers)?;
+    if triggers.is_empty() {
+        return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
+    }
+    Ok(triggers)
+}
+
+fn collect_leading_triggers<'a>(
+    node: &'a SchemaNode,
+    is_root: bool,
+    triggers: &mut Vec<&'a SchemaNode>,
+) -> Result<(), EdiFormatError> {
+    match shape_of(node, is_root)? {
+        Shape::Segment(_) => triggers.push(node),
         Shape::Container(children) => {
-            let first = children
-                .first()
-                .ok_or_else(|| EdiFormatError::UnsupportedSchema(node.name.clone()))?;
-            trigger_of(first)
+            if children.is_empty() {
+                return Err(EdiFormatError::UnsupportedSchema(node.name.clone()));
+            }
+            for child in children {
+                collect_leading_triggers(child, false, triggers)?;
+                if !child.repeating {
+                    break;
+                }
+            }
         }
     }
+    Ok(())
 }
 
 /// The first segment ID a whole schema expects (the root is always a
@@ -135,10 +168,16 @@ fn trigger_of(node: &SchemaNode) -> Result<&SchemaNode, EdiFormatError> {
 pub(crate) fn root_trigger(schema: &SchemaNode) -> Result<&str, EdiFormatError> {
     match shape_of(schema, true)? {
         Shape::Container(children) => {
-            let first = children
+            let mut triggers = Vec::new();
+            for child in children {
+                collect_leading_triggers(child, false, &mut triggers)?;
+                if !child.repeating {
+                    break;
+                }
+            }
+            let trigger = triggers
                 .first()
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(schema.name.clone()))?;
-            let trigger = trigger_of(first)?;
             schema_segment_id(&trigger.name)
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(trigger.name.clone()))
         }
@@ -327,30 +366,35 @@ fn read_node(
         Shape::Container(children) => {
             let mut fields = Vec::with_capacity(children.len());
             for (i, child) in children.iter().enumerate() {
-                let trigger = trigger_of(child)?;
+                let triggers = leading_triggers(child)?;
                 // Triggers that may legitimately appear once this child is
                 // done: later siblings here, then everything the ancestors
                 // still expect.
-                let mut child_follow: Vec<&SchemaNode> = children[i + 1..]
-                    .iter()
-                    .map(trigger_of)
-                    .collect::<Result<_, _>>()?;
+                let mut child_follow = Vec::new();
+                for sibling in &children[i + 1..] {
+                    child_follow.extend(leading_triggers(sibling)?);
+                }
                 child_follow.extend_from_slice(follow);
 
-                let mut expectations = vec![trigger];
+                let mut expectations = triggers.clone();
                 expectations.extend_from_slice(&child_follow);
 
                 if child.repeating {
-                    // The loop's own trigger stays expected across nested
-                    // reads, so leniency can't swallow the next iteration.
-                    let mut nested_follow = vec![trigger];
+                    // Every possible start of this loop stays expected across
+                    // nested reads, so leniency can't swallow the next
+                    // iteration when an optional prefix is absent.
+                    let mut nested_follow = triggers.clone();
                     nested_follow.extend_from_slice(&child_follow);
                     let mut items = Vec::new();
                     loop {
                         if lenient {
                             skip_unmatched(cursor, &expectations);
                         }
-                        if !cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
+                        if !cursor.peek().is_some_and(|segment| {
+                            triggers
+                                .iter()
+                                .any(|trigger| segment_matches(trigger, segment))
+                        }) {
                             break;
                         }
                         items.push(read_node(
@@ -367,7 +411,11 @@ fn read_node(
                     if lenient {
                         skip_unmatched(cursor, &expectations);
                     }
-                    if cursor.peek().is_some_and(|s| segment_matches(trigger, s)) {
+                    if cursor.peek().is_some_and(|segment| {
+                        triggers
+                            .iter()
+                            .any(|trigger| segment_matches(trigger, segment))
+                    }) {
                         fields.push((
                             child.name.clone(),
                             read_node(child, cursor, syntax, false, lenient, &child_follow)?,
@@ -375,7 +423,11 @@ fn read_node(
                     } else {
                         return Err(EdiFormatError::UnexpectedSegment {
                             index: cursor.pos,
-                            expected: describe_trigger(trigger),
+                            expected: triggers
+                                .iter()
+                                .map(|trigger| describe_trigger(trigger))
+                                .collect::<Vec<_>>()
+                                .join(" or "),
                             found: cursor
                                 .peek()
                                 .map_or_else(|| "end of interchange".to_string(), |s| s.id.clone()),
@@ -652,6 +704,7 @@ fn instance_shape_error(
         Instance::Group(_) => "a group",
         Instance::Repeated(_) => "repeating values",
         Instance::MappedSequence(_) => "a mapped sequence",
+        Instance::DocumentSet(_) => "a document set",
     };
     EdiFormatError::InstanceShape {
         name: schema.name.clone(),
@@ -693,11 +746,20 @@ fn write_node(
                         ("ISA", 15) => Some(opts.component),
                         _ => None,
                     };
+                    let separator_default = match (segment_id, index) {
+                        ("ISA", 10) => opts.repetition.map(|value| value.to_string()),
+                        ("ISA", 11) => opts
+                            .interchange_version
+                            .map(|value| String::from_utf8_lossy(&value).into_owned()),
+                        ("ISA", 15) => Some(opts.component.to_string()),
+                        _ => None,
+                    };
                     write_element(
                         element,
                         instance.field(&element.name),
                         opts,
                         allowed_reserved,
+                        separator_default.as_deref(),
                     )
                 })
                 .collect::<Result<Vec<String>, _>>()?;
@@ -753,6 +815,7 @@ fn validate_isa_separator(
         _ => return Ok(()),
     };
     if let Some(expected) = expected
+        && !text.is_empty()
         && text != expected.to_string()
     {
         return Err(EdiFormatError::EnvelopeSeparatorMismatch {
@@ -769,6 +832,7 @@ fn write_element(
     instance: Option<&Instance>,
     opts: &WriteOptions,
     allowed_reserved: Option<char>,
+    separator_default: Option<&str>,
 ) -> Result<String, EdiFormatError> {
     if let Some(Instance::Repeated(items)) = instance {
         let Some(repetition) = opts.repetition else {
@@ -779,11 +843,19 @@ fn write_element(
         };
         let repeats = items
             .iter()
-            .map(|item| write_one_repeat(schema, Some(item), opts, allowed_reserved))
+            .map(|item| {
+                write_one_repeat(
+                    schema,
+                    Some(item),
+                    opts,
+                    allowed_reserved,
+                    separator_default,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         return Ok(repeats.join(&repetition.to_string()));
     }
-    write_one_repeat(schema, instance, opts, allowed_reserved)
+    write_one_repeat(schema, instance, opts, allowed_reserved, separator_default)
 }
 
 fn write_one_repeat(
@@ -791,10 +863,16 @@ fn write_one_repeat(
     instance: Option<&Instance>,
     opts: &WriteOptions,
     allowed_reserved: Option<char>,
+    separator_default: Option<&str>,
 ) -> Result<String, EdiFormatError> {
     match &schema.kind {
         SchemaKind::Scalar { .. } => {
-            let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
+            let mut text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
+            if text.is_empty()
+                && let Some(default) = separator_default
+            {
+                text.push_str(default);
+            }
             escape(&text, &schema.name, opts, allowed_reserved)
         }
         SchemaKind::Group { children, .. } => {
@@ -874,10 +952,10 @@ fn escape(
     opts: &WriteOptions,
     allowed_reserved: Option<char>,
 ) -> Result<String, EdiFormatError> {
+    if text.chars().count() == 1 && text.chars().next() == allowed_reserved {
+        return Ok(text.to_string());
+    }
     let Some(release) = opts.release else {
-        if text.chars().count() == 1 && text.chars().next() == allowed_reserved {
-            return Ok(text.to_string());
-        }
         if let Some(delimiter) = text.chars().find(|character| {
             *character == opts.element
                 || *character == opts.component
@@ -1007,5 +1085,31 @@ mod tests {
             )],
         );
         assert_eq!(root_trigger(&occurrence).unwrap(), "REF");
+    }
+
+    #[test]
+    fn composite_fixed_values_select_a_segment() {
+        let trigger = SchemaNode::group(
+            "MHD",
+            vec![
+                SchemaNode::scalar("Reference", ScalarType::Int),
+                SchemaNode::group(
+                    "Type",
+                    vec![
+                        SchemaNode::scalar("Code", ScalarType::String).fixed("ORDER"),
+                        SchemaNode::scalar("Version", ScalarType::Int).fixed("1"),
+                    ],
+                ),
+            ],
+        );
+        let segment = Segment {
+            id: "MHD".into(),
+            elements: vec![
+                vec![vec!["1".into()]],
+                vec![vec!["ORDER".into(), "1".into()]],
+            ],
+        };
+
+        assert!(segment_matches(&trigger, &segment));
     }
 }

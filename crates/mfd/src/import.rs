@@ -33,12 +33,14 @@ mod json_serializer;
 mod materialize;
 mod output_parameter;
 mod protobuf_target;
+mod recursive;
 mod scalar_anchor;
 mod scalar_function;
 mod schema;
 mod scope;
 mod sequence_scalar;
 mod source;
+mod source_node_function;
 mod target_iteration;
 mod udf;
 
@@ -97,6 +99,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut external_udf_candidates = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
+    let source_node_functions = source_node_function::read(&mapping_el);
 
     if let Some(children) = structure
         .children()
@@ -285,6 +288,19 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 {
                     fn_components.push(read_fn_component(&component));
                 }
+                "ferrule" if recursive::is_component(&component) => {
+                    match recursive::read_component(&component) {
+                        Ok(function) => fn_components.push(function),
+                        Err(reason) => {
+                            warnings.push(format!(
+                                "skipped ferrule recursive component `{name}`: {reason}"
+                            ));
+                            let mut function = read_fn_component(&component);
+                            function.recursive = Some(function::RecursiveComponent::Invalid);
+                            fn_components.push(function);
+                        }
+                    }
+                }
                 "edifact" if name == "to-datetime" => {
                     fn_components.push(read_fn_component(&component));
                 }
@@ -423,10 +439,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         warned_sequence_uses: BTreeSet::new(),
         warned_scalar_filters: BTreeSet::new(),
         warned_join_controls: BTreeSet::new(),
+        warned_correlated_join_aggregates: BTreeSet::new(),
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         json_serializer_nodes: BTreeMap::new(),
         flextext_parser_nodes: BTreeMap::new(),
+        source_node_function_nodes: BTreeMap::new(),
         claimed_dynamic_ports: BTreeSet::new(),
         query_scope_sources: BTreeSet::new(),
         warned_unscoped_queries: BTreeSet::new(),
@@ -437,6 +455,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         intermediates: &intermediates,
         json_serializers: &json_serializers,
         flextext_parsers: &flextext_parsers,
+        source_node_functions: &source_node_functions,
         fn_components: &fn_components,
         fn_by_output: BTreeMap::new(),
         udf_nodes: BTreeMap::new(),
@@ -640,6 +659,11 @@ fn build_target_scope(
             continue;
         }
         let node_kind = schema_node_at(&target.schema, target_path);
+        if let Some(node) = node_kind
+            && recursive::accept_target(target_path, node, from, builder, &mut scopes)
+        {
+            continue;
+        }
         match node_kind {
             Some(node) if matches!(node.kind, SchemaKind::Group { .. }) => {
                 if udf::structured::accept_target(target, target_path, node, inpkey, from, builder)
@@ -878,7 +902,22 @@ impl GraphBuilder<'_> {
                     return None;
                 }
                 let source_path = self.source_value_path(idx, abs);
-                return self.source_field_at(&source_path);
+                let ty = self
+                    .schema_node(&source_path)
+                    .and_then(|node| match &node.kind {
+                        SchemaKind::Scalar { ty } => Some(*ty),
+                        SchemaKind::Group { .. } => None,
+                    });
+                let input = self.source_field_at(&source_path)?;
+                let Some(ty) = ty else {
+                    return Some(input);
+                };
+                if let Some(node) = self.source_node_function_nodes.get(&key) {
+                    return Some(*node);
+                }
+                let node = self.apply_source_node_functions(key, ty, input);
+                self.source_node_function_nodes.insert(key, node);
+                return Some(node);
             }
         }
         // A transparent output of a variable schema component?
@@ -956,7 +995,13 @@ impl GraphBuilder<'_> {
             // (re-evaluated in the group's context it reads the group's
             // shared key); its groups output passes the nodes through.
             "group-by" => {
-                let pos = if self.fn_components[idx].outputs.get(1) == Some(&key) {
+                let pos = if self.fn_components[idx]
+                    .output_pins
+                    .get(1)
+                    .copied()
+                    .flatten()
+                    == Some(key)
+                {
                     1
                 } else {
                     0

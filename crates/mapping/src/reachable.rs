@@ -81,6 +81,7 @@ fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
 fn node_dependencies(node: &Node) -> Vec<NodeId> {
     match node {
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

@@ -4,7 +4,8 @@
 //! Default separators are `+` (element), `:` (component), `'` (segment
 //! terminator), and `?` (release/escape character, which makes any
 //! following character literal). An optional leading UNA service string
-//! advises different separators and is honored on read. Writing uses the
+//! advises different separators and is honored on read. Both complete UNB
+//! interchanges and standalone UNH messages are accepted. Writing uses the
 //! defaults with one segment per line, escaping separators in values with
 //! the release character.
 
@@ -24,6 +25,7 @@ const WRITE_OPTIONS: WriteOptions = WriteOptions {
     terminator: '\'',
     release: Some('?'),
     repetition: None,
+    interchange_version: None,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -73,9 +75,14 @@ fn tokenize_with_separators(text: &str) -> Result<(Vec<Segment>, Separators), Ed
     } else {
         (DEFAULT_SEPARATORS, text)
     };
-    if !body.starts_with("UNB") {
+    let starts_with = |id: &str| {
+        body.strip_prefix(id).is_some_and(|rest| {
+            rest.starts_with(separators.element) || rest.starts_with(separators.terminator)
+        })
+    };
+    if !starts_with("UNB") && !starts_with("UNH") {
         return Err(EdiFormatError::NotEdifact(
-            "interchange must start with UNA or UNB",
+            "interchange or standalone message must start with UNA, UNB, or UNH",
         ));
     }
 
@@ -238,6 +245,69 @@ mod tests {
     fn missing_unb_is_reported() {
         let err = tokenize("ISA*00~").unwrap_err();
         assert!(matches!(err, EdiFormatError::NotEdifact(_)));
+    }
+
+    #[test]
+    fn standalone_message_after_una_is_accepted() {
+        let segments = tokenize("UNA:+.?*'\r\nUNH+1+TEST:1'\r\nUNT+2+1'").unwrap();
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].id, "UNH");
+        assert_eq!(segments[1].id, "UNT");
+    }
+
+    #[test]
+    fn optional_interchange_prefix_can_be_absent() {
+        let schema = SchemaNode::group(
+            "Envelope",
+            vec![
+                SchemaNode::group(
+                    "Interchange",
+                    vec![
+                        segment("UNB", Vec::new()).repeating(),
+                        SchemaNode::group(
+                            "Messages",
+                            vec![
+                                segment("UNH", vec![scalar("reference", ScalarType::String)]),
+                                segment("UNT", Vec::new()),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let path = write_temp(
+            "standalone_message",
+            "UNA:+.?*'\r\nUNH+message-1'\r\nUNT+2+message-1'",
+        );
+
+        let instance = read(&path, &schema, false).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        let interchange = &instance
+            .field("Interchange")
+            .and_then(Instance::as_repeated)
+            .unwrap()[0];
+        assert!(
+            interchange
+                .field("UNB")
+                .and_then(Instance::as_repeated)
+                .unwrap()
+                .is_empty()
+        );
+        let message = &interchange
+            .field("Messages")
+            .and_then(Instance::as_repeated)
+            .unwrap()[0];
+        assert_eq!(
+            message
+                .field("UNH")
+                .and_then(|unh| unh.field("reference"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("message-1".into()))
+        );
     }
 
     #[test]

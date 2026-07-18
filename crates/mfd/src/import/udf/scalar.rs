@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::Value;
+use ir::{ScalarType, Value};
 
 use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
@@ -49,6 +49,7 @@ pub(super) fn read(
 
     let mut functions = Vec::new();
     let mut function_component_ids = Vec::new();
+    let mut parameter_types = BTreeMap::new();
     let mut nested_calls = Vec::new();
     let mut seen_component_ids = BTreeSet::new();
     let mut template_budget = ExpansionBudget::new();
@@ -131,6 +132,15 @@ pub(super) fn read(
             )));
         }
         let function = read_function(&child);
+        if function.kind == 6
+            && let Some(parameter_type) = child
+                .descendants()
+                .find(|node| node.has_tag_name("input"))
+                .and_then(|node| node.attribute("datatype"))
+                .and_then(scalar_type)
+        {
+            parameter_types.insert(component_id, parameter_type);
+        }
         if function.kind == 3 && !scalar_only
             || function.kind == 30
             || matches!(
@@ -162,6 +172,7 @@ pub(super) fn read(
     let edge_from = read_edges(&structure, Some(component));
     let mut by_output = BTreeMap::new();
     let mut parameter_by_key = BTreeMap::new();
+    let mut parameter_default_by_key = BTreeMap::new();
     let mut output_feeds = BTreeMap::new();
     for (idx, function) in functions.iter().enumerate() {
         let component_id = function_component_ids[idx];
@@ -170,6 +181,19 @@ pub(super) fn read(
                 ReadError::Shape(format!("input parameter `{}` has no output", function.name))
             })?;
             parameter_by_key.insert(key, component_id);
+            if let Some(default_feed) = function
+                .inputs
+                .first()
+                .copied()
+                .flatten()
+                .and_then(|input| edge_from.get(&input))
+                .copied()
+            {
+                parameter_default_by_key.insert(
+                    key,
+                    (default_feed, parameter_types.get(&component_id).copied()),
+                );
+            }
         } else if function.kind == 7 {
             let input_key = function.inputs.first().copied().flatten().ok_or_else(|| {
                 ReadError::Shape(format!("output parameter `{}` has no input", function.name))
@@ -203,6 +227,7 @@ pub(super) fn read(
         nested_calls: &nested_calls,
         by_output: &by_output,
         parameter_by_key: &parameter_by_key,
+        parameter_default_by_key: &parameter_default_by_key,
         edge_from: &edge_from,
     };
     let mut budget = ExpansionBudget::new();
@@ -253,6 +278,7 @@ struct DefinitionContext<'a> {
     nested_calls: &'a [NestedScalarCall],
     by_output: &'a BTreeMap<u32, Producer>,
     parameter_by_key: &'a BTreeMap<u32, u32>,
+    parameter_default_by_key: &'a BTreeMap<u32, (u32, Option<ScalarType>)>,
     edge_from: &'a BTreeMap<u32, u32>,
 }
 
@@ -264,7 +290,22 @@ impl DefinitionContext<'_> {
         budget: &mut ExpansionBudget,
     ) -> Result<ScalarExpr, String> {
         if let Some(component_id) = self.parameter_by_key.get(&feed) {
-            return Ok(ScalarExpr::Parameter(*component_id));
+            let Some((default_feed, parameter_type)) =
+                self.parameter_default_by_key.get(&feed).copied()
+            else {
+                return Ok(ScalarExpr::Parameter(*component_id));
+            };
+            if !active.insert(feed) {
+                return Err("definition contains a cyclic scalar parameter default".to_string());
+            }
+            let default = self
+                .expression(default_feed, active, budget)
+                .map(|default| coerce_constant(default, parameter_type));
+            active.remove(&feed);
+            return Ok(ScalarExpr::DefaultedParameter {
+                component_id: *component_id,
+                default: Box::new(default?),
+            });
         }
         if !active.insert(feed) {
             return Err("definition contains a cyclic scalar expression".to_string());
@@ -297,16 +338,16 @@ impl DefinitionContext<'_> {
         let substitutions = call
             .parameters
             .iter()
-            .map(|component_id| {
-                let expression = call
+            .filter_map(|component_id| {
+                let input_feed = call
                     .inputs
                     .get(component_id)
                     .and_then(|input_key| self.edge_from.get(input_key))
-                    .copied()
-                    .map_or(Ok(ScalarExpr::Const(Value::Null)), |input_feed| {
-                        self.expression(input_feed, active, budget)
-                    })?;
-                Ok((*component_id, expression))
+                    .copied()?;
+                Some(
+                    self.expression(input_feed, active, budget)
+                        .map(|expression| (*component_id, expression)),
+                )
             })
             .collect::<Result<BTreeMap<_, _>, String>>()?;
         substitute(template, &substitutions, budget, 0)
@@ -428,6 +469,47 @@ impl DefinitionContext<'_> {
     }
 }
 
+fn scalar_type(datatype: &str) -> Option<ScalarType> {
+    match datatype {
+        "string" => Some(ScalarType::String),
+        "integer" | "int" | "long" => Some(ScalarType::Int),
+        "decimal" | "double" | "float" | "number" => Some(ScalarType::Float),
+        "boolean" => Some(ScalarType::Bool),
+        _ => None,
+    }
+}
+
+fn coerce_constant(expression: ScalarExpr, expected: Option<ScalarType>) -> ScalarExpr {
+    let ScalarExpr::Const(value) = expression else {
+        return expression;
+    };
+    let value = match (expected, value) {
+        (Some(ScalarType::String), Value::Null | Value::XmlNil(_)) => Value::String(String::new()),
+        (Some(ScalarType::String), Value::Bool(value)) => Value::String(value.to_string()),
+        (Some(ScalarType::String), Value::Int(value)) => Value::String(value.to_string()),
+        (Some(ScalarType::String), Value::Float(value)) => Value::String(value.to_string()),
+        (Some(ScalarType::Bool), Value::String(value)) => match value.as_str() {
+            "true" | "1" => Value::Bool(true),
+            "false" | "0" => Value::Bool(false),
+            _ => Value::String(value),
+        },
+        (Some(ScalarType::Bool), Value::Int(value)) => Value::Bool(value != 0),
+        (Some(ScalarType::Bool), Value::Float(value)) => {
+            Value::Bool(value != 0.0 && !value.is_nan())
+        }
+        (Some(ScalarType::Int), Value::String(value)) => value
+            .parse()
+            .map(Value::Int)
+            .unwrap_or(Value::String(value)),
+        (Some(ScalarType::Float), Value::String(value)) => value
+            .parse()
+            .map(Value::Float)
+            .unwrap_or(Value::String(value)),
+        (_, value) => value,
+    };
+    ScalarExpr::Const(value)
+}
+
 fn substitute(
     expression: &ScalarExpr,
     parameters: &BTreeMap<u32, ScalarExpr>,
@@ -441,6 +523,16 @@ fn substitute(
             } else {
                 budget.claim(depth)?;
                 Ok(ScalarExpr::Const(Value::Null))
+            }
+        }
+        ScalarExpr::DefaultedParameter {
+            component_id,
+            default,
+        } => {
+            if let Some(expression) = parameters.get(component_id) {
+                clone_with_budget(expression, budget, depth)
+            } else {
+                substitute(default, parameters, budget, depth)
             }
         }
         ScalarExpr::Const(value) => {
@@ -494,6 +586,13 @@ fn clone_with_budget(
     budget.claim(depth)?;
     match expression {
         ScalarExpr::Parameter(component_id) => Ok(ScalarExpr::Parameter(*component_id)),
+        ScalarExpr::DefaultedParameter {
+            component_id,
+            default,
+        } => Ok(ScalarExpr::DefaultedParameter {
+            component_id: *component_id,
+            default: Box::new(clone_with_budget(default, budget, depth + 1)?),
+        }),
         ScalarExpr::Const(value) => Ok(ScalarExpr::Const(value.clone())),
         ScalarExpr::Call { function, args } => Ok(ScalarExpr::Call {
             function: function.clone(),

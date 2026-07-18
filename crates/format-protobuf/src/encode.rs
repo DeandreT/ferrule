@@ -402,6 +402,7 @@ fn instance_kind(instance: &Instance) -> &'static str {
         Instance::Group(_) => "group",
         Instance::Repeated(_) => "repeated sequence",
         Instance::MappedSequence(_) => "mapped sequence",
+        Instance::DocumentSet(_) => "document set",
     }
 }
 

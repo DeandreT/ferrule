@@ -9,7 +9,7 @@
 
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, ValueGeneration};
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OptionalExtension};
 use thiserror::Error;
@@ -41,6 +41,12 @@ pub enum DbFormatError {
     UnexpectedField { row: usize, column: String },
     #[error("row {row}: duplicate column `{column}`")]
     DuplicateField { row: usize, column: String },
+    #[error("row {row}: generated column `{column}` must be absent or Null")]
+    GeneratedFieldSupplied { row: usize, column: String },
+    #[error("generated column `{column}` must be a non-repeating integer scalar")]
+    InvalidGeneratedColumn { column: String },
+    #[error("generated column `{column}` exceeded the supported integer range")]
+    GeneratedValueOverflow { column: String },
     #[error("column `{column}`: cannot read SQLite {got} as {expected:?}")]
     CellType {
         column: String,
@@ -396,10 +402,14 @@ fn sqlite_type_name(value: ValueRef) -> &'static str {
 /// mapping runs idempotent.
 pub fn write(db_path: &Path, schema: &SchemaNode, rows: &[Instance]) -> Result<(), DbFormatError> {
     let columns = columns_of(schema)?;
+    let generated = generated_columns(schema)?;
+    let mut generated_values = std::collections::BTreeMap::new();
     let records = rows
         .iter()
         .enumerate()
-        .map(|(row, instance)| row_values(row, instance, &columns))
+        .map(|(row, instance)| {
+            row_values(row, instance, &columns, &generated, &mut generated_values)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     let mut conn = Connection::open(db_path)?;
 
@@ -443,6 +453,8 @@ fn row_values(
     row: usize,
     instance: &Instance,
     columns: &[(&str, ScalarType)],
+    generated: &std::collections::BTreeSet<&str>,
+    generated_values: &mut std::collections::BTreeMap<String, i64>,
 ) -> Result<Vec<rusqlite::types::Value>, DbFormatError> {
     let Instance::Group(fields) = instance else {
         return Err(DbFormatError::RowShape {
@@ -468,13 +480,32 @@ fn row_values(
     columns
         .iter()
         .map(|(name, ty)| {
-            let (_, value) = fields
+            let value = fields
                 .iter()
                 .find(|(field, _)| field == name)
-                .ok_or_else(|| DbFormatError::MissingField {
-                    row,
-                    column: (*name).to_string(),
-                })?;
+                .map(|(_, value)| value);
+            if generated.contains(name) {
+                if value.is_some_and(|value| !matches!(value, Instance::Scalar(Value::Null))) {
+                    return Err(DbFormatError::GeneratedFieldSupplied {
+                        row,
+                        column: (*name).to_string(),
+                    });
+                }
+                let next = generated_values
+                    .get(*name)
+                    .copied()
+                    .unwrap_or_default()
+                    .checked_add(1)
+                    .ok_or_else(|| DbFormatError::GeneratedValueOverflow {
+                        column: (*name).to_string(),
+                    })?;
+                generated_values.insert((*name).to_string(), next);
+                return Ok(rusqlite::types::Value::Integer(next));
+            }
+            let value = value.ok_or_else(|| DbFormatError::MissingField {
+                row,
+                column: (*name).to_string(),
+            })?;
             let Instance::Scalar(value) = value else {
                 return Err(DbFormatError::ValueType {
                     column: (*name).to_string(),
@@ -487,12 +518,39 @@ fn row_values(
         .collect()
 }
 
+fn generated_columns(
+    schema: &SchemaNode,
+) -> Result<std::collections::BTreeSet<&str>, DbFormatError> {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Err(DbFormatError::UnsupportedSchema);
+    };
+    children
+        .iter()
+        .filter_map(|child| {
+            child
+                .value_generation
+                .map(|generation| match (&child.kind, generation) {
+                    (
+                        SchemaKind::Scalar {
+                            ty: ScalarType::Int,
+                        },
+                        ValueGeneration::MaxNumber,
+                    ) if !child.repeating => Ok(child.name.as_str()),
+                    _ => Err(DbFormatError::InvalidGeneratedColumn {
+                        column: child.name.clone(),
+                    }),
+                })
+        })
+        .collect()
+}
+
 fn instance_type_name(instance: &Instance) -> &'static str {
     match instance {
         Instance::Scalar(value) => value.type_name(),
         Instance::Group(_) => "group",
         Instance::Repeated(_) => "repeated",
         Instance::MappedSequence(_) => "mapped sequence",
+        Instance::DocumentSet(_) => "document set",
     }
 }
 
@@ -549,9 +607,19 @@ fn to_sql_value(
     value: &Value,
 ) -> Result<rusqlite::types::Value, DbFormatError> {
     use rusqlite::types::Value as Sql;
+    let invalid = || DbFormatError::ValueType {
+        column: column.to_string(),
+        expected: ty,
+        got: value.type_name(),
+    };
     match (ty, value) {
         (_, Value::Null) => Ok(Sql::Null),
         (ScalarType::Int, Value::Int(i)) => Ok(Sql::Integer(*i)),
+        (ScalarType::Int, Value::String(value)) => value
+            .trim()
+            .parse::<i64>()
+            .map(Sql::Integer)
+            .map_err(|_| invalid()),
         (ScalarType::Float, Value::Float(f)) if f.is_finite() => Ok(Sql::Real(*f)),
         (ScalarType::Float, Value::Float(_)) => Err(DbFormatError::ValueType {
             column: column.to_string(),
@@ -567,13 +635,27 @@ fn to_sql_value(
                     got: "int outside the exact f64 range",
                 })
         }
+        (ScalarType::Float, Value::String(value)) => {
+            let parsed = value.trim().parse::<f64>().map_err(|_| invalid())?;
+            if !parsed.is_finite() {
+                return Err(invalid());
+            }
+            Ok(Sql::Real(parsed))
+        }
         (ScalarType::Bool, Value::Bool(b)) => Ok(Sql::Integer(i64::from(*b))),
+        (ScalarType::Bool, Value::String(value)) => value
+            .trim()
+            .parse::<bool>()
+            .map(i64::from)
+            .map(Sql::Integer)
+            .map_err(|_| invalid()),
         (ScalarType::String, Value::String(s)) => Ok(Sql::Text(s.clone())),
-        (_, other) => Err(DbFormatError::ValueType {
-            column: column.to_string(),
-            expected: ty,
-            got: other.type_name(),
-        }),
+        (ScalarType::String, Value::Int(value)) => Ok(Sql::Text(value.to_string())),
+        (ScalarType::String, Value::Bool(value)) => Ok(Sql::Text(value.to_string())),
+        (ScalarType::String, Value::Float(value)) if value.is_finite() => {
+            Ok(Sql::Text(value.to_string()))
+        }
+        _ => Err(invalid()),
     }
 }
 
@@ -805,6 +887,60 @@ mod tests {
     }
 
     #[test]
+    fn write_accepts_only_valid_lexical_scalar_coercions() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_lexical_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let schema = SchemaNode::group(
+            "coerced",
+            vec![
+                SchemaNode::scalar("count", ScalarType::Int),
+                SchemaNode::scalar("ratio", ScalarType::Float),
+                SchemaNode::scalar("active", ScalarType::Bool),
+                SchemaNode::scalar("label", ScalarType::String),
+            ],
+        )
+        .repeating();
+        let row = Instance::Group(vec![
+            (
+                "count".into(),
+                Instance::Scalar(Value::String(" 42 ".into())),
+            ),
+            (
+                "ratio".into(),
+                Instance::Scalar(Value::String(" 1.25 ".into())),
+            ),
+            (
+                "active".into(),
+                Instance::Scalar(Value::String(" true ".into())),
+            ),
+            ("label".into(), Instance::Scalar(Value::Int(7))),
+        ]);
+
+        write(&path, &schema, &[row]).unwrap();
+        let rows = read(&path, &schema).unwrap();
+        assert_eq!(
+            rows[0].field("count").and_then(Instance::as_scalar),
+            Some(&Value::Int(42))
+        );
+        assert_eq!(
+            rows[0].field("ratio").and_then(Instance::as_scalar),
+            Some(&Value::Float(1.25))
+        );
+        assert_eq!(
+            rows[0].field("active").and_then(Instance::as_scalar),
+            Some(&Value::Bool(true))
+        );
+        assert_eq!(
+            rows[0].field("label").and_then(Instance::as_scalar),
+            Some(&Value::String("7".into()))
+        );
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
     fn read_orders_rows_by_rowid() {
         let path = std::env::temp_dir().join(format!(
             "ferrule_format_db_test_row_order_{}.db",
@@ -928,6 +1064,48 @@ mod tests {
             .unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_eq!(preserved, "old");
+    }
+
+    #[test]
+    fn max_number_columns_fill_missing_values_deterministically() {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_format_db_test_generated_{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let id = SchemaNode::scalar("Id", ScalarType::Int)
+            .with_value_generation(ValueGeneration::MaxNumber)
+            .unwrap();
+        let schema = SchemaNode::group(
+            "People",
+            vec![id, SchemaNode::scalar("Name", ScalarType::String)],
+        )
+        .repeating();
+        let rows = ["Ada", "Grace"].map(|name| {
+            Instance::Group(vec![(
+                "Name".into(),
+                Instance::Scalar(Value::String(name.into())),
+            )])
+        });
+
+        write(&path, &schema, &rows).unwrap();
+        write(&path, &schema, &rows).unwrap();
+        let roundtrip = read(&path, &schema).unwrap();
+        let ids = roundtrip
+            .iter()
+            .map(|row| row.field("Id").and_then(Instance::as_scalar))
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec![Some(&Value::Int(1)), Some(&Value::Int(2))]);
+
+        let supplied = Instance::Group(vec![
+            ("Id".into(), Instance::Scalar(Value::Int(9))),
+            ("Name".into(), Instance::Scalar(Value::String("No".into()))),
+        ]);
+        assert!(matches!(
+            write(&path, &schema, &[supplied]),
+            Err(DbFormatError::GeneratedFieldSupplied { row: 0, column }) if column == "Id"
+        ));
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

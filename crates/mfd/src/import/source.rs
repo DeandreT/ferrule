@@ -114,7 +114,7 @@ fn iteration_source_feed(
         let is_group_output = component.library == "core"
             && component.kind == 5
             && component.name == "group-by"
-            && component.outputs.first() == Some(&feed);
+            && component.output_pins.first().copied().flatten() == Some(feed);
         if !(is_filter(component)
             || is_db_where(component)
             || is_sort(component)
@@ -266,6 +266,9 @@ impl GraphBuilder<'_> {
     }
 
     pub(super) fn source_field_at(&mut self, source_path: &SourcePath) -> Option<NodeId> {
+        if source_path.path.as_slice() == [super::schema::SOURCE_DOCUMENT_PATH_PORT] {
+            return Some(self.alloc(mapping::Node::SourceDocumentPath));
+        }
         let schema = &self.sources.get(source_path.source)?.schema;
         let path = self.suffix_after_framed(source_path.source, schema, &source_path.path);
         let frame = self.frame_for_field(source_path.source, schema, &source_path.path);
@@ -277,6 +280,9 @@ impl GraphBuilder<'_> {
         source_path: &SourcePath,
         active_anchor: &[String],
     ) -> Option<NodeId> {
+        if source_path.path.as_slice() == [super::schema::SOURCE_DOCUMENT_PATH_PORT] {
+            return Some(self.alloc(mapping::Node::SourceDocumentPath));
+        }
         let schema = &self.sources.get(source_path.source)?.schema;
         let root_frame = self.context_prefix(source_path.source, &[]);
         let mut frame = (source_path.source > 0
@@ -439,7 +445,8 @@ impl GraphBuilder<'_> {
                 || is_first_items(component)
                 || is_group_into_blocks(component)
                 || is_group_starting_with(component)
-                || component.name == "group-by" && component.outputs.first() == Some(&feed);
+                || component.name == "group-by"
+                    && component.output_pins.first().copied().flatten() == Some(feed);
             if passes_nodes {
                 feed = self.input_feed(idx, 0)?;
             } else {
@@ -586,6 +593,7 @@ mod tests {
             valuemap: None,
             sort_descending: None,
             db_where: None,
+            recursive: None,
         }
     }
 
@@ -752,6 +760,7 @@ mod tests {
             valuemap: None,
             sort_descending: None,
             db_where: None,
+            recursive: None,
         };
         let edges = BTreeMap::from([(80, 7), (90, 81)]);
 
@@ -839,6 +848,7 @@ mod tests {
                 valuemap: None,
                 sort_descending,
                 db_where: None,
+                recursive: None,
             });
             upstream = output;
         }

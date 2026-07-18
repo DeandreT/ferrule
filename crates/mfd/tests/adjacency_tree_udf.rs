@@ -66,10 +66,16 @@ fn imports_and_executes_recursive_adjacency_udf() -> Result<(), Box<dyn std::err
     assert_eq!(grandchildren.len(), 1);
     assert_eq!(string(&grandchildren[0], "name"), Some("Leaf"));
 
-    let export = dir.0.join("rejected.mfd");
-    write(&export, "sentinel")?;
-    assert!(mfd::export(&imported.project, &export).is_err());
-    assert_eq!(std::fs::read_to_string(export)?, "sentinel");
+    let export = dir.0.join("roundtrip.mfd");
+    assert!(mfd::export(&imported.project, &export)?.is_empty());
+    let reimported = mfd::import(&export)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(matches!(
+        reimported.project.root.construction,
+        ScopeConstruction::AdjacencyTree { .. }
+    ));
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &input)?, output);
     Ok(())
 }
 

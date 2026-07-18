@@ -91,7 +91,7 @@ pub(super) fn read(
         is_source,
         warnings,
     ) {
-        return Some(hierarchical);
+        return Some(with_workbook_root_ports(hierarchical, workbook));
     }
 
     if let Some(grid) = grid::read(
@@ -104,7 +104,7 @@ pub(super) fn read(
         is_source,
         warnings,
     ) {
-        return Some(grid);
+        return Some(with_workbook_root_ports(grid, workbook));
     }
 
     let mut tables = Vec::new();
@@ -136,7 +136,7 @@ pub(super) fn read(
             warnings,
         )
     {
-        return Some(composite);
+        return Some(with_workbook_root_ports(composite, workbook));
     }
     let table = match tables.len() {
         0 => {
@@ -220,24 +220,37 @@ pub(super) fn read(
         }
     };
 
-    Some(SchemaComponent {
-        name: name.clone(),
-        format: ComponentFormat::Xlsx,
-        schema: SchemaNode::group(&name, fields),
-        input_instance: excel.attribute("inputinstance").map(str::to_string),
-        output_instance: excel.attribute("outputinstance").map(str::to_string),
-        options,
-        is_source,
-        is_default_output: is_default_output(component),
-        is_variable: false,
-        compute_when_key: None,
-        ports,
-        input_ancestors: BTreeMap::new(),
-        input_keys,
-        output_keys,
-        db_queries: Vec::new(),
-        dynamic_json: None,
-    })
+    Some(with_workbook_root_ports(
+        SchemaComponent {
+            name: name.clone(),
+            format: ComponentFormat::Xlsx,
+            schema: SchemaNode::group(&name, fields),
+            input_instance: excel.attribute("inputinstance").map(str::to_string),
+            output_instance: excel.attribute("outputinstance").map(str::to_string),
+            options,
+            is_source,
+            is_default_output: is_default_output(component),
+            is_variable: false,
+            compute_when_key: None,
+            ports,
+            input_ancestors: BTreeMap::new(),
+            input_keys,
+            output_keys,
+            db_queries: Vec::new(),
+            dynamic_json: None,
+        },
+        workbook,
+    ))
+}
+
+fn with_workbook_root_ports(
+    mut component: SchemaComponent,
+    workbook: roxmltree::Node<'_, '_>,
+) -> SchemaComponent {
+    for key in port_keys(workbook) {
+        component.ports.insert(key, Vec::new());
+    }
+    component
 }
 
 #[allow(clippy::too_many_arguments)]

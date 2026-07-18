@@ -18,6 +18,7 @@ pub(super) struct SourceExport<'a> {
     pub(super) ports: PortTree,
     pub(super) request_ports: Option<PortTree>,
     pub(super) dynamic_path_node: Option<NodeId>,
+    pub(super) document_path_port: Option<u32>,
     pub(super) component_uid: u32,
     pub(super) sibling_suffix: String,
 }
@@ -61,13 +62,14 @@ impl<'a> SourceExports<'a> {
         std::iter::once(&self.primary).chain(&self.extras)
     }
 
-    pub(super) fn primary_ports(&self) -> &PortTree {
-        &self.primary.ports
-    }
-
     pub(super) fn key_for_abs(&self, path: &[String]) -> Option<u32> {
         let (source, _, local) = self.owner(path);
         source.ports.key_for_abs(local)
+    }
+
+    pub(super) fn key_for_alternative(&self, path: &[String], name: &str) -> Option<u32> {
+        let (source, _, local) = self.owner(path);
+        source.ports.key_for_alternative(local, name)
     }
 
     pub(super) fn match_field(&self, path: &[String], pinned: bool) -> PortMatch {
@@ -81,6 +83,18 @@ impl<'a> SourceExports<'a> {
             PortMatch::Unique(key)
         } else {
             source.ports.match_suffix(local)
+        }
+    }
+
+    pub(super) fn match_document_path(&self) -> PortMatch {
+        let mut matches = self.iter().filter_map(|source| source.document_path_port);
+        let Some(first) = matches.next() else {
+            return PortMatch::Missing;
+        };
+        if matches.next().is_some() {
+            PortMatch::Ambiguous
+        } else {
+            PortMatch::Unique(first)
         }
     }
 
@@ -144,6 +158,22 @@ impl<'a> SourceExports<'a> {
         })
     }
 
+    pub(super) fn owner_with_index<'s, 'p>(
+        &'s self,
+        path: &'p [String],
+    ) -> (usize, &'s SourceExport<'a>, &'p [String]) {
+        if let Some(name) = path.first()
+            && let Some((index, source)) = self
+                .extras
+                .iter()
+                .enumerate()
+                .find(|(_, source)| source.name == name)
+        {
+            return (index + 1, source, &path[1..]);
+        }
+        (0, &self.primary, path)
+    }
+
     fn owner<'s, 'p>(&'s self, path: &'p [String]) -> (&'s SourceExport<'a>, bool, &'p [String]) {
         if let Some(name) = path.first()
             && let Some(source) = self.extras.iter().find(|source| source.name == name)
@@ -173,6 +203,7 @@ fn build_source<'a>(
     let explicit_text = xbrl::explicit_text_ports(schema, options);
     let ports = PortTree::build_with_explicit_text(schema, keys, &explicit_text);
     let request_ports = external_source::request_ports(options, keys);
+    let document_path_port = options.local_xml_file_set.then(|| keys.next());
     Ok(SourceExport {
         name,
         schema,
@@ -182,6 +213,7 @@ fn build_source<'a>(
         ports,
         request_ports,
         dynamic_path_node,
+        document_path_port,
         component_uid,
         sibling_suffix: if index == 0 {
             "source".to_string()

@@ -157,6 +157,7 @@ pub fn layered_layout(
     fn inputs(node: &mapping::Node) -> Vec<NodeId> {
         match node {
             mapping::Node::SourceField { .. }
+            | mapping::Node::SourceDocumentPath
             | mapping::Node::Position { .. }
             | mapping::Node::JoinField { .. }
             | mapping::Node::JoinPosition { .. }

@@ -22,7 +22,13 @@ fn object_one_of_subtypes_import_execute_and_select_xml_types() {
         .child("Row")
         .and_then(|row| row.child("Address"))
         .unwrap();
-    assert_eq!(target_address.alternatives().len(), 2);
+    assert_eq!(target_address.alternatives().len(), 3);
+    assert!(
+        target_address
+            .alternatives()
+            .iter()
+            .any(|alternative| alternative.name.ends_with("}Address"))
+    );
     let address_scope = imported.project.root.children[0]
         .children
         .iter()

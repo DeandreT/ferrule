@@ -70,6 +70,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
         "normalize_space" => "normalize-space",
+        "is_numeric" => "numeric",
         "is_empty" => "empty",
         "get_folder" => "get-folder",
         "remove_folder" => "remove-folder",
@@ -106,6 +107,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "right_trim"
         | "pad_string_left"
         | "pad_string_right"
+        | "is_numeric"
         | "is_empty"
         | "year_from_datetime"
         | "month_from_datetime"
@@ -130,6 +132,8 @@ mod tests {
     fn internal_whitespace_function_names_export_canonically() {
         assert_eq!(unmap_function_name("normalize_space"), "normalize-space");
         assert_eq!(function_library("normalize_space"), "core");
+        assert_eq!(unmap_function_name("is_numeric"), "numeric");
+        assert_eq!(function_library("is_numeric"), "lang");
         assert_eq!(unmap_function_name("is_empty"), "empty");
         assert_eq!(function_library("is_empty"), "lang");
         assert_eq!(unmap_function_name("delay_passthrough"), "sleep");

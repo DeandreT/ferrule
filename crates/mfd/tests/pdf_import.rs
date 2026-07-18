@@ -148,12 +148,23 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
 
     let design = temp.0.join("export.mfd");
     std::fs::write(&design, "keep this design").unwrap();
-    assert!(matches!(
-        mfd::export(&imported.project, &design),
-        Err(mfd::MfdError::Unsupported(message))
-            if message.contains("PDF component export is not supported")
-    ));
-    assert_eq!(std::fs::read_to_string(design).unwrap(), "keep this design");
+    let warnings = mfd::export(&imported.project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&design).unwrap();
+    assert!(exported.contains("library=\"pdf\""));
+    assert!(exported.contains("kind=\"34\""));
+    assert!(temp.0.join("export-source.pxt").is_file());
+    std::fs::remove_file(temp.0.join("Garden-Input.PDF")).unwrap();
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(reimported.project.source, imported.project.source);
+    assert_eq!(
+        reimported.project.source_options.pdf,
+        imported.project.source_options.pdf
+    );
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
 }
 
 #[test]

@@ -45,6 +45,11 @@ fn one_conditioned_derived_view_extends_its_base_schema_and_executes() {
               <xs:element name="postcode" type="xs:string"/>
             </xs:sequence></xs:extension>
           </xs:complexContent></xs:complexType>
+          <xs:complexType name="AmericanAddress"><xs:complexContent>
+            <xs:extension base="t:Address"><xs:sequence>
+              <xs:element name="state" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
           <xs:element name="Order"><xs:complexType><xs:sequence>
             <xs:element name="shipTo" type="t:Address"/>
           </xs:sequence></xs:complexType></xs:element>
@@ -94,7 +99,27 @@ fn one_conditioned_derived_view_extends_its_base_schema_and_executes() {
     );
     let address = imported.project.source.child("shipTo").unwrap();
     assert!(address.child("postcode").is_some());
-    assert_eq!(address.alternatives().len(), 2);
+    assert!(address.child("state").is_some());
+    assert_eq!(address.alternatives().len(), 3);
+
+    let unconnected_type = format_xml::from_str(
+        r#"<Order xmlns="urn:ferrule:address"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:t="urn:ferrule:address">
+          <shipTo xsi:type="t:AmericanAddress"><name>Ada</name><state>WA</state></shipTo>
+        </Order>"#,
+        &imported.project.source,
+    )
+    .unwrap();
+    assert_eq!(
+        unconnected_type
+            .field("shipTo")
+            .and_then(|address| address.field(XML_TYPE_FIELD))
+            .and_then(Instance::as_scalar),
+        Some(&Value::String(
+            "{urn:ferrule:address}AmericanAddress".into()
+        ))
+    );
 
     let source = format_xml::from_str(
         r#"<Order xmlns="urn:ferrule:address"

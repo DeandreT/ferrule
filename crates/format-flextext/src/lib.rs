@@ -1027,6 +1027,10 @@ fn validate_instance_bounds(
             }
             Ok(())
         }
+        Instance::DocumentSet(_) => Err(FlexTextError::Data {
+            path: path.to_string(),
+            message: "document sets are source boundaries and cannot be written".into(),
+        }),
     }
 }
 

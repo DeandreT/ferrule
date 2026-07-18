@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use ir::{SchemaKind, Value, XML_TYPE_FIELD};
-use mapping::{IterationOutput, Node};
+use mapping::{IterationOutput, Node, ScopeConstruction};
 
 use super::graph::GraphBuilder;
 use super::group_projection::TargetIteration;
@@ -624,6 +624,8 @@ fn build_one(
         sort_filter_order: feed.sort_filter_order,
         take,
     };
+    let copies_current_source =
+        source_path.as_ref() == scope_source.as_ref() && join.is_none() && sequence.is_none();
     if let Some(id) = join {
         let Some(plan) = builder.join_plan(id) else {
             skipped.push(target_path);
@@ -645,6 +647,7 @@ fn build_one(
             target,
             &target_path,
             source_path.as_ref(),
+            copies_current_source,
             &feed.projections,
             connected,
             builder,
@@ -719,10 +722,12 @@ fn reject_join_control(
     skipped.push(target_path);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn project_whole_group(
     target: &SchemaComponent,
     target_path: &[String],
     source_path: Option<&super::source::SourcePath>,
+    copies_current_source: bool,
     projections: &std::collections::BTreeMap<Vec<String>, u32>,
     connected: &BTreeSet<Vec<String>>,
     builder: &mut GraphBuilder<'_>,
@@ -737,6 +742,30 @@ fn project_whole_group(
     ) else {
         return;
     };
+    let has_connected_descendant = connected
+        .iter()
+        .any(|path| path.len() > target_path.len() && path.starts_with(target_path));
+    let scope = scopes.ensure_scope(target_path);
+    let exact_uncontrolled_copy = copies_current_source
+        && matches!(source_group.kind, SchemaKind::Group { .. })
+        && source_group.kind == target_group.kind
+        && projections.is_empty()
+        && !has_connected_descendant
+        && scope.filter.is_none()
+        && scope.group_by.is_none()
+        && scope.group_starting_with.is_none()
+        && scope.group_into_blocks.is_none()
+        && scope.sort_by.is_none()
+        && scope.take.is_none()
+        && scope.bindings.is_empty()
+        && scope.children.is_empty()
+        && scope.dynamic_bindings.is_empty()
+        && scope.dynamic_children.is_empty()
+        && !scope.merge_dynamic_fields;
+    if exact_uncontrolled_copy {
+        scope.construction = ScopeConstruction::CopyCurrentSource;
+        return;
+    }
     let mut relative_paths = Vec::new();
     collect_matching_scalar_paths(
         source_group,

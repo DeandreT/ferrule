@@ -91,5 +91,16 @@ fn equality_selected_dynamic_boolean_source_fields_filter_objects()
         rows[0].field("Id").and_then(Instance::as_scalar),
         Some(&Value::String("A".into()))
     );
+
+    let export_path = dir.0.join("dynamic-source-export.mfd");
+    let warnings = mfd::export(&imported.project, &export_path)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let design = std::fs::read_to_string(&export_path)?;
+    assert!(design.contains("type=\"json-propertyname\" outkey="));
+    assert!(design.contains("name=\"logical-and\""));
+    let roundtrip = mfd::import(&export_path)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(output, engine::run(&roundtrip.project, &input)?);
     Ok(())
 }

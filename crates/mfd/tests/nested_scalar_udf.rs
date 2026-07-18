@@ -152,3 +152,99 @@ fn forward_declared_nested_scalar_udfs_inline_each_call_independently() {
         ]
     );
 }
+
+#[test]
+fn omitted_scalar_udf_inputs_use_definition_defaults_only_when_unconnected() {
+    let dir = TempDir::new();
+    write(
+        &dir.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Input"><xs:complexType><xs:sequence>
+    <xs:element name="Value" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    );
+    write(
+        &dir.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Results"><xs:complexType><xs:sequence>
+    <xs:element name="Defaulted" type="xs:boolean"/>
+    <xs:element name="Explicit" type="xs:boolean"/>
+    <xs:element name="ExplicitNull" type="xs:boolean" minOccurs="0"/>
+    <xs:element name="Echo" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    );
+    write(
+        &dir.0.join("mapping.mfd"),
+        r#"<mapping version="26">
+  <component name="main"><structure><children>
+    <component name="Input" library="xml" uid="1" kind="14"><data>
+      <root><entry name="Input"><entry name="Value" outkey="10"/></entry></root>
+      <document schema="source.xsd" instanceroot="{}Input"/>
+    </data></component>
+    <component name="DefaultBoolean" library="helpers" uid="2" kind="19"><data>
+      <root><entry name="value" inpkey="19" componentid="100"/></root>
+      <root rootindex="1"><entry name="result" outkey="20" componentid="101"/></root>
+    </data></component>
+    <component name="DefaultBoolean" library="helpers" uid="3" kind="19"><data>
+      <root><entry name="value" inpkey="30" componentid="100"/></root>
+      <root rootindex="1"><entry name="result" outkey="31" componentid="101"/></root>
+    </data></component>
+    <component name="constant" library="core" uid="4" kind="2"><targets><datapoint key="40"/></targets><data><constant value="false" datatype="boolean"/></data></component>
+    <component name="DefaultBoolean" library="helpers" uid="5" kind="19"><data>
+      <root><entry name="value" inpkey="32" componentid="100"/></root>
+      <root rootindex="1"><entry name="result" outkey="33" componentid="101"/></root>
+    </data></component>
+    <component name="constant" library="core" uid="6" kind="2"><targets><datapoint key="42"/></targets><data><constant value="invalid" datatype="boolean"/></data></component>
+    <component name="Results" library="xml" uid="7" kind="14"><properties XSLTDefaultOutput="1"/><data>
+      <root><entry name="Results"><entry name="Defaulted" inpkey="50"/><entry name="Explicit" inpkey="51"/><entry name="ExplicitNull" inpkey="53"/><entry name="Echo" inpkey="52"/></entry></root>
+      <document schema="target.xsd" instanceroot="{}Results"/>
+    </data></component>
+  </children><graph><vertices>
+    <vertex vertexkey="20"><edges><edge vertexkey="50"/></edges></vertex>
+    <vertex vertexkey="40"><edges><edge vertexkey="30"/></edges></vertex>
+    <vertex vertexkey="31"><edges><edge vertexkey="51"/></edges></vertex>
+    <vertex vertexkey="42"><edges><edge vertexkey="32"/></edges></vertex>
+    <vertex vertexkey="33"><edges><edge vertexkey="53"/></edges></vertex>
+    <vertex vertexkey="10"><edges><edge vertexkey="52"/></edges></vertex>
+  </vertices></graph></structure></component>
+
+  <component name="DefaultBoolean" library="helpers" inline="1"><structure><children>
+    <component name="value" library="core" uid="100" kind="6">
+      <sources><datapoint pos="0" key="1000"/></sources>
+      <targets><datapoint pos="0" key="1001"/></targets>
+      <data><input datatype="boolean"/><parameter usageKind="input" name="value" optional="1"/></data>
+    </component>
+    <component name="true" library="core" uid="102" kind="2"><targets><datapoint key="1002"/></targets><data><constant value="true" datatype="anySimpleType"/></data></component>
+    <component name="result" library="core" uid="101" kind="7"><sources><datapoint key="1003"/></sources><data><output datatype="boolean"/></data></component>
+  </children><graph><vertices>
+    <vertex vertexkey="1002"><edges><edge vertexkey="1000"/></edges></vertex>
+    <vertex vertexkey="1001"><edges><edge vertexkey="1003"/></edges></vertex>
+  </vertices></graph></structure></component>
+</mapping>"#,
+    );
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let source = format_xml::from_str(
+        "<Input><Value>kept</Value></Input>",
+        &imported.project.source,
+    )
+    .unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(
+        output.field("Defaulted").and_then(Instance::as_scalar),
+        Some(&Value::Bool(true))
+    );
+    assert_eq!(
+        output.field("Explicit").and_then(Instance::as_scalar),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        output.field("ExplicitNull").and_then(Instance::as_scalar),
+        Some(&Value::Null)
+    );
+}

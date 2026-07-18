@@ -2,13 +2,20 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Graph, JoinId, JoinPlan, Node, NodeId, Project, Scope};
+use mapping::{
+    Graph, IterationOutput, JoinId, JoinPlan, JoinSource, JoinSourceCardinality, Node, NodeId,
+    Project, Scope,
+};
 
 use super::schema::{KeyAlloc, PortTree, xml_escape};
+use super::source::SourceExports;
 
 #[derive(Default)]
 pub(super) struct JoinExports {
     row_outputs: BTreeMap<JoinId, u32>,
+    tuple_outputs: BTreeMap<JoinId, u32>,
+    structural_rows: BTreeSet<JoinId>,
+    plans: BTreeMap<JoinId, JoinPlan>,
     supported: BTreeSet<JoinId>,
     blocked_nodes: BTreeSet<NodeId>,
 }
@@ -18,8 +25,22 @@ impl JoinExports {
         self.row_outputs.get(&join).copied()
     }
 
+    pub(super) fn tuple_output(&self, join: JoinId) -> Option<u32> {
+        self.tuple_outputs.get(&join).copied()
+    }
+
+    pub(super) fn row_is_structural(&self, join: JoinId) -> bool {
+        self.structural_rows.contains(&join)
+    }
+
     pub(super) fn supports(&self, join: JoinId) -> bool {
         self.supported.contains(&join)
+    }
+
+    pub(super) fn supports_plan(&self, join: JoinId, plan: &JoinPlan) -> bool {
+        self.plans
+            .get(&join)
+            .is_some_and(|candidate| candidate == plan)
     }
 
     pub(super) fn node_blocked(&self, node: NodeId) -> bool {
@@ -31,6 +52,8 @@ impl JoinExports {
 struct JoinOwner {
     chain: Vec<String>,
     plan: JoinPlan,
+    mapped_sequence: bool,
+    aggregate_only: bool,
     nested: bool,
     duplicate: bool,
 }
@@ -38,6 +61,8 @@ struct JoinOwner {
 struct RenderedJoin {
     xml: String,
     tuple_output: u32,
+    row_output: u32,
+    structural_row: bool,
     input_edges: Vec<(u32, u32)>,
     node_outputs: Vec<(NodeId, u32)>,
 }
@@ -131,7 +156,7 @@ impl EntryTree {
 
 pub(super) struct RenderJoinArgs<'a> {
     pub(super) project: &'a Project,
-    pub(super) source_ports: &'a PortTree,
+    pub(super) sources: &'a SourceExports<'a>,
     pub(super) target_ports: &'a PortTree,
     pub(super) target_root_iterable: bool,
     pub(super) keys: &'a mut KeyAlloc,
@@ -145,7 +170,7 @@ pub(super) struct RenderJoinArgs<'a> {
 pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
     let RenderJoinArgs {
         project,
-        source_ports,
+        sources,
         target_ports,
         target_root_iterable,
         keys,
@@ -157,6 +182,28 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
     } = args;
     let mut owners = BTreeMap::new();
     collect_owners(&project.root, &mut Vec::new(), false, &mut owners);
+    for node in project.graph.nodes.values() {
+        let Node::JoinAggregate { join, plan, .. } = node else {
+            continue;
+        };
+        match owners.get_mut(join) {
+            Some(owner) if owner.plan != *plan => owner.duplicate = true,
+            Some(_) => {}
+            None => {
+                owners.insert(
+                    *join,
+                    JoinOwner {
+                        chain: Vec::new(),
+                        plan: plan.clone(),
+                        mapped_sequence: false,
+                        aggregate_only: true,
+                        nested: false,
+                        duplicate: false,
+                    },
+                );
+            }
+        }
+    }
     let referenced = project
         .graph
         .nodes
@@ -174,19 +221,14 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
     }
 
     let mut exports = JoinExports::default();
-    let extra_source_names = project
-        .extra_sources
-        .iter()
-        .map(|source| source.name.as_str())
-        .collect::<BTreeSet<_>>();
     for (join, owner) in owners {
         let result = if owner.duplicate {
             Err("the same join id is owned by multiple scopes".to_string())
         } else if owner.nested {
             Err("nested or correlated join scopes are not exported yet".to_string())
-        } else if owner.chain.is_empty() && !target_root_iterable {
+        } else if !owner.aggregate_only && owner.chain.is_empty() && !target_root_iterable {
             Err("the target document root is not row/array shaped".to_string())
-        } else if target_ports.key_for_abs(&owner.chain).is_none() {
+        } else if !owner.aggregate_only && target_ports.key_for_abs(&owner.chain).is_none() {
             Err(format!(
                 "target scope `{}` has no matching target entry",
                 owner.chain.join("/")
@@ -195,10 +237,12 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
             render_one(
                 join,
                 &owner.plan,
-                &project.source,
                 &project.graph,
-                source_ports,
-                &extra_source_names,
+                sources,
+                owner
+                    .mapped_sequence
+                    .then(|| schema_node_at(&project.target, &owner.chain))
+                    .flatten(),
                 keys,
                 uid,
             )
@@ -208,7 +252,12 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
                 components.push_str(&rendered.xml);
                 edges.extend(rendered.input_edges);
                 node_out_key.extend(rendered.node_outputs);
-                exports.row_outputs.insert(join, rendered.tuple_output);
+                exports.row_outputs.insert(join, rendered.row_output);
+                exports.tuple_outputs.insert(join, rendered.tuple_output);
+                if rendered.structural_row {
+                    exports.structural_rows.insert(join);
+                }
+                exports.plans.insert(join, owner.plan);
                 exports.supported.insert(join);
             }
             Err(reason) => warnings.push(format!(
@@ -217,22 +266,7 @@ pub(super) fn render(args: RenderJoinArgs<'_>) -> JoinExports {
             )),
         }
     }
-    let aggregate_joins = project
-        .graph
-        .nodes
-        .values()
-        .filter_map(|node| match node {
-            Node::JoinAggregate { join, .. } => Some(*join),
-            _ => None,
-        })
-        .collect::<BTreeSet<_>>();
-    for join in aggregate_joins {
-        warnings.push(format!(
-            "aggregate over inner join {} is not exported; its node connections are skipped",
-            join.get()
-        ));
-    }
-    exports.blocked_nodes = blocked_nodes(&project.graph, &exports.supported);
+    exports.blocked_nodes = blocked_nodes(&project.graph, &exports.plans);
     exports
 }
 
@@ -251,6 +285,13 @@ fn collect_owners(
                     JoinOwner {
                         chain: chain.clone(),
                         plan: plan.clone(),
+                        mapped_sequence: scope.iteration_output == IterationOutput::MappedSequence
+                            && scope.bindings.is_empty()
+                            && scope.children.is_empty()
+                            && scope.dynamic_bindings.is_empty()
+                            && scope.dynamic_children.is_empty()
+                            && !scope.merge_dynamic_fields,
+                        aggregate_only: false,
                         nested: inside_iteration,
                         duplicate: false,
                     },
@@ -270,55 +311,51 @@ fn collect_owners(
 fn render_one(
     join: JoinId,
     plan: &JoinPlan,
-    schema: &SchemaNode,
     graph: &Graph,
-    source_ports: &PortTree,
-    extra_source_names: &BTreeSet<&str>,
+    source_exports: &SourceExports<'_>,
+    mapped_target: Option<&SchemaNode>,
     keys: &mut KeyAlloc,
     uid: &mut u32,
 ) -> Result<RenderedJoin, String> {
-    let sources = plan
-        .sources()
-        .map(|source| source.collection().to_vec())
-        .collect::<Vec<_>>();
+    let sources = plan.sources().cloned().collect::<Vec<_>>();
     if sources.len() < 2 {
         return Err("a join must contain at least two sources".to_string());
     }
     let mut source_indices = BTreeMap::new();
     let mut input_ports = Vec::with_capacity(sources.len());
     let mut input_edges = Vec::with_capacity(sources.len());
-    for (index, collection) in sources.iter().enumerate() {
+    for (index, source) in sources.iter().enumerate() {
+        let collection = source.collection();
         if collection.is_empty() {
             return Err(format!("input {index} has an empty collection path"));
         }
-        if source_indices.insert(collection.clone(), index).is_some() {
+        if source_indices.insert(collection.to_vec(), index).is_some() {
             return Err(format!(
                 "collection `{}` is used more than once",
                 collection.join("/")
             ));
         }
-        if collection
-            .first()
-            .is_some_and(|name| extra_source_names.contains(name.as_str()))
-        {
+        let Some(node) = source_exports.schema_node_at(collection) else {
             return Err(format!(
-                "input {index} collection `{}` belongs to an extra source, which is not exported",
-                collection.join("/")
-            ));
-        }
-        let Some(node) = schema_node_at(schema, collection) else {
-            return Err(format!(
-                "input {index} collection `{}` is not in the primary source schema",
+                "input {index} collection `{}` is not in an exported source schema",
                 collection.join("/")
             ));
         };
-        if !node.repeating || !matches!(node.kind, SchemaKind::Group { .. }) {
+        let valid = match source.cardinality() {
+            JoinSourceCardinality::Repeating => {
+                node.repeating && matches!(node.kind, SchemaKind::Group { .. })
+            }
+            JoinSourceCardinality::Singleton => {
+                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+            }
+        };
+        if !valid {
             return Err(format!(
-                "input {index} collection `{}` is not a repeating group",
+                "input {index} collection `{}` does not match its declared join cardinality",
                 collection.join("/")
             ));
         }
-        let source_port = source_ports.key_for_abs(collection).ok_or_else(|| {
+        let source_port = source_exports.key_for_abs(collection).ok_or_else(|| {
             format!(
                 "input {index} collection `{}` has no source component port",
                 collection.join("/")
@@ -354,9 +391,9 @@ fn render_one(
         };
         let mut absolute = collection.clone();
         absolute.extend(path.iter().cloned());
-        let Some(field) = schema_node_at(schema, &absolute) else {
+        let Some(field) = source_exports.schema_node_at(&absolute) else {
             return Err(format!(
-                "join field node {node_id} path `{}` is not in the primary source schema",
+                "join field node {node_id} path `{}` is not in an exported source schema",
                 absolute.join("/")
             ));
         };
@@ -390,39 +427,47 @@ fn render_one(
                     condition.left_collection().join("/")
                 ));
             };
-            let left_attribute = validate_key_path(
-                schema,
-                condition.left_collection(),
-                condition.left_path(),
-                "left",
-            )?;
+            let left_source = &sources[left_index];
+            let left_attribute =
+                validate_key_path(source_exports, left_source, condition.left_path(), "left")?;
             let right_attribute =
-                validate_key_path(schema, right_collection, condition.right_path(), "right")?;
+                validate_key_path(source_exports, right, condition.right_path(), "right")?;
             let left_id = keypath_id(&mut keypaths, condition.left_path(), left_attribute)?;
             let right_id = keypath_id(&mut keypaths, condition.right_path(), right_attribute)?;
             keypairs.push((left_id, left_index, right_id, right_index));
         }
     }
 
+    let structural_index = mapped_target
+        .map(|target| matching_structural_source(&sources, source_exports, target))
+        .transpose()?
+        .flatten();
+    let branch_outputs = (0..sources.len())
+        .map(|index| (Some(index) == structural_index).then(|| keys.next()))
+        .collect::<Vec<_>>();
     let tuple_output = keys.next();
     *uid += 1;
     let component_uid = *uid;
     let mut branches = String::new();
-    for (index, collection) in sources.iter().enumerate() {
+    for (index, source) in sources.iter().enumerate() {
+        let collection = source.collection();
         let name = collection.last().ok_or("join collection path is empty")?;
         let input_port = input_ports[index];
+        let output_attr = branch_outputs[index]
+            .map(|output| format!(" outkey=\"{output}\""))
+            .unwrap_or_default();
         let children = output_trees[index].render(9);
         if children.is_empty() {
             let _ = writeln!(
                 branches,
-                "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\"><entry name=\"{}\" inpkey=\"{input_port}\"/></entry>",
+                "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\"><entry name=\"{}\" inpkey=\"{input_port}\"{output_attr}/></entry>",
                 xml_escape(name)
             );
         } else {
             let _ = write!(
                 branches,
                 "\t\t\t\t\t\t\t\t<entry name=\"dynamic_tree_node{index}\">\n\
-                 \t\t\t\t\t\t\t\t\t<entry name=\"{}\" inpkey=\"{input_port}\">\n\
+                 \t\t\t\t\t\t\t\t\t<entry name=\"{}\" inpkey=\"{input_port}\"{output_attr}>\n\
                  {children}\
                  \t\t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t\t</entry>\n",
@@ -438,10 +483,21 @@ fn render_one(
         );
     }
     let mut key_tree = EntryTree::default();
+    let mut root_key = None;
     for (path, (id, attribute)) in keypaths {
-        key_tree.insert(&path, id, attribute)?;
+        if path.is_empty() {
+            if attribute {
+                return Err("a singleton join key cannot be an attribute".to_string());
+            }
+            root_key = Some(id);
+        } else {
+            key_tree.insert(&path, id, attribute)?;
+        }
     }
     let key_entries = key_tree.render_keypaths(9);
+    let root_key_attr = root_key
+        .map(|key| format!(" outkey=\"{key}\""))
+        .unwrap_or_default();
     let xml = format!(
         "\t\t\t\t<component name=\"join\" library=\"core\" uid=\"{component_uid}\" kind=\"32\">\n\
          \t\t\t\t\t<view ltx=\"360\" lty=\"20\" rbx=\"560\" rby=\"300\"/>\n\
@@ -453,7 +509,7 @@ fn render_one(
          \t\t\t\t\t\t\t<joinkeys>\n\
          {pairs_xml}\
          \t\t\t\t\t\t\t</joinkeys>\n\
-         \t\t\t\t\t\t\t<keypaths><entry><condition/>\n\
+         \t\t\t\t\t\t\t<keypaths><entry{root_key_attr}><condition/>\n\
          {key_entries}\
          \t\t\t\t\t\t\t</entry></keypaths>\n\
          \t\t\t\t\t\t</join>\n\
@@ -463,25 +519,33 @@ fn render_one(
     Ok(RenderedJoin {
         xml,
         tuple_output,
+        row_output: structural_index
+            .and_then(|index| branch_outputs[index])
+            .unwrap_or(tuple_output),
+        structural_row: structural_index.is_some(),
         input_edges,
         node_outputs,
     })
 }
 
 fn validate_key_path(
-    schema: &SchemaNode,
-    collection: &[String],
+    sources: &SourceExports<'_>,
+    source: &JoinSource,
     path: &[String],
     side: &str,
 ) -> Result<bool, String> {
     if path.is_empty() {
-        return Err(format!("join {side} key path is empty"));
+        return if source.cardinality() == JoinSourceCardinality::Singleton {
+            Ok(false)
+        } else {
+            Err(format!("join {side} key path is empty"))
+        };
     }
-    let mut absolute = collection.to_vec();
+    let mut absolute = source.collection().to_vec();
     absolute.extend(path.iter().cloned());
-    let node = schema_node_at(schema, &absolute).ok_or_else(|| {
+    let node = sources.schema_node_at(&absolute).ok_or_else(|| {
         format!(
-            "join {side} key `{}` is not in the primary source schema",
+            "join {side} key `{}` is not in an exported source schema",
             absolute.join("/")
         )
     })?;
@@ -492,6 +556,41 @@ fn validate_key_path(
         ));
     }
     Ok(node.attribute)
+}
+
+fn matching_structural_source(
+    sources: &[JoinSource],
+    source_exports: &SourceExports<'_>,
+    target: &SchemaNode,
+) -> Result<Option<usize>, String> {
+    let matches = sources
+        .iter()
+        .enumerate()
+        .filter_map(|(index, source)| {
+            (source.cardinality() == JoinSourceCardinality::Repeating)
+                .then(|| source_exports.schema_node_at(source.collection()))
+                .flatten()
+                .filter(|candidate| structurally_compatible(candidate, target))
+                .map(|_| index)
+        })
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Err("mapped join output matches no joined source group".to_string()),
+        [index] => Ok(Some(*index)),
+        _ => {
+            Err("mapped join output ambiguously matches multiple joined source groups".to_string())
+        }
+    }
+}
+
+fn structurally_compatible(source: &SchemaNode, target: &SchemaNode) -> bool {
+    source.name == target.name
+        && source.attribute == target.attribute
+        && source.nillable == target.nillable
+        && source.text == target.text
+        && source.fixed == target.fixed
+        && !target.repeating
+        && source.kind == target.kind
 }
 
 fn keypath_id(
@@ -522,17 +621,21 @@ fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a Sch
     Some(node)
 }
 
-fn blocked_nodes(graph: &Graph, supported: &BTreeSet<JoinId>) -> BTreeSet<NodeId> {
+fn blocked_nodes(graph: &Graph, plans: &BTreeMap<JoinId, JoinPlan>) -> BTreeSet<NodeId> {
     let mut blocked = graph
         .nodes
         .iter()
         .filter_map(|(&id, node)| match node {
             Node::JoinField { join, .. } | Node::JoinPosition { join }
-                if !supported.contains(join) =>
+                if !plans.contains_key(join) =>
             {
                 Some(id)
             }
-            Node::JoinAggregate { .. } => Some(id),
+            Node::JoinAggregate { join, plan, .. }
+                if plans.get(join).is_none_or(|exported| exported != plan) =>
+            {
+                Some(id)
+            }
             _ => None,
         })
         .collect::<BTreeSet<_>>();
@@ -578,6 +681,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

@@ -186,6 +186,7 @@ fn read_get(
         output_instance: None,
         options: FormatOptions {
             http_get: Some(HttpGetOptions::new(timeout)),
+            xml_document: true,
             ..FormatOptions::default()
         },
         is_source: true,
