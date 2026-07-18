@@ -35,14 +35,11 @@ impl GraphBuilder<'_> {
         if let Some(op) = aggregate_op(&name).filter(|_| self.fn_components[idx].kind == 5) {
             let node = match self.aggregate_node(op, idx) {
                 Ok(Some(node)) => node,
-                Ok(None) => self.unsupported_aggregate_call(
-                    &name,
-                    idx,
-                    "has an unresolvable sequence input",
-                ),
+                Ok(None) => {
+                    self.unsupported_aggregate_call(&name, "has an unresolvable sequence input")
+                }
                 Err(reason) => self.unsupported_aggregate_call(
                     &name,
-                    idx,
                     &format!("cannot import its sequence: {reason}"),
                 ),
             };

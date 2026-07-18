@@ -9,6 +9,8 @@ use mapping::FormatOptions;
 
 use crate::MfdError;
 
+use super::concatenation::TargetBranches;
+
 const XLSX_MAX_ROW: u32 = 1_048_576;
 const XLSX_MAX_COLUMN: u32 = 16_384;
 
@@ -93,6 +95,7 @@ pub(super) fn render_schema_component(
     options: &FormatOptions,
     mfd_path: &Path,
     force_root_port: bool,
+    target_branches: Option<&TargetBranches>,
 ) -> Result<RenderedSchemaComponent, MfdError> {
     let stem = mfd_path
         .file_stem()
@@ -162,7 +165,7 @@ pub(super) fn render_schema_component(
                     xml_escape(&schema.name),
                     xml_escape(&schema_file),
                     xml_escape(&schema.name),
-                    ports.entries_xml(schema, attr, 10, true),
+                    ports.entries_xml(schema, attr, 10, true, target_branches),
                     xml_escape(url),
                     http.timeout_seconds().get(),
                 );
@@ -185,7 +188,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(&schema.name),
-                ports.entries_xml(schema, attr, 9, force_root_port),
+                ports.entries_xml(schema, attr, 9, force_root_port, target_branches),
                 xml_escape(&schema_file),
                 xml_escape(&schema.name),
             );
@@ -229,26 +232,15 @@ pub(super) fn render_schema_component(
             );
         }
         SideFormat::Db => {
-            // Unlike a csv row schema, a table root is repeating by
-            // format-db convention; only the children's shape matters.
-            let fields = flat_fields(schema).ok_or_else(|| {
+            let layout = db_layout(schema).ok_or_else(|| {
                 MfdError::Unsupported(format!(
                     "the {side_name} side maps to a database table but its schema \
-                     is not a flat group of scalar fields"
+                     is not a canonical relational table tree"
                 ))
             })?;
             let datasource = db_datasource_name(instance_path);
-            let table_key = ports.required_key_for_abs(&[], "database table")?;
-            let mut column_entries = String::new();
-            for (column, _) in &fields {
-                let key =
-                    ports.required_key_for_abs(&[(*column).to_string()], "database column")?;
-                let _ = writeln!(
-                    column_entries,
-                    "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" {attr}=\"{key}\"/>",
-                    xml_escape(column)
-                );
-            }
+            let table_entries = db_entries_xml(&layout, ports, attr)?;
+            let selections = db_selections_xml(&layout);
             let _ = write!(
                 out,
                 "\t\t\t\t<component name=\"{0}\" library=\"db\" uid=\"{uid}\" kind=\"15\">\n\
@@ -257,13 +249,13 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t<root>\n\
                  \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
                  \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
-                 \t\t\t\t\t\t\t\t<entry name=\"{0}\" type=\"table\" {attr}=\"{table_key}\" expanded=\"1\">\n\
-                 {column_entries}\
-                 \t\t\t\t\t\t\t\t</entry>\n\
+                 {table_entries}\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
                  \t\t\t\t\t\t<database ref=\"{1}\">\n\
-                 \t\t\t\t\t\t\t<data><selections><selection><PathElement Name=\"main\" Kind=\"Database\"/><PathElement Name=\"{0}\" Kind=\"Table\"/></selection></selections></data>\n\
+                 \t\t\t\t\t\t\t<data><selections>\n\
+                 {selections}\
+                 \t\t\t\t\t\t\t</selections></data>\n\
                  \t\t\t\t\t\t</database>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
@@ -278,22 +270,60 @@ pub(super) fn render_schema_component(
                      not a flat group of scalar fields"
                 ))
             })?;
-            let block_key = ports.required_key_for_abs(&[], "CSV row block")?;
-            let mut field_entries = String::new();
+            let mut row_entries = String::new();
             let mut field_decls = String::new();
             for (i, (name, ty)) in fields.iter().enumerate() {
-                let key = ports.required_key_for_abs(&[(*name).to_string()], "CSV field")?;
-                let _ = writeln!(
-                    field_entries,
-                    "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" {attr}=\"{key}\"/>",
-                    xml_escape(name)
-                );
                 let _ = writeln!(
                     field_decls,
                     "\t\t\t\t\t\t\t\t<field{i} name=\"{}\" type=\"{}\"/>",
                     xml_escape(name),
                     csv_type_name(*ty)
                 );
+            }
+            let row_count = target_branches
+                .and_then(|branches| branches.count(&[]))
+                .unwrap_or(1);
+            for index in 0..row_count {
+                let iterating = target_branches
+                    .and_then(|branches| branches.count(&[]).map(|_| branches.iterates(&[], index)))
+                    .unwrap_or(true);
+                let block_port = if iterating {
+                    let key = branch_key(
+                        ports,
+                        target_branches,
+                        Some((&[], index)),
+                        &[],
+                        "CSV row block",
+                    )?;
+                    format!(" {attr}=\"{key}\"")
+                } else {
+                    String::new()
+                };
+                let clone = if target_branches.is_some() && (index > 0 || iterating) {
+                    " clone=\"1\""
+                } else {
+                    ""
+                };
+                let _ = writeln!(
+                    row_entries,
+                    "\t\t\t\t\t\t\t\t\t<entry name=\"Rows\"{block_port} expanded=\"1\"{clone}>"
+                );
+                for (name, _) in &fields {
+                    let path = [(*name).to_string()];
+                    let key = branch_key(
+                        ports,
+                        target_branches,
+                        Some((&[], index)),
+                        &path,
+                        "CSV field",
+                    )?;
+                    let _ = writeln!(
+                        row_entries,
+                        "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" {attr}=\"{key}\"/>",
+                        xml_escape(name)
+                    );
+                }
+                row_entries.push_str("\t\t\t\t\t\t\t\t\t</entry>\n");
             }
             let _ = write!(
                 out,
@@ -304,9 +334,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
                  \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
                  \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
-                 \t\t\t\t\t\t\t\t\t<entry name=\"Rows\" {attr}=\"{block_key}\" expanded=\"1\">\n\
-                 {field_entries}\
-                 \t\t\t\t\t\t\t\t\t</entry>\n\
+                 {row_entries}\
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
@@ -520,6 +548,161 @@ fn flat_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
     }
 }
 
+enum DbLayout<'a> {
+    Table(&'a SchemaNode),
+    Database(&'a [SchemaNode]),
+}
+
+fn db_layout(schema: &SchemaNode) -> Option<DbLayout<'_>> {
+    let SchemaKind::Group {
+        children,
+        alternatives,
+        dynamic,
+    } = &schema.kind
+    else {
+        return None;
+    };
+    if schema.recursive_ref.is_some() || !alternatives.is_empty() || dynamic.is_some() {
+        return None;
+    }
+    let has_group = children
+        .iter()
+        .any(|child| matches!(child.kind, SchemaKind::Group { .. }));
+    if schema.repeating || !has_group {
+        return db_table_is_valid(schema, false).then_some(DbLayout::Table(schema));
+    }
+    if schema.name != "database" || children.is_empty() {
+        return None;
+    }
+    children
+        .iter()
+        .all(|table| table.repeating && db_table_is_valid(table, false))
+        .then_some(DbLayout::Database(children))
+}
+
+fn db_table_is_valid(table: &SchemaNode, nested: bool) -> bool {
+    if table.recursive_ref.is_some()
+        || nested
+            && table
+                .name
+                .split_once('|')
+                .is_none_or(|(name, column)| name.is_empty() || column.is_empty())
+        || !nested && table.name.contains('|')
+    {
+        return false;
+    }
+    let SchemaKind::Group {
+        children,
+        alternatives,
+        dynamic,
+    } = &table.kind
+    else {
+        return false;
+    };
+    alternatives.is_empty()
+        && dynamic.is_none()
+        && children.iter().all(|child| match child.kind {
+            SchemaKind::Scalar { .. } => {
+                !child.repeating && !child.attribute && !child.text && child.recursive_ref.is_none()
+            }
+            SchemaKind::Group { .. } => child.repeating && db_table_is_valid(child, true),
+        })
+}
+
+fn db_entries_xml(layout: &DbLayout<'_>, ports: &PortTree, attr: &str) -> Result<String, MfdError> {
+    let mut output = String::new();
+    match layout {
+        DbLayout::Table(table) => {
+            render_db_table(table, &mut Vec::new(), ports, attr, 9, &mut output)?;
+        }
+        DbLayout::Database(tables) => {
+            for table in *tables {
+                let mut path = vec![table.name.clone()];
+                render_db_table(table, &mut path, ports, attr, 9, &mut output)?;
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn render_db_table(
+    table: &SchemaNode,
+    path: &mut Vec<String>,
+    ports: &PortTree,
+    attr: &str,
+    indent: usize,
+    output: &mut String,
+) -> Result<(), MfdError> {
+    let pad = "\t".repeat(indent);
+    let key = ports.required_key_for_abs(path, "database table")?;
+    let _ = writeln!(
+        output,
+        "{pad}<entry name=\"{}\" type=\"table\" {attr}=\"{key}\" expanded=\"1\">",
+        xml_escape(&table.name)
+    );
+    let SchemaKind::Group { children, .. } = &table.kind else {
+        return Err(MfdError::Unsupported(
+            "internal database table schema is not a group".to_string(),
+        ));
+    };
+    for child in children {
+        path.push(child.name.clone());
+        match child.kind {
+            SchemaKind::Scalar { .. } => {
+                let key = ports.required_key_for_abs(path, "database column")?;
+                let _ = writeln!(
+                    output,
+                    "{pad}\t<entry name=\"{}\" {attr}=\"{key}\"/>",
+                    xml_escape(&child.name)
+                );
+            }
+            SchemaKind::Group { .. } => {
+                render_db_table(child, path, ports, attr, indent + 1, output)?;
+            }
+        }
+        path.pop();
+    }
+    let _ = writeln!(output, "{pad}</entry>");
+    Ok(())
+}
+
+fn db_selections_xml(layout: &DbLayout<'_>) -> String {
+    fn collect(table: &SchemaNode, names: &mut std::collections::BTreeSet<String>) {
+        names.insert(
+            table
+                .name
+                .split_once('|')
+                .map_or(table.name.as_str(), |(name, _)| name)
+                .to_string(),
+        );
+        if let SchemaKind::Group { children, .. } = &table.kind {
+            for child in children {
+                if matches!(child.kind, SchemaKind::Group { .. }) {
+                    collect(child, names);
+                }
+            }
+        }
+    }
+    let mut names = std::collections::BTreeSet::new();
+    match layout {
+        DbLayout::Table(table) => collect(table, &mut names),
+        DbLayout::Database(tables) => {
+            for table in *tables {
+                collect(table, &mut names);
+            }
+        }
+    }
+    let mut output = String::new();
+    for name in names {
+        let _ = writeln!(
+            output,
+            "\t\t\t\t\t\t\t\t<selection><PathElement Name=\"main\" Kind=\"Database\"/><PathElement Name=\"{}\" Kind=\"Table\"/></selection>",
+            xml_escape(&name)
+        );
+    }
+    output
+}
+
 fn csv_type_name(ty: ScalarType) -> &'static str {
     match ty {
         ScalarType::String => "string",
@@ -675,37 +858,74 @@ impl PortTree {
         attr: &str,
         indent: usize,
         force_root_port: bool,
+        target_branches: Option<&TargetBranches>,
     ) -> String {
         let mut out = String::new();
+        // The recursive renderer carries explicit immutable allocation state so
+        // branch-specific target ports cannot accidentally fall back to shared keys.
+        #[allow(clippy::too_many_arguments)]
         fn walk(
             node: &SchemaNode,
             path: &mut Vec<String>,
             attr: &str,
             indent: usize,
             by_abs: &BTreeMap<Vec<String>, u32>,
+            ports: &PortTree,
+            target_branches: Option<&TargetBranches>,
+            active_branch: Option<(&[String], usize)>,
             out: &mut String,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children.iter().filter(|child| !child.text) {
                     path.push(child.name.clone());
-                    let pad = "\t".repeat(indent);
-                    let key = by_abs[&*path];
-                    let type_attr = if child.attribute {
-                        " type=\"attribute\""
-                    } else {
-                        ""
-                    };
-                    let _ = write!(
-                        out,
-                        "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{key}\" expanded=\"1\"",
-                        xml_escape(&child.name)
-                    );
-                    if matches!(child.kind, SchemaKind::Scalar { .. }) {
-                        out.push_str("/>\n");
-                    } else {
-                        out.push_str(">\n");
-                        walk(child, path, attr, indent + 1, by_abs, out);
-                        let _ = writeln!(out, "{pad}</entry>");
+                    let count = active_branch
+                        .is_none()
+                        .then(|| target_branches.and_then(|branches| branches.count(path)))
+                        .flatten()
+                        .unwrap_or(1);
+                    for index in 0..count {
+                        let branch_root = path.clone();
+                        let branch = active_branch
+                            .or_else(|| (count > 1).then_some((branch_root.as_slice(), index)));
+                        let pad = "\t".repeat(indent);
+                        let key = match branch {
+                            Some((root, index)) => target_branches
+                                .and_then(|branches| branches.key_for(ports, root, index, path))
+                                .unwrap_or(by_abs[&*path]),
+                            None => by_abs[&*path],
+                        };
+                        let type_attr = if child.attribute {
+                            " type=\"attribute\""
+                        } else {
+                            ""
+                        };
+                        let clone = if active_branch.is_none() && index > 0 {
+                            " clone=\"1\""
+                        } else {
+                            ""
+                        };
+                        let _ = write!(
+                            out,
+                            "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{key}\" expanded=\"1\"{clone}",
+                            xml_escape(&child.name)
+                        );
+                        if matches!(child.kind, SchemaKind::Scalar { .. }) {
+                            out.push_str("/>\n");
+                        } else {
+                            out.push_str(">\n");
+                            walk(
+                                child,
+                                path,
+                                attr,
+                                indent + 1,
+                                by_abs,
+                                ports,
+                                target_branches,
+                                branch,
+                                out,
+                            );
+                            let _ = writeln!(out, "{pad}</entry>");
+                        }
                     }
                     path.pop();
                 }
@@ -730,6 +950,9 @@ impl PortTree {
             attr,
             indent + 1,
             &self.by_abs,
+            self,
+            target_branches,
+            None,
             &mut out,
         );
         let _ = writeln!(out, "{pad}</entry>");
@@ -810,6 +1033,26 @@ impl PortTree {
             }
         }
     }
+}
+
+fn branch_key(
+    ports: &PortTree,
+    branches: Option<&TargetBranches>,
+    branch: Option<(&[String], usize)>,
+    path: &[String],
+    kind: &str,
+) -> Result<u32, MfdError> {
+    branch
+        .and_then(|(root, index)| branches?.key_for(ports, root, index, path))
+        .or_else(|| ports.key_for_abs(path))
+        .ok_or_else(|| {
+            let path = if path.is_empty() {
+                "<root>".to_string()
+            } else {
+                path.join("/")
+            };
+            MfdError::Unsupported(format!("internal {kind} port `{path}` was not allocated"))
+        })
 }
 
 fn valid_http_url(url: &str) -> bool {

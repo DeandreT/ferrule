@@ -2,17 +2,19 @@ use mapping::{Project, Scope, ScopeConstruction};
 
 use crate::MfdError;
 
+use super::concatenation;
+use super::schema::side_format;
+
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if !project.extra_targets.is_empty() {
         return Err(MfdError::Unsupported(
             "projects with additional targets cannot be exported to .mfd yet".to_string(),
         ));
     }
-    if has_concatenated_scope(&project.root) {
-        return Err(MfdError::Unsupported(
-            "concatenated target scope export is not supported".to_string(),
-        ));
-    }
+    concatenation::validate(
+        project,
+        side_format(&project.target_path, &project.target_options),
+    )?;
     if has_recursive_sequence(&project.root) {
         return Err(MfdError::Unsupported(
             "recursive scalar sequence export is not supported".to_string(),
@@ -105,15 +107,6 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         ));
     }
     validate_copy_current_source(project)
-}
-
-fn has_concatenated_scope(scope: &Scope) -> bool {
-    scope.concatenated().is_some()
-        || scope.children.iter().any(has_concatenated_scope)
-        || scope
-            .dynamic_children
-            .iter()
-            .any(|child| has_concatenated_scope(&child.scope))
 }
 
 fn has_recursive_sequence(scope: &Scope) -> bool {

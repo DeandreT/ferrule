@@ -161,5 +161,23 @@ fn generic_elements_pivot_key_value_rows_into_variable_fields() -> Result<(), Bo
         target.field("Names").and_then(Instance::as_scalar),
         Some(&Value::String("Ada Lovelace, Grace Hopper".into()))
     );
+
+    let exported_path = dir.0.join("exported.mfd");
+    let export_warnings = mfd::export(&imported.project, &exported_path)?;
+    assert!(
+        export_warnings
+            .iter()
+            .any(|warning| warning.contains("key/value paths do not match primary source leaves")),
+        "{export_warnings:?}"
+    );
+    let roundtripped = mfd::import(&exported_path)?;
+    assert!(
+        roundtripped
+            .warnings
+            .iter()
+            .any(|warning| { warning.contains("imported as its empty-sequence result") })
+    );
+    let validation = engine::validate(&roundtripped.project);
+    assert!(validation.is_empty(), "{validation:?}");
     Ok(())
 }

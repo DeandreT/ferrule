@@ -5,21 +5,22 @@ use super::function::{aggregate_op, is_distinct_values as is_distinct_values_com
 use super::iteration::{compatible_collection, split_at_innermost_repeating};
 
 impl GraphBuilder<'_> {
-    pub(super) fn unsupported_aggregate_call(
-        &mut self,
-        name: &str,
-        idx: usize,
-        detail: &str,
-    ) -> Node {
+    pub(super) fn unsupported_aggregate_call(&mut self, name: &str, detail: &str) -> Node {
         self.warnings.push(format!(
-            "aggregate `{name}` {detail}; imported as a plain call and will fail at run time until replaced"
+            "aggregate `{name}` {detail}; imported as its empty-sequence result until the sequence is restored"
         ));
-        let args = (0..self.fn_components[idx].inputs.len().max(1))
-            .map(|_| self.const_null())
-            .collect();
-        Node::Call {
-            function: name.to_string(),
-            args,
+        Node::Const {
+            value: match aggregate_op(name) {
+                Some(AggregateOp::Count | AggregateOp::Sum) => ir::Value::Int(0),
+                Some(
+                    AggregateOp::Avg
+                    | AggregateOp::Min
+                    | AggregateOp::Max
+                    | AggregateOp::Join
+                    | AggregateOp::ItemAt,
+                )
+                | None => ir::Value::Null,
+            },
         }
     }
 

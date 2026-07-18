@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 
 use mapping::{Graph, JoinId, Node, NodeId, Scope, ScopeConstruction, SortFilterOrder};
 
+use super::concatenation::TargetBranches;
 use super::join::JoinExports;
 use super::mapped_sequence::ScopePlans;
 use super::position::connect_scope_position_roots;
@@ -25,6 +26,7 @@ pub(super) struct ConnectArgs<'a> {
     pub(super) structural_edges: &'a mut BTreeSet<(u32, u32)>,
     pub(super) mapped_scope_plans: &'a ScopePlans,
     pub(super) joins: &'a JoinExports,
+    pub(super) target_branches: &'a TargetBranches,
 }
 
 pub(super) fn connect(args: ConnectArgs<'_>) {
@@ -45,6 +47,7 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
         structural_edges,
         mapped_scope_plans,
         joins,
+        target_branches,
     } = args;
     collect_scope_edges(
         scope,
@@ -66,6 +69,8 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
         structural_edges,
         mapped_scope_plans,
         joins,
+        target_branches,
+        None,
     );
 }
 
@@ -364,6 +369,41 @@ fn append_scope_controls(
     from
 }
 
+fn append_concatenation_identity(
+    keys: &mut KeyAlloc,
+    uid: &mut u32,
+    components: &mut String,
+    edges: &mut Vec<(u32, u32)>,
+    from: u32,
+) -> u32 {
+    let constant_output = keys.next();
+    *uid += 1;
+    let _ = write!(
+        components,
+        "\t\t\t\t<component name=\"constant\" library=\"core\" uid=\"{uid}\" kind=\"2\">\n\
+         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{constant_output}\"/></targets>\n\
+         \t\t\t\t\t<data><constant value=\"true\" datatype=\"boolean\"/></data>\n\
+         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+         \t\t\t\t</component>\n"
+    );
+
+    let nodes_input = keys.next();
+    let predicate_input = keys.next();
+    let true_output = keys.next();
+    *uid += 1;
+    let _ = write!(
+        components,
+        "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+         \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{nodes_input}\"/><datapoint pos=\"1\" key=\"{predicate_input}\"/></sources>\n\
+         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{true_output}\"/><datapoint/></targets>\n\
+         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+         \t\t\t\t</component>\n"
+    );
+    edges.push((from, nodes_input));
+    edges.push((constant_output, predicate_input));
+    true_output
+}
+
 fn descendant_binding_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
     roots.extend(scope.bindings.iter().map(|binding| binding.node));
     for child in &scope.children {
@@ -436,7 +476,41 @@ fn collect_scope_edges(
     structural_edges: &mut BTreeSet<(u32, u32)>,
     mapped_scope_plans: &ScopePlans,
     joins: &JoinExports,
+    target_branches: &TargetBranches,
+    target_branch: Option<(&[String], usize)>,
 ) {
+    if let Some(segments) = scope.concatenated() {
+        let branch_root = chain.clone();
+        let parent_anchor = anchor.clone();
+        for (index, segment) in segments.iter().enumerate() {
+            anchor.clone_from(&parent_anchor);
+            collect_scope_edges(
+                segment,
+                chain,
+                anchor,
+                source_ports,
+                target_ports,
+                target_root_iterable,
+                graph,
+                node_out_key,
+                position_inputs,
+                position_contexts,
+                keys,
+                uid,
+                components,
+                edges,
+                warnings,
+                suppress_mapped_bindings,
+                structural_edges,
+                mapped_scope_plans,
+                joins,
+                target_branches,
+                Some((&branch_root, index)),
+            );
+        }
+        anchor.clone_from(&parent_anchor);
+        return;
+    }
     let mapped_plan = mapped_scope_plans.get(chain);
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all);
@@ -444,7 +518,7 @@ fn collect_scope_edges(
     if scope.construction == ScopeConstruction::CopyCurrentSource && scope.source().is_none() {
         match (
             source_ports.key_for_abs(anchor),
-            target_ports.key_for_abs(chain),
+            target_key(target_ports, target_branches, target_branch, chain),
         ) {
             (Some(from), Some(to)) => {
                 edges.push((from, to));
@@ -456,7 +530,10 @@ fn collect_scope_edges(
             )),
         }
     } else if let Some((join, _)) = scope.join() {
-        if let (Some(from), Some(to)) = (joins.row_output(join), target_ports.key_for_abs(chain)) {
+        if let (Some(from), Some(to)) = (
+            joins.row_output(join),
+            target_key(target_ports, target_branches, target_branch, chain),
+        ) {
             let from = append_scope_controls(
                 scope,
                 chain,
@@ -496,9 +573,14 @@ fn collect_scope_edges(
         } else {
             match (
                 node_out_key.get(&sequence.item()),
-                target_ports.key_for_abs(chain),
+                target_key(target_ports, target_branches, target_branch, chain),
             ) {
                 (Some(&from), Some(to)) => {
+                    let from = if target_branch.is_some() {
+                        append_concatenation_identity(keys, uid, components, edges, from)
+                    } else {
+                        from
+                    };
                     let from = append_scope_controls(
                         scope,
                         chain,
@@ -545,16 +627,27 @@ fn collect_scope_edges(
                 .to_string(),
         );
     } else if let Some(source) = scope.source() {
-        let mut abs = anchor.clone();
-        abs.extend(source.iter().cloned());
+        let abs = mapped_plan.map_or_else(
+            || {
+                let mut abs = anchor.clone();
+                abs.extend(source.iter().cloned());
+                abs
+            },
+            |plan| plan.source_collection.clone(),
+        );
         let structural_source = mapped_plan
             .map(|plan| plan.source_group.as_slice())
             .unwrap_or(&abs);
         match (
             source_ports.key_for_abs(structural_source),
-            target_ports.key_for_abs(chain),
+            target_key(target_ports, target_branches, target_branch, chain),
         ) {
             (Some(from), Some(to)) => {
+                let from = if target_branch.is_some() {
+                    append_concatenation_identity(keys, uid, components, edges, from)
+                } else {
+                    from
+                };
                 let from = append_scope_controls(
                     scope,
                     chain,
@@ -605,7 +698,7 @@ fn collect_scope_edges(
         leaf.push(binding.target_field.clone());
         match (
             node_out_key.get(&binding.node),
-            target_ports.key_for_abs(&leaf),
+            target_key(target_ports, target_branches, target_branch, &leaf),
         ) {
             (Some(&from), Some(to)) => edges.push((from, to)),
             (None, _) if joins.node_blocked(binding.node) => {}
@@ -646,8 +739,21 @@ fn collect_scope_edges(
             structural_edges,
             mapped_scope_plans,
             joins,
+            target_branches,
+            target_branch,
         );
         chain.pop();
     }
     anchor.truncate(anchor_len);
+}
+
+fn target_key(
+    ports: &PortTree,
+    branches: &TargetBranches,
+    branch: Option<(&[String], usize)>,
+    path: &[String],
+) -> Option<u32> {
+    branch
+        .and_then(|(root, index)| branches.key_for(ports, root, index, path))
+        .or_else(|| ports.key_for_abs(path))
 }
