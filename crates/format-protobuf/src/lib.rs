@@ -1,20 +1,25 @@
-//! A bounded proto2 schema reader and dynamic Protocol Buffers writer.
+//! Bounded proto2/proto3 schema and instance I/O.
 //!
 //! [`Layout`] resolves every field type and validates tag/cardinality rules
 //! before it is exposed. Runtime output can therefore operate on typed field
 //! descriptors instead of interpreting `.proto` source while encoding.
 
+use std::io::Read;
 use std::path::Path;
 
 use ir::Instance;
 use thiserror::Error;
 
+mod decode;
 mod encode;
 mod ir_schema;
 mod schema;
 
 /// Maximum accepted `.proto` schema size.
 pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
+
+/// Maximum accepted encoded message size.
+pub const MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 
 pub use schema::{
     Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, Message,
@@ -63,7 +68,7 @@ impl ProtobufError {
     }
 }
 
-/// Parses a proto2-lite schema from disk.
+/// Parses a proto2/proto3-lite schema from disk.
 pub fn read_layout(path: &Path) -> Result<Layout, ProtobufError> {
     let bytes = std::fs::read(path)?;
     if bytes.len() > MAX_SCHEMA_BYTES {
@@ -101,6 +106,43 @@ pub fn to_vec_message(
     encode::encode(layout, root, instance)
 }
 
+/// Decodes one root message from a bounded byte slice.
+pub fn from_slice(
+    layout: &Layout,
+    root: impl AsRef<str>,
+    bytes: &[u8],
+) -> Result<Instance, ProtobufError> {
+    if bytes.len() > MAX_MESSAGE_BYTES {
+        return Err(ProtobufError::instance(
+            root.as_ref(),
+            format!("message exceeds the {MAX_MESSAGE_BYTES}-byte limit"),
+        ));
+    }
+    let message = layout.resolve_message(root.as_ref())?;
+    decode::decode(layout, message, bytes)
+}
+
+/// Decodes one already-resolved root message from a bounded byte slice.
+pub fn from_slice_message(
+    layout: &Layout,
+    root: MessageId,
+    bytes: &[u8],
+) -> Result<Instance, ProtobufError> {
+    if layout.message(root).is_none() {
+        return Err(ProtobufError::schema(format!(
+            "message id {} does not belong to this layout",
+            root.index()
+        )));
+    }
+    if bytes.len() > MAX_MESSAGE_BYTES {
+        return Err(ProtobufError::instance(
+            root.index().to_string(),
+            format!("message exceeds the {MAX_MESSAGE_BYTES}-byte limit"),
+        ));
+    }
+    decode::decode(layout, root, bytes)
+}
+
 /// Projects a resolved protobuf root into ferrule's tree-shaped schema IR.
 ///
 /// Proto message recursion cannot be represented by [`ir::SchemaNode`] and
@@ -126,6 +168,20 @@ pub fn write(
     let bytes = to_vec(layout, root, instance)?;
     std::fs::write(path, bytes)?;
     Ok(())
+}
+
+/// Reads and decodes one root message from disk without accepting an
+/// unbounded allocation.
+pub fn read(
+    path: &Path,
+    layout: &Layout,
+    root: impl AsRef<str>,
+) -> Result<Instance, ProtobufError> {
+    let file = std::fs::File::open(path)?;
+    let mut bytes = Vec::new();
+    file.take((MAX_MESSAGE_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    from_slice(layout, root, &bytes)
 }
 
 #[cfg(test)]

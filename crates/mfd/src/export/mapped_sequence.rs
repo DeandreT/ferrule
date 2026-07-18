@@ -195,7 +195,10 @@ fn collect_scope_plans(
             })
         },
     );
-    if scope.iteration_output == IterationOutput::MappedSequence {
+    let repeated_conditioned_branch = branch.is_some()
+        && scope.iteration_output == IterationOutput::Repeated
+        && super::concatenation::source_type_condition(scope, graph).is_some();
+    if scope.iteration_output == IterationOutput::MappedSequence || repeated_conditioned_branch {
         let Some(plan) =
             mapped_scope_plan(scope, graph, sources, target_schema, chain, &scope_anchor)
         else {
@@ -236,7 +239,7 @@ fn mapped_scope_plan(
         return None;
     }
     let target_group = schema_node_at(target_schema, target_path)?;
-    if target_group.repeating || !matches!(target_group.kind, SchemaKind::Group { .. }) {
+    if !matches!(target_group.kind, SchemaKind::Group { .. }) {
         return None;
     }
     let explicit_text_port = scope
@@ -279,8 +282,17 @@ fn mapped_scope_plan(
         });
     }
     scope.source()?;
-    let alternative = super::concatenation::exact_type_condition(scope, graph, target_group);
-    let absorbed_marker = super::concatenation::exact_type_marker(scope, graph, target_group);
+    let (alternative, absorbed_marker, alternative_group) = if target_group.repeating {
+        let (alternative, marker, group) =
+            super::concatenation::source_type_condition(scope, graph)?;
+        (Some(alternative), Some(marker), Some(group))
+    } else {
+        (
+            super::concatenation::exact_type_condition(scope, graph, target_group),
+            super::concatenation::exact_type_marker(scope, graph, target_group),
+            super::concatenation::source_type_condition(scope, graph).map(|(_, _, group)| group),
+        )
+    };
 
     let source_collection = sources.schema_node_at(collection)?;
     if !matches!(source_collection.kind, SchemaKind::Group { .. }) {
@@ -300,11 +312,22 @@ fn mapped_scope_plan(
         return Some(plan);
     }
 
+    let group = alternative_group.unwrap_or_else(|| collection.to_vec());
+    if alternative.as_ref().is_some_and(|alternative| {
+        !sources.schema_node_at(&group).is_some_and(|source| {
+            source
+                .alternatives()
+                .iter()
+                .any(|candidate| &candidate.name == alternative)
+        })
+    }) {
+        return None;
+    }
     let absorbed_filter = alternative.as_ref().and(scope.filter);
     Some(ScopePlan {
         source: Some(SourcePlan {
             collection: collection.to_vec(),
-            group: collection.to_vec(),
+            group,
             copy_all: false,
             alternative,
             absorbed_filter,
@@ -374,7 +397,7 @@ fn mapped_copy_plan(
     if !binding_paths.is_subset(&compatible) {
         return None;
     }
-    let copy_all = binding_paths == compatible;
+    let copy_all = exact_copy_group(source_group_node, target_group) && binding_paths == compatible;
     Some(ScopePlan {
         source: Some(SourcePlan {
             collection: collection.to_vec(),
@@ -388,6 +411,16 @@ fn mapped_copy_plan(
     })
 }
 
+fn exact_copy_group(source: &SchemaNode, target: &SchemaNode) -> bool {
+    source.name == target.name
+        && source.attribute == target.attribute
+        && source.nillable == target.nillable
+        && source.text == target.text
+        && source.fixed == target.fixed
+        && source.value_generation == target.value_generation
+        && source.kind == target.kind
+}
+
 fn first_outputs_are_exportable(
     scope: &Scope,
     graph: &Graph,
@@ -395,25 +428,41 @@ fn first_outputs_are_exportable(
     target_format: SideFormat,
     path: &mut Vec<String>,
 ) -> bool {
-    if scope.iteration_output == IterationOutput::First
-        && (!path.is_empty()
-            || !matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
-            || scope.source() != Some(&[])
-            || target.repeating
-            || !matches!(target.kind, SchemaKind::Group { .. })
-            || scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
-            || !scope.take.is_some_and(|take| {
+    if scope.iteration_output == IterationOutput::First {
+        let mixed_content = matches!(
+            scope.construction,
+            mapping::ScopeConstruction::XmlMixedContent { .. }
+        ) && !path.is_empty()
+            && matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
+            && scope.source().is_some()
+            && schema_node_at(target, path).is_some_and(|node| {
+                !node.repeating && matches!(node.kind, SchemaKind::Group { .. })
+            })
+            && scope.filter.is_none()
+            && scope.group_by.is_none()
+            && scope.group_starting_with.is_none()
+            && scope.group_into_blocks.is_none()
+            && scope.sort_by.is_none()
+            && scope.take.is_none();
+        let ordinary_root = path.is_empty()
+            && matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
+            && scope.source() == Some(&[])
+            && !target.repeating
+            && matches!(target.kind, SchemaKind::Group { .. })
+            && scope.group_by.is_none()
+            && scope.group_starting_with.is_none()
+            && scope.group_into_blocks.is_none()
+            && scope.take.is_some_and(|take| {
                 matches!(
                     graph.nodes.get(&take),
                     Some(Node::Const {
                         value: Value::Int(1)
                     })
                 )
-            }))
-    {
-        return false;
+            });
+        if !mixed_content && !ordinary_root {
+            return false;
+        }
     }
     for child in &scope.children {
         path.push(child.target_field.clone());

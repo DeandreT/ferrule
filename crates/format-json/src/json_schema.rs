@@ -3,13 +3,13 @@
 //! `properties` (in document order) and `items`, maps `integer`/`number`/
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
-//! refs degrade to string scalars). Compatible closed-object `oneOf` unions
-//! and typed `additionalProperties` schemas are preserved. An omitted or
-//! false `additionalProperties` is treated as closed; explicitly
-//! unconstrained `true`/`{}` schemas, `anyOf`, and validation keywords remain
-//! outside this "lite" subset.
+//! refs degrade to string scalars). Compatible closed-object `oneOf` and
+//! `anyOf` unions and typed `additionalProperties` schemas are preserved. An
+//! omitted or false `additionalProperties` is treated as closed; explicitly
+//! unconstrained `true`/`{}` schemas and general composition or validation
+//! keywords remain outside this "lite" subset.
 
-use ir::{GroupAlternative, ScalarType, SchemaKind, SchemaNode};
+use ir::{GroupAlternative, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode};
 
 use crate::JsonFormatError;
 
@@ -46,9 +46,6 @@ fn parse(
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
-    if schema.get("anyOf").is_some() {
-        return Err(unsupported_union(name, "anyOf is not supported"));
-    }
     if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
         // Cyclic and external (non-`#/...`) refs degrade to string scalars.
         if active_refs.iter().any(|a| a == r) {
@@ -63,7 +60,24 @@ fn parse(
         return node;
     }
     if let Some(alternatives) = schema.get("oneOf") {
-        return parse_object_alternatives(name, schema, alternatives, doc, active_refs);
+        return parse_object_alternatives(
+            name,
+            schema,
+            alternatives,
+            GroupAlternativeMode::Exclusive,
+            doc,
+            active_refs,
+        );
+    }
+    if let Some(alternatives) = schema.get("anyOf") {
+        return parse_object_alternatives(
+            name,
+            schema,
+            alternatives,
+            GroupAlternativeMode::Inclusive,
+            doc,
+            active_refs,
+        );
     }
     // Nullable unions like ["string", "null"] use the first real type.
     let ty = match schema.get("type") {
@@ -178,13 +192,23 @@ fn parse_object_alternatives(
     name: &str,
     schema: &serde_json::Value,
     alternatives: &serde_json::Value,
+    mode: GroupAlternativeMode,
     doc: &serde_json::Value,
     active_refs: &mut Vec<String>,
 ) -> Result<SchemaNode, JsonFormatError> {
+    let keyword = match mode {
+        GroupAlternativeMode::Exclusive => "oneOf",
+        GroupAlternativeMode::Inclusive => "anyOf",
+    };
     let alternatives = alternatives
         .as_array()
         .filter(|alternatives| alternatives.len() >= 2)
-        .ok_or_else(|| unsupported_union(name, "oneOf must contain at least two alternatives"))?;
+        .ok_or_else(|| {
+            unsupported_union(
+                name,
+                &format!("{keyword} must contain at least two alternatives"),
+            )
+        })?;
     let base_children = parse_properties(schema, doc, active_refs)?;
     let base_required = required_names(schema);
     let mut merged = base_children.clone();
@@ -206,10 +230,11 @@ fn parse_object_alternatives(
                     .and_then(|reference| reference.rsplit('/').next())
                     .map(str::to_string)
             })
-            .unwrap_or_else(|| format!("oneOf{index}"));
+            .unwrap_or_else(|| format!("{keyword}{index}"));
         let parsed = parse(&alternative_name, alternative_schema, doc, active_refs)?;
         let SchemaKind::Group {
             children: variant_children,
+            alternatives: nested_alternatives,
             ..
         } = parsed.kind
         else {
@@ -218,6 +243,12 @@ fn parse_object_alternatives(
                 "only object alternatives are supported",
             ));
         };
+        if !nested_alternatives.is_empty() {
+            return Err(unsupported_union(
+                name,
+                "nested oneOf or anyOf object alternatives are not supported",
+            ));
+        }
         if resolved.get("additionalProperties") != Some(&serde_json::Value::Bool(false)) {
             return Err(unsupported_union(
                 name,
@@ -252,12 +283,32 @@ fn parse_object_alternatives(
                 required.push(field);
             }
         }
-        if metadata.iter().any(|previous: &GroupAlternative| {
-            previous.members == members && previous.required == required
-        }) {
+        if required
+            .iter()
+            .any(|field| !members.iter().any(|member| member == field))
+        {
+            return Err(unsupported_union(
+                name,
+                &format!("{keyword} requires a field not declared by that object alternative"),
+            ));
+        }
+        if mode == GroupAlternativeMode::Exclusive
+            && metadata.iter().any(|previous: &GroupAlternative| {
+                previous.members == members && previous.required == required
+            })
+        {
             return Err(unsupported_union(
                 name,
                 "alternatives are not distinguishable by supported object fields and requirements",
+            ));
+        }
+        if metadata
+            .iter()
+            .any(|previous: &GroupAlternative| previous.name == alternative_name)
+        {
+            return Err(unsupported_union(
+                name,
+                &format!("{keyword} alternatives must have distinct names"),
             ));
         }
         metadata.push(GroupAlternative {
@@ -266,9 +317,12 @@ fn parse_object_alternatives(
             required,
         });
     }
-    SchemaNode::group(name, merged)
-        .with_alternatives(metadata)
-        .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
+    let group = SchemaNode::group(name, merged);
+    match mode {
+        GroupAlternativeMode::Exclusive => group.with_alternatives(metadata),
+        GroupAlternativeMode::Inclusive => group.with_inclusive_alternatives(metadata),
+    }
+    .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
 }
 
 fn required_names(schema: &serde_json::Value) -> Vec<String> {
@@ -364,7 +418,11 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                         serde_json::Value::Object(variant)
                     })
                     .collect();
-                out.insert("oneOf".into(), serde_json::Value::Array(variants));
+                let keyword = match node.alternative_mode() {
+                    GroupAlternativeMode::Exclusive => "oneOf",
+                    GroupAlternativeMode::Inclusive => "anyOf",
+                };
+                out.insert(keyword.into(), serde_json::Value::Array(variants));
                 return;
             }
             let mut props = serde_json::Map::new();
@@ -471,6 +529,106 @@ mod tests {
         let roundtrip = import(&path).unwrap();
         std::fs::remove_file(path).unwrap();
         assert_eq!(roundtrip, schema);
+    }
+
+    #[test]
+    fn compatible_object_any_of_preserves_inclusive_matching_and_roundtrips() {
+        let schema = import_str(
+            r##"{
+  "title": "Record",
+  "anyOf": [
+    { "$ref": "#/$defs/labeled" },
+    { "$ref": "#/$defs/detailed" }
+  ],
+  "$defs": {
+    "labeled": {
+      "title": "labeled",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "integer" },
+        "label": { "type": "string" }
+      }
+    },
+    "detailed": {
+      "title": "detailed",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "integer" },
+        "label": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}"##,
+        );
+        assert_eq!(schema.alternative_mode(), GroupAlternativeMode::Inclusive);
+        let alternatives = schema.alternatives();
+        let universally_required = alternatives[0]
+            .required
+            .iter()
+            .filter(|field| {
+                alternatives[1..]
+                    .iter()
+                    .all(|alternative| alternative.required.contains(field))
+            })
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(universally_required, ["id"]);
+        assert!(crate::from_str(r#"{"id":7,"label":"both"}"#, &schema).is_ok());
+        assert!(crate::from_str(r#"{"id":7}"#, &schema).is_ok());
+        assert!(matches!(
+            crate::from_str("{}", &schema),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+
+        let exported = export(&schema);
+        assert!(exported.contains("\"anyOf\""));
+        assert!(!exported.contains("\"oneOf\""));
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_json_schema_any_of_roundtrip_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, exported).unwrap();
+        let roundtrip = import(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(roundtrip, schema);
+    }
+
+    #[test]
+    fn incompatible_object_any_of_is_rejected_actionably() {
+        let conflicting = import_str_result(
+            r#"{
+  "title": "Conflict",
+  "anyOf": [
+    { "type": "object", "additionalProperties": false,
+      "properties": { "value": { "type": "string" } } },
+    { "type": "object", "additionalProperties": false,
+      "properties": { "value": { "type": "integer" } } }
+  ]
+}"#,
+        )
+        .unwrap_err();
+        assert!(
+            conflicting
+                .to_string()
+                .contains("field `value` has incompatible schemas")
+        );
+
+        let mixed = import_str_result(
+            r#"{
+  "title": "Mixed",
+  "anyOf": [
+    { "type": "object", "additionalProperties": false, "properties": {} },
+    { "type": "string" }
+  ]
+}"#,
+        )
+        .unwrap_err();
+        assert!(mixed.to_string().contains("only object alternatives"));
     }
 
     #[test]

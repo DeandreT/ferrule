@@ -101,11 +101,13 @@ fn setup() -> TempDir {
     <component name="open" library="core" uid="202" kind="2"><targets><datapoint pos="0" key="2001"/></targets><data><constant value="[" datatype="string"/></data></component>
     <component name="close" library="core" uid="203" kind="2"><targets><datapoint pos="0" key="2002"/></targets><data><constant value="]" datatype="string"/></data></component>
     <component name="concat" library="core" uid="204" kind="5"><sources><datapoint pos="0" key="2003"/><datapoint pos="1" key="2004"/><datapoint pos="2" key="2005"/></sources><targets><datapoint pos="0" key="2006"/></targets></component>
+    <component name="uppercase" library="lang" uid="205" kind="5"><sources><datapoint pos="0" key="2008"/></sources><targets><datapoint pos="0" key="2009"/></targets></component>
     <component name="Result" library="core" uid="201" kind="7"><sources><datapoint pos="0" key="2007"/></sources><data><output datatype="string"/></data></component>
   </children><graph><vertices>
-    <vertex vertexkey="2000"><edges><edge vertexkey="2004"/></edges></vertex>
+    <vertex vertexkey="2000"><edges><edge vertexkey="2008"/></edges></vertex>
     <vertex vertexkey="2001"><edges><edge vertexkey="2003"/></edges></vertex>
     <vertex vertexkey="2002"><edges><edge vertexkey="2005"/></edges></vertex>
+    <vertex vertexkey="2009"><edges><edge vertexkey="2004"/></edges></vertex>
     <vertex vertexkey="2006"><edges><edge vertexkey="2007"/></edges></vertex>
   </vertices></graph></structure></component>
 </mapping>"#,
@@ -131,7 +133,7 @@ fn forward_declared_nested_scalar_udfs_inline_each_call_independently() {
     );
 
     let source = format_xml::from_str(
-        "<Pairs><Pair><Left>A</Left><Right>B</Right></Pair><Pair><Left>C</Left><Right>D</Right></Pair></Pairs>",
+        "<Pairs><Pair><Left>a</Left><Right>b</Right></Pair><Pair><Left>c</Left><Right>d</Right></Pair></Pairs>",
         &imported.project.source,
     )
     .unwrap();

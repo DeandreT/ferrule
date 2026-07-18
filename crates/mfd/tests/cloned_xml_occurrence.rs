@@ -184,6 +184,95 @@ fn structural_branch_without_content_is_not_silently_concatenated()
 }
 
 #[test]
+fn absent_edi_composites_do_not_emit_empty_cloned_occurrences()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    std::fs::write(
+        dir.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Result"><xs:complexType><xs:sequence>
+            <xs:element name="Station" maxOccurs="unbounded"><xs:complexType><xs:attribute name="code" type="xs:string"/></xs:complexType></xs:element>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )?;
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="edi" library="text" kind="16"><data>
+            <root><entry name="FileInstance"><entry name="document">
+              <entry name="Envelope" ferrule-repeating="0"><entry name="Row" ferrule-repeating="1">
+                <entry name="C1" ferrule-repeating="0" outkey="10"><entry name="Code" ferrule-repeating="0" datatype="string" outkey="11"/></entry>
+                <entry name="C2" ferrule-repeating="0" outkey="20"><entry name="Code" ferrule-repeating="0" datatype="string" outkey="21"/></entry>
+              </entry></entry>
+            </entry></entry></root><text type="edi" kind="EDIFACT" inputinstance="source.edi"/>
+          </data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="Result">
+              <entry name="Station" inpkey="30"><entry name="code" type="attribute" inpkey="31"/></entry>
+              <entry name="Station" inpkey="40" clone="1"><entry name="code" type="attribute" inpkey="41"/></entry>
+            </entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Result"/>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="31"/></edges></vertex>
+          <vertex vertexkey="20"><edges><edge vertexkey="40"/></edges></vertex>
+          <vertex vertexkey="21"><edges><edge vertexkey="41"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = Instance::Group(vec![(
+        "Row".into(),
+        Instance::Repeated(vec![
+            Instance::Group(vec![
+                (
+                    "C1".into(),
+                    Instance::Group(vec![(
+                        "Code".into(),
+                        Instance::Scalar(Value::String("A".into())),
+                    )]),
+                ),
+                (
+                    "C2".into(),
+                    Instance::Group(vec![("Code".into(), Instance::Scalar(Value::Null))]),
+                ),
+            ]),
+            Instance::Group(vec![
+                (
+                    "C1".into(),
+                    Instance::Group(vec![("Code".into(), Instance::Scalar(Value::Null))]),
+                ),
+                (
+                    "C2".into(),
+                    Instance::Group(vec![(
+                        "Code".into(),
+                        Instance::Scalar(Value::String("B".into())),
+                    )]),
+                ),
+            ]),
+        ]),
+    )]);
+
+    let target = engine::run(&imported.project, &source)?;
+    let stations = target
+        .field("Station")
+        .and_then(Instance::as_repeated)
+        .ok_or("target stations are not repeated")?;
+    assert_eq!(stations.len(), 2);
+    assert_eq!(
+        stations
+            .iter()
+            .filter_map(|station| station.field("code").and_then(Instance::as_scalar))
+            .collect::<Vec<_>>(),
+        [&Value::String("A".into()), &Value::String("B".into())]
+    );
+    Ok(())
+}
+
+#[test]
 fn scalar_only_cloned_occurrences_keep_document_order_around_sequences()
 -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;

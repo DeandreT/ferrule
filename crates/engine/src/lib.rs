@@ -115,6 +115,16 @@ pub enum EngineError {
     RecursiveSequenceDepth { limit: usize },
     #[error("recursive sequence produced more than {max} items")]
     RecursiveSequenceTooLarge { max: u128 },
+    #[error("tokenize-regexp pattern is {bytes} bytes; maximum is {max}")]
+    TokenizeRegexPatternTooLarge { bytes: usize, max: usize },
+    #[error("tokenize-regexp flags `{flags}` contain an unsupported flag")]
+    InvalidTokenizeRegexFlags { flags: String },
+    #[error("tokenize-regexp pattern is invalid: {message}")]
+    InvalidTokenizeRegex { message: String },
+    #[error("tokenize-regexp pattern matches a zero-width string")]
+    ZeroWidthTokenizeRegex,
+    #[error("tokenize-regexp produced more than {max} items")]
+    TokenizeRegexTooLarge { max: u128 },
     #[error("recursive filter exceeds the {limit}-group depth limit")]
     RecursiveFilterDepth { limit: usize },
     #[error("recursive filter requires a group item, got {found}")]

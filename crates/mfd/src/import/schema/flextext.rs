@@ -583,8 +583,11 @@ fn column_width(node: &roxmltree::Node<'_, '_>) -> Result<NonZeroU32, String> {
         .map_err(|_| "SplitSingle has an invalid Lower column offset".to_string())?;
     lower
         .checked_sub(upper)
+        .and_then(|width| width.checked_add(1))
         .and_then(NonZeroU32::new)
-        .ok_or_else(|| "vertical SplitSingle Lower offset must exceed Upper offset".to_string())
+        .ok_or_else(|| {
+            "vertical SplitSingle Lower offset must not precede Upper offset".to_string()
+        })
 }
 
 fn nonzero_attribute(
@@ -670,6 +673,7 @@ fn child<'a, 'input>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ir::{Instance, Value};
 
     #[test]
     fn parses_line_delimiter_and_column_splitters() {
@@ -697,7 +701,34 @@ mod tests {
         };
         assert_eq!(
             splitter,
-            &OnceSplitter::FixedColumns(NonZeroU32::new(1).unwrap())
+            &OnceSplitter::FixedColumns(NonZeroU32::new(2).unwrap())
+        );
+    }
+
+    #[test]
+    fn vertical_offsets_are_inclusive_one_based_columns() {
+        let xml = r#"<FlexText><Commands><Project><RootName Value="Root"/><Connections><Connection>
+          <SplitSingle Orientation="Vertical"><Upper Offset="1"/><Lower Offset="17"/><Name Value="CompanyInfo"/><Connections>
+            <Connection><Ignore/></Connection>
+            <Connection><Store Type="string" TrimSide="Right" TrimCharSet="%0D%0A"><Name Value="Company"/></Store></Connection>
+          </Connections></SplitSingle>
+        </Connection></Connections></Project></Commands></FlexText>"#;
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let parsed = parse_project(&document).unwrap();
+        let schema = parsed.layout.schema();
+        let instance = format_flextext::from_str(
+            "Company:         Nanonull Inc.\r\n",
+            &schema,
+            &parsed.layout,
+        )
+        .unwrap();
+
+        assert_eq!(
+            instance
+                .field("CompanyInfo")
+                .and_then(|group| group.field("Company"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("Nanonull Inc.".into()))
         );
     }
 

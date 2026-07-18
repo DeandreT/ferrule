@@ -18,6 +18,15 @@ pub const XML_TEXT_FIELD: &str = "#text";
 /// an ordinary schema child.
 pub const XML_TYPE_FIELD: &str = "\u{1f}ferrule-xml-type";
 
+/// Reserved instance-group field retaining the direct text and element nodes
+/// of mixed XML content in document order. The field is format metadata and
+/// is deliberately absent from [`SchemaNode`] trees.
+pub const XML_MIXED_CONTENT_FIELD: &str = "\u{1f}ferrule-xml-mixed-content";
+
+/// Reserved field holding the typed source value for one item in
+/// [`XML_MIXED_CONTENT_FIELD`].
+pub const XML_MIXED_CONTENT_VALUE_FIELD: &str = "\u{1f}ferrule-xml-mixed-value";
+
 /// Virtual repeating group used to expose arbitrary direct XML child
 /// elements while retaining their document order.
 pub const XML_ELEMENTS_FIELD: &str = "element()";
@@ -160,6 +169,11 @@ pub struct SchemaNode {
     /// supplied. Generated values and fixed literals are mutually exclusive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value_generation: Option<ValueGeneration>,
+    /// How this group's alternatives compose. Exclusive alternatives model
+    /// XML derived types and JSON Schema `oneOf`; inclusive alternatives
+    /// model the bounded object-only JSON Schema `anyOf` subset.
+    #[serde(default, skip_serializing_if = "GroupAlternativeMode::is_exclusive")]
+    pub alternative_mode: GroupAlternativeMode,
     pub kind: SchemaKind,
 }
 
@@ -185,6 +199,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             fixed: Option<String>,
             #[serde(default)]
             value_generation: Option<ValueGeneration>,
+            #[serde(default)]
+            alternative_mode: GroupAlternativeMode,
             kind: SchemaKind,
         }
 
@@ -198,14 +214,16 @@ impl<'de> Deserialize<'de> for SchemaNode {
             nillable: repr.nillable,
             fixed: repr.fixed,
             value_generation: repr.value_generation,
+            alternative_mode: repr.alternative_mode,
             kind: repr.kind,
         };
         if !node.alternatives_are_valid()
             || !node.recursive_ref_is_valid()
             || !node.value_generation_is_valid()
+            || !node.alternative_mode_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, or value generation",
+                "schema metadata contains invalid alternatives, recursion, value generation, or alternative mode",
             ));
         }
         Ok(node)
@@ -244,6 +262,21 @@ pub struct GroupAlternative {
     pub required: Vec<String>,
 }
 
+/// Whether exactly one or at least one declared group alternative must match.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GroupAlternativeMode {
+    #[default]
+    Exclusive,
+    Inclusive,
+}
+
+impl GroupAlternativeMode {
+    fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Exclusive)
+    }
+}
+
 impl SchemaNode {
     pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
         Self {
@@ -255,6 +288,7 @@ impl SchemaNode {
             nillable: false,
             fixed: None,
             value_generation: None,
+            alternative_mode: GroupAlternativeMode::Exclusive,
             kind: SchemaKind::Scalar { ty },
         }
     }
@@ -269,6 +303,7 @@ impl SchemaNode {
             nillable: false,
             fixed: None,
             value_generation: None,
+            alternative_mode: GroupAlternativeMode::Exclusive,
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
@@ -300,6 +335,7 @@ impl SchemaNode {
                     dynamic,
                 } if children.is_empty() && alternatives.is_empty() && dynamic.is_none()
             )
+            && self.alternative_mode.is_exclusive()
     }
 
     /// Checks that generated-value metadata remains scalar-only and cannot
@@ -352,8 +388,25 @@ impl SchemaNode {
         self.set_alternatives(alternatives).then_some(self)
     }
 
+    /// Attaches validated inclusive alternative membership to a group node.
+    pub fn with_inclusive_alternatives(
+        mut self,
+        alternatives: Vec<GroupAlternative>,
+    ) -> Option<Self> {
+        self.set_group_alternatives(alternatives, GroupAlternativeMode::Inclusive)
+            .then_some(self)
+    }
+
     /// Replaces alternative membership when it is valid for this group.
     pub fn set_alternatives(&mut self, alternatives: Vec<GroupAlternative>) -> bool {
+        self.set_group_alternatives(alternatives, GroupAlternativeMode::Exclusive)
+    }
+
+    fn set_group_alternatives(
+        &mut self,
+        alternatives: Vec<GroupAlternative>,
+        mode: GroupAlternativeMode,
+    ) -> bool {
         let SchemaKind::Group {
             children,
             alternatives: target,
@@ -366,6 +419,7 @@ impl SchemaNode {
             return false;
         }
         *target = alternatives;
+        self.alternative_mode = mode;
         true
     }
 
@@ -382,6 +436,21 @@ impl SchemaNode {
             }
             SchemaKind::Scalar { .. } => true,
         }
+    }
+
+    /// Checks that inclusive semantics cannot exist without group
+    /// alternatives or leak onto scalar nodes.
+    pub fn alternative_mode_is_valid(&self) -> bool {
+        match &self.kind {
+            SchemaKind::Group { alternatives, .. } => {
+                !alternatives.is_empty() || self.alternative_mode.is_exclusive()
+            }
+            SchemaKind::Scalar { .. } => self.alternative_mode.is_exclusive(),
+        }
+    }
+
+    pub fn alternative_mode(&self) -> GroupAlternativeMode {
+        self.alternative_mode
     }
 
     pub fn alternatives(&self) -> &[GroupAlternative] {
@@ -472,16 +541,20 @@ pub enum Instance {
     Scalar(Value),
     Group(Vec<(String, Instance)>),
     Repeated(Vec<Instance>),
-    /// Ordered local source documents. Each member retains host-resolved
+    /// Ordered local source documents. Each member retains boundary-relative
     /// path metadata while its value remains an ordinary schema-shaped tree.
-    /// This variant is a source boundary and must not reach format writers.
+    /// Host-specific path validation belongs to the I/O boundary. This
+    /// variant is a source boundary and must not reach format writers.
     DocumentSet(Vec<DocumentMember>),
     /// Mapping-produced XML element occurrences whose cardinality is
     /// independent of the schema node's declared repetition.
     MappedSequence(Vec<Instance>),
 }
 
-/// One validated member of an [`Instance::DocumentSet`].
+/// One structurally valid member of an [`Instance::DocumentSet`].
+///
+/// The path is non-empty but otherwise opaque here; filesystem boundaries
+/// validate and confine it for their host before performing I/O.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DocumentMember {
     path: String,
@@ -707,6 +780,31 @@ mod tests {
           }]}
         }"#;
         assert!(serde_json::from_str::<SchemaNode>(invalid_json).is_err());
+
+        let inclusive = group
+            .with_inclusive_alternatives(vec![
+                GroupAlternative {
+                    name: "domestic".into(),
+                    members: vec!["state".into()],
+                    required: Vec::new(),
+                },
+                GroupAlternative {
+                    name: "international".into(),
+                    members: vec!["postcode".into()],
+                    required: Vec::new(),
+                },
+            ])
+            .unwrap();
+        assert_eq!(
+            inclusive.alternative_mode(),
+            GroupAlternativeMode::Inclusive
+        );
+        let encoded = serde_json::to_string(&inclusive).unwrap();
+        assert!(encoded.contains(r#""alternative_mode":"inclusive""#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            inclusive
+        );
     }
 
     #[test]

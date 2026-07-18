@@ -71,6 +71,66 @@ pub(crate) fn scalar(context: &[&Instance], path: &[String]) -> Option<Value> {
     None
 }
 
+/// Resolves any instance value with scalar field fallback semantics.
+pub(crate) fn instance<'a>(context: &[&'a Instance], path: &[String]) -> Option<&'a Instance> {
+    for item in context.iter().rev() {
+        let mut current = *item;
+        let mut found = true;
+        for segment in path {
+            if let Instance::Repeated(items) = current {
+                current = items.first()?;
+            }
+            match current.field(segment) {
+                Some(next) => current = next,
+                None => {
+                    found = false;
+                    break;
+                }
+            }
+        }
+        if found {
+            if let Instance::Repeated(items) = current {
+                current = items.first()?;
+            }
+            return Some(current);
+        }
+    }
+    None
+}
+
+pub(crate) fn instance_in_active_collection<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    path: &[String],
+) -> Option<&'a Instance> {
+    for (position_index, position) in positions.iter().enumerate().rev() {
+        if position.collection.is_empty() || !path.starts_with(&position.collection) {
+            continue;
+        }
+        let Some(owner) = context_for_position(context, positions, position_index) else {
+            continue;
+        };
+        if let Some(value) = instance(&[owner], &path[position.collection.len()..]) {
+            return Some(value);
+        }
+    }
+    instance(context, path)
+}
+
+pub(crate) fn instance_in_frame<'a>(
+    context: &[&'a Instance],
+    positions: &[PositionFrame],
+    frame: &[String],
+    path: &[String],
+) -> Option<&'a Instance> {
+    let position_index = positions.iter().rposition(|position| {
+        position.collection == frame
+            || !position.collection.is_empty() && frame.ends_with(position.collection.as_slice())
+    })?;
+    let owner = context_for_position(context, positions, position_index)?;
+    instance(&[owner], path)
+}
+
 /// Resolves an absolute path against the deepest active collection that owns
 /// its prefix before falling back to ordinary innermost-first lookup. This is
 /// needed by collection-local expressions that read both the current item and

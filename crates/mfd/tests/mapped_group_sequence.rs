@@ -97,6 +97,29 @@ fn write_conditioned_concatenated_fixture(dir: &Path) {
     );
 }
 
+fn write_conditioned_descendant_driver_fixture(dir: &Path) {
+    write(
+        &dir.join("typed-message.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:ferrule:typed-message" targetNamespace="urn:ferrule:typed-message" elementFormDefault="qualified">
+          <xs:complexType name="Address"><xs:sequence><xs:element name="name" type="xs:string"/></xs:sequence></xs:complexType>
+          <xs:complexType name="USAddress"><xs:complexContent><xs:extension base="t:Address"><xs:sequence><xs:element name="state" type="xs:string"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>
+          <xs:complexType name="EUAddress"><xs:complexContent><xs:extension base="t:Address"><xs:sequence><xs:element name="postcode" type="xs:string"/></xs:sequence></xs:extension></xs:complexContent></xs:complexType>
+          <xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Message" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Address" type="t:Address"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element>
+          <xs:element name="Target"><xs:complexType><xs:sequence><xs:element name="Message" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Address"><xs:complexType><xs:sequence><xs:element name="name" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    );
+    let condition = r#"<condition><expression><function name="equal" library="core"><expression><attribute ns="http://www.w3.org/2001/XMLSchema-instance" name="type"/></expression><expression><constant value="{urn:ferrule:typed-message}USAddress" datatype="QName"/></expression></function></expression></condition>"#;
+    write(
+        &dir.join("mapping.mfd"),
+        &format!(
+            r#"<mapping version="26"><component name="map"><structure><children>
+              <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Message"><entry name="Address" outkey="10">{condition}<entry name="name" outkey="11"/></entry></entry></entry></entry></entry></root><document schema="typed-message.xsd" inputinstance="source.xml" instanceroot="{{urn:ferrule:typed-message}}Source"/></data></component>
+              <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Message" inpkey="30"><entry name="Address"><entry name="name" inpkey="31"/></entry></entry></entry></entry></entry></root><document schema="typed-message.xsd" outputinstance="target.xml" instanceroot="{{urn:ferrule:typed-message}}Target"/></data></component>
+            </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="31"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+        ),
+    );
+}
+
 fn rewrite_mapping(dir: &Path, rewrite: impl FnOnce(String) -> String) {
     let path = dir.join("mapping.mfd");
     let mapping = std::fs::read_to_string(&path).unwrap();
@@ -238,8 +261,41 @@ fn xsi_type_conditioned_structural_feeds_filter_and_preserve_type_identity() {
 }
 
 #[test]
+fn conditioned_descendant_structural_feed_filters_its_parent_occurrence() {
+    let dir = TempDir::new();
+    write_conditioned_descendant_driver_fixture(&dir.0);
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+
+    let source = format_xml::from_str(
+        r#"<Source xmlns="urn:ferrule:typed-message" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:t="urn:ferrule:typed-message"><Message><Address xsi:type="t:EUAddress"><name>North</name><postcode>N1</postcode></Address></Message><Message><Address xsi:type="t:USAddress"><name>West</name><state>CA</state></Address></Message></Source>"#,
+        &imported.project.source,
+    )
+    .unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let messages = output
+        .field("Message")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        messages[0]
+            .field("Address")
+            .and_then(|address| address.field("name"))
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("West".into()))
+    );
+}
+
+#[test]
 #[ignore = "needs the local MapForce sample set; informational only"]
-fn local_read_messages_preserves_one_conditioned_bill_to_per_purchase_order() {
+fn local_read_messages_filters_parent_orders_and_preserves_conditioned_addresses() {
     let sample_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../samples/ReferenceSamples");
     let mapping = sample_dir.join("ReadMessages.mfd");
@@ -260,8 +316,21 @@ fn local_read_messages_preserves_one_conditioned_bill_to_per_purchase_order() {
         .field("purchaseOrder")
         .and_then(Instance::as_repeated)
         .unwrap();
-    assert_eq!(orders.len(), 3);
+    assert_eq!(orders.len(), 2);
     for order in orders {
+        let ship_to = order
+            .field("shipTo")
+            .and_then(Instance::as_mapped_sequence)
+            .unwrap();
+        assert_eq!(ship_to.len(), 1);
+        assert_eq!(
+            ship_to[0]
+                .field(ir::XML_TYPE_FIELD)
+                .and_then(Instance::as_scalar),
+            Some(&Value::String(
+                "{http://www.altova.com/IPO}US-Address".into()
+            ))
+        );
         let bill_to = order
             .field("billTo")
             .and_then(Instance::as_mapped_sequence)
@@ -404,11 +473,10 @@ fn filtered_group_port_emits_zero_one_or_many_non_repeating_xml_elements() {
     let exported = dir.0.join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &exported).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert!(
-        std::fs::read_to_string(&exported)
-            .unwrap()
-            .contains("dataconnection type=\"2\"")
-    );
+    let design = std::fs::read_to_string(&exported).unwrap();
+    assert!(!design.contains("dataconnection type=\"2\""), "{design}");
+    assert!(design.contains("name=\"Name\" inpkey="), "{design}");
+    assert!(design.contains("name=\"Include\" inpkey="), "{design}");
     let reimported = mfd::import(&exported).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(
@@ -660,13 +728,15 @@ fn nested_mapped_sequence_resolves_an_outward_source_collection() {
 }
 
 #[test]
-fn export_uses_the_selected_group_below_the_repeated_collection() {
+fn differently_named_complete_group_exports_as_ordinary_wiring() {
     let dir = TempDir::new();
     let project = nested_source_group_project(true);
     let path = dir.0.join("nested-copy.mfd");
     assert!(mfd::export(&project, &path).unwrap().is_empty());
     let design = std::fs::read_to_string(&path).unwrap();
-    assert!(design.contains("dataconnection type=\"2\""));
+    assert!(!design.contains("dataconnection type=\"2\""), "{design}");
+    assert!(design.contains("name=\"Name\" inpkey="), "{design}");
+    assert!(design.contains("name=\"Extra\" inpkey="), "{design}");
 
     let imported = mfd::import(&path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

@@ -54,7 +54,7 @@ fn assert_output(project: &mapping::Project) {
     let output = engine::run(project, &input()).unwrap();
     assert_eq!(
         output.field("Result").and_then(Instance::as_scalar),
-        Some(&Value::String("2024-02-29T13:05:00-07:00".to_string()))
+        Some(&Value::String("2024-02-29T13:05:00-09:00".to_string()))
     );
 }
 

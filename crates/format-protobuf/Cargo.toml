@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Validated proto2-lite layouts and dynamic Protocol Buffers output"
+description = "Validated proto2/proto3-lite layouts and dynamic Protocol Buffers I/O"
 
 [dependencies]
 ir = { workspace = true }

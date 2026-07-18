@@ -1,13 +1,16 @@
 use std::collections::BTreeSet;
 
 use ir::{SchemaKind, Value, XML_TYPE_FIELD};
-use mapping::{IterationOutput, Node, ScopeConstruction};
+use mapping::{IterationOutput, Node, NodeId, ScopeConstruction};
 
 use super::graph::GraphBuilder;
-use super::group_projection::TargetIteration;
+use super::group_projection::{GroupProjectionPlan, GroupProjectionStep, TargetIteration};
 use super::iteration::split_at_innermost_repeating;
-use super::schema::{SchemaComponent, collect_matching_scalar_paths, schema_node_at};
+use super::schema::{
+    ComponentFormat, SchemaComponent, collect_matching_scalar_paths, schema_node_at,
+};
 use super::scope::{IterationNodes, ScopeBuilder, TargetLeaf};
+use super::source::SourcePath;
 
 pub(super) fn build(
     iterations: Vec<TargetIteration>,
@@ -496,13 +499,13 @@ fn build_one(
             None => udf_filter,
         });
     }
-    if let Some((type_filter, _)) = xml_type_nodes {
+    if let Some(type_nodes) = &xml_type_nodes {
         existing_filter = Some(match existing_filter {
             Some(existing) => builder.alloc(Node::Call {
                 function: "and".into(),
-                args: vec![existing, type_filter],
+                args: vec![existing, type_nodes.filter],
             }),
-            None => type_filter,
+            None => type_nodes.filter,
         });
     }
     if let Some(id) = join
@@ -531,6 +534,18 @@ fn build_one(
             return;
         }
     };
+    if let (Some(source_path), Some(scope_source)) = (&source_path, &scope_source)
+        && let Some(presence) =
+            edi_structural_presence_filter(source_path, scope_source, &iteration_anchor, builder)
+    {
+        filter = Some(match filter {
+            Some(filter) => builder.alloc(Node::Call {
+                function: "and".into(),
+                args: vec![filter, presence],
+            }),
+            None => presence,
+        });
+    }
     if query_at_most_one
         && (feed.db_where_component.is_some()
             || feed.has_filter
@@ -724,13 +739,65 @@ fn build_one(
         builder,
         scopes,
     );
-    if let Some((_, type_value)) = xml_type_nodes {
+    if let Some(type_value) = xml_type_nodes.and_then(|nodes| nodes.target_value) {
         let mut marker_path = target_path;
         marker_path.push(XML_TYPE_FIELD.to_string());
         if let Some(target) = TargetLeaf::from_path(&marker_path) {
             scopes.add_binding(target, type_value);
         }
     }
+}
+
+fn edi_structural_presence_filter(
+    source_path: &SourcePath,
+    scope_source: &SourcePath,
+    active_anchor: &[String],
+    builder: &mut GraphBuilder<'_>,
+) -> Option<NodeId> {
+    if source_path == scope_source
+        || builder.sources.get(source_path.source)?.format != ComponentFormat::Edi
+    {
+        return None;
+    }
+    let source_group = builder.schema_node(source_path)?;
+    if source_group.repeating || !matches!(source_group.kind, SchemaKind::Group { .. }) {
+        return None;
+    }
+    let mut relative_paths = Vec::new();
+    collect_matching_scalar_paths(
+        source_group,
+        source_group,
+        &mut Vec::new(),
+        &mut relative_paths,
+    );
+    let absolute_paths = relative_paths
+        .into_iter()
+        .map(|relative| {
+            let mut path = source_path.path.clone();
+            path.extend(relative);
+            SourcePath {
+                source: source_path.source,
+                path,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    absolute_paths
+        .into_iter()
+        .try_fold(None, |presence, path| {
+            let field = builder.source_field_at_anchor(&path, active_anchor)?;
+            let exists = builder.alloc(Node::Call {
+                function: "exists".into(),
+                args: vec![field],
+            });
+            Some(Some(match presence {
+                Some(presence) => builder.alloc(Node::Call {
+                    function: "or".into(),
+                    args: vec![presence, exists],
+                }),
+                None => exists,
+            }))
+        })?
 }
 
 fn project_join_branch(
@@ -794,13 +861,18 @@ fn inherited_structural_filters(
         .collect()
 }
 
+struct XmlTypeNodes {
+    filter: mapping::NodeId,
+    target_value: Option<mapping::NodeId>,
+}
+
 fn xml_type_nodes(
     target: &SchemaComponent,
     target_path: &[String],
     source_path: &super::source::SourcePath,
     source_port: u32,
     builder: &mut GraphBuilder<'_>,
-) -> Option<(mapping::NodeId, mapping::NodeId)> {
+) -> Option<XmlTypeNodes> {
     let type_name = builder.xml_type_conditions.get(&source_port)?.clone();
     let source_group = builder.schema_node(source_path)?;
     let target_group = schema_node_at(&target.schema, target_path)?;
@@ -808,16 +880,16 @@ fn xml_type_nodes(
         .alternatives()
         .iter()
         .any(|alternative| alternative.name == type_name)
-        || !target_group
-            .alternatives()
-            .iter()
-            .any(|alternative| alternative.name == type_name)
     {
         return None;
     }
     let mut marker_path = source_path.clone();
     marker_path.path.push(XML_TYPE_FIELD.to_string());
     let marker = builder.source_field_at(&marker_path)?;
+    let target_has_type = target_group
+        .alternatives()
+        .iter()
+        .any(|alternative| alternative.name == type_name);
     let expected = builder.alloc(Node::Const {
         value: Value::String(type_name),
     });
@@ -825,7 +897,11 @@ fn xml_type_nodes(
         function: "equal".into(),
         args: vec![marker, expected],
     });
-    Some((filter, expected))
+    let target_value = target_has_type.then_some(expected);
+    Some(XmlTypeNodes {
+        filter,
+        target_value,
+    })
 }
 
 fn reject_join_control(
@@ -889,26 +965,40 @@ fn project_whole_group(
         scope.construction = ScopeConstruction::CopyCurrentSource;
         return;
     }
-    let mut relative_paths = Vec::new();
-    collect_matching_scalar_paths(
-        source_group,
-        target_group,
-        &mut Vec::new(),
-        &mut relative_paths,
-    );
-    for relative in relative_paths {
-        let mut target_leaf = target_path.to_vec();
-        target_leaf.extend(relative.iter().cloned());
-        if connected.contains(&target_leaf) || projections.contains_key(&relative) {
-            continue;
-        }
-        let mut source_leaf = source_path.clone();
-        source_leaf.path.extend(relative);
-        if let (Some(target), Some(node)) = (
-            TargetLeaf::from_path(&target_leaf),
-            builder.source_field_at(&source_leaf),
-        ) {
-            scopes.add_binding(target, node);
+    for step in GroupProjectionPlan::between(source_group, target_group).into_ordered_steps() {
+        match step {
+            GroupProjectionStep::BindScalar(relative) => {
+                let mut target_leaf = target_path.to_vec();
+                target_leaf.extend(relative.iter().cloned());
+                if connected.contains(&target_leaf) || projections.contains_key(&relative) {
+                    continue;
+                }
+                let mut source_leaf = source_path.clone();
+                source_leaf.path.extend(relative);
+                if let (Some(target), Some(node)) = (
+                    TargetLeaf::from_path(&target_leaf),
+                    builder.source_field_at(&source_leaf),
+                ) {
+                    scopes.add_binding(target, node);
+                }
+            }
+            GroupProjectionStep::CopyRepeatedGroup(relative) => {
+                let mut target_collection = target_path.to_vec();
+                target_collection.extend(relative.iter().cloned());
+                if connected.iter().any(|path| {
+                    path.len() > target_collection.len() && path.starts_with(&target_collection)
+                }) {
+                    continue;
+                }
+                let mut source_collection = source_path.clone();
+                source_collection.path.extend(relative);
+                builder.note_framed_prefixes(&source_collection);
+                scopes.add_copy_iteration(
+                    &target_collection,
+                    &builder.context_path(&source_collection),
+                );
+            }
+            GroupProjectionStep::UnsupportedRepetition => {}
         }
     }
 }

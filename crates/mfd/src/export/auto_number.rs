@@ -167,6 +167,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         Node::ValueMap { input, .. } => vec![*input],
         Node::Lookup { matches, .. } => vec![*matches],
         Node::DynamicSourceField { key, .. } => vec![*key],
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![*predicate, *value],

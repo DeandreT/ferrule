@@ -13,8 +13,10 @@ use std::path::Path;
 
 use ir::{Instance, SchemaKind, SchemaNode, Value};
 
+use crate::autocomplete as envelope;
 use crate::segments::{
-    Segment, WriteOptions, read_segments, validate_instance_shape, write_segments,
+    Segment, WriteOptions, read_segments, serialize_segments, validate_instance_shape,
+    write_segments,
 };
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
@@ -39,6 +41,14 @@ pub struct Separators {
     pub segment: char,
     pub repetition: Option<char>,
     pub release: Option<char>,
+}
+
+/// Stable run data used when an X12 target requests envelope completion.
+#[derive(Debug, Clone, Copy)]
+pub struct Autocomplete<'a> {
+    pub current_datetime: &'a str,
+    pub request_acknowledgement: bool,
+    pub transaction_set: Option<&'a str>,
 }
 
 impl Default for Separators {
@@ -353,13 +363,61 @@ pub fn write_with_syntax(
     separators: Separators,
     interchange_version: Option<&str>,
 ) -> Result<(), EdiFormatError> {
+    write_with_syntax_inner(
+        path,
+        schema,
+        instance,
+        separators,
+        interchange_version,
+        None,
+    )
+}
+
+/// Writes X12 and derives missing envelope dates, identifiers, counts, and
+/// trailers from one stable mapping-run timestamp.
+pub fn write_with_syntax_and_autocomplete(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+    autocomplete: Autocomplete<'_>,
+) -> Result<(), EdiFormatError> {
+    write_with_syntax_inner(
+        path,
+        schema,
+        instance,
+        separators,
+        interchange_version,
+        Some(autocomplete),
+    )
+}
+
+fn write_with_syntax_inner(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+    autocomplete: Option<Autocomplete<'_>>,
+) -> Result<(), EdiFormatError> {
     validate_instance_shape(schema, instance)?;
     let mut options = separators.write_options()?;
     options.interchange_version = interchange_version
         .map(parse_interchange_version)
         .transpose()?;
     let options = write_options(schema, instance, options)?;
-    let out = write_segments(schema, instance, &options)?;
+    let mut out = write_segments(schema, instance, &options)?;
+    if let Some(autocomplete) = autocomplete {
+        let (segments, _) = tokenize_with_component_separator(&out, Some(separators))?;
+        let completed = envelope::x12(
+            segments,
+            autocomplete.current_datetime,
+            autocomplete.request_acknowledgement,
+            autocomplete.transaction_set,
+        )?;
+        out = serialize_segments(&completed, &options)?;
+    }
     std::fs::write(path, out)?;
     Ok(())
 }

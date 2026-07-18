@@ -28,8 +28,10 @@ mod xbrl;
 mod xlsx_output;
 
 pub use adjacency::AdjacencyTreePlan;
-pub use edi::EdiBoundaryKind;
-pub use edi::X12Separators;
+pub use edi::{
+    EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
+    EdifactAutocomplete, X12Autocomplete, X12Separators,
+};
 pub use external_source::{
     ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
     ExternalSourceOptionsError, ExternalSourceOrigin,
@@ -175,6 +177,16 @@ pub enum Node {
         frame: Option<Vec<String>>,
         key: NodeId,
     },
+    /// Atomizes one XML mixed-content group while replacing selected direct
+    /// child occurrences with graph-computed strings. XML readers retain the
+    /// source node order as private instance metadata; `path` and `frame`
+    /// use the same resolution rules as [`Node::SourceField`].
+    XmlMixedContent {
+        path: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame: Option<Vec<String>>,
+        replacements: Vec<XmlMixedContentReplacement>,
+    },
     /// Scans `collection` in source order, evaluating `predicate` and
     /// `value` once per item. Returns the value for the first item whose
     /// predicate is true, or `Null` when no item matches.
@@ -223,6 +235,17 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arg: Option<NodeId>,
     },
+}
+
+/// One direct-element replacement in [`Node::XmlMixedContent`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XmlMixedContentReplacement {
+    pub element: String,
+    /// Repeating source collection represented by each matching occurrence.
+    /// Empty means the expression remains in the mixed group's parent frame.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collection: Vec<String>,
+    pub expression: NodeId,
 }
 
 /// A reduction applied by [`Node::Aggregate`] or [`Node::JoinAggregate`].
@@ -287,6 +310,15 @@ pub enum SequenceExpr {
         length: NodeId,
         item: NodeId,
     },
+    /// Splits a string around regular-expression matches. `flags` is absent
+    /// when MapForce's optional third input is disconnected.
+    TokenizeRegex {
+        input: NodeId,
+        pattern: NodeId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        flags: Option<NodeId>,
+        item: NodeId,
+    },
     /// Generates the inclusive integer range `from..=to`. When `from` is
     /// omitted, MapForce's default lower boundary of 1 applies.
     Generate {
@@ -316,6 +348,15 @@ impl SequenceExpr {
                 input, delimiter, ..
             } => vec![*input, *delimiter],
             Self::TokenizeByLength { input, length, .. } => vec![*input, *length],
+            Self::TokenizeRegex {
+                input,
+                pattern,
+                flags,
+                ..
+            } => [Some(*input), Some(*pattern), *flags]
+                .into_iter()
+                .flatten()
+                .collect(),
             Self::Generate { from, to, .. } => from.iter().copied().chain([*to]).collect(),
             Self::RecursiveCollect {
                 prefix, separator, ..
@@ -327,6 +368,7 @@ impl SequenceExpr {
         match self {
             Self::Tokenize { item, .. }
             | Self::TokenizeByLength { item, .. }
+            | Self::TokenizeRegex { item, .. }
             | Self::Generate { item, .. }
             | Self::RecursiveCollect { item, .. } => *item,
         }
@@ -357,12 +399,24 @@ pub enum ScopeConstruction {
     CopyCurrentSource,
     /// Evaluate one scalar expression as the scope's complete output item.
     Scalar { value: NodeId },
+    /// Build a group while retaining the current source group's interleaved
+    /// XML text and mapped child-element order.
+    XmlMixedContent {
+        elements: Vec<XmlMixedContentElement>,
+    },
     /// Clone one group shape while recursively filtering one item collection.
     RecursiveFilter { plan: RecursiveFilterPlan },
     /// Group scalar path strings into one bounded recursive directory tree.
     PathHierarchy { plan: PathHierarchyPlan },
     /// Build a bounded recursive target group from flat adjacency rows.
     AdjacencyTree { plan: AdjacencyTreePlan },
+}
+
+/// One direct-child rename in an XML mixed-content construction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XmlMixedContentElement {
+    pub source: String,
+    pub target: String,
 }
 
 /// Relative order of the two ordinary per-item sequence controls.
@@ -786,6 +840,18 @@ pub struct FormatOptions {
     /// EDI document family retained independently of the instance extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edi_kind: Option<EdiBoundaryKind>,
+    /// EDI decimal leaves whose wire values have fixed implied fractional
+    /// places. Paths are compiled from the owning external configuration.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edi_implied_decimals: Vec<EdiImpliedDecimal>,
+    /// EDI leaves whose declared configuration compacts XML date/time lexical
+    /// forms for the wire representation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edi_lexical_formats: Vec<EdiLexicalFormat>,
+    /// Dialect-specific trailer and control-count completion retained from
+    /// an EDI target boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edi_autocomplete: Option<EdiAutocomplete>,
     /// ANSI X12 syntax retained from the mapping boundary. These separators
     /// override the writer defaults and provide the optional release character
     /// that cannot be discovered from an ISA envelope.
@@ -852,8 +918,8 @@ pub struct FormatOptions {
     /// JSON document.
     #[serde(default, skip_serializing_if = "is_false")]
     pub json_lines: bool,
-    /// Protocol Buffers: embedded proto2 schema and selected output message.
-    /// This mode is output-only and takes precedence over the file extension.
+    /// Protocol Buffers: embedded proto2/proto3 schema and selected message.
+    /// This mode takes precedence over the file extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub protobuf: Option<ProtobufOptions>,
     /// XBRL taxonomy and table contract metadata used by the runtime adapter.
@@ -904,6 +970,8 @@ mod tests {
         let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
         assert!(!defaults.json_lines);
         assert!(defaults.edi_kind.is_none());
+        assert!(defaults.edi_implied_decimals.is_empty());
+        assert!(defaults.edi_lexical_formats.is_empty());
         assert!(defaults.x12_separators.is_none());
         assert!(defaults.x12_interchange_version.is_none());
         assert!(!defaults.xml_document);
@@ -979,6 +1047,9 @@ mod tests {
         let options = FormatOptions {
             lenient_segments: true,
             edi_kind: Some(EdiBoundaryKind::X12),
+            edi_implied_decimals: vec![
+                EdiImpliedDecimal::new(vec!["Interchange".into(), "Amount".into()], 3).unwrap(),
+            ],
             x12_separators: Some(X12Separators {
                 element: '+',
                 component: ':',
@@ -1603,5 +1674,20 @@ mod tests {
             }
         ));
         assert_eq!(predicate, 4);
+    }
+
+    #[test]
+    fn regex_sequence_preserves_disconnected_optional_flags() {
+        let sequence = SequenceExpr::TokenizeRegex {
+            input: 1,
+            pattern: 2,
+            flags: None,
+            item: 3,
+        };
+        let encoded = serde_json::to_string(&sequence).unwrap();
+        assert!(!encoded.contains("flags"));
+        let decoded: SequenceExpr = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, sequence);
+        assert_eq!(decoded.inputs(), vec![1, 2]);
     }
 }

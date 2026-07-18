@@ -186,7 +186,10 @@ fn named_edifact_zone(zone: &str) -> Result<&'static str, FunctionError> {
         "MST" => Ok("-07:00"),
         "MDT" => Ok("-06:00"),
         "PST" => Ok("-08:00"),
-        "PDT" => Ok("-07:00"),
+        // MapForce's UN/EDIFACT 2379 conversion assigns PDT this legacy
+        // offset, including for format code 303. Keep it distinct from the
+        // conventional civil-time offset used outside that function.
+        "PDT" => Ok("-09:00"),
         _ => Err(FunctionError::InvalidArgument {
             function: FUNCTION,
             message: EDIFACT_ZONE_UNSUPPORTED,
@@ -275,6 +278,42 @@ pub(super) fn datetime_from_date_and_time(args: &[Value]) -> Result<Value, Funct
     let mut output = format!("{date}T{time}");
     if let Some(zone) = zone {
         output.push_str(zone);
+    }
+    Ok(Value::String(output))
+}
+
+pub(super) fn coerce_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "coerce_datetime";
+    let value = match args {
+        [Value::Null] => return Ok(Value::Null),
+        [Value::XmlNil(nil)] => return Ok(Value::XmlNil(*nil)),
+        [Value::String(value)] => value,
+        [other] => {
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: other.type_name(),
+            });
+        }
+        _ => {
+            return Err(FunctionError::ArityMismatch {
+                function: FUNCTION,
+                expected: 1,
+                got: args.len(),
+            });
+        }
+    };
+
+    if let Some((date, time)) = value.split_once('T') {
+        validate_iso_date(date, FUNCTION)?;
+        validate_iso_time(time, FUNCTION)?;
+        return Ok(Value::String(value.clone()));
+    }
+
+    let (date, timezone) = split_iso_timezone(value, FUNCTION)?;
+    validate_iso_date(date, FUNCTION)?;
+    let mut output = format!("{date}T00:00:00");
+    if let Some(timezone) = timezone {
+        output.push_str(timezone);
     }
     Ok(Value::String(output))
 }
@@ -1014,7 +1053,7 @@ mod tests {
             ("202402291305", "203", "2024-02-29T13:05:00"),
             ("20240229130547", "204", "2024-02-29T13:05:47"),
             ("202402291305+0530", "205", "2024-02-29T13:05:00+05:30"),
-            ("202402291305PDT", "303", "2024-02-29T13:05:00-07:00"),
+            ("202402291305PDT", "303", "2024-02-29T13:05:00-09:00"),
             ("20240229130547UTC", "304", "2024-02-29T13:05:47Z"),
         ] {
             assert_eq!(
@@ -1112,6 +1151,25 @@ mod tests {
             datetime_from_date_and_time(&[text("2024-02-29+05:30"), text("09:08:07-04:00")])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn coerces_xml_date_to_datetime_without_losing_timezone() {
+        assert_eq!(
+            coerce_datetime(&[text("2031-08-17")]).unwrap(),
+            text("2031-08-17T00:00:00")
+        );
+        assert_eq!(
+            coerce_datetime(&[text("2031-08-17+05:45")]).unwrap(),
+            text("2031-08-17T00:00:00+05:45")
+        );
+        assert_eq!(
+            coerce_datetime(&[text("2031-08-17T06:07:08.9Z")]).unwrap(),
+            text("2031-08-17T06:07:08.9Z")
+        );
+        assert_eq!(coerce_datetime(&[Value::Null]).unwrap(), Value::Null);
+        assert!(coerce_datetime(&[text("2031-02-29")]).is_err());
+        assert!(coerce_datetime(&[Value::Int(1)]).is_err());
     }
 
     #[test]

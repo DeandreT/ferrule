@@ -18,10 +18,10 @@ clean-room interoperability, and extensible adapters.
 ## Current Baseline
 
 - Formats, both directions: XML, JSON, CSV/fixed-width/FlexText, SQLite, XLSX,
-  XBRL instances, X12, and EDIFACT; Protocol Buffers are target-only and visual
-  PDF extraction is source-only.
+  XBRL instances, X12, EDIFACT, HL7 v2, TRADACOMS, embedded IDoc/SWIFT MT layouts,
+  and proto2/proto3 Protocol Buffers; visual PDF extraction is source-only.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
-  stable distinct-value iteration, generated tokenizer and integer-range sequences,
+  stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
   bounded existential reduction over generated scalar sequences,
   stable sorting, item limits, conditionals, value maps, lookups,
   duplicate-preserving multi-source inner equijoins, positions, seven
@@ -34,11 +34,13 @@ clean-room interoperability, and extensible adapters.
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML/JSON/CSV/XBRL
   playground.
-- `.mfd` survey: all 120 local MapForce 2026 samples import without warnings;
-  all 120 are engine-valid, 97 export, 89 export without loss warnings, and all 97 are
-  engine-valid after export/re-import. Execution and reference-output comparison
-  are not measured yet, so these remain diagnostic counts rather than a
-  compatibility claim.
+- `.mfd` survey: all 120 local MapForce 2026 samples import warning-free and
+  engine-valid, then export, re-import, and validate warning-free. The safe execution
+  survey runs 113 samples without network access or writes to the read-only sample tree;
+  all 113 execute and all 113 export, re-import, validate, and execute with zero
+  semantic output drifts. Across the current isolated behavioral manifests, all 79
+  available deterministic references match exactly.
+  These measurements describe the local sample profile, not commercial-product parity.
 - Known architectural constraints: one primary driver input per run, scalar graph
   outputs, no general endpoint/stage DAG, no trace API, and no project-level
   reusable functions.
@@ -47,18 +49,18 @@ clean-room interoperability, and extensible adapters.
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, includes/imports, attributes, simple content, `xsi:nil`, selected derived-type output | Namespace identity, derived-type input identity, wildcards, mixed content |
-| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`, typed dynamic properties | General union/composition schemas, mixed arrays, unconstrained dynamic values |
+| XML | XSD subset, includes/imports, attributes, simple and ordered mixed content, `xsi:nil`, generic elements, selected derived-type output | Namespace identity and general derived-type input identity |
+| JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`/`anyOf`, typed dynamic properties | Scalar/array and nested union composition, mixed arrays, unconstrained dynamic values |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
-| Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, and static/correlated queries | General query model, insert/update/delete, PostgreSQL |
-| EDI | Schema-guided X12/EDIFACT runtime; `.mfd` graphs without positional config | `.mfd` EDI/config execution, validation reports, pluggable HL7/IDoc/etc. packs |
-| Other formats | XLSX including hierarchical and update-existing targets, native XBRL instance boundaries, Protobuf targets, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/formula/linkbase execution plus remaining PDF extraction variants and PDF targets |
-| Dataflow | One primary driver plus named static/dynamic sources and multiple mapped targets | Fully general named N-to-M endpoints, runtime parameters, ordered stage DAG |
+| Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
+| EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
+| Other formats | XLSX including hierarchical and update-existing targets, native XBRL instances, proto2/proto3 input/output, static HTTP XML sources, and visual PDF sources with page selection, vertical collages, marker groups, and table layouts | XBRL taxonomy/formula/linkbase execution plus remaining PDF extraction variants and PDF targets |
+| Dataflow | One primary driver plus named static/dynamic and wildcard document sources, multiple mapped targets, and dynamic per-document output paths | Fully general named N-to-M endpoints, runtime parameters, ordered stage DAG |
 | Functions | Scalar subset plus aggregates and scope sequence controls | First-class sequences, conversion/date/math coverage, reusable graph UDFs |
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 120/120 warning-free and engine-valid imports, and 97 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
+| `.mfd` | 120/120 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams
@@ -102,21 +104,23 @@ root-context joins whose collections all belong to the primary source. Named sta
 XML, JSON, flat-file, and database sources now retain separate component ownership
 during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.
-The versioned compatibility survey now records import, engine validation,
-export, re-import, and post-export validation separately. Its first expanded
-baseline exposed 12 warning-free but invalid imports and a 52-project exportable
-subset; execution and reference matching remain explicitly unmeasured.
+The versioned compatibility survey records import, engine validation, export,
+re-import, and post-export validation separately. All 120 local designs now pass
+those structural stages without warnings. A separate isolated execution survey runs
+113 safe originals successfully; all 113 exportable/re-importable executions match
+semantically. The current isolated manifests provide 79 deterministic references, all
+of which match exactly. Reference manifests remain a separate behavioral measure and
+are not inferred from structural success.
 
 - Preserve complete warning-free, engine-valid import coverage while expanding
   the supported component surface.
-- Add safely redirected sample execution and semantic reference comparison
+- Preserve isolated, safely redirected execution and semantic reference comparison
   without writing into the read-only vendor sample tree.
-- Grow clean export/re-import coverage from measured failure categories, led by
-  bidirectional database components, mapped XML construction, PDF sources,
-  dynamic JSON export, and advanced XLSX source shapes.
+- Expand behavioral reference coverage across format-specific and mixed-content edge
+  cases, especially workflows whose vendor outputs require unavailable services.
 - Add first-class sequence slicing and reusable graph-backed UDFs instead of
   further one-off lowering paths.
-- Complete namespace and JSON union semantics.
+- Complete namespace identity and the remaining scalar/array/nested JSON union semantics.
 - Keep every fixture self-authored; use vendor samples only as black-box
   behavioral references.
 
@@ -217,12 +221,11 @@ Exit criteria:
 Prioritize connectors that align existing strengths before product-catalog
 breadth.
 
-1. Import MapForce EDI components/configurations into the existing X12 and
-   EDIFACT runtime; make additional standards external schema packs.
-2. Multi-table/query database IR and PostgreSQL adapter.
-3. Fixed-length/structured text and XLSX.
-4. Protobuf and generic HTTP/OpenAPI/GraphQL endpoints.
-5. XBRL and PDF only with demonstrated use cases and maintainable libraries.
+1. Complete namespace identity, general `xsi:type`, and remaining JSON union semantics.
+2. Add a general query/database mutation IR and PostgreSQL adapter.
+3. Expand remaining XLSX, FlexText, EDI, and PDF layout variants by measured demand.
+4. Add generic HTTP/OpenAPI/GraphQL endpoints and dynamic protobuf document sources.
+5. Add XBRL taxonomy/formula/linkbase execution only with maintainable libraries.
 
 Runtime support proceeds in parallel:
 
@@ -285,11 +288,13 @@ Update these numbers with each parity increment:
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
 - `.mfd` import: 120/120 imported, 120 warning-free, zero rejected.
 - `.mfd` validation: all 120 imported projects are engine-valid.
-- `.mfd` export: 97/120 export, including 89 without export warnings.
-- `.mfd` re-import: all 97 exported designs re-import; 69 do so without
-  warnings, and all 97 are engine-valid after re-import.
-- `.mfd` execution/reference comparison: not yet measured. The survey reports
-  both stages as skipped rather than inferring compatibility from import.
+- `.mfd` export/re-import: all 120 designs export, re-import, and validate without
+  warnings in the structural survey.
+- `.mfd` execution: all 113 network-independent, non-mutating originals execute.
+- `.mfd` execution round trips: all 113 safe projects export, re-import, validate,
+  execute, and produce semantically identical outputs.
+- Behavioral references: 79/79 available deterministic outputs across the current
+  isolated manifests match exactly; these are not inferred from structural success.
 - Set `FERRULE_SURVEY_JSON=/path/report.json` for the versioned per-sample
   compatibility report and `FERRULE_SURVEY_DETAILS=1` for text diagnostics.
 - CLI diagnostics: versioned JSON Lines cover validation, import/export

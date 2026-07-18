@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use ir::{Instance, Value};
 use mapping::{Graph, NodeId, SequenceExpr};
+use regex::RegexBuilder;
 
 use super::EngineError;
 use super::eval_expr::eval_expr;
@@ -9,6 +10,8 @@ use super::source_iteration::PositionFrame;
 
 pub(super) const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
 pub(super) const MAX_RECURSIVE_SEQUENCE_DEPTH: usize = 256;
+const MAX_TOKENIZE_REGEX_PATTERN_BYTES: usize = 64 * 1024;
+const MAX_TOKENIZE_REGEX_COMPILED_BYTES: usize = 10 * 1024 * 1024;
 
 pub(super) fn eval_sequence(
     graph: &Graph,
@@ -52,6 +55,34 @@ pub(super) fn eval_sequence_in_progress(
                 return Ok(Vec::new());
             };
             tokenize_by_length(input, length)
+        }
+        SequenceExpr::TokenizeRegex {
+            input,
+            pattern,
+            flags,
+            ..
+        } => {
+            let Some(input) = eval_sequence_arg(graph, *input, context, positions, in_progress)?
+            else {
+                return Ok(Vec::new());
+            };
+            let Some(pattern) =
+                eval_sequence_arg(graph, *pattern, context, positions, in_progress)?
+            else {
+                return Ok(Vec::new());
+            };
+            let flags = match flags {
+                Some(node) => {
+                    let Some(flags) =
+                        eval_sequence_arg(graph, *node, context, positions, in_progress)?
+                    else {
+                        return Ok(Vec::new());
+                    };
+                    Some(flags)
+                }
+                None => None,
+            };
+            tokenize_regex(input, pattern, flags)
         }
         SequenceExpr::Generate { from, to, .. } => {
             let from = match from {
@@ -403,6 +434,77 @@ pub(super) fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Valu
         .chunks(length)
         .map(|chunk| Value::String(chunk.iter().collect()))
         .collect())
+}
+
+pub(super) fn tokenize_regex(
+    input: Value,
+    pattern: Value,
+    flags: Option<Value>,
+) -> Result<Vec<Value>, EngineError> {
+    tokenize_regex_with_limit(input, pattern, flags, MAX_GENERATED_SEQUENCE_ITEMS as usize)
+}
+
+pub(super) fn tokenize_regex_with_limit(
+    input: Value,
+    pattern: Value,
+    flags: Option<Value>,
+    max_items: usize,
+) -> Result<Vec<Value>, EngineError> {
+    let input = sequence_string(input, "tokenize-regexp")?;
+    let pattern = sequence_string(pattern, "tokenize-regexp")?;
+    let flags = flags
+        .map(|value| sequence_string(value, "tokenize-regexp"))
+        .transpose()?
+        .unwrap_or_default();
+    if pattern.len() > MAX_TOKENIZE_REGEX_PATTERN_BYTES {
+        return Err(EngineError::TokenizeRegexPatternTooLarge {
+            bytes: pattern.len(),
+            max: MAX_TOKENIZE_REGEX_PATTERN_BYTES,
+        });
+    }
+
+    let mut builder = RegexBuilder::new(&pattern);
+    for flag in flags.chars() {
+        let apply: fn(&mut RegexBuilder, bool) -> &mut RegexBuilder = match flag {
+            'i' => RegexBuilder::case_insensitive,
+            'm' => RegexBuilder::multi_line,
+            's' => RegexBuilder::dot_matches_new_line,
+            'x' => RegexBuilder::ignore_whitespace,
+            _ => {
+                return Err(EngineError::InvalidTokenizeRegexFlags { flags });
+            }
+        };
+        apply(&mut builder, true);
+    }
+    let regex = builder
+        .size_limit(MAX_TOKENIZE_REGEX_COMPILED_BYTES)
+        .dfa_size_limit(MAX_TOKENIZE_REGEX_COMPILED_BYTES)
+        .build()
+        .map_err(|error| EngineError::InvalidTokenizeRegex {
+            message: error.to_string(),
+        })?;
+    if regex.is_match("")
+        || regex
+            .find_iter(&input)
+            .any(|matched| matched.start() == matched.end())
+    {
+        return Err(EngineError::ZeroWidthTokenizeRegex);
+    }
+    if input.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let values = regex
+        .split(&input)
+        .take(max_items.saturating_add(1))
+        .map(|value| Value::String(value.to_string()))
+        .collect::<Vec<_>>();
+    if values.len() > max_items {
+        return Err(EngineError::TokenizeRegexTooLarge {
+            max: max_items as u128,
+        });
+    }
+    Ok(values)
 }
 
 fn sequence_string(value: Value, function: &'static str) -> Result<String, EngineError> {

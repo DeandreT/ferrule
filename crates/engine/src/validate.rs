@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use ir::{SchemaKind, SchemaNode, XML_TYPE_FIELD};
+use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD, XML_TYPE_FIELD};
 use mapping::{
     FormatOptions, Graph, IterationOutput, JoinId, Node, NodeId, Project, Scope, ScopeConstruction,
     ScopeIteration, XbrlBoundaryMode,
@@ -566,6 +566,52 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
                     ));
                 }
             }
+            Node::XmlMixedContent {
+                path,
+                frame,
+                replacements,
+            } => {
+                let mut absolute = frame.clone().unwrap_or_default();
+                absolute.extend(path.iter().cloned());
+                if !source_path_matches_resolved(project, &absolute, |node| {
+                    matches!(node.kind, SchemaKind::Group { .. })
+                        && node.child(XML_TEXT_FIELD).is_some_and(|text| text.text)
+                }) {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        format!(
+                            "XML mixed-content source `{}` matches no mixed group",
+                            display_path(&absolute)
+                        ),
+                    ));
+                }
+                let mut replacement_elements = BTreeSet::new();
+                for replacement in replacements {
+                    if replacement.element.is_empty() {
+                        issues.push(ValidationIssue::new(
+                            &location,
+                            "XML mixed-content replacement element cannot be empty",
+                        ));
+                    } else if !replacement_elements.insert(replacement.element.as_str()) {
+                        issues.push(ValidationIssue::new(
+                            &location,
+                            format!(
+                                "XML mixed-content element `{}` has more than one replacement",
+                                replacement.element
+                            ),
+                        ));
+                    }
+                    if !replacement.collection.is_empty() {
+                        validate_collection_path(
+                            project,
+                            &location,
+                            &replacement.collection,
+                            "XML mixed-content replacement",
+                            issues,
+                        );
+                    }
+                }
+            }
             Node::CollectionFind { collection, .. } => {
                 validate_collection_path(project, &location, collection, "collection find", issues);
             }
@@ -910,6 +956,15 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         Node::ValueMap { input, .. } => vec![("input".into(), *input)],
         Node::Lookup { matches, .. } => vec![("matches".into(), *matches)],
         Node::DynamicSourceField { key, .. } => vec![("property name".into(), *key)],
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| {
+                (
+                    format!("replacement for `{}`", replacement.element),
+                    replacement.expression,
+                )
+            })
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![
@@ -1140,6 +1195,58 @@ fn validate_scope(
                 &location,
                 "scalar construction cannot contain bindings, child scopes, or dynamic target content",
             ));
+        }
+    }
+
+    if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
+        if target.is_none_or(|node| {
+            !matches!(node.kind, SchemaKind::Group { .. }) || node.text_child().is_none()
+        }) {
+            issues.push(ValidationIssue::new(
+                &location,
+                "XML mixed-content construction requires a group target with a text field",
+            ));
+        }
+        if current_source.is_none_or(|node| !matches!(node.kind, SchemaKind::Group { .. })) {
+            issues.push(ValidationIssue::new(
+                &location,
+                "XML mixed-content construction requires a group source item",
+            ));
+        }
+        if elements.is_empty() {
+            issues.push(ValidationIssue::new(
+                &location,
+                "XML mixed-content construction requires at least one child mapping",
+            ));
+        }
+        let mut source_names = BTreeSet::new();
+        let mut target_names = BTreeSet::new();
+        for element in elements {
+            if element.source.is_empty()
+                || element.target.is_empty()
+                || !source_names.insert(&element.source)
+                || !target_names.insert(&element.target)
+            {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    "XML mixed-content child mappings require unique non-empty source and target names",
+                ));
+                break;
+            }
+            if target
+                .and_then(|node| node.child(&element.target))
+                .is_none_or(|node| {
+                    !node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. })
+                })
+            {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "XML mixed-content target `{}` must be a repeating scalar field",
+                        element.target
+                    ),
+                ));
+            }
         }
     }
 
@@ -1506,6 +1613,19 @@ fn validate_scope(
             mapping::SequenceExpr::TokenizeByLength { input, length, .. } => {
                 vec![("sequence input", *input), ("sequence parameter", *length)]
             }
+            mapping::SequenceExpr::TokenizeRegex {
+                input,
+                pattern,
+                flags,
+                ..
+            } => [
+                Some(("sequence input", *input)),
+                Some(("sequence pattern", *pattern)),
+                flags.map(|node| ("sequence flags", node)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
             mapping::SequenceExpr::Generate { from, to, .. } => from
                 .iter()
                 .map(|&node| ("sequence lower boundary", node))
@@ -1987,6 +2107,67 @@ pub(super) fn source_path_matches(
             .extra_sources
             .iter()
             .any(|source| any_schema_path(&source.schema, path, predicate))
+}
+
+fn source_path_matches_resolved(
+    project: &Project,
+    path: &[String],
+    predicate: impl Fn(&SchemaNode) -> bool + Copy,
+) -> bool {
+    if let Some((name, rest)) = path.split_first()
+        && let Some(extra) = project
+            .extra_sources
+            .iter()
+            .find(|source| source.name == *name)
+        && follow_schema_resolved(&extra.schema, rest).is_some_and(predicate)
+    {
+        return true;
+    }
+    any_schema_path_resolved(&project.source, path, predicate)
+        || project
+            .extra_sources
+            .iter()
+            .any(|source| any_schema_path_resolved(&source.schema, path, predicate))
+}
+
+fn any_schema_path_resolved(
+    schema: &SchemaNode,
+    path: &[String],
+    predicate: impl Fn(&SchemaNode) -> bool + Copy,
+) -> bool {
+    fn visit(
+        root: &SchemaNode,
+        schema: &SchemaNode,
+        path: &[String],
+        predicate: impl Fn(&SchemaNode) -> bool + Copy,
+    ) -> bool {
+        if follow_schema_from(root, schema, path)
+            .and_then(|node| {
+                node.recursive_ref
+                    .as_deref()
+                    .and_then(|anchor| find_concrete_schema_group(root, anchor))
+                    .or(Some(node))
+            })
+            .is_some_and(predicate)
+        {
+            return true;
+        }
+        match &schema.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .any(|child| visit(root, child, path, predicate)),
+            SchemaKind::Scalar { .. } => false,
+        }
+    }
+    visit(schema, schema, path, predicate)
+}
+
+fn follow_schema_resolved<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+    let node = follow_schema(schema, path)?;
+    node.recursive_ref
+        .as_deref()
+        .and_then(|anchor| find_concrete_schema_group(schema, anchor))
+        .or(Some(node))
 }
 
 /// SourceField paths are relative to the current scope frame, so a valid

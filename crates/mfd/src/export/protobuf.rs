@@ -24,17 +24,19 @@ pub(super) struct RenderArgs<'a> {
     pub(super) default_output: bool,
 }
 
-pub(super) fn validate_target(
+pub(super) fn validate_side(
     schema: &SchemaNode,
     options: &FormatOptions,
+    side: Side,
 ) -> Result<(), MfdError> {
     let Some(protobuf) = options.protobuf.as_ref() else {
         return Ok(());
     };
     if has_conflicting_options(options) {
-        return Err(unsupported(
-            "a protobuf target cannot combine protobuf metadata with another format's options",
-        ));
+        return Err(unsupported(format!(
+            "a protobuf {} cannot combine protobuf metadata with another format's options",
+            side_name(side)
+        )));
     }
     let layout = format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| {
         unsupported(format!("the embedded protobuf schema is invalid: {error}"))
@@ -56,22 +58,21 @@ pub(super) fn validate_target(
         ))
     })?;
     if projected != *schema {
-        return Err(unsupported(
-            "the target schema does not exactly match its embedded protobuf root message",
-        ));
+        return Err(unsupported(format!(
+            "the {} schema does not exactly match its embedded protobuf root message",
+            side_name(side)
+        )));
     }
     Ok(())
 }
 
 pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, MfdError> {
-    if args.side != Side::Target {
-        return Err(unsupported(
-            "protobuf source component export is not supported; protobuf is an output-only format",
-        ));
-    }
-    validate_target(args.schema, args.options)?;
+    validate_side(args.schema, args.options, args.side)?;
     let protobuf = args.options.protobuf.as_ref().ok_or_else(|| {
-        unsupported("internal protobuf target is missing its embedded schema metadata")
+        unsupported(format!(
+            "internal protobuf {} is missing its embedded schema metadata",
+            side_name(args.side)
+        ))
     })?;
     let layout = format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| {
         unsupported(format!("the embedded protobuf schema is invalid: {error}"))
@@ -102,18 +103,36 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     let root_key = args
         .ports
         .required_key_for_abs(&[], "protobuf document root")?;
-    let properties = if args.default_output {
-        "<properties XSLTDefaultOutput=\"1\"/>"
-    } else {
-        "<properties/>"
+    let (properties, view, port_attr, instance_attr) = match args.side {
+        Side::Source => (
+            "<properties/>",
+            "<view rbx=\"300\" rby=\"400\"/>",
+            "outkey",
+            "inputinstance",
+        ),
+        Side::Target => (
+            if args.default_output {
+                "<properties XSLTDefaultOutput=\"1\"/>"
+            } else {
+                "<properties/>"
+            },
+            "<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>",
+            "inpkey",
+            "outputinstance",
+        ),
     };
     let instance = args
         .instance_path
-        .map(|path| format!(" outputinstance=\"{}\"", xml_escape(path)))
+        .map(|path| format!(" {instance_attr}=\"{}\"", xml_escape(path)))
         .unwrap_or_default();
-    let entries =
-        args.ports
-            .entries_xml(args.schema, "inpkey", 10, false, None, args.target_branches);
+    let entries = args.ports.entries_xml(
+        args.schema,
+        port_attr,
+        10,
+        false,
+        None,
+        args.target_branches,
+    );
 
     let mut namespaces = BTreeSet::new();
     namespaces.extend(layout.messages().iter().map(|message| message.full_name()));
@@ -139,13 +158,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         xml,
         "\t\t\t\t<component name=\"{}\" library=\"binary\" uid=\"{}\" kind=\"33\">\n\
          \t\t\t\t\t{properties}\n\
-         \t\t\t\t\t<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>\n\
+         \t\t\t\t\t{view}\n\
          \t\t\t\t\t<data>\n\
          \t\t\t\t\t\t<root>\n\
          \t\t\t\t\t\t\t<header><namespaces>\n\
          {namespace_xml}\
          \t\t\t\t\t\t\t</namespaces></header>\n\
-         \t\t\t\t\t\t\t<entry name=\"FileInstance\" inpkey=\"{root_key}\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t<entry name=\"FileInstance\" {port_attr}=\"{root_key}\" expanded=\"1\">\n\
          \t\t\t\t\t\t\t\t<entry name=\"document\" type=\"doc-protobuf\" expanded=\"1\">\n\
          \t\t\t\t\t\t\t\t\t<document schemafile=\"{}\" root=\"{}\"/>\n\
          {entries}\
@@ -167,6 +186,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
             contents: protobuf.schema.clone(),
         }],
     })
+}
+
+const fn side_name(side: Side) -> &'static str {
+    match side {
+        Side::Source => "source",
+        Side::Target => "target",
+    }
 }
 
 fn expanded_name(full_name: &str) -> String {

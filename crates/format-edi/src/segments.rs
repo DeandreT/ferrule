@@ -627,6 +627,47 @@ pub(crate) fn write_segments(
     Ok(out)
 }
 
+/// Serializes already-tokenized segments with the same escaping rules as the
+/// schema-guided writer. This is used after bounded envelope completion has
+/// inserted or filled control segments.
+pub(crate) fn serialize_segments(
+    segments: &[Segment],
+    opts: &WriteOptions,
+) -> Result<String, EdiFormatError> {
+    let mut out = String::new();
+    for segment in segments {
+        out.push_str(&segment.id);
+        for (index, element) in segment.elements.iter().enumerate() {
+            out.push(opts.element);
+            let allowed_reserved = match (segment.id.as_str(), index) {
+                ("ISA", 10) => opts.repetition,
+                ("ISA", 15) => Some(opts.component),
+                _ => None,
+            };
+            let repeats = element
+                .iter()
+                .map(|components| {
+                    components
+                        .iter()
+                        .map(|component| escape(component, &segment.id, opts, allowed_reserved))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map(|components| components.join(&opts.component.to_string()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            if repeats.len() > 1 && opts.repetition.is_none() {
+                return Err(EdiFormatError::UnsupportedSchema(format!(
+                    "segment `{}` contains repeated elements, but this dialect has no repetition separator",
+                    segment.id
+                )));
+            }
+            out.push_str(&repeats.join(&opts.repetition.unwrap_or_default().to_string()));
+        }
+        out.push(opts.terminator);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 pub(crate) fn validate_instance_shape(
     schema: &SchemaNode,
     instance: &Instance,

@@ -11,3 +11,4 @@ ir = { workspace = true }
 mapping = { workspace = true }
 functions = { workspace = true }
 thiserror = { workspace = true }
+regex = { workspace = true }

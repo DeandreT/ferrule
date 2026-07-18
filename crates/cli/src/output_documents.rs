@@ -19,6 +19,7 @@ pub(super) struct TargetOutput<'a> {
     pub schema: &'a SchemaNode,
     pub instance: &'a Instance,
     pub options: &'a FormatOptions,
+    pub current_datetime: &'a str,
     pub additional: bool,
 }
 
@@ -64,6 +65,7 @@ struct PlannedTarget<'a> {
     name: &'a str,
     schema: &'a SchemaNode,
     options: &'a FormatOptions,
+    current_datetime: &'a str,
     additional: bool,
     stage_base: PathBuf,
     dynamic: Option<(PathBuf, Vec<PathBuf>)>,
@@ -96,6 +98,7 @@ impl<'a> PlannedTarget<'a> {
                     name: target.name,
                     schema: target.schema,
                     options: target.options,
+                    current_datetime: target.current_datetime,
                     additional: target.additional,
                     stage_base,
                     dynamic: None,
@@ -121,6 +124,7 @@ impl<'a> PlannedTarget<'a> {
                     name: target.name,
                     schema: target.schema,
                     options: target.options,
+                    current_datetime: target.current_datetime,
                     additional: target.additional,
                     stage_base: base.clone(),
                     dynamic: Some((base.clone(), relative_paths)),
@@ -290,8 +294,13 @@ impl<'a> StagedTarget<'a> {
                     format!("creating staged output directory {}", parent.display())
                 })?;
                 copy_existing_output(&file.final_path, &staged_path)?;
-                let records_written =
-                    write_output(&staged_path, target.schema, file.instance, target.options)?;
+                let records_written = write_output(
+                    &staged_path,
+                    target.schema,
+                    file.instance,
+                    target.options,
+                    target.current_datetime,
+                )?;
                 Ok(StagedFile {
                     final_path: file.final_path.clone(),
                     staged_path,

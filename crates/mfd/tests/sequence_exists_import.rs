@@ -173,21 +173,21 @@ fn imports_repeating_source_existence_as_a_collection_reducer() {
 }
 
 #[test]
-fn non_equality_scalar_filter_is_not_claimed_as_a_lookup() {
-    let near_miss = mapping().replace(
+fn non_equality_scalar_filter_imports_as_collection_find() {
+    let non_equality = mapping().replace(
         "<component name=\"equal\" library=\"core\" uid=\"21\"",
-        "<component name=\"greater-than\" library=\"core\" uid=\"21\"",
+        "<component name=\"greater\" library=\"core\" uid=\"21\"",
     );
-    let dir = setup(&near_miss);
+    let dir = setup(&non_equality);
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(
         imported
-            .warnings
-            .iter()
-            .any(|warning| warning
-                .contains("is consumed as one scalar but is not an equality lookup")),
-        "{:?}",
-        imported.warnings
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::CollectionFind { .. }))
     );
     assert!(
         !imported
@@ -195,7 +195,7 @@ fn non_equality_scalar_filter_is_not_claimed_as_a_lookup() {
             .graph
             .nodes
             .values()
-            .any(|node| matches!(node, Node::Lookup { .. } | Node::SequenceExists { .. }))
+            .any(|node| matches!(node, Node::Lookup { .. }))
     );
 }
 

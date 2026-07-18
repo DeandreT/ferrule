@@ -1,7 +1,12 @@
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 use ir::{Instance, SchemaNode};
-use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, TabularBoundaryKind};
+use mapping::{
+    EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, TabularBoundaryKind,
+};
+
+use super::FIXED_CURRENT_DATETIME;
 
 pub(super) fn extension(path: &Path) -> Result<String, String> {
     path.extension()
@@ -128,8 +133,11 @@ pub(super) fn read_instance(
     if let Some(layout) = &options.flextext {
         return format_flextext::read(path, schema, layout).map_err(|error| error.to_string());
     }
-    if options.protobuf.is_some() {
-        return Err("Protocol Buffers input is not supported".to_string());
+    if let Some(protobuf) = &options.protobuf {
+        let layout =
+            format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| error.to_string())?;
+        return format_protobuf::read(path, &layout, &protobuf.root_message)
+            .map_err(|error| error.to_string());
     }
     if let Some(layout) = &options.fixed_width {
         return format_csv::read_fixed_width(path, schema, layout)
@@ -173,8 +181,9 @@ fn read_xlsx(
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> Result<Instance, String> {
-    if options.xlsx_hierarchical.is_some() {
-        return Err("hierarchical XLSX input is not supported".to_string());
+    if let Some(layout) = &options.xlsx_hierarchical {
+        return format_xlsx::read_hierarchical(path, schema, layout)
+            .map_err(|error| error.to_string());
     }
     if let Some(layout) = &options.xlsx_grid {
         return format_xlsx::read_grid(path, schema, layout)
@@ -207,7 +216,7 @@ fn read_xlsx(
 }
 
 fn read_edi(path: &Path, schema: &SchemaNode, options: &FormatOptions) -> Result<Instance, String> {
-    match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
+    let mut instance = match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
         format_edi::Dialect::X12 => format_edi::x12::read_with_separators(
             path,
             schema,
@@ -222,7 +231,10 @@ fn read_edi(path: &Path, schema: &SchemaNode, options: &FormatOptions) -> Result
             format_edi::tradacoms::read(path, schema, options.lenient_segments)
         }
     }
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
+        .map_err(|error| error.to_string())?;
+    Ok(instance)
 }
 
 pub(super) fn write_instance(
@@ -290,18 +302,10 @@ pub(super) fn write_instance(
             format_db::write_instance(path, schema, instance).map_err(|error| error.to_string())
         }
         "edi" | "x12" | "edifact" => {
+            let formatted = formatted_edi_output(instance, options)?;
             match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
-                format_edi::Dialect::X12 => format_edi::x12::write_with_syntax(
-                    path,
-                    schema,
-                    instance,
-                    options
-                        .x12_separators
-                        .map(x12_separators)
-                        .unwrap_or_default(),
-                    options.x12_interchange_version.as_deref(),
-                ),
-                format_edi::Dialect::Edifact => format_edi::edifact::write(path, schema, instance),
+                format_edi::Dialect::X12 => write_x12(path, schema, &formatted, options),
+                format_edi::Dialect::Edifact => write_edifact(path, schema, &formatted, options),
                 format_edi::Dialect::Hl7 => return Err("HL7 output is not supported".to_string()),
                 format_edi::Dialect::Tradacoms => {
                     return Err("TRADACOMS output is not supported".to_string());
@@ -311,6 +315,76 @@ pub(super) fn write_instance(
         }
         "hl7" => Err("HL7 output is not supported".to_string()),
         other => Err(format!("unsupported output file extension `.{other}`")),
+    }
+}
+
+fn formatted_edi_output<'a>(
+    instance: &'a Instance,
+    options: &FormatOptions,
+) -> Result<Cow<'a, Instance>, String> {
+    if options.edi_lexical_formats.is_empty() {
+        return Ok(Cow::Borrowed(instance));
+    }
+    let mut formatted = instance.clone();
+    format_edi::apply_output_lexical_formats(&mut formatted, &options.edi_lexical_formats)
+        .map_err(|error| error.to_string())?;
+    Ok(Cow::Owned(formatted))
+}
+
+fn write_x12(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &FormatOptions,
+) -> Result<(), format_edi::EdiFormatError> {
+    let separators = options
+        .x12_separators
+        .map(x12_separators)
+        .unwrap_or_default();
+    match options.edi_autocomplete.as_ref() {
+        Some(EdiAutocomplete::X12(config)) => format_edi::x12::write_with_syntax_and_autocomplete(
+            path,
+            schema,
+            instance,
+            separators,
+            options.x12_interchange_version.as_deref(),
+            format_edi::x12::Autocomplete {
+                current_datetime: FIXED_CURRENT_DATETIME,
+                request_acknowledgement: config.request_acknowledgement,
+                transaction_set: config.transaction_set.as_deref(),
+            },
+        ),
+        _ => format_edi::x12::write_with_syntax(
+            path,
+            schema,
+            instance,
+            separators,
+            options.x12_interchange_version.as_deref(),
+        ),
+    }
+}
+
+fn write_edifact(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &FormatOptions,
+) -> Result<(), format_edi::EdiFormatError> {
+    if let Some(EdiAutocomplete::Edifact(config)) = options.edi_autocomplete.as_ref() {
+        format_edi::edifact::write_with_autocomplete(
+            path,
+            schema,
+            instance,
+            format_edi::edifact::Autocomplete {
+                current_datetime: FIXED_CURRENT_DATETIME,
+                syntax_level: config.syntax_level.as_deref(),
+                syntax_version: config.syntax_version.as_deref(),
+                controlling_agency: config.controlling_agency.as_deref(),
+                message_type: config.message_type.as_deref(),
+            },
+        )
+    } else {
+        format_edi::edifact::write(path, schema, instance)
     }
 }
 

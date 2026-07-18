@@ -13,7 +13,8 @@ use std::path::Path;
 
 use ir::{Instance, SchemaNode};
 
-use crate::segments::{Segment, WriteOptions, read_segments, write_segments};
+use crate::autocomplete as envelope;
+use crate::segments::{Segment, WriteOptions, read_segments, serialize_segments, write_segments};
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
 // No repetition separator: EDIFACT syntax v4 defines `*`, but most traffic
@@ -34,6 +35,16 @@ struct Separators {
     element: char,
     release: char,
     terminator: char,
+}
+
+/// Stable run data used when an EDIFACT target requests envelope completion.
+#[derive(Debug, Clone, Copy)]
+pub struct Autocomplete<'a> {
+    pub current_datetime: &'a str,
+    pub syntax_level: Option<&'a str>,
+    pub syntax_version: Option<&'a str>,
+    pub controlling_agency: Option<&'a str>,
+    pub message_type: Option<&'a str>,
 }
 
 const DEFAULT_SEPARATORS: Separators = Separators {
@@ -175,6 +186,29 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     Ok(())
 }
 
+/// Writes EDIFACT and derives missing envelope dates, identifiers, counts,
+/// and trailers from one stable mapping-run timestamp.
+pub fn write_with_autocomplete(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    autocomplete: Autocomplete<'_>,
+) -> Result<(), EdiFormatError> {
+    let out = write_segments(schema, instance, &WRITE_OPTIONS)?;
+    let (segments, _) = tokenize_with_separators(&out)?;
+    let completed = envelope::edifact(
+        segments,
+        autocomplete.current_datetime,
+        autocomplete.syntax_level,
+        autocomplete.syntax_version,
+        autocomplete.controlling_agency,
+        autocomplete.message_type,
+    )?;
+    let out = serialize_segments(&completed, &WRITE_OPTIONS)?;
+    std::fs::write(path, out)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,6 +227,109 @@ mod tests {
             std::env::temp_dir().join(format!("ferrule_edifact_{name}_{}", std::process::id()));
         std::fs::write(&path, contents).unwrap();
         path
+    }
+
+    #[test]
+    fn autocomplete_writes_edifact_headers_and_trailers() {
+        let composite = |name: &str, fields: &[&str]| {
+            SchemaNode::group(
+                name,
+                fields
+                    .iter()
+                    .map(|field| scalar(field, ScalarType::String))
+                    .collect(),
+            )
+        };
+        let schema = SchemaNode::group(
+            "Envelope",
+            vec![
+                segment(
+                    "UNB",
+                    vec![
+                        composite("S001", &["F0001", "F0002"]),
+                        composite("S002", &["F0004"]),
+                        composite("S003", &["F0010"]),
+                        composite("S004", &["F0017", "F0019"]),
+                        scalar("F0020", ScalarType::String),
+                    ],
+                ),
+                segment(
+                    "UNH",
+                    vec![
+                        scalar("F0062", ScalarType::String),
+                        composite("S009", &["F0065", "F0052", "F0054", "F0051"]),
+                    ],
+                ),
+                segment("BGM", vec![scalar("F1001", ScalarType::String)]),
+            ],
+        );
+        let instance = Instance::Group(vec![
+            (
+                "UNB".into(),
+                Instance::Group(vec![
+                    (
+                        "S002".into(),
+                        Instance::Group(vec![(
+                            "F0004".into(),
+                            Instance::Scalar(Value::String("MFGB".into())),
+                        )]),
+                    ),
+                    (
+                        "S003".into(),
+                        Instance::Group(vec![(
+                            "F0010".into(),
+                            Instance::Scalar(Value::String("ID".into())),
+                        )]),
+                    ),
+                ]),
+            ),
+            (
+                "UNH".into(),
+                Instance::Group(vec![(
+                    "S009".into(),
+                    Instance::Group(vec![
+                        ("F0052".into(), Instance::Scalar(Value::String("D".into()))),
+                        (
+                            "F0054".into(),
+                            Instance::Scalar(Value::String("24A".into())),
+                        ),
+                    ]),
+                )]),
+            ),
+            (
+                "BGM".into(),
+                Instance::Group(vec![(
+                    "F1001".into(),
+                    Instance::Scalar(Value::String("order".into())),
+                )]),
+            ),
+        ]);
+        let path = write_temp("autocomplete", "previous");
+
+        write_with_autocomplete(
+            &path,
+            &schema,
+            &instance,
+            Autocomplete {
+                current_datetime: "2026-07-18T12:34:56-07:00",
+                syntax_level: Some("A"),
+                syntax_version: Some("4"),
+                controlling_agency: Some("UNO"),
+                message_type: Some("ORDERS"),
+            },
+        )
+        .unwrap();
+
+        let written = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(
+            written,
+            "UNB+UNOA:4+MFGB+ID+20260718:1234+1'\n\
+             UNH+1+ORDERS:D:24A:UN'\n\
+             BGM+order'\n\
+             UNT+3+1'\n\
+             UNZ+1+1'\n"
+        );
     }
 
     #[test]

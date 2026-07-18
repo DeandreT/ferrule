@@ -121,6 +121,109 @@ fn computed_aggregate_resolves_transparent_variable_fields()
 }
 
 #[test]
+fn core_structure_variable_passes_a_once_computed_aggregate_into_each_row()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    std::fs::write(
+        dir.0.join("roster.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Roster"><xs:complexType><xs:sequence>
+    <xs:element name="User" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("report.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Report"><xs:complexType><xs:sequence>
+    <xs:element name="Row" minOccurs="0" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="Details" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    let design = dir.0.join("compute-once-variable.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="roster" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Roster"><entry name="User" outkey="10"><entry name="Name" outkey="11"/></entry></entry></entry></entry></root><document schema="roster.xsd" instanceroot="{}Roster"/></data></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="20"/></sources><targets><datapoint pos="0" key="21"/></targets></component>
+  <component name="structure" library="core" kind="29"><properties/><data><root>
+    <entry name="compute-when"><setting value="once"/></entry>
+    <entry name="document"><entry name="value" inpkey="22" outkey="23"/></entry>
+  </root><variable datatype="int"/><parameter usageKind="variable"/></data></component>
+  <component name="position" library="core" kind="5"><sources><datapoint pos="0" key="24"/></sources><targets><datapoint pos="0" key="25"/></targets></component>
+  <component name="constant" library="core" kind="2"><targets><datapoint pos="0" key="26"/></targets><data><constant value=" of " datatype="string"/></data></component>
+  <component name="concat" library="core" kind="5" growable="1"><sources><datapoint pos="0" key="27"/><datapoint pos="1" key="28"/><datapoint pos="2" key="29"/></sources><targets><datapoint pos="0" key="30"/></targets></component>
+  <component name="report" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Report"><entry name="Row" inpkey="40"><entry name="Name" inpkey="41"/><entry name="Details" inpkey="42"/></entry></entry></entry></entry></root><document schema="report.xsd" instanceroot="{}Report"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="10"><edges><edge vertexkey="20"/><edge vertexkey="24"/><edge vertexkey="40"/></edges></vertex>
+  <vertex vertexkey="21"><edges><edge vertexkey="22"/></edges></vertex>
+  <vertex vertexkey="23"><edges><edge vertexkey="29"/></edges></vertex>
+  <vertex vertexkey="25"><edges><edge vertexkey="27"/></edges></vertex>
+  <vertex vertexkey="26"><edges><edge vertexkey="28"/></edges></vertex>
+  <vertex vertexkey="11"><edges><edge vertexkey="41"/></edges></vertex>
+  <vertex vertexkey="30"><edges><edge vertexkey="42"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let aggregate = imported
+        .project
+        .graph
+        .nodes
+        .iter()
+        .find_map(|(id, node)| {
+            matches!(
+                node,
+                Node::Aggregate {
+                    function: AggregateOp::Count,
+                    ..
+                }
+            )
+            .then_some(*id)
+        })
+        .ok_or_else(|| std::io::Error::other("count aggregate was not imported"))?;
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(node, Node::Call { function, args } if function == "concat" && args.get(2) == Some(&aggregate))
+    }));
+
+    let user = |name: &str| {
+        Instance::Group(vec![(
+            "Name".to_string(),
+            Instance::Scalar(Value::String(name.to_string())),
+        )])
+    };
+    let source = Instance::Group(vec![(
+        "User".to_string(),
+        Instance::Repeated(vec![user("Ada"), user("Grace"), user("Katherine")]),
+    )]);
+    let output = engine::run(&imported.project, &source)?;
+    let rows = output
+        .field("Row")
+        .and_then(Instance::as_repeated)
+        .ok_or_else(|| std::io::Error::other("report rows were not produced"))?;
+    let details = rows
+        .iter()
+        .filter_map(|row| row.field("Details").and_then(Instance::as_scalar))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        details,
+        vec![
+            &Value::String("1 of 3".to_string()),
+            &Value::String("2 of 3".to_string()),
+            &Value::String("3 of 3".to_string()),
+        ]
+    );
+    Ok(())
+}
+
+#[test]
 fn filtered_cross_source_aggregate_lowers_to_an_inner_join()
 -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;

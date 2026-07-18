@@ -111,6 +111,46 @@ fn exports_and_reimports_one_table_with_nested_foreign_key_relations() {
 }
 
 #[test]
+fn exports_and_reimports_single_nested_table_below_database_wrapper() {
+    let directory = TempDir::new("wrapped_nested_source");
+    let people = SchemaNode::group(
+        "people|department_id",
+        vec![
+            scalar("id", ScalarType::Int),
+            scalar("department_id", ScalarType::Int),
+            scalar("name", ScalarType::String),
+        ],
+    )
+    .repeating();
+    let departments = SchemaNode::group(
+        "departments",
+        vec![
+            scalar("id", ScalarType::Int),
+            scalar("name", ScalarType::String),
+            people,
+        ],
+    )
+    .repeating();
+    let source = SchemaNode::group("database", vec![departments]);
+    let mut project = empty_project(
+        source,
+        SchemaNode::group("Result", vec![scalar("Value", ScalarType::String)]),
+    );
+    project.source_path = Some("company.sqlite".into());
+    let design = directory.0.join("mapping.mfd");
+
+    let warnings = mfd::export(&project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&design).unwrap();
+    assert!(xml.contains("ferrule-database-wrapper=\"1\""));
+    let imported = mfd::import(&design).unwrap();
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.source, project.source);
+    assert!(engine::validate(&imported.project).is_empty());
+}
+
+#[test]
 fn exports_and_reimports_multiple_target_tables_with_a_nested_relation() {
     let directory = TempDir::new("multi_target");
     let database = directory.0.join("target.sqlite");

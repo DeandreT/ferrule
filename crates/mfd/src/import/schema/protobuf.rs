@@ -8,7 +8,22 @@ use super::{
     is_default_output, parse_u32, schema_node_at,
 };
 
-/// Imports target-side MapForce binary components backed by a proto2 schema.
+#[derive(Clone, Copy)]
+enum Direction {
+    Source,
+    Target,
+}
+
+impl Direction {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Source => "source",
+            Self::Target => "target",
+        }
+    }
+}
+
+/// Imports MapForce binary boundaries backed by a proto2/proto3 schema.
 pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     mfd_path: &Path,
@@ -47,55 +62,80 @@ pub(super) fn read(
         .ok_or_else(|| "component has no binary instance metadata".to_string())?;
 
     let (declared_inputs, declared_outputs) = entry_key_sets(&root);
-    if declared_inputs.is_empty() {
-        return Err("protobuf target has no input ports".to_string());
-    }
-    if !declared_outputs.is_empty() || binary.attribute("inputinstance").is_some() {
-        return Err(
-            "protobuf source or mixed-direction components are not supported yet".to_string(),
-        );
-    }
+    let direction = match (declared_inputs.is_empty(), declared_outputs.is_empty()) {
+        (true, false) if binary.attribute("outputinstance").is_none() => Direction::Source,
+        (false, true) if binary.attribute("inputinstance").is_none() => Direction::Target,
+        (true, true) => return Err("protobuf component has no input or output ports".to_string()),
+        (true, false) | (false, true) | (false, false) => {
+            return Err("mixed-direction protobuf components are not supported".to_string());
+        }
+    };
 
     let fallback = || entry_tree_schema(&payload);
     let (schema, options) = match load_typed_layout(&document, &payload, mfd_path) {
         Ok(typed) => typed,
         Err(reason) => {
             warnings.push(format!(
-                "protobuf component `{name}`: {reason}; imported the visible entry-tree target shape without executable protobuf metadata"
+                "protobuf component `{name}`: {reason}; imported the visible entry-tree {} shape without executable protobuf metadata",
+                direction.label()
             ));
             (fallback(), FormatOptions::default())
         }
     };
-    let ports = input_ports(
+    let declared_ports = match direction {
+        Direction::Source => &declared_outputs,
+        Direction::Target => &declared_inputs,
+    };
+    let ports = boundary_ports(
         root,
         document_entry,
         &payload,
-        &declared_inputs,
-        &schema,
-        &name,
+        BoundaryPortContext {
+            declared: declared_ports,
+            schema: &schema,
+            component_name: &name,
+            direction,
+        },
         warnings,
     );
     if ports.is_empty() {
-        return Err("protobuf target has no input ports matching its message schema".to_string());
+        return Err(format!(
+            "protobuf {} has no ports matching its message schema",
+            direction.label()
+        ));
     }
-    let input_keys = ports.keys().copied().collect();
+    let is_source = matches!(direction, Direction::Source);
+    let input_keys = if is_source {
+        BTreeSet::new()
+    } else {
+        ports.keys().copied().collect()
+    };
+    let output_keys = if is_source {
+        ports.keys().copied().collect()
+    } else {
+        BTreeSet::new()
+    };
 
     Ok(SchemaComponent {
         name,
         format: ComponentFormat::Protobuf,
         schema,
-        input_instance: None,
-        output_instance: binary.attribute("outputinstance").map(str::to_string),
+        input_instance: is_source
+            .then(|| binary.attribute("inputinstance").map(str::to_string))
+            .flatten(),
+        output_instance: (!is_source)
+            .then(|| binary.attribute("outputinstance").map(str::to_string))
+            .flatten(),
         options,
-        is_source: false,
-        is_default_output: is_default_output(component),
+        is_source,
+        is_default_output: !is_source && is_default_output(component),
         is_variable: false,
         is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),
         input_keys,
-        output_keys: BTreeSet::new(),
+        output_keys,
         db_queries: Vec::new(),
         dynamic_json: None,
     })
@@ -193,13 +233,18 @@ fn normalize_root_name(root: &str) -> String {
     root.to_string()
 }
 
-fn input_ports(
+struct BoundaryPortContext<'a> {
+    declared: &'a BTreeSet<u32>,
+    schema: &'a ir::SchemaNode,
+    component_name: &'a str,
+    direction: Direction,
+}
+
+fn boundary_ports(
     root: roxmltree::Node<'_, '_>,
     document_entry: &roxmltree::Node<'_, '_>,
     payload: &roxmltree::Node<'_, '_>,
-    declared_inputs: &BTreeSet<u32>,
-    schema: &ir::SchemaNode,
-    component_name: &str,
+    context: BoundaryPortContext<'_>,
     warnings: &mut Vec<String>,
 ) -> BTreeMap<u32, Vec<String>> {
     let mut ports = BTreeMap::new();
@@ -210,7 +255,11 @@ fn input_ports(
         .chain(std::iter::once(*document_entry))
         .chain(std::iter::once(*payload))
     {
-        if let Some(key) = parse_u32(wrapper.attribute("inpkey")) {
+        let key = match context.direction {
+            Direction::Source => parse_u32(wrapper.attribute("outkey")),
+            Direction::Target => parse_u32(wrapper.attribute("inpkey")),
+        };
+        if let Some(key) = key.filter(|key| context.declared.contains(key)) {
             ports.insert(key, Vec::new());
         }
     }
@@ -226,14 +275,16 @@ fn input_ports(
         &mut input_count,
     );
     for (key, path) in all_payload_ports {
-        if !declared_inputs.contains(&key) {
+        if !context.declared.contains(&key) {
             continue;
         }
-        if schema_node_at(schema, &path).is_some() {
+        if schema_node_at(context.schema, &path).is_some() {
             ports.insert(key, path);
         } else {
             warnings.push(format!(
-                "protobuf component `{component_name}` input port {key} targets unknown schema path `{}`; connection skipped",
+                "protobuf component `{}` {} port {key} targets unknown schema path `{}`; connection skipped",
+                context.component_name,
+                context.direction.label(),
                 path.join("/")
             ));
         }
@@ -284,6 +335,39 @@ mod tests {
         assert!(component.schema.child("value").is_some());
         assert!(warnings.iter().any(|warning| {
             warning.contains("could not read protobuf schema")
+                && warning.contains("without executable protobuf metadata")
+        }));
+    }
+
+    #[test]
+    fn unreadable_schema_keeps_a_non_executable_entry_tree_source() {
+        let document = roxmltree::Document::parse(
+            r#"<component name="fallback" library="binary" kind="33">
+                <data>
+                    <root><entry name="FileInstance"><entry name="document" type="doc-protobuf">
+                        <document schemafile="missing.proto" root="Message"/>
+                        <entry name="Message"><entry name="value" outkey="7"/></entry>
+                    </entry></entry></root>
+                    <binary inputinstance="message.bin"/>
+                </data>
+            </component>"#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let component = read(
+            &document.root_element(),
+            Path::new("/definitely/missing/mapping.mfd"),
+            &mut warnings,
+        )
+        .unwrap();
+
+        assert!(component.is_source);
+        assert_eq!(component.input_instance.as_deref(), Some("message.bin"));
+        assert!(component.output_keys.contains(&7));
+        assert!(component.options.protobuf.is_none());
+        assert!(component.schema.child("value").is_some());
+        assert!(warnings.iter().any(|warning| {
+            warning.contains("visible entry-tree source shape")
                 && warning.contains("without executable protobuf metadata")
         }));
     }

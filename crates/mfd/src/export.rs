@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::Path;
 
-use ir::SchemaNode;
+use ir::{SchemaKind, SchemaNode};
 use mapping::{FormatOptions, IterationOutput, NodeId, Project, Scope, ScopeConstruction};
 
 use crate::MfdError;
@@ -110,7 +110,8 @@ impl<'a> TargetExport<'a> {
             || recursive::requires_root_port(spec.root)
             || spec.root.iteration_output == IterationOutput::First
                 && spec.root.source() == Some(&[]);
-        let mut explicit_text_ports = mapped_scope_plans.explicit_text_ports();
+        let mut explicit_text_ports = explicit_scope_text_ports(spec.schema, spec.root);
+        explicit_text_ports.extend(mapped_scope_plans.explicit_text_ports());
         explicit_text_ports.extend(xbrl::explicit_text_ports(spec.schema, spec.options));
         Ok(Self {
             component_name: spec.component_name,
@@ -144,6 +145,51 @@ impl<'a> TargetExport<'a> {
             document_path_port,
         })
     }
+}
+
+fn explicit_scope_text_ports(schema: &SchemaNode, root: &Scope) -> BTreeSet<Vec<String>> {
+    fn schema_node_at<'a>(schema: &'a SchemaNode, path: &[String]) -> Option<&'a SchemaNode> {
+        path.iter()
+            .try_fold(schema, |node, segment| node.child(segment))
+    }
+
+    fn collect(
+        schema: &SchemaNode,
+        scope: &Scope,
+        path: &mut Vec<String>,
+        ports: &mut BTreeSet<Vec<String>>,
+    ) {
+        let pushed = !scope.target_field.is_empty();
+        if pushed {
+            path.push(scope.target_field.clone());
+        }
+        let maps_text = scope
+            .bindings
+            .iter()
+            .any(|binding| binding.target_field == ir::XML_TEXT_FIELD);
+        let has_element_content =
+            schema_node_at(schema, path).is_some_and(|node| match &node.kind {
+                SchemaKind::Group { children, .. } => {
+                    children.iter().any(|child| !child.text && !child.attribute)
+                }
+                SchemaKind::Scalar { .. } => false,
+            });
+        if maps_text && has_element_content {
+            let mut text = path.clone();
+            text.push(ir::XML_TEXT_FIELD.to_string());
+            ports.insert(text);
+        }
+        for child in &scope.children {
+            collect(schema, child, path, ports);
+        }
+        if pushed {
+            path.pop();
+        }
+    }
+
+    let mut ports = BTreeSet::new();
+    collect(schema, root, &mut Vec::new(), &mut ports);
+    ports
 }
 
 /// Writes a MapForce design and generated schema siblings, returning warnings

@@ -43,6 +43,17 @@ fn set_sequence_input(sequence: &mut mapping::SequenceExpr, index: usize, node: 
             1 => *length = node,
             _ => {}
         },
+        mapping::SequenceExpr::TokenizeRegex {
+            input,
+            pattern,
+            flags,
+            ..
+        } => match index {
+            0 => *input = node,
+            1 => *pattern = node,
+            2 => *flags = Some(node),
+            _ => {}
+        },
         mapping::SequenceExpr::Generate {
             from: Some(from),
             to,
@@ -71,6 +82,7 @@ fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     match sequence {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
         mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
@@ -87,6 +99,16 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> &'stati
             .unwrap_or("input"),
         mapping::SequenceExpr::TokenizeByLength { .. } => {
             ["input", "length"].get(index).copied().unwrap_or("input")
+        }
+        mapping::SequenceExpr::TokenizeRegex { flags, .. } => {
+            if flags.is_some() {
+                ["input", "pattern", "flags"]
+                    .get(index)
+                    .copied()
+                    .unwrap_or("input")
+            } else {
+                ["input", "pattern"].get(index).copied().unwrap_or("input")
+            }
         }
         mapping::SequenceExpr::Generate { from: Some(_), .. } => {
             ["from", "to"].get(index).copied().unwrap_or("input")
@@ -314,6 +336,9 @@ impl GraphViewer<'_> {
             Node::ValueMap { input, .. } => (idx == 0).then_some(*input),
             Node::Lookup { matches, .. } => (idx == 0).then_some(*matches),
             Node::DynamicSourceField { key, .. } => (idx == 0).then_some(*key),
+            Node::XmlMixedContent { replacements, .. } => replacements
+                .get(idx)
+                .map(|replacement| replacement.expression),
             Node::CollectionFind {
                 predicate, value, ..
             } => [*predicate, *value].get(idx).copied(),
@@ -511,6 +536,7 @@ impl GraphViewer<'_> {
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
+            Node::XmlMixedContent { replacements, .. } => replacements.len(),
             Node::CollectionFind { .. } => 2,
             Node::SequenceExists {
                 sequence,
@@ -571,6 +597,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Some(Node::DynamicSourceField { object, .. }) => {
                     format!("Dynamic field: {}", object.join("/"))
+                }
+                Some(Node::XmlMixedContent { path, .. }) => {
+                    format!("XML mixed content: {}", path.join("/"))
                 }
                 Some(Node::CollectionFind { collection, .. }) => {
                     format!("Find: {}", collection.join("/"))
@@ -787,6 +816,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             .map(|path| format!("{}/", path.join("/")))
                             .unwrap_or_default(),
                         object.join("/")
+                    ));
+                }
+                Node::XmlMixedContent {
+                    path, replacements, ..
+                } => {
+                    ui.label(format!(
+                        "{} ({} replacement{})",
+                        if path.is_empty() {
+                            "<current>".to_string()
+                        } else {
+                            path.join("/")
+                        },
+                        replacements.len(),
+                        if replacements.len() == 1 { "" } else { "s" }
                     ));
                 }
                 Node::CollectionFind { collection, .. } => {

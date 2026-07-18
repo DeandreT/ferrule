@@ -174,6 +174,10 @@ pub fn layered_layout(
                 vec![*input]
             }
             mapping::Node::DynamicSourceField { key, .. } => vec![*key],
+            mapping::Node::XmlMixedContent { replacements, .. } => replacements
+                .iter()
+                .map(|replacement| replacement.expression)
+                .collect(),
             mapping::Node::CollectionFind {
                 predicate, value, ..
             } => vec![*predicate, *value],

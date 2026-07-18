@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="32">
+  <resources/>
+  <component name="defaultmap" uid="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="Directory" library="binary" uid="2" kind="33">
+          <properties/>
+          <data>
+            <root>
+              <header>
+                <namespaces>
+                  <namespace uid="ferrule.fixture.Directory.Record"/>
+                  <namespace uid="ferrule.fixture.Directory"/>
+                  <namespace uid="http://www.altova.com/mapforce"/>
+                </namespaces>
+              </header>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" type="doc-protobuf" expanded="1">
+                  <document schemafile="protobuf-target.proto" root="{ferrule.fixture}Directory"/>
+                  <entry name="Directory" expanded="1">
+                    <entry name="title" outkey="11"/>
+                    <entry name="records" outkey="12" expanded="1">
+                      <entry name="code" outkey="13"/>
+                      <entry name="label" outkey="14"/>
+                      <entry name="rank" outkey="15"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <binary inputinstance="directory.bin"/>
+          </data>
+        </component>
+        <component name="Result" library="xml" uid="3" kind="14">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <entry name="FileInstance" expanded="1">
+                <entry name="document" expanded="1">
+                  <entry name="Result" expanded="1">
+                    <entry name="Title" inpkey="21"/>
+                    <entry name="Record" inpkey="20" expanded="1">
+                      <entry name="Code" inpkey="22"/>
+                      <entry name="Label" inpkey="23"/>
+                      <entry name="Rank" inpkey="24"/>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <document schema="protobuf-source-target.xsd" outputinstance="protobuf-source-output.xml" instanceroot="{}Result"/>
+          </data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="11" to="21"/>
+      <edge from="12" to="20"/>
+      <edge from="13" to="22"/>
+      <edge from="14" to="23"/>
+      <edge from="15" to="24"/>
+    </connections>
+  </component>
+</mapping>

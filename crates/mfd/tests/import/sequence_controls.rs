@@ -507,6 +507,81 @@ fn tokenizers_generate_distinct_scalar_sequences_and_roundtrip() {
 }
 
 #[test]
+fn regex_tokenizer_imports_optional_flags_executes_and_roundtrips() {
+    let imported = mfd::import(&fixture("tokenize-regexp.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let project = &imported.project;
+    let word = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Word")
+        .unwrap();
+    let pair = project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Pair")
+        .unwrap();
+    assert!(matches!(
+        word.sequence(),
+        Some(SequenceExpr::TokenizeRegex { flags: Some(_), .. })
+    ));
+    assert!(matches!(
+        pair.sequence(),
+        Some(SequenceExpr::TokenizeRegex { flags: None, .. })
+    ));
+
+    let source = format_xml::read(&fixture("tokenize-regexp.xml"), &project.source).unwrap();
+    let target = engine::run(project, &source).unwrap();
+    let words = target
+        .field("Word")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        words
+            .iter()
+            .map(|row| scalar(row, "Value"))
+            .collect::<Vec<_>>(),
+        ["Alpha", "GAMMA"].map(|value| Value::String(value.into()))
+    );
+    let pairs = target
+        .field("Pair")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        pairs
+            .iter()
+            .map(|row| scalar(row, "Value"))
+            .collect::<Vec<_>>(),
+        ["Aé", "Z"].map(|value| Value::String(value.into()))
+    );
+
+    let dir = TempDir::new("tokenize_regexp");
+    let out = dir.0.join("tokenize-regexp.mfd");
+    let warnings = mfd::export(project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"tokenize-regexp\"").count(), 2);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let reimported_pair = reimported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Pair")
+        .unwrap();
+    assert!(matches!(
+        reimported_pair.sequence(),
+        Some(SequenceExpr::TokenizeRegex { flags: None, .. })
+    ));
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), target);
+}
+
+#[test]
 fn generated_integer_ranges_import_controls_execute_and_roundtrip() {
     let imported = mfd::import(&fixture("generate.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

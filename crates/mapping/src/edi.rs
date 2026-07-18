@@ -15,6 +15,158 @@ pub enum EdiBoundaryKind {
     SwiftMt,
 }
 
+/// One schema leaf whose XML date/time lexical form is compacted for an EDI
+/// wire representation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdiLexicalKind {
+    CompactDate6,
+    CompactDate8,
+    CompactTime { min_digits: u8, max_digits: u8 },
+    Decimal { max_chars: u8 },
+}
+
+impl EdiLexicalKind {
+    const fn is_valid(self) -> bool {
+        match self {
+            Self::CompactDate6 | Self::CompactDate8 => true,
+            Self::CompactTime {
+                min_digits,
+                max_digits,
+            } => min_digits >= 4 && min_digits <= max_digits && max_digits <= 8,
+            Self::Decimal { max_chars } => max_chars > 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EdiLexicalFormat {
+    path: Vec<String>,
+    kind: EdiLexicalKind,
+}
+
+impl EdiLexicalFormat {
+    pub fn new(path: Vec<String>, kind: EdiLexicalKind) -> Option<Self> {
+        (!path.is_empty() && path.iter().all(|segment| !segment.is_empty()) && kind.is_valid())
+            .then_some(Self { path, kind })
+    }
+
+    pub fn path(&self) -> &[String] {
+        &self.path
+    }
+
+    pub const fn kind(&self) -> EdiLexicalKind {
+        self.kind
+    }
+}
+
+impl<'de> Deserialize<'de> for EdiLexicalFormat {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            path: Vec<String>,
+            kind: EdiLexicalKind,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.path, wire.kind).ok_or_else(|| {
+            serde::de::Error::custom(
+                "EDI lexical-format paths must be non-empty and time widths must be within 4..=8",
+            )
+        })
+    }
+}
+
+/// One EDI decimal whose wire representation omits a fixed number of
+/// fractional places.
+///
+/// Paths are relative to the EDI schema root. The runtime applies the scale
+/// after positional parsing, including through repeated groups on the path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EdiImpliedDecimal {
+    path: Vec<String>,
+    places: u8,
+}
+
+impl EdiImpliedDecimal {
+    pub fn new(path: Vec<String>, places: u8) -> Option<Self> {
+        (!path.is_empty()
+            && path.iter().all(|segment| !segment.is_empty())
+            && (1..=18).contains(&places))
+        .then_some(Self { path, places })
+    }
+
+    pub fn path(&self) -> &[String] {
+        &self.path
+    }
+
+    pub const fn places(&self) -> u8 {
+        self.places
+    }
+}
+
+impl<'de> Deserialize<'de> for EdiImpliedDecimal {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            path: Vec<String>,
+            places: u8,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.path, wire.places).ok_or_else(|| {
+            serde::de::Error::custom(
+                "EDI implied-decimal paths must be non-empty and places must be between 1 and 18",
+            )
+        })
+    }
+}
+
+/// Envelope data that an EDI target asks the runtime to derive.
+///
+/// MapForce's `autocompletedata` setting is dialect-sensitive: X12 derives
+/// transaction, group, and interchange trailers, while EDIFACT derives
+/// message and interchange trailers. Keeping the dialect in the value makes
+/// incompatible retained settings rejectable before output is attempted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct X12Autocomplete {
+    /// Whether ISA14 requests a technical acknowledgement (`1`) instead of
+    /// explicitly declining one (`0`) when the field is unbound.
+    #[serde(default)]
+    pub request_acknowledgement: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transaction_set: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EdifactAutocomplete {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax_level: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controlling_agency: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_type: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EdiAutocomplete {
+    X12(X12Autocomplete),
+    Edifact(EdifactAutocomplete),
+    Hl7,
+    Tradacoms,
+    Idoc,
+    SwiftMt,
+}
+
 /// Runtime separators retained from an ANSI X12 document boundary.
 ///
 /// X12 interchanges declare most syntax characters in the ISA envelope, but

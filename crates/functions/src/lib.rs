@@ -13,6 +13,7 @@ use thiserror::Error;
 
 mod datetime;
 mod datetime_add;
+mod decimal;
 mod filepath;
 mod flextext;
 mod format_number;
@@ -111,6 +112,7 @@ const INTERNAL_NAMES: &[&str] = &[
     "json_parse_field",
     "flextext_parse_field",
     "delay_passthrough",
+    "coerce_datetime",
 ];
 
 /// Whether `name` identifies a scalar builtin accepted by [`call`].
@@ -141,7 +143,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "pad_string_right" => pad_string(args, "pad_string_right", false),
         "add" => numeric(args, "add", i64::checked_add, |a, b| a + b),
         "subtract" => numeric(args, "subtract", i64::checked_sub, |a, b| a - b),
-        "multiply" => numeric(args, "multiply", i64::checked_mul, |a, b| a * b),
+        "multiply" => multiply(args),
         "divide" => divide(args),
         "equal" => comparison(args, "equal", |o| o == std::cmp::Ordering::Equal),
         "not_equal" => comparison(args, "not_equal", |o| o != std::cmp::Ordering::Equal),
@@ -178,6 +180,7 @@ pub fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "parse_datetime" => datetime::parse_datetime(args),
         "parse_time" => datetime::parse_time(args),
         "edifact_to_datetime" => datetime::edifact_to_datetime(args),
+        "coerce_datetime" => datetime::coerce_datetime(args),
         "substitute_missing" => substitute_missing(args),
         "get_folder" => filepath::get_folder(args),
         "remove_folder" => filepath::remove_folder(args),
@@ -606,6 +609,14 @@ fn numeric(
         result = f_int(result, value).ok_or(FunctionError::IntegerOverflow { function: name })?;
     }
     Ok(Value::Int(result))
+}
+
+fn multiply(args: &[Value]) -> Result<Value, FunctionError> {
+    let binary = numeric(args, "multiply", i64::checked_mul, |a, b| a * b)?;
+    let Value::Float(binary) = binary else {
+        return Ok(binary);
+    };
+    Ok(Value::Float(decimal::product(args).unwrap_or(binary)))
 }
 
 #[cfg(test)]
@@ -1306,6 +1317,21 @@ mod tests {
                 got: "string"
             })
         ));
+    }
+
+    #[test]
+    fn decimal_multiplication_does_not_expose_binary_float_artifacts() {
+        let result = call("multiply", &[Value::Float(0.09), Value::Float(15.0)]).unwrap();
+
+        assert_eq!(result, Value::Float(1.35));
+        assert_eq!(scalar_text(&result), "1.35");
+        assert_eq!(
+            call(
+                "multiply",
+                &[Value::Float(1.234_567_890_123_456_7), Value::Float(1.0),],
+            ),
+            Ok(Value::Float(1.234_567_890_123_456_7))
+        );
     }
 
     #[test]

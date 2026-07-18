@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{EdiBoundaryKind, FormatOptions, X12Separators};
+use mapping::{
+    EdiAutocomplete, EdiBoundaryKind, EdifactAutocomplete, FormatOptions, X12Autocomplete,
+    X12Separators,
+};
 
 use super::{ComponentFormat, SchemaComponent};
 
@@ -26,6 +29,7 @@ pub(super) fn read(
     let x12_interchange_version = (kind == "EDIX12")
         .then(|| read_x12_interchange_version(&text, &name, warnings))
         .flatten();
+    let edi_autocomplete = read_autocomplete(&text, kind, &name, warnings);
     let root = data.children().find(|node| node.has_tag_name("root"))?;
     let mut entry = root.children().find(|node| node.has_tag_name("entry"))?;
     while matches!(
@@ -62,6 +66,7 @@ pub(super) fn read(
         .map(str::to_string)
         .collect::<Vec<_>>();
     let (embedded_idoc, embedded_swift_mt) = embedded_runtime_layout(&text, kind, &name, warnings);
+    let embedded_lexical_formats = embedded_lexical_formats(&text, &name, warnings);
     let config = text.attribute("config");
     let compiled = if runtime_boundary
         && matches!(
@@ -71,13 +76,37 @@ pub(super) fn read(
         config.and_then(|declared| {
             match resolve_config(mfd_path, declared).and_then(|path| match kind {
                 "EDIFIXED" => format_edi::config::idoc::import_config(&path)
-                    .map(|compiled| (compiled.schema, Some(compiled.layout), None))
+                    .map(|compiled| {
+                        (
+                            compiled.schema,
+                            Some(compiled.layout),
+                            None,
+                            Vec::new(),
+                            Vec::new(),
+                        )
+                    })
                     .map_err(|error| error.to_string()),
                 "SWIFTMT" => format_edi::config::swift::import_config(&path, &selected_messages)
-                    .map(|compiled| (compiled.schema, None, Some(compiled.layout)))
+                    .map(|compiled| {
+                        (
+                            compiled.schema,
+                            None,
+                            Some(compiled.layout),
+                            Vec::new(),
+                            Vec::new(),
+                        )
+                    })
                     .map_err(|error| error.to_string()),
                 _ => format_edi::config::import_config(&path, &selected_messages)
-                    .map(|schema| (schema, None, None))
+                    .map(|compiled| {
+                        (
+                            compiled.schema,
+                            None,
+                            None,
+                            compiled.implied_decimals,
+                            compiled.lexical_formats,
+                        )
+                    })
                     .map_err(|error| error.to_string()),
             }) {
                 Ok(compiled) => Some(compiled),
@@ -97,8 +126,14 @@ pub(super) fn read(
         None
     };
     let has_compiled_schema = compiled.is_some();
-    let (mut schema, idoc, swift_mt) =
-        compiled.unwrap_or((fallback_schema, embedded_idoc, embedded_swift_mt));
+    let (mut schema, idoc, swift_mt, edi_implied_decimals, edi_lexical_formats) = compiled
+        .unwrap_or((
+            fallback_schema,
+            embedded_idoc,
+            embedded_swift_mt,
+            Vec::new(),
+            embedded_lexical_formats,
+        ));
     if has_compiled_schema && kind == "EDIX12" {
         merge_parser_error_entries(&entry, &mut schema);
     }
@@ -168,6 +203,9 @@ pub(super) fn read(
                 "SWIFTMT" => Some(EdiBoundaryKind::SwiftMt),
                 _ => None,
             },
+            edi_implied_decimals,
+            edi_lexical_formats,
+            edi_autocomplete,
             x12_separators,
             x12_interchange_version,
             idoc,
@@ -186,6 +224,109 @@ pub(super) fn read(
         db_queries: Vec::new(),
         dynamic_json: None,
     })
+}
+
+fn embedded_lexical_formats(
+    text: &roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<mapping::EdiLexicalFormat> {
+    let Some(metadata) = text
+        .children()
+        .find(|node| node.has_tag_name("ferrule-lexical-formats"))
+    else {
+        return Vec::new();
+    };
+    match serde_json::from_str(metadata.text().unwrap_or_default()) {
+        Ok(formats) => formats,
+        Err(error) => {
+            warnings.push(format!(
+                "EDI component `{component_name}` has invalid embedded lexical-format metadata \
+                 ({error}); EDI date/time output compaction was disabled"
+            ));
+            Vec::new()
+        }
+    }
+}
+
+fn read_autocomplete(
+    text: &roxmltree::Node<'_, '_>,
+    kind: &str,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Option<EdiAutocomplete> {
+    let settings = text.children().find(|node| node.has_tag_name("settings"))?;
+    let value = settings.attribute("autocompletedata")?;
+    if matches!(value, "false" | "0") {
+        return None;
+    }
+    if !matches!(value, "true" | "1") {
+        warnings.push(format!(
+            "EDI component `{component_name}` has invalid autocomplete setting `{value}`; \
+             runtime envelope completion was disabled"
+        ));
+        return None;
+    }
+    match kind {
+        "EDIX12" => Some(EdiAutocomplete::X12(X12Autocomplete {
+            request_acknowledgement: text
+                .children()
+                .find(|node| node.has_tag_name("settings"))
+                .and_then(|settings| settings.attribute("requestacknowledgement"))
+                .is_some_and(|value| matches!(value, "true" | "1")),
+            transaction_set: settings
+                .attribute("ferruletransactionset")
+                .map(str::to_string)
+                .or_else(|| selected_edi_message(text)),
+        })),
+        "EDIFACT" => {
+            let selected_message = settings
+                .attribute("ferrulemessagetype")
+                .map(str::to_string)
+                .or_else(|| selected_edi_message(text));
+            let configured_message = text.attribute("config").and_then(|config| {
+                let normalized = config.replace('\\', "/");
+                Path::new(&normalized)
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .filter(|stem| !stem.eq_ignore_ascii_case("Envelope"))
+                    .map(str::to_string)
+            });
+            Some(EdiAutocomplete::Edifact(EdifactAutocomplete {
+                syntax_level: settings.attribute("syntaxlevel").map(str::to_string),
+                syntax_version: settings
+                    .attribute("syntaxversionnumber")
+                    .map(str::to_string),
+                controlling_agency: settings.attribute("controllingagency").map(str::to_string),
+                message_type: selected_message.or(configured_message),
+            }))
+        }
+        "EDIHL7" => Some(EdiAutocomplete::Hl7),
+        "EDITRADACOMS" => Some(EdiAutocomplete::Tradacoms),
+        "EDIFIXED" => Some(EdiAutocomplete::Idoc),
+        "SWIFTMT" => Some(EdiAutocomplete::SwiftMt),
+        _ => None,
+    }
+}
+
+fn selected_edi_message(text: &roxmltree::Node<'_, '_>) -> Option<String> {
+    text.children()
+        .find(|node| node.has_tag_name("messages"))
+        .and_then(|messages| {
+            messages
+                .children()
+                .find(|node| node.has_tag_name("message"))
+        })
+        .and_then(|message| message.attribute("type"))
+        .map(str::to_string)
+        .or_else(|| {
+            let normalized = text.attribute("config")?.replace('\\', "/");
+            Path::new(&normalized)
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .filter(|stem| !stem.eq_ignore_ascii_case("Envelope"))
+                .map(str::to_string)
+        })
 }
 
 fn read_x12_interchange_version(

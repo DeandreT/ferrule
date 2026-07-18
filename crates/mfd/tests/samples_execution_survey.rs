@@ -21,6 +21,8 @@ mod format_io;
 mod output_support;
 #[path = "samples_execution_survey/reference_support.rs"]
 mod reference_support;
+#[path = "samples_execution_survey/roundtrip.rs"]
+mod roundtrip;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,7 +34,10 @@ use std::sync::Arc;
 
 use format_io::{inferred_extension, is_http, portable_path, read_instance, resolve_sample_input};
 use ir::{Instance, SchemaNode};
-use mapping::{DynamicSourcePath, FormatOptions, NamedSource, Project, TabularBoundaryKind};
+use mapping::{
+    DynamicSourcePath, EdiAutocomplete, ExternalPayloadFormat, ExternalSourceOrigin, FormatOptions,
+    Graph, NamedSource, Node, Project, RuntimeValue, Scope, TabularBoundaryKind,
+};
 use output_support::{
     compare_generated_references, prepare_database_output, prepare_xlsx_update_output,
     validate_document_paths, write_outputs,
@@ -280,7 +285,70 @@ fn explicit_reference(
     if input_paths.contains(&reference) {
         return Err("target output instance is also used as an input".to_string());
     }
+    let owners = output_instance_owners(samples_root, &reference)?;
+    if owners.len() != 1 || owners.first().is_none_or(|owner| owner != mfd_path) {
+        return Err(format!(
+            "target output instance is shared by {} mapping designs; an isolated generated reference is required",
+            owners.len()
+        ));
+    }
     Ok(reference)
+}
+
+fn output_instance_owners(samples_root: &Path, reference: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut designs = Vec::new();
+    collect_mfd_paths(samples_root, &mut designs)?;
+    let mut owners = Vec::new();
+    for design in designs {
+        let document = std::fs::read_to_string(&design)
+            .map_err(|error| format!("reading MFD metadata failed: {error}"))?;
+        let document = roxmltree::Document::parse(&document)
+            .map_err(|error| format!("parsing MFD metadata failed: {error}"))?;
+        let owns_reference = document
+            .descendants()
+            .filter(|node| node.is_element())
+            .any(|node| {
+                let declared = node.attribute("outputinstance").or_else(|| {
+                    (node.has_tag_name("file") && node.attribute("role") == Some("outputinstance"))
+                        .then(|| node.attribute("name"))
+                        .flatten()
+                });
+                declared
+                    .filter(|stored| !is_http(stored))
+                    .and_then(|stored| resolve_sample_input(samples_root, stored).ok())
+                    .is_some_and(|declared| declared == reference)
+            });
+        if owns_reference {
+            owners.push(design);
+        }
+    }
+    owners.sort();
+    owners.dedup();
+    Ok(owners)
+}
+
+fn collect_mfd_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in std::fs::read_dir(directory)
+        .map_err(|error| format!("reading sample directory failed: {error}"))?
+    {
+        let entry =
+            entry.map_err(|error| format!("reading sample directory entry failed: {error}"))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("reading sample entry type failed: {error}"))?;
+        if file_type.is_dir() {
+            collect_mfd_paths(&path, paths)?;
+        } else if file_type.is_file()
+            && path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
+        {
+            paths.push(path);
+        }
+    }
+    Ok(())
 }
 
 struct LoadedSources {
@@ -289,11 +357,31 @@ struct LoadedSources {
     paths: BTreeSet<PathBuf>,
 }
 
+fn primary_source_path<'a>(
+    stored: Option<&'a str>,
+    options: &FormatOptions,
+) -> Result<&'a str, String> {
+    stored.ok_or_else(|| {
+        let Some(boundary) = options.external_source.as_ref() else {
+            return "primary source has no input instance path".to_string();
+        };
+        let payload = match boundary.payload() {
+            ExternalPayloadFormat::Json => "JSON",
+            ExternalPayloadFormat::Xml => "XML",
+        };
+        match boundary.origin() {
+            ExternalSourceOrigin::UserFunction { name, reason } => format!(
+                "external user-function source `{name}` requires an explicitly supplied captured {payload} response because Ferrule does not execute its body ({reason})"
+            ),
+            ExternalSourceOrigin::HttpPost { .. } => format!(
+                "external HTTP POST source requires an explicitly supplied captured {payload} response because the read-only survey does not make network requests"
+            ),
+        }
+    })
+}
+
 fn load_sources(project: &Project, samples_root: &Path) -> Result<LoadedSources, String> {
-    let source_path = project
-        .source_path
-        .as_deref()
-        .ok_or_else(|| "primary source has no input instance path".to_string())?;
+    let source_path = primary_source_path(project.source_path.as_deref(), &project.source_options)?;
     let (primary, mut paths) = load_source(
         samples_root,
         source_path,
@@ -513,6 +601,22 @@ fn survey_file(
         }
     };
     if let Some(references) = generated {
+        if has_nondeterministic_current_time(&imported.project.graph)
+            || has_nondeterministic_edi_autocomplete(
+                std::iter::once((&imported.project.target_options, &imported.project.root)).chain(
+                    imported
+                        .project
+                        .extra_targets
+                        .iter()
+                        .map(|target| (&target.options, &target.root)),
+                ),
+            )
+        {
+            outcome.reference_match = StageOutcome::skipped(
+                "exact reference comparison is nondeterministic because the mapping reads or derives the current dateTime",
+            );
+            return outcome;
+        }
         outcome.reference_match =
             match compare_generated_references(&imported.project, &written, references) {
                 Ok(()) => StageOutcome::passed(),
@@ -568,6 +672,49 @@ fn survey_file(
         ));
     }
     outcome
+}
+
+fn has_nondeterministic_current_time(graph: &Graph) -> bool {
+    graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            Node::RuntimeValue {
+                value: RuntimeValue::CurrentDateTime
+            }
+        )
+    })
+}
+
+fn has_nondeterministic_edi_autocomplete<'a>(
+    targets: impl IntoIterator<Item = (&'a FormatOptions, &'a Scope)>,
+) -> bool {
+    targets
+        .into_iter()
+        .any(|(options, root)| match options.edi_autocomplete.as_ref() {
+            Some(EdiAutocomplete::X12(_)) => {
+                !scope_binds_fields(root, "ISA", &["FI08", "FI09"])
+                    || !scope_binds_fields(root, "GS", &["F373", "F337"])
+            }
+            Some(EdiAutocomplete::Edifact(_)) => {
+                !scope_binds_fields(root, "UNB", &["F0017", "F0019"])
+            }
+            Some(_) => true,
+            None => false,
+        })
+}
+
+fn scope_binds_fields(scope: &Scope, segment: &str, fields: &[&str]) -> bool {
+    (scope.target_field == segment
+        && fields.iter().all(|field| {
+            scope
+                .bindings
+                .iter()
+                .any(|binding| binding.target_field == *field)
+        }))
+        || scope
+            .children
+            .iter()
+            .any(|child| scope_binds_fields(child, segment, fields))
 }
 
 fn write_json_report(
@@ -658,6 +805,102 @@ fn summary_counts_attempts_separately_from_skips() {
             references_mismatched: 1,
         }
     );
+}
+
+#[test]
+fn pathless_external_sources_are_classified_as_captured_response_boundaries()
+-> Result<(), Box<dyn Error>> {
+    let external = FormatOptions {
+        external_source: Some(mapping::ExternalSourceOptions::user_function(
+            "FetchInventory",
+            "recursive service function",
+            ExternalPayloadFormat::Json,
+        )?),
+        ..FormatOptions::default()
+    };
+    assert_eq!(
+        primary_source_path(Some("captured.json"), &external),
+        Ok("captured.json")
+    );
+
+    let external_reason = primary_source_path(None, &external)
+        .expect_err("a pathless external source must require captured input");
+    assert!(external_reason.contains("external user-function source `FetchInventory`"));
+    assert!(external_reason.contains("captured JSON response"));
+    assert!(external_reason.contains("recursive service function"));
+    assert_eq!(
+        primary_source_path(None, &FormatOptions::default()),
+        Err("primary source has no input instance path".to_string())
+    );
+    Ok(())
+}
+
+#[test]
+fn current_datetime_references_are_classified_as_nondeterministic() {
+    let mut graph = Graph::default();
+    graph.nodes.insert(
+        0,
+        Node::RuntimeValue {
+            value: RuntimeValue::MappingFilePath,
+        },
+    );
+    assert!(!has_nondeterministic_current_time(&graph));
+    graph.nodes.insert(
+        1,
+        Node::RuntimeValue {
+            value: RuntimeValue::CurrentDateTime,
+        },
+    );
+    assert!(has_nondeterministic_current_time(&graph));
+
+    let deterministic = FormatOptions::default();
+    let deterministic_root = Scope::default();
+    assert!(!has_nondeterministic_edi_autocomplete([(
+        &deterministic,
+        &deterministic_root,
+    )]));
+    let autocomplete = FormatOptions {
+        edi_autocomplete: Some(mapping::EdiAutocomplete::Edifact(
+            mapping::EdifactAutocomplete {
+                syntax_level: Some("A".into()),
+                syntax_version: Some("4".into()),
+                controlling_agency: Some("UNO".into()),
+                message_type: Some("ORDERS".into()),
+            },
+        )),
+        ..FormatOptions::default()
+    };
+    assert!(has_nondeterministic_edi_autocomplete([
+        (&deterministic, &deterministic_root),
+        (&autocomplete, &deterministic_root),
+    ]));
+
+    let x12 = FormatOptions {
+        edi_autocomplete: Some(EdiAutocomplete::X12(mapping::X12Autocomplete {
+            request_acknowledgement: false,
+            transaction_set: Some("850".into()),
+        })),
+        ..FormatOptions::default()
+    };
+    let mut mapped_root = Scope::default();
+    for (segment, fields) in [("ISA", ["FI08", "FI09"]), ("GS", ["F373", "F337"])] {
+        mapped_root.children.push(Scope {
+            target_field: segment.into(),
+            bindings: fields
+                .into_iter()
+                .zip(0_u32..)
+                .map(|(target_field, node)| mapping::Binding {
+                    target_field: target_field.into(),
+                    node,
+                })
+                .collect(),
+            ..Scope::default()
+        });
+    }
+    assert!(!has_nondeterministic_edi_autocomplete([(
+        &x12,
+        &mapped_root,
+    )]));
 }
 
 #[test]
@@ -880,6 +1123,42 @@ fn report_creation_never_follows_an_existing_leaf() -> Result<(), Box<dyn Error>
     let summary = Summary::from_outcomes(&[]);
     assert!(write_json_report(&report, &sample_root, &summary, &[]).is_err());
     assert_eq!(std::fs::read_to_string(sample)?, "keep");
+    Ok(())
+}
+
+#[test]
+fn explicit_reference_requires_one_owning_mapping() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let samples = workspace.0.join("samples");
+    std::fs::create_dir(&samples)?;
+    let reference = samples.join("result.xml");
+    std::fs::write(&reference, "<Result/>")?;
+    let first = samples.join("first.mfd");
+    let second = samples.join("second.mfd");
+    let design = r#"<mapping><component library="xml"><document outputinstance="result.xml"/></component></mapping>"#;
+    std::fs::write(&first, design)?;
+
+    assert_eq!(
+        explicit_reference(
+            &first,
+            &samples,
+            Some("result.xml"),
+            &BTreeSet::new(),
+            &FormatOptions::default(),
+        )?,
+        reference.canonicalize()?
+    );
+
+    std::fs::write(&second, design)?;
+    let error = explicit_reference(
+        &first,
+        &samples,
+        Some("result.xml"),
+        &BTreeSet::new(),
+        &FormatOptions::default(),
+    )
+    .unwrap_err();
+    assert!(error.contains("shared by 2 mapping designs"), "{error}");
     Ok(())
 }
 

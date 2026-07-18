@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -8,11 +8,62 @@ use mapping::{FormatOptions, Project};
 use super::format_io::{
     extension, output_path, portable_path, read_instance, resolve_sample_input, write_instance,
 };
-use super::reference_support::first_instance_difference;
+use super::reference_support::{
+    first_instance_difference, host_path_instances_equal, instances_semantically_equal,
+};
 
 pub(super) struct WrittenSurveyOutputs {
     pub(super) primary: PathBuf,
     pub(super) extras: Vec<PathBuf>,
+}
+
+pub(super) fn compare_execution_outputs(
+    expected: &engine::ExecutionOutputs,
+    actual: &engine::ExecutionOutputs,
+) -> Result<(), String> {
+    if !instances_semantically_equal(&expected.primary, &actual.primary) {
+        return Err(format!(
+            "primary output changed: {}",
+            first_instance_difference(&expected.primary, &actual.primary)
+        ));
+    }
+    let expected = named_output_map(&expected.extras)?;
+    let actual = named_output_map(&actual.extras)?;
+    let expected_names = expected.keys().copied().collect::<BTreeSet<_>>();
+    let actual_names = actual.keys().copied().collect::<BTreeSet<_>>();
+    if expected_names != actual_names {
+        return Err(format!(
+            "named output set changed: expected {expected_names:?}, produced {actual_names:?}"
+        ));
+    }
+    for (name, expected) in expected {
+        let Some(actual) = actual.get(name) else {
+            return Err(format!("named output `{name}` disappeared"));
+        };
+        if !instances_semantically_equal(expected, actual) {
+            return Err(format!(
+                "named output `{name}` changed: {}",
+                first_instance_difference(expected, actual)
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn named_output_map(outputs: &[engine::NamedOutput]) -> Result<BTreeMap<&str, &Instance>, String> {
+    let mut by_name = BTreeMap::new();
+    for output in outputs {
+        if by_name
+            .insert(output.name.as_str(), &output.instance)
+            .is_some()
+        {
+            return Err(format!(
+                "engine produced duplicate named output `{}`",
+                output.name
+            ));
+        }
+    }
+    Ok(by_name)
 }
 
 pub(super) fn write_outputs(
@@ -337,6 +388,11 @@ pub(super) fn compare_generated_references(
     written: &WrittenSurveyOutputs,
     references: &[PathBuf],
 ) -> Result<(), String> {
+    let host_path_output = project
+        .graph
+        .nodes
+        .values()
+        .any(|node| matches!(node, mapping::Node::SourceDocumentPath));
     let mut targets = Vec::with_capacity(1 + project.extra_targets.len());
     targets.push(ComparableTarget {
         label: "primary target".into(),
@@ -394,6 +450,7 @@ pub(super) fn compare_generated_references(
     if unresolved.len() == 1 && unmatched.len() == 1 {
         assignments[unresolved[0]] = unmatched.pop_first();
     }
+    assign_unique_schema_matches(&targets, references, &mut assignments, &mut unmatched);
     if assignments.iter().any(Option::is_none) {
         return Err("generated reference outputs cannot be matched uniquely to targets".into());
     }
@@ -419,7 +476,9 @@ pub(super) fn compare_generated_references(
                     target.written.display()
                 )
             })?;
-        if expected != actual {
+        if !(instances_semantically_equal(&expected, &actual)
+            || host_path_output && host_path_instances_equal(&expected, &actual))
+        {
             return Err(format!(
                 "{} differs from reference `{}`: {}",
                 target.label,
@@ -429,6 +488,38 @@ pub(super) fn compare_generated_references(
         }
     }
     Ok(())
+}
+
+fn assign_unique_schema_matches(
+    targets: &[ComparableTarget<'_>],
+    references: &[PathBuf],
+    assignments: &mut [Option<usize>],
+    unmatched: &mut BTreeSet<usize>,
+) {
+    loop {
+        let mut progress = false;
+        for (target_index, target) in targets.iter().enumerate() {
+            if assignments[target_index].is_some() {
+                continue;
+            }
+            let candidates = unmatched
+                .iter()
+                .copied()
+                .filter(|reference_index| {
+                    read_instance(&references[*reference_index], target.schema, target.options)
+                        .is_ok()
+                })
+                .collect::<Vec<_>>();
+            if let [reference_index] = candidates.as_slice() {
+                assignments[target_index] = Some(*reference_index);
+                unmatched.remove(reference_index);
+                progress = true;
+            }
+        }
+        if !progress {
+            break;
+        }
+    }
 }
 
 fn target_reference_names(name: &str, stored: Option<&str>) -> BTreeSet<String> {
@@ -448,4 +539,114 @@ fn normalized_reference_name(value: &str) -> String {
         .filter(|character| character.is_ascii_alphanumeric())
         .flat_map(char::to_lowercase)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use engine::{ExecutionOutputs, NamedOutput};
+    use ir::{Instance, ScalarType, SchemaNode, Value};
+    use mapping::{FormatOptions, Graph, NamedTarget, Project, Scope};
+
+    use super::{WrittenSurveyOutputs, compare_execution_outputs, compare_generated_references};
+
+    #[test]
+    fn compares_named_execution_outputs_by_identity_and_reports_drift() {
+        let scalar = |value: &str| Instance::Scalar(Value::String(value.into()));
+        let expected = ExecutionOutputs {
+            primary: scalar("primary"),
+            extras: vec![
+                NamedOutput {
+                    name: "alpha".into(),
+                    instance: scalar("a"),
+                },
+                NamedOutput {
+                    name: "beta".into(),
+                    instance: scalar("b"),
+                },
+            ],
+        };
+        let reordered = ExecutionOutputs {
+            primary: scalar("primary"),
+            extras: vec![
+                NamedOutput {
+                    name: "beta".into(),
+                    instance: scalar("b"),
+                },
+                NamedOutput {
+                    name: "alpha".into(),
+                    instance: scalar("a"),
+                },
+            ],
+        };
+        assert!(compare_execution_outputs(&expected, &reordered).is_ok());
+
+        let drifted = ExecutionOutputs {
+            primary: scalar("primary"),
+            extras: vec![
+                NamedOutput {
+                    name: "alpha".into(),
+                    instance: scalar("changed"),
+                },
+                NamedOutput {
+                    name: "beta".into(),
+                    instance: scalar("b"),
+                },
+            ],
+        };
+        let error = compare_execution_outputs(&expected, &drifted).unwrap_err();
+        assert!(error.contains("named output `alpha` changed"), "{error}");
+    }
+
+    #[test]
+    fn matches_unnamed_multi_outputs_by_their_document_schema() {
+        let workspace = super::super::SurveyWorkspace::new().unwrap();
+        let primary_schema = SchemaNode::group(
+            "Purchases",
+            vec![SchemaNode::scalar("Code", ScalarType::String)],
+        );
+        let extra_schema = SchemaNode::group(
+            "Requests",
+            vec![SchemaNode::scalar("Number", ScalarType::Int)],
+        );
+        let primary_instance = Instance::Group(vec![(
+            "Code".into(),
+            Instance::Scalar(Value::String("A".into())),
+        )]);
+        let extra_instance =
+            Instance::Group(vec![("Number".into(), Instance::Scalar(Value::Int(7)))]);
+        let actual_primary = workspace.0.join("actual-primary.xml");
+        let actual_extra = workspace.0.join("actual-extra.xml");
+        let reference_primary = workspace.0.join("ipos.xml");
+        let reference_extra = workspace.0.join("rfqs.xml");
+        format_xml::write(&actual_primary, &primary_schema, &primary_instance).unwrap();
+        format_xml::write(&actual_extra, &extra_schema, &extra_instance).unwrap();
+        format_xml::write(&reference_primary, &primary_schema, &primary_instance).unwrap();
+        format_xml::write(&reference_extra, &extra_schema, &extra_instance).unwrap();
+
+        let project = Project {
+            source: SchemaNode::group("Source", Vec::new()),
+            target: primary_schema,
+            source_path: None,
+            target_path: None,
+            source_options: FormatOptions::default(),
+            target_options: FormatOptions::default(),
+            extra_sources: Vec::new(),
+            extra_targets: vec![NamedTarget {
+                name: "RFQ Nanonull Inc".into(),
+                path: None,
+                schema: extra_schema,
+                options: FormatOptions::default(),
+                root: Scope::default(),
+            }],
+            graph: Graph::default(),
+            root: Scope::default(),
+        };
+        let written = WrittenSurveyOutputs {
+            primary: actual_primary,
+            extras: vec![actual_extra],
+        };
+
+        compare_generated_references(&project, &written, &[reference_primary, reference_extra])
+            .unwrap();
+    }
 }

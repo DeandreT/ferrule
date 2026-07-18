@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use ir::SchemaNode;
 use mapping::SortFilterOrder;
 
+use super::schema::schema_node_at;
 use super::source::SourcePath;
 
 pub(super) struct IterationFeed {
@@ -94,6 +95,9 @@ pub(super) struct IntermediateFeed {
     pub(super) suffix: Vec<String>,
     pub(super) control: Option<u32>,
     pub(super) projections: BTreeMap<Vec<String>, u32>,
+    /// Connected descendant inputs in port order, retaining cloned entries
+    /// that intentionally share one schema path.
+    pub(super) ordered_projections: Vec<(Vec<String>, u32)>,
 }
 
 /// Splits an absolute source path at its innermost repeating node: the
@@ -104,16 +108,14 @@ pub(super) fn split_at_innermost_repeating(
     schema: &SchemaNode,
     abs: &[String],
 ) -> (Vec<String>, Vec<String>) {
-    let mut node = schema;
     let mut cut = None;
-    for (i, segment) in abs.iter().enumerate() {
-        let Some(child) = node.child(segment) else {
+    for i in 0..abs.len() {
+        let Some(child) = schema_node_at(schema, &abs[..=i]) else {
             break;
         };
         if child.repeating {
             cut = Some(i);
         }
-        node = child;
     }
     match cut {
         Some(i) => (abs[..=i].to_vec(), abs[i + 1..].to_vec()),

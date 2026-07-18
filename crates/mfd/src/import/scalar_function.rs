@@ -124,6 +124,7 @@ impl GraphBuilder<'_> {
             ("now", _) => Node::RuntimeValue {
                 value: RuntimeValue::CurrentDateTime,
             },
+            ("set-empty", _) => Node::Const { value: Value::Null },
             ("set-xsi-nil", _) => Node::Const {
                 value: Value::xml_nil(),
             },
@@ -211,7 +212,24 @@ impl GraphBuilder<'_> {
 
     fn source_collection_exists_node(&mut self, idx: usize) -> Option<Node> {
         let feed = self.input_feed(idx, 0)?;
-        let source_path = self.source_abs_path(feed)?;
+        let mut source_path = self.source_abs_path(feed)?;
+        if let Some(type_name) = self.xml_type_conditions.get(&feed).cloned()
+            && self.schema_node(&source_path).is_some_and(|node| {
+                node.alternatives()
+                    .iter()
+                    .any(|alternative| alternative.name == type_name)
+            })
+        {
+            source_path.path.push(ir::XML_TYPE_FIELD.to_string());
+            let marker = self.source_field_at(&source_path)?;
+            let expected = self.alloc(Node::Const {
+                value: Value::String(type_name),
+            });
+            return Some(Node::Call {
+                function: "equal".to_string(),
+                args: vec![marker, expected],
+            });
+        }
         if !self
             .schema_node(&source_path)
             .is_some_and(|node| node.repeating)

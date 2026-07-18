@@ -366,6 +366,174 @@ fn conditioned_source_instance() -> Instance {
     )])
 }
 
+fn conditioned_plain_target_project() -> Project {
+    let source = SchemaNode::group("Source", vec![typed_address("Address")]);
+    let target = SchemaNode::group(
+        "Result",
+        vec![
+            SchemaNode::group(
+                "Contact",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    let domestic = Value::String("{urn:ferrule:conditioned-concat}Domestic".into());
+    let international = Value::String("{urn:ferrule:conditioned-concat}International".into());
+    let graph = Graph {
+        nodes: BTreeMap::from([
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["Address".into(), XML_TYPE_FIELD.into()],
+                    frame: None,
+                },
+            ),
+            (1, Node::Const { value: domestic }),
+            (
+                2,
+                Node::Call {
+                    function: "equal".into(),
+                    args: vec![0, 1],
+                },
+            ),
+            (
+                3,
+                Node::Const {
+                    value: international,
+                },
+            ),
+            (
+                4,
+                Node::Call {
+                    function: "equal".into(),
+                    args: vec![0, 3],
+                },
+            ),
+            (
+                5,
+                Node::SourceField {
+                    path: vec!["Address".into(), "Name".into()],
+                    frame: None,
+                },
+            ),
+        ]),
+    };
+    let segment = |filter| Scope {
+        iteration: ScopeIteration::Source(Vec::new()),
+        filter: Some(filter),
+        bindings: vec![binding("Name", 5)],
+        ..Scope::default()
+    };
+    Project {
+        source,
+        target,
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Contact".into(),
+                iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                    segment(2),
+                    vec![segment(4)],
+                )),
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+fn conditioned_plain_source_instance() -> Instance {
+    Instance::Group(vec![(
+        "Address".into(),
+        Instance::Group(vec![
+            (
+                "Name".into(),
+                Instance::Scalar(Value::String("West".into())),
+            ),
+            ("State".into(), Instance::Scalar(Value::String("CA".into()))),
+            ("Postcode".into(), Instance::Scalar(Value::Null)),
+            (
+                XML_TYPE_FIELD.into(),
+                Instance::Scalar(Value::String(
+                    "{urn:ferrule:conditioned-concat}Domestic".into(),
+                )),
+            ),
+        ]),
+    )])
+}
+
+fn conditioned_repeating_filter_project() -> Project {
+    let source = SchemaNode::group(
+        "Source",
+        vec![SchemaNode::group("Row", vec![typed_address("Address")]).repeating()],
+    );
+    let target = SchemaNode::group(
+        "Result",
+        vec![
+            SchemaNode::group(
+                "Contact",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            )
+            .repeating(),
+        ],
+    );
+    let domestic = Value::String("{urn:ferrule:conditioned-concat}Domestic".into());
+    let graph = Graph {
+        nodes: BTreeMap::from([
+            (
+                0,
+                Node::SourceField {
+                    path: vec!["Address".into(), XML_TYPE_FIELD.into()],
+                    frame: Some(vec!["Row".into()]),
+                },
+            ),
+            (1, Node::Const { value: domestic }),
+            (
+                2,
+                Node::Call {
+                    function: "equal".into(),
+                    args: vec![0, 1],
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: vec!["Address".into(), "Name".into()],
+                    frame: Some(vec!["Row".into()]),
+                },
+            ),
+        ]),
+    };
+    Project {
+        source,
+        target,
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Contact".into(),
+                iteration: ScopeIteration::Source(vec!["Row".into()]),
+                filter: Some(2),
+                bindings: vec![binding("Name", 3)],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
 fn export_import(project: &Project) -> Result<Project, Box<dyn Error>> {
     let dir = TempDir::new()?;
     let design = dir.0.join("mapping.mfd");
@@ -458,5 +626,36 @@ fn conditioned_non_repeating_xml_branches_roundtrip() -> Result<(), Box<dyn Erro
         engine::run(&project, &source)?,
         engine::run(&imported, &source)?
     );
+    Ok(())
+}
+
+#[test]
+fn conditioned_source_types_roundtrip_to_plain_repeated_targets() -> Result<(), Box<dyn Error>> {
+    let project = conditioned_plain_target_project();
+    assert!(engine::validate(&project).is_empty());
+    let imported = export_import(&project)?;
+
+    let source = conditioned_plain_source_instance();
+    assert_eq!(
+        engine::run(&project, &source)?,
+        engine::run(&imported, &source)?
+    );
+    Ok(())
+}
+
+#[test]
+fn conditioned_source_type_filters_roundtrip_on_repeating_parents() -> Result<(), Box<dyn Error>> {
+    let project = conditioned_repeating_filter_project();
+    assert!(engine::validate(&project).is_empty());
+    let imported = export_import(&project)?;
+
+    let source = conditioned_source_instance();
+    let expected = engine::run(&project, &source)?;
+    let contacts = expected
+        .field("Contact")
+        .and_then(Instance::as_repeated)
+        .ok_or("missing contacts")?;
+    assert_eq!(contacts.len(), 1);
+    assert_eq!(expected, engine::run(&imported, &source)?);
     Ok(())
 }

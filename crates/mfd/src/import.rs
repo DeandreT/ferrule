@@ -32,6 +32,7 @@ mod join;
 mod json_parser;
 mod json_serializer;
 mod materialize;
+mod mixed_content;
 mod output_parameter;
 mod protobuf_target;
 mod recursive;
@@ -43,8 +44,10 @@ mod sequence_scalar;
 mod source;
 mod source_node_function;
 mod target_iteration;
+mod target_mixed_content;
 mod target_node_default;
 mod target_node_function;
+mod target_type_cast;
 mod udf;
 
 use db_query::is_routine_catalog;
@@ -290,6 +293,20 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 }
                 "core" if component.attribute("kind") == Some("32") => {
                     pending_joins.read(component, &mut warnings);
+                }
+                "core"
+                    if component.attribute("kind") == Some("29")
+                        && component.descendants().any(|node| {
+                            node.has_tag_name("parameter")
+                                && node.attribute("usageKind") == Some("variable")
+                        }) =>
+                {
+                    match read_schema_component(&component, path, &mut warnings) {
+                        Some(variable) => schema_components.push(variable),
+                        None => warnings.push(format!(
+                            "skipped core structure variable `{name}`: missing entry tree"
+                        )),
+                    }
                 }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
                 "ferrule"
@@ -870,8 +887,9 @@ fn build_target_scope(
         builder,
         &mut scopes,
     );
-    for (target, from, _) in bindings {
-        let target_path = target.path();
+    target_mixed_content::install(target, builder, &mut scopes);
+    for (target_leaf, from, _) in bindings {
+        let target_path = target_leaf.path();
         if builder.join_dependency_rejected(from) {
             continue;
         }
@@ -888,18 +906,60 @@ fn build_target_scope(
         {
             continue;
         }
+        if install_repeating_scalar_iteration(target, &target_leaf, from, builder, &mut scopes) {
+            continue;
+        }
         let active_anchor = scopes.enclosing_anchor(&target_path);
         let Some(node) = builder.binding_node_at_anchor(from, &target_path, &active_anchor) else {
             continue;
         };
-        scopes.add_binding(target, node);
+        scopes.add_binding(target_leaf, node);
     }
     dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);
     compose_csv_target_rows(csv_singleton_bindings, builder, &mut scopes);
     target_node_default::install(target, structure, builder, &mut scopes);
     target_node_function::install(mapping, target, structure, mfd_path, builder, &mut scopes);
+    target_type_cast::install(target, structure, mfd_path, builder, &mut scopes);
     group_projection::install_optional_text_occurrences(target, builder, &mut scopes);
     scopes.root
+}
+
+fn install_repeating_scalar_iteration(
+    target_component: &SchemaComponent,
+    target: &TargetLeaf,
+    feed: u32,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+) -> bool {
+    let target_path = target.path();
+    if !schema_node_at(&target_component.schema, &target_path)
+        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+    {
+        return false;
+    }
+    let Some(source_path) = builder
+        .source_abs_path(feed)
+        .map(|path| builder.source_value_path(path.source, path.path))
+    else {
+        return false;
+    };
+    if !builder
+        .schema_node(&source_path)
+        .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+    {
+        return false;
+    }
+    let source_abs = builder.context_path(&source_path);
+    builder.note_framed_prefixes(&source_path);
+    let value = builder.source_field(Some(source_abs.clone()), Vec::new());
+    scopes.add_iteration(
+        &target_path,
+        &source_abs,
+        scope::IterationNodes::default(),
+        mapping::IterationOutput::Repeated,
+    );
+    scopes.ensure_scope(&target_path).construction = mapping::ScopeConstruction::Scalar { value };
+    true
 }
 
 /// Repeated scalar target entries can be cloned several times under the same
@@ -1052,7 +1112,7 @@ impl GraphBuilder<'_> {
             let control = component
                 .compute_when_key
                 .and_then(|key| self.edge_from.get(&key).copied());
-            let projections = component
+            let ordered_projections = component
                 .ports
                 .iter()
                 .filter_map(|(key, path)| {
@@ -1067,12 +1127,14 @@ impl GraphBuilder<'_> {
                         None
                     }
                 })
-                .collect();
+                .collect::<Vec<_>>();
+            let projections = ordered_projections.iter().cloned().collect();
             return Some(IntermediateFeed {
                 feed,
                 suffix: output_path[input_path.len()..].to_vec(),
                 control,
                 projections,
+                ordered_projections,
             });
         }
         None
@@ -1142,6 +1204,9 @@ impl GraphBuilder<'_> {
         }
         if let Some(intermediate) = self.intermediate_feed(key) {
             if intermediate.suffix.is_empty() {
+                if let Some(node) = self.xml_mixed_content_node(&intermediate) {
+                    return Some(node);
+                }
                 return self.value_node(intermediate.feed);
             }
             let mut source_path = self.sequence_source_path(intermediate.feed)?;
@@ -1409,6 +1474,13 @@ impl GraphBuilder<'_> {
                 let Some(node_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
+                // distinct-values groups the scalar carried by this filter
+                // for each surviving row. Resolving the filter output as an
+                // ordinary scalar would instead search the whole collection
+                // and return its first match for every row.
+                if distinct_key == Some(filter_output) {
+                    distinct_key = Some(node_feed);
+                }
                 note_iteration_control_order(1, &mut nearest_control, &mut order_issue);
                 if filter_expr.is_none() {
                     filter_expr = self.input_feed(idx, 1);
@@ -1627,6 +1699,23 @@ impl GraphBuilder<'_> {
                 SequenceExpr::TokenizeByLength {
                     input,
                     length,
+                    item,
+                }
+            }
+            "tokenize-regexp" => {
+                let input = self
+                    .input_feed(idx, 0)
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
+                let pattern = self
+                    .input_feed(idx, 1)
+                    .and_then(|feed| self.sequence_scalar_input(feed))?;
+                let flags = self
+                    .input_feed(idx, 2)
+                    .and_then(|feed| self.sequence_scalar_input(feed));
+                SequenceExpr::TokenizeRegex {
+                    input,
+                    pattern,
+                    flags,
                     item,
                 }
             }

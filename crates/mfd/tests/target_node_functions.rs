@@ -128,3 +128,66 @@ fn target_descendant_rule_inlines_nested_scalar_udf_and_uses_fraction_digits() {
         Some(&Value::Float(1.24))
     );
 }
+
+#[test]
+fn target_descendant_rule_treats_the_csv_row_block_as_transparent() {
+    let directory = TempDir::new();
+    std::fs::write(
+        directory.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Source"><xs:complexType><xs:sequence>
+            <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+              <xs:element name="Raw" type="xs:string"/>
+            </xs:sequence></xs:complexType></xs:element>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        directory.0.join("mapping.mfd"),
+        r#"<mapping version="31">
+          <component name="map"><structure><children>
+            <component name="source" library="xml" kind="14"><data>
+              <root><entry name="Source"><entry name="Item" outkey="1"><entry name="Raw" outkey="2"/></entry></entry></root>
+              <document schema="source.xsd" instanceroot="{}Source"/>
+            </data></component>
+            <component name="target" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+              <root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="10">
+                <inputnodefunctions><rule applyto="descendants"><function name="prefix-target"/><filter datatype="string"/></rule></inputnodefunctions>
+                <entry name="Label" inpkey="11"/>
+              </entry></entry></entry></root>
+              <text type="csv"><settings separator="," firstrownames="false"><names root="Text file" block="Rows"><field0 name="Label" type="string"/></names></settings></text>
+            </data></component>
+          </children><graph><vertices>
+            <vertex vertexkey="1"><edges><edge vertexkey="10"/></edges></vertex>
+            <vertex vertexkey="2"><edges><edge vertexkey="11"/></edges></vertex>
+          </vertices></graph></structure></component>
+          <component name="prefix-target" library="mapforce_nodefunction"><structure><children>
+            <component name="raw_value" library="core" uid="100" kind="6"><targets><datapoint pos="0" key="20"/></targets><data><input datatype="string"/><parameter usageKind="input" name="raw_value"/></data></component>
+            <component name="prefix" library="core" uid="101" kind="2"><targets><datapoint pos="0" key="21"/></targets><data><constant value="$" datatype="string"/></data></component>
+            <component name="concat" library="core" uid="102" kind="5"><sources><datapoint pos="0" key="22"/><datapoint pos="1" key="23"/></sources><targets><datapoint pos="0" key="24"/></targets></component>
+            <component name="result" library="core" uid="103" kind="7"><sources><datapoint pos="0" key="25"/></sources><data><output datatype="string"/><parameter usageKind="output" name="result"/></data></component>
+          </children></structure><connections>
+            <edge from="21" to="22"/><edge from="20" to="23"/><edge from="24" to="25"/>
+          </connections></component>
+        </mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = Instance::Group(vec![(
+        "Item".into(),
+        Instance::Repeated(vec![Instance::Group(vec![(
+            "Raw".into(),
+            Instance::Scalar(Value::String("9".into())),
+        )])]),
+    )]);
+    let output = engine::run(&imported.project, &source).unwrap();
+    let rows = output.as_repeated().unwrap();
+    assert_eq!(
+        rows[0].field("Label").and_then(Instance::as_scalar),
+        Some(&Value::String("$9".into()))
+    );
+}

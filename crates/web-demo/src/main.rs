@@ -202,6 +202,7 @@ fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     match sequence {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
         mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
@@ -218,6 +219,16 @@ fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> String 
             .unwrap_or("input"),
         mapping::SequenceExpr::TokenizeByLength { .. } => {
             ["input", "length"].get(index).copied().unwrap_or("input")
+        }
+        mapping::SequenceExpr::TokenizeRegex { flags, .. } => {
+            if flags.is_some() {
+                ["input", "pattern", "flags"]
+                    .get(index)
+                    .copied()
+                    .unwrap_or("input")
+            } else {
+                ["input", "pattern"].get(index).copied().unwrap_or("input")
+            }
         }
         mapping::SequenceExpr::Generate { from: Some(_), .. } => {
             ["from", "to"].get(index).copied().unwrap_or("input")
@@ -249,6 +260,10 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         } => vec![Some(*condition), Some(*then), Some(*else_)],
         Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![Some(*input)],
         Node::DynamicSourceField { key, .. } => vec![Some(*key)],
+        Node::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| Some(replacement.expression))
+            .collect(),
         Node::CollectionFind {
             predicate, value, ..
         } => vec![Some(*predicate), Some(*value)],
@@ -293,6 +308,9 @@ fn node_title(node: &Node) -> String {
         Node::Lookup { collection, .. } => format!("lookup · {}", collection.join("/")),
         Node::DynamicSourceField { object, .. } => {
             format!("dynamic field · {}", object.join("/"))
+        }
+        Node::XmlMixedContent { path, .. } => {
+            format!("XML mixed content · {}", path.join("/"))
         }
         Node::CollectionFind { collection, .. } => {
             format!("find · {}", collection.join("/"))

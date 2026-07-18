@@ -1,13 +1,14 @@
 use ir::{
     Instance, SchemaKind, SchemaNode, Value, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD,
-    XML_LOCAL_NAME_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+    XML_LOCAL_NAME_FIELD, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD,
+    XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use super::{
-    XmlFormatError, format_scalar, parse_scalar, read_node, shape_error, validate_group_fields,
-    write_node,
+    XmlFormatError, format_scalar, parse_scalar, push_attribute, read_node, shape_error,
+    validate_group_fields, write_node, write_ordered_mixed_content,
 };
 
 pub(super) fn read_generic_element(
@@ -70,7 +71,8 @@ pub(super) fn read_group_fields(
             let SchemaKind::Scalar { ty } = child.kind else {
                 return Err(XmlFormatError::MissingElement(child.name.clone()));
             };
-            let value = parse_scalar(&child.name, ty, element.text().unwrap_or(""))?;
+            let text = direct_text_value(element);
+            let value = parse_scalar(&child.name, ty, &text)?;
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.name == XML_ELEMENTS_FIELD {
             let items = element
@@ -136,7 +138,101 @@ pub(super) fn read_group_fields(
             }
         }
     }
+    if children.iter().any(|child| child.text) && element.children().any(|node| node.is_element()) {
+        fields.push((
+            XML_MIXED_CONTENT_FIELD.to_string(),
+            Instance::Repeated(mixed_content_items(element, children, &fields)),
+        ));
+    }
     Ok(Instance::Group(fields))
+}
+
+fn element_string_value(element: &roxmltree::Node<'_, '_>) -> String {
+    element
+        .descendants()
+        .filter(|node| node.is_text())
+        .filter_map(|node| node.text())
+        .collect()
+}
+
+fn direct_text_value(element: &roxmltree::Node<'_, '_>) -> String {
+    element
+        .children()
+        .filter(|node| node.is_text())
+        .filter_map(|node| node.text())
+        .filter(|text| {
+            !text.trim().is_empty()
+                || !text
+                    .chars()
+                    .any(|character| matches!(character, '\n' | '\r'))
+        })
+        .collect()
+}
+
+fn mixed_content_items(
+    element: &roxmltree::Node<'_, '_>,
+    children: &[SchemaNode],
+    fields: &[(String, Instance)],
+) -> Vec<Instance> {
+    let mut occurrence = std::collections::BTreeMap::<&str, usize>::new();
+    let mut generic_index = 0usize;
+    element
+        .children()
+        .filter_map(|node| {
+            let (name, text, value) = if node.is_text() {
+                (
+                    String::new(),
+                    node.text().unwrap_or_default().to_string(),
+                    Instance::Scalar(Value::String(node.text().unwrap_or_default().to_string())),
+                )
+            } else if node.is_element() {
+                let name = node.tag_name().name().to_string();
+                let text = element_string_value(&node);
+                let value = children
+                    .iter()
+                    .find(|child| child.name == name)
+                    .and_then(|child| {
+                        let instance = fields
+                            .iter()
+                            .find(|(field, _)| field == &child.name)
+                            .map(|(_, instance)| instance)?;
+                        if child.repeating {
+                            let index = occurrence.entry(child.name.as_str()).or_default();
+                            let value = instance.as_repeated()?.get(*index)?.clone();
+                            *index += 1;
+                            Some(value)
+                        } else {
+                            Some(instance.clone())
+                        }
+                    })
+                    .or_else(|| {
+                        let value = fields
+                            .iter()
+                            .find(|(field, _)| field == XML_ELEMENTS_FIELD)
+                            .and_then(|(_, instance)| instance.as_repeated())?
+                            .get(generic_index)?
+                            .clone();
+                        generic_index += 1;
+                        Some(value)
+                    })
+                    .unwrap_or_else(|| Instance::Scalar(Value::String(text.clone())));
+                (name, text, value)
+            } else {
+                return None;
+            };
+            Some(Instance::Group(vec![
+                (
+                    XML_NODE_NAME_FIELD.to_string(),
+                    Instance::Scalar(Value::String(name)),
+                ),
+                (
+                    XML_TEXT_FIELD.to_string(),
+                    Instance::Scalar(Value::String(text)),
+                ),
+                (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
+            ]))
+        })
+        .collect()
 }
 
 pub(super) fn write_generic_element<W: std::io::Write>(
@@ -189,7 +285,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                     _ => None,
                 })
                 .unwrap_or_default();
-            start.push_attribute((attribute_name, attribute_value));
+            push_attribute(&mut start, attribute_name, attribute_value);
         }
     }
     for child_schema in children.iter().filter(|child| child.attribute) {
@@ -212,11 +308,22 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                     ));
                 };
                 let text = format_scalar(&child_schema.name, ty, value)?;
-                start.push_attribute((child_schema.name.as_str(), text.as_str()));
+                push_attribute(&mut start, &child_schema.name, &text);
             }
         }
     }
     writer.write_event(Event::Start(start))?;
+    if write_ordered_mixed_content(
+        writer,
+        schema,
+        children,
+        root_schema,
+        fields,
+        recursion_depth,
+    )? {
+        writer.write_event(Event::End(BytesEnd::new(name)))?;
+        return Ok(());
+    }
     for child_schema in children.iter().filter(|child| child.text) {
         if let Some((_, child_instance)) =
             fields.iter().find(|(field, _)| field == &child_schema.name)

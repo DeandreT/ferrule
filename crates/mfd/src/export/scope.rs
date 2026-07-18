@@ -826,15 +826,19 @@ fn collect_scope_edges(
             )),
         }
     }
+    let mut binding_occurrences = BTreeMap::<&str, usize>::new();
     for binding in &scope.bindings {
         if suppress_mapped_bindings {
             continue;
         }
         let mut leaf = chain.clone();
         leaf.push(binding.target_field.clone());
+        let occurrence = binding_occurrences
+            .entry(&binding.target_field)
+            .or_default();
         match (
             node_out_key.get(&binding.node),
-            target_key(target_ports, target_branches, target_branch, &leaf),
+            target_branches.binding_key(target_ports, target_branch, &leaf, *occurrence),
         ) {
             (Some(&from), Some(to)) => edges.push((from, to)),
             (None, _) if joins.node_blocked(binding.node) => {}
@@ -852,6 +856,7 @@ fn collect_scope_edges(
                 leaf.join("/")
             )),
         }
+        *occurrence += 1;
     }
     for child in &scope.children {
         chain.push(child.target_field.clone());

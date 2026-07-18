@@ -1,6 +1,8 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::Cursor;
 use std::path::Path;
 
+use calamine::{Data, Range, Reader, Xlsx};
 use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{
     XlsxCellKind, XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
@@ -8,6 +10,288 @@ use mapping::{
 use rust_xlsxwriter::{ExcelDateTime, Format, Workbook, Worksheet};
 
 use super::{MAX_EXACT_F64_INTEGER, MAX_WORKSHEET_ROW, XlsxFormatError};
+
+/// Reads a workbook written with a retained hierarchical layout.
+pub fn read_hierarchical(
+    path: &Path,
+    schema: &SchemaNode,
+    layout: &XlsxHierarchicalLayout,
+) -> Result<Instance, XlsxFormatError> {
+    let bytes = std::fs::read(path)?;
+    from_bytes_hierarchical(&bytes, schema, layout)
+}
+
+/// Reads a hierarchical workbook from memory.
+pub fn from_bytes_hierarchical(
+    bytes: &[u8],
+    schema: &SchemaNode,
+    layout: &XlsxHierarchicalLayout,
+) -> Result<Instance, XlsxFormatError> {
+    validate_layout(schema, layout)?;
+    let worksheet_schema = schema_at(schema, &layout.worksheets_path)?;
+    let mut workbook = Xlsx::new(Cursor::new(bytes))?;
+    let sheet_names = workbook.sheet_names().to_vec();
+    if sheet_names.is_empty() {
+        return Err(XlsxFormatError::NoWorksheets);
+    }
+    let mut worksheets = Vec::with_capacity(sheet_names.len());
+    for name in sheet_names {
+        let range = workbook.worksheet_range(&name)?;
+        worksheets.push(read_worksheet(&range, worksheet_schema, &name, layout)?);
+    }
+    let mut assignments = BTreeMap::new();
+    assignments.insert(
+        layout.worksheets_path.clone(),
+        Instance::Repeated(worksheets),
+    );
+    Ok(materialize_schema(schema, &mut Vec::new(), &assignments))
+}
+
+fn read_worksheet(
+    cells: &Range<Data>,
+    schema: &SchemaNode,
+    name: &str,
+    layout: &XlsxHierarchicalLayout,
+) -> Result<Instance, XlsxFormatError> {
+    let mut assignments = BTreeMap::new();
+    assignments.insert(
+        layout.worksheet_name_path.clone(),
+        Instance::Scalar(Value::String(name.to_string())),
+    );
+    let mut previous_end = 0_u32;
+    for range in &layout.ranges {
+        let start = range_start(range, previous_end)?;
+        let data_start = start
+            .checked_add(u32::from(range.has_header))
+            .ok_or(XlsxFormatError::InvalidCoordinate)?;
+        let row_schema = schema_at(schema, &range.path)?;
+        let mut rows = Vec::new();
+        match range.count {
+            Some(count) => {
+                for offset in 0..count.get() {
+                    let row = data_start
+                        .checked_add(offset)
+                        .ok_or(XlsxFormatError::InvalidCoordinate)?;
+                    rows.push(read_range_row(cells, row_schema, row, &range.columns)?);
+                }
+            }
+            None => {
+                let mut row = data_start;
+                while row <= MAX_WORKSHEET_ROW && !range_row_is_empty(cells, row, &range.columns) {
+                    rows.push(read_range_row(cells, row_schema, row, &range.columns)?);
+                    row = row
+                        .checked_add(1)
+                        .ok_or(XlsxFormatError::InvalidCoordinate)?;
+                }
+            }
+        }
+        let next_row = data_start
+            .checked_add(u32::try_from(rows.len()).map_err(|_| XlsxFormatError::InvalidCoordinate)?)
+            .ok_or(XlsxFormatError::InvalidCoordinate)?;
+        let actual_end = next_row.saturating_sub(1);
+        previous_end = if let Some(count) = range.count {
+            start
+                .checked_add(u32::from(range.has_header))
+                .and_then(|value| value.checked_add(count.get()))
+                .and_then(|value| value.checked_sub(1))
+                .ok_or(XlsxFormatError::InvalidCoordinate)?
+                .max(actual_end)
+        } else {
+            actual_end
+        };
+        if previous_end > MAX_WORKSHEET_ROW {
+            return Err(XlsxFormatError::InvalidCoordinate);
+        }
+        let value = if row_schema.repeating {
+            Instance::Repeated(rows)
+        } else {
+            rows.into_iter()
+                .next()
+                .ok_or_else(|| XlsxFormatError::HierarchicalValue {
+                    path: range.path.join("/"),
+                    reason: "fixed singleton row is unavailable",
+                })?
+        };
+        assignments.insert(range.path.clone(), value);
+    }
+    Ok(materialize_schema(schema, &mut Vec::new(), &assignments))
+}
+
+fn range_start(range: &XlsxOutputRange, previous_end: u32) -> Result<u32, XlsxFormatError> {
+    let start = match range.start {
+        XlsxRangeStart::Absolute { row } => row.get(),
+        XlsxRangeStart::AfterPrevious { offset } => previous_end
+            .checked_add(offset.get())
+            .ok_or(XlsxFormatError::InvalidCoordinate)?,
+    };
+    if start == 0 || start > MAX_WORKSHEET_ROW {
+        return Err(XlsxFormatError::InvalidCoordinate);
+    }
+    Ok(start)
+}
+
+fn range_row_is_empty(cells: &Range<Data>, row: u32, columns: &[XlsxOutputColumn]) -> bool {
+    columns.iter().all(|column| {
+        matches!(
+            cells.get_value((row - 1, column.column.get() - 1)),
+            None | Some(Data::Empty)
+        )
+    })
+}
+
+fn read_range_row(
+    cells: &Range<Data>,
+    schema: &SchemaNode,
+    row: u32,
+    columns: &[XlsxOutputColumn],
+) -> Result<Instance, XlsxFormatError> {
+    if row == 0 || row > MAX_WORKSHEET_ROW {
+        return Err(XlsxFormatError::InvalidCoordinate);
+    }
+    let mut assignments = BTreeMap::new();
+    for column in columns {
+        let field = schema_at(schema, &column.path)?;
+        let SchemaKind::Scalar { ty } = field.kind else {
+            return Err(XlsxFormatError::HierarchicalPath {
+                path: column.path.join("/"),
+                reason: "column path must end at a scalar",
+            });
+        };
+        let cell = cells
+            .get_value((row - 1, column.column.get() - 1))
+            .unwrap_or(&Data::Empty);
+        assignments.insert(
+            column.path.clone(),
+            Instance::Scalar(read_cell(cell, ty, column.kind, row, &field.name)?),
+        );
+    }
+    Ok(materialize_schema(schema, &mut Vec::new(), &assignments))
+}
+
+fn read_cell(
+    cell: &Data,
+    ty: ScalarType,
+    kind: XlsxCellKind,
+    row: u32,
+    field: &str,
+) -> Result<Value, XlsxFormatError> {
+    if matches!(cell, Data::Empty) {
+        return Ok(Value::Null);
+    }
+    match kind {
+        XlsxCellKind::String => match cell {
+            Data::Error(_) => Err(cell_parse_error(cell, ty, row, field)),
+            _ => Ok(Value::String(cell.to_string())),
+        },
+        XlsxCellKind::Number | XlsxCellKind::Boolean => super::parse_cell(cell, ty, row, field),
+        XlsxCellKind::Date | XlsxCellKind::DateTime | XlsxCellKind::Time => {
+            read_datetime_cell(cell, kind, ty, row, field)
+        }
+    }
+}
+
+fn read_datetime_cell(
+    cell: &Data,
+    kind: XlsxCellKind,
+    ty: ScalarType,
+    row: u32,
+    field: &str,
+) -> Result<Value, XlsxFormatError> {
+    let lexical = match cell {
+        Data::DateTime(value) => {
+            let (year, month, day, hour, minute, second, millis) = value.to_ymd_hms_milli();
+            format_datetime_parts(kind, year, month, day, hour, minute, second, millis)
+        }
+        Data::DateTimeIso(value) | Data::String(value) => normalize_datetime_lexical(kind, value),
+        _ => return Err(cell_parse_error(cell, ty, row, field)),
+    };
+    Ok(Value::String(lexical))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn format_datetime_parts(
+    kind: XlsxCellKind,
+    year: u16,
+    month: u8,
+    day: u8,
+    hour: u8,
+    minute: u8,
+    second: u8,
+    millis: u16,
+) -> String {
+    let date = format!("{year:04}-{month:02}-{day:02}");
+    let mut time = format!("{hour:02}:{minute:02}:{second:02}");
+    if millis != 0 {
+        time.push_str(&format!(".{millis:03}"));
+    }
+    match kind {
+        XlsxCellKind::Date => date,
+        XlsxCellKind::DateTime => format!("{date}T{time}"),
+        XlsxCellKind::Time => time,
+        _ => String::new(),
+    }
+}
+
+fn normalize_datetime_lexical(kind: XlsxCellKind, value: &str) -> String {
+    match kind {
+        XlsxCellKind::Date => value
+            .split_once('T')
+            .or_else(|| value.split_once(' '))
+            .map_or(value, |(date, _)| date)
+            .to_string(),
+        XlsxCellKind::DateTime => value.replacen(' ', "T", 1),
+        XlsxCellKind::Time => value
+            .split_once('T')
+            .or_else(|| value.split_once(' '))
+            .map_or(value, |(_, time)| time)
+            .to_string(),
+        _ => value.to_string(),
+    }
+}
+
+fn cell_parse_error(cell: &Data, ty: ScalarType, row: u32, field: &str) -> XlsxFormatError {
+    XlsxFormatError::Parse {
+        row,
+        field: field.to_string(),
+        expected: ty,
+        value: cell.to_string(),
+    }
+}
+
+fn materialize_schema(
+    schema: &SchemaNode,
+    path: &mut Vec<String>,
+    assignments: &BTreeMap<Vec<String>, Instance>,
+) -> Instance {
+    if let Some(value) = assignments.get(path) {
+        return value.clone();
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Instance::Scalar(Value::Null);
+    };
+    let fields = children
+        .iter()
+        .map(|child| {
+            path.push(child.name.clone());
+            let value = if assignments
+                .keys()
+                .any(|assigned| assigned.starts_with(path))
+            {
+                materialize_schema(child, path, assignments)
+            } else if child.repeating {
+                Instance::Repeated(Vec::new())
+            } else {
+                match child.kind {
+                    SchemaKind::Scalar { .. } => Instance::Scalar(Value::Null),
+                    SchemaKind::Group { .. } => materialize_schema(child, path, assignments),
+                }
+            };
+            path.pop();
+            (child.name.clone(), value)
+        })
+        .collect();
+    Instance::Group(fields)
+}
 
 /// Writes a hierarchical workbook and returns its worksheet count.
 pub fn write_hierarchical(
@@ -456,7 +740,7 @@ mod tests {
         XlsxRangeStart, XlsxRow,
     };
 
-    use super::{XlsxFormatError, to_bytes_hierarchical};
+    use super::{XlsxFormatError, from_bytes_hierarchical, to_bytes_hierarchical};
 
     fn schema() -> SchemaNode {
         SchemaNode::group(
@@ -638,6 +922,17 @@ mod tests {
         assert_eq!(
             north.get_value((9, 0)).map(ToString::to_string).as_deref(),
             Some("End")
+        );
+    }
+
+    #[test]
+    fn writer_and_reader_roundtrip_runtime_worksheets_and_ranges() {
+        let expected = workbook_instance(&["North", "South"]);
+        let (bytes, _) = to_bytes_hierarchical(&schema(), &expected, &layout()).unwrap();
+
+        assert_eq!(
+            from_bytes_hierarchical(&bytes, &schema(), &layout()).unwrap(),
+            expected
         );
     }
 
