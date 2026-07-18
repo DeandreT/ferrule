@@ -113,6 +113,21 @@ pub(super) fn render_schema_component(
     default_output: bool,
     used_ports: &BTreeSet<u32>,
 ) -> Result<RenderedSchemaComponent, MfdError> {
+    if options.protobuf.is_some() {
+        return super::protobuf::render(super::protobuf::RenderArgs {
+            schema,
+            ports,
+            side,
+            instance_path,
+            options,
+            mfd_path,
+            target_branches,
+            component_name,
+            component_uid,
+            sibling_suffix,
+            default_output,
+        });
+    }
     let stem = mfd_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -1157,7 +1172,7 @@ impl PortTree {
 
     /// Entry-tree XML for a schema with `attr` (outkey/inpkey) on every
     /// entry.
-    fn entries_xml(
+    pub(super) fn entries_xml(
         &self,
         schema: &SchemaNode,
         attr: &str,
