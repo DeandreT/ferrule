@@ -1,6 +1,6 @@
 # Ferrule Mapping Workflow Roadmap
 
-Updated: 2026-07-17
+Updated: 2026-07-18
 
 ## Goal
 
@@ -53,7 +53,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 120/120 warning-free and engine-valid imports, and 91 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
+| `.mfd` | 120/120 warning-free and engine-valid imports, and 97 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams
@@ -93,7 +93,10 @@ filter/sort/item-limit controls. Naked joined tuples can be counted or reduced t
 a computed scalar expression, including aggregate-only joins with an independent root
 plan. Nested non-repeating target projections reuse the owning tuple, while rejected
 join shapes suppress redundant downstream warnings. Canonical export round-trips
-root-context joins whose collections all belong to the primary source.
+root-context joins whose collections all belong to the primary source. Named static
+XML, JSON, flat-file, and database sources now retain separate component ownership
+during export; per-item dynamic XML sources and captured HTTP POST response
+boundaries also round-trip with their typed contracts.
 The versioned compatibility survey now records import, engine validation,
 export, re-import, and post-export validation separately. Its first expanded
 baseline exposed 12 warning-free but invalid imports and a 52-project exportable
@@ -104,8 +107,8 @@ subset; execution and reference matching remain explicitly unmeasured.
 - Add safely redirected sample execution and semantic reference comparison
   without writing into the read-only vendor sample tree.
 - Grow clean export/re-import coverage from measured failure categories, led by
-  multi-source port ownership, mapped XML construction, PDF sources, dynamic
-  JSON export, and advanced XLSX source shapes.
+  bidirectional database components, mapped XML construction, PDF sources,
+  dynamic JSON export, and advanced XLSX source shapes.
 - Add first-class sequence slicing and reusable graph-backed UDFs instead of
   further one-off lowering paths.
 - Complete namespace and JSON union semantics.

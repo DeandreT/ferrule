@@ -147,7 +147,7 @@ fn opaque_user_function_rejects_before_replacing_the_design() -> Result<(), Box<
 }
 
 #[test]
-fn captured_secondary_source_rejects_with_its_owner_name() -> Result<(), Box<dyn Error>> {
+fn captured_secondary_source_roundtrips_with_its_owner() -> Result<(), Box<dyn Error>> {
     let mut project = project_with_http_source()?;
     project.source_options = FormatOptions::default();
     project.source_path = Some("primary.json".into());
@@ -161,16 +161,42 @@ fn captured_secondary_source_rejects_with_its_owner_name() -> Result<(), Box<dyn
         },
         dynamic_path: None,
     });
+    project.graph.nodes.insert(
+        0,
+        Node::SourceField {
+            path: vec!["ClassifierResponse".into(), "answer".into()],
+            frame: None,
+        },
+    );
     let temp = TempDir::new()?;
     let design = temp.0.join("secondary.mfd");
-    std::fs::write(&design, "keep design")?;
 
-    let error = mfd::export(&project, &design).expect_err("secondary boundary export must fail");
-    assert!(
-        error
-            .to_string()
-            .contains("secondary source `ClassifierResponse`")
+    assert!(mfd::export(&project, &design)?.is_empty());
+    let roundtrip = mfd::import(&design)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    let [secondary] = roundtrip.project.extra_sources.as_slice() else {
+        return Err("roundtrip did not retain the captured secondary source".into());
+    };
+    assert_eq!(secondary.name, "ClassifierResponse");
+    assert_eq!(secondary.path, "https://example.test/classify");
+    assert_eq!(
+        secondary.options.external_source,
+        project.extra_sources[0].options.external_source
     );
-    assert_eq!(std::fs::read_to_string(design)?, "keep design");
+    assert!(engine::validate(&roundtrip.project).is_empty());
+
+    let primary = format_json::from_str(r#"{"answer":"primary"}"#, &project.source)?;
+    let captured = format_json::from_str(r#"{"answer":"captured"}"#, &secondary.schema)?;
+    let expected = engine::run_with_sources(
+        &project,
+        &primary,
+        vec![("ClassifierResponse".into(), captured.clone())],
+    )?;
+    let actual = engine::run_with_sources(
+        &roundtrip.project,
+        &primary,
+        vec![(secondary.name.clone(), captured)],
+    )?;
+    assert_eq!(actual, expected);
     Ok(())
 }
