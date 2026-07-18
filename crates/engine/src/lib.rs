@@ -26,12 +26,6 @@ mod resolve;
 mod sequence;
 mod source_iteration;
 mod validate;
-mod validate_join;
-
-#[cfg(test)]
-mod adjacency_tree_tests;
-#[cfg(test)]
-mod recursive_filter_tests;
 
 #[cfg(test)]
 use aggregate::{aggregate, value_ordering};
@@ -345,28 +339,47 @@ fn run_outputs_internal(
 }
 
 #[cfg(test)]
+#[path = "tests/adjacency_tree.rs"]
+mod adjacency_tree_tests;
+#[cfg(test)]
+#[path = "tests/aggregate.rs"]
 mod aggregate_tests;
 #[cfg(test)]
+#[path = "tests/collection.rs"]
 mod collection_tests;
 #[cfg(test)]
+#[path = "tests/core.rs"]
 mod core_tests;
 #[cfg(test)]
+#[path = "tests/dynamic_document_output.rs"]
 mod dynamic_document_output_tests;
 #[cfg(test)]
+#[path = "tests/dynamic_source.rs"]
 mod dynamic_source_tests;
 #[cfg(test)]
+#[path = "tests/dynamic_target.rs"]
 mod dynamic_target_tests;
 #[cfg(test)]
+#[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;
 #[cfg(test)]
+#[path = "tests/group_starting.rs"]
 mod group_starting_tests;
 #[cfg(test)]
+#[path = "tests/iteration_output.rs"]
 mod iteration_output_tests;
 #[cfg(test)]
+#[path = "tests/join.rs"]
 mod join_tests;
 #[cfg(test)]
+#[path = "tests/path_hierarchy.rs"]
 mod path_hierarchy_tests;
 #[cfg(test)]
+#[path = "tests/recursive_filter.rs"]
+mod recursive_filter_tests;
+#[cfg(test)]
+#[path = "tests/repeated_scalar.rs"]
 mod repeated_scalar_tests;
 #[cfg(test)]
+#[path = "tests/sequence_exists.rs"]
 mod sequence_exists_tests;

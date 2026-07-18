@@ -2,9 +2,9 @@ use std::collections::BTreeSet;
 
 use mapping::{Graph, JoinId, JoinPlan, JoinSourceCardinality, Node, NodeId, Project, Scope};
 
-use super::validate::{
-    ValidationIssue, display_path, node_inputs, source_path_matches, validate_collection_value,
-};
+use super::ValidationIssue;
+use super::graph::{node_inputs, validate_collection_value};
+use super::schema::{display_path, source_path_matches};
 
 pub(super) fn validate_plan(
     project: &Project,
