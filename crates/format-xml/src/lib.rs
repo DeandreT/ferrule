@@ -97,7 +97,7 @@ pub enum XmlFormatError {
     UnknownXmlType { name: String, value: String },
     #[error("generic XML element item has no non-empty LocalName or NodeName field")]
     MissingGenericElementName,
-    #[error("recursive schema reference `{node}` targets non-root anchor `{anchor}`")]
+    #[error("recursive schema reference `{node}` has no unique concrete group anchor `{anchor}`")]
     UnsupportedRecursiveAnchor { node: String, anchor: String },
     #[error("XML recursion exceeds the {limit}-element depth limit")]
     RecursionLimit { limit: usize },

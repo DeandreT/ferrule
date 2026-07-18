@@ -967,22 +967,93 @@ fn map_xsd_type(ty: &str) -> ScalarType {
 /// Renders a [`SchemaNode`] as XSD text -- the inverse of [`import`],
 /// producing the same `xs:element`/`xs:complexType`/`xs:sequence` subset it
 /// reads (repeating nodes get `maxOccurs="unbounded"`). Returns an error when
-/// XML role flags describe mixed content or another shape this subset cannot
-/// preserve.
+/// XML role flags describe a shape this subset cannot preserve.
 pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
-    validate_export_node(schema, true, &schema.name)?;
+    let recursive_anchors = recursive_export_anchors(schema)?;
+    validate_export_node(schema, true, &schema.name, &recursive_anchors)?;
     let mut out = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">\n",
     );
-    write_element(schema, 1, &schema.name, &mut out)?;
+    for (anchor, node) in &recursive_anchors {
+        write_complex_type(
+            node,
+            1,
+            Some(&recursive_type_name(anchor)),
+            &schema.name,
+            &recursive_anchors,
+            &mut out,
+        )?;
+    }
+    write_element(schema, 1, &schema.name, &recursive_anchors, &mut out)?;
     out.push_str("</xs:schema>\n");
     Ok(out)
+}
+
+fn recursive_export_anchors(
+    schema: &SchemaNode,
+) -> Result<BTreeMap<String, &SchemaNode>, XmlFormatError> {
+    let mut references = BTreeMap::new();
+    collect_recursive_references(schema, &schema.name, &mut references);
+    let mut anchors = BTreeMap::new();
+    for (anchor, node) in references {
+        let mut candidates = Vec::new();
+        collect_concrete_anchors(schema, &anchor, &mut candidates);
+        let [candidate] = candidates.as_slice() else {
+            return Err(XmlFormatError::UnsupportedRecursiveAnchor { node, anchor });
+        };
+        anchors.insert(anchor, *candidate);
+    }
+    Ok(anchors)
+}
+
+fn collect_recursive_references(
+    node: &SchemaNode,
+    root_name: &str,
+    references: &mut BTreeMap<String, String>,
+) {
+    if let Some(anchor) = &node.recursive_ref {
+        if anchor != root_name {
+            references
+                .entry(anchor.clone())
+                .or_insert_with(|| node.name.clone());
+        }
+        return;
+    }
+    if let ir::SchemaKind::Group { children, .. } = &node.kind {
+        for child in children {
+            collect_recursive_references(child, root_name, references);
+        }
+    }
+}
+
+fn collect_concrete_anchors<'a>(
+    node: &'a SchemaNode,
+    anchor: &str,
+    candidates: &mut Vec<&'a SchemaNode>,
+) {
+    if node.recursive_ref.is_some() {
+        return;
+    }
+    let ir::SchemaKind::Group { children, .. } = &node.kind else {
+        return;
+    };
+    if node.name == anchor {
+        candidates.push(node);
+    }
+    for child in children {
+        collect_concrete_anchors(child, anchor, candidates);
+    }
+}
+
+fn recursive_type_name(anchor: &str) -> String {
+    format!("{anchor}Type")
 }
 
 fn validate_export_node(
     node: &SchemaNode,
     is_root: bool,
     root_name: &str,
+    recursive_anchors: &BTreeMap<String, &SchemaNode>,
 ) -> Result<(), XmlFormatError> {
     if node.attribute && node.text {
         return Err(XmlFormatError::ConflictingSchemaRoles {
@@ -1019,7 +1090,7 @@ fn validate_export_node(
         }
     }
     if let Some(anchor) = &node.recursive_ref {
-        return if !is_root && anchor == root_name {
+        return if !is_root && (anchor == root_name || recursive_anchors.contains_key(anchor)) {
             Ok(())
         } else {
             Err(XmlFormatError::UnsupportedRecursiveAnchor {
@@ -1053,7 +1124,7 @@ fn validate_export_node(
         };
     }
     for child in children {
-        validate_export_node(child, false, root_name)?;
+        validate_export_node(child, false, root_name, recursive_anchors)?;
     }
     let text_count = children.iter().filter(|child| child.text).count();
     if text_count > 1 {
@@ -1062,7 +1133,17 @@ fn validate_export_node(
             count: text_count,
         });
     }
-    if text_count == 1 && children.iter().any(|child| !child.attribute && !child.text) {
+    if text_count == 1
+        && children.iter().any(|child| !child.attribute && !child.text)
+        && children.iter().find(|child| child.text).is_none_or(|text| {
+            !matches!(
+                text.kind,
+                ir::SchemaKind::Scalar {
+                    ty: ScalarType::String
+                }
+            )
+        })
+    {
         return Err(XmlFormatError::MixedContent {
             group: node.name.clone(),
         });
@@ -1074,6 +1155,7 @@ fn write_element(
     node: &SchemaNode,
     depth: usize,
     root_name: &str,
+    recursive_anchors: &BTreeMap<String, &SchemaNode>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
@@ -1093,9 +1175,25 @@ fn write_element(
     } else {
         ""
     };
-    if node.recursive_ref.as_deref() == Some(root_name) {
+    if let Some(anchor) = node.recursive_ref.as_deref() {
+        if anchor == root_name {
+            out.push_str(&format!(
+                "{pad}<xs:element ref=\"{root_name}\"{occurs}{nillable}/>\n"
+            ));
+        } else {
+            out.push_str(&format!(
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}/>\n",
+                node.name,
+                recursive_type_name(anchor)
+            ));
+        }
+        return Ok(());
+    }
+    if node.name != root_name && recursive_anchors.contains_key(&node.name) {
         out.push_str(&format!(
-            "{pad}<xs:element ref=\"{root_name}\"{occurs}{nillable}/>\n"
+            "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}/>\n",
+            node.name,
+            recursive_type_name(&node.name)
         ));
         return Ok(());
     }
@@ -1107,76 +1205,101 @@ fn write_element(
                 xsd_type_name(ty)
             ));
         }
-        ir::SchemaKind::Group { children, .. } => {
-            // XSD requires attributes after the content model, so partition
-            // on the fly; only scalar children can be attributes.
-            let (attrs, elements): (Vec<_>, Vec<_>) =
-                children.iter().partition(|child| child.attribute);
-            let text = elements.iter().find(|child| child.text);
-            let nested_elements: Vec<_> = elements
-                .iter()
-                .filter(|child| !child.text)
-                .copied()
-                .collect();
-            if let Some(text) = text
-                && nested_elements.is_empty()
-            {
-                let ir::SchemaKind::Scalar { ty } = &text.kind else {
-                    return Err(XmlFormatError::UnsupportedSchemaRole {
-                        node: text.name.clone(),
-                        role: "text",
-                        kind: "group",
-                    });
-                };
-                out.push_str(&format!(
-                    "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n{pad}  <xs:complexType>\n{pad}    <xs:simpleContent>\n{pad}      <xs:extension base=\"{}\">\n",
-                    node.name,
-                    xsd_type_name(ty)
-                ));
-                for attr in attrs {
-                    let ir::SchemaKind::Scalar { ty } = &attr.kind else {
-                        return Err(XmlFormatError::UnsupportedSchemaRole {
-                            node: attr.name.clone(),
-                            role: "attribute",
-                            kind: "group",
-                        });
-                    };
-                    out.push_str(&format!(
-                        "{pad}        <xs:attribute name=\"{}\" type=\"{}\"/>\n",
-                        attr.name,
-                        xsd_type_name(ty)
-                    ));
-                }
-                out.push_str(&format!(
-                    "{pad}      </xs:extension>\n{pad}    </xs:simpleContent>\n{pad}  </xs:complexType>\n{pad}</xs:element>\n"
-                ));
-                return Ok(());
-            }
+        ir::SchemaKind::Group { .. } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n{pad}  <xs:complexType>\n{pad}    <xs:sequence>\n",
+                "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n",
                 node.name
             ));
-            for child in nested_elements {
-                write_element(child, depth + 3, root_name, out)?;
-            }
-            out.push_str(&format!("{pad}    </xs:sequence>\n"));
-            for attr in attrs {
-                let ir::SchemaKind::Scalar { ty } = &attr.kind else {
-                    return Err(XmlFormatError::UnsupportedSchemaRole {
-                        node: attr.name.clone(),
-                        role: "attribute",
-                        kind: "group",
-                    });
-                };
-                out.push_str(&format!(
-                    "{pad}    <xs:attribute name=\"{}\" type=\"{}\"/>\n",
-                    attr.name,
-                    xsd_type_name(ty)
-                ));
-            }
-            out.push_str(&format!("{pad}  </xs:complexType>\n{pad}</xs:element>\n"));
+            write_complex_type(node, depth + 1, None, root_name, recursive_anchors, out)?;
+            out.push_str(&format!("{pad}</xs:element>\n"));
         }
     }
+    Ok(())
+}
+
+fn write_complex_type(
+    node: &SchemaNode,
+    depth: usize,
+    name: Option<&str>,
+    root_name: &str,
+    recursive_anchors: &BTreeMap<String, &SchemaNode>,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
+    let ir::SchemaKind::Group { children, .. } = &node.kind else {
+        return Err(XmlFormatError::UnsupportedSchemaRole {
+            node: node.name.clone(),
+            role: "named recursive type",
+            kind: "scalar",
+        });
+    };
+    let pad = "  ".repeat(depth);
+    let name = name.map_or_else(String::new, |name| format!(" name=\"{name}\""));
+    let (attrs, elements): (Vec<_>, Vec<_>) = children.iter().partition(|child| child.attribute);
+    let text = elements.iter().find(|child| child.text);
+    let nested_elements = elements
+        .iter()
+        .filter(|child| !child.text)
+        .copied()
+        .collect::<Vec<_>>();
+    if let Some(text) = text
+        && nested_elements.is_empty()
+    {
+        let ir::SchemaKind::Scalar { ty } = &text.kind else {
+            return Err(XmlFormatError::UnsupportedSchemaRole {
+                node: text.name.clone(),
+                role: "text",
+                kind: "group",
+            });
+        };
+        out.push_str(&format!(
+            "{pad}<xs:complexType{name}>\n{pad}  <xs:simpleContent>\n{pad}    <xs:extension base=\"{}\">\n",
+            xsd_type_name(ty)
+        ));
+        for attr in attrs {
+            write_attribute(attr, depth + 3, out)?;
+        }
+        out.push_str(&format!(
+            "{pad}    </xs:extension>\n{pad}  </xs:simpleContent>\n{pad}</xs:complexType>\n"
+        ));
+        return Ok(());
+    }
+    let mixed = if text.is_some() {
+        " mixed=\"true\""
+    } else {
+        ""
+    };
+    out.push_str(&format!(
+        "{pad}<xs:complexType{name}{mixed}>\n{pad}  <xs:sequence>\n"
+    ));
+    for child in nested_elements {
+        write_element(child, depth + 2, root_name, recursive_anchors, out)?;
+    }
+    out.push_str(&format!("{pad}  </xs:sequence>\n"));
+    for attr in attrs {
+        write_attribute(attr, depth + 1, out)?;
+    }
+    out.push_str(&format!("{pad}</xs:complexType>\n"));
+    Ok(())
+}
+
+fn write_attribute(
+    attribute: &SchemaNode,
+    depth: usize,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
+    let ir::SchemaKind::Scalar { ty } = &attribute.kind else {
+        return Err(XmlFormatError::UnsupportedSchemaRole {
+            node: attribute.name.clone(),
+            role: "attribute",
+            kind: "group",
+        });
+    };
+    let pad = "  ".repeat(depth);
+    out.push_str(&format!(
+        "{pad}<xs:attribute name=\"{}\" type=\"{}\"/>\n",
+        attribute.name,
+        xsd_type_name(ty)
+    ));
     Ok(())
 }
 
