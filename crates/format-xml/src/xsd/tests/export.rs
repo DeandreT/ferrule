@@ -96,11 +96,13 @@ fn export_roundtrips_named_base_and_derived_group_alternatives() {
             name: "{urn:ferrule:address}BaseAddress".into(),
             members: vec!["name".into(), "city".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         ir::GroupAlternative {
             name: "{urn:ferrule:address}PostalAddress".into(),
             members: vec!["name".into(), "city".into(), "postcode".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap();
@@ -137,11 +139,13 @@ fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
             name: "Domestic".into(),
             members: vec!["name".into(), "state".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         ir::GroupAlternative {
             name: "International".into(),
             members: vec!["name".into(), "postcode".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap();
@@ -170,11 +174,13 @@ fn export_rejects_alternatives_from_incompatible_namespaces() {
             name: "{urn:ferrule:first}First".into(),
             members: vec!["Value".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         ir::GroupAlternative {
             name: "{urn:ferrule:second}Second".into(),
             members: vec!["Value".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap();
@@ -200,11 +206,13 @@ fn export_roundtrips_different_derived_views_of_one_base_type() {
                 name: identity("BaseAddress"),
                 members: vec!["name".into()],
                 required: Vec::new(),
+                constraints: Vec::new(),
             },
             ir::GroupAlternative {
                 name: identity(derived),
                 members: vec!["name".into(), extra.into()],
                 required: Vec::new(),
+                constraints: Vec::new(),
             },
         ])
         .unwrap()
@@ -251,11 +259,13 @@ fn export_reuses_an_implicit_base_from_an_overlapping_derived_view() {
             name: identity("Address"),
             members: vec!["name".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         ir::GroupAlternative {
             name: identity("Domestic"),
             members: vec!["name".into(), "state".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap();
@@ -272,11 +282,13 @@ fn export_reuses_an_implicit_base_from_an_overlapping_derived_view() {
             name: identity("International"),
             members: vec!["name".into(), "postcode".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         ir::GroupAlternative {
             name: identity("Domestic"),
             members: vec!["name".into(), "state".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap();

@@ -116,11 +116,15 @@ fn imports_local_xml_wildcard_as_a_typed_file_set() -> Result<(), Box<dyn Error>
     assert_eq!(items.len(), 2);
     assert_eq!(
         items[0].field("FileName").and_then(Instance::as_scalar),
-        Some(&Value::String("records-a.xml".into()))
+        Some(&Value::String(
+            source.paths[0].to_string_lossy().into_owned()
+        ))
     );
     assert_eq!(
         items[1].field("FileName").and_then(Instance::as_scalar),
-        Some(&Value::String("records-b.xml".into()))
+        Some(&Value::String(
+            source.paths[1].to_string_lossy().into_owned()
+        ))
     );
 
     let exported_path = directory.0.join("roundtrip.mfd");

@@ -185,6 +185,9 @@ pub fn layered_layout(
                 sequence,
                 predicate,
             } => sequence.inputs().into_iter().chain([*predicate]).collect(),
+            mapping::Node::SequenceItemAt { sequence, index } => {
+                sequence.inputs().into_iter().chain([*index]).collect()
+            }
             mapping::Node::Aggregate {
                 expression, arg, ..
             }

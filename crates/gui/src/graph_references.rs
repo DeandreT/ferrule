@@ -29,6 +29,9 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
             sequence,
             predicate,
         } => sequence.inputs().into_iter().chain([*predicate]).collect(),
+        Node::SequenceItemAt { sequence, index } => {
+            sequence.inputs().into_iter().chain([*index]).collect()
+        }
         Node::Aggregate {
             expression, arg, ..
         }
@@ -121,7 +124,12 @@ pub(super) fn references_to(
             found.insert(format!("graph node {owner}"));
         }
         if owner != needle
-            && matches!(node, Node::SequenceExists { sequence, .. } if sequence.item() == needle)
+            && matches!(
+                node,
+                Node::SequenceExists { sequence, .. }
+                    | Node::SequenceItemAt { sequence, .. }
+                    if sequence.item() == needle
+            )
         {
             found.insert(format!("graph node {owner} sequence item"));
         }

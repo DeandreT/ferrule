@@ -4,12 +4,16 @@
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
 //! refs degrade to string scalars). Compatible closed-object `oneOf` and
-//! `anyOf` unions and typed `additionalProperties` schemas are preserved. An
-//! omitted or false `additionalProperties` is treated as closed; explicitly
-//! unconstrained `true`/`{}` schemas and general composition or validation
-//! keywords remain outside this "lite" subset.
+//! `anyOf` unions, their required string `const` discriminators, and typed
+//! `additionalProperties` schemas are preserved. An omitted or false
+//! `additionalProperties` is treated as closed; explicitly unconstrained
+//! `true`/`{}` schemas and general composition or validation keywords remain
+//! outside this "lite" subset.
 
-use ir::{GroupAlternative, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode};
+use ir::{
+    GroupAlternative, GroupAlternativeConstraint, GroupAlternativeMode, ScalarType, SchemaKind,
+    SchemaNode,
+};
 
 use crate::JsonFormatError;
 
@@ -79,14 +83,7 @@ fn parse(
             active_refs,
         );
     }
-    // Nullable unions like ["string", "null"] use the first real type.
-    let ty = match schema.get("type") {
-        Some(serde_json::Value::Array(types)) => types
-            .iter()
-            .filter_map(|t| t.as_str())
-            .find(|t| *t != "null"),
-        other => other.and_then(|t| t.as_str()),
-    };
+    let ty = schema_type(name, schema)?;
     match ty {
         Some("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
@@ -107,6 +104,30 @@ fn parse(
         }
         _ => Ok(SchemaNode::scalar(name, ScalarType::String)),
     }
+}
+
+fn schema_type<'a>(
+    name: &str,
+    schema: &'a serde_json::Value,
+) -> Result<Option<&'a str>, JsonFormatError> {
+    let Some(value) = schema.get("type") else {
+        return Ok(None);
+    };
+    let serde_json::Value::Array(types) = value else {
+        return Ok(value.as_str());
+    };
+    let mut concrete = types
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .filter(|ty| *ty != "null");
+    let first = concrete.next();
+    if concrete.next().is_some() {
+        return Err(unsupported_union(
+            name,
+            "type arrays may contain only one non-null type",
+        ));
+    }
+    Ok(first)
 }
 
 fn attach_dynamic_fields(
@@ -232,6 +253,12 @@ fn parse_object_alternatives(
             })
             .unwrap_or_else(|| format!("{keyword}{index}"));
         let parsed = parse(&alternative_name, alternative_schema, doc, active_refs)?;
+        if parsed.repeating {
+            return Err(unsupported_union(
+                name,
+                "array alternatives are not supported",
+            ));
+        }
         let SchemaKind::Group {
             children: variant_children,
             alternatives: nested_alternatives,
@@ -283,6 +310,7 @@ fn parse_object_alternatives(
                 required.push(field);
             }
         }
+        let constraints = required_string_constraints(name, resolved, &required)?;
         if required
             .iter()
             .any(|field| !members.iter().any(|member| member == field))
@@ -294,7 +322,9 @@ fn parse_object_alternatives(
         }
         if mode == GroupAlternativeMode::Exclusive
             && metadata.iter().any(|previous: &GroupAlternative| {
-                previous.members == members && previous.required == required
+                previous.members == members
+                    && previous.required == required
+                    && previous.constraints == constraints
             })
         {
             return Err(unsupported_union(
@@ -315,6 +345,7 @@ fn parse_object_alternatives(
             name: alternative_name,
             members,
             required,
+            constraints,
         });
     }
     let group = SchemaNode::group(name, merged);
@@ -323,6 +354,41 @@ fn parse_object_alternatives(
         GroupAlternativeMode::Inclusive => group.with_inclusive_alternatives(metadata),
     }
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
+}
+
+fn required_string_constraints(
+    union_name: &str,
+    schema: &serde_json::Value,
+    required: &[String],
+) -> Result<Vec<GroupAlternativeConstraint>, JsonFormatError> {
+    let Some(properties) = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+    else {
+        return Ok(Vec::new());
+    };
+    properties
+        .iter()
+        .filter_map(|(member, property)| property.get("const").map(|value| (member, value)))
+        .map(|(member, value)| {
+            if !required.iter().any(|required| required == member) {
+                return Err(unsupported_union(
+                    union_name,
+                    &format!("const discriminator `{member}` must be required"),
+                ));
+            }
+            let value = value.as_str().ok_or_else(|| {
+                unsupported_union(
+                    union_name,
+                    &format!("const discriminator `{member}` must be a string"),
+                )
+            })?;
+            Ok(GroupAlternativeConstraint {
+                member: member.clone(),
+                value: value.to_string(),
+            })
+        })
+        .collect()
 }
 
 fn required_names(schema: &serde_json::Value) -> Vec<String> {
@@ -405,6 +471,14 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                             {
                                 let mut property = serde_json::Map::new();
                                 render(child, &mut property);
+                                if let Some(constraint) = alternative
+                                    .constraints
+                                    .iter()
+                                    .find(|constraint| constraint.member == *member)
+                                {
+                                    property
+                                        .insert("const".into(), constraint.value.clone().into());
+                                }
                                 properties.insert(
                                     child.name.clone(),
                                     serde_json::Value::Object(property),
@@ -653,20 +727,128 @@ mod tests {
         )
         .unwrap_err();
         assert!(scalar.to_string().contains("only object alternatives"));
+    }
 
-        let discriminator = import_str_result(
+    #[test]
+    fn required_string_const_discriminators_roundtrip_and_validate_instances() {
+        let schema = import_str(
             r#"{
-  "title": "Discriminator",
+  "title": "Event",
   "oneOf": [
-    { "type": "object", "additionalProperties": false, "required": ["kind"],
-      "properties": { "kind": { "const": "a" } } },
-    { "type": "object", "additionalProperties": false, "required": ["kind"],
-      "properties": { "kind": { "const": "b" } } }
+    { "title": "created", "type": "object", "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "type": "string", "const": "created" },
+        "value": { "type": "string" }
+      } },
+    { "title": "deleted", "type": "object", "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "type": "string", "const": "deleted" },
+        "value": { "type": "string" }
+      } }
   ]
 }"#,
-        )
-        .unwrap_err();
-        assert!(discriminator.to_string().contains("not distinguishable"));
+        );
+        assert_eq!(
+            schema
+                .alternatives()
+                .iter()
+                .map(|alternative| {
+                    let constraint = &alternative.constraints[0];
+                    (constraint.member.as_str(), constraint.value.as_str())
+                })
+                .collect::<Vec<_>>(),
+            [("kind", "created"), ("kind", "deleted")]
+        );
+        for text in [
+            r#"{"kind":"created","value":"one"}"#,
+            r#"{"kind":"deleted","value":"two"}"#,
+        ] {
+            let instance = crate::from_str(text, &schema).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(
+                    &crate::to_string(&schema, &instance).unwrap()
+                )
+                .unwrap(),
+                serde_json::from_str::<serde_json::Value>(text).unwrap()
+            );
+        }
+        for text in [
+            r#"{"kind":"changed","value":"three"}"#,
+            r#"{"value":"four"}"#,
+        ] {
+            assert!(matches!(
+                crate::from_str(text, &schema),
+                Err(JsonFormatError::NoMatchingAlternative { .. })
+            ));
+        }
+
+        let exported = export(&schema);
+        let exported_value: serde_json::Value = serde_json::from_str(&exported).unwrap();
+        assert_eq!(
+            exported_value["oneOf"][0]["properties"]["kind"]["const"],
+            "created"
+        );
+        assert_eq!(
+            exported_value["oneOf"][1]["properties"]["kind"]["const"],
+            "deleted"
+        );
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_json_schema_discriminator_roundtrip_{}.json",
+            std::process::id()
+        ));
+        std::fs::write(&path, exported).unwrap();
+        let roundtrip = import(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_eq!(roundtrip, schema);
+    }
+
+    #[test]
+    fn inclusive_alternatives_honor_required_string_const_discriminators() {
+        let schema = import_str(
+            r#"{
+  "title":"Message",
+  "anyOf":[
+    {"type":"object","additionalProperties":false,"required":["kind"],
+      "properties":{"kind":{"const":"text"}}},
+    {"type":"object","additionalProperties":false,"required":["kind"],
+      "properties":{"kind":{"const":"image"}}}
+  ]
+}"#,
+        );
+        assert_eq!(schema.alternative_mode(), GroupAlternativeMode::Inclusive);
+        assert!(crate::from_str(r#"{"kind":"text"}"#, &schema).is_ok());
+        assert!(matches!(
+            crate::from_str(r#"{"kind":"audio"}"#, &schema),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+        let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+        assert_eq!(exported["anyOf"][1]["properties"]["kind"]["const"], "image");
+    }
+
+    #[test]
+    fn unsupported_const_discriminators_are_rejected_actionably() {
+        for (property, required, expected) in [
+            (r#"{"type":"string","const":"a"}"#, "", "must be required"),
+            (
+                r#"{"type":"integer","const":1}"#,
+                r#", "required":["kind"]"#,
+                "must be a string",
+            ),
+        ] {
+            let text = format!(
+                r#"{{
+  "title":"Unsupported",
+  "oneOf":[
+    {{"type":"object","additionalProperties":false{required},"properties":{{"kind":{property}}}}},
+    {{"type":"object","additionalProperties":false,"required":["other"],"properties":{{"other":{{"type":"string"}}}}}}
+  ]
+}}"#
+            );
+            let error = import_str_result(&text).unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+        }
     }
 
     #[test]
@@ -785,7 +967,7 @@ mod tests {
     }
 
     #[test]
-    fn nullable_type_arrays_use_the_first_real_type() {
+    fn nullable_type_arrays_use_the_only_non_null_type() {
         let schema = import_str(
             r#"{
   "title": "Row",
@@ -801,6 +983,41 @@ mod tests {
                 ty: ScalarType::Int
             }
         ));
+    }
+
+    #[test]
+    fn type_arrays_with_multiple_non_null_types_are_rejected() {
+        let error = import_str_result(
+            r#"{
+  "title":"Ambiguous",
+  "type":["string", "integer", "null"]
+}"#,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("type arrays may contain only one non-null type")
+        );
+    }
+
+    #[test]
+    fn repeating_object_alternatives_are_rejected() {
+        let error = import_str_result(
+            r#"{
+  "title":"Sequences",
+  "oneOf":[
+    {"type":"array","items":{"type":"object","additionalProperties":false,"properties":{}}},
+    {"type":"array","items":{"type":"object","additionalProperties":false,"properties":{}}}
+  ]
+}"#,
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("array alternatives are not supported")
+        );
     }
 
     #[test]

@@ -614,11 +614,13 @@ fn group_alternatives_emit_selected_xsi_type_and_integral_float() {
             name: "{urn:ferrule:test}Domestic".into(),
             members: vec!["name".into(), "state".into(), "zip".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
         ir::GroupAlternative {
             name: "{urn:ferrule:test}International".into(),
             members: vec!["name".into(), "postcode".into()],
             required: Vec::new(),
+            constraints: Vec::new(),
         },
     ])
     .unwrap();

@@ -18,7 +18,8 @@ Core formats work as both mapping sources and targets; one-way modes are noted:
   update-in-place writes that preserve unrelated workbook content
 - **XML** — hierarchical documents, with an XSD importer to bootstrap schemas
 - **JSON** — hierarchical documents, with a JSON Schema importer supporting local
-  references, compatible closed-object `oneOf`/`anyOf`, and typed dynamic properties
+  references, compatible closed-object `oneOf`/`anyOf` including required string-const
+  discriminators, and typed dynamic properties
 - **SQLite** — table introspection plus idempotent flat or relational multi-table reads
   and full-replace writes
 - **EDI** — bounded ANSI X12, UN/EDIFACT, HL7 v2, and TRADACOMS I/O, plus embedded
@@ -54,7 +55,7 @@ A project file (plain JSON) holds these core pieces:
   enclosing scopes so parent-level values broadcast into child rows; scopes can also
   generate scalar sequences with `tokenize`, `tokenize-by-length`, bounded
   `tokenize-regexp`, and inclusive integer ranges (capped at 1,000,000 materialized
-  items per scope), or
+  items per scope); generated sequences can also feed 1-based scalar `item-at`, or
   iterate a typed multi-source equijoin
 - optional **extra sources** — named secondary inputs that any scope or lookup can
   address; a source path may also be computed per driver item to load a typed document
@@ -78,7 +79,9 @@ SQLite database components, including relational table graphs (schemas are
 introspected from the referenced database when it's reachable), the common core functions, the aggregate family
 (count/sum/avg/min/max/string-join/item-at), constants, if-else, value-map, and
 filter-, group-by-, distinct-values-, tokenizer-, and generated-range-driven iteration
-import directly. Connected target components become independent project outputs, and
+import directly. Generated tokenizer/range sequences can also feed scalar `item-at`;
+bounded transitive XSD derivation through abstract include/import intermediates preserves
+concrete `xsi:type` alternatives. Connected target components become independent project outputs, and
 connected document paths can become per-item dynamic sources. Recognized recursive UDF
 shapes lower to bounded typed recursive filters, path hierarchies, or adjacency trees.
 Core kind-32 inner equijoins import with duplicate-preserving tuple
@@ -94,7 +97,8 @@ retain their component ownership. Canonical structured-join export covers root-c
 collections inside the primary source. Static typed protobuf sources and targets export
 canonically with generated `.proto` siblings; dynamic per-item protobuf sources remain
 unsupported.
-Designs built on general namespace identity or `xsi:type` polymorphism,
+Designs built on general namespace identity or `xsi:type` shapes outside the bounded
+local derived-type profile,
 scalar-key/keyless correlated joins,
 multi-source or nested join export, general SQL/database
 composition, or other endpoints (unsupported Excel/PDF layout variants, PDF targets,

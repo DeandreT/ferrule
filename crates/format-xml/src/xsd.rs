@@ -28,6 +28,7 @@ mod export;
 pub use export::{export, export_namespace};
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
+const MAX_TYPE_DERIVATION_DEPTH: usize = 256;
 const ALTERNATIVE_VIEW_NAMESPACE: &str = "urn:ferrule:xsd:group-alternatives";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -433,7 +434,7 @@ fn parse_element(
             match resolved {
                 ComplexTypeResolution::Children(children) => {
                     let mut node = SchemaNode::group(name, children);
-                    attach_direct_type_alternatives(&mut node, ty, schema_el, schema_path, state);
+                    attach_type_alternatives(&mut node, ty, schema_el, schema_path, state);
                     node
                 }
                 ComplexTypeResolution::Recursive(anchor) => {
@@ -525,7 +526,7 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
     }
 }
 
-fn attach_direct_type_alternatives(
+fn attach_type_alternatives(
     node: &mut SchemaNode,
     base_qname: &str,
     schema_el: &Node,
@@ -541,16 +542,21 @@ fn attach_direct_type_alternatives(
         return;
     };
     let base_is_abstract = complex_type_is_abstract(schema_el, schema_path, base_qname, state);
-    let mut visited = BTreeSet::new();
-    let mut derived = Vec::new();
-    collect_direct_derived_types(
+    let mut index = DerivedTypeIndex::default();
+    collect_derived_type_declarations(
         schema_el,
         schema_path,
         schema_el.attribute("targetNamespace"),
-        &base_identity,
-        &mut visited,
-        &mut derived,
+        &mut BTreeSet::new(),
+        &mut index,
     );
+    if index.limit_reached {
+        state.materialization_limit_reached = true;
+        return;
+    }
+    let Some(derived) = index.concrete_descendants(&base_identity) else {
+        return;
+    };
     if derived.is_empty() {
         return;
     }
@@ -614,6 +620,7 @@ fn attach_direct_type_alternatives(
             name: base_identity,
             members: base_members,
             required: Vec::new(),
+            constraints: Vec::new(),
         });
     }
     alternatives.extend(
@@ -623,6 +630,7 @@ fn attach_direct_type_alternatives(
                 name,
                 members: children.into_iter().map(|child| child.name).collect(),
                 required: Vec::new(),
+                constraints: Vec::new(),
             }),
     );
     if let SchemaKind::Group { children, .. } = &mut node.kind {
@@ -635,11 +643,90 @@ fn attach_direct_type_alternatives(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DerivedTypeDeclaration {
     path: PathBuf,
     local: String,
     identity: String,
+    base_identity: String,
+    abstract_type: bool,
+}
+
+#[derive(Default)]
+struct DerivedTypeIndex {
+    declarations: Vec<DerivedTypeDeclaration>,
+    by_identity: BTreeMap<String, usize>,
+    conflicting_identity: bool,
+    limit_reached: bool,
+}
+
+impl DerivedTypeIndex {
+    fn insert(&mut self, declaration: DerivedTypeDeclaration) {
+        if let Some(existing) = self
+            .by_identity
+            .get(&declaration.identity)
+            .and_then(|index| self.declarations.get(*index))
+        {
+            if existing.path != declaration.path
+                || existing.local != declaration.local
+                || existing.base_identity != declaration.base_identity
+                || existing.abstract_type != declaration.abstract_type
+            {
+                self.conflicting_identity = true;
+            }
+            return;
+        }
+        if self.declarations.len() >= MAX_MATERIALIZED_SCHEMA_ELEMENTS {
+            self.limit_reached = true;
+            return;
+        }
+        self.by_identity
+            .insert(declaration.identity.clone(), self.declarations.len());
+        self.declarations.push(declaration);
+    }
+
+    fn concrete_descendants(&self, base_identity: &str) -> Option<Vec<DerivedTypeDeclaration>> {
+        if self.conflicting_identity {
+            return None;
+        }
+        let mut by_base = BTreeMap::<&str, Vec<&DerivedTypeDeclaration>>::new();
+        for declaration in &self.declarations {
+            by_base
+                .entry(&declaration.base_identity)
+                .or_default()
+                .push(declaration);
+        }
+        let mut descendants = Vec::new();
+        let mut active = BTreeSet::from([base_identity.to_string()]);
+        let mut visited = BTreeSet::new();
+        let mut stack = vec![(base_identity.to_string(), 0usize)];
+        while let Some((identity, child_index)) = stack.last_mut() {
+            let children = by_base
+                .get(identity.as_str())
+                .map_or(&[][..], Vec::as_slice);
+            let Some(declaration) = children.get(*child_index).copied() else {
+                let (completed, _) = stack.pop()?;
+                active.remove(&completed);
+                continue;
+            };
+            *child_index += 1;
+            if active.contains(&declaration.identity) {
+                return None;
+            }
+            if stack.len() >= MAX_TYPE_DERIVATION_DEPTH {
+                return None;
+            }
+            if !visited.insert(declaration.identity.clone()) {
+                continue;
+            }
+            if !declaration.abstract_type {
+                descendants.push(declaration.clone());
+            }
+            active.insert(declaration.identity.clone());
+            stack.push((declaration.identity.clone(), 0));
+        }
+        Some(descendants)
+    }
 }
 
 fn complex_type_is_abstract(
@@ -671,49 +758,52 @@ fn complex_type_is_abstract(
         .is_some_and(|value| matches!(value, "true" | "1"))
 }
 
-fn collect_direct_derived_types(
+fn collect_derived_type_declarations(
     schema_el: &Node,
     schema_path: &Path,
     inherited_namespace: Option<&str>,
-    base_identity: &str,
-    visited: &mut BTreeSet<PathBuf>,
-    out: &mut Vec<DerivedTypeDeclaration>,
+    visited: &mut BTreeSet<(PathBuf, Option<String>)>,
+    index: &mut DerivedTypeIndex,
 ) {
-    let path = normalized_path(schema_path);
-    if !visited.insert(path.clone()) {
+    if index.limit_reached {
         return;
     }
+    let path = normalized_path(schema_path);
     let effective_namespace = schema_el
         .attribute("targetNamespace")
         .or(inherited_namespace);
-    for declaration in schema_el.children().filter(|candidate| {
-        candidate.is_element()
-            && candidate.tag_name().name() == "complexType"
-            && candidate.attribute("abstract") != Some("true")
-            && candidate.attribute("abstract") != Some("1")
-    }) {
+    if !visited.insert((path.clone(), effective_namespace.map(str::to_string))) {
+        return;
+    }
+    for declaration in schema_el
+        .children()
+        .filter(|candidate| candidate.is_element() && candidate.tag_name().name() == "complexType")
+    {
         let Some(local) = declaration.attribute("name") else {
             continue;
         };
         let Some(base) = direct_extension_base(&declaration) else {
             continue;
         };
-        if expanded_qname_identity(schema_el, effective_namespace, &base).as_deref()
-            != Some(base_identity)
-        {
+        let Some(base_identity) = expanded_qname_identity(schema_el, effective_namespace, &base)
+        else {
             continue;
-        }
+        };
         let Some(identity) = type_identity_in_namespace(effective_namespace, local) else {
             continue;
         };
-        if out.iter().any(|derived| derived.identity == identity) {
-            continue;
-        }
-        out.push(DerivedTypeDeclaration {
+        index.insert(DerivedTypeDeclaration {
             path: path.clone(),
             local: local.to_string(),
             identity,
+            base_identity,
+            abstract_type: declaration
+                .attribute("abstract")
+                .is_some_and(|value| matches!(value, "true" | "1")),
         });
+        if index.limit_reached {
+            return;
+        }
     }
 
     for link in schema_el
@@ -740,13 +830,12 @@ fn collect_direct_derived_types(
         let dependency_inherited = (link.tag_name().name() == "include")
             .then_some(effective_namespace)
             .flatten();
-        collect_direct_derived_types(
+        collect_derived_type_declarations(
             &dependency_schema,
             &dependency,
             dependency_inherited,
-            base_identity,
             visited,
-            out,
+            index,
         );
     }
 }

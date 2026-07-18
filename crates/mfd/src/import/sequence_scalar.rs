@@ -57,6 +57,43 @@ impl GraphBuilder<'_> {
         result
     }
 
+    pub(super) fn sequence_item_at_node(
+        &mut self,
+        sequence_feed: u32,
+        index_feed: u32,
+    ) -> Option<Node> {
+        let sequence_index = *self.fn_by_output.get(&sequence_feed)?;
+        if !self
+            .fn_components
+            .get(sequence_index)
+            .is_some_and(|component| {
+                is_sequence_producer(component)
+                    && component.output_pins.first().copied().flatten() == Some(sequence_feed)
+            })
+        {
+            return None;
+        }
+
+        let item = self.alloc(Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        });
+        let previous_item = self.sequence_items.insert(sequence_index, item);
+        let result = self.sequence_expr(sequence_index).and_then(|sequence| {
+            self.value_node(index_feed)
+                .map(|index| Node::SequenceItemAt { sequence, index })
+        });
+        if let Some(previous_item) = previous_item {
+            self.sequence_items.insert(sequence_index, previous_item);
+        } else {
+            self.sequence_items.remove(&sequence_index);
+        }
+        if result.is_none() {
+            self.graph.nodes.remove(&item);
+        }
+        result
+    }
+
     pub(super) fn sequence_scalar_input(&mut self, feed: u32) -> Option<NodeId> {
         let Some(&filter_index) = self.fn_by_output.get(&feed) else {
             return self.value_node(feed);

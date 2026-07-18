@@ -128,13 +128,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     got: json_type_name(value),
                 });
             };
-            validate_alternative_fields(
-                schema,
-                alternatives,
-                fields
-                    .iter()
-                    .map(|(name, value)| (name.as_str(), !value.is_null())),
-            )?;
+            validate_alternative_fields(schema, alternatives, fields)?;
             if dynamic.is_some() && !alternatives.is_empty() {
                 return Err(JsonFormatError::UnsupportedSchemaUnion {
                     name: schema.name.clone(),
@@ -384,11 +378,7 @@ fn write_single_node(
                     );
                 }
             }
-            validate_alternative_fields(
-                schema,
-                alternatives,
-                out.keys().map(|name| (name.as_str(), true)),
-            )?;
+            validate_alternative_fields(schema, alternatives, &out)?;
             Ok(serde_json::Value::Object(out))
         }
         (SchemaKind::Scalar { ty }, other) => Err(write_shape_error(
@@ -404,25 +394,29 @@ fn write_single_node(
     }
 }
 
-fn validate_alternative_fields<'a>(
+fn validate_alternative_fields(
     schema: &SchemaNode,
     alternatives: &[ir::GroupAlternative],
-    fields: impl IntoIterator<Item = (&'a str, bool)>,
+    fields: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), JsonFormatError> {
     if alternatives.is_empty() {
         return Ok(());
     }
-    let fields: Vec<(&str, bool)> = fields.into_iter().collect();
     let matches = alternatives
         .iter()
         .filter(|alternative| {
             alternative
                 .required
                 .iter()
-                .all(|required| fields.contains(&(required.as_str(), true)))
+                .all(|required| fields.get(required).is_some_and(|value| !value.is_null()))
                 && fields
-                    .iter()
-                    .all(|(field, _)| alternative.members.iter().any(|member| member == field))
+                    .keys()
+                    .all(|field| alternative.members.iter().any(|member| member == field))
+                && alternative.constraints.iter().all(|constraint| {
+                    fields.get(&constraint.member).is_some_and(
+                        |value| matches!(value, serde_json::Value::String(actual) if actual == &constraint.value),
+                    )
+                })
         })
         .count();
     match matches {
@@ -572,11 +566,13 @@ mod tests {
                 name: "domestic".into(),
                 members: vec!["name".into(), "state".into()],
                 required: vec!["name".into(), "state".into()],
+                constraints: Vec::new(),
             },
             ir::GroupAlternative {
                 name: "international".into(),
                 members: vec!["name".into(), "postcode".into()],
                 required: vec!["name".into(), "postcode".into()],
+                constraints: Vec::new(),
             },
         ])
         .unwrap()
@@ -644,6 +640,56 @@ mod tests {
         ] {
             assert!(matches!(
                 read_node(&invalid, &schema),
+                Err(JsonFormatError::NoMatchingAlternative { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn object_alternatives_match_required_string_constraints() {
+        let schema = SchemaNode::group(
+            "Event",
+            vec![
+                SchemaNode::scalar("kind", ScalarType::String),
+                SchemaNode::scalar("value", ScalarType::String),
+            ],
+        )
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "created".into(),
+                members: vec!["kind".into(), "value".into()],
+                required: vec!["kind".into(), "value".into()],
+                constraints: vec![ir::GroupAlternativeConstraint {
+                    member: "kind".into(),
+                    value: "created".into(),
+                }],
+            },
+            ir::GroupAlternative {
+                name: "deleted".into(),
+                members: vec!["kind".into(), "value".into()],
+                required: vec!["kind".into(), "value".into()],
+                constraints: vec![ir::GroupAlternativeConstraint {
+                    member: "kind".into(),
+                    value: "deleted".into(),
+                }],
+            },
+        ])
+        .unwrap();
+
+        for value in [
+            serde_json::json!({"kind": "created", "value": "one"}),
+            serde_json::json!({"kind": "deleted", "value": "two"}),
+        ] {
+            let instance = read_node(&value, &schema).unwrap();
+            assert_eq!(write_node(&schema, &instance).unwrap(), value);
+        }
+        for value in [
+            serde_json::json!({"kind": "changed", "value": "three"}),
+            serde_json::json!({"kind": null, "value": "four"}),
+            serde_json::json!({"value": "five"}),
+        ] {
+            assert!(matches!(
+                read_node(&value, &schema),
                 Err(JsonFormatError::NoMatchingAlternative { .. })
             ));
         }

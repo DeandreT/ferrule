@@ -260,6 +260,17 @@ pub struct GroupAlternative {
     pub members: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub required: Vec<String>,
+    /// Required string values that distinguish this alternative from other
+    /// structurally identical projections.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub constraints: Vec<GroupAlternativeConstraint>,
+}
+
+/// One exact required string value used to select a group alternative.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GroupAlternativeConstraint {
+    pub member: String,
+    pub value: String,
 }
 
 /// Whether exactly one or at least one declared group alternative must match.
@@ -532,6 +543,24 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
                         !alternative.required[..required_index].contains(required)
                             && alternative.members.contains(required)
                     })
+                && alternative.constraints.iter().enumerate().all(
+                    |(constraint_index, constraint)| {
+                        !alternative.constraints[..constraint_index]
+                            .iter()
+                            .any(|previous| previous.member == constraint.member)
+                            && alternative.required.contains(&constraint.member)
+                            && children.iter().any(|child| {
+                                child.name == constraint.member
+                                    && !child.repeating
+                                    && matches!(
+                                        child.kind,
+                                        SchemaKind::Scalar {
+                                            ty: ScalarType::String
+                                        }
+                                    )
+                            })
+                    },
+                )
         })
 }
 
@@ -541,10 +570,10 @@ pub enum Instance {
     Scalar(Value),
     Group(Vec<(String, Instance)>),
     Repeated(Vec<Instance>),
-    /// Ordered local source documents. Each member retains boundary-relative
-    /// path metadata while its value remains an ordinary schema-shaped tree.
-    /// Host-specific path validation belongs to the I/O boundary. This
-    /// variant is a source boundary and must not reach format writers.
+    /// Ordered documents. Each member retains a portable path and may also
+    /// retain its resolved source location while its value remains an ordinary
+    /// schema-shaped tree. Host-specific path validation belongs to the I/O
+    /// boundary.
     DocumentSet(Vec<DocumentMember>),
     /// Mapping-produced XML element occurrences whose cardinality is
     /// independent of the schema node's declared repetition.
@@ -553,25 +582,56 @@ pub enum Instance {
 
 /// One structurally valid member of an [`Instance::DocumentSet`].
 ///
-/// The path is non-empty but otherwise opaque here; filesystem boundaries
-/// validate and confine it for their host before performing I/O.
+/// The portable path is non-empty but otherwise opaque here; filesystem
+/// boundaries validate and confine it for their host before performing I/O.
+/// A source member may additionally retain the non-empty resolved location
+/// used by current-document-path expressions. Output boundaries continue to
+/// consume only the portable path.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DocumentMember {
     path: String,
+    #[serde(skip)]
+    resolved_source_path: Option<String>,
     value: Box<Instance>,
 }
 
 impl DocumentMember {
     pub fn new(path: impl Into<String>, value: Instance) -> Option<Self> {
+        Self::new_with_source_path(path, None, value)
+    }
+
+    pub fn new_source(
+        path: impl Into<String>,
+        source_path: impl Into<String>,
+        value: Instance,
+    ) -> Option<Self> {
+        Self::new_with_source_path(path, Some(source_path.into()), value)
+    }
+
+    fn new_with_source_path(
+        path: impl Into<String>,
+        resolved_source_path: Option<String>,
+        value: Instance,
+    ) -> Option<Self> {
         let path = path.into();
-        (!path.is_empty() && !matches!(value, Instance::DocumentSet(_))).then(|| Self {
+        (!path.is_empty()
+            && resolved_source_path
+                .as_ref()
+                .is_none_or(|path| !path.is_empty())
+            && !matches!(value, Instance::DocumentSet(_)))
+        .then(|| Self {
             path,
+            resolved_source_path,
             value: Box::new(value),
         })
     }
 
     pub fn path(&self) -> &str {
         &self.path
+    }
+
+    pub fn source_path(&self) -> &str {
+        self.resolved_source_path.as_deref().unwrap_or(&self.path)
     }
 
     pub fn value(&self) -> &Instance {
@@ -593,7 +653,7 @@ impl<'de> Deserialize<'de> for DocumentMember {
         let wire = Wire::deserialize(deserializer)?;
         Self::new(wire.path, wire.value).ok_or_else(|| {
             serde::de::Error::custom(
-                "document-set members require a non-empty path and a non-document-set value",
+                "document-set members require non-empty paths and a non-document-set value",
             )
         })
     }
@@ -649,9 +709,11 @@ mod tests {
         )]);
         assert!(DocumentMember::new("", value.clone()).is_none());
         assert!(DocumentMember::new("nested.xml", Instance::DocumentSet(Vec::new())).is_none());
+        assert!(DocumentMember::new_source("first.xml", "", value.clone()).is_none());
         let Some(member) = DocumentMember::new("first.xml", value) else {
             panic!("valid document member")
         };
+        assert_eq!(member.source_path(), "first.xml");
         let documents = Instance::DocumentSet(vec![member]);
 
         assert_eq!(
@@ -661,6 +723,21 @@ mod tests {
         assert!(
             serde_json::from_str::<DocumentMember>(r#"{"path":"","value":{"Group":[]}}"#).is_err()
         );
+
+        let Some(source) = DocumentMember::new_source(
+            "first.xml",
+            "/inputs/first.xml",
+            Instance::Group(Vec::new()),
+        ) else {
+            panic!("valid source document member")
+        };
+        assert_eq!(source.path(), "first.xml");
+        assert_eq!(source.source_path(), "/inputs/first.xml");
+        let encoded = serde_json::to_string(&source).unwrap();
+        assert!(!encoded.contains("/inputs/first.xml"));
+        let decoded = serde_json::from_str::<DocumentMember>(&encoded).unwrap();
+        assert_eq!(decoded.path(), "first.xml");
+        assert_eq!(decoded.source_path(), "first.xml");
     }
 
     #[test]
@@ -750,11 +827,13 @@ mod tests {
                         name: "domestic".into(),
                         members: vec!["missing".into()],
                         required: Vec::new(),
+                        constraints: Vec::new(),
                     },
                     GroupAlternative {
                         name: "international".into(),
                         members: vec!["postcode".into()],
                         required: vec!["postcode".into()],
+                        constraints: Vec::new(),
                     },
                 ])
                 .is_none()
@@ -787,11 +866,13 @@ mod tests {
                     name: "domestic".into(),
                     members: vec!["state".into()],
                     required: Vec::new(),
+                    constraints: Vec::new(),
                 },
                 GroupAlternative {
                     name: "international".into(),
                     members: vec!["postcode".into()],
                     required: Vec::new(),
+                    constraints: Vec::new(),
                 },
             ])
             .unwrap();
@@ -804,6 +885,70 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
             inclusive
+        );
+
+        let discriminated = SchemaNode::group(
+            "Event",
+            vec![
+                SchemaNode::scalar("kind", ScalarType::String),
+                SchemaNode::scalar("value", ScalarType::String),
+            ],
+        )
+        .with_alternatives(vec![
+            GroupAlternative {
+                name: "created".into(),
+                members: vec!["kind".into(), "value".into()],
+                required: vec!["kind".into(), "value".into()],
+                constraints: vec![GroupAlternativeConstraint {
+                    member: "kind".into(),
+                    value: "created".into(),
+                }],
+            },
+            GroupAlternative {
+                name: "deleted".into(),
+                members: vec!["kind".into(), "value".into()],
+                required: vec!["kind".into(), "value".into()],
+                constraints: vec![GroupAlternativeConstraint {
+                    member: "kind".into(),
+                    value: "deleted".into(),
+                }],
+            },
+        ])
+        .unwrap();
+        let encoded = serde_json::to_string(&discriminated).unwrap();
+        assert!(encoded.contains(r#""constraints""#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            discriminated
+        );
+
+        let mut invalid = discriminated.alternatives().to_vec();
+        invalid[0].required.retain(|field| field != "kind");
+        assert!(
+            SchemaNode::group(
+                "Event",
+                vec![
+                    SchemaNode::scalar("kind", ScalarType::String),
+                    SchemaNode::scalar("value", ScalarType::String),
+                ],
+            )
+            .with_alternatives(invalid)
+            .is_none()
+        );
+
+        let mut duplicate = discriminated.alternatives().to_vec();
+        let duplicate_constraint = duplicate[0].constraints[0].clone();
+        duplicate[0].constraints.push(duplicate_constraint);
+        assert!(
+            SchemaNode::group(
+                "Event",
+                vec![
+                    SchemaNode::scalar("kind", ScalarType::String),
+                    SchemaNode::scalar("value", ScalarType::String),
+                ],
+            )
+            .with_alternatives(duplicate)
+            .is_none()
         );
     }
 
@@ -829,11 +974,13 @@ mod tests {
                 name: "one".into(),
                 members: Vec::new(),
                 required: Vec::new(),
+                constraints: Vec::new(),
             },
             GroupAlternative {
                 name: "two".into(),
                 members: Vec::new(),
                 required: Vec::new(),
+                constraints: Vec::new(),
             },
         ];
         let alternative = SchemaNode::group("Object", Vec::new())

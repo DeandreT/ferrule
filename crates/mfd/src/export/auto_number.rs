@@ -182,6 +182,11 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             .into_iter()
             .chain([sequence.item(), *predicate])
             .collect(),
+        Node::SequenceItemAt { sequence, index } => sequence
+            .inputs()
+            .into_iter()
+            .chain([sequence.item(), *index])
+            .collect(),
         Node::Aggregate {
             expression, arg, ..
         }

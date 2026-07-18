@@ -59,6 +59,13 @@ fn project(output_path: u32) -> Project {
                         frame: None,
                     },
                 ),
+                (
+                    3,
+                    Node::Call {
+                        function: "remove_folder".into(),
+                        args: vec![0],
+                    },
+                ),
             ]
             .into_iter()
             .collect(),
@@ -96,7 +103,7 @@ fn prepare(project: &Project) -> Result<(TempDir, PathBuf), Box<dyn Error>> {
 
 #[test]
 fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<dyn Error>> {
-    let (directory, project_path) = prepare(&project(0))?;
+    let (directory, project_path) = prepare(&project(3))?;
     let output = directory.0.join("output");
 
     let outcome = cli::run_project_with_paths(&project_path, None, Some(&output))?;
@@ -113,11 +120,28 @@ fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<d
         vec![Some("records-a.xml"), Some("records-b.xml")]
     );
     assert_eq!(
-        format_xml::read(&output.join("records-b.xml"), &project(0).target)?
+        format_xml::read(&output.join("records-b.xml"), &project(3).target)?
             .field("Value")
             .and_then(ir::Instance::as_scalar),
         Some(&Value::String("B".into()))
     );
+    Ok(())
+}
+
+#[test]
+fn resolved_source_paths_are_rejected_as_dynamic_output_names() -> Result<(), Box<dyn Error>> {
+    let (directory, project_path) = prepare(&project(0))?;
+    let output = directory.0.join("output");
+
+    let error = cli::run_project_with_paths(&project_path, None, Some(&output))
+        .expect_err("resolved source paths must not escape the dynamic output base");
+
+    assert!(
+        error
+            .to_string()
+            .contains("dynamic output path must be relative")
+    );
+    assert!(!output.exists());
     Ok(())
 }
 
@@ -184,7 +208,7 @@ fn empty_paths_fail_before_the_output_directory_is_created() -> Result<(), Box<d
 
 #[test]
 fn destination_conflicts_do_not_replace_an_earlier_existing_file() -> Result<(), Box<dyn Error>> {
-    let (directory, project_path) = prepare(&project(0))?;
+    let (directory, project_path) = prepare(&project(3))?;
     let output = directory.0.join("output");
     std::fs::create_dir(&output)?;
     std::fs::write(output.join("records-a.xml"), "keep me")?;
@@ -227,7 +251,7 @@ fn windows_drive_paths_are_rejected_portably() -> Result<(), Box<dyn Error>> {
 fn symlinked_output_base_is_rejected() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
-    let (directory, project_path) = prepare(&project(0))?;
+    let (directory, project_path) = prepare(&project(3))?;
     let actual = directory.0.join("actual-output");
     let output = directory.0.join("output");
     std::fs::create_dir(&actual)?;
@@ -272,7 +296,7 @@ fn symlinked_output_component_is_rejected() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn dynamic_primary_child_cannot_collide_with_static_extra_target() -> Result<(), Box<dyn Error>> {
-    let mut project = project(0);
+    let mut project = project(3);
     project.extra_targets.push(NamedTarget {
         name: "collision".into(),
         path: Some("output/records-a.xml".into()),

@@ -25,7 +25,8 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
         );
     }
     for (&id, node) in &project.graph.nodes {
-        if let Node::SequenceExists { sequence, .. } = node {
+        if let Node::SequenceExists { sequence, .. } | Node::SequenceItemAt { sequence, .. } = node
+        {
             claim_sequence_item(
                 sequence.item(),
                 format!("graph node {id}"),
@@ -36,6 +37,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
     }
     let sequence_items: BTreeSet<_> = sequence_item_scopes.keys().copied().collect();
     validate_sequence_exists_contexts(project, &sequence_items, issues);
+    validate_sequence_item_at_contexts(project, &sequence_items, issues);
     for (&id, node) in &project.graph.nodes {
         let location = format!("graph node {id}");
         for (input, referenced) in node_inputs(node) {
@@ -183,7 +185,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::CollectionFind { collection, .. } => {
                 validate_collection_path(project, &location, collection, "collection find", issues);
             }
-            Node::SequenceExists { sequence, .. } => {
+            Node::SequenceExists { sequence, .. } | Node::SequenceItemAt { sequence, .. } => {
                 match project.graph.nodes.get(&sequence.item()) {
                     Some(Node::SourceField { path, frame: None }) if path.is_empty() => {}
                     Some(_) => issues.push(ValidationIssue::new(
@@ -357,6 +359,47 @@ fn validate_sequence_exists_contexts(
                     "item-dependent node {root} is also referenced by a scope outside this predicate"
                 ),
             ));
+        }
+    }
+}
+
+fn validate_sequence_item_at_contexts(
+    project: &Project,
+    sequence_items: &BTreeSet<NodeId>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    for (&owner, node) in &project.graph.nodes {
+        let Node::SequenceItemAt { sequence, index } = node else {
+            continue;
+        };
+        let item = sequence.item();
+        let location = format!("graph node {owner}");
+        for (label, input) in sequence
+            .inputs()
+            .into_iter()
+            .enumerate()
+            .map(|(index, input)| (format!("sequence argument {index}"), input))
+            .chain([("index".to_string(), *index)])
+        {
+            let dependencies = context_dependencies(&project.graph, [input]);
+            if dependencies.contains(&item) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "{label} depends on its own sequence item node {item} before that item exists"
+                    ),
+                ));
+            }
+            for foreign in dependencies.intersection(sequence_items) {
+                if *foreign != item {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        format!(
+                            "{label} references sequence item node {foreign} owned by another generated context"
+                        ),
+                    ));
+                }
+            }
         }
     }
 }
@@ -548,6 +591,13 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             .enumerate()
             .map(|(index, id)| (format!("sequence argument {index}"), id))
             .chain([("predicate".to_string(), *predicate)])
+            .collect(),
+        Node::SequenceItemAt { sequence, index } => sequence
+            .inputs()
+            .into_iter()
+            .enumerate()
+            .map(|(argument, id)| (format!("sequence argument {argument}"), id))
+            .chain([("index".to_string(), *index)])
             .collect(),
         Node::Aggregate {
             expression, arg, ..

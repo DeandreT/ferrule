@@ -340,6 +340,24 @@ pub(super) fn eval_sequence_exists(
     Ok(Value::Bool(false))
 }
 
+pub(super) fn eval_sequence_item_at(
+    graph: &Graph,
+    sequence: &SequenceExpr,
+    index: NodeId,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let values = eval_sequence_in_progress(graph, sequence, context, positions, in_progress)?;
+    let index = eval_expr(graph, index, context, positions, in_progress)?;
+    super::aggregate::aggregate(
+        mapping::AggregateOp::ItemAt,
+        values.len(),
+        &values,
+        Some(index),
+    )
+}
+
 fn eval_sequence_arg(
     graph: &Graph,
     node: NodeId,

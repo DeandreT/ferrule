@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration, SequenceExpr};
+use mapping::{
+    Binding, Graph, Node, Project, Scope, ScopeConstruction, ScopeIteration, SequenceExpr,
+};
 
 struct TempDir(PathBuf);
 
@@ -53,6 +55,64 @@ fn recursive_collect_round_trips_and_executes_identically() -> Result<(), Box<dy
             .map(|scope| &scope.construction),
         Some(ScopeConstruction::Scalar { .. })
     ));
+    assert_eq!(engine::run(&imported.project, &source)?, expected);
+    Ok(())
+}
+
+#[test]
+fn recursive_collect_item_at_round_trips_and_executes_identically()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let mut project = project();
+    let sequence = project
+        .root
+        .children
+        .first()
+        .and_then(Scope::sequence)
+        .cloned()
+        .ok_or("missing recursive sequence")?;
+    project.target = SchemaNode::group(
+        "FileList",
+        vec![SchemaNode::scalar("File", ScalarType::String)],
+    );
+    project.graph.nodes.extend([
+        (
+            3,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (4, Node::SequenceItemAt { sequence, index: 3 }),
+    ]);
+    project.root = Scope {
+        bindings: vec![Binding {
+            target_field: "File".into(),
+            node: 4,
+        }],
+        ..Scope::default()
+    };
+    assert!(engine::validate(&project).is_empty());
+
+    let source = directory(
+        "root",
+        &["top.txt"],
+        vec![directory("child", &["nested.txt"], Vec::new())],
+    );
+    let expected = engine::run(&project, &source)?;
+    let design = dir.0.join("recursive-item-at.mfd");
+    assert!(mfd::export(&project, &design)?.is_empty());
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            Node::SequenceItemAt {
+                sequence: SequenceExpr::RecursiveCollect { .. },
+                ..
+            }
+        )
+    }));
     assert_eq!(engine::run(&imported.project, &source)?, expected);
     Ok(())
 }
