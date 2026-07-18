@@ -10,10 +10,8 @@ use std::path::Path;
 use ir::Instance;
 use thiserror::Error;
 
-mod decode;
-mod encode;
-mod ir_schema;
 mod schema;
+mod wire;
 
 /// Maximum accepted `.proto` schema size.
 pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
@@ -88,7 +86,7 @@ pub fn to_vec(
     instance: &Instance,
 ) -> Result<Vec<u8>, ProtobufError> {
     let message = layout.resolve_message(root.as_ref())?;
-    encode::encode(layout, message, instance)
+    wire::encode(layout, message, instance)
 }
 
 /// Encodes one already-resolved root message into a new byte vector.
@@ -103,7 +101,7 @@ pub fn to_vec_message(
             root.index()
         )));
     }
-    encode::encode(layout, root, instance)
+    wire::encode(layout, root, instance)
 }
 
 /// Decodes one root message from a bounded byte slice.
@@ -119,7 +117,7 @@ pub fn from_slice(
         ));
     }
     let message = layout.resolve_message(root.as_ref())?;
-    decode::decode(layout, message, bytes)
+    wire::decode(layout, message, bytes)
 }
 
 /// Decodes one already-resolved root message from a bounded byte slice.
@@ -140,7 +138,7 @@ pub fn from_slice_message(
             format!("message exceeds the {MAX_MESSAGE_BYTES}-byte limit"),
         ));
     }
-    decode::decode(layout, root, bytes)
+    wire::decode(layout, root, bytes)
 }
 
 /// Projects a resolved protobuf root into ferrule's tree-shaped schema IR.
@@ -153,7 +151,7 @@ pub fn to_ir_schema(
     root: impl AsRef<str>,
 ) -> Result<ir::SchemaNode, ProtobufError> {
     let message = layout.resolve_message(root.as_ref())?;
-    ir_schema::project(layout, message)
+    schema::project(layout, message)
 }
 
 /// Encodes one root message and writes it atomically with respect to schema

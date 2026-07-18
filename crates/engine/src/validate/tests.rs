@@ -1,8 +1,9 @@
-use super::*;
-use ir::{ScalarType, Value};
+use super::validate;
+use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{
-    Binding, DynamicBinding, DynamicSourcePath, NamedSource, PdfCapture, PdfCommand, PdfLayout,
-    PdfPageSelection, PdfRegion, ScopeConstruction, SequenceExpr, XbrlBoundaryOptions,
+    Binding, DynamicBinding, DynamicSourcePath, Graph, NamedSource, Node, PdfCapture, PdfCommand,
+    PdfLayout, PdfPageSelection, PdfRegion, Project, Scope, ScopeConstruction, SequenceExpr,
+    XbrlBoundaryOptions,
 };
 use std::num::NonZeroU32;
 
