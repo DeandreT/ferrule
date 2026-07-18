@@ -1,6 +1,6 @@
 //! Schema component and port-tree rendering for MFD export.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -10,6 +10,7 @@ use mapping::FormatOptions;
 use crate::MfdError;
 
 use super::concatenation::TargetBranches;
+use super::flextext;
 
 const XLSX_MAX_ROW: u32 = 1_048_576;
 const XLSX_MAX_COLUMN: u32 = 16_384;
@@ -17,15 +18,23 @@ const XLSX_MAX_COLUMN: u32 = 16_384;
 /// Which MapForce component family a mapping side exports as.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum SideFormat {
+    Xbrl,
     Xml,
     Json,
     Csv,
     FixedWidth,
+    FlexText,
     Xlsx,
     Db,
 }
 
 pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOptions) -> SideFormat {
+    if options.xbrl.is_some() {
+        return SideFormat::Xbrl;
+    }
+    if options.flextext.is_some() {
+        return SideFormat::FlexText;
+    }
     if options.fixed_width.is_some() {
         return SideFormat::FixedWidth;
     }
@@ -39,6 +48,7 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
         Some("csv") | Some("txt") => SideFormat::Csv,
         Some("xlsx") => SideFormat::Xlsx,
         Some("db") | Some("sqlite") | Some("sqlite3") => SideFormat::Db,
+        _ if options.delimiter.is_some() || options.has_header_row.is_some() => SideFormat::Csv,
         _ => SideFormat::Xml,
     }
 }
@@ -80,7 +90,7 @@ pub(super) struct GeneratedSibling {
 
 pub(super) struct RenderedSchemaComponent {
     pub(super) xml: String,
-    pub(super) sibling: Option<GeneratedSibling>,
+    pub(super) siblings: Vec<GeneratedSibling>,
 }
 
 /// Renders one schema component and its optional generated schema sibling.
@@ -96,21 +106,30 @@ pub(super) fn render_schema_component(
     mfd_path: &Path,
     force_root_port: bool,
     target_branches: Option<&TargetBranches>,
+    component_name: &str,
+    component_uid: u32,
+    sibling_suffix: &str,
+    default_output: bool,
+    used_ports: &BTreeSet<u32>,
 ) -> Result<RenderedSchemaComponent, MfdError> {
     let stem = mfd_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("mapping");
     let dir = mfd_path.parent().unwrap_or(Path::new("."));
-    let (uid, side_name, header, view) = match side {
-        Side::Source => (2, "source", "", "<view rbx=\"300\" rby=\"400\"/>"),
+    let (side_name, header, view) = match side {
+        Side::Source => ("source", "", "<view rbx=\"300\" rby=\"400\"/>"),
         Side::Target => (
-            3,
             "target",
-            "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t",
+            if default_output {
+                "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t"
+            } else {
+                ""
+            },
             "<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>",
         ),
     };
+    let uid = component_uid;
     let attr = side.port_attr();
     let instance = instance_path
         .map(|p| format!(" {}=\"{}\"", side.instance_attr(), xml_escape(p)))
@@ -119,8 +138,29 @@ pub(super) fn render_schema_component(
     let mut out = String::new();
     let mut sibling = None;
     match format {
+        SideFormat::Xbrl => {
+            return super::xbrl::render(super::xbrl::RenderArgs {
+                schema,
+                ports,
+                side,
+                instance_path,
+                options,
+                mfd_path,
+                target_branches,
+                component_name,
+                component_uid,
+                default_output,
+                used_ports,
+            });
+        }
         SideFormat::Xml => {
-            let schema_file = format!("{stem}-{side_name}.xsd");
+            let schema_file = format!("{stem}-{sibling_suffix}.xsd");
+            let namespace = format_xml::xsd::export_namespace(schema)?;
+            let instance_root = format!(
+                "{{{}}}{}",
+                namespace.as_deref().unwrap_or_default(),
+                schema.name
+            );
             sibling = Some(GeneratedSibling {
                 path: dir.join(&schema_file),
                 contents: format_xml::xsd::export(schema)?,
@@ -164,12 +204,15 @@ pub(super) fn render_schema_component(
                      \t\t\t\t</component>\n",
                     xml_escape(&schema.name),
                     xml_escape(&schema_file),
-                    xml_escape(&schema.name),
+                    xml_escape(&instance_root),
                     ports.entries_xml(schema, attr, 10, true, target_branches),
                     xml_escape(url),
                     http.timeout_seconds().get(),
                 );
-                return Ok(RenderedSchemaComponent { xml: out, sibling });
+                return Ok(RenderedSchemaComponent {
+                    xml: out,
+                    siblings: sibling.into_iter().collect(),
+                });
             }
             let _ = write!(
                 out,
@@ -184,17 +227,17 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
-                 \t\t\t\t\t\t<document schema=\"{}\" instanceroot=\"{{}}{}\"{instance}/>\n\
+                 \t\t\t\t\t\t<document schema=\"{}\" instanceroot=\"{}\"{instance}/>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
-                xml_escape(&schema.name),
+                xml_escape(component_name),
                 ports.entries_xml(schema, attr, 9, force_root_port, target_branches),
                 xml_escape(&schema_file),
-                xml_escape(&schema.name),
+                xml_escape(&instance_root),
             );
         }
         SideFormat::Json => {
-            let schema_file = format!("{stem}-{side_name}.schema.json");
+            let schema_file = format!("{stem}-{sibling_suffix}.schema.json");
             let json_lines = options.json_lines
                 || instance_path
                     .and_then(|path| Path::new(path).extension())
@@ -225,7 +268,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t<json schema=\"{}\"{instance}{json_lines}/>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
-                xml_escape(&schema.name),
+                xml_escape(component_name),
                 ports.json_entries_xml(schema, attr, 10),
                 xml_escape(&schema_file),
                 json_lines = if json_lines { " jsonlines=\"1\"" } else { "" },
@@ -239,7 +282,7 @@ pub(super) fn render_schema_component(
                 ))
             })?;
             let datasource = db_datasource_name(instance_path);
-            let table_entries = db_entries_xml(&layout, ports, attr)?;
+            let table_entries = db_entries_xml(&layout, ports, attr, target_branches)?;
             let selections = db_selections_xml(&layout);
             let _ = write!(
                 out,
@@ -259,7 +302,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t</database>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
-                xml_escape(&schema.name),
+                xml_escape(component_name),
                 xml_escape(&datasource),
             );
         }
@@ -347,7 +390,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t</text>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
-                xml_escape(&schema.name),
+                xml_escape(component_name),
                 xml_escape(&options.delimiter.unwrap_or(',').to_string()),
                 options.has_header_row.unwrap_or(true),
                 xml_escape(&schema.name),
@@ -420,11 +463,53 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t</text>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
-                xml_escape(&schema.name),
+                xml_escape(component_name),
                 layout.record_delimiters(),
                 xml_escape(&layout.fill_char().to_string()),
                 layout.treat_empty_as_absent(),
                 xml_escape(&schema.name),
+            );
+        }
+        SideFormat::FlexText => {
+            let layout = options.flextext.as_ref().ok_or_else(|| {
+                MfdError::Unsupported(format!(
+                    "the {side_name} FlexText component has no embedded layout"
+                ))
+            })?;
+            let config_file = format!("{stem}-{sibling_suffix}.mft");
+            sibling = Some(GeneratedSibling {
+                path: dir.join(&config_file),
+                contents: flextext::render_config(layout, instance_path, side_name)?,
+            });
+            let flex_instance = instance_path
+                .map(|path| {
+                    format!(
+                        " {}=\"{}\"",
+                        side.instance_attr(),
+                        flextext_instance_escape(path)
+                    )
+                })
+                .unwrap_or_default();
+            let _ = write!(
+                out,
+                "\t\t\t\t<component name=\"{}\" library=\"text\" uid=\"{uid}\" kind=\"16\">\n\
+                 \t\t\t\t\t{header}{view}\n\
+                 \t\t\t\t\t<data>\n\
+                 \t\t\t\t\t\t<root>\n\
+                 \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
+                 \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 {}\
+                 \t\t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t\t</entry>\n\
+                 \t\t\t\t\t\t</root>\n\
+                 \t\t\t\t\t\t<text type=\"txt\" config=\"{}\"{flex_instance} encoding=\"52\" byteorder=\"1\" byteordermark=\"{}\"/>\n\
+                 \t\t\t\t\t</data>\n\
+                 \t\t\t\t</component>\n",
+                xml_escape(component_name),
+                ports.entries_xml(schema, attr, 9, force_root_port, target_branches),
+                xml_escape(&config_file),
+                u8::from(layout.write_bom()),
             );
         }
         SideFormat::Xlsx => {
@@ -514,12 +599,15 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t<excel{instance}/>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
-                xml_escape(&schema.name),
+                xml_escape(component_name),
                 xml_escape(sheet),
             );
         }
     }
-    Ok(RenderedSchemaComponent { xml: out, sibling })
+    Ok(RenderedSchemaComponent {
+        xml: out,
+        siblings: sibling.into_iter().collect(),
+    })
 }
 
 /// The flat scalar fields a csv component needs, or `None` when the schema
@@ -609,22 +697,82 @@ fn db_table_is_valid(table: &SchemaNode, nested: bool) -> bool {
         })
 }
 
-fn db_entries_xml(layout: &DbLayout<'_>, ports: &PortTree, attr: &str) -> Result<String, MfdError> {
+fn db_entries_xml(
+    layout: &DbLayout<'_>,
+    ports: &PortTree,
+    attr: &str,
+    branches: Option<&TargetBranches>,
+) -> Result<String, MfdError> {
     let mut output = String::new();
     match layout {
         DbLayout::Table(table) => {
-            render_db_table(table, &mut Vec::new(), ports, attr, 9, &mut output)?;
+            render_db_table(
+                table,
+                &mut Vec::new(),
+                ports,
+                attr,
+                9,
+                &mut output,
+                branches,
+                None,
+            )?;
         }
         DbLayout::Database(tables) => {
+            let mut occurrences = BTreeMap::<&str, usize>::new();
             for table in *tables {
                 let mut path = vec![table.name.clone()];
-                render_db_table(table, &mut path, ports, attr, 9, &mut output)?;
+                let index = *occurrences.entry(&table.name).or_default();
+                *occurrences.entry(&table.name).or_default() += 1;
+                let branch_count = branches.and_then(|branches| branches.count(&path));
+                if index > 0 && branch_count.is_none() {
+                    return Err(MfdError::Unsupported(format!(
+                        "database table `{}` is duplicated without a concatenated target scope",
+                        table.name
+                    )));
+                }
+                let branch_root = path.clone();
+                render_db_table(
+                    table,
+                    &mut path,
+                    ports,
+                    attr,
+                    9,
+                    &mut output,
+                    branches,
+                    branch_count.map(|_| (branch_root.as_slice(), index)),
+                )?;
+            }
+            for (name, rendered) in occurrences {
+                let root = vec![name.to_string()];
+                let Some(count) = branches.and_then(|branches| branches.count(&root)) else {
+                    continue;
+                };
+                if rendered >= count {
+                    continue;
+                }
+                let Some(table) = tables.iter().find(|table| table.name == name) else {
+                    continue;
+                };
+                for index in rendered..count {
+                    let mut path = root.clone();
+                    render_db_table(
+                        table,
+                        &mut path,
+                        ports,
+                        attr,
+                        9,
+                        &mut output,
+                        branches,
+                        Some((&root, index)),
+                    )?;
+                }
             }
         }
     }
     Ok(output)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_db_table(
     table: &SchemaNode,
     path: &mut Vec<String>,
@@ -632,12 +780,19 @@ fn render_db_table(
     attr: &str,
     indent: usize,
     output: &mut String,
+    branches: Option<&TargetBranches>,
+    branch: Option<(&[String], usize)>,
 ) -> Result<(), MfdError> {
     let pad = "\t".repeat(indent);
-    let key = ports.required_key_for_abs(path, "database table")?;
+    let key = branch_key(ports, branches, branch, path, "database table")?;
+    let clone = if branch.is_some_and(|(_, index)| index > 0) {
+        " clone=\"1\""
+    } else {
+        ""
+    };
     let _ = writeln!(
         output,
-        "{pad}<entry name=\"{}\" type=\"table\" {attr}=\"{key}\" expanded=\"1\">",
+        "{pad}<entry name=\"{}\" type=\"table\" {attr}=\"{key}\" expanded=\"1\"{clone}>",
         xml_escape(&table.name)
     );
     let SchemaKind::Group { children, .. } = &table.kind else {
@@ -649,7 +804,7 @@ fn render_db_table(
         path.push(child.name.clone());
         match child.kind {
             SchemaKind::Scalar { .. } => {
-                let key = ports.required_key_for_abs(path, "database column")?;
+                let key = branch_key(ports, branches, branch, path, "database column")?;
                 let _ = writeln!(
                     output,
                     "{pad}\t<entry name=\"{}\" {attr}=\"{key}\"/>",
@@ -657,7 +812,16 @@ fn render_db_table(
                 );
             }
             SchemaKind::Group { .. } => {
-                render_db_table(child, path, ports, attr, indent + 1, output)?;
+                render_db_table(
+                    child,
+                    path,
+                    ports,
+                    attr,
+                    indent + 1,
+                    output,
+                    branches,
+                    branch,
+                )?;
             }
         }
         path.pop();
@@ -781,6 +945,14 @@ pub(super) enum PortMatch {
 
 impl PortTree {
     pub(super) fn build(schema: &SchemaNode, keys: &mut KeyAlloc) -> Self {
+        Self::build_with_explicit_text(schema, keys, &BTreeSet::new())
+    }
+
+    pub(super) fn build_with_explicit_text(
+        schema: &SchemaNode,
+        keys: &mut KeyAlloc,
+        explicit_text: &BTreeSet<Vec<String>>,
+    ) -> Self {
         let mut by_abs = BTreeMap::new();
         // The document root itself: rendered as a port only by row/array
         // shaped components (a csv block, a json root object).
@@ -790,11 +962,12 @@ impl PortTree {
             path: &mut Vec<String>,
             keys: &mut KeyAlloc,
             by_abs: &mut BTreeMap<Vec<String>, u32>,
+            explicit_text: &BTreeSet<Vec<String>>,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children {
                     path.push(child.name.clone());
-                    if child.text {
+                    if child.text && !explicit_text.contains(path) {
                         let parent = &path[..path.len() - 1];
                         let key = by_abs[parent];
                         by_abs.insert(path.clone(), key);
@@ -802,12 +975,12 @@ impl PortTree {
                         continue;
                     }
                     by_abs.insert(path.clone(), keys.next());
-                    walk(child, path, keys, by_abs);
+                    walk(child, path, keys, by_abs, explicit_text);
                     path.pop();
                 }
             }
         }
-        walk(schema, &mut Vec::new(), keys, &mut by_abs);
+        walk(schema, &mut Vec::new(), keys, &mut by_abs, explicit_text);
         Self { by_abs }
     }
 
@@ -815,7 +988,7 @@ impl PortTree {
         self.by_abs.get(abs).copied()
     }
 
-    fn required_key_for_abs(&self, abs: &[String], kind: &str) -> Result<u32, MfdError> {
+    pub(super) fn required_key_for_abs(&self, abs: &[String], kind: &str) -> Result<u32, MfdError> {
         self.key_for_abs(abs).ok_or_else(|| {
             let path = if abs.is_empty() {
                 "<root>".to_string()
@@ -876,8 +1049,14 @@ impl PortTree {
             out: &mut String,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
-                for child in children.iter().filter(|child| !child.text) {
+                for child in children {
                     path.push(child.name.clone());
+                    if child.text
+                        && by_abs.get(path.as_slice()) == by_abs.get(&path[..path.len() - 1])
+                    {
+                        path.pop();
+                        continue;
+                    }
                     let count = active_branch
                         .is_none()
                         .then(|| target_branches.and_then(|branches| branches.count(path)))
@@ -964,7 +1143,12 @@ impl PortTree {
     /// carry `type="json-property"`, structural `object`/`array`/`item`
     /// entries carry the keys -- object/iteration keys on `object`, scalar
     /// keys on the type leaf.
-    fn json_entries_xml(&self, schema: &SchemaNode, attr: &str, indent: usize) -> String {
+    pub(super) fn json_entries_xml(
+        &self,
+        schema: &SchemaNode,
+        attr: &str,
+        indent: usize,
+    ) -> String {
         let mut out = String::new();
         if schema.repeating {
             let pad = "\t".repeat(indent);
@@ -1070,6 +1254,18 @@ fn valid_http_url(url: &str) -> bool {
         && !url
             .bytes()
             .any(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+}
+
+fn flextext_instance_escape(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') {
+            encoded.push(char::from(byte));
+        } else {
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
 }
 
 fn json_type_name(ty: ScalarType) -> &'static str {

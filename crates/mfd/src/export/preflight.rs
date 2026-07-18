@@ -1,44 +1,34 @@
-use mapping::{Project, Scope, ScopeConstruction};
+use ir::SchemaNode;
+use mapping::{FormatOptions, Project, Scope, ScopeConstruction};
 
 use crate::MfdError;
 
-use super::concatenation;
 use super::schema::side_format;
+use super::{concatenation, external_source, flextext, xbrl};
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
-    if !project.extra_targets.is_empty() {
+    if project.extra_targets.len() > 256 {
         return Err(MfdError::Unsupported(
-            "projects with additional targets cannot be exported to .mfd yet".to_string(),
+            "projects with more than 256 additional targets cannot be exported to .mfd".to_string(),
         ));
     }
-    concatenation::validate(
+    validate_target(
         project,
-        side_format(&project.target_path, &project.target_options),
+        &project.target,
+        &project.target_path,
+        &project.target_options,
+        &project.root,
+        false,
     )?;
-    if has_recursive_sequence(&project.root) {
-        return Err(MfdError::Unsupported(
-            "recursive scalar sequence export is not supported".to_string(),
-        ));
-    }
-    if has_scalar_construction(&project.root) {
-        return Err(MfdError::Unsupported(
-            "scalar scope construction export is not supported".to_string(),
-        ));
-    }
-    if has_recursive_filter(&project.root) {
-        return Err(MfdError::Unsupported(
-            "recursive-filter scope construction export is not supported".to_string(),
-        ));
-    }
-    if has_path_hierarchy(&project.root) {
-        return Err(MfdError::Unsupported(
-            "path-hierarchy scope construction export is not supported".to_string(),
-        ));
-    }
-    if has_adjacency_tree(&project.root) {
-        return Err(MfdError::Unsupported(
-            "adjacency-tree scope construction export is not supported".to_string(),
-        ));
+    for target in &project.extra_targets {
+        validate_target(
+            project,
+            &target.schema,
+            &target.path,
+            &target.options,
+            &target.root,
+            true,
+        )?;
     }
     if project
         .graph
@@ -50,52 +40,62 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             "runtime-named JSON source field export is not supported".to_string(),
         ));
     }
-    if project.source_options.xbrl.is_some()
-        || project.target_options.xbrl.is_some()
-        || project
-            .extra_sources
-            .iter()
-            .any(|source| source.options.xbrl.is_some())
-    {
-        return Err(MfdError::Unsupported(
-            "XBRL boundary export is not supported; remove XBRL format options before exporting this project"
-                .to_string(),
-        ));
+    xbrl::validate_side(
+        &project.source,
+        &project.source_options,
+        mapping::XbrlBoundaryMode::ExternalSource,
+        "source",
+    )?;
+    xbrl::validate_side(
+        &project.target,
+        &project.target_options,
+        mapping::XbrlBoundaryMode::ExternalTarget,
+        "target",
+    )?;
+    for target in &project.extra_targets {
+        xbrl::validate_side(
+            &target.schema,
+            &target.options,
+            mapping::XbrlBoundaryMode::ExternalTarget,
+            "additional target",
+        )?;
     }
-    if project.source_options.external_source.is_some()
-        || project.target_options.external_source.is_some()
-        || project
-            .extra_sources
-            .iter()
-            .any(|source| source.options.external_source.is_some())
+    external_source::validate(project)?;
+    flextext::validate_side(&project.source, &project.source_options, "source")?;
+    flextext::validate_side(&project.target, &project.target_options, "target")?;
+    for target in &project.extra_targets {
+        flextext::validate_side(&target.schema, &target.options, "additional target")?;
+    }
+    if project.source_options.protobuf.is_some()
+        || project.target_options.protobuf.is_some()
         || project
             .extra_targets
             .iter()
-            .any(|target| target.options.external_source.is_some())
+            .any(|target| target.options.protobuf.is_some())
     {
-        return Err(MfdError::Unsupported(
-            "captured external-response boundaries cannot be exported to .mfd".to_string(),
-        ));
-    }
-    if project.source_options.flextext.is_some() || project.target_options.flextext.is_some() {
-        return Err(MfdError::Unsupported(
-            "FlexText component export is not supported; remove FlexText format options before exporting this project"
-                .to_string(),
-        ));
-    }
-    if project.source_options.protobuf.is_some() || project.target_options.protobuf.is_some() {
         return Err(MfdError::Unsupported(
             "protobuf component export is not supported; remove protobuf format options before exporting this project"
                 .to_string(),
         ));
     }
-    if project.source_options.pdf.is_some() || project.target_options.pdf.is_some() {
+    if project.source_options.pdf.is_some()
+        || project.target_options.pdf.is_some()
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| target.options.pdf.is_some())
+    {
         return Err(MfdError::Unsupported(
             "PDF component export is not supported; remove PDF format options before exporting this project"
                 .to_string(),
         ));
     }
-    if project.target_options.http_get.is_some() {
+    if project.target_options.http_get.is_some()
+        || project
+            .extra_targets
+            .iter()
+            .any(|target| target.options.http_get.is_some())
+    {
         return Err(MfdError::Unsupported(
             "HTTP GET transport is valid only for mapping sources".to_string(),
         ));
@@ -106,7 +106,56 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                 .to_string(),
         ));
     }
-    validate_copy_current_source(project)
+    Ok(())
+}
+
+fn validate_target(
+    project: &Project,
+    schema: &SchemaNode,
+    path: &Option<String>,
+    options: &FormatOptions,
+    root: &Scope,
+    additional: bool,
+) -> Result<(), MfdError> {
+    if additional && options.lenient_segments {
+        return Err(MfdError::Unsupported(
+            "an additional EDI target cannot be exported because its configuration and dialect are not retained in the project"
+                .to_string(),
+        ));
+    }
+    concatenation::validate(root, schema, side_format(path, options))?;
+    for (present, message) in [
+        (
+            has_recursive_sequence(root),
+            "recursive scalar sequence export is not supported",
+        ),
+        (
+            has_scalar_construction(root),
+            "scalar scope construction export is not supported",
+        ),
+        (
+            has_recursive_filter(root),
+            "recursive-filter scope construction export is not supported",
+        ),
+        (
+            has_path_hierarchy(root),
+            "path-hierarchy scope construction export is not supported",
+        ),
+        (
+            has_adjacency_tree(root),
+            "adjacency-tree scope construction export is not supported",
+        ),
+    ] {
+        if present {
+            return Err(MfdError::Unsupported(message.to_string()));
+        }
+    }
+    if additional && has_join(root) {
+        return Err(MfdError::Unsupported(
+            "inner joins owned by additional targets cannot be exported to .mfd yet".to_string(),
+        ));
+    }
+    validate_copy_current_source(&project.source, schema, root)
 }
 
 fn has_recursive_sequence(scope: &Scope) -> bool {
@@ -135,6 +184,10 @@ fn has_path_hierarchy(scope: &Scope) -> bool {
 fn has_adjacency_tree(scope: &Scope) -> bool {
     matches!(&scope.construction, ScopeConstruction::AdjacencyTree { .. })
         || nested_scopes(scope).any(has_adjacency_tree)
+}
+
+fn has_join(scope: &Scope) -> bool {
+    scope.join().is_some() || nested_scopes(scope).any(has_join)
 }
 
 fn nested_scopes(scope: &Scope) -> impl Iterator<Item = &Scope> {
@@ -167,9 +220,13 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
             || project.source_options.xlsx_hierarchical.is_some())
 }
 
-fn validate_copy_current_source(project: &Project) -> Result<(), MfdError> {
-    if project.root.construction != ScopeConstruction::CopyCurrentSource {
-        if has_copy(&project.root) {
+fn validate_copy_current_source(
+    source: &SchemaNode,
+    target: &SchemaNode,
+    root: &Scope,
+) -> Result<(), MfdError> {
+    if root.construction != ScopeConstruction::CopyCurrentSource {
+        if has_copy(root) {
             return Err(MfdError::Unsupported(
                 "copy-current-source construction is exportable only at the document root"
                     .to_string(),
@@ -177,26 +234,26 @@ fn validate_copy_current_source(project: &Project) -> Result<(), MfdError> {
         }
         return Ok(());
     }
-    if project.root.source().is_some()
-        || project.root.sequence().is_some()
-        || project.root.join().is_some()
-        || project.root.filter.is_some()
-        || project.root.sort_by.is_some()
-        || project.root.take.is_some()
-        || project.root.group_by.is_some()
-        || project.root.group_starting_with.is_some()
-        || project.root.group_into_blocks.is_some()
-        || !project.root.bindings.is_empty()
-        || !project.root.children.is_empty()
-        || !project.root.dynamic_bindings.is_empty()
-        || !project.root.dynamic_children.is_empty()
-        || project.root.merge_dynamic_fields
+    if root.source().is_some()
+        || root.sequence().is_some()
+        || root.join().is_some()
+        || root.filter.is_some()
+        || root.sort_by.is_some()
+        || root.take.is_some()
+        || root.group_by.is_some()
+        || root.group_starting_with.is_some()
+        || root.group_into_blocks.is_some()
+        || !root.bindings.is_empty()
+        || !root.children.is_empty()
+        || !root.dynamic_bindings.is_empty()
+        || !root.dynamic_children.is_empty()
+        || root.merge_dynamic_fields
     {
         return Err(MfdError::Unsupported(
             "copy-current-source export requires an uncontrolled document-root copy".to_string(),
         ));
     }
-    if project.source != project.target {
+    if source != target {
         return Err(MfdError::Unsupported(
             "copy-current-source export requires identical source and target root schemas"
                 .to_string(),
@@ -212,6 +269,9 @@ fn has_copy(scope: &Scope) -> bool {
             .dynamic_children
             .iter()
             .any(|child| has_copy(&child.scope))
+        || scope
+            .concatenated()
+            .is_some_and(|segments| segments.iter().any(has_copy))
 }
 
 #[cfg(test)]

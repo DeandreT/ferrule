@@ -342,28 +342,44 @@ fn append_scope_controls(
             edges,
             warnings,
         );
-        match node_out_key.get(&take) {
-            Some(&count_src) => {
-                let in_nodes = keys.next();
-                let in_count = keys.next();
-                let out_nodes = keys.next();
-                *uid += 1;
-                let _ = write!(
-                    components,
-                    "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+        if scope.iteration_output == mapping::IterationOutput::First && chain.is_empty() {
+            let in_nodes = keys.next();
+            let out_nodes = keys.next();
+            *uid += 1;
+            let _ = write!(
+                components,
+                "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/></sources>\n\
+                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                 \t\t\t\t</component>\n"
+            );
+            edges.push((from, in_nodes));
+            from = out_nodes;
+        } else {
+            match node_out_key.get(&take) {
+                Some(&count_src) => {
+                    let in_nodes = keys.next();
+                    let in_count = keys.next();
+                    let out_nodes = keys.next();
+                    *uid += 1;
+                    let _ = write!(
+                        components,
+                        "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
                      \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_count}\"/></sources>\n\
                      \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
                      \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
                      \t\t\t\t</component>\n"
-                );
-                edges.push((from, in_nodes));
-                edges.push((count_src, in_count));
-                from = out_nodes;
+                    );
+                    edges.push((from, in_nodes));
+                    edges.push((count_src, in_count));
+                    from = out_nodes;
+                }
+                None => warnings.push(format!(
+                    "scope `{}` take count references an unexported node; item limit dropped",
+                    chain.join("/")
+                )),
             }
-            None => warnings.push(format!(
-                "scope `{}` take count references an unexported node; item limit dropped",
-                chain.join("/")
-            )),
         }
     }
     from
@@ -513,7 +529,7 @@ fn collect_scope_edges(
     }
     let mapped_plan = mapped_scope_plans.get(chain);
     let suppress_mapped_bindings =
-        suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all);
+        suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all());
     let anchor_len = anchor.len();
     if scope.construction == ScopeConstruction::CopyCurrentSource && scope.source().is_none() {
         match (
@@ -620,23 +636,26 @@ fn collect_scope_edges(
                 )),
             }
         }
-    } else if scope.source().is_some() && chain.is_empty() && !target_root_iterable {
+    } else if scope.source().is_some()
+        && chain.is_empty()
+        && !target_root_iterable
+        && scope.iteration_output != mapping::IterationOutput::First
+    {
         warnings.push(
             "the root scope iterates rows but the target document is not row/array \
              shaped in MapForce terms; the iteration wire is skipped"
                 .to_string(),
         );
     } else if let Some(source) = scope.source() {
-        let abs = mapped_plan.map_or_else(
-            || {
+        let abs = mapped_plan
+            .and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()))
+            .unwrap_or_else(|| {
                 let mut abs = anchor.clone();
                 abs.extend(source.iter().cloned());
                 abs
-            },
-            |plan| plan.source_collection.clone(),
-        );
+            });
         let structural_source = mapped_plan
-            .map(|plan| plan.source_group.as_slice())
+            .and_then(|plan| plan.source().map(|(_, group)| group))
             .unwrap_or(&abs);
         match (
             source_ports.key_for_abs(structural_source),
@@ -676,7 +695,7 @@ fn collect_scope_edges(
                     warnings,
                 );
                 edges.push((from, to));
-                if mapped_plan.is_some_and(|plan| plan.copy_all)
+                if mapped_plan.is_some_and(|plan| plan.copy_all())
                     || scope.construction == ScopeConstruction::CopyCurrentSource
                 {
                     structural_edges.insert((from, to));

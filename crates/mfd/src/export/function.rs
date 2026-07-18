@@ -67,6 +67,8 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "pad_string_right" => "pad-string-right",
         "substring_before" => "substring-before",
         "substring_after" => "substring-after",
+        "normalize_space" => "normalize-space",
+        "is_empty" => "empty",
         "get_folder" => "get-folder",
         "remove_folder" => "remove-folder",
         "resolve_filepath" => "resolve-filepath",
@@ -98,6 +100,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "right_trim"
         | "pad_string_left"
         | "pad_string_right"
+        | "is_empty"
         | "year_from_datetime"
         | "month_from_datetime"
         | "day_from_datetime"
@@ -109,5 +112,18 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "datetime_add" => "lang",
         "edifact_to_datetime" => "edifact",
         _ => "core",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{function_library, unmap_function_name};
+
+    #[test]
+    fn internal_whitespace_function_names_export_canonically() {
+        assert_eq!(unmap_function_name("normalize_space"), "normalize-space");
+        assert_eq!(function_library("normalize_space"), "core");
+        assert_eq!(unmap_function_name("is_empty"), "empty");
+        assert_eq!(function_library("is_empty"), "lang");
     }
 }
