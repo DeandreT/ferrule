@@ -1220,7 +1220,7 @@ fn invalid_xml_schema_roles_do_not_publish_export_artifacts() {
     project.source = SchemaNode::group(
         "Source",
         vec![
-            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::Int).text(),
             SchemaNode::scalar("Child", ScalarType::String),
         ],
     );

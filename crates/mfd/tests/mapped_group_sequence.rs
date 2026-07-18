@@ -436,8 +436,8 @@ fn filtered_group_port_emits_zero_one_or_many_non_repeating_xml_elements() {
     ));
     assert!(!non_xml_path.exists());
 
-    let mut lossy = imported.project.clone();
-    let selected = lossy
+    let mut computed = imported.project.clone();
+    let selected = computed
         .root
         .children
         .iter()
@@ -449,18 +449,31 @@ fn filtered_group_port_emits_zero_one_or_many_non_repeating_xml_elements() {
         .find(|binding| binding.target_field == "Name")
         .unwrap()
         .node;
-    lossy.graph.nodes.insert(
+    computed.graph.nodes.insert(
         name,
         Node::Const {
             value: Value::String("computed".into()),
         },
     );
-    let rejected = dir.0.join("lossy.mfd");
-    assert!(matches!(
-        mfd::export(&lossy, &rejected),
-        Err(mfd::MfdError::Unsupported(message)) if message.contains("mapped XML group sequences")
-    ));
-    assert!(!rejected.exists());
+    let computed_path = dir.0.join("computed.mfd");
+    assert!(mfd::export(&computed, &computed_path).unwrap().is_empty());
+    assert!(
+        !std::fs::read_to_string(&computed_path)
+            .unwrap()
+            .contains("dataconnection type=\"2\"")
+    );
+    let computed_roundtrip = mfd::import(&computed_path).unwrap();
+    assert!(
+        computed_roundtrip.warnings.is_empty(),
+        "{:?}",
+        computed_roundtrip.warnings
+    );
+    for (source, _) in &cases {
+        assert_eq!(
+            output_xml(&computed, source),
+            output_xml(&computed_roundtrip.project, source)
+        );
+    }
 
     let mut first = imported.project.clone();
     first
@@ -480,6 +493,161 @@ fn filtered_group_port_emits_zero_one_or_many_non_repeating_xml_elements() {
         std::fs::read_to_string(first_path).unwrap(),
         "existing design"
     );
+}
+
+#[test]
+fn computed_text_mapping_rejects_an_ambiguous_occurrence_port() {
+    let dir = TempDir::new();
+    let source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group("Row", vec![SchemaNode::scalar("Value", ScalarType::String)])
+                .repeating(),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::group(
+            "Item",
+            vec![SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text()],
+        )],
+    );
+    let project = Project {
+        source,
+        target,
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: mapping::FormatOptions::default(),
+        target_options: mapping::FormatOptions::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::Const {
+                    value: Value::String("computed".into()),
+                },
+            )]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Item".into(),
+                iteration: ScopeIteration::Source(vec!["Row".into()]),
+                iteration_output: IterationOutput::MappedSequence,
+                bindings: vec![Binding {
+                    target_field: ir::XML_TEXT_FIELD.into(),
+                    node: 0,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let path = dir.0.join("computed-text.mfd");
+    assert!(matches!(
+        mfd::export(&project, &path),
+        Err(mfd::MfdError::Unsupported(message)) if message.contains("mapped XML group sequences")
+    ));
+    assert!(!path.exists());
+}
+
+#[test]
+fn nested_mapped_sequence_resolves_an_outward_source_collection() {
+    let dir = TempDir::new();
+    let source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group("Order", vec![SchemaNode::scalar("Id", ScalarType::String)])
+                .repeating(),
+            SchemaNode::group(
+                "Catalog",
+                vec![
+                    SchemaNode::group(
+                        "Entry",
+                        vec![SchemaNode::scalar("Value", ScalarType::String)],
+                    )
+                    .repeating(),
+                ],
+            ),
+        ],
+    );
+    let target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::group(
+                "Container",
+                vec![
+                    SchemaNode::scalar("Id", ScalarType::String),
+                    SchemaNode::group(
+                        "Item",
+                        vec![SchemaNode::scalar("Value", ScalarType::String)],
+                    ),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    let project = Project {
+        source,
+        target,
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: mapping::FormatOptions::default(),
+        target_options: mapping::FormatOptions::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        frame: Some(vec!["Order".into()]),
+                        path: vec!["Id".into()],
+                    },
+                ),
+                (
+                    1,
+                    Node::Const {
+                        value: Value::String("computed".into()),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Container".into(),
+                iteration: ScopeIteration::Source(vec!["Order".into()]),
+                bindings: vec![Binding {
+                    target_field: "Id".into(),
+                    node: 0,
+                }],
+                children: vec![Scope {
+                    target_field: "Item".into(),
+                    iteration: ScopeIteration::Source(vec!["Catalog".into(), "Entry".into()]),
+                    iteration_output: IterationOutput::MappedSequence,
+                    bindings: vec![Binding {
+                        target_field: "Value".into(),
+                        node: 1,
+                    }],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    let source_xml = "<Source><Order><Id>A</Id></Order><Order><Id>B</Id></Order><Catalog><Entry><Value>one</Value></Entry><Entry><Value>two</Value></Entry></Catalog></Source>";
+    let expected = output_xml(&project, source_xml);
+    assert_eq!(expected.matches("<Container>").count(), 2);
+    assert_eq!(expected.matches("<Item>").count(), 4);
+    assert_eq!(expected.matches("<Value>computed</Value>").count(), 4);
+
+    let path = dir.0.join("outward-source.mfd");
+    assert!(mfd::export(&project, &path).unwrap().is_empty());
+    let imported = mfd::import(&path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(expected, output_xml(&imported.project, source_xml));
 }
 
 #[test]

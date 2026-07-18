@@ -70,7 +70,7 @@ fn imports_inline_simple_type_restriction_base() {
     )
     .unwrap();
     let schema = import(&path).unwrap();
-    std::fs::remove_file(path).unwrap();
+    std::fs::remove_file(&path).unwrap();
     assert!(matches!(
         schema.child("Quantity").map(|child| &child.kind),
         Some(SchemaKind::Scalar {
@@ -283,7 +283,7 @@ fn recursive_named_types_anchor_to_their_concrete_element() {
     .unwrap();
 
     let schema = import_root(&path, Some("Page")).unwrap();
-    std::fs::remove_file(path).unwrap();
+    std::fs::remove_file(&path).unwrap();
     let main = schema.child("MainSection").unwrap();
     let subsection = main.child("SubSection").unwrap();
     assert_eq!(subsection.recursive_ref.as_deref(), Some("MainSection"));
@@ -305,6 +305,26 @@ fn recursive_named_types_anchor_to_their_concrete_element() {
             .and_then(|values| values.first())
             .and_then(ir::Instance::as_scalar),
         Some(&ir::Value::String("Ferrule".into()))
+    );
+
+    let exported = export(&schema).unwrap();
+    assert!(
+        exported.contains(r#"<xs:complexType name="MainSectionType" mixed="true">"#),
+        "{exported}"
+    );
+    assert!(
+        exported.contains(r#"<xs:element name="SubSection" type="MainSectionType" minOccurs="0" maxOccurs="unbounded"/>"#),
+        "{exported}"
+    );
+    std::fs::write(&path, exported).unwrap();
+    let roundtripped = import_root(&path, Some("Page")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let roundtripped_main = roundtripped.child("MainSection").unwrap();
+    assert_eq!(
+        roundtripped_main
+            .child("SubSection")
+            .and_then(|node| node.recursive_ref.as_deref()),
+        Some("MainSection")
     );
 }
 
@@ -815,7 +835,7 @@ fn export_rejects_group_alternatives_instead_of_flattening_them() {
 }
 
 #[test]
-fn export_rejects_multiple_or_mixed_text_fields() {
+fn export_rejects_multiple_text_fields_and_preserves_string_mixed_content() {
     let multiple = SchemaNode::group(
         "Root",
         vec![
@@ -835,8 +855,18 @@ fn export_rejects_multiple_or_mixed_text_fields() {
             SchemaNode::scalar("Child", ScalarType::String),
         ],
     );
+    let xsd = export(&mixed).unwrap();
+    assert!(xsd.contains(r#"<xs:complexType mixed="true">"#));
+
+    let typed_mixed = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::Int).text(),
+            SchemaNode::scalar("Child", ScalarType::String),
+        ],
+    );
     assert!(matches!(
-        export(&mixed),
+        export(&typed_mixed),
         Err(XmlFormatError::MixedContent { .. })
     ));
 }

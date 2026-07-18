@@ -9,6 +9,7 @@ use crate::MfdError;
 use super::schema::{KeyAlloc, SideFormat};
 
 pub(super) struct ScopePlan {
+    pub(super) source_collection: Vec<String>,
     pub(super) source_group: Vec<String>,
     pub(super) copy_all: bool,
 }
@@ -45,7 +46,7 @@ pub(super) fn preflight_mapped_sequences(
         &project.source,
         &project.target,
         &mut Vec::new(),
-        &mut Vec::new(),
+        &[],
         &mut plans,
     ) {
         return Err(MfdError::Unsupported(
@@ -95,17 +96,28 @@ fn collect_scope_plans(
     source_schema: &SchemaNode,
     target_schema: &SchemaNode,
     chain: &mut Vec<String>,
-    anchor: &mut Vec<String>,
+    anchor: &[String],
     plans: &mut ScopePlans,
 ) -> bool {
-    let anchor_len = anchor.len();
-    if let Some(source) = scope.source() {
-        anchor.extend(source.iter().cloned());
-    }
+    let scope_anchor = scope.source().map_or_else(
+        || anchor.to_vec(),
+        |source| {
+            resolve_source_collection(source_schema, anchor, source).unwrap_or_else(|| {
+                let mut unresolved = anchor.to_vec();
+                unresolved.extend(source.iter().cloned());
+                unresolved
+            })
+        },
+    );
     if scope.iteration_output == IterationOutput::MappedSequence {
-        let Some(plan) =
-            mapped_scope_plan(scope, graph, source_schema, target_schema, chain, anchor)
-        else {
+        let Some(plan) = mapped_scope_plan(
+            scope,
+            graph,
+            source_schema,
+            target_schema,
+            chain,
+            &scope_anchor,
+        ) else {
             return false;
         };
         plans.insert(chain.clone(), plan);
@@ -118,14 +130,13 @@ fn collect_scope_plans(
             source_schema,
             target_schema,
             chain,
-            anchor,
+            &scope_anchor,
             plans,
         ) {
             return false;
         }
         chain.pop();
     }
-    anchor.truncate(anchor_len);
     true
 }
 
@@ -145,6 +156,39 @@ fn mapped_scope_plan(
         return None;
     }
 
+    let source_collection = schema_node_at(source_schema, collection)?;
+    if !matches!(source_collection.kind, SchemaKind::Group { .. }) {
+        return None;
+    }
+
+    if let Some(plan) = mapped_copy_plan(scope, graph, source_schema, target_group, collection) {
+        return Some(plan);
+    }
+
+    if scope
+        .bindings
+        .iter()
+        .any(|binding| binding.target_field == ir::XML_TEXT_FIELD)
+    {
+        // XML text and its owning group share one MapForce port. An ordinary
+        // occurrence wire plus a direct text wire would connect that input twice.
+        return None;
+    }
+
+    Some(ScopePlan {
+        source_collection: collection.to_vec(),
+        source_group: collection.to_vec(),
+        copy_all: false,
+    })
+}
+
+fn mapped_copy_plan(
+    scope: &Scope,
+    graph: &Graph,
+    source_schema: &SchemaNode,
+    target_group: &SchemaNode,
+    collection: &[String],
+) -> Option<ScopePlan> {
     let mut bindings = Vec::new();
     collect_mapped_bindings(scope, graph, &mut Vec::new(), &mut bindings)?;
     let first = bindings.first()?;
@@ -182,8 +226,32 @@ fn mapped_scope_plan(
         return None;
     }
     Some(ScopePlan {
+        source_collection: collection.to_vec(),
         source_group,
         copy_all,
+    })
+}
+
+fn resolve_source_collection(
+    schema: &SchemaNode,
+    anchor: &[String],
+    source: &[String],
+) -> Option<Vec<String>> {
+    if source.is_empty() {
+        return Some(anchor.to_vec());
+    }
+
+    let mut bases = vec![anchor.len()];
+    bases.extend((1..anchor.len()).rev().filter(|&length| {
+        schema_node_at(schema, &anchor[..length]).is_some_and(|node| node.repeating)
+    }));
+    bases.push(0);
+    bases.dedup();
+
+    bases.into_iter().find_map(|length| {
+        let mut candidate = anchor[..length].to_vec();
+        candidate.extend(source.iter().cloned());
+        schema_node_at(schema, &candidate).map(|_| candidate)
     })
 }
 

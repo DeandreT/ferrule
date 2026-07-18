@@ -10,6 +10,7 @@ use mapping::{NodeId, Project, ScopeConstruction};
 use crate::MfdError;
 
 mod artifact;
+mod concatenation;
 mod function;
 mod join;
 mod mapped_sequence;
@@ -60,6 +61,8 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut keys = KeyAlloc { next: 1 };
     let source_ports = PortTree::build(&project.source, &mut keys);
     let target_ports = PortTree::build(&project.target, &mut keys);
+    let target_branches =
+        concatenation::TargetBranches::build(&project.target, &project.root, &mut keys);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -132,6 +135,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         structural_edges: &mut structural_edges,
         mapped_scope_plans: &mapped_scope_plans,
         joins: &joins,
+        target_branches: &target_branches,
     });
     for (id, input) in &position_inputs {
         if !position_contexts.contains_key(id) {
@@ -195,7 +199,8 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         project.source_path.as_deref(),
         &project.source_options,
         path,
-        copy_document_root,
+        copy_document_root || concatenation::needs_source_root_port(&project.root),
+        None,
     )?;
     let target_component = render_schema_component(
         &project.target,
@@ -206,6 +211,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         &project.target_options,
         path,
         copy_document_root,
+        Some(&target_branches),
     )?;
     out.push_str(&source_component.xml);
     out.push_str(&target_component.xml);
