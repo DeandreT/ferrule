@@ -290,6 +290,14 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
     assert_eq!(value[1]["Stores"][0]["Preview"], "XL");
     assert_eq!(value[1]["Stores"][0]["Available"]["XL"], 1.0);
     assert!(value[1]["Stores"][0]["Available"].get("S").is_none());
+
+    let export_path = dir.0.join("nested-dynamic-export.mfd");
+    let warnings = mfd::export(&imported.project, &export_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let roundtrip = mfd::import(&export_path).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(output, engine::run(&roundtrip.project, &source).unwrap());
 }
 
 #[test]
@@ -386,15 +394,22 @@ fn group_starting_control_rejects_computed_json_properties() {
 }
 
 #[test]
-fn export_rejects_dynamic_mapping_without_publishing_artifacts() {
+fn grouped_dynamic_mapping_exports_reimports_and_executes() {
     let dir = TempDir::new("export");
     let project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
     let output = dir.0.join("dynamic-export.mfd");
 
-    assert!(matches!(
-        mfd::export(&project, &output),
-        Err(mfd::MfdError::Unsupported(message))
-            if message.contains("computed JSON property mappings")
-    ));
-    assert!(!output.exists());
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let design = std::fs::read_to_string(&output).unwrap();
+    assert!(design.contains("type=\"json-propertyname\" inpkey="));
+
+    let roundtrip = mfd::import(&output).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    assert_eq!(
+        engine::run(&project, &source).unwrap(),
+        engine::run(&roundtrip.project, &source).unwrap()
+    );
 }

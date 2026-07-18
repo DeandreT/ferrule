@@ -514,6 +514,7 @@ fn instance_type_name(instance: &Instance) -> &'static str {
         Instance::Group(_) => "object",
         Instance::Repeated(_) => "array",
         Instance::MappedSequence(_) => "mapped sequence",
+        Instance::DocumentSet(_) => "document set",
     }
 }
 

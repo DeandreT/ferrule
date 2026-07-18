@@ -28,6 +28,7 @@ impl Candidate {
             )
             .ok()?,
         );
+        source.options.json_document = true;
         let input_keys = component
             .descendants()
             .filter(|node| node.has_tag_name("entry"))

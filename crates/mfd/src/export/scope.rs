@@ -5,7 +5,7 @@ use mapping::{Graph, JoinId, Node, NodeId, Scope, ScopeConstruction, SortFilterO
 
 use super::concatenation::TargetBranches;
 use super::join::JoinExports;
-use super::mapped_sequence::ScopePlans;
+use super::mapped_sequence::{ScopePlan, ScopePlans};
 use super::position::connect_scope_position_roots;
 use super::schema::{KeyAlloc, PortTree};
 use super::source::SourceExports;
@@ -92,6 +92,7 @@ fn append_scope_controls(
     edges: &mut Vec<(u32, u32)>,
     warnings: &mut Vec<String>,
     mut from: u32,
+    absorbed_filter: Option<NodeId>,
 ) -> u32 {
     if scope.sort_filter_order == SortFilterOrder::SortThenFilter
         && let Some(sort_by) = scope.sort_by
@@ -139,7 +140,9 @@ fn append_scope_controls(
             )),
         }
     }
-    if let Some(filter) = scope.filter {
+    if let Some(filter) = scope.filter
+        && Some(filter) != absorbed_filter
+    {
         connect_scope_position_roots(
             [filter],
             source_stages,
@@ -564,7 +567,7 @@ fn collect_scope_edges(
         anchor.clone_from(&parent_anchor);
         return;
     }
-    let mapped_plan = mapped_scope_plans.get(chain);
+    let mapped_plan = mapped_scope_plans.get(chain, target_branch.map(|(_, index)| index));
     let suppress_mapped_bindings =
         suppress_mapped_bindings || mapped_plan.is_some_and(|plan| plan.copy_all());
     let anchor_len = anchor.len();
@@ -603,6 +606,7 @@ fn collect_scope_edges(
                 edges,
                 warnings,
                 from,
+                None,
             );
             connect_binding_positions(
                 scope,
@@ -617,6 +621,9 @@ fn collect_scope_edges(
                 warnings,
             );
             edges.push((from, to));
+            if joins.row_is_structural(join) {
+                structural_edges.insert((from, to));
+            }
         }
     } else if let Some(sequence) = scope.sequence() {
         if chain.is_empty() && !target_root_iterable {
@@ -652,6 +659,7 @@ fn collect_scope_edges(
                         edges,
                         warnings,
                         from,
+                        None,
                     );
                     connect_binding_positions(
                         scope,
@@ -703,8 +711,12 @@ fn collect_scope_edges(
         let structural_source = mapped_plan
             .and_then(|plan| plan.source().map(|(_, group)| group))
             .unwrap_or(&abs);
+        let structural_key = mapped_plan
+            .and_then(ScopePlan::alternative)
+            .and_then(|alternative| sources.key_for_alternative(structural_source, alternative))
+            .or_else(|| sources.key_for_abs(structural_source));
         match (
-            sources.key_for_abs(structural_source),
+            structural_key,
             target_key(target_ports, target_branches, target_branch, chain),
         ) {
             (Some(from), Some(to)) => {
@@ -737,6 +749,7 @@ fn collect_scope_edges(
                     edges,
                     warnings,
                     from,
+                    mapped_plan.and_then(ScopePlan::absorbed_filter),
                 );
                 connect_binding_positions(
                     scope,

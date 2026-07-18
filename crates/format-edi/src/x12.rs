@@ -24,15 +24,79 @@ const WRITE_OPTIONS: WriteOptions = WriteOptions {
     terminator: '~',
     release: None,
     repetition: Some('^'),
+    interchange_version: None,
 };
+
+/// Separators selected by an X12 mapping boundary.
+///
+/// `element`, `component`, `segment`, and (for 5010+) `repetition` are
+/// reflected by the ISA envelope. `release` is mapping metadata because it
+/// cannot be discovered from the interchange itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Separators {
+    pub element: char,
+    pub component: char,
+    pub segment: char,
+    pub repetition: Option<char>,
+    pub release: Option<char>,
+}
+
+impl Default for Separators {
+    fn default() -> Self {
+        Self {
+            element: WRITE_OPTIONS.element,
+            component: WRITE_OPTIONS.component,
+            segment: WRITE_OPTIONS.terminator,
+            repetition: WRITE_OPTIONS.repetition,
+            release: WRITE_OPTIONS.release,
+        }
+    }
+}
+
+impl Separators {
+    fn write_options(self) -> Result<WriteOptions, EdiFormatError> {
+        self.validate()?;
+        Ok(WriteOptions {
+            element: self.element,
+            component: self.component,
+            terminator: self.segment,
+            release: self.release,
+            repetition: self.repetition,
+            interchange_version: None,
+        })
+    }
+
+    fn validate(self) -> Result<(), EdiFormatError> {
+        let mut characters = vec![self.element, self.component, self.segment];
+        characters.extend(self.repetition);
+        characters.extend(self.release);
+        if characters.iter().any(|character| {
+            character.is_alphanumeric() || character.is_control() || character.is_whitespace()
+        }) {
+            return Err(EdiFormatError::InvalidX12Separators(
+                "separators must be non-alphanumeric, visible characters".to_string(),
+            ));
+        }
+        characters.sort_unstable();
+        if characters.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(EdiFormatError::InvalidX12Separators(
+                "separator characters must be distinct".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
 
 /// Splits raw X12 text into segments (elements split into repeats, repeats
 /// into components), discovering the separators from the ISA envelope.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
-    tokenize_with_component_separator(text).map(|(segments, _)| segments)
+    tokenize_with_component_separator(text, None).map(|(segments, _)| segments)
 }
 
-fn tokenize_with_component_separator(text: &str) -> Result<(Vec<Segment>, char), EdiFormatError> {
+fn tokenize_with_component_separator(
+    text: &str,
+    configured: Option<Separators>,
+) -> Result<(Vec<Segment>, char), EdiFormatError> {
     if text.len() > MAX_RUNTIME_INPUT_BYTES {
         return Err(EdiFormatError::NotX12("input exceeds the 64 MiB limit"));
     }
@@ -77,8 +141,41 @@ fn tokenize_with_component_separator(text: &str) -> Result<(Vec<Segment>, char),
         .next()
         .ok_or(EdiFormatError::NotX12("missing segment terminator"))?;
 
+    if let Some(configured) = configured {
+        configured.validate()?;
+        for (kind, expected, found) in [
+            ("element", configured.element, element_separator),
+            ("component", configured.component, component_separator),
+            ("segment", configured.segment, segment_terminator),
+        ] {
+            if expected != found {
+                return Err(EdiFormatError::X12SeparatorMismatch {
+                    kind,
+                    expected,
+                    found,
+                });
+            }
+        }
+        if let (Some(expected), Some(found)) = (configured.repetition, repetition_separator)
+            && expected != found
+        {
+            return Err(EdiFormatError::X12SeparatorMismatch {
+                kind: "repetition",
+                expected,
+                found,
+            });
+        }
+    }
+
     let mut segments = Vec::new();
-    for (index, raw) in text.split(segment_terminator).enumerate() {
+    for (index, raw) in split_unescaped(
+        text,
+        segment_terminator,
+        configured.and_then(|syntax| syntax.release),
+    )?
+    .into_iter()
+    .enumerate()
+    {
         // Only whitespace between a terminator and the next segment is
         // formatting. Spaces before the terminator belong to the final
         // element and must survive tokenization.
@@ -86,7 +183,12 @@ fn tokenize_with_component_separator(text: &str) -> Result<(Vec<Segment>, char),
         if raw.is_empty() {
             continue;
         }
-        let mut parts = raw.split(element_separator);
+        let mut parts = split_unescaped(
+            raw,
+            element_separator,
+            configured.and_then(|syntax| syntax.release),
+        )?
+        .into_iter();
         let id = parts.next().unwrap_or_default().to_string();
         // The ISA segment's own elements ARE the separator characters
         // (ISA11, ISA16), so splitting them would corrupt the envelope.
@@ -94,26 +196,81 @@ fn tokenize_with_component_separator(text: &str) -> Result<(Vec<Segment>, char),
         let elements = parts
             .map(|element| {
                 if is_isa {
-                    return vec![vec![element.to_string()]];
+                    return Ok(vec![vec![element.to_string()]]);
                 }
-                let repeats: Vec<&str> = match repetition_separator {
-                    Some(sep) => element.split(sep).collect(),
+                let repeats = match repetition_separator {
+                    Some(separator) => split_unescaped(
+                        element,
+                        separator,
+                        configured.and_then(|syntax| syntax.release),
+                    )?,
                     None => vec![element],
                 };
                 repeats
                     .into_iter()
                     .map(|repeat| {
-                        repeat
-                            .split(component_separator)
-                            .map(str::to_string)
-                            .collect()
+                        split_unescaped(
+                            repeat,
+                            component_separator,
+                            configured.and_then(|syntax| syntax.release),
+                        )?
+                        .into_iter()
+                        .map(|component| {
+                            decode_release(component, configured.and_then(|syntax| syntax.release))
+                        })
+                        .collect::<Result<Vec<_>, _>>()
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, EdiFormatError>>()
             })
-            .collect();
+            .collect::<Result<Vec<_>, EdiFormatError>>()?;
         segments.push(Segment { id, elements });
     }
     Ok((segments, component_separator))
+}
+
+fn split_unescaped(
+    text: &str,
+    separator: char,
+    release: Option<char>,
+) -> Result<Vec<&str>, EdiFormatError> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut characters = text.char_indices();
+    while let Some((index, character)) = characters.next() {
+        if Some(character) == release {
+            if characters.next().is_none() {
+                return Err(EdiFormatError::NotX12(
+                    "dangling release character at end of interchange",
+                ));
+            }
+        } else if character == separator {
+            parts.push(&text[start..index]);
+            start = index + separator.len_utf8();
+        }
+    }
+    parts.push(&text[start..]);
+    Ok(parts)
+}
+
+fn decode_release(text: &str, release: Option<char>) -> Result<String, EdiFormatError> {
+    let Some(release) = release else {
+        return Ok(text.to_string());
+    };
+    let mut decoded = String::with_capacity(text.len());
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        if character == release {
+            let Some(escaped) = characters.next() else {
+                return Err(EdiFormatError::NotX12(
+                    "dangling release character at end of interchange",
+                ));
+            };
+            decoded.push(escaped);
+        } else {
+            decoded.push(character);
+        }
+    }
+    Ok(decoded)
 }
 
 fn repetition_separator(isa11: &str, isa12: &str) -> Result<Option<char>, EdiFormatError> {
@@ -151,37 +308,110 @@ fn repetition_separator(isa11: &str, isa12: &str) -> Result<Option<char>, EdiFor
 /// `lenient`, segments the schema doesn't mention are skipped (bounded by
 /// the schema's own expectations) instead of erroring.
 pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance, EdiFormatError> {
+    read_with_separators(path, schema, lenient, None)
+}
+
+/// Reads X12 using retained boundary syntax. Declared separators are checked
+/// against the ISA envelope, and the optional release character is decoded.
+pub fn read_with_separators(
+    path: &Path,
+    schema: &SchemaNode,
+    lenient: bool,
+    separators: Option<Separators>,
+) -> Result<Instance, EdiFormatError> {
     let bytes = read_bounded_input(
         path,
         EdiFormatError::NotX12("input exceeds the 64 MiB limit"),
     )?;
     let text =
         std::str::from_utf8(&bytes).map_err(|_| EdiFormatError::NotX12("input is not UTF-8"))?;
-    let (segments, component_separator) = tokenize_with_component_separator(text)?;
+    let (segments, component_separator) = tokenize_with_component_separator(text, separators)?;
     read_segments(schema, &segments, component_separator, None, lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as X12.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
+    write_with_separators(path, schema, instance, Separators::default())
+}
+
+/// Writes X12 with separators retained by the owning mapping boundary.
+pub fn write_with_separators(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+) -> Result<(), EdiFormatError> {
+    write_with_syntax(path, schema, instance, separators, None)
+}
+
+/// Writes X12 with retained separators and an optional ISA12 version used
+/// when the mapping leaves that envelope field unbound.
+pub fn write_with_syntax(
+    path: &Path,
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+) -> Result<(), EdiFormatError> {
     validate_instance_shape(schema, instance)?;
-    let options = write_options(schema, instance)?;
+    let mut options = separators.write_options()?;
+    options.interchange_version = interchange_version
+        .map(parse_interchange_version)
+        .transpose()?;
+    let options = write_options(schema, instance, options)?;
     let out = write_segments(schema, instance, &options)?;
     std::fs::write(path, out)?;
     Ok(())
 }
 
-fn write_options(schema: &SchemaNode, instance: &Instance) -> Result<WriteOptions, EdiFormatError> {
-    let Some(isa_schema) = schema.child("ISA") else {
-        return Ok(WRITE_OPTIONS);
+fn parse_interchange_version(value: &str) -> Result<[u8; 5], EdiFormatError> {
+    value
+        .as_bytes()
+        .try_into()
+        .ok()
+        .filter(|value: &&[u8; 5]| value.iter().all(u8::is_ascii_digit))
+        .copied()
+        .ok_or_else(|| EdiFormatError::InvalidEnvelopeElement {
+            element: "ISA12".to_string(),
+            value: value.to_string(),
+            reason: "configured interchange version must contain exactly five ASCII digits",
+        })
+}
+
+fn write_options(
+    schema: &SchemaNode,
+    instance: &Instance,
+    mut options: WriteOptions,
+) -> Result<WriteOptions, EdiFormatError> {
+    let Some((isa_schema, isa_instance)) = find_schema_instance(schema, instance, "ISA") else {
+        return Ok(options);
     };
     let isa11_schema = isa_element(isa_schema, 10);
     let isa12_schema = isa_element(isa_schema, 11);
     let isa11 = isa11_schema
-        .and_then(|element| envelope_value(instance, element))
+        .and_then(|element| envelope_value(isa_instance, element))
         .unwrap_or_default();
-    let isa12 = isa12_schema
-        .and_then(|element| envelope_value(instance, element))
+    let instance_isa12 = isa12_schema
+        .and_then(|element| envelope_value(isa_instance, element))
         .unwrap_or_default();
+    let configured_isa12 = options
+        .interchange_version
+        .map(|value| String::from_utf8_lossy(&value).into_owned());
+    if !instance_isa12.is_empty()
+        && let Some(configured) = configured_isa12.as_deref()
+        && instance_isa12 != configured
+    {
+        return Err(EdiFormatError::InvalidEnvelopeElement {
+            element: isa12_schema.map_or_else(|| "ISA12".into(), |element| element.name.clone()),
+            value: instance_isa12.to_string(),
+            reason: "value does not match the configured interchange version",
+        });
+    }
+    let isa12 = if instance_isa12.is_empty() {
+        configured_isa12.as_deref().unwrap_or_default()
+    } else {
+        instance_isa12
+    };
 
     if isa12.len() != 5 || !isa12.bytes().all(|byte| byte.is_ascii_digit()) {
         return Err(EdiFormatError::InvalidEnvelopeElement {
@@ -191,7 +421,6 @@ fn write_options(schema: &SchemaNode, instance: &Instance) -> Result<WriteOption
         });
     }
 
-    let mut options = WRITE_OPTIONS;
     if isa12 < "00501" {
         if isa11.is_empty() || !isa11.chars().all(char::is_alphanumeric) {
             return Err(EdiFormatError::InvalidEnvelopeElement {
@@ -203,12 +432,17 @@ fn write_options(schema: &SchemaNode, instance: &Instance) -> Result<WriteOption
         }
         options.repetition = None;
     } else {
-        let expected = options.repetition.unwrap_or('^');
+        let expected = options.repetition.ok_or_else(|| {
+            EdiFormatError::InvalidX12Separators(
+                "5010 and newer envelopes require a repetition separator".to_string(),
+            )
+        })?;
         let mut characters = isa11.chars();
-        let valid_separator = characters
-            .next()
-            .is_some_and(|found| found == expected && !found.is_alphanumeric())
-            && characters.next().is_none();
+        let valid_separator = isa11.is_empty()
+            || (characters
+                .next()
+                .is_some_and(|found| found == expected && !found.is_alphanumeric())
+                && characters.next().is_none());
         if !valid_separator {
             return Err(EdiFormatError::EnvelopeSeparatorMismatch {
                 element: isa11_schema
@@ -221,6 +455,28 @@ fn write_options(schema: &SchemaNode, instance: &Instance) -> Result<WriteOption
     Ok(options)
 }
 
+fn find_schema_instance<'a>(
+    schema: &'a SchemaNode,
+    instance: &'a Instance,
+    name: &str,
+) -> Option<(&'a SchemaNode, &'a Instance)> {
+    let instance = match instance {
+        Instance::Repeated(items) => items.first()?,
+        other => other,
+    };
+    if schema.name == name {
+        return Some((schema, instance));
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return None;
+    };
+    children.iter().find_map(|child| {
+        instance
+            .field(&child.name)
+            .and_then(|child_instance| find_schema_instance(child, child_instance, name))
+    })
+}
+
 fn isa_element(schema: &SchemaNode, index: usize) -> Option<&SchemaNode> {
     match &schema.kind {
         SchemaKind::Group { children, .. } => children.get(index),
@@ -228,10 +484,8 @@ fn isa_element(schema: &SchemaNode, index: usize) -> Option<&SchemaNode> {
     }
 }
 
-fn envelope_value<'a>(instance: &'a Instance, schema: &'a SchemaNode) -> Option<&'a str> {
-    instance
-        .field("ISA")
-        .and_then(|isa| isa.field(&schema.name))
+fn envelope_value<'a>(isa: &'a Instance, schema: &'a SchemaNode) -> Option<&'a str> {
+    isa.field(&schema.name)
         .and_then(Instance::as_scalar)
         .and_then(|value| match value {
             Value::String(text) if !text.is_empty() => Some(text.as_str()),
@@ -285,6 +539,27 @@ SE*6*0001~
 GE*1*1~
 IEA*1*000000001~
 ";
+
+    const CUSTOM_PO_850: &str = "\
+ISA+00+          +00+          +ZZ+SENDERID       +ZZ+RECEIVERID     +260702+1200+!+00501+000000001+0+P+:'
+GS+PO+SENDERID+RECEIVERID+20260702+1200+1+X+005010'
+ST+850+0001'
+BEG+00+SA+PO12345'
+PO1+1+10+EA+7.99'
+PID+F+++HAMMER'
+PO1+2+4+EA+3.49'
+SE+6+0001'
+GE+1+1'
+IEA+1+000000001'
+";
+
+    const CUSTOM_SEPARATORS: Separators = Separators {
+        element: '+',
+        component: ':',
+        segment: '\'',
+        repetition: Some('!'),
+        release: Some('?'),
+    };
 
     /// ISA must declare all 16 elements if the schema is ever used to
     /// *write* X12 -- separator discovery on re-read depends on them.
@@ -374,6 +649,44 @@ IEA*1*000000001~
                 segment("IEA", &[]),
             ],
         )
+    }
+
+    #[test]
+    fn configured_separators_escape_data_and_complete_isa_syntax() {
+        let source = write_temp("custom_separators_src", CUSTOM_PO_850);
+        let mut instance =
+            read_with_separators(&source, &po_schema(), false, Some(CUSTOM_SEPARATORS)).unwrap();
+        std::fs::remove_file(source).unwrap();
+        set_scalar(&mut instance, "ISA", "11", "");
+        set_scalar(&mut instance, "ISA", "12", "");
+        set_scalar(&mut instance, "ISA", "16", "");
+        set_scalar(&mut instance, "BEG", "03", "A+B:C!D'E?F");
+
+        let output = std::env::temp_dir().join(format!(
+            "ferrule_x12_custom_separators_out_{}.edi",
+            std::process::id()
+        ));
+        write_with_syntax(
+            &output,
+            &po_schema(),
+            &instance,
+            CUSTOM_SEPARATORS,
+            Some("00501"),
+        )
+        .unwrap();
+        let encoded = std::fs::read_to_string(&output).unwrap();
+        assert!(encoded.starts_with("ISA+"));
+        assert!(encoded.contains("+!+00501+"));
+        assert!(encoded.contains("+P+:'"));
+        assert!(encoded.contains("BEG+00+SA+A?+B?:C?!D?'E??F'"));
+
+        let decoded =
+            read_with_separators(&output, &po_schema(), false, Some(CUSTOM_SEPARATORS)).unwrap();
+        std::fs::remove_file(output).unwrap();
+        set_scalar(&mut instance, "ISA", "11", "!");
+        set_scalar(&mut instance, "ISA", "12", "00501");
+        set_scalar(&mut instance, "ISA", "16", ":");
+        assert_eq!(decoded, instance);
     }
 
     #[test]

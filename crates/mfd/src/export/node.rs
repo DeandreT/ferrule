@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use mapping::{Node, NodeId, Project, RuntimeValue, SequenceExpr};
@@ -24,6 +24,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) components: &'a mut String,
     pub(super) edges: &'a mut Vec<(u32, u32)>,
     pub(super) warnings: &'a mut Vec<String>,
+    pub(super) blocked_nodes: &'a BTreeSet<NodeId>,
 }
 
 pub(super) struct RenderedNodes {
@@ -42,6 +43,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         components,
         edges,
         warnings,
+        blocked_nodes,
     } = args;
 
     let mut sequence_inputs = Vec::new();
@@ -53,47 +55,104 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         }
     }
     for sequence in sequences {
-        let first_key = keys.next();
-        let second_key = keys.next();
-        let out = keys.next();
-        node_out_key.insert(sequence.item(), out);
-        let name = match sequence {
+        match sequence {
             SequenceExpr::Tokenize {
                 input, delimiter, ..
             } => {
+                let first_key = keys.next();
+                let second_key = keys.next();
+                let out = keys.next();
+                node_out_key.insert(sequence.item(), out);
                 sequence_inputs.push((*input, first_key));
                 sequence_inputs.push((*delimiter, second_key));
-                "tokenize"
+                render_sequence_component(
+                    "tokenize",
+                    "core",
+                    &[first_key, second_key],
+                    out,
+                    None,
+                    uid,
+                    components,
+                );
             }
             SequenceExpr::TokenizeByLength { input, length, .. } => {
+                let first_key = keys.next();
+                let second_key = keys.next();
+                let out = keys.next();
+                node_out_key.insert(sequence.item(), out);
                 sequence_inputs.push((*input, first_key));
                 sequence_inputs.push((*length, second_key));
-                "tokenize-by-length"
+                render_sequence_component(
+                    "tokenize-by-length",
+                    "core",
+                    &[first_key, second_key],
+                    out,
+                    None,
+                    uid,
+                    components,
+                );
             }
             SequenceExpr::Generate { from, to, .. } => {
+                let first_key = keys.next();
+                let second_key = keys.next();
+                let out = keys.next();
+                node_out_key.insert(sequence.item(), out);
                 if let Some(from) = from {
                     sequence_inputs.push((*from, first_key));
                 }
                 sequence_inputs.push((*to, second_key));
-                "generate-sequence"
+                render_sequence_component(
+                    "generate-sequence",
+                    "core",
+                    &[first_key, second_key],
+                    out,
+                    None,
+                    uid,
+                    components,
+                );
             }
             SequenceExpr::RecursiveCollect {
-                prefix, separator, ..
+                collection,
+                children,
+                descent_value,
+                values,
+                value,
+                prefix,
+                separator,
+                ..
             } => {
-                sequence_inputs.push((*prefix, first_key));
-                sequence_inputs.push((*separator, second_key));
-                "recursive-collect"
+                let collection_key = keys.next();
+                let prefix_key = keys.next();
+                let separator_key = keys.next();
+                let out = keys.next();
+                node_out_key.insert(sequence.item(), out);
+                sequence_inputs.push((*prefix, prefix_key));
+                sequence_inputs.push((*separator, separator_key));
+                match sources.key_for_abs(collection) {
+                    Some(source) => edges.push((source, collection_key)),
+                    None => warnings.push(format!(
+                        "recursive-collect collection `{}` has no source port; connection skipped",
+                        collection.join("/")
+                    )),
+                }
+                let metadata = super::recursive::collect_metadata(
+                    collection,
+                    children,
+                    descent_value,
+                    values,
+                    value,
+                );
+                render_sequence_component(
+                    "recursive-collect",
+                    "ferrule",
+                    &[collection_key, prefix_key, separator_key],
+                    out,
+                    Some(&metadata),
+                    uid,
+                    components,
+                );
             }
-        };
-        *uid += 1;
-        let _ = write!(
-            components,
-            "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-             \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{first_key}\"/><datapoint pos=\"1\" key=\"{second_key}\"/></sources>\n\
-             \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
-             \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-             \t\t\t\t</component>\n"
-        );
+        }
     }
 
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
@@ -102,7 +161,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut position_inputs = BTreeMap::new();
     let mut sequence_exists_pins = Vec::new();
     for (&id, node) in &project.graph.nodes {
-        if joins.node_blocked(id) {
+        if joins.node_blocked(id) || blocked_nodes.contains(&id) {
             continue;
         }
         if auto_numbers.owns_internal(id) {
@@ -137,6 +196,19 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     )),
                 }
             }
+            Node::SourceDocumentPath => match sources.match_document_path() {
+                PortMatch::Unique(key) => {
+                    node_out_key.insert(id, key);
+                }
+                PortMatch::Missing => warnings.push(
+                    "source document path has no local XML file-set boundary; its connections are skipped"
+                        .into(),
+                ),
+                PortMatch::Ambiguous => warnings.push(
+                    "source document path matches multiple local XML file-set boundaries; its connections are skipped"
+                        .into(),
+                ),
+            },
             Node::Position { .. } => {
                 let (input, out) = render_component(keys, uid, components);
                 node_out_key.insert(id, out);
@@ -147,7 +219,48 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 node_out_key.insert(id, out);
                 position_inputs.insert(id, input);
             }
-            Node::JoinField { .. } | Node::JoinPosition { .. } | Node::JoinAggregate { .. } => {}
+            Node::JoinField { .. } | Node::JoinPosition { .. } => {}
+            Node::JoinAggregate {
+                function,
+                join,
+                plan,
+                expression,
+                arg,
+            } => {
+                if !joins.supports_plan(*join, plan) {
+                    continue;
+                }
+                let in_sequence = keys.next();
+                let out = keys.next();
+                let mut dynamic_inputs = Vec::new();
+                if expression.is_some() {
+                    dynamic_inputs.push(in_sequence);
+                } else if let Some(tuple) = joins.tuple_output(*join) {
+                    edges.push((tuple, in_sequence));
+                } else {
+                    continue;
+                }
+                let mut pins = format!("<datapoint/><datapoint pos=\"1\" key=\"{in_sequence}\"/>");
+                if arg.is_some() {
+                    let in_arg = keys.next();
+                    dynamic_inputs.push(in_arg);
+                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{in_arg}\"/>");
+                }
+                if !dynamic_inputs.is_empty() {
+                    fn_inputs.insert(id, dynamic_inputs);
+                }
+                node_out_key.insert(id, out);
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"{}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources>{pins}</sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n",
+                    aggregate_component_name(*function)
+                );
+            }
             Node::Lookup {
                 collection,
                 key,
@@ -519,6 +632,33 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn render_sequence_component(
+    name: &str,
+    library: &str,
+    inputs: &[u32],
+    output: u32,
+    metadata: Option<&str>,
+    uid: &mut u32,
+    components: &mut String,
+) {
+    let mut pins = String::new();
+    for (position, key) in inputs.iter().enumerate() {
+        let _ = write!(pins, "<datapoint pos=\"{position}\" key=\"{key}\"/>");
+    }
+    let data = metadata.map_or_else(String::new, |metadata| format!("<data>{metadata}</data>\n"));
+    *uid += 1;
+    let _ = write!(
+        components,
+        "\t\t\t\t<component name=\"{name}\" library=\"{library}\" uid=\"{uid}\" kind=\"5\">\n\
+         \t\t\t\t\t<sources>{pins}</sources>\n\
+         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n\
+         \t\t\t\t\t{data}\
+         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+         \t\t\t\t</component>\n"
+    );
+}
+
 fn connect_inputs(
     project: &Project,
     fn_inputs: &BTreeMap<NodeId, Vec<u32>>,
@@ -545,6 +685,9 @@ fn connect_inputs(
                 predicate, value, ..
             } => vec![*value, *predicate],
             Node::Aggregate {
+                expression, arg, ..
+            } => expression.iter().chain(arg).copied().collect(),
+            Node::JoinAggregate {
                 expression, arg, ..
             } => expression.iter().chain(arg).copied().collect(),
             Node::SequenceExists { .. } => continue,

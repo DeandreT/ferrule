@@ -14,15 +14,19 @@ mod artifact;
 mod auto_number;
 mod concatenation;
 mod database;
+mod dynamic_json;
+mod edi;
 mod external_source;
 mod flextext;
 mod function;
 mod join;
 mod mapped_sequence;
 mod node;
+mod pdf;
 mod position;
 mod preflight;
 mod protobuf;
+mod recursive;
 mod schema;
 mod scope;
 mod sequence;
@@ -30,6 +34,7 @@ mod source;
 #[cfg(test)]
 mod tests;
 mod xbrl;
+mod xlsx;
 
 use artifact::write_artifacts;
 use mapped_sequence::{ScopePlans, preflight_mapped_sequences, render_edge_metadata};
@@ -51,6 +56,7 @@ struct TargetExport<'a> {
     ports: PortTree,
     branches: concatenation::TargetBranches,
     mapped_scope_plans: ScopePlans,
+    dynamic_json: Option<dynamic_json::TargetPlan>,
     component_uid: u32,
     sibling_suffix: String,
     default_output: bool,
@@ -72,14 +78,34 @@ impl<'a> TargetExport<'a> {
         index: usize,
         keys: &mut KeyAlloc,
     ) -> Result<Self, MfdError> {
-        let format = side_format(spec.path, spec.options);
-        let mapped_scope_plans =
-            preflight_mapped_sequences(&project.graph, sources, spec.schema, spec.root, format)?;
+        let mut format = side_format(spec.path, spec.options);
+        let dynamic_json =
+            dynamic_json::TargetPlan::build(spec.schema, spec.root, sources, &project.graph, keys)?;
+        if dynamic_json.is_some() && format != SideFormat::Json {
+            if spec.path.is_some() || !dynamic_json::target_format_is_implicit(spec.options) {
+                return Err(MfdError::Unsupported(
+                    "computed JSON property targets conflict with a non-JSON format".into(),
+                ));
+            }
+            format = SideFormat::Json;
+        }
+        let mapped_scope_plans = match dynamic_json.as_ref() {
+            Some(plan) => plan.static_root().map_or_else(
+                || Ok(ScopePlans::default()),
+                |root| {
+                    preflight_mapped_sequences(&project.graph, sources, spec.schema, root, format)
+                },
+            )?,
+            None => {
+                preflight_mapped_sequences(&project.graph, sources, spec.schema, spec.root, format)?
+            }
+        };
         let component_uid = u32::try_from(sources.len() + index + 2).map_err(|_| {
             MfdError::Unsupported("too many target components for .mfd export".to_string())
         })?;
         let copy_document_root = spec.root.construction == ScopeConstruction::CopyCurrentSource;
         let force_root_port = copy_document_root
+            || recursive::requires_root_port(spec.root)
             || spec.root.iteration_output == IterationOutput::First
                 && spec.root.source() == Some(&[]);
         let mut explicit_text_ports = mapped_scope_plans.explicit_text_ports();
@@ -100,10 +126,12 @@ impl<'a> TargetExport<'a> {
             branches: concatenation::TargetBranches::build(
                 spec.schema,
                 spec.root,
+                &project.graph,
                 keys,
                 &explicit_text_ports,
             ),
             mapped_scope_plans,
+            dynamic_json,
             component_uid,
             sibling_suffix: if index == 0 {
                 "target".to_string()
@@ -124,6 +152,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     let mut keys = KeyAlloc { next: 1 };
     let sources = source::SourceExports::build(project, &mut keys)?;
+    let dynamic_sources = dynamic_json::SourcePlan::build(project, &sources, &mut keys)?;
     let mut targets = Vec::with_capacity(project.extra_targets.len() + 1);
     targets.push(TargetExport::build(
         project,
@@ -165,7 +194,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         .max(100);
     let joins = join::render(join::RenderJoinArgs {
         project,
-        source_ports: sources.primary_ports(),
+        sources: &sources,
         target_ports: &primary_target.ports,
         target_root_iterable: primary_target.root_iterable,
         keys: &mut keys,
@@ -175,6 +204,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         edges: &mut edges,
         warnings: &mut warnings,
     });
+    let mut blocked_nodes = dynamic_sources.owned_nodes().clone();
+    for target in &targets {
+        blocked_nodes.extend(target.mapped_scope_plans.absorbed_nodes());
+    }
+    recursive::seed_context_fields(project, &sources, &mut node_out_key);
     let node::RenderedNodes {
         position_inputs,
         sequence_exists_pins,
@@ -188,7 +222,15 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         components: &mut components,
         edges: &mut edges,
         warnings: &mut warnings,
+        blocked_nodes: &blocked_nodes,
     });
+    dynamic_sources.render_nodes(
+        &mut keys,
+        &mut uid,
+        &mut node_out_key,
+        &mut components,
+        &mut edges,
+    )?;
     for source in sources.iter() {
         let Some(node) = source.dynamic_path_node else {
             continue;
@@ -229,25 +271,51 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     }
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
-        scope::connect(scope::ConnectArgs {
-            scope: target.root,
-            sources: &sources,
-            target_ports: &target.ports,
-            target_root_iterable: target.root_iterable,
-            graph: &project.graph,
-            node_out_key: &node_out_key,
-            position_inputs: &position_inputs,
-            position_contexts: &mut position_contexts,
-            keys: &mut keys,
-            uid: &mut uid,
-            components: &mut scope_components,
-            edges: &mut edges,
-            warnings: &mut warnings,
-            structural_edges: &mut structural_edges,
-            mapped_scope_plans: &target.mapped_scope_plans,
-            joins: &joins,
-            target_branches: &target.branches,
-        });
+        let static_root = target
+            .dynamic_json
+            .as_ref()
+            .map_or(Some(target.root), dynamic_json::TargetPlan::static_root);
+        if let Some(static_root) = static_root {
+            recursive::render_construction(recursive::RenderArgs {
+                scope: static_root,
+                sources: &sources,
+                target_ports: &target.ports,
+                node_out_key: &node_out_key,
+                keys: &mut keys,
+                uid: &mut uid,
+                components: &mut scope_components,
+                edges: &mut edges,
+            })?;
+            scope::connect(scope::ConnectArgs {
+                scope: static_root,
+                sources: &sources,
+                target_ports: &target.ports,
+                target_root_iterable: target.root_iterable,
+                graph: &project.graph,
+                node_out_key: &node_out_key,
+                position_inputs: &position_inputs,
+                position_contexts: &mut position_contexts,
+                keys: &mut keys,
+                uid: &mut uid,
+                components: &mut scope_components,
+                edges: &mut edges,
+                warnings: &mut warnings,
+                structural_edges: &mut structural_edges,
+                mapped_scope_plans: &target.mapped_scope_plans,
+                joins: &joins,
+                target_branches: &target.branches,
+            });
+        }
+        if let Some(plan) = &target.dynamic_json {
+            plan.connect(dynamic_json::ConnectArgs {
+                sources: &sources,
+                node_out_key: &node_out_key,
+                keys: &mut keys,
+                uid: &mut uid,
+                components: &mut scope_components,
+                edges: &mut edges,
+            })?;
+        }
         if target_index > 0
             && position_contexts.iter().any(|(node, context)| {
                 context.is_none()
@@ -329,31 +397,65 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         {
             continue;
         }
-        let rendered = if source.options.external_source.is_some() {
-            let request_suffix = format!("{}-request", source.sibling_suffix);
-            let request_schema =
-                external_source::request_schema_artifact(source.options, path, &request_suffix);
-            let xml = external_source::render_http_post(external_source::RenderHttpPostArgs {
+        let rendered = if let Some(rendered) =
+            dynamic_json::render_source(dynamic_json::RenderSourceArgs {
+                plan: &dynamic_sources,
+                source_index,
+                schema: source.schema,
+                ports: &source.ports,
+                instance_path: source.path,
+                json_lines: source.options.json_lines,
+                mfd_path: path,
                 component_name: source.name,
-                response_schema: source.schema,
-                response_ports: &source.ports,
-                request_ports: source.request_ports.as_ref(),
-                request_schema_file: request_schema
+                component_uid: source.component_uid,
+                sibling_suffix: &source.sibling_suffix,
+            }) {
+            rendered
+        } else if source.options.external_source.is_some() {
+            if matches!(
+                source
+                    .options
+                    .external_source
                     .as_ref()
-                    .map(|artifact| artifact.file_name.as_str()),
-                options: source.options,
-                url: source.path,
-                uid: source.component_uid,
-            })?;
-            RenderedSchemaComponent {
-                xml,
-                siblings: request_schema
-                    .into_iter()
-                    .map(|artifact| schema::GeneratedSibling {
-                        path: artifact.path,
-                        contents: artifact.contents,
-                    })
-                    .collect(),
+                    .map(mapping::ExternalSourceOptions::origin),
+                Some(mapping::ExternalSourceOrigin::UserFunction { .. })
+            ) {
+                external_source::render_user_function(external_source::RenderUserFunctionArgs {
+                    component_name: source.name,
+                    schema: source.schema,
+                    ports: &source.ports,
+                    options: source.options,
+                    instance_path: source.path,
+                    mfd_path: path,
+                    sibling_suffix: &source.sibling_suffix,
+                    uid: source.component_uid,
+                })?
+            } else {
+                let request_suffix = format!("{}-request", source.sibling_suffix);
+                let request_schema =
+                    external_source::request_schema_artifact(source.options, path, &request_suffix);
+                let xml = external_source::render_http_post(external_source::RenderHttpPostArgs {
+                    component_name: source.name,
+                    response_schema: source.schema,
+                    response_ports: &source.ports,
+                    request_ports: source.request_ports.as_ref(),
+                    request_schema_file: request_schema
+                        .as_ref()
+                        .map(|artifact| artifact.file_name.as_str()),
+                    options: source.options,
+                    url: source.path,
+                    uid: source.component_uid,
+                })?;
+                RenderedSchemaComponent {
+                    xml,
+                    siblings: request_schema
+                        .into_iter()
+                        .map(|artifact| schema::GeneratedSibling {
+                            path: artifact.path,
+                            contents: artifact.contents,
+                        })
+                        .collect(),
+                }
             }
         } else {
             let root_key = source.ports.key_for_abs(&[]);
@@ -373,6 +475,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 &source.sibling_suffix,
                 false,
                 &used_ports,
+                source.document_path_port,
             )?
         };
         out.push_str(&rendered.xml);
@@ -407,23 +510,39 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         {
             continue;
         }
-        let rendered = render_schema_component(
-            target.schema,
-            target.format,
-            &target.ports,
-            Side::Target,
-            target.path,
-            target.options,
-            path,
-            target.force_root_port,
-            false,
-            Some(&target.branches),
-            target.component_name,
-            target.component_uid,
-            &target.sibling_suffix,
-            target.default_output,
-            &used_ports,
-        )?;
+        let rendered = if let Some(plan) = &target.dynamic_json {
+            dynamic_json::render_target(dynamic_json::RenderTargetArgs {
+                plan,
+                schema: target.schema,
+                ports: &target.ports,
+                instance_path: target.path,
+                json_lines: target.options.json_lines,
+                mfd_path: path,
+                component_name: target.component_name,
+                component_uid: target.component_uid,
+                sibling_suffix: &target.sibling_suffix,
+                default_output: target.default_output,
+            })
+        } else {
+            render_schema_component(
+                target.schema,
+                target.format,
+                &target.ports,
+                Side::Target,
+                target.path,
+                target.options,
+                path,
+                target.force_root_port,
+                false,
+                Some(&target.branches),
+                target.component_name,
+                target.component_uid,
+                &target.sibling_suffix,
+                target.default_output,
+                &used_ports,
+                None,
+            )?
+        };
         out.push_str(&rendered.xml);
         target_components.push(rendered);
     }

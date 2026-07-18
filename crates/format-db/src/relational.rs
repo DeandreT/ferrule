@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, ValueGeneration};
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, Transaction, params, params_from_iter};
 
@@ -205,10 +205,11 @@ pub(super) fn write_instance(
     for plan in &plans {
         delete_tables(&tx, plan, &mut deleted)?;
     }
+    let mut generated = BTreeMap::new();
     match instance {
         Instance::Repeated(rows) if schema.repeating && plans.len() == 1 => {
             for (index, row) in rows.iter().enumerate() {
-                insert_row(&tx, &plans[0], row, None, index)?;
+                insert_row(&tx, &plans[0], row, None, index, &mut generated)?;
             }
         }
         Instance::Group(fields) if !schema.repeating => {
@@ -220,7 +221,7 @@ pub(super) fn write_instance(
                     .and_then(Instance::as_repeated)
                     .ok_or_else(|| invalid_schema(table, "database table value must repeat"))?;
                 for (index, row) in rows.iter().enumerate() {
-                    insert_row(&tx, plan, row, None, index)?;
+                    insert_row(&tx, plan, row, None, index, &mut generated)?;
                 }
             }
         }
@@ -304,6 +305,7 @@ fn insert_row(
     instance: &Instance,
     inherited: Option<(&str, SqlValue)>,
     row_index: usize,
+    generated: &mut BTreeMap<(String, String), i64>,
 ) -> Result<InsertedRow, DbFormatError> {
     let Instance::Group(fields) = instance else {
         return Err(DbFormatError::RowShape {
@@ -325,7 +327,7 @@ fn insert_row(
         let value = match children {
             [] => SqlValue::Null,
             [child] => {
-                let inserted = insert_row(tx, &relation.child, child, None, 0)?;
+                let inserted = insert_row(tx, &relation.child, child, None, 0, generated)?;
                 inserted_key(tx, &relation.child, &relation.child_key, inserted.rowid)?
             }
             _ => {
@@ -341,6 +343,42 @@ fn insert_row(
     let mut columns = Vec::new();
     let mut values = Vec::new();
     for (name, ty) in &plan.scalar_columns {
+        if let Some((_, override_value)) = overrides
+            .iter()
+            .find(|(column, _)| name.eq_ignore_ascii_case(column))
+        {
+            columns.push((*name).to_string());
+            values.push(override_value.clone());
+            continue;
+        }
+        if generated_column(plan, name).is_some() {
+            let value = fields
+                .iter()
+                .find(|(field, _)| field == name)
+                .map(|(_, value)| value);
+            if value.is_some_and(|value| !matches!(value, Instance::Scalar(ir::Value::Null))) {
+                return Err(DbFormatError::GeneratedFieldSupplied {
+                    row: row_index,
+                    column: (*name).to_string(),
+                });
+            }
+            let key = (
+                plan.physical_table.to_ascii_lowercase(),
+                name.to_ascii_lowercase(),
+            );
+            let next = generated
+                .get(&key)
+                .copied()
+                .unwrap_or_default()
+                .checked_add(1)
+                .ok_or_else(|| DbFormatError::GeneratedValueOverflow {
+                    column: (*name).to_string(),
+                })?;
+            generated.insert(key, next);
+            columns.push((*name).to_string());
+            values.push(SqlValue::Integer(next));
+            continue;
+        }
         let value = fields
             .iter()
             .find(|(field, _)| field == name)
@@ -349,13 +387,7 @@ fn insert_row(
                 row: row_index,
                 column: (*name).to_string(),
             })?;
-        if let Some((_, override_value)) = overrides
-            .iter()
-            .find(|(column, _)| name.eq_ignore_ascii_case(column))
-        {
-            columns.push((*name).to_string());
-            values.push(override_value.clone());
-        } else if *value != ir::Value::Null {
+        if *value != ir::Value::Null {
             columns.push((*name).to_string());
             values.push(super::to_sql_value(name, *ty, value)?);
         }
@@ -405,6 +437,7 @@ fn insert_row(
                 child,
                 Some((&relation.child_key, parent_value.clone())),
                 index,
+                generated,
             )?;
         }
     }
@@ -590,7 +623,25 @@ fn columns_of_relational(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>,
     children
         .iter()
         .filter_map(|child| match &child.kind {
-            SchemaKind::Scalar { ty } if !child.repeating => Some(Ok((child.name.as_str(), *ty))),
+            SchemaKind::Scalar { ty } if !child.repeating => {
+                if child.value_generation.is_some()
+                    && !matches!(
+                        (&child.kind, child.value_generation),
+                        (
+                            SchemaKind::Scalar {
+                                ty: ScalarType::Int
+                            },
+                            Some(ValueGeneration::MaxNumber)
+                        )
+                    )
+                {
+                    Some(Err(DbFormatError::InvalidGeneratedColumn {
+                        column: child.name.clone(),
+                    }))
+                } else {
+                    Some(Ok((child.name.as_str(), *ty)))
+                }
+            }
             SchemaKind::Scalar { .. } => Some(Err(invalid_schema(
                 child,
                 "database scalar columns cannot repeat",
@@ -602,6 +653,12 @@ fn columns_of_relational(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>,
             ))),
         })
         .collect()
+}
+
+fn generated_column(plan: &TablePlan<'_>, name: &str) -> Option<ValueGeneration> {
+    plan.schema
+        .child(name)
+        .and_then(|column| column.value_generation)
 }
 
 fn selected_columns(

@@ -39,14 +39,6 @@ fn recursive_udf_filters_each_level_and_preserves_the_group_shape() {
     ));
     let issues = engine::validate(&imported.project);
     assert!(issues.is_empty(), "{issues:?}");
-    let export_path = dir.0.join("unsupported-export.mfd");
-    assert!(matches!(
-        mfd::export(&imported.project, &export_path),
-        Err(mfd::MfdError::Unsupported(reason))
-            if reason.contains("recursive-filter scope construction")
-    ));
-    assert!(!export_path.exists());
-
     let source = format_xml::from_str(
         r#"<Folder label="root"><Item code="root.keep"/><Item code="drop.txt"/><Folder label="child"><Item code="nested.keep"/><Item code="other"/></Folder></Folder>"#,
         &imported.project.source,
@@ -58,7 +50,20 @@ fn recursive_udf_filters_each_level_and_preserves_the_group_shape() {
     )
     .unwrap();
 
-    assert_eq!(engine::run(&imported.project, &source), Ok(expected));
+    let initial = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(initial, expected);
+
+    let export_path = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &export_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&export_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(matches!(
+        reimported.project.root.construction,
+        ScopeConstruction::RecursiveFilter { .. }
+    ));
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &source), Ok(initial));
 }
 
 fn schema() -> &'static str {

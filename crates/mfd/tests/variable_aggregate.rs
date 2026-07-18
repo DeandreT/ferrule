@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
 use mapping::{AggregateOp, Node};
@@ -7,11 +8,12 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new() -> Result<Self, std::io::Error> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!(
-            "ferrule_mfd_variable_aggregate_{}",
-            std::process::id()
+            "ferrule_mfd_variable_aggregate_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ));
-        let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path)?;
         Ok(Self(path))
     }
@@ -114,6 +116,280 @@ fn computed_aggregate_resolves_transparent_variable_fields()
     assert_eq!(
         output.field("Names").and_then(Instance::as_scalar),
         Some(&Value::String("Ada Lovelace | Grace Hopper".to_string()))
+    );
+    Ok(())
+}
+
+#[test]
+fn filtered_cross_source_aggregate_lowers_to_an_inner_join()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    std::fs::write(
+        dir.0.join("order.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Quantity" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("catalog.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Product" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Price" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("summary.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Summary"><xs:complexType><xs:sequence><xs:element name="Total" type="xs:double"/><xs:element name="Matches" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    let design = dir.0.join("filtered-join-aggregate.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="orders" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Order"><entry name="Line" outkey="1"><entry name="Sku" outkey="2"/><entry name="Quantity" outkey="3"/></entry></entry></entry></entry></root><document schema="order.xsd" inputinstance="order.xml" instanceroot="{}Order"/></data></component>
+  <component name="catalog" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Catalog"><entry name="Product" outkey="10"><entry name="Sku" outkey="11"/><entry name="Price" outkey="12"/></entry></entry></entry></entry></root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component>
+  <component name="multiply" library="core" kind="5"><sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources><targets><datapoint pos="0" key="22"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="23"/><datapoint pos="1" key="24"/></sources><targets><datapoint pos="0" key="25"/></targets></component>
+  <component name="matching-products" library="core" kind="3"><sources><datapoint pos="0" key="26"/><datapoint pos="1" key="27"/></sources><targets><datapoint pos="0" key="28"/><datapoint/></targets></component>
+  <component name="sum" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="29"/></sources><targets><datapoint pos="0" key="30"/></targets></component>
+  <component name="count" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="31"/></sources><targets><datapoint pos="0" key="32"/></targets></component>
+  <component name="summary" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Summary"><entry name="Total" inpkey="40"/><entry name="Matches" inpkey="41"/></entry></entry></entry></root><document schema="summary.xsd" outputinstance="summary.xml" instanceroot="{}Summary"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="3"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="12"><edges><edge vertexkey="21"/></edges></vertex>
+  <vertex vertexkey="2"><edges><edge vertexkey="23"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="24"/></edges></vertex>
+  <vertex vertexkey="22"><edges><edge vertexkey="26"/></edges></vertex><vertex vertexkey="25"><edges><edge vertexkey="27"/></edges></vertex>
+  <vertex vertexkey="28"><edges><edge vertexkey="29"/><edge vertexkey="31"/></edges></vertex>
+  <vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="32"><edges><edge vertexkey="41"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .filter(|node| matches!(node, Node::JoinAggregate { .. }))
+            .count(),
+        2
+    );
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let record = |fields: Vec<(&str, Value)>| {
+        Instance::Group(
+            fields
+                .into_iter()
+                .map(|(name, value)| (name.to_string(), Instance::Scalar(value)))
+                .collect(),
+        )
+    };
+    let source = Instance::Group(vec![(
+        "Line".into(),
+        Instance::Repeated(vec![
+            record(vec![
+                ("Sku", Value::String("A".into())),
+                ("Quantity", Value::Int(2)),
+            ]),
+            record(vec![
+                ("Sku", Value::String("B".into())),
+                ("Quantity", Value::Int(3)),
+            ]),
+        ]),
+    )]);
+    let catalog = Instance::Group(vec![(
+        "Product".into(),
+        Instance::Repeated(vec![
+            record(vec![
+                ("Sku", Value::String("A".into())),
+                ("Price", Value::Float(10.0)),
+            ]),
+            record(vec![
+                ("Sku", Value::String("B".into())),
+                ("Price", Value::Float(5.0)),
+            ]),
+            record(vec![
+                ("Sku", Value::String("C".into())),
+                ("Price", Value::Float(7.0)),
+            ]),
+        ]),
+    )]);
+    let catalog_name = imported.project.extra_sources[0].name.clone();
+    let output = engine::run_with_sources(
+        &imported.project,
+        &source,
+        vec![(catalog_name, catalog.clone())],
+    )?;
+    assert_eq!(
+        output.field("Total").and_then(Instance::as_scalar),
+        Some(&Value::Float(35.0))
+    );
+    assert_eq!(
+        output.field("Matches").and_then(Instance::as_scalar),
+        Some(&Value::Int(2))
+    );
+
+    let exported = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &exported)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported_xml = std::fs::read_to_string(&exported)?;
+    assert!(exported_xml.contains("kind=\"32\""));
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let catalog_name = reimported.project.extra_sources[0].name.clone();
+    let roundtrip =
+        engine::run_with_sources(&reimported.project, &source, vec![(catalog_name, catalog)])?;
+    assert_eq!(roundtrip, output);
+    Ok(())
+}
+
+#[test]
+fn filtered_cross_source_aggregate_does_not_broaden_an_enclosing_item_frame()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    std::fs::write(
+        dir.0.join("order.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Order"><xs:complexType><xs:sequence><xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Quantity" type="xs:int"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("catalog.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Catalog"><xs:complexType><xs:sequence><xs:element name="Product" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Price" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("results.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Results"><xs:complexType><xs:sequence><xs:element name="Row" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Sku" type="xs:string"/><xs:element name="Total" type="xs:double"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )?;
+    let design = dir.0.join("correlated-filtered-aggregate.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="orders" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Order"><entry name="Line" outkey="1"><entry name="Sku" outkey="2"/><entry name="Quantity" outkey="3"/></entry></entry></entry></entry></root><document schema="order.xsd" inputinstance="order.xml" instanceroot="{}Order"/></data></component>
+  <component name="catalog" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Catalog"><entry name="Product" outkey="10"><entry name="Sku" outkey="11"/><entry name="Price" outkey="12"/></entry></entry></entry></entry></root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component>
+  <component name="multiply" library="core" kind="5" growable="1"><sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources><targets><datapoint pos="0" key="22"/></targets></component>
+  <component name="equal" library="core" kind="5"><sources><datapoint pos="0" key="23"/><datapoint pos="1" key="24"/></sources><targets><datapoint pos="0" key="25"/></targets></component>
+  <component name="matching-products" library="core" kind="3"><sources><datapoint pos="0" key="26"/><datapoint pos="1" key="27"/></sources><targets><datapoint pos="0" key="28"/><datapoint/></targets></component>
+  <component name="sum" library="core" kind="5"><sources><datapoint/><datapoint pos="1" key="29"/></sources><targets><datapoint pos="0" key="30"/></targets></component>
+  <component name="results" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Results"><entry name="Row" inpkey="40"><entry name="Sku" inpkey="41"/><entry name="Total" inpkey="42"/></entry></entry></entry></entry></root><document schema="results.xsd" outputinstance="results.xml" instanceroot="{}Results"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="3"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="12"><edges><edge vertexkey="21"/></edges></vertex>
+  <vertex vertexkey="2"><edges><edge vertexkey="23"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="24"/></edges></vertex>
+  <vertex vertexkey="22"><edges><edge vertexkey="26"/></edges></vertex><vertex vertexkey="25"><edges><edge vertexkey="27"/></edges></vertex>
+  <vertex vertexkey="28"><edges><edge vertexkey="29"/></edges></vertex><vertex vertexkey="30"><edges><edge vertexkey="42"/></edges></vertex>
+  <vertex vertexkey="1"><edges><edge vertexkey="40"/></edges></vertex><vertex vertexkey="2"><edges><edge vertexkey="41"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&design)?;
+    assert!(
+        imported.warnings.iter().any(
+            |warning| warning.contains("aggregate `sum`") && warning.contains("empty-sequence")
+        ),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let record = |fields: Vec<(&str, Value)>| {
+        Instance::Group(
+            fields
+                .into_iter()
+                .map(|(name, value)| (name.to_string(), Instance::Scalar(value)))
+                .collect(),
+        )
+    };
+    let source = Instance::Group(vec![(
+        "Line".into(),
+        Instance::Repeated(vec![
+            record(vec![
+                ("Sku", Value::String("A".into())),
+                ("Quantity", Value::Int(2)),
+            ]),
+            record(vec![
+                ("Sku", Value::String("B".into())),
+                ("Quantity", Value::Int(3)),
+            ]),
+        ]),
+    )]);
+    let catalog = Instance::Group(vec![(
+        "Product".into(),
+        Instance::Repeated(vec![
+            record(vec![
+                ("Sku", Value::String("A".into())),
+                ("Price", Value::Float(10.0)),
+            ]),
+            record(vec![
+                ("Sku", Value::String("B".into())),
+                ("Price", Value::Float(5.0)),
+            ]),
+        ]),
+    )]);
+    let catalog_name = imported.project.extra_sources[0].name.clone();
+    let output =
+        engine::run_with_sources(&imported.project, &source, vec![(catalog_name, catalog)])?;
+    let rows = output
+        .field("Row")
+        .and_then(Instance::as_repeated)
+        .ok_or("output rows are absent")?;
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows.iter().all(|row| {
+            row.field("Total").and_then(Instance::as_scalar) == Some(&Value::Int(0))
+        })
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "needs the local MapForce sample set; informational only"]
+fn local_complete_po_keeps_root_join_aggregates_and_nested_article_values()
+-> Result<(), Box<dyn std::error::Error>> {
+    let samples =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let design = samples.join("CompletePO.mfd");
+    if !design.is_file() {
+        return Ok(());
+    }
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let source_path = imported
+        .project
+        .source_path
+        .as_deref()
+        .ok_or("CompletePO has no primary source path")?;
+    let source = format_xml::read(&samples.join(source_path), &imported.project.source)?;
+    let extras = imported
+        .project
+        .extra_sources
+        .iter()
+        .map(|extra| {
+            format_xml::read(&samples.join(&extra.path), &extra.schema)
+                .map(|instance| (extra.name.clone(), instance))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let output = engine::run_with_sources(&imported.project, &source, extras)?;
+    let line_items = output
+        .field("LineItems")
+        .and_then(|items| items.field("LineItem"))
+        .and_then(Instance::as_repeated)
+        .ok_or("CompletePO output has no line items")?;
+    let single_prices = line_items
+        .iter()
+        .flat_map(|line| {
+            line.field("Article")
+                .and_then(Instance::as_mapped_sequence)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(|article| article.field("SinglePrice"))
+        .filter_map(Instance::as_scalar)
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(single_prices.len(), 2);
+    assert_eq!(single_prices[0], Value::Float(34.0));
+    assert!(single_prices.iter().all(|value| *value != Value::Null));
+    assert!(
+        imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::JoinAggregate { .. }))
     );
     Ok(())
 }

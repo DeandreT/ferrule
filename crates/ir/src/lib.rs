@@ -40,6 +40,17 @@ pub enum ScalarType {
     Bool,
 }
 
+/// A value supplied by the owning format boundary instead of a graph binding.
+///
+/// This metadata is valid only on non-repeating scalar nodes. `MaxNumber`
+/// models database target columns whose value is the next positive integer in
+/// the replaced row set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValueGeneration {
+    MaxNumber,
+}
+
 /// A single scalar value flowing through a mapping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -145,6 +156,10 @@ pub struct SchemaNode {
     /// with an `HL` segment are told apart by `HL03` being `20` vs `22`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// The owning format generates this scalar when no mapped value is
+    /// supplied. Generated values and fixed literals are mutually exclusive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_generation: Option<ValueGeneration>,
     pub kind: SchemaKind,
 }
 
@@ -168,6 +183,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             nillable: bool,
             #[serde(default)]
             fixed: Option<String>,
+            #[serde(default)]
+            value_generation: Option<ValueGeneration>,
             kind: SchemaKind,
         }
 
@@ -180,11 +197,15 @@ impl<'de> Deserialize<'de> for SchemaNode {
             text: repr.text,
             nillable: repr.nillable,
             fixed: repr.fixed,
+            value_generation: repr.value_generation,
             kind: repr.kind,
         };
-        if !node.alternatives_are_valid() || !node.recursive_ref_is_valid() {
+        if !node.alternatives_are_valid()
+            || !node.recursive_ref_is_valid()
+            || !node.value_generation_is_valid()
+        {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid group alternatives or a malformed recursive reference",
+                "schema metadata contains invalid alternatives, recursion, or value generation",
             ));
         }
         Ok(node)
@@ -233,6 +254,7 @@ impl SchemaNode {
             text: false,
             nillable: false,
             fixed: None,
+            value_generation: None,
             kind: SchemaKind::Scalar { ty },
         }
     }
@@ -246,6 +268,7 @@ impl SchemaNode {
             text: false,
             nillable: false,
             fixed: None,
+            value_generation: None,
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
@@ -277,6 +300,21 @@ impl SchemaNode {
                     dynamic,
                 } if children.is_empty() && alternatives.is_empty() && dynamic.is_none()
             )
+    }
+
+    /// Checks that generated-value metadata remains scalar-only and cannot
+    /// conflict with repetition or a fixed literal.
+    pub fn value_generation_is_valid(&self) -> bool {
+        self.value_generation.is_none()
+            || (!self.repeating
+                && self.fixed.is_none()
+                && matches!(self.kind, SchemaKind::Scalar { .. }))
+    }
+
+    /// Marks a non-repeating scalar as format-generated.
+    pub fn with_value_generation(mut self, generation: ValueGeneration) -> Option<Self> {
+        self.value_generation = Some(generation);
+        self.value_generation_is_valid().then_some(self)
     }
 
     /// Declares a homogeneous computed-field value schema for this group.
@@ -434,15 +472,65 @@ pub enum Instance {
     Scalar(Value),
     Group(Vec<(String, Instance)>),
     Repeated(Vec<Instance>),
+    /// Ordered local source documents. Each member retains host-resolved
+    /// path metadata while its value remains an ordinary schema-shaped tree.
+    /// This variant is a source boundary and must not reach format writers.
+    DocumentSet(Vec<DocumentMember>),
     /// Mapping-produced XML element occurrences whose cardinality is
     /// independent of the schema node's declared repetition.
     MappedSequence(Vec<Instance>),
+}
+
+/// One validated member of an [`Instance::DocumentSet`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DocumentMember {
+    path: String,
+    value: Box<Instance>,
+}
+
+impl DocumentMember {
+    pub fn new(path: impl Into<String>, value: Instance) -> Option<Self> {
+        let path = path.into();
+        (!path.is_empty() && !matches!(value, Instance::DocumentSet(_))).then(|| Self {
+            path,
+            value: Box::new(value),
+        })
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn value(&self) -> &Instance {
+        &self.value
+    }
+}
+
+impl<'de> Deserialize<'de> for DocumentMember {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            path: String,
+            value: Instance,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.path, wire.value).ok_or_else(|| {
+            serde::de::Error::custom(
+                "document-set members require a non-empty path and a non-document-set value",
+            )
+        })
+    }
 }
 
 impl Instance {
     pub fn field(&self, name: &str) -> Option<&Instance> {
         match self {
             Instance::Group(fields) => fields.iter().find(|(n, _)| n == name).map(|(_, v)| v),
+            Instance::DocumentSet(documents) => documents.first()?.value().field(name),
             _ => None,
         }
     }
@@ -467,11 +555,40 @@ impl Instance {
             _ => None,
         }
     }
+
+    pub fn as_document_set(&self) -> Option<&[DocumentMember]> {
+        match self {
+            Instance::DocumentSet(documents) => Some(documents),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_members_validate_paths_and_keep_schema_traversal_transparent() {
+        let value = Instance::Group(vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String("first".into())),
+        )]);
+        assert!(DocumentMember::new("", value.clone()).is_none());
+        assert!(DocumentMember::new("nested.xml", Instance::DocumentSet(Vec::new())).is_none());
+        let Some(member) = DocumentMember::new("first.xml", value) else {
+            panic!("valid document member")
+        };
+        let documents = Instance::DocumentSet(vec![member]);
+
+        assert_eq!(
+            documents.field("Value").and_then(Instance::as_scalar),
+            Some(&Value::String("first".into()))
+        );
+        assert!(
+            serde_json::from_str::<DocumentMember>(r#"{"path":"","value":{"Group":[]}}"#).is_err()
+        );
+    }
 
     #[test]
     fn value_json_roundtrip_picks_the_right_variant() {
@@ -649,6 +766,31 @@ mod tests {
                 .repeating
         );
         assert!(schema.child("missing").is_none());
+    }
+
+    #[test]
+    fn value_generation_is_scalar_only_and_roundtrips() {
+        let generated = SchemaNode::scalar("Id", ScalarType::Int)
+            .with_value_generation(ValueGeneration::MaxNumber)
+            .unwrap();
+        let encoded = serde_json::to_string(&generated).unwrap();
+        assert!(encoded.contains(r#""value_generation":"max_number""#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            generated
+        );
+
+        assert!(
+            SchemaNode::group("Rows", Vec::new())
+                .with_value_generation(ValueGeneration::MaxNumber)
+                .is_none()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"Rows","value_generation":"max_number","kind":{"kind":"group","children":[]}}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

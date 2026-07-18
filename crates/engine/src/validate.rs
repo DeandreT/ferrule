@@ -491,6 +491,19 @@ fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue>) {
                     ));
                 }
             }
+            Node::SourceDocumentPath => {
+                if !project.source_options.local_xml_file_set
+                    && !project
+                        .extra_sources
+                        .iter()
+                        .any(|source| source.options.local_xml_file_set)
+                {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "source document path requires a local XML file-set boundary",
+                    ));
+                }
+            }
             Node::Position { collection } if !collection.is_empty() => {
                 validate_collection_path(project, &location, collection, "position", issues);
             }
@@ -861,6 +874,7 @@ pub(super) fn validate_collection_value(
 pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
     match node {
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

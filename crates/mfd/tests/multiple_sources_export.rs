@@ -152,6 +152,7 @@ fn dynamic_non_xml_source_rejects_without_replacing_the_design() -> Result<(), B
     secondary.schema =
         SchemaNode::group("Beta", vec![SchemaNode::scalar("Name", ScalarType::String)]);
     secondary.path.clear();
+    secondary.options.xml_document = false;
     secondary.options.delimiter = Some(',');
     secondary.options.has_header_row = Some(true);
     secondary.dynamic_path = Some(DynamicSourcePath {

@@ -1060,6 +1060,21 @@ impl ExprContext<'_> {
                 .map_or(Ok(Expr::Const(Value::Null)), |feed| {
                     self.expr_bounded(feed, active, budget, depth + 1)
                 }),
+            ScalarExpr::DefaultedParameter {
+                component_id,
+                default,
+            } => {
+                if let Some(feed) = output
+                    .inputs
+                    .get(component_id)
+                    .and_then(|input| self.edge_from.get(input))
+                    .copied()
+                {
+                    self.expr_bounded(feed, active, budget, depth + 1)
+                } else {
+                    self.nested_expr(output, default, active, budget, depth + 1)
+                }
+            }
             ScalarExpr::Const(value) => Ok(Expr::Const(value.clone())),
             ScalarExpr::Call { function, args } => Ok(Expr::Call {
                 function: function.clone(),

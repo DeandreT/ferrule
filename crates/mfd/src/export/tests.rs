@@ -1,7 +1,48 @@
 use ir::{ScalarType, SchemaNode};
+use mapping::FormatOptions;
 
 use super::function::{function_library, unmap_function_name};
-use super::schema::{KeyAlloc, PortMatch, PortTree};
+use super::schema::{KeyAlloc, PortMatch, PortTree, SideFormat, side_format};
+
+#[test]
+fn pathless_json_boundary_does_not_fall_back_to_xml() {
+    let options = FormatOptions {
+        json_document: true,
+        ..FormatOptions::default()
+    };
+
+    assert!(matches!(side_format(&None, &options), SideFormat::Json));
+}
+
+#[test]
+fn xml_boundary_overrides_a_neutral_instance_extension() {
+    let options = FormatOptions {
+        xml_document: true,
+        ..FormatOptions::default()
+    };
+
+    assert!(matches!(
+        side_format(&Some("captured.data".into()), &options),
+        SideFormat::Xml
+    ));
+}
+
+#[test]
+fn recognized_instance_extension_overrides_a_fallback_document_marker() {
+    let options = FormatOptions {
+        xml_document: true,
+        ..FormatOptions::default()
+    };
+
+    assert!(matches!(
+        side_format(&Some("records.jsonl".into()), &options),
+        SideFormat::Json
+    ));
+    assert!(matches!(
+        side_format(&Some("records.csv".into()), &options),
+        SideFormat::Csv
+    ));
+}
 
 #[test]
 fn canonical_scalar_names_export_as_mapforce_core_functions() {
