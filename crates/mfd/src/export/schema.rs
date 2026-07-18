@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::FormatOptions;
+use mapping::{FormatOptions, TabularBoundaryKind};
 
 use crate::MfdError;
 
@@ -58,6 +58,8 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
         Some("db") | Some("sqlite") | Some("sqlite3") => SideFormat::Db,
         _ if options.json_document || options.json_lines => SideFormat::Json,
         _ if options.xml_document => SideFormat::Xml,
+        _ if options.tabular_kind == Some(TabularBoundaryKind::Csv) => SideFormat::Csv,
+        _ if options.tabular_kind == Some(TabularBoundaryKind::Xlsx) => SideFormat::Xlsx,
         _ if options.delimiter.is_some() || options.has_header_row.is_some() => SideFormat::Csv,
         _ => SideFormat::Xml,
     }
@@ -122,7 +124,7 @@ pub(super) fn render_schema_component(
     sibling_suffix: &str,
     default_output: bool,
     used_ports: &BTreeSet<u32>,
-    source_document_path_port: Option<u32>,
+    file_instance_port: Option<u32>,
 ) -> Result<RenderedSchemaComponent, MfdError> {
     if options.protobuf.is_some() {
         return super::protobuf::render(super::protobuf::RenderArgs {
@@ -144,8 +146,8 @@ pub(super) fn render_schema_component(
         .and_then(|s| s.to_str())
         .unwrap_or("mapping");
     let dir = mfd_path.parent().unwrap_or(Path::new("."));
-    let file_instance_output = source_document_path_port
-        .map(|key| format!(" outkey=\"{key}\""))
+    let file_instance_output = file_instance_port
+        .map(|key| format!(" {}=\"{key}\"", side.port_attr()))
         .unwrap_or_default();
     let (side_name, header, view) = match side {
         Side::Source => ("source", "", "<view rbx=\"300\" rby=\"400\"/>"),
@@ -577,10 +579,28 @@ pub(super) fn render_schema_component(
             );
         }
         SideFormat::Xlsx => {
-            if options.xlsx_hierarchical.is_some() {
-                return Err(MfdError::Unsupported(format!(
-                    "the {side_name} XLSX layout is hierarchical; hierarchical XLSX export is not supported"
-                )));
+            if let Some(layout) = &options.xlsx_hierarchical {
+                if side != Side::Target {
+                    return Err(MfdError::Unsupported(format!(
+                        "the {side_name} XLSX layout is hierarchical and target-only"
+                    )));
+                }
+                let xml = super::xlsx::render_hierarchical(
+                    super::xlsx::RenderArgs {
+                        schema,
+                        ports,
+                        instance_path,
+                        options,
+                        component_name,
+                        component_uid,
+                    },
+                    layout,
+                    default_output,
+                )?;
+                return Ok(RenderedSchemaComponent {
+                    xml,
+                    siblings: Vec::new(),
+                });
             }
             let retained_source_layout = options.xlsx_grid.is_some()
                 || options.xlsx_composite.is_some()

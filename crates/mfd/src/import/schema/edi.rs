@@ -138,12 +138,25 @@ pub(super) fn read(
         ));
     }
 
+    let nested_instance = |role| {
+        root.descendants()
+            .find(|node| node.has_tag_name("file") && node.attribute("role") == Some(role))
+            .and_then(|node| node.attribute("name"))
+            .map(str::to_string)
+    };
+
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Edi,
         schema,
-        input_instance: text.attribute("inputinstance").map(str::to_string),
-        output_instance: text.attribute("outputinstance").map(str::to_string),
+        input_instance: text
+            .attribute("inputinstance")
+            .map(str::to_string)
+            .or_else(|| nested_instance("inputinstance")),
+        output_instance: text
+            .attribute("outputinstance")
+            .map(str::to_string)
+            .or_else(|| nested_instance("outputinstance")),
         options: FormatOptions {
             lenient_segments: true,
             edi_kind: match kind {
@@ -164,6 +177,7 @@ pub(super) fn read(
         is_source: out_count >= in_count,
         is_default_output: super::is_default_output(component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_keys,

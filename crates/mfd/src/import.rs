@@ -29,6 +29,7 @@ mod graph;
 mod group_projection;
 mod iteration;
 mod join;
+mod json_parser;
 mod json_serializer;
 mod materialize;
 mod output_parameter;
@@ -42,6 +43,8 @@ mod sequence_scalar;
 mod source;
 mod source_node_function;
 mod target_iteration;
+mod target_node_default;
+mod target_node_function;
 mod udf;
 
 use db_query::is_routine_catalog;
@@ -92,6 +95,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
     let mut json_serializers = Vec::new();
+    let mut json_parsers = Vec::new();
     let mut flextext_parsers = Vec::new();
     let mut output_parameters = Vec::new();
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
@@ -119,7 +123,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 "json" => match read_json_component(&component, path, &mut warnings) {
                     Some(sc) => match json_serializer::read(&component, &sc) {
                         Ok(Some(serializer)) => json_serializers.push(serializer),
-                        Ok(None) => schema_components.push(sc),
+                        Ok(None) => match json_parser::read(&component, &sc) {
+                            Ok(Some(parser)) => json_parsers.push(parser),
+                            Ok(None) => schema_components.push(sc),
+                            Err(reason) => warnings.push(format!(
+                                "JSON string parser `{name}` is unsupported: {reason}"
+                            )),
+                        },
                         Err(reason) => {
                             warnings.push(format!(
                                 "JSON string serializer `{name}` is unsupported: {reason}"
@@ -396,7 +406,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .collect();
     let targets: Vec<&SchemaComponent> = schema_components
         .iter()
-        .filter(|c| !c.is_variable && !c.is_source)
+        .filter(|component| component.is_target())
         .collect();
     let intermediates: Vec<&SchemaComponent> =
         schema_components.iter().filter(|c| c.is_variable).collect();
@@ -407,6 +417,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .copied()
         .find(|component| component.is_default_output);
     let target = default_target
+        .or_else(|| {
+            targets
+                .iter()
+                .copied()
+                .find(|component| !component.is_pass_through)
+        })
         .or_else(|| targets.first().copied())
         .ok_or_else(|| unsupported("target"))?;
     let connected_targets = std::iter::once(target)
@@ -439,10 +455,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         warned_sequence_uses: BTreeSet::new(),
         warned_scalar_filters: BTreeSet::new(),
         warned_join_controls: BTreeSet::new(),
-        warned_correlated_join_aggregates: BTreeSet::new(),
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         json_serializer_nodes: BTreeMap::new(),
+        json_parser_nodes: BTreeMap::new(),
         flextext_parser_nodes: BTreeMap::new(),
         source_node_function_nodes: BTreeMap::new(),
         claimed_dynamic_ports: BTreeSet::new(),
@@ -454,6 +470,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         source_names: &source_names,
         intermediates: &intermediates,
         json_serializers: &json_serializers,
+        json_parsers: &json_parsers,
         flextext_parsers: &flextext_parsers,
         source_node_functions: &source_node_functions,
         fn_components: &fn_components,
@@ -516,7 +533,15 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         }
     }
 
-    let root = build_target_scope(target, &edge_from, &copy_all_targets, &mut builder);
+    let root = build_target_scope(
+        &mapping_el,
+        target,
+        &structure,
+        path,
+        &edge_from,
+        &copy_all_targets,
+        &mut builder,
+    );
     let mut extra_targets = Vec::new();
     for (index, extra) in connected_targets.iter().copied().enumerate().skip(1) {
         extra_targets.push(NamedTarget {
@@ -524,10 +549,19 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             path: extra
                 .output_instance
                 .clone()
-                .or_else(|| extra.input_instance.clone()),
-            schema: extra.schema.clone(),
+                .or_else(|| extra.input_instance.clone())
+                .or_else(|| default_pass_through_output_path(extra)),
+            schema: runtime_target_schema(extra, &edge_from),
             options: extra.options.clone(),
-            root: build_target_scope(extra, &edge_from, &copy_all_targets, &mut builder),
+            root: build_target_scope(
+                &mapping_el,
+                extra,
+                &structure,
+                path,
+                &edge_from,
+                &copy_all_targets,
+                &mut builder,
+            ),
         });
     }
 
@@ -559,15 +593,22 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         });
     }
 
+    let source_path = primary
+        .input_instance
+        .clone()
+        .or_else(|| builder.static_component_input_path(primary));
+    let target_path = target
+        .output_instance
+        .clone()
+        .or_else(|| target.input_instance.clone())
+        .or_else(|| builder.static_target_document_path(target))
+        .or_else(|| default_pass_through_output_path(target));
     warnings.extend(builder.warnings);
     let mut project = Project {
         source: primary.schema.clone(),
-        target: target.schema.clone(),
-        source_path: primary.input_instance.clone(),
-        target_path: target
-            .output_instance
-            .clone()
-            .or_else(|| target.input_instance.clone()),
+        target: runtime_target_schema(target, &edge_from),
+        source_path,
+        target_path,
         source_options: primary.options.clone(),
         target_options: target.options.clone(),
         extra_sources,
@@ -577,6 +618,18 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     };
     project.prune_unreachable_nodes();
     Ok(Imported { project, warnings })
+}
+
+fn default_pass_through_output_path(component: &SchemaComponent) -> Option<String> {
+    if !component.is_pass_through {
+        return None;
+    }
+    let stem = if component.name.trim().is_empty() {
+        &component.schema.name
+    } else {
+        &component.name
+    };
+    Some(format!("{stem}.xml"))
 }
 
 /// Database components can expose read and write ports in one visual component.
@@ -595,6 +648,34 @@ fn refine_database_roles(components: &mut [SchemaComponent], edge_from: &BTreeMa
             component.is_source = false;
         }
     }
+}
+
+fn runtime_target_schema(
+    component: &SchemaComponent,
+    edge_from: &BTreeMap<u32, u32>,
+) -> ir::SchemaNode {
+    if component.format != ComponentFormat::Db || component.schema.repeating {
+        return component.schema.clone();
+    }
+    let selected_tables = component
+        .input_keys
+        .iter()
+        .filter(|key| edge_from.contains_key(key))
+        .filter_map(|key| component.ports.get(key).and_then(|path| path.first()))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    if selected_tables.is_empty() {
+        return component.schema.clone();
+    }
+    let mut schema = component.schema.clone();
+    let SchemaKind::Group { children, .. } = &mut schema.kind else {
+        return schema;
+    };
+    let mut retained = BTreeSet::new();
+    children.retain(|child| {
+        selected_tables.contains(&child.name) && retained.insert(child.name.clone())
+    });
+    schema
 }
 
 fn refine_copied_json_root_schemas(
@@ -631,7 +712,10 @@ fn refine_copied_json_root_schemas(
 }
 
 fn build_target_scope(
+    mapping: &roxmltree::Node<'_, '_>,
     target: &SchemaComponent,
+    structure: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
     edge_from: &BTreeMap<u32, u32>,
     copy_all_targets: &BTreeSet<u32>,
     builder: &mut GraphBuilder<'_>,
@@ -641,6 +725,31 @@ fn build_target_scope(
         root: Scope::default(),
         anchors: BTreeMap::new(),
     };
+    let dynamic_document = target
+        .ports
+        .iter()
+        .find(|(_, path)| path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT])
+        .and_then(|(input, _)| edge_from.get(input).copied())
+        .and_then(|feed| {
+            if builder.static_string_feed(feed).is_some() {
+                return None;
+            }
+            let driver = builder.computed_iteration_source(feed);
+            match driver {
+                Some(driver) => {
+                    builder.note_framed_prefixes(&driver);
+                    let context = builder.context_path(&driver);
+                    scopes.add_iteration(
+                        &[],
+                        &context,
+                        scope::IterationNodes::default(),
+                        mapping::IterationOutput::Repeated,
+                    );
+                    Some(feed)
+                }
+                None => None,
+            }
+        });
     let dynamic_target = dynamic_json::prepare_target(target, builder);
     let mut iterations = Vec::new();
     let mut bindings = Vec::new();
@@ -651,6 +760,9 @@ fn build_target_scope(
         let Some(&from) = edge_from.get(&inpkey) else {
             continue;
         };
+        if target_path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT] {
+            continue;
+        }
         if let Some((position, field)) = schema::split_singleton_port(target_path) {
             csv_singleton_bindings
                 .entry(position)
@@ -698,6 +810,7 @@ fn build_target_scope(
             )),
         }
     }
+    order_repeating_scalar_bindings(target, &mut bindings);
     udf::structured::prepare_target_frames(&structured_udf_targets, builder);
     generated_occurrence::infer(target, builder, &mut iterations);
     iterations.sort_by_key(|iteration| iteration.target_path.len());
@@ -720,6 +833,15 @@ fn build_target_scope(
         }
     }
     materialize::eager_functions(builder);
+    if let Some(feed) = dynamic_document
+        && let Some(node) = builder.binding_node_at_anchor(feed, &[], &[])
+        && !scopes.root.set_output_path(Some(node))
+    {
+        builder.warnings.push(
+            "target FileInstance path conflicts with another root iteration; dynamic document output was skipped"
+                .to_string(),
+        );
+    }
     let mut skipped_iteration_paths =
         target_iteration::build(iterations, target, &mut bindings, builder, &mut scopes);
     protobuf_target::infer_singleton_messages(
@@ -774,7 +896,45 @@ fn build_target_scope(
     }
     dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);
     compose_csv_target_rows(csv_singleton_bindings, builder, &mut scopes);
+    target_node_default::install(target, structure, builder, &mut scopes);
+    target_node_function::install(mapping, target, structure, mfd_path, builder, &mut scopes);
+    group_projection::install_optional_text_occurrences(target, builder, &mut scopes);
     scopes.root
+}
+
+/// Repeated scalar target entries can be cloned several times under the same
+/// schema path. Their numeric pin keys are identifiers, not an occurrence
+/// order, so preserve the entry-tree branch order recorded by the schema
+/// reader before the bindings are distributed into concatenated scopes.
+fn order_repeating_scalar_bindings(
+    target: &SchemaComponent,
+    bindings: &mut [(TargetLeaf, u32, u32)],
+) {
+    let mut positions = BTreeMap::<Vec<String>, Vec<usize>>::new();
+    for (index, (binding, _, _)) in bindings.iter().enumerate() {
+        let path = binding.path();
+        if schema_node_at(&target.schema, &path)
+            .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }))
+        {
+            positions.entry(path).or_default().push(index);
+        }
+    }
+    for positions in positions.values().filter(|positions| positions.len() > 1) {
+        let mut ordered = positions
+            .iter()
+            .map(|index| bindings[*index].clone())
+            .collect::<Vec<_>>();
+        ordered.sort_by(|left, right| {
+            target
+                .input_ancestors
+                .get(&left.2)
+                .cmp(&target.input_ancestors.get(&right.2))
+                .then_with(|| left.2.cmp(&right.2))
+        });
+        for (position, binding) in positions.iter().copied().zip(ordered) {
+            bindings[position] = binding;
+        }
+    }
 }
 
 fn compose_csv_target_rows(
@@ -820,6 +980,55 @@ fn compose_csv_target_rows(
 }
 
 impl GraphBuilder<'_> {
+    fn static_component_input_path(&self, component: &SchemaComponent) -> Option<String> {
+        component
+            .ports
+            .iter()
+            .find(|(_, path)| path.as_slice() == [schema::SOURCE_INPUT_DOCUMENT_PATH_PORT])
+            .and_then(|(input, _)| self.edge_from.get(input))
+            .and_then(|feed| self.static_string_feed(*feed))
+    }
+
+    fn static_target_document_path(&self, component: &SchemaComponent) -> Option<String> {
+        component
+            .ports
+            .iter()
+            .find(|(_, path)| path.as_slice() == [schema::TARGET_DOCUMENT_PATH_PORT])
+            .and_then(|(input, _)| self.edge_from.get(input))
+            .and_then(|feed| self.static_string_feed(*feed))
+    }
+
+    fn static_string_feed(&self, feed: u32) -> Option<String> {
+        self.static_string_feed_inner(feed, &mut BTreeSet::new())
+    }
+
+    fn static_string_feed_inner(&self, feed: u32, active: &mut BTreeSet<u32>) -> Option<String> {
+        if !active.insert(feed) || active.len() > 12 {
+            return None;
+        }
+        let component = self
+            .fn_by_output
+            .get(&feed)
+            .and_then(|index| self.fn_components.get(*index))?;
+        let result = if component.name == "constant" {
+            component.constant.as_ref().and_then(|(value, datatype)| {
+                matches!(datatype.as_str(), "" | "string" | "anyURI").then(|| value.clone())
+            })
+        } else if is_input_component(component) {
+            component
+                .inputs
+                .first()
+                .copied()
+                .flatten()
+                .and_then(|input| self.edge_from.get(&input))
+                .and_then(|upstream| self.static_string_feed_inner(*upstream, active))
+        } else {
+            None
+        };
+        active.remove(&feed);
+        result
+    }
+
     /// Resolves one output of a variable schema component to the connected
     /// input that supplies it plus the output's path below that input. An
     /// Connected descendant inputs are returned as scalar projections so a
@@ -881,6 +1090,13 @@ impl GraphBuilder<'_> {
             .any(|serializer| serializer.output == key)
         {
             return self.json_serializer_node(key);
+        }
+        if self
+            .json_parsers
+            .iter()
+            .any(|parser| parser.outputs.contains_key(&key))
+        {
+            return self.json_parser_node(key);
         }
         if self
             .flextext_parsers
@@ -953,9 +1169,25 @@ impl GraphBuilder<'_> {
             return self.value_node(feed);
         }
         if is_input_component(&self.fn_components[idx]) {
-            return match self.input_feed(idx, 0) {
+            let input = match self.input_feed(idx, 0) {
                 Some(feed) => self.value_node(feed),
                 None => Some(self.const_null()),
+            };
+            return match (input, self.fn_components[idx].input_type) {
+                (Some(input), Some(ir::ScalarType::Int | ir::ScalarType::Float)) => {
+                    Some(self.alloc(mapping::Node::Call {
+                        function: "to_number".to_string(),
+                        args: vec![input],
+                    }))
+                }
+                (Some(input), Some(ir::ScalarType::String)) => {
+                    Some(self.alloc(mapping::Node::Call {
+                        function: "string".to_string(),
+                        args: vec![input],
+                    }))
+                }
+                (None, _) => None,
+                (input, Some(ir::ScalarType::Bool) | None) => input,
             };
         }
         if is_distinct_values_component(&self.fn_components[idx]) {
@@ -1057,6 +1289,7 @@ impl GraphBuilder<'_> {
 
     fn resolve_iteration_feed_inner(&self, mut from: u32, depth: usize) -> IterationFeed {
         let mut filter_expr = None;
+        let mut filter_inverted = false;
         let mut udf_filters = Vec::new();
         let mut has_filter = false;
         let mut group_key = None;
@@ -1068,9 +1301,8 @@ impl GraphBuilder<'_> {
         let mut distinct_key = None;
         let mut order_issue = None;
         let mut nearest_control = None;
-        let mut sort_expr = None;
+        let mut sort_keys = Vec::new();
         let mut has_sort = false;
-        let mut sort_descending = false;
         let mut take_expr = None;
         let mut take_default_one = false;
         let mut projects_whole_group = false;
@@ -1080,6 +1312,13 @@ impl GraphBuilder<'_> {
         let mut db_where_component = None;
         // Chains are short; the bound only guards against odd cycles.
         for _ in 0..12 {
+            if let Some(input) = self.json_parser_input(from) {
+                let Some(feed) = self.edge_from.get(&input).copied() else {
+                    break;
+                };
+                from = feed;
+                continue;
+            }
             if let Some(input) = self.flextext_parser_input(from) {
                 let Some(feed) = self.edge_from.get(&input).copied() else {
                     break;
@@ -1094,7 +1333,10 @@ impl GraphBuilder<'_> {
                     && depth < 12
                 {
                     let control = self.resolve_iteration_feed_inner(control, depth + 1);
-                    filter_expr = filter_expr.or(control.filter_expr);
+                    if filter_expr.is_none() && control.filter_expr.is_some() {
+                        filter_expr = control.filter_expr;
+                        filter_inverted = control.filter_inverted;
+                    }
                     udf_filters.extend(control.udf_filters);
                     has_filter |= control.has_filter;
                     let grouping_count = [
@@ -1123,9 +1365,8 @@ impl GraphBuilder<'_> {
                     has_block_grouping |= control.has_block_grouping;
                     distinct_key = distinct_key.or(control.distinct_key);
                     order_issue = order_issue.or(control.order_issue);
-                    if sort_expr.is_none() && control.sort_expr.is_some() {
-                        sort_expr = control.sort_expr;
-                        sort_descending = control.sort_descending;
+                    if sort_keys.is_empty() && !control.sort_keys.is_empty() {
+                        sort_keys = control.sort_keys;
                     }
                     has_sort |= control.has_sort;
                     take_expr = take_expr.or(control.take_expr);
@@ -1164,11 +1405,19 @@ impl GraphBuilder<'_> {
                 from = nodes_feed;
             } else if is_filter_component(fc) {
                 has_filter = true;
+                let filter_output = from;
                 let Some(node_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
                 note_iteration_control_order(1, &mut nearest_control, &mut order_issue);
-                filter_expr = filter_expr.or_else(|| self.input_feed(idx, 1));
+                if filter_expr.is_none() {
+                    filter_expr = self.input_feed(idx, 1);
+                    filter_inverted = fc
+                        .output_pins
+                        .iter()
+                        .position(|pin| *pin == Some(filter_output))
+                        == Some(1);
+                }
                 from = node_feed;
             } else if is_sort_component(fc) {
                 has_sort = true;
@@ -1176,9 +1425,17 @@ impl GraphBuilder<'_> {
                     break;
                 };
                 note_iteration_control_order(0, &mut nearest_control, &mut order_issue);
-                if sort_expr.is_none() {
-                    sort_expr = self.input_feed(idx, 1);
-                    sort_descending = fc.sort_descending.unwrap_or(false);
+                if sort_keys.is_empty() {
+                    let directions = fc
+                        .sort_directions
+                        .as_deref()
+                        .filter(|directions| !directions.is_empty())
+                        .unwrap_or(&[false]);
+                    sort_keys = directions
+                        .iter()
+                        .enumerate()
+                        .map(|(index, descending)| (self.input_feed(idx, index + 1), *descending))
+                        .collect();
                 }
                 from = nodes_feed;
             } else if is_first_items_component(fc) {
@@ -1245,7 +1502,7 @@ impl GraphBuilder<'_> {
                 let Some(values_feed) = self.input_feed(idx, 0) else {
                     break;
                 };
-                let unsupported_downstream = if sort_expr.is_some() {
+                let unsupported_downstream = if !sort_keys.is_empty() {
                     Some("sort")
                 } else if filter_expr.is_some() {
                     Some("filter")
@@ -1323,6 +1580,7 @@ impl GraphBuilder<'_> {
             db_where_component,
             source_suffix,
             filter_expr,
+            filter_inverted,
             udf_filters,
             has_filter,
             group_key,
@@ -1333,9 +1591,8 @@ impl GraphBuilder<'_> {
             has_block_grouping,
             distinct_key,
             order_issue,
-            sort_expr,
+            sort_keys,
             has_sort,
-            sort_descending,
             sort_filter_order,
             take_expr,
             take_default_one,

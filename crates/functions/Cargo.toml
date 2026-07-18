@@ -8,6 +8,7 @@ description = "Built-in function library (string/math/date/aggregate/node-set) p
 
 [dependencies]
 ir = { workspace = true }
+format-json = { workspace = true }
 format-flextext = { workspace = true }
 mapping = { workspace = true }
 serde_json = { workspace = true }

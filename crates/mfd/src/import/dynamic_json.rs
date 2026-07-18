@@ -46,8 +46,15 @@ pub(super) fn prepare_target(
     component
         .dynamic_json
         .clone()
-        .and_then(|mut dynamic| match dynamic.validate_frames(builder) {
-            Ok(()) => {
+        .and_then(|mut dynamic| match dynamic.frame_sources(builder) {
+            Ok(frame_sources) => {
+                // Eager scalar-function materialization happens before the
+                // dynamic target is built. Establish every owning collection
+                // now so computed item values receive the same exact frame as
+                // direct source fields.
+                for source in &frame_sources {
+                    builder.note_framed_prefixes(source);
+                }
                 dynamic.claim_sequence_scopes(builder);
                 Some(dynamic)
             }
@@ -123,10 +130,6 @@ impl DynamicJsonTarget {
             }
         }
         Ok(sources)
-    }
-
-    fn validate_frames(&self, builder: &GraphBuilder<'_>) -> Result<(), String> {
-        self.frame_sources(builder).map(|_| ())
     }
 
     fn claim_sequence_scopes(&mut self, builder: &mut GraphBuilder<'_>) {
@@ -344,7 +347,7 @@ impl RootDynamicJsonTarget {
             || feed.has_block_grouping
             || feed.distinct_key.is_some()
             || feed.order_issue.is_some()
-            || feed.sort_expr.is_some()
+            || !feed.sort_keys.is_empty()
             || feed.take_expr.is_some()
             || feed.take_default_one
             || !allow_group && feed.group_key.is_some();
@@ -451,6 +454,7 @@ impl DynamicObjectTarget {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
         };

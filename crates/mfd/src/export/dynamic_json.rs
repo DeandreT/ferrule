@@ -126,6 +126,7 @@ pub(super) fn target_format_is_implicit(options: &FormatOptions) -> bool {
         && options.external_source.is_none()
         && !options.xml_document
         && !options.local_xml_file_set
+        && options.tabular_kind.is_none()
         && options.protobuf.is_none()
         && options.xbrl.is_none()
         && options.xlsx_sheet.is_none()
@@ -623,7 +624,7 @@ fn collect_nested_targets(
             ));
         }
         let driver = match &scope.iteration {
-            ScopeIteration::Source(_) => {
+            ScopeIteration::Source(_) | ScopeIteration::DynamicDocuments { .. } => {
                 if sources.schema_node_at(&current_anchor).is_none() {
                     return Err(dynamic_target_error(
                         "nested computed property source collection is missing",

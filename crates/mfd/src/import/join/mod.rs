@@ -10,7 +10,10 @@ use roxmltree::Node as XmlNode;
 use super::graph::GraphBuilder;
 use super::group_projection::TargetIteration;
 use super::iteration::split_at_innermost_repeating;
-use super::schema::{SchemaComponent, normalize_xml_entry_name, parse_u32, schema_node_at};
+use super::schema::{
+    SchemaComponent, collect_matching_scalar_paths, normalize_xml_entry_name, parse_u32,
+    schema_node_at,
+};
 use super::scope::ScopeBuilder;
 use super::source::SourcePath;
 
@@ -638,6 +641,56 @@ impl GraphBuilder<'_> {
             collection,
             path,
         }))
+    }
+
+    /// Materializes same-named scalar descendants for a structural join
+    /// branch. Unlike ordinary group projection, every field is pinned to the
+    /// exact joined tuple member and cannot fall back to another source frame.
+    pub(super) fn join_branch_fields(
+        &self,
+        port: u32,
+        target: &ir::SchemaNode,
+    ) -> Vec<(Vec<String>, MappingNode)> {
+        let Some(join) = self.joins.row_join(port) else {
+            return Vec::new();
+        };
+        let Some(resolved) = self.joins.joins.get(&join) else {
+            return Vec::new();
+        };
+        let Some(output) = resolved.planned.as_ref().and_then(|planned| {
+            planned
+                .outputs
+                .iter()
+                .find(|output| output.port == port && output.path.is_empty())
+        }) else {
+            // The tuple output is also a row output, but does not identify one
+            // structural source branch.
+            return Vec::new();
+        };
+        let Some(input) = resolved.inputs.get(output.input_index) else {
+            return Vec::new();
+        };
+        let Some(source) = self.sources.get(input.source) else {
+            return Vec::new();
+        };
+        let Some(source_group) = schema_node_at(&source.schema, &input.path) else {
+            return Vec::new();
+        };
+        let collection = output.collection.clone();
+        let mut paths = Vec::new();
+        collect_matching_scalar_paths(source_group, target, &mut Vec::new(), &mut paths);
+
+        paths
+            .into_iter()
+            .map(|path| {
+                let node = MappingNode::JoinField {
+                    join,
+                    collection: collection.clone(),
+                    path: path.clone(),
+                };
+                (path, node)
+            })
+            .collect()
     }
 
     pub(super) fn join_position_node(&self, component: usize) -> Option<MappingNode> {

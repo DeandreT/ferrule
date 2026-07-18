@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ir::{Instance, Value};
+use mapping::TabularBoundaryKind;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -86,6 +87,35 @@ fn exports_and_reimports_flat_xlsx_target() {
     assert_eq!(imported.project.target_options.xlsx_start_row, Some(4));
     assert_eq!(imported.project.target_options.xlsx_columns, vec![5, 2]);
     assert_eq!(imported.project.target_options.has_header_row, Some(false));
+    assert_eq!(
+        imported.project.target_options.tabular_kind,
+        Some(TabularBoundaryKind::Xlsx)
+    );
+}
+
+#[test]
+fn pathless_xlsx_identity_exports_and_reimports() {
+    let mut project = mfd::import(&fixture("people-to-csv.mfd")).unwrap().project;
+    project.target_path = None;
+    project.target_options.tabular_kind = Some(TabularBoundaryKind::Xlsx);
+    project.target_options.delimiter = None;
+    project.target_options.xlsx_sheet = Some("People".into());
+
+    let dir = TempDir::new("pathless-target");
+    let design = dir.0.join("mapping.mfd");
+    let warnings = mfd::export(&project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let text = std::fs::read_to_string(&design).unwrap();
+    assert!(text.contains("library=\"xlsx\""), "{text}");
+    assert!(!text.contains("outputinstance="), "{text}");
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(imported.project.target_path.is_none());
+    assert_eq!(
+        imported.project.target_options.tabular_kind,
+        Some(TabularBoundaryKind::Xlsx)
+    );
 }
 
 #[test]
@@ -118,6 +148,10 @@ fn exports_and_reimports_flat_xlsx_source() {
     assert_eq!(imported.project.source_options.xlsx_start_row, Some(2));
     assert_eq!(imported.project.source_options.xlsx_columns, vec![1, 3, 4]);
     assert_eq!(imported.project.source_options.has_header_row, Some(true));
+    assert_eq!(
+        imported.project.source_options.tabular_kind,
+        Some(TabularBoundaryKind::Xlsx)
+    );
 }
 
 #[test]
@@ -296,7 +330,7 @@ fn invalid_special_xlsx_layout_does_not_replace_existing_design() {
 }
 
 #[test]
-fn hierarchical_xlsx_layout_does_not_replace_existing_design() {
+fn exports_and_reimports_hierarchical_xlsx_target() {
     let mut project = mfd::import(&fixture("xlsx-hierarchical.mfd"))
         .unwrap()
         .project;
@@ -305,12 +339,48 @@ fn hierarchical_xlsx_layout_does_not_replace_existing_design() {
 
     let dir = TempDir::new("hierarchical");
     let design = dir.0.join("mapping.mfd");
+    let warnings = mfd::export(&project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let text = std::fs::read_to_string(&design).unwrap();
+    assert!(text.contains("<excel outputinstance=\"report.xlsx\"/>"));
+    assert!(text.contains("<range id=\"summary\" start=\"2\" count=\"1\"/>"));
+    assert!(text.contains("<range id=\"members\" offset=\"2\"/>"));
+    assert!(text.contains("<entry name=\"Worksheet\" inpkey="));
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.target, project.target);
+    assert_eq!(imported.project.target_path, project.target_path);
+    assert_eq!(imported.project.target_options, project.target_options);
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let source =
+        format_xml::read(&fixture("xlsx-hierarchical-source.xml"), &project.source).unwrap();
+    assert_same_execution(&project, &imported.project, &source);
+}
+
+#[test]
+fn invalid_hierarchical_xlsx_layout_does_not_replace_existing_design() {
+    let mut project = mfd::import(&fixture("xlsx-hierarchical.mfd"))
+        .unwrap()
+        .project;
+    project
+        .target_options
+        .xlsx_hierarchical
+        .as_mut()
+        .unwrap()
+        .ranges[0]
+        .count = None;
+
+    let dir = TempDir::new("hierarchical-atomic");
+    let design = dir.0.join("mapping.mfd");
     std::fs::write(&design, "existing design").unwrap();
 
     assert!(matches!(
         mfd::export(&project, &design),
         Err(mfd::MfdError::Unsupported(message))
-            if message.contains("hierarchical XLSX export is not supported")
+            if message.contains("row count of one")
     ));
     assert_eq!(std::fs::read_to_string(&design).unwrap(), "existing design");
     assert!(!dir.0.join("mapping-source.xsd").exists());

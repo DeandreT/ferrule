@@ -135,13 +135,18 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         Side::Source => "outkey",
         Side::Target => "inpkey",
     };
-    let instance_attr = match args.side {
+    let instance_role = match args.side {
         Side::Source => "inputinstance",
         Side::Target => "outputinstance",
     };
-    let instance = args
+    let instance_file = args
         .instance_path
-        .map(|path| format!(" {instance_attr}=\"{}\"", xml_escape(path)))
+        .map(|path| {
+            format!(
+                "\t\t\t\t\t\t\t\t<file role=\"{instance_role}\" name=\"{}\"/>\n",
+                xml_escape(path)
+            )
+        })
         .unwrap_or_default();
     let entries = entries_xml(args.schema, args.ports, attr, args.force_root_port)?;
     let retained_layout = retained_layout_xml(kind, args.options)?;
@@ -155,12 +160,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
          \t\t\t\t\t\t<root>\n\
          \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
          \t\t\t\t\t\t\t<entry name=\"FileInstance\" expanded=\"1\">\n\
+         {instance_file}\
          \t\t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
          {entries}\
          \t\t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<text type=\"edi\" kind=\"{}\"{instance}>{retained_settings}{retained_layout}\t\t\t\t\t\t</text>\n\
+         \t\t\t\t\t\t<text type=\"edi\" kind=\"{}\">{retained_settings}{retained_layout}\t\t\t\t\t\t</text>\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
         xml_escape(args.component_name),

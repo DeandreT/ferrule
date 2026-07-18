@@ -988,8 +988,9 @@ fn capture_text(
     let mut value = String::new();
     for (line_index, line) in lines.iter_mut().enumerate() {
         line.sort_by(|left, right| left.bounds.left.total_cmp(&right.bounds.left));
-        if line_index > 0 && !value.ends_with(char::is_whitespace) {
-            value.push(' ');
+        if line_index > 0 {
+            value.truncate(value.trim_end_matches(char::is_whitespace).len());
+            value.push('\n');
         }
         let mut previous_right = None;
         for glyph in line {

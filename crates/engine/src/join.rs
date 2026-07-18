@@ -6,7 +6,7 @@ use mapping::{AggregateOp, Graph, JoinConditions, JoinId, JoinPlan, JoinSource, 
 use super::EngineError;
 use super::aggregate::aggregate;
 use super::eval_expr::eval_expr;
-use super::resolve::field_scalar;
+use super::resolve::{context_for_position, field_scalar};
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
 
 pub(super) struct JoinedRow<'a> {
@@ -24,6 +24,7 @@ pub(super) struct AggregateInput<'a> {
 
 pub(super) fn execute<'a>(
     context: &[&'a Instance],
+    positions: &[PositionFrame],
     join: JoinId,
     plan: &JoinPlan,
 ) -> Result<Vec<JoinedRow<'a>>, EngineError> {
@@ -31,9 +32,9 @@ pub(super) fn execute<'a>(
     let Some(first) = sources.next() else {
         return Ok(Vec::new());
     };
-    let mut rows = source_rows(context, join, first);
+    let mut rows = source_rows(context, positions, join, first);
     for (right_source, conditions) in plan.stages() {
-        let right_rows = source_rows(context, join, right_source);
+        let right_rows = source_rows(context, positions, join, right_source);
         let mut joined = Vec::new();
         for left in rows {
             for right in &right_rows {
@@ -75,7 +76,7 @@ pub(super) fn eval_aggregate(
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let rows = execute(context, input.join, input.plan)?;
+    let rows = execute(context, positions, input.join, input.plan)?;
     let extensions = extensions(&rows);
     let mut values = Vec::with_capacity(extensions.len());
     for extension in &extensions {
@@ -106,10 +107,25 @@ pub(super) fn eval_aggregate(
 
 fn source_rows<'a>(
     context: &[&'a Instance],
+    positions: &[PositionFrame],
     join: JoinId,
     source: &JoinSource,
 ) -> Vec<JoinedRow<'a>> {
     let collection = source.collection();
+    if let Some((position_index, position)) =
+        positions.iter().enumerate().rev().find(|(_, position)| {
+            !position.grouped && position.join != Some(join) && position.collection == collection
+        })
+        && let Some(instance) = context_for_position(context, positions, position_index)
+    {
+        let mut correlated = position.clone();
+        correlated.join = Some(join);
+        correlated.join_position = None;
+        return vec![JoinedRow {
+            instances: vec![instance],
+            positions: vec![correlated],
+        }];
+    }
     context
         .iter()
         .rev()

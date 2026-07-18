@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaNode};
-use mapping::{FormatOptions, XlsxFixedCell, XlsxGridLayout, XlsxRow};
+use mapping::{FormatOptions, TabularBoundaryKind, XlsxFixedCell, XlsxGridLayout, XlsxRow};
 
 use super::{
     ComponentFormat, FixedCell, SchemaComponent, duplicate_fixed_cell, is_default_output,
@@ -137,6 +137,7 @@ pub(super) fn read(
         input_instance: excel.attribute("inputinstance").map(str::to_string),
         output_instance: excel.attribute("outputinstance").map(str::to_string),
         options: FormatOptions {
+            tabular_kind: Some(TabularBoundaryKind::Xlsx),
             xlsx_grid: Some(XlsxGridLayout {
                 sheet: candidate.sheet,
                 header_row: candidate.header.row,
@@ -154,6 +155,7 @@ pub(super) fn read(
         is_source: true,
         is_default_output: is_default_output(&component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),

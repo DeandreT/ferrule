@@ -23,6 +23,8 @@ pub(super) struct IterationFeed {
     pub(super) source_suffix: Vec<String>,
     /// The filter's boolean expression key, if a filter was crossed.
     pub(super) filter_expr: Option<u32>,
+    /// The sequence came from the filter's false output rather than its true output.
+    pub(super) filter_inverted: bool,
     /// Scalar UDF outputs that are exact nullable pass-through filters. Each
     /// key resolves to the UDF's per-item keep predicate at materialization.
     pub(super) udf_filters: Vec<u32>,
@@ -48,11 +50,11 @@ pub(super) struct IterationFeed {
     /// First unsupported operator ordering found while unwrapping the
     /// sequence. The scope still imports using ferrule's canonical order.
     pub(super) order_issue: Option<&'static str>,
-    /// A sort key expression and direction crossed by the sequence.
-    pub(super) sort_expr: Option<u32>,
+    /// Sort key expressions and directions crossed by the sequence, in
+    /// lexicographic priority order. Missing pins remain explicit.
+    pub(super) sort_keys: Vec<(Option<u32>, bool)>,
     /// Whether a sort was crossed, including one with a missing key.
     pub(super) has_sort: bool,
-    pub(super) sort_descending: bool,
     pub(super) sort_filter_order: SortFilterOrder,
     /// A connected first-items count, or an absent count meaning the
     /// function's default of one item.
