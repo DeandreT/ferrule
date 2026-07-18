@@ -1,6 +1,6 @@
 use super::*;
 use ir::SchemaNode;
-use mapping::{Binding, SequenceExpr};
+use mapping::{Binding, SequenceExpr, SequenceWindow};
 
 fn graph_from(nodes: Vec<(NodeId, Node)>) -> Graph {
     Graph {
@@ -213,7 +213,7 @@ fn evaluates_a_function_call_over_source_fields() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "full_name".into(),
@@ -327,7 +327,7 @@ fn missing_source_field_is_reported() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
@@ -374,7 +374,7 @@ fn self_referential_node_is_a_cycle() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
@@ -453,7 +453,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![
                 Binding {
@@ -587,7 +587,7 @@ fn if_only_evaluates_the_taken_branch() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
@@ -650,7 +650,7 @@ fn value_map_falls_back_to_default_on_miss() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
@@ -759,7 +759,7 @@ fn value_map_coerces_input_to_its_declared_type() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "out".into(),
@@ -831,7 +831,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![
                 Binding {
@@ -871,7 +871,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
 }
 
 #[test]
-fn scope_sort_and_take_are_stable_and_reindex_positions() {
+fn scope_sort_and_first_window_are_stable_and_reindex_positions() {
     let graph = graph_from(vec![
         (
             0,
@@ -914,7 +914,7 @@ fn scope_sort_and_take_are_stable_and_reindex_positions() {
             iteration: mapping::ScopeIteration::Source(Vec::new()),
             sort_by: Some(0),
             sort_descending: true,
-            take: Some(2),
+            windows: vec![SequenceWindow::First { count: 2 }],
             bindings: vec![
                 Binding {
                     target_field: "name".into(),
@@ -1192,7 +1192,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "City".into(),
@@ -1269,7 +1269,7 @@ fn lookup_joins_rows_against_an_extra_source() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![
                 Binding {
@@ -1491,7 +1491,7 @@ fn scope_source_path_reaches_an_extra_source() {
             sort_descending: false,
             sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
-            take: None,
+            windows: Vec::new(),
             iteration_output: Default::default(),
             bindings: vec![Binding {
                 target_field: "name".into(),

@@ -804,7 +804,7 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
     fx.root_scope.group_starting_with = Some(1);
     fx.root_scope.group_into_blocks = Some(1);
     fx.root_scope.sort_by = Some(1);
-    fx.root_scope.take = Some(1);
+    fx.root_scope.windows = vec![mapping::SequenceWindow::First { count: 1 }];
 
     assert_eq!(
         fx.viewer().references_to(1),
@@ -814,8 +814,8 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
             "root scope group block size",
             "root scope group-by key",
             "root scope group-starting predicate",
+            "root scope sequence window 1",
             "root scope sort key",
-            "root scope take count",
         ]
     );
 }
@@ -848,7 +848,7 @@ fn dynamic_scope_references_are_protected_recursively() {
     computed_scope.dynamic_children.push(mapping::DynamicChild {
         key: 8,
         scope: Scope {
-            take: Some(9),
+            windows: vec![mapping::SequenceWindow::Last { count: 9 }],
             ..Scope::default()
         },
     });
@@ -892,7 +892,7 @@ fn dynamic_scope_references_are_protected_recursively() {
     );
     assert_eq!(
         viewer.references_to(9),
-        vec!["scope <dynamic child 1>/<dynamic child 1> take count"]
+        vec!["scope <dynamic child 1>/<dynamic child 1> sequence window 1"]
     );
     assert!(!viewer.remove_graph_node(1, protected, &mut snarl));
     assert!(viewer.graph.nodes.contains_key(&1));

@@ -6,6 +6,7 @@ use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     AggregateOp, Binding, Graph, IterationOutput, JoinConditions, JoinId, JoinKey, JoinPlan,
     JoinSource, JoinSourceCardinality, NamedSource, Node, Project, Scope, ScopeIteration,
+    SequenceWindow,
 };
 
 struct TempDir(PathBuf);
@@ -149,7 +150,7 @@ fn two_way_project() -> Project {
             children: vec![Scope {
                 target_field: "Row".into(),
                 iteration: ScopeIteration::InnerJoin { id: join, plan },
-                take: Some(3),
+                windows: vec![SequenceWindow::First { count: 3 }],
                 bindings: vec![
                     Binding {
                         target_field: "Label".into(),
@@ -205,7 +206,7 @@ fn import_exported(path: &Path) -> mfd::Imported {
 }
 
 #[test]
-fn exports_and_round_trips_composite_join_fields_position_and_take() {
+fn exports_and_round_trips_composite_join_fields_position_and_window() {
     let dir = TempDir::new("two-way");
     let output = dir.path("mapping.mfd");
     let warnings = mfd::export(&two_way_project(), &output).unwrap();
@@ -378,9 +379,230 @@ fn unsupported_join_plan_is_not_partially_exported() {
     assert!(!xml.contains("kind=\"32\""));
 }
 
+fn root_aggregate_project() -> Project {
+    let join = JoinId::new(41);
+    let plan = JoinPlan::new(
+        JoinSource::new(vec!["Left".into()]),
+        JoinSource::new(vec!["Right".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["Left".into()],
+            vec!["Id".into()],
+            vec!["Code".into()],
+        )),
+    )
+    .unwrap();
+    Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group(
+                    "Left",
+                    vec![
+                        SchemaNode::scalar("Id", ScalarType::String),
+                        SchemaNode::scalar("Amount", ScalarType::Int),
+                    ],
+                )
+                .repeating(),
+                SchemaNode::group(
+                    "Right",
+                    vec![
+                        SchemaNode::scalar("Code", ScalarType::String),
+                        SchemaNode::scalar("Quantity", ScalarType::Int),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::scalar("TotalCount", ScalarType::Int),
+                SchemaNode::scalar("TotalSum", ScalarType::Int),
+                SchemaNode::scalar("JoinedValues", ScalarType::String),
+            ],
+        ),
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Left".into()],
+                        path: vec!["Amount".into()],
+                    },
+                ),
+                (
+                    1,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Right".into()],
+                        path: vec!["Quantity".into()],
+                    },
+                ),
+                (
+                    2,
+                    Node::Call {
+                        function: "multiply".into(),
+                        args: vec![0, 1],
+                    },
+                ),
+                (
+                    3,
+                    Node::JoinAggregate {
+                        function: AggregateOp::Sum,
+                        join,
+                        plan: plan.clone(),
+                        expression: Some(2),
+                        arg: None,
+                    },
+                ),
+                (
+                    4,
+                    Node::JoinAggregate {
+                        function: AggregateOp::Count,
+                        join,
+                        plan: plan.clone(),
+                        expression: None,
+                        arg: None,
+                    },
+                ),
+                (
+                    5,
+                    Node::Call {
+                        function: "add".into(),
+                        args: vec![0, 1],
+                    },
+                ),
+                (
+                    6,
+                    Node::Const {
+                        value: Value::String("|".into()),
+                    },
+                ),
+                (
+                    7,
+                    Node::JoinAggregate {
+                        function: AggregateOp::Join,
+                        join,
+                        plan,
+                        expression: Some(5),
+                        arg: Some(6),
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            bindings: vec![
+                Binding {
+                    target_field: "TotalCount".into(),
+                    node: 4,
+                },
+                Binding {
+                    target_field: "TotalSum".into(),
+                    node: 3,
+                },
+                Binding {
+                    target_field: "JoinedValues".into(),
+                    node: 7,
+                },
+            ],
+            ..Scope::default()
+        },
+    }
+}
+
+fn root_aggregate_source() -> Instance {
+    Instance::Group(vec![
+        (
+            "Left".into(),
+            Instance::Repeated(vec![
+                Instance::Group(vec![
+                    scalar("Id", "A"),
+                    ("Amount".into(), Instance::Scalar(Value::Int(2))),
+                ]),
+                Instance::Group(vec![
+                    scalar("Id", "A"),
+                    ("Amount".into(), Instance::Scalar(Value::Int(3))),
+                ]),
+            ]),
+        ),
+        (
+            "Right".into(),
+            Instance::Repeated(vec![
+                Instance::Group(vec![
+                    scalar("Code", "A"),
+                    ("Quantity".into(), Instance::Scalar(Value::Int(10))),
+                ]),
+                Instance::Group(vec![
+                    scalar("Code", "A"),
+                    ("Quantity".into(), Instance::Scalar(Value::Int(20))),
+                ]),
+            ]),
+        ),
+    ])
+}
+
 #[test]
-fn join_aggregate_round_trips_with_the_structured_join() {
-    let dir = TempDir::new("aggregate");
+fn root_join_aggregates_round_trip_raw_count_computed_values_and_parent_argument() {
+    let dir = TempDir::new("root-aggregate");
+    let output = dir.path("mapping.mfd");
+    let project = root_aggregate_project();
+    assert!(engine::validate(&project).is_empty());
+    let expected = engine::run(&project, &root_aggregate_source()).unwrap();
+    assert_eq!(
+        expected.field("TotalCount").and_then(Instance::as_scalar),
+        Some(&Value::Int(4))
+    );
+    assert_eq!(
+        expected.field("TotalSum").and_then(Instance::as_scalar),
+        Some(&Value::Int(150))
+    );
+    assert_eq!(
+        expected.field("JoinedValues").and_then(Instance::as_scalar),
+        Some(&Value::String("12|22|13|23".into()))
+    );
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = fs::read_to_string(output).unwrap();
+    assert!(xml.contains("kind=\"32\""));
+    assert!(xml.contains("component name=\"count\""));
+    assert!(xml.contains("component name=\"sum\""));
+    assert!(xml.contains("component name=\"string-join\""));
+
+    let imported = import_exported(&dir.path("mapping.mfd"));
+    let aggregate_shapes = imported
+        .project
+        .graph
+        .nodes
+        .values()
+        .filter_map(|node| match node {
+            Node::JoinAggregate {
+                function,
+                expression,
+                arg,
+                ..
+            } => Some((*function, expression.is_some(), arg.is_some())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(aggregate_shapes.contains(&(AggregateOp::Count, false, false)));
+    assert!(aggregate_shapes.contains(&(AggregateOp::Sum, true, false)));
+    assert!(aggregate_shapes.contains(&(AggregateOp::Join, true, true)));
+    assert_eq!(
+        engine::run(&imported.project, &root_aggregate_source()).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn nested_join_aggregate_is_blocked_without_partial_components_or_edges() {
+    let dir = TempDir::new("nested-aggregate");
     let output = dir.path("mapping.mfd");
     let mut project = two_way_project();
     let (join, plan) = two_way_plan(JoinId::new(8));
@@ -402,13 +624,14 @@ fn join_aggregate_round_trips_with_the_structured_join() {
         },
     );
     project.root.children[0].children[0].bindings[0].node = 5;
-    let expected = engine::run(&project, &two_way_source()).unwrap();
+
     let warnings = mfd::export(&project, &output).unwrap();
-    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("nested or correlated"));
     let xml = fs::read_to_string(output).unwrap();
     assert!(xml.contains("kind=\"32\""));
-    assert!(xml.contains("component name=\"count\""));
-    assert!(xml.contains("component name=\"string\""));
+    assert!(!xml.contains("component name=\"count\""));
+    assert!(!xml.contains("component name=\"string\""));
 
     let imported = import_exported(&dir.path("mapping.mfd"));
     assert!(
@@ -417,12 +640,83 @@ fn join_aggregate_round_trips_with_the_structured_join() {
             .graph
             .nodes
             .values()
-            .any(|node| matches!(node, Node::JoinAggregate { .. }))
+            .all(|node| !matches!(node, Node::JoinAggregate { .. }))
     );
-    assert_eq!(
-        engine::run(&imported.project, &two_way_source()).unwrap(),
-        expected
+}
+
+#[test]
+fn unsupported_join_aggregate_expression_and_argument_are_atomic() {
+    let mut external_expression = root_aggregate_project();
+    external_expression.graph.nodes.insert(
+        8,
+        Node::SourceField {
+            path: vec!["Left".into(), "Amount".into()],
+            frame: None,
+        },
     );
+    let Some(Node::JoinAggregate { expression, .. }) = external_expression.graph.nodes.get_mut(&3)
+    else {
+        panic!("expected computed joined sum");
+    };
+    *expression = Some(8);
+    external_expression
+        .graph
+        .nodes
+        .retain(|id, _| matches!(*id, 3 | 8));
+    external_expression.root.bindings = vec![Binding {
+        target_field: "TotalSum".into(),
+        node: 3,
+    }];
+
+    let mut joined_argument = root_aggregate_project();
+    let Some(Node::JoinAggregate { arg, .. }) = joined_argument.graph.nodes.get_mut(&7) else {
+        panic!("expected joined string aggregate");
+    };
+    *arg = Some(0);
+    joined_argument
+        .graph
+        .nodes
+        .retain(|id, _| matches!(*id, 0 | 1 | 5 | 7));
+    joined_argument.root.bindings = vec![Binding {
+        target_field: "JoinedValues".into(),
+        node: 7,
+    }];
+
+    for (tag, project, message, component) in [
+        (
+            "external-expression",
+            external_expression,
+            "non-scalar or external context",
+            "sum",
+        ),
+        (
+            "joined-argument",
+            joined_argument,
+            "depends on a joined tuple",
+            "string-join",
+        ),
+    ] {
+        let dir = TempDir::new(tag);
+        let output = dir.path("mapping.mfd");
+        let warnings = mfd::export(&project, &output).unwrap();
+        assert_eq!(warnings.len(), 1, "{tag}: {warnings:?}");
+        assert!(warnings[0].contains(message), "{tag}: {warnings:?}");
+        let xml = fs::read_to_string(&output).unwrap();
+        assert!(!xml.contains("kind=\"32\""), "{tag}");
+        assert!(
+            !xml.contains(&format!("component name=\"{component}\"")),
+            "{tag}"
+        );
+        let imported = import_exported(&output);
+        assert!(
+            imported
+                .project
+                .graph
+                .nodes
+                .values()
+                .all(|node| !matches!(node, Node::JoinAggregate { .. }))
+        );
+    }
 }
 
 #[test]

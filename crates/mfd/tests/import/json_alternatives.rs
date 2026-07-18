@@ -2,7 +2,7 @@ use super::*;
 
 use std::collections::BTreeMap;
 
-use ir::{GroupAlternative, GroupAlternativeConstraint};
+use ir::{GroupAlternative, GroupAlternativeConstraint, GroupAlternativeConstraintValue};
 use mapping::{Binding, Graph, Project, Scope, ScopeIteration};
 
 #[test]
@@ -73,31 +73,31 @@ fn object_one_of_subtypes_import_execute_and_select_xml_types() {
 }
 
 #[test]
-fn required_string_const_json_alternatives_export_reimport_and_execute() {
+fn required_typed_const_json_alternatives_export_reimport_and_execute() {
     let event = SchemaNode::group(
         "Event",
         vec![
-            SchemaNode::scalar("kind", ScalarType::String),
+            SchemaNode::scalar("kind", ScalarType::Bool),
             SchemaNode::scalar("value", ScalarType::String),
         ],
     )
     .with_alternatives(vec![
         GroupAlternative {
-            name: "created".into(),
+            name: "active".into(),
             members: vec!["kind".into(), "value".into()],
             required: vec!["kind".into(), "value".into()],
             constraints: vec![GroupAlternativeConstraint {
                 member: "kind".into(),
-                value: "created".into(),
+                value: GroupAlternativeConstraintValue::Bool(true),
             }],
         },
         GroupAlternative {
-            name: "deleted".into(),
+            name: "inactive".into(),
             members: vec!["kind".into(), "value".into()],
             required: vec!["kind".into(), "value".into()],
             constraints: vec![GroupAlternativeConstraint {
                 member: "kind".into(),
-                value: "deleted".into(),
+                value: GroupAlternativeConstraintValue::Bool(false),
             }],
         },
     ])
@@ -111,7 +111,7 @@ fn required_string_const_json_alternatives_export_reimport_and_execute() {
                 SchemaNode::group(
                     "Row",
                     vec![
-                        SchemaNode::scalar("Kind", ScalarType::String),
+                        SchemaNode::scalar("Kind", ScalarType::Bool),
                         SchemaNode::scalar("Value", ScalarType::String),
                     ],
                 )
@@ -167,21 +167,21 @@ fn required_string_const_json_alternatives_export_reimport_and_execute() {
     let warnings = mfd::export(&project, &design).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
     let schema_text = std::fs::read_to_string(temp.0.join("events-source.schema.json")).unwrap();
-    assert!(schema_text.contains(r#""const": "created""#));
-    assert!(schema_text.contains(r#""const": "deleted""#));
+    assert!(schema_text.contains(r#""const": true"#));
+    assert!(schema_text.contains(r#""const": false"#));
 
     let reimported = mfd::import(&design).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(reimported.project.source, project.source);
     let source = format_json::from_str(
-        r#"{"Event":[{"kind":"created","value":"one"},{"kind":"deleted","value":"two"}]}"#,
+        r#"{"Event":[{"kind":true,"value":"one"},{"kind":false,"value":"two"}]}"#,
         &reimported.project.source,
     )
     .unwrap();
     let output = engine::run(&reimported.project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 2);
-    assert_eq!(scalar(&rows[0], "Kind"), Value::String("created".into()));
+    assert_eq!(scalar(&rows[0], "Kind"), Value::Bool(true));
     assert_eq!(scalar(&rows[1], "Value"), Value::String("two".into()));
 }

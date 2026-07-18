@@ -40,11 +40,17 @@ fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
             scope.group_starting_with,
             scope.group_into_blocks,
             scope.sort_by,
-            scope.take,
             scope.output_path(),
         ]
         .into_iter()
         .flatten(),
+    );
+    roots.extend(
+        scope
+            .windows
+            .iter()
+            .copied()
+            .flat_map(|window| window.nodes()),
     );
     roots.extend(scope.sort_then_by.iter().map(|key| key.node));
     roots.extend(scope.bindings.iter().map(|binding| binding.node));
