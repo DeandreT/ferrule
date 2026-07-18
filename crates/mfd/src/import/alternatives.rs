@@ -123,9 +123,6 @@ fn merge_entry_children(
         }
     }
     for (name, entries) in conditioned {
-        if entries.len() < 2 {
-            continue;
-        }
         path.push(name);
         if let Err(reason) = merge_alternatives_at(schema, path, &entries, xsd_path) {
             warnings.push(format!(
@@ -152,25 +149,41 @@ fn merge_alternatives_at(
 ) -> Result<(), String> {
     let node = schema_node_at_mut(schema, path)
         .ok_or_else(|| "the base schema path does not exist".to_string())?;
-    let mut metadata = Vec::with_capacity(entries.len());
+    let mut imported = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let type_name = conditioned_type_name(entry).ok_or_else(|| {
+            "a condition is not an exact equality between xsi:type and a constant QName".to_string()
+        })?;
+        let base_name = (entries.len() == 1)
+            .then(|| format_xml::xsd::import_type_base(xsd_path, &type_name))
+            .transpose()
+            .map_err(|error| error.to_string())?
+            .flatten();
+        let derived = format_xml::xsd::import_type(xsd_path, &type_name)
+            .map_err(|error| error.to_string())?;
+        let SchemaKind::Group {
+            children: derived_children,
+            ..
+        } = derived.kind
+        else {
+            return Err(format!("type `{type_name}` is not a complex type"));
+        };
+        imported.push((type_name, base_name, derived_children));
+    }
+
+    let mut metadata = Vec::with_capacity(entries.len() + usize::from(entries.len() == 1));
     {
         let SchemaKind::Group { children, .. } = &mut node.kind else {
             return Err("the base schema node is not a group".to_string());
         };
-        for entry in entries {
-            let type_name = conditioned_type_name(entry).ok_or_else(|| {
-                "a condition is not an exact equality between xsi:type and a constant QName"
-                    .to_string()
-            })?;
-            let derived = format_xml::xsd::import_type(xsd_path, &type_name)
-                .map_err(|error| error.to_string())?;
-            let SchemaKind::Group {
-                children: derived_children,
-                ..
-            } = derived.kind
-            else {
-                return Err(format!("type `{type_name}` is not a complex type"));
-            };
+        if let [(.., Some(base_name), _)] = imported.as_slice() {
+            metadata.push(GroupAlternative {
+                name: base_name.clone(),
+                members: children.iter().map(|child| child.name.clone()).collect(),
+                required: Vec::new(),
+            });
+        }
+        for (type_name, _, derived_children) in imported {
             let mut members = Vec::with_capacity(derived_children.len());
             for child in derived_children {
                 members.push(child.name.clone());
@@ -192,6 +205,9 @@ fn merge_alternatives_at(
                 required: Vec::new(),
             });
         }
+    }
+    if metadata.len() < 2 {
+        return Err("a lone derived type has no resolvable complex-content base".to_string());
     }
     node.set_alternatives(metadata)
         .then_some(())

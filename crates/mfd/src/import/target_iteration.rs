@@ -37,6 +37,7 @@ pub(super) fn build(
             );
         }
     }
+    distribute_nested_concatenations(&mut scopes.root);
     let mut index = 0;
     bindings.retain(|_| {
         let keep = !claimed_bindings.contains(&index);
@@ -44,6 +45,49 @@ pub(super) fn build(
         keep
     });
     skipped
+}
+
+fn distribute_nested_concatenations(scope: &mut mapping::Scope) {
+    let Some(parent_count) = scope.concatenated().map(mapping::ScopeSequence::len) else {
+        for child in &mut scope.children {
+            distribute_nested_concatenations(child);
+        }
+        return;
+    };
+    let mut distributions = Vec::new();
+    scope.children.retain(|child| {
+        let Some(segments) = child.concatenated() else {
+            return true;
+        };
+        if segments.len() != parent_count {
+            return true;
+        }
+        distributions.push((
+            child.target_field.clone(),
+            segments.iter().cloned().collect::<Vec<_>>(),
+        ));
+        false
+    });
+    let Some(parent_segments) = scope.concatenated_mut() else {
+        return;
+    };
+    for (target_field, child_segments) in distributions {
+        for (parent, mut child) in parent_segments.iter_mut().zip(child_segments) {
+            child.target_field.clone_from(&target_field);
+            if let Some(existing) = parent
+                .children
+                .iter_mut()
+                .find(|existing| existing.target_field == target_field)
+            {
+                *existing = child;
+            } else {
+                parent.children.push(child);
+            }
+        }
+    }
+    for parent in parent_segments.iter_mut() {
+        distribute_nested_concatenations(parent);
+    }
 }
 
 fn build_concatenated(
@@ -68,6 +112,29 @@ fn build_concatenated(
             .map(|(feed, target_port, copy_all)| (*feed, Some(*target_port), *copy_all)),
     )
     .collect::<Vec<_>>();
+    let branch_depth = feeds
+        .iter()
+        .filter_map(|(_, branch, _)| branch.and_then(|branch| marker_depth(target, branch)))
+        .next();
+    if iteration.output == IterationOutput::Repeated
+        && let Some(branch_depth) = branch_depth
+        && feeds.iter().all(|(_, branch, _)| {
+            branch.is_some_and(|branch| marker_depth(target, branch) == Some(branch_depth))
+        })
+    {
+        build_ordered_branches(
+            iteration,
+            feeds,
+            branch_depth,
+            target,
+            bindings,
+            builder,
+            scopes,
+            skipped,
+            claimed_bindings,
+        );
+        return;
+    }
     let branch_ports = feeds
         .iter()
         .filter_map(|(_, target_port, _)| *target_port)
@@ -150,6 +217,128 @@ fn build_concatenated(
     };
     scopes.add_concatenated(&target_path, first, segments.collect(), iteration.output);
     claimed_bindings.extend(segment_binding_indices);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_ordered_branches(
+    iteration: TargetIteration,
+    feeds: Vec<(u32, Option<u32>, bool)>,
+    branch_depth: usize,
+    target: &SchemaComponent,
+    bindings: &[(TargetLeaf, u32, u32)],
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+    skipped: &mut Vec<Vec<String>>,
+    claimed_bindings: &mut BTreeSet<usize>,
+) {
+    let target_path = iteration.target_path.clone();
+    let feeds = feeds
+        .into_iter()
+        .filter_map(|(feed, branch, projects_whole_group)| {
+            branch.map(|branch| (branch, (feed, projects_whole_group)))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let mut branch_bindings = std::collections::BTreeMap::<u32, Vec<usize>>::new();
+    let mut shared_bindings = Vec::new();
+    for (index, (binding, _, input)) in bindings.iter().enumerate() {
+        let path = binding.path();
+        if path.len() <= target_path.len() || !path.starts_with(&target_path) {
+            continue;
+        }
+        match marker_at_depth(target, *input, branch_depth) {
+            Some(branch) => branch_bindings.entry(branch).or_default().push(index),
+            None => shared_bindings.push(index),
+        }
+    }
+    let branches = feeds
+        .keys()
+        .chain(branch_bindings.keys())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let mut segments = Vec::with_capacity(branches.len());
+    let mut segment_binding_indices = BTreeSet::new();
+    for branch in branches {
+        let owned = branch_bindings.get(&branch).map_or(&[][..], Vec::as_slice);
+        let indices = shared_bindings
+            .iter()
+            .chain(owned)
+            .copied()
+            .collect::<Vec<_>>();
+        let connected = indices
+            .iter()
+            .map(|index| bindings[*index].0.path())
+            .collect::<BTreeSet<_>>();
+        let mut segment_builder = ScopeBuilder {
+            root: mapping::Scope::default(),
+            anchors: scopes.anchors.clone(),
+        };
+        let mut segment_skipped = Vec::new();
+        if let Some((feed, projects_whole_group)) = feeds.get(&branch) {
+            build_one(
+                TargetIteration {
+                    target_path: target_path.clone(),
+                    feed: *feed,
+                    target_port: Some(branch),
+                    additional_feeds: Vec::new(),
+                    output: iteration.output,
+                    projects_whole_group: *projects_whole_group,
+                    join: iteration.join,
+                },
+                target,
+                &connected,
+                builder,
+                &mut segment_builder,
+                &mut segment_skipped,
+            );
+        }
+        for index in &indices {
+            let (binding, feed, _) = &bindings[*index];
+            let path = binding.path();
+            let active_anchor = segment_builder.enclosing_anchor(&path);
+            if let Some(node) = builder.binding_node_at_anchor(*feed, &path, &active_anchor) {
+                segment_builder.add_binding(binding.clone(), node);
+            }
+        }
+        let Some(mut segment) = take_scope(&mut segment_builder.root, &target_path) else {
+            if !segment_skipped.iter().any(|path| path == &target_path) {
+                skipped.push(target_path.clone());
+            }
+            return;
+        };
+        if !segment_skipped.is_empty() {
+            skipped.extend(segment_skipped);
+            return;
+        }
+        segment.target_field.clear();
+        segment.iteration_output = iteration.output;
+        segments.push(segment);
+        segment_binding_indices.extend(indices);
+    }
+    let mut segments = segments.into_iter();
+    let Some(first) = segments.next() else {
+        return;
+    };
+    scopes.add_concatenated(&target_path, first, segments.collect(), iteration.output);
+    claimed_bindings.extend(segment_binding_indices);
+}
+
+fn marker_depth(target: &SchemaComponent, marker: u32) -> Option<usize> {
+    target.input_ancestors.values().find_map(|ancestors| {
+        ancestors
+            .iter()
+            .filter(|ancestor| !target.input_keys.contains(ancestor))
+            .position(|ancestor| *ancestor == marker)
+    })
+}
+
+fn marker_at_depth(target: &SchemaComponent, input: u32, depth: usize) -> Option<u32> {
+    target
+        .input_ancestors
+        .get(&input)?
+        .iter()
+        .filter(|ancestor| !target.input_keys.contains(ancestor))
+        .nth(depth)
+        .copied()
 }
 
 fn take_scope(root: &mut mapping::Scope, target_path: &[String]) -> Option<mapping::Scope> {
@@ -601,5 +790,67 @@ fn project_connected_fields(
         {
             scopes.add_binding(target, node);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use mapping::{Scope, ScopeIteration, ScopeSequence};
+
+    use super::distribute_nested_concatenations;
+
+    fn sourced(path: &str) -> Scope {
+        Scope {
+            iteration: ScopeIteration::Source(vec![path.to_string()]),
+            ..Scope::default()
+        }
+    }
+
+    #[test]
+    fn nested_branch_sequences_move_into_matching_parent_segments() {
+        let mut first_parent = sourced("first-parent");
+        first_parent.children.push(Scope {
+            target_field: "Child".into(),
+            ..Scope::default()
+        });
+        let mut second_parent = sourced("second-parent");
+        second_parent.children.push(Scope {
+            target_field: "Child".into(),
+            ..Scope::default()
+        });
+        let mut parent = Scope {
+            target_field: "Parent".into(),
+            iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                first_parent,
+                vec![second_parent],
+            )),
+            ..Scope::default()
+        };
+        parent.children.push(Scope {
+            target_field: "Child".into(),
+            iteration: ScopeIteration::Concatenate(ScopeSequence::new(
+                sourced("first-child"),
+                vec![sourced("second-child")],
+            )),
+            ..Scope::default()
+        });
+
+        distribute_nested_concatenations(&mut parent);
+
+        assert!(parent.children.is_empty());
+        let sources = parent
+            .concatenated()
+            .into_iter()
+            .flat_map(ScopeSequence::iter)
+            .filter_map(|segment| segment.children.first())
+            .filter_map(Scope::source)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            sources,
+            [
+                ["first-child".to_string()].as_slice(),
+                ["second-child".to_string()].as_slice(),
+            ]
+        );
     }
 }

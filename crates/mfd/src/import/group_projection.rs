@@ -182,7 +182,7 @@ pub(super) fn classify_target_connection(
     }
     if target_node.repeating {
         let mut repeated_feeds = structural_feeds.iter().collect::<Vec<_>>();
-        if target.format.is_xml_like() && repeated_feeds.len() > 1 {
+        if target.format.supports_cloned_target_branches() && repeated_feeds.len() > 1 {
             repeated_feeds.sort_by_key(|(_, role)| role.representative);
             let branch_coverage =
                 cloned_branch_coverage(target, target_path, builder, &repeated_feeds);

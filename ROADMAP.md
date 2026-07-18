@@ -35,7 +35,7 @@ clean-room interoperability, and extensible adapters.
   undo/redo, and persisted canvas layout; plus a WASM XML/JSON/CSV/XBRL
   playground.
 - `.mfd` survey: all 120 local MapForce 2026 samples import without warnings;
-  115 are engine-valid, 52 export, 39 export without loss warnings, and all 52 are
+  all 120 are engine-valid, 52 export, 39 export without loss warnings, and all 52 are
   engine-valid after export/re-import. Execution and reference-output comparison
   are not measured yet, so these remain diagnostic counts rather than a
   compatibility claim.
@@ -58,7 +58,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, stable library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 120/120 warning-free imports, 115 engine-valid imports, and 52 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
+| `.mfd` | 120/120 warning-free and engine-valid imports, and 52 exportable projects in the local diagnostic set | Executable common profile, lossless supported round trips, and an actionable repair workflow |
 | Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
 
 ## Workstreams
@@ -104,8 +104,8 @@ export, re-import, and post-export validation separately. Its first expanded
 baseline exposed 12 warning-free but invalid imports and a 52-project exportable
 subset; execution and reference matching remain explicitly unmeasured.
 
-- Eliminate validation defects in warning-free imports before expanding the
-  supported component surface further.
+- Preserve complete warning-free, engine-valid import coverage while expanding
+  the supported component surface.
 - Add safely redirected sample execution and semantic reference comparison
   without writing into the read-only vendor sample tree.
 - Grow clean export/re-import coverage from measured failure categories, led by
@@ -281,7 +281,7 @@ Update these numbers with each parity increment:
 
 - Workspace tests and strict all-target clippy pass on the pinned nightly.
 - `.mfd` import: 120/120 imported, 120 warning-free, zero rejected.
-- `.mfd` validation: 115/120 imported projects are engine-valid.
+- `.mfd` validation: all 120 imported projects are engine-valid.
 - `.mfd` export: 52/120 export, including 39 without export warnings.
 - `.mfd` re-import: all 52 exported designs re-import; 44 do so without
   warnings, and all 52 are engine-valid after re-import.

@@ -319,6 +319,72 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
     state.finish(SchemaNode::group(local, children))
 }
 
+/// Resolves the direct complex-content base of a named complex type.
+/// The returned name uses ferrule's expanded `{namespace}local` form when
+/// the base belongs to a target namespace.
+pub fn import_type_base(path: &Path, type_name: &str) -> Result<Option<String>, XmlFormatError> {
+    let text = read_xml_text(path)?;
+    let doc = roxmltree::Document::parse(&text)?;
+    let schema_el = doc.root_element();
+    let local = expanded_name(type_name).map_or(local_name(type_name), |(_, local)| local);
+    let belongs_to_schema = expanded_name(type_name).map_or_else(
+        || is_local_qname(&schema_el, type_name),
+        |(namespace, _)| schema_el.attribute("targetNamespace") == Some(namespace),
+    );
+    let local_declaration = belongs_to_schema
+        .then(|| top_level(&schema_el, "complexType", local))
+        .flatten();
+    if let Some(declaration) = local_declaration {
+        return Ok(complex_type_base_name(&declaration, &schema_el));
+    }
+
+    let declaration_path = find_external_declaration(
+        &schema_el,
+        path,
+        "complexType",
+        if expanded_name(type_name).is_some() {
+            type_name
+        } else {
+            local
+        },
+    )
+    .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:complexType `{type_name}`")))?;
+    let external_text = read_xml_text(&declaration_path)?;
+    let external_doc = roxmltree::Document::parse(&external_text)?;
+    let external_schema = external_doc.root_element();
+    let declaration = top_level(&external_schema, "complexType", local).ok_or_else(|| {
+        XmlFormatError::MissingElement(format!("named xs:complexType `{type_name}`"))
+    })?;
+    Ok(complex_type_base_name(&declaration, &external_schema))
+}
+
+fn complex_type_base_name(declaration: &Node, schema: &Node) -> Option<String> {
+    let base = declaration
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "complexContent")?
+        .children()
+        .find(|node| {
+            node.is_element() && matches!(node.tag_name().name(), "extension" | "restriction")
+        })?
+        .attribute("base")?;
+    if expanded_name(base).is_some() {
+        return Some(base.to_string());
+    }
+    match base.split_once(':') {
+        Some((prefix, local)) => schema
+            .lookup_namespace_uri(Some(prefix))
+            .filter(|namespace| !namespace.is_empty())
+            .map(|namespace| format!("{{{namespace}}}{local}")),
+        None => schema
+            .attribute("targetNamespace")
+            .filter(|namespace| !namespace.is_empty())
+            .map_or_else(
+                || Some(base.to_string()),
+                |namespace| Some(format!("{{{namespace}}}{base}")),
+            ),
+    }
+}
+
 fn parse_element(
     el: &Node,
     schema_el: &Node,

@@ -124,15 +124,34 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
               <root><entry name="FileInstance"><entry name="document"><entry name="Envelope">
                 <entry name="Interchange"><entry name="Group"><entry name="Message">
                   <entry name="ST"><entry name="F1" outkey="10"/></entry>
+                  <entry name="ParserErrors_Message">
+                    <entry name="LoopMF_AK3" outkey="30">
+                      <entry name="MF_AK3" outkey="31"><entry name="F721" outkey="11"/></entry>
+                      <entry name="MF_AK4" outkey="32"><entry name="C030" outkey="33">
+                        <entry name="F722" outkey="12"/>
+                      </entry></entry>
+                    </entry>
+                    <entry name="MF_AK5" outkey="34"><entry name="F717" outkey="13"/></entry>
+                  </entry>
+                </entry><entry name="ParserErrors_Group">
+                  <entry name="MF_AK9" outkey="35"><entry name="F715" outkey="14"/></entry>
                 </entry></entry></entry>
               </entry></entry></entry></root>
               <text type="edi" kind="EDIX12" config="X12\850.Config" inputinstance="input.x12"/>
             </data></component>
             <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data>
-              <root><entry name="Outputs"><entry name="Value" inpkey="20"/></entry></root>
+              <root><entry name="Outputs">
+                <entry name="Physical" inpkey="20"/><entry name="Ak3" inpkey="21"/>
+                <entry name="Ak4" inpkey="22"/><entry name="Ak5" inpkey="23"/>
+                <entry name="Ak9" inpkey="24"/>
+              </entry></root>
             </data></component>
           </children><graph directed="1"><vertices>
             <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+            <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+            <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+            <vertex vertexkey="13"><edges><edge vertexkey="23"/></edges></vertex>
+            <vertex vertexkey="14"><edges><edge vertexkey="24"/></edges></vertex>
           </vertices></graph></structure>
         </component></mapping>"#,
     )
@@ -154,6 +173,50 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
             .and_then(|node| node.child("ST"))
             .and_then(|node| node.child("F1"))
             .is_some()
+    );
+    let group = imported
+        .project
+        .source
+        .child("Interchange")
+        .and_then(|node| node.child("Group"))
+        .unwrap();
+    let message_errors = group
+        .child("Message")
+        .and_then(|node| node.child("ParserErrors_Message"))
+        .unwrap();
+    assert!(message_errors.repeating);
+    assert!(
+        message_errors
+            .child("LoopMF_AK3")
+            .and_then(|node| node.child("MF_AK3"))
+            .and_then(|node| node.child("F721"))
+            .is_some()
+    );
+    assert!(
+        message_errors
+            .child("LoopMF_AK3")
+            .and_then(|node| node.child("MF_AK4"))
+            .and_then(|node| node.child("C030"))
+            .and_then(|node| node.child("F722"))
+            .is_some()
+    );
+    assert!(
+        message_errors
+            .child("MF_AK5")
+            .and_then(|node| node.child("F717"))
+            .is_some()
+    );
+    assert!(
+        group
+            .child("ParserErrors_Group")
+            .and_then(|node| node.child("MF_AK9"))
+            .and_then(|node| node.child("F715"))
+            .is_some()
+    );
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
     );
 }
 
