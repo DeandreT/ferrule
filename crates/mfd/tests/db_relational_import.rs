@@ -252,6 +252,31 @@ fn ignores_disconnected_selected_tables_when_connected_tables_exist() {
 }
 
 #[test]
+fn missing_untyped_database_keeps_the_fallback_warning() {
+    let dir = TempDir::new("missing_untyped");
+    let design = dir.0.join("missing-untyped.mfd");
+    write_design(
+        &design,
+        r#"<entry name="departments" type="table" outkey="1">
+          <entry name="id" outkey="2"/>
+        </entry>"#,
+        2,
+    );
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.iter().any(|warning| {
+        warning.contains("database `test.sqlite` not found next to the design")
+            && warning.contains("falling back to untyped columns")
+    }));
+    assert!(matches!(
+        imported.project.source.child("id").map(|field| &field.kind),
+        Some(SchemaKind::Scalar {
+            ty: ScalarType::String
+        })
+    ));
+}
+
+#[test]
 fn warns_when_nested_relationship_metadata_is_missing() {
     let dir = TempDir::new("missing_relation");
     let db_path = dir.0.join("test.sqlite");

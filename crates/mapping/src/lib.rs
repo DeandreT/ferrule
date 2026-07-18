@@ -698,7 +698,7 @@ pub struct XlsxGridLayout {
 /// only the fields that concern it, `mapping` stays free of format-crate
 /// dependencies, and old project files load unchanged (everything
 /// defaults).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FormatOptions {
     /// EDI: skip segments the schema doesn't mention instead of erroring
     /// on them. Skipping is bounded by the schema's own expectations, so

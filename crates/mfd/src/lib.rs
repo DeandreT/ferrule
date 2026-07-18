@@ -32,6 +32,7 @@
 //! The format knowledge comes from reading real `.mfd` files; nothing here
 //! embeds or copies ReferenceSamples content. Ferrule is unaffiliated.
 
+mod canonical_function;
 mod export;
 mod import;
 

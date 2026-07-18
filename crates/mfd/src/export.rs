@@ -11,7 +11,9 @@ use mapping::{FormatOptions, IterationOutput, NodeId, Project, Scope, ScopeConst
 use crate::MfdError;
 
 mod artifact;
+mod auto_number;
 mod concatenation;
+mod database;
 mod external_source;
 mod flextext;
 mod function;
@@ -151,6 +153,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         )?);
     }
     let primary_target = &targets[0];
+    let mixed_database_pairs = pair_mixed_databases(&sources, &targets);
 
     let mut node_out_key: BTreeMap<NodeId, u32> = BTreeMap::new();
     let mut components = String::new();
@@ -318,7 +321,13 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
          \t\t\t<children>\n"
     );
     let mut source_components = Vec::with_capacity(sources.len());
-    for source in sources.iter() {
+    for (source_index, source) in sources.iter().enumerate() {
+        if mixed_database_pairs
+            .iter()
+            .any(|(paired_source, _)| *paired_source == source_index)
+        {
+            continue;
+        }
         let rendered = if source.options.external_source.is_some() {
             let request_suffix = format!("{}-request", source.sibling_suffix);
             let request_schema =
@@ -368,8 +377,35 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         out.push_str(&rendered.xml);
         source_components.push(rendered);
     }
+    for &(source_index, target_index) in &mixed_database_pairs {
+        let source = sources.iter().nth(source_index).ok_or_else(|| {
+            MfdError::Unsupported("internal mixed database source is missing".into())
+        })?;
+        let target = targets.get(target_index).ok_or_else(|| {
+            MfdError::Unsupported("internal mixed database target is missing".into())
+        })?;
+        let rendered = database::render_mixed(database::RenderMixedArgs {
+            schema: source.schema,
+            source_ports: &source.ports,
+            target_ports: &target.ports,
+            target_branches: &target.branches,
+            instance_path: source.path,
+            component_name: target.component_name,
+            component_uid: source.component_uid,
+            default_output: target.default_output,
+            used_ports: &used_ports,
+        })?;
+        out.push_str(&rendered.xml);
+        source_components.push(rendered);
+    }
     let mut target_components = Vec::with_capacity(targets.len());
-    for target in &targets {
+    for (target_index, target) in targets.iter().enumerate() {
+        if mixed_database_pairs
+            .iter()
+            .any(|(_, paired_target)| *paired_target == target_index)
+        {
+            continue;
+        }
         let rendered = render_schema_component(
             target.schema,
             target.format,
@@ -433,4 +469,33 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     artifacts.push((path.to_path_buf(), out));
     write_artifacts(artifacts)?;
     Ok(warnings)
+}
+
+fn pair_mixed_databases(
+    sources: &source::SourceExports<'_>,
+    targets: &[TargetExport<'_>],
+) -> Vec<(usize, usize)> {
+    let mut claimed_targets = BTreeSet::new();
+    sources
+        .iter()
+        .enumerate()
+        .filter_map(|(source_index, source)| {
+            if source.format != SideFormat::Db || source.dynamic_path_node.is_some() {
+                return None;
+            }
+            let target_index = targets
+                .iter()
+                .enumerate()
+                .find_map(|(target_index, target)| {
+                    (!claimed_targets.contains(&target_index)
+                        && target.format == SideFormat::Db
+                        && source.path == target.path
+                        && source.schema == target.schema
+                        && source.options == target.options)
+                        .then_some(target_index)
+                })?;
+            claimed_targets.insert(target_index);
+            Some((source_index, target_index))
+        })
+        .collect()
 }
