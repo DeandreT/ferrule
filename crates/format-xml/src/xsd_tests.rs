@@ -913,8 +913,9 @@ fn export_rejects_alternatives_from_incompatible_namespaces() {
 }
 
 #[test]
-fn export_rejects_different_derived_views_of_one_base_type() {
+fn export_roundtrips_different_derived_views_of_one_base_type() {
     fn address(name: &str, derived: &str, extra: &str) -> SchemaNode {
+        let identity = |local: &str| format!("{{urn:ferrule:asymmetric-address}}{local}");
         SchemaNode::group(
             name,
             vec![
@@ -924,12 +925,12 @@ fn export_rejects_different_derived_views_of_one_base_type() {
         )
         .with_alternatives(vec![
             ir::GroupAlternative {
-                name: "BaseAddress".into(),
+                name: identity("BaseAddress"),
                 members: vec!["name".into()],
                 required: Vec::new(),
             },
             ir::GroupAlternative {
-                name: derived.into(),
+                name: identity(derived),
                 members: vec!["name".into(), extra.into()],
                 required: Vec::new(),
             },
@@ -943,10 +944,24 @@ fn export_rejects_different_derived_views_of_one_base_type() {
             address("Billing", "DomesticAddress", "state"),
         ],
     );
-    assert!(matches!(
-        export(&schema),
-        Err(XmlFormatError::UnsupportedGroupAlternatives { ref group }) if group == "Billing"
+    let xsd = export(&schema).unwrap();
+    assert!(xsd.contains(r#"name="PostalAddress""#), "{xsd}");
+    assert!(xsd.contains(r#"name="DomesticAddress""#), "{xsd}");
+    assert!(
+        xsd.contains(r#"targetNamespace="urn:ferrule:asymmetric-address""#),
+        "{xsd}"
+    );
+    assert!(xsd.contains("urn:ferrule:xsd:group-alternatives"), "{xsd}");
+    assert_eq!(xsd.matches("<ferrule:type").count(), 4, "{xsd}");
+
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_asymmetric_alternatives_{}.xsd",
+        std::process::id()
     ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(imported, schema);
 }
 
 #[test]

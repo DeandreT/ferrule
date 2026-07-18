@@ -28,6 +28,7 @@ mod alternatives_export;
 use alternatives_export::AlternativeExportPlan;
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
+const ALTERNATIVE_VIEW_NAMESPACE: &str = "urn:ferrule:xsd:group-alternatives";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ActiveDeclaration {
@@ -413,7 +414,7 @@ fn parse_element(
         return SchemaNode::scalar(local, ScalarType::String);
     }
     let name = el.attribute("name").unwrap_or_default().to_string();
-    let node = if let Some(complex_type) = el
+    let mut node = if let Some(complex_type) = el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "complexType")
     {
@@ -447,6 +448,7 @@ fn parse_element(
     } else {
         SchemaNode::scalar(name, ScalarType::String)
     };
+    apply_exported_alternative_view(el, &mut node);
     if el
         .attribute("nillable")
         .is_some_and(|value| matches!(value, "true" | "1"))
@@ -454,6 +456,72 @@ fn parse_element(
         node.nillable()
     } else {
         node
+    }
+}
+
+fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
+    let names = el
+        .children()
+        .find(|child| child.is_element() && child.tag_name().name() == "annotation")
+        .and_then(|annotation| {
+            annotation.children().find(|child| {
+                child.is_element()
+                    && child.tag_name().name() == "appinfo"
+                    && child.attribute("source") == Some(ALTERNATIVE_VIEW_NAMESPACE)
+            })
+        })
+        .into_iter()
+        .flat_map(|appinfo| appinfo.children())
+        .filter(|child| {
+            child.is_element()
+                && child.tag_name().name() == "type"
+                && child.tag_name().namespace() == Some(ALTERNATIVE_VIEW_NAMESPACE)
+        })
+        .filter_map(|child| child.attribute("name").map(str::to_string))
+        .collect::<Vec<_>>();
+    if names.len() < 2 {
+        return;
+    }
+    let SchemaKind::Group {
+        children,
+        alternatives,
+        ..
+    } = &node.kind
+    else {
+        return;
+    };
+    let selected = names
+        .iter()
+        .map(|name| {
+            alternatives
+                .iter()
+                .find(|alternative| alternative.name == *name)
+                .cloned()
+        })
+        .collect::<Option<Vec<_>>>();
+    let Some(selected) = selected else {
+        return;
+    };
+    let selected_members = selected
+        .iter()
+        .flat_map(|alternative| alternative.members.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    let original_children = children.clone();
+    let retained = children
+        .iter()
+        .filter(|child| selected_members.contains(&child.name))
+        .cloned()
+        .collect::<Vec<_>>();
+    let SchemaKind::Group { children, .. } = &mut node.kind else {
+        return;
+    };
+    *children = retained;
+    if !node.set_alternatives(selected) {
+        // The exported view is advisory metadata; malformed external metadata
+        // leaves the ordinary XSD-derived alternatives intact.
+        if let SchemaKind::Group { children, .. } = &mut node.kind {
+            *children = original_children;
+        }
     }
 }
 
@@ -1356,10 +1424,26 @@ fn write_element_required(
         return Ok(());
     }
     if let Some(type_name) = alternatives.type_for(node) {
-        out.push_str(&format!(
-            "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}/>\n",
-            node.name
-        ));
+        if let Some(view) = alternatives.restricted_view_for(node) {
+            out.push_str(&format!(
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
+                node.name
+            ));
+            for name in view {
+                out.push_str(&format!(
+                    "{pad}      <ferrule:type name=\"{}\"/>\n",
+                    alternatives_export::xml_escape(name)
+                ));
+            }
+            out.push_str(&format!(
+                "{pad}    </xs:appinfo>\n{pad}  </xs:annotation>\n{pad}</xs:element>\n"
+            ));
+        } else {
+            out.push_str(&format!(
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}/>\n",
+                node.name
+            ));
+        }
         return Ok(());
     }
     match &node.kind {

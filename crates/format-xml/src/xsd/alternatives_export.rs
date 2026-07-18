@@ -10,6 +10,7 @@ pub(super) struct AlternativeExportPlan<'a> {
     namespace: Option<String>,
     saw_unqualified: bool,
     groups: BTreeMap<usize, String>,
+    group_views: BTreeMap<usize, Vec<String>>,
     alternatives_by_base: BTreeMap<String, BTreeSet<String>>,
     definitions: BTreeMap<String, TypeDefinition<'a>>,
 }
@@ -38,6 +39,7 @@ impl<'a> AlternativeExportPlan<'a> {
             namespace: None,
             saw_unqualified: false,
             groups: BTreeMap::new(),
+            group_views: BTreeMap::new(),
             alternatives_by_base: BTreeMap::new(),
             definitions: BTreeMap::new(),
         };
@@ -46,7 +48,8 @@ impl<'a> AlternativeExportPlan<'a> {
     }
 
     pub(super) fn schema_attributes(&self) -> String {
-        self.namespace
+        let mut attributes = self
+            .namespace
             .as_ref()
             .map_or_else(String::new, |namespace| {
                 format!(
@@ -54,7 +57,14 @@ impl<'a> AlternativeExportPlan<'a> {
                     xml_escape(namespace),
                     xml_escape(namespace)
                 )
-            })
+            });
+        if self.has_restricted_views() {
+            attributes.push_str(&format!(
+                " xmlns:ferrule=\"{}\"",
+                super::ALTERNATIVE_VIEW_NAMESPACE
+            ));
+        }
+        attributes
     }
 
     pub(super) fn namespace(&self) -> Option<&str> {
@@ -65,6 +75,15 @@ impl<'a> AlternativeExportPlan<'a> {
         self.groups
             .get(&node_key(node))
             .map(|name| self.qualified(name))
+    }
+
+    pub(super) fn restricted_view_for(&self, node: &SchemaNode) -> Option<&[String]> {
+        let key = node_key(node);
+        let base = self.groups.get(&key)?;
+        let view = self.group_views.get(&key)?;
+        let complete = self.alternatives_by_base.get(base)?;
+        let view_set = view.iter().cloned().collect::<BTreeSet<_>>();
+        (view_set != *complete).then_some(view.as_slice())
     }
 
     pub(super) fn write_definitions(
@@ -193,14 +212,10 @@ impl<'a> AlternativeExportPlan<'a> {
             .iter()
             .map(|(_, local)| local.clone())
             .collect::<BTreeSet<_>>();
-        if let Some(existing) = self.alternatives_by_base.get(&base_name) {
-            if existing != &identity_set {
-                return Err(unsupported(node));
-            }
-        } else {
-            self.alternatives_by_base
-                .insert(base_name.clone(), identity_set);
-        }
+        self.alternatives_by_base
+            .entry(base_name.clone())
+            .or_default()
+            .extend(identity_set);
         self.insert_definition(
             node,
             base_name.clone(),
@@ -242,7 +257,15 @@ impl<'a> AlternativeExportPlan<'a> {
                 },
             )?;
         }
-        self.groups.insert(node_key(node), base_name);
+        let key = node_key(node);
+        self.groups.insert(key, base_name);
+        self.group_views.insert(
+            key,
+            alternatives
+                .iter()
+                .map(|alternative| alternative.name.clone())
+                .collect(),
+        );
         Ok(())
     }
 
@@ -268,6 +291,18 @@ impl<'a> AlternativeExportPlan<'a> {
         } else {
             name.to_string()
         }
+    }
+
+    fn has_restricted_views(&self) -> bool {
+        self.groups.iter().any(|(key, base)| {
+            let Some(view) = self.group_views.get(key) else {
+                return false;
+            };
+            let Some(complete) = self.alternatives_by_base.get(base) else {
+                return false;
+            };
+            view.iter().cloned().collect::<BTreeSet<_>>() != *complete
+        })
     }
 }
 
@@ -387,7 +422,7 @@ fn unsupported_node_name(name: &str) -> XmlFormatError {
     }
 }
 
-fn xml_escape(value: &str) -> String {
+pub(super) fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('<', "&lt;")
