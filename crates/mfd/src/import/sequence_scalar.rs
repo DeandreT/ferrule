@@ -97,6 +97,7 @@ impl GraphBuilder<'_> {
         let left = self.input_feed(equal_index, 0)?;
         let right = self.input_feed(equal_index, 1)?;
         let value_path = self.source_abs_path(value_feed)?;
+        let value_path = self.source_value_path(value_path.source, value_path.path);
         let source = self.sources.get(value_path.source)?;
         let (collection, value) = split_at_innermost_repeating(&source.schema, &value_path.path);
         if collection.is_empty()

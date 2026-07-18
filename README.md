@@ -82,8 +82,10 @@ and count or computed scalar aggregates over the joined tuples;
 everything else is skipped
 with an actionable warning so you can finish the mapping in the editor. Export
 writes the exportable subset back out as `.mfd` plus generated XSD / JSON Schema files,
-picking each side's component kind from the project's instance paths. Canonical
-structured-join export covers root-context collections inside the primary source.
+picking each side's component kind from the project's instance paths. Named static
+sources, per-item dynamic XML sources, and typed captured HTTP response boundaries
+retain their component ownership. Canonical structured-join export covers root-context
+collections inside the primary source.
 Designs built on general namespace identity or `xsi:type` polymorphism,
 scalar-key/keyless correlated joins,
 multi-source or nested join export, joined aggregate export, general SQL/database

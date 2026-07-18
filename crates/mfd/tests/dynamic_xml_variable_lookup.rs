@@ -164,20 +164,31 @@ fn generic_elements_pivot_key_value_rows_into_variable_fields() -> Result<(), Bo
 
     let exported_path = dir.0.join("exported.mfd");
     let export_warnings = mfd::export(&imported.project, &exported_path)?;
-    assert!(
-        export_warnings
-            .iter()
-            .any(|warning| warning.contains("key/value paths do not match primary source leaves")),
-        "{export_warnings:?}"
-    );
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
     let roundtripped = mfd::import(&exported_path)?;
     assert!(
-        roundtripped
-            .warnings
-            .iter()
-            .any(|warning| { warning.contains("imported as its empty-sequence result") })
+        roundtripped.warnings.is_empty(),
+        "{:?}",
+        roundtripped.warnings
     );
     let validation = engine::validate(&roundtripped.project);
     assert!(validation.is_empty(), "{validation:?}");
+    assert_eq!(
+        roundtripped
+            .project
+            .graph
+            .nodes
+            .values()
+            .filter(|node| matches!(node, Node::Lookup { .. }))
+            .count(),
+        2
+    );
+    assert!(roundtripped.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            Node::Aggregate { collection, .. } if collection == &["Row"]
+        )
+    }));
+    assert_eq!(engine::run(&roundtripped.project, &source)?, target);
     Ok(())
 }

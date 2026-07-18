@@ -88,6 +88,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "parse_time" => "parse-time",
         "edifact_to_datetime" => "to-datetime",
         "substitute_missing" => "substitute-missing",
+        "delay_passthrough" => "sleep",
         "format_number" => "format-number",
         other => other,
     }
@@ -109,7 +110,8 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "time_from_datetime"
         | "datetime_from_date_and_time"
         | "datetime_from_parts"
-        | "datetime_add" => "lang",
+        | "datetime_add"
+        | "delay_passthrough" => "lang",
         "edifact_to_datetime" => "edifact",
         _ => "core",
     }
@@ -125,5 +127,7 @@ mod tests {
         assert_eq!(function_library("normalize_space"), "core");
         assert_eq!(unmap_function_name("is_empty"), "empty");
         assert_eq!(function_library("is_empty"), "lang");
+        assert_eq!(unmap_function_name("delay_passthrough"), "sleep");
+        assert_eq!(function_library("delay_passthrough"), "lang");
     }
 }

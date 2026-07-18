@@ -7,6 +7,7 @@ use mapping::{Graph, IterationOutput, Node, Scope};
 use crate::MfdError;
 
 use super::schema::{KeyAlloc, SideFormat};
+use super::source::SourceExports;
 
 pub(super) struct ScopePlan {
     source: Option<SourcePlan>,
@@ -54,7 +55,7 @@ impl ScopePlans {
 
 pub(super) fn preflight_mapped_sequences(
     graph: &Graph,
-    source: &SchemaNode,
+    sources: &SourceExports<'_>,
     target: &SchemaNode,
     root: &Scope,
     target_format: SideFormat,
@@ -82,7 +83,7 @@ pub(super) fn preflight_mapped_sequences(
     if !collect_scope_plans(
         root,
         graph,
-        source,
+        sources,
         target,
         &mut Vec::new(),
         &[],
@@ -132,7 +133,7 @@ fn scope_has_output(scope: &Scope, output: IterationOutput) -> bool {
 fn collect_scope_plans(
     scope: &Scope,
     graph: &Graph,
-    source_schema: &SchemaNode,
+    sources: &SourceExports<'_>,
     target_schema: &SchemaNode,
     chain: &mut Vec<String>,
     anchor: &[String],
@@ -141,7 +142,7 @@ fn collect_scope_plans(
     let scope_anchor = scope.source().map_or_else(
         || anchor.to_vec(),
         |source| {
-            resolve_source_collection(source_schema, anchor, source).unwrap_or_else(|| {
+            resolve_source_collection(sources, anchor, source).unwrap_or_else(|| {
                 let mut unresolved = anchor.to_vec();
                 unresolved.extend(source.iter().cloned());
                 unresolved
@@ -149,14 +150,9 @@ fn collect_scope_plans(
         },
     );
     if scope.iteration_output == IterationOutput::MappedSequence {
-        let Some(plan) = mapped_scope_plan(
-            scope,
-            graph,
-            source_schema,
-            target_schema,
-            chain,
-            &scope_anchor,
-        ) else {
+        let Some(plan) =
+            mapped_scope_plan(scope, graph, sources, target_schema, chain, &scope_anchor)
+        else {
             return false;
         };
         plans.0.insert(chain.clone(), plan);
@@ -166,7 +162,7 @@ fn collect_scope_plans(
         if !collect_scope_plans(
             child,
             graph,
-            source_schema,
+            sources,
             target_schema,
             chain,
             &scope_anchor,
@@ -182,7 +178,7 @@ fn collect_scope_plans(
 fn mapped_scope_plan(
     scope: &Scope,
     graph: &Graph,
-    source_schema: &SchemaNode,
+    sources: &SourceExports<'_>,
     target_schema: &SchemaNode,
     target_path: &[String],
     collection: &[String],
@@ -214,7 +210,7 @@ fn mapped_scope_plan(
     }
     scope.source()?;
 
-    let source_collection = schema_node_at(source_schema, collection)?;
+    let source_collection = sources.schema_node_at(collection)?;
     if !matches!(source_collection.kind, SchemaKind::Group { .. }) {
         return None;
     }
@@ -222,7 +218,7 @@ fn mapped_scope_plan(
     if let Some(plan) = mapped_copy_plan(
         scope,
         graph,
-        source_schema,
+        sources,
         target_group,
         collection,
         explicit_text_port,
@@ -243,7 +239,7 @@ fn mapped_scope_plan(
 fn mapped_copy_plan(
     scope: &Scope,
     graph: &Graph,
-    source_schema: &SchemaNode,
+    sources: &SourceExports<'_>,
     target_group: &SchemaNode,
     collection: &[String],
     explicit_text_port: bool,
@@ -259,7 +255,7 @@ fn mapped_copy_plan(
     {
         return None;
     }
-    let source_group_node = schema_node_at(source_schema, &source_group)?;
+    let source_group_node = sources.schema_node_at(&source_group)?;
     if !matches!(source_group_node.kind, SchemaKind::Group { .. }) {
         return None;
     }
@@ -327,7 +323,7 @@ fn first_outputs_are_exportable(
 }
 
 fn resolve_source_collection(
-    schema: &SchemaNode,
+    sources: &SourceExports<'_>,
     anchor: &[String],
     source: &[String],
 ) -> Option<Vec<String>> {
@@ -337,7 +333,9 @@ fn resolve_source_collection(
 
     let mut bases = vec![anchor.len()];
     bases.extend((1..anchor.len()).rev().filter(|&length| {
-        schema_node_at(schema, &anchor[..length]).is_some_and(|node| node.repeating)
+        sources
+            .schema_node_at(&anchor[..length])
+            .is_some_and(|node| node.repeating)
     }));
     bases.push(0);
     bases.dedup();
@@ -345,7 +343,7 @@ fn resolve_source_collection(
     bases.into_iter().find_map(|length| {
         let mut candidate = anchor[..length].to_vec();
         candidate.extend(source.iter().cloned());
-        schema_node_at(schema, &candidate).map(|_| candidate)
+        sources.schema_node_at(&candidate).map(|_| candidate)
     })
 }
 
