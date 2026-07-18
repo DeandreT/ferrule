@@ -474,7 +474,7 @@ fn has_controls_or_content(scope: &Scope) -> bool {
         || scope.group_starting_with.is_some()
         || scope.group_into_blocks.is_some()
         || scope.sort_by.is_some()
-        || scope.take.is_some()
+        || !scope.windows.is_empty()
         || !scope.bindings.is_empty()
         || !scope.children.is_empty()
         || !scope.dynamic_children.is_empty()

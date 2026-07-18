@@ -3,7 +3,7 @@ use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{
     Binding, DynamicBinding, DynamicSourcePath, Graph, NamedSource, Node, PdfCapture, PdfCommand,
     PdfLayout, PdfPageSelection, PdfRegion, Project, Scope, ScopeConstruction, SequenceExpr,
-    XbrlBoundaryOptions,
+    SequenceWindow, XbrlBoundaryOptions,
 };
 use std::num::NonZeroU32;
 
@@ -386,7 +386,7 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
     project.root.group_starting_with = Some(92);
     project.root.group_into_blocks = Some(93);
     project.root.sort_by = Some(90);
-    project.root.take = Some(91);
+    project.root.windows = vec![SequenceWindow::First { count: 91 }];
     project.root.bindings.push(Binding {
         target_field: "missing".into(),
         node: 77,
@@ -413,10 +413,10 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
         "group block size has no iterated source",
         "scope grouping modes are mutually exclusive",
         "sort key references missing node 90",
-        "take count references missing node 91",
+        "sequence window 1 references missing bound node 91",
         "filter has no iterated source",
         "sort key has no iterated source",
-        "take count has no iterated source",
+        "sequence window has no iterated source",
         "binding target `missing` does not exist",
         "binding for `missing` references missing node 77",
         "target scope does not exist",

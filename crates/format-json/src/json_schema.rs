@@ -4,15 +4,15 @@
 //! `boolean` to the corresponding scalar types, and resolves document-local
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
 //! refs degrade to string scalars). Compatible closed-object `oneOf` and
-//! `anyOf` unions, their required string `const` discriminators, and typed
+//! `anyOf` unions, their required scalar `const` discriminators, and typed
 //! `additionalProperties` schemas are preserved. An omitted or false
 //! `additionalProperties` is treated as closed; explicitly unconstrained
 //! `true`/`{}` schemas and general composition or validation keywords remain
 //! outside this "lite" subset.
 
 use ir::{
-    GroupAlternative, GroupAlternativeConstraint, GroupAlternativeMode, ScalarType, SchemaKind,
-    SchemaNode,
+    FiniteF64, GroupAlternative, GroupAlternativeConstraint, GroupAlternativeConstraintValue,
+    GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
 };
 
 use crate::JsonFormatError;
@@ -98,12 +98,52 @@ fn parse(
         Some("integer") => Ok(SchemaNode::scalar(name, ScalarType::Int)),
         Some("number") => Ok(SchemaNode::scalar(name, ScalarType::Float)),
         Some("boolean") => Ok(SchemaNode::scalar(name, ScalarType::Bool)),
+        None if schema.get("const").is_some() => {
+            parse_inferred_const_scalar(name, &schema["const"])
+        }
         _ if schema.get("properties").is_some() => {
             let children = parse_properties(schema, doc, active_refs)?;
             attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
         }
         _ => Ok(SchemaNode::scalar(name, ScalarType::String)),
     }
+}
+
+fn parse_inferred_const_scalar(
+    name: &str,
+    value: &serde_json::Value,
+) -> Result<SchemaNode, JsonFormatError> {
+    let ty = match value {
+        serde_json::Value::String(_) => ScalarType::String,
+        serde_json::Value::Bool(_) => ScalarType::Bool,
+        serde_json::Value::Number(number) if number.as_i64().is_some() => ScalarType::Int,
+        serde_json::Value::Number(number) if number.as_u64().is_some() => {
+            return Err(unsupported_union(
+                name,
+                "integer const is outside ferrule's signed 64-bit range",
+            ));
+        }
+        serde_json::Value::Number(number) if finite_f64(number).is_some() => ScalarType::Float,
+        serde_json::Value::Number(_) => {
+            return Err(unsupported_union(
+                name,
+                "numeric const cannot be represented as a finite ferrule number",
+            ));
+        }
+        serde_json::Value::Null => {
+            return Err(unsupported_union(
+                name,
+                "null const cannot distinguish required fields because JSON null and absence share one IR value",
+            ));
+        }
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            return Err(unsupported_union(
+                name,
+                "const discriminators must be JSON scalar values",
+            ));
+        }
+    };
+    Ok(SchemaNode::scalar(name, ty))
 }
 
 fn schema_type<'a>(
@@ -310,7 +350,7 @@ fn parse_object_alternatives(
                 required.push(field);
             }
         }
-        let constraints = required_string_constraints(name, resolved, &required)?;
+        let constraints = required_scalar_constraints(name, resolved, &required, &merged)?;
         if required
             .iter()
             .any(|field| !members.iter().any(|member| member == field))
@@ -356,10 +396,11 @@ fn parse_object_alternatives(
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
 }
 
-fn required_string_constraints(
+fn required_scalar_constraints(
     union_name: &str,
     schema: &serde_json::Value,
     required: &[String],
+    children: &[SchemaNode],
 ) -> Result<Vec<GroupAlternativeConstraint>, JsonFormatError> {
     let Some(properties) = schema
         .get("properties")
@@ -377,18 +418,82 @@ fn required_string_constraints(
                     &format!("const discriminator `{member}` must be required"),
                 ));
             }
-            let value = value.as_str().ok_or_else(|| {
-                unsupported_union(
+            let child = children
+                .iter()
+                .find(|child| child.name == *member)
+                .ok_or_else(|| {
+                    unsupported_union(
+                        union_name,
+                        &format!("const discriminator `{member}` has no declared scalar field"),
+                    )
+                })?;
+            if child.repeating {
+                return Err(unsupported_union(
                     union_name,
-                    &format!("const discriminator `{member}` must be a string"),
-                )
-            })?;
+                    &format!("const discriminator `{member}` cannot be an array"),
+                ));
+            }
+            let SchemaKind::Scalar { ty } = child.kind else {
+                return Err(unsupported_union(
+                    union_name,
+                    &format!("const discriminator `{member}` must be a scalar field"),
+                ));
+            };
+            let value = constraint_value(union_name, member, value, ty)?;
             Ok(GroupAlternativeConstraint {
                 member: member.clone(),
-                value: value.to_string(),
+                value,
             })
         })
         .collect()
+}
+
+fn constraint_value(
+    union_name: &str,
+    member: &str,
+    value: &serde_json::Value,
+    ty: ScalarType,
+) -> Result<GroupAlternativeConstraintValue, JsonFormatError> {
+    let unsupported = |reason: &str| {
+        unsupported_union(
+            union_name,
+            &format!("const discriminator `{member}` {reason}"),
+        )
+    };
+    match (ty, value) {
+        (ScalarType::String, serde_json::Value::String(value)) => {
+            Ok(GroupAlternativeConstraintValue::String(value.clone()))
+        }
+        (ScalarType::Int, serde_json::Value::Number(value)) => value
+            .as_i64()
+            .map(GroupAlternativeConstraintValue::Int)
+            .ok_or_else(|| unsupported("must be a signed 64-bit integer")),
+        (ScalarType::Float, serde_json::Value::Number(value)) => finite_f64(value)
+            .and_then(FiniteF64::new)
+            .map(GroupAlternativeConstraintValue::Float)
+            .ok_or_else(|| unsupported("must be a finite exactly supported number")),
+        (ScalarType::Bool, serde_json::Value::Bool(value)) => {
+            Ok(GroupAlternativeConstraintValue::Bool(*value))
+        }
+        (_, serde_json::Value::Null) => Err(unsupported(
+            "cannot be null because JSON null and absence share one IR value",
+        )),
+        _ => Err(unsupported("does not match its declared scalar type")),
+    }
+}
+
+fn finite_f64(number: &serde_json::Number) -> Option<f64> {
+    const MAX_EXACT_F64_INTEGER: u64 = 1_u64 << f64::MANTISSA_DIGITS;
+    if number
+        .as_i64()
+        .is_some_and(|value| value.unsigned_abs() > MAX_EXACT_F64_INTEGER)
+        || number
+            .as_u64()
+            .is_some_and(|value| value > MAX_EXACT_F64_INTEGER)
+    {
+        return None;
+    }
+    number.as_f64().filter(|value| value.is_finite())
 }
 
 fn required_names(schema: &serde_json::Value) -> Vec<String> {
@@ -476,8 +581,10 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                                     .iter()
                                     .find(|constraint| constraint.member == *member)
                                 {
-                                    property
-                                        .insert("const".into(), constraint.value.clone().into());
+                                    property.insert(
+                                        "const".into(),
+                                        constraint_value_to_json(&constraint.value),
+                                    );
                                 }
                                 properties.insert(
                                     child.name.clone(),
@@ -517,6 +624,15 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 out.insert("additionalProperties".into(), false.into());
             }
         }
+    }
+}
+
+fn constraint_value_to_json(value: &GroupAlternativeConstraintValue) -> serde_json::Value {
+    match value {
+        GroupAlternativeConstraintValue::String(value) => value.clone().into(),
+        GroupAlternativeConstraintValue::Int(value) => (*value).into(),
+        GroupAlternativeConstraintValue::Float(value) => value.get().into(),
+        GroupAlternativeConstraintValue::Bool(value) => (*value).into(),
     }
 }
 
@@ -730,7 +846,7 @@ mod tests {
     }
 
     #[test]
-    fn required_string_const_discriminators_roundtrip_and_validate_instances() {
+    fn required_scalar_const_discriminators_roundtrip_and_validate_instances() {
         let schema = import_str(
             r#"{
   "title": "Event",
@@ -756,10 +872,19 @@ mod tests {
                 .iter()
                 .map(|alternative| {
                     let constraint = &alternative.constraints[0];
-                    (constraint.member.as_str(), constraint.value.as_str())
+                    (constraint.member.as_str(), &constraint.value)
                 })
                 .collect::<Vec<_>>(),
-            [("kind", "created"), ("kind", "deleted")]
+            [
+                (
+                    "kind",
+                    &GroupAlternativeConstraintValue::String("created".into())
+                ),
+                (
+                    "kind",
+                    &GroupAlternativeConstraintValue::String("deleted".into())
+                )
+            ]
         );
         for text in [
             r#"{"kind":"created","value":"one"}"#,
@@ -805,7 +930,7 @@ mod tests {
     }
 
     #[test]
-    fn inclusive_alternatives_honor_required_string_const_discriminators() {
+    fn inclusive_alternatives_honor_required_scalar_const_discriminators() {
         let schema = import_str(
             r#"{
   "title":"Message",
@@ -828,13 +953,122 @@ mod tests {
     }
 
     #[test]
+    fn bool_integer_and_number_const_discriminators_roundtrip() {
+        let cases = [
+            (
+                "boolean",
+                "true",
+                "false",
+                r#"{"kind":true,"value":"one"}"#,
+                r#"{"kind":false,"value":"two"}"#,
+                r#"{"kind":"true","value":"bad"}"#,
+            ),
+            (
+                "integer",
+                "7",
+                "9",
+                r#"{"kind":7,"value":"one"}"#,
+                r#"{"kind":9,"value":"two"}"#,
+                r#"{"kind":8,"value":"bad"}"#,
+            ),
+            (
+                "number",
+                "1.25",
+                "2.5",
+                r#"{"kind":1.25,"value":"one"}"#,
+                r#"{"kind":2.5,"value":"two"}"#,
+                r#"{"kind":3.75,"value":"bad"}"#,
+            ),
+        ];
+        for (ty, first, second, first_instance, second_instance, rejected) in cases {
+            let text = format!(
+                r#"{{
+  "title":"TypedEvent",
+  "oneOf":[
+    {{"title":"first","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{{"kind":{{"type":"{ty}","const":{first}}},"value":{{"type":"string"}}}}}},
+    {{"title":"second","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{{"kind":{{"type":"{ty}","const":{second}}},"value":{{"type":"string"}}}}}}
+  ]
+}}"#
+            );
+            let schema = import_str(&text);
+            for instance_text in [first_instance, second_instance] {
+                let instance = crate::from_str(instance_text, &schema).unwrap();
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(
+                        &crate::to_string(&schema, &instance).unwrap()
+                    )
+                    .unwrap(),
+                    serde_json::from_str::<serde_json::Value>(instance_text).unwrap()
+                );
+            }
+            assert!(matches!(
+                crate::from_str(rejected, &schema),
+                Err(JsonFormatError::NoMatchingAlternative { .. })
+            ));
+
+            let path = std::env::temp_dir().join(format!(
+                "ferrule_json_schema_typed_discriminator_{}_{}.json",
+                ty,
+                std::process::id()
+            ));
+            std::fs::write(&path, export(&schema)).unwrap();
+            let roundtrip = import(&path).unwrap();
+            std::fs::remove_file(path).unwrap();
+            assert_eq!(roundtrip, schema);
+        }
+    }
+
+    #[test]
+    fn const_discriminators_infer_scalar_types() {
+        let schema = import_str(
+            r#"{
+  "title":"Implicit",
+  "oneOf":[
+    {"title":"yes","type":"object","additionalProperties":false,"required":["kind"],
+      "properties":{"kind":{"const":true}}},
+    {"title":"no","type":"object","additionalProperties":false,"required":["kind"],
+      "properties":{"kind":{"const":false}}}
+  ]
+}"#,
+        );
+        assert!(matches!(
+            schema.child("kind").map(|child| &child.kind),
+            Some(SchemaKind::Scalar {
+                ty: ScalarType::Bool
+            })
+        ));
+        assert!(crate::from_str(r#"{"kind":true}"#, &schema).is_ok());
+        let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+        assert_eq!(exported["oneOf"][0]["properties"]["kind"]["const"], true);
+    }
+
+    #[test]
     fn unsupported_const_discriminators_are_rejected_actionably() {
         for (property, required, expected) in [
             (r#"{"type":"string","const":"a"}"#, "", "must be required"),
             (
-                r#"{"type":"integer","const":1}"#,
+                r#"{"type":"string","const":1}"#,
                 r#", "required":["kind"]"#,
-                "must be a string",
+                "does not match its declared scalar type",
+            ),
+            (
+                r#"{"type":"string","const":null}"#,
+                r#", "required":["kind"]"#,
+                "cannot be null",
+            ),
+            (
+                r#"{"type":"integer","const":9223372036854775808}"#,
+                r#", "required":["kind"]"#,
+                "signed 64-bit integer",
+            ),
+            (
+                r#"{"type":"number","const":9007199254740993}"#,
+                r#", "required":["kind"]"#,
+                "finite exactly supported number",
             ),
         ] {
             let text = format!(
@@ -848,6 +1082,45 @@ mod tests {
             );
             let error = import_str_result(&text).unwrap_err();
             assert!(error.to_string().contains(expected), "{error}");
+        }
+
+        let ambiguous = import_str_result(
+            r#"{
+  "title":"Ambiguous",
+  "oneOf":[
+    {"title":"first","type":"object","additionalProperties":false,"required":["kind"],
+      "properties":{"kind":{"type":"boolean","const":true}}},
+    {"title":"second","type":"object","additionalProperties":false,"required":["kind"],
+      "properties":{"kind":{"type":"boolean","const":true}}}
+  ]
+}"#,
+        )
+        .unwrap_err();
+        assert!(
+            ambiguous
+                .to_string()
+                .contains("alternatives are not distinguishable"),
+            "{ambiguous}"
+        );
+
+        for property in [
+            r#"{"type":"array","const":[],"items":{"type":"string"}}"#,
+            r#"{"type":"object","const":{},"additionalProperties":false}"#,
+        ] {
+            let text = format!(
+                r#"{{
+  "title":"StructuredConst",
+  "oneOf":[
+    {{"type":"object","additionalProperties":false,"required":["kind"],"properties":{{"kind":{property}}}}},
+    {{"type":"object","additionalProperties":false,"required":["other"],"properties":{{"other":{{"type":"string"}}}}}}
+  ]
+}}"#
+            );
+            let error = import_str_result(&text).unwrap_err();
+            assert!(
+                error.to_string().contains("const discriminator `kind`"),
+                "{error}"
+            );
         }
     }
 

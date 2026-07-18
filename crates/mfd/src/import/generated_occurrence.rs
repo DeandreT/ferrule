@@ -4,8 +4,8 @@ use ir::{SchemaKind, XML_TEXT_FIELD};
 use mapping::IterationOutput;
 
 use super::function::{
-    aggregate_op, is_distinct_values, is_filter, is_first_items, is_group_into_blocks,
-    is_group_starting_with, is_input, is_sequence_producer, is_sort, produces_scalar,
+    aggregate_op, is_distinct_values, is_filter, is_group_into_blocks, is_group_starting_with,
+    is_input, is_sequence_producer, is_sequence_window, is_sort, produces_scalar,
 };
 use super::graph::GraphBuilder;
 use super::group_projection::TargetIteration;
@@ -161,7 +161,7 @@ fn is_plain_scalar_component(component: &super::function::FnComponent) -> bool {
         && aggregate_op(&component.name).is_none()
         && !is_filter(component)
         && !is_sort(component)
-        && !is_first_items(component)
+        && !is_sequence_window(component)
         && !is_group_into_blocks(component)
         && !is_group_starting_with(component)
         && !is_distinct_values(component)

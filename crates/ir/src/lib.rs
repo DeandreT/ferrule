@@ -260,17 +260,75 @@ pub struct GroupAlternative {
     pub members: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub required: Vec<String>,
-    /// Required string values that distinguish this alternative from other
+    /// Required scalar values that distinguish this alternative from other
     /// structurally identical projections.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<GroupAlternativeConstraint>,
 }
 
-/// One exact required string value used to select a group alternative.
+/// One exact required scalar value used to select a group alternative.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupAlternativeConstraint {
     pub member: String,
-    pub value: String,
+    pub value: GroupAlternativeConstraintValue,
+}
+
+/// A JSON-compatible scalar discriminator whose value can survive the IR
+/// without losing its declared type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum GroupAlternativeConstraintValue {
+    String(String),
+    Int(i64),
+    Float(FiniteF64),
+    Bool(bool),
+}
+
+impl GroupAlternativeConstraintValue {
+    fn is_valid_for(&self, ty: ScalarType) -> bool {
+        matches!(
+            (self, ty),
+            (Self::String(_), ScalarType::String)
+                | (Self::Int(_), ScalarType::Int)
+                | (Self::Bool(_), ScalarType::Bool)
+        ) || matches!((self, ty), (Self::Float(_), ScalarType::Float))
+    }
+}
+
+/// One finite 64-bit float. Construction and deserialization reject infinities
+/// and NaN so scalar discriminator values are always JSON-serializable.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FiniteF64(f64);
+
+impl Eq for FiniteF64 {}
+
+impl FiniteF64 {
+    pub fn new(value: f64) -> Option<Self> {
+        value.is_finite().then_some(Self(value))
+    }
+
+    pub fn get(self) -> f64 {
+        self.0
+    }
+}
+
+impl Serialize for FiniteF64 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for FiniteF64 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).ok_or_else(|| serde::de::Error::custom("float must be finite"))
+    }
 }
 
 /// Whether exactly one or at least one declared group alternative must match.
@@ -554,9 +612,8 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
                                     && !child.repeating
                                     && matches!(
                                         child.kind,
-                                        SchemaKind::Scalar {
-                                            ty: ScalarType::String
-                                        }
+                                        SchemaKind::Scalar { ty }
+                                            if constraint.value.is_valid_for(ty)
                                     )
                             })
                     },
@@ -901,7 +958,7 @@ mod tests {
                 required: vec!["kind".into(), "value".into()],
                 constraints: vec![GroupAlternativeConstraint {
                     member: "kind".into(),
-                    value: "created".into(),
+                    value: GroupAlternativeConstraintValue::String("created".into()),
                 }],
             },
             GroupAlternative {
@@ -910,7 +967,7 @@ mod tests {
                 required: vec!["kind".into(), "value".into()],
                 constraints: vec![GroupAlternativeConstraint {
                     member: "kind".into(),
-                    value: "deleted".into(),
+                    value: GroupAlternativeConstraintValue::String("deleted".into()),
                 }],
             },
         ])
@@ -950,6 +1007,81 @@ mod tests {
             .with_alternatives(duplicate)
             .is_none()
         );
+
+        let typed_discriminators = SchemaNode::group(
+            "Typed",
+            vec![
+                SchemaNode::scalar("code", ScalarType::Int),
+                SchemaNode::scalar("ratio", ScalarType::Float),
+                SchemaNode::scalar("active", ScalarType::Bool),
+            ],
+        )
+        .with_alternatives(vec![
+            GroupAlternative {
+                name: "first".into(),
+                members: vec!["code".into(), "ratio".into(), "active".into()],
+                required: vec!["code".into(), "ratio".into(), "active".into()],
+                constraints: vec![
+                    GroupAlternativeConstraint {
+                        member: "code".into(),
+                        value: GroupAlternativeConstraintValue::Int(1),
+                    },
+                    GroupAlternativeConstraint {
+                        member: "ratio".into(),
+                        value: GroupAlternativeConstraintValue::Float(FiniteF64::new(1.5).unwrap()),
+                    },
+                    GroupAlternativeConstraint {
+                        member: "active".into(),
+                        value: GroupAlternativeConstraintValue::Bool(true),
+                    },
+                ],
+            },
+            GroupAlternative {
+                name: "second".into(),
+                members: vec!["code".into(), "ratio".into(), "active".into()],
+                required: vec!["code".into(), "ratio".into(), "active".into()],
+                constraints: vec![
+                    GroupAlternativeConstraint {
+                        member: "code".into(),
+                        value: GroupAlternativeConstraintValue::Int(2),
+                    },
+                    GroupAlternativeConstraint {
+                        member: "ratio".into(),
+                        value: GroupAlternativeConstraintValue::Float(FiniteF64::new(2.5).unwrap()),
+                    },
+                    GroupAlternativeConstraint {
+                        member: "active".into(),
+                        value: GroupAlternativeConstraintValue::Bool(false),
+                    },
+                ],
+            },
+        ])
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(
+                &serde_json::to_string(&typed_discriminators).unwrap()
+            )
+            .unwrap(),
+            typed_discriminators
+        );
+
+        let mut wrong_type = typed_discriminators.alternatives().to_vec();
+        wrong_type[0].constraints[0].value = GroupAlternativeConstraintValue::String("1".into());
+        assert!(
+            SchemaNode::group(
+                "Typed",
+                vec![
+                    SchemaNode::scalar("code", ScalarType::Int),
+                    SchemaNode::scalar("ratio", ScalarType::Float),
+                    SchemaNode::scalar("active", ScalarType::Bool),
+                ],
+            )
+            .with_alternatives(wrong_type)
+            .is_none()
+        );
+
+        assert!(FiniteF64::new(f64::NAN).is_none());
+        assert!(FiniteF64::new(f64::INFINITY).is_none());
     }
 
     #[test]

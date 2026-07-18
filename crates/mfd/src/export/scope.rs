@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use mapping::{Graph, JoinId, Node, NodeId, Scope, ScopeConstruction, SortFilterOrder};
+use mapping::{
+    Graph, JoinId, Node, NodeId, Scope, ScopeConstruction, SequenceWindow, SortFilterOrder,
+};
 
 use super::concatenation::TargetBranches;
 use super::join::JoinExports;
@@ -380,9 +382,10 @@ fn append_scope_controls(
             )),
         }
     }
-    if let Some(take) = scope.take {
+    for window in scope.windows.iter().copied() {
+        let bounds = window.nodes().collect::<Vec<_>>();
         connect_scope_position_roots(
-            [take],
+            bounds.iter().copied(),
             source_stages,
             source_collection,
             join,
@@ -394,45 +397,67 @@ fn append_scope_controls(
             edges,
             warnings,
         );
-        if scope.iteration_output == mapping::IterationOutput::First && chain.is_empty() {
-            let in_nodes = keys.next();
-            let out_nodes = keys.next();
-            *uid += 1;
+        let Some(bound_sources) = bounds
+            .iter()
+            .map(|bound| node_out_key.get(bound).copied())
+            .collect::<Option<Vec<_>>>()
+        else {
+            warnings.push(format!(
+                "scope `{}` sequence window references an unexported bound; window dropped",
+                chain.join("/")
+            ));
+            continue;
+        };
+        let name = match window {
+            SequenceWindow::SkipFirst { .. } => "skip-first-items",
+            SequenceWindow::First { .. } => "first-items",
+            SequenceWindow::From { .. } => "items-from",
+            SequenceWindow::FromTo { .. } => "items-from-to",
+            SequenceWindow::Last { .. } => "last-items",
+        };
+        let in_nodes = keys.next();
+        let in_bounds = (0..bound_sources.len())
+            .map(|_| keys.next())
+            .collect::<Vec<_>>();
+        let out_nodes = keys.next();
+        *uid += 1;
+        let _ = write!(
+            components,
+            "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+             \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/>"
+        );
+        for (index, input) in in_bounds.iter().enumerate() {
+            let position = index + 1;
             let _ = write!(
                 components,
-                "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/></sources>\n\
-                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
-                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                 \t\t\t\t</component>\n"
+                "<datapoint pos=\"{position}\" key=\"{input}\"/>"
             );
-            edges.push((from, in_nodes));
-            from = out_nodes;
-        } else {
-            match node_out_key.get(&take) {
-                Some(&count_src) => {
-                    let in_nodes = keys.next();
-                    let in_count = keys.next();
-                    let out_nodes = keys.next();
-                    *uid += 1;
-                    let _ = write!(
-                        components,
-                        "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_count}\"/></sources>\n\
-                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
-                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                     \t\t\t\t</component>\n"
-                    );
-                    edges.push((from, in_nodes));
-                    edges.push((count_src, in_count));
-                    from = out_nodes;
-                }
-                None => warnings.push(format!(
-                    "scope `{}` take count references an unexported node; item limit dropped",
-                    chain.join("/")
-                )),
-            }
         }
+        let _ = write!(
+            components,
+            "</sources>\n\
+             \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+             \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+             \t\t\t\t</component>\n"
+        );
+        edges.push((from, in_nodes));
+        edges.extend(bound_sources.into_iter().zip(in_bounds));
+        from = out_nodes;
+    }
+    if scope.iteration_output == mapping::IterationOutput::First && chain.is_empty() {
+        let in_nodes = keys.next();
+        let out_nodes = keys.next();
+        *uid += 1;
+        let _ = write!(
+            components,
+            "\t\t\t\t<component name=\"first-items\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+             \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/></sources>\n\
+             \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+             \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+             \t\t\t\t</component>\n"
+        );
+        edges.push((from, in_nodes));
+        from = out_nodes;
     }
     from
 }

@@ -19,7 +19,7 @@ fn mixed_direction_sort_keys_execute_and_roundtrip() {
         node: name,
         descending: true,
     }];
-    top.take = None;
+    top.windows.clear();
 
     let source = format_xml::read(&fixture("ranked.xml"), &project.source).unwrap();
     let output = engine::run(&project, &source).unwrap();
@@ -274,13 +274,13 @@ fn malformed_group_block_sizes_skip_the_affected_iteration() {
 }
 
 #[test]
-fn group_block_and_take_counts_export_parent_position_dependencies() {
+fn group_block_and_window_counts_export_parent_position_dependencies() {
     let mut project = mfd::import(&fixture("group-blocks.mfd")).unwrap().project;
     let next = project.graph.nodes.keys().next_back().copied().unwrap() + 1;
     let block_position = next;
     let block_size = next + 1;
-    let take_position = next + 2;
-    let take_count = next + 3;
+    let window_position = next + 2;
+    let window_count = next + 3;
     project.graph.nodes.extend([
         (
             block_position,
@@ -296,22 +296,24 @@ fn group_block_and_take_counts_export_parent_position_dependencies() {
             },
         ),
         (
-            take_position,
+            window_position,
             Node::Position {
                 collection: vec!["Row".into()],
             },
         ),
         (
-            take_count,
+            window_count,
             Node::Call {
                 function: "add".into(),
-                args: vec![take_position, 0],
+                args: vec![window_position, 0],
             },
         ),
     ]);
     let block = &mut project.root.children[0];
     block.group_into_blocks = Some(block_size);
-    block.take = Some(take_count);
+    block.windows = vec![mapping::SequenceWindow::First {
+        count: window_count,
+    }];
 
     let dir = TempDir::new("group_block_position_export");
     let out = dir.0.join("group-block-position.mfd");
@@ -376,8 +378,11 @@ fn distinct_values_imports_as_stable_sequence_and_roundtrips() {
         &project.graph.nodes[&rows.group_by.unwrap()],
         Node::SourceField { path, .. } if path == &["Category"]
     ));
+    let [mapping::SequenceWindow::First { count }] = rows.windows.as_slice() else {
+        panic!("distinct row should have one first-items window")
+    };
     assert!(matches!(
-        &project.graph.nodes[&rows.take.unwrap()],
+        &project.graph.nodes[count],
         Node::Const {
             value: Value::Int(2)
         }
@@ -416,13 +421,13 @@ fn unsupported_sequence_order_imports_with_one_actionable_warning() {
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("sequence into `Row`"));
     assert!(
-        imported.warnings[0].contains("applies first-items before distinct-values"),
+        imported.warnings[0].contains("applies a sequence window before distinct-values"),
         "{:?}",
         imported.warnings
     );
     let rows = &imported.project.root.children[0];
     assert!(rows.group_by.is_some());
-    assert!(rows.take.is_some());
+    assert!(!rows.windows.is_empty());
 }
 
 #[test]
@@ -611,7 +616,7 @@ fn generated_integer_ranges_import_controls_execute_and_roundtrip() {
     assert!(item.group_by.is_some());
     assert!(item.sort_by.is_some());
     assert!(item.sort_descending);
-    assert!(item.take.is_some());
+    assert!(!item.windows.is_empty());
 
     let source = format_xml::read(&fixture("generate.xml"), &project.source).unwrap();
     let target = engine::run(project, &source).unwrap();
@@ -706,7 +711,7 @@ fn generated_integer_ranges_import_controls_execute_and_roundtrip() {
     assert!(reimported_item.group_by.is_some());
     assert!(reimported_item.sort_by.is_some());
     assert!(reimported_item.sort_descending);
-    assert!(reimported_item.take.is_some());
+    assert!(!reimported_item.windows.is_empty());
     let rerun = engine::run(&reimported.project, &source).unwrap();
     assert_eq!(target, rerun);
 }
@@ -838,4 +843,80 @@ fn generated_sequence_item_at_imports_executes_and_roundtrips() {
             .any(|node| matches!(node, Node::SequenceItemAt { .. }))
     );
     assert_eq!(engine::run(&reimported.project, &source).unwrap(), target);
+}
+
+#[test]
+fn ordered_sequence_windows_import_execute_and_roundtrip() {
+    let imported = mfd::import(&fixture("sequence-windows.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let item = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Item")
+        .unwrap();
+    assert!(matches!(
+        item.windows.as_slice(),
+        [
+            mapping::SequenceWindow::SkipFirst { .. },
+            mapping::SequenceWindow::First { .. },
+            mapping::SequenceWindow::Last { .. },
+            mapping::SequenceWindow::From { .. },
+            mapping::SequenceWindow::FromTo { .. },
+        ]
+    ));
+
+    let source = format_xml::read(&fixture("generate.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let rows = target
+        .field("Item")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(scalar(&rows[0], "Value"), Value::Int(5));
+
+    let dir = TempDir::new("sequence_windows");
+    let exported = dir.0.join("mapping.mfd");
+    let warnings = mfd::export(&imported.project, &exported).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&exported).unwrap();
+    for name in [
+        "skip-first-items",
+        "first-items",
+        "last-items",
+        "items-from",
+        "items-from-to",
+    ] {
+        assert!(xml.contains(&format!("name=\"{name}\"")), "{name}\n{xml}");
+    }
+
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), target);
+}
+
+#[test]
+fn sequence_window_with_missing_required_bound_skips_iteration() {
+    let dir = TempDir::new("sequence_window_missing_bound");
+    for name in ["generate-source.xsd", "generate-target.xsd", "generate.xml"] {
+        std::fs::copy(fixture(name), dir.0.join(name)).unwrap();
+    }
+    let design = std::fs::read_to_string(fixture("sequence-windows.mfd"))
+        .unwrap()
+        .replace("<edge from=\"33\" to=\"54\"/>", "");
+    let path = dir.0.join("mapping.mfd");
+    std::fs::write(&path, design).unwrap();
+
+    let imported = mfd::import(&path).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(
+        imported.warnings[0]
+            .contains("sequence window feeding `Item` has a missing or unsupported bound"),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(imported.project.root.children.is_empty());
 }

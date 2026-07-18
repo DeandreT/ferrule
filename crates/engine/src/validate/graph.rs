@@ -439,11 +439,17 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
             scope.group_starting_with,
             scope.group_into_blocks,
             scope.sort_by,
-            scope.take,
             scope.output_path(),
         ]
         .into_iter()
         .flatten(),
+    );
+    roots.extend(
+        scope
+            .windows
+            .iter()
+            .copied()
+            .flat_map(|window| window.nodes()),
     );
     if let Some(sequence) = scope.sequence() {
         roots.extend(sequence.inputs());

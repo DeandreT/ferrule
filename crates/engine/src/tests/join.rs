@@ -1,6 +1,8 @@
 use super::*;
 use ir::{ScalarType, SchemaNode};
-use mapping::{Binding, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, ScopeIteration};
+use mapping::{
+    Binding, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, ScopeIteration, SequenceWindow,
+};
 
 fn record(fields: &[(&str, Value)]) -> Instance {
     Instance::Group(
@@ -405,7 +407,7 @@ fn join_controls_compact_flat_positions_without_changing_raw_positions() {
         row_scope.filter = Some(2);
         row_scope.sort_by = Some(0);
         row_scope.sort_descending = true;
-        row_scope.take = Some(3);
+        row_scope.windows = vec![SequenceWindow::First { count: 3 }];
     }
     let source = Instance::Group(vec![
         (
@@ -938,7 +940,7 @@ fn validation_enforces_join_dominance_and_terminal_collections() {
             SchemaNode::group("B", vec![SchemaNode::scalar("aid", ScalarType::Int)]).repeating(),
         ],
     );
-    project.root.children[0].take = Some(0);
+    project.root.children[0].windows = vec![SequenceWindow::First { count: 0 }];
 
     let messages: Vec<_> = validate(&project)
         .into_iter()
