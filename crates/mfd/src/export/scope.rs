@@ -79,6 +79,7 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
 fn append_scope_controls(
     scope: &Scope,
     chain: &[String],
+    source_stages: Option<&[(Vec<String>, u32)]>,
     source_collection: Option<&[String]>,
     join: Option<JoinId>,
     graph: &Graph,
@@ -97,6 +98,7 @@ fn append_scope_controls(
     {
         connect_scope_position_roots(
             [sort_by],
+            source_stages,
             source_collection,
             join,
             true,
@@ -140,6 +142,7 @@ fn append_scope_controls(
     if let Some(filter) = scope.filter {
         connect_scope_position_roots(
             [filter],
+            source_stages,
             source_collection,
             join,
             true,
@@ -179,6 +182,7 @@ fn append_scope_controls(
     {
         connect_scope_position_roots(
             [sort_by],
+            source_stages,
             source_collection,
             join,
             true,
@@ -222,6 +226,7 @@ fn append_scope_controls(
     if let Some(group_by) = scope.group_by {
         connect_scope_position_roots(
             [group_by],
+            source_stages,
             source_collection,
             join,
             true,
@@ -259,6 +264,7 @@ fn append_scope_controls(
     if let Some(predicate) = scope.group_starting_with {
         connect_scope_position_roots(
             [predicate],
+            source_stages,
             source_collection,
             join,
             true,
@@ -296,6 +302,7 @@ fn append_scope_controls(
     if let Some(block_size) = scope.group_into_blocks {
         connect_scope_position_roots(
             [block_size],
+            source_stages,
             source_collection,
             join,
             true,
@@ -333,6 +340,7 @@ fn append_scope_controls(
     if let Some(take) = scope.take {
         connect_scope_position_roots(
             [take],
+            source_stages,
             source_collection,
             join,
             true,
@@ -431,6 +439,7 @@ fn descendant_binding_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
 #[allow(clippy::too_many_arguments)]
 fn connect_binding_positions(
     scope: &Scope,
+    source_stages: Option<&[(Vec<String>, u32)]>,
     source_collection: Option<&[String]>,
     join: Option<JoinId>,
     from: u32,
@@ -442,6 +451,7 @@ fn connect_binding_positions(
 ) {
     connect_scope_position_roots(
         scope.bindings.iter().map(|binding| binding.node),
+        source_stages,
         source_collection,
         join,
         true,
@@ -460,6 +470,7 @@ fn connect_binding_positions(
     }
     connect_scope_position_roots(
         descendant_roots,
+        source_stages,
         source_collection,
         join,
         false,
@@ -470,6 +481,31 @@ fn connect_binding_positions(
         edges,
         warnings,
     );
+}
+
+fn source_position_stages(
+    sources: &SourceExports<'_>,
+    collection: &[String],
+    first_stage_len: usize,
+    terminal_from: u32,
+) -> Vec<(Vec<String>, u32)> {
+    if collection.is_empty() {
+        return vec![(Vec::new(), terminal_from)];
+    }
+    let mut stages = (first_stage_len..=collection.len())
+        .filter_map(|len| {
+            let path = collection[..len].to_vec();
+            sources
+                .schema_node_at(&path)
+                .is_some_and(|node| node.repeating)
+                .then(|| sources.key_for_abs(&path).map(|from| (path, from)))
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    if stages.last().is_none_or(|(path, _)| path != collection) {
+        stages.push((collection.to_vec(), terminal_from));
+    }
+    stages
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -555,6 +591,7 @@ fn collect_scope_edges(
                 scope,
                 chain,
                 None,
+                None,
                 Some(join),
                 graph,
                 node_out_key,
@@ -569,6 +606,7 @@ fn collect_scope_edges(
             );
             connect_binding_positions(
                 scope,
+                None,
                 None,
                 Some(join),
                 from,
@@ -603,6 +641,7 @@ fn collect_scope_edges(
                         chain,
                         None,
                         None,
+                        None,
                         graph,
                         node_out_key,
                         position_inputs,
@@ -616,6 +655,7 @@ fn collect_scope_edges(
                     );
                     connect_binding_positions(
                         scope,
+                        None,
                         None,
                         None,
                         from,
@@ -648,13 +688,18 @@ fn collect_scope_edges(
                 .to_string(),
         );
     } else if let Some(source) = scope.source() {
-        let abs = mapped_plan
-            .and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()))
-            .unwrap_or_else(|| {
+        let mapped_source =
+            mapped_plan.and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()));
+        let named_extra_path = sources.is_named_extra_path(source);
+        let abs = mapped_source.clone().unwrap_or_else(|| {
+            if named_extra_path {
+                source.to_vec()
+            } else {
                 let mut abs = anchor.clone();
                 abs.extend(source.iter().cloned());
                 abs
-            });
+            }
+        });
         let structural_source = mapped_plan
             .and_then(|plan| plan.source().map(|(_, group)| group))
             .unwrap_or(&abs);
@@ -668,9 +713,18 @@ fn collect_scope_edges(
                 } else {
                     from
                 };
+                let first_stage_len = if mapped_source.is_some() || named_extra_path {
+                    1
+                } else if source.is_empty() {
+                    abs.len()
+                } else {
+                    anchor.len() + 1
+                };
+                let position_stages = source_position_stages(sources, &abs, first_stage_len, from);
                 let from = append_scope_controls(
                     scope,
                     chain,
+                    Some(&position_stages),
                     Some(&abs),
                     None,
                     graph,
@@ -686,6 +740,7 @@ fn collect_scope_edges(
                 );
                 connect_binding_positions(
                     scope,
+                    Some(&position_stages),
                     Some(&abs),
                     None,
                     from,

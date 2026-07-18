@@ -1,6 +1,8 @@
 use ir::{ScalarType, Value};
 use mapping::AggregateOp;
 
+use crate::canonical_function;
+
 use super::schema::parse_u32;
 
 /// Typed lookup data declared by a MapForce value-map component.
@@ -371,7 +373,18 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
                 "xbrl-measure-currency" | "xbrl-measure-shares"
             )
         || component.kind == 5 && aggregate_op(&component.name).is_some()
-        || map_name(&component.name).is_some()
+        || map_component_name(component).is_some()
+}
+
+pub(super) fn map_component_name(component: &FnComponent) -> Option<&str> {
+    if component.library == "ferrule"
+        && component.kind == 5
+        && canonical_function::is_internal(&component.name)
+    {
+        Some(component.name.as_str())
+    } else {
+        map_name(&component.name)
+    }
 }
 
 pub(super) fn is_input(component: &FnComponent) -> bool {
@@ -517,8 +530,8 @@ mod tests {
     use ir::{ScalarType, Value};
 
     use super::{
-        is_db_function_component, is_isbn_converter_component, is_xbrl_measure_component, map_name,
-        produces_scalar, read, read_isbn_converter_component,
+        is_db_function_component, is_isbn_converter_component, is_xbrl_measure_component,
+        map_component_name, map_name, produces_scalar, read, read_isbn_converter_component,
     };
 
     #[test]
@@ -556,6 +569,24 @@ mod tests {
         assert_eq!(map_name("convertToISBN13"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("convertToEAN"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("sleep"), Some("delay_passthrough"));
+    }
+
+    #[test]
+    fn only_explicit_ferrule_components_map_internal_names() {
+        let ferrule = roxmltree::Document::parse(
+            r#"<component library="ferrule" name="to_number" kind="5"/>"#,
+        )
+        .unwrap();
+        let ferrule = read(&ferrule.root_element());
+        assert_eq!(map_component_name(&ferrule), Some("to_number"));
+        assert!(produces_scalar(&ferrule));
+
+        let vendor =
+            roxmltree::Document::parse(r#"<component library="core" name="to_number" kind="5"/>"#)
+                .unwrap();
+        let vendor = read(&vendor.root_element());
+        assert_eq!(map_component_name(&vendor), None);
+        assert!(!produces_scalar(&vendor));
     }
 
     #[test]

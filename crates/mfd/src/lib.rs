@@ -33,6 +33,7 @@
 //! embeds or copies ReferenceSamples content. MapForce is a trademark of ReferenceSamples
 //! GmbH; ferrule is unaffiliated.
 
+mod canonical_function;
 mod export;
 mod import;
 

@@ -644,12 +644,12 @@ fn flat_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
     }
 }
 
-enum DbLayout<'a> {
+pub(super) enum DbLayout<'a> {
     Table(&'a SchemaNode),
     Database(&'a [SchemaNode]),
 }
 
-fn db_layout(schema: &SchemaNode) -> Option<DbLayout<'_>> {
+pub(super) fn db_layout(schema: &SchemaNode) -> Option<DbLayout<'_>> {
     let SchemaKind::Group {
         children,
         alternatives,
@@ -811,12 +811,13 @@ fn render_db_table(
     for child in children {
         path.push(child.name.clone());
         match child.kind {
-            SchemaKind::Scalar { .. } => {
+            SchemaKind::Scalar { ty } => {
                 let key = branch_key(ports, branches, branch, path, "database column")?;
                 let _ = writeln!(
                     output,
-                    "{pad}\t<entry name=\"{}\" {attr}=\"{key}\"/>",
-                    xml_escape(&child.name)
+                    "{pad}\t<entry name=\"{}\" {attr}=\"{key}\" datatype=\"{}\"/>",
+                    xml_escape(&child.name),
+                    db_type_name(ty)
                 );
             }
             SchemaKind::Group { .. } => {
@@ -838,7 +839,16 @@ fn render_db_table(
     Ok(())
 }
 
-fn db_selections_xml(layout: &DbLayout<'_>) -> String {
+pub(super) const fn db_type_name(ty: ScalarType) -> &'static str {
+    match ty {
+        ScalarType::String => "string",
+        ScalarType::Int => "integer",
+        ScalarType::Float => "decimal",
+        ScalarType::Bool => "boolean",
+    }
+}
+
+pub(super) fn db_selections_xml(layout: &DbLayout<'_>) -> String {
     fn collect(table: &SchemaNode, names: &mut std::collections::BTreeSet<String>) {
         names.insert(
             table
@@ -945,6 +955,12 @@ pub(super) struct PortTree {
     by_abs: BTreeMap<Vec<String>, u32>,
 }
 
+// Recursive schemas are represented in the IR by finite references. Entry
+// trees still need concrete descendant ports for connections, but must not
+// turn a recursive declaration into unbounded export work.
+const MAX_RECURSIVE_PORT_DEPTH: usize = 32;
+const MAX_RECURSIVE_PORT_ELEMENTS: usize = 4_096;
+
 pub(super) enum PortMatch {
     Missing,
     Unique(u32),
@@ -955,6 +971,27 @@ pub(super) enum PortPairMatch {
     Missing,
     Unique(u32, u32),
     Ambiguous,
+}
+
+fn concrete_group_anchors(schema: &SchemaNode) -> BTreeMap<&str, Option<&SchemaNode>> {
+    fn collect<'a>(node: &'a SchemaNode, anchors: &mut BTreeMap<&'a str, Option<&'a SchemaNode>>) {
+        if node.recursive_ref.is_some() || !matches!(node.kind, SchemaKind::Group { .. }) {
+            return;
+        }
+        anchors
+            .entry(&node.name)
+            .and_modify(|candidate| *candidate = None)
+            .or_insert(Some(node));
+        if let SchemaKind::Group { children, .. } = &node.kind {
+            for child in children {
+                collect(child, anchors);
+            }
+        }
+    }
+
+    let mut anchors = BTreeMap::new();
+    collect(schema, &mut anchors);
+    anchors
 }
 
 impl PortTree {
@@ -968,18 +1005,32 @@ impl PortTree {
         explicit_text: &BTreeSet<Vec<String>>,
     ) -> Self {
         let mut by_abs = BTreeMap::new();
+        let anchors = concrete_group_anchors(schema);
+        let mut recursive_elements = 0;
         // The document root itself: rendered as a port only by row/array
         // shaped components (a csv block, a json root object).
         by_abs.insert(Vec::new(), keys.next());
-        fn walk(
-            node: &SchemaNode,
+        #[allow(clippy::too_many_arguments)]
+        fn walk<'a>(
+            node: &'a SchemaNode,
             path: &mut Vec<String>,
             keys: &mut KeyAlloc,
             by_abs: &mut BTreeMap<Vec<String>, u32>,
             explicit_text: &BTreeSet<Vec<String>>,
+            anchors: &BTreeMap<&'a str, Option<&'a SchemaNode>>,
+            recursive_depth: usize,
+            recursive_elements: &mut usize,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children {
+                    if recursive_depth > 0 {
+                        if recursive_depth > MAX_RECURSIVE_PORT_DEPTH
+                            || *recursive_elements >= MAX_RECURSIVE_PORT_ELEMENTS
+                        {
+                            return;
+                        }
+                        *recursive_elements += 1;
+                    }
                     path.push(child.name.clone());
                     if child.text && !explicit_text.contains(path) {
                         let parent = &path[..path.len() - 1];
@@ -989,12 +1040,47 @@ impl PortTree {
                         continue;
                     }
                     by_abs.insert(path.clone(), keys.next());
-                    walk(child, path, keys, by_abs, explicit_text);
+                    match child.recursive_ref.as_deref() {
+                        Some(anchor) if recursive_depth < MAX_RECURSIVE_PORT_DEPTH => {
+                            if let Some(Some(anchor)) = anchors.get(anchor) {
+                                walk(
+                                    anchor,
+                                    path,
+                                    keys,
+                                    by_abs,
+                                    explicit_text,
+                                    anchors,
+                                    recursive_depth + 1,
+                                    recursive_elements,
+                                );
+                            }
+                        }
+                        Some(_) => {}
+                        None => walk(
+                            child,
+                            path,
+                            keys,
+                            by_abs,
+                            explicit_text,
+                            anchors,
+                            recursive_depth,
+                            recursive_elements,
+                        ),
+                    }
                     path.pop();
                 }
             }
         }
-        walk(schema, &mut Vec::new(), keys, &mut by_abs, explicit_text);
+        walk(
+            schema,
+            &mut Vec::new(),
+            keys,
+            &mut by_abs,
+            explicit_text,
+            &anchors,
+            0,
+            &mut recursive_elements,
+        );
         Self { by_abs }
     }
 
@@ -1081,11 +1167,12 @@ impl PortTree {
         target_branches: Option<&TargetBranches>,
     ) -> String {
         let mut out = String::new();
+        let anchors = concrete_group_anchors(schema);
         // The recursive renderer carries explicit immutable allocation state so
         // branch-specific target ports cannot accidentally fall back to shared keys.
         #[allow(clippy::too_many_arguments)]
-        fn walk(
-            node: &SchemaNode,
+        fn walk<'a>(
+            node: &'a SchemaNode,
             path: &mut Vec<String>,
             attr: &str,
             indent: usize,
@@ -1093,11 +1180,16 @@ impl PortTree {
             ports: &PortTree,
             target_branches: Option<&TargetBranches>,
             active_branch: Option<(&[String], usize)>,
+            anchors: &BTreeMap<&'a str, Option<&'a SchemaNode>>,
             out: &mut String,
         ) {
             if let SchemaKind::Group { children, .. } = &node.kind {
                 for child in children {
                     path.push(child.name.clone());
+                    let Some(&base_key) = by_abs.get(path.as_slice()) else {
+                        path.pop();
+                        continue;
+                    };
                     if child.text
                         && by_abs.get(path.as_slice()) == by_abs.get(&path[..path.len() - 1])
                     {
@@ -1117,8 +1209,8 @@ impl PortTree {
                         let key = match branch {
                             Some((root, index)) => target_branches
                                 .and_then(|branches| branches.key_for(ports, root, index, path))
-                                .unwrap_or(by_abs[&*path]),
-                            None => by_abs[&*path],
+                                .unwrap_or(base_key),
+                            None => base_key,
                         };
                         let type_attr = if child.attribute {
                             " type=\"attribute\""
@@ -1139,8 +1231,13 @@ impl PortTree {
                             out.push_str("/>\n");
                         } else {
                             out.push_str(">\n");
+                            let shape = child
+                                .recursive_ref
+                                .as_deref()
+                                .and_then(|anchor| anchors.get(anchor).copied().flatten())
+                                .unwrap_or(child);
                             walk(
-                                child,
+                                shape,
                                 path,
                                 attr,
                                 indent + 1,
@@ -1148,6 +1245,7 @@ impl PortTree {
                                 ports,
                                 target_branches,
                                 branch,
+                                anchors,
                                 out,
                             );
                             let _ = writeln!(out, "{pad}</entry>");
@@ -1182,6 +1280,7 @@ impl PortTree {
             self,
             target_branches,
             None,
+            &anchors,
             &mut out,
         );
         let _ = writeln!(out, "{pad}</entry>");

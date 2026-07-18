@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, Value};
+use mapping::{Scope, ScopeIteration, ScopeSequence};
 
 struct TempDir(PathBuf);
 
@@ -102,5 +103,80 @@ fn auto_number_uses_current_position_start_and_increment() -> Result<(), Box<dyn
         .filter_map(|row| row.field("Number").and_then(Instance::as_scalar))
         .collect::<Vec<_>>();
     assert_eq!(numbers, [&Value::Int(5), &Value::Int(7)]);
+
+    let exported = dir.0.join("exported.mfd");
+    let warnings = mfd::export(&imported.project, &exported)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&exported)?;
+    assert_eq!(xml.matches("name=\"auto-number\"").count(), 1);
+    assert!(!xml.contains("name=\"position\""));
+    assert!(!xml.contains("name=\"subtract\""));
+    assert!(!xml.contains("name=\"multiply\""));
+
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &input)?, output);
+    Ok(())
+}
+
+#[test]
+fn shared_auto_number_roundtrips_across_concatenated_target_branches()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let mut project = mfd::import(&write_fixture(&dir.0)?)?.project;
+    let mut row = project
+        .root
+        .children
+        .pop()
+        .ok_or("fixture target row scope is missing")?;
+    row.target_field.clear();
+    project.root.children.push(Scope {
+        target_field: "Row".into(),
+        iteration: ScopeIteration::Concatenate(ScopeSequence::new(row.clone(), vec![row])),
+        ..Scope::default()
+    });
+    assert!(engine::validate(&project).is_empty());
+
+    let input = Instance::Group(vec![(
+        "Row".into(),
+        Instance::Repeated(vec![
+            Instance::Group(Vec::new()),
+            Instance::Group(Vec::new()),
+        ]),
+    )]);
+    let expected = engine::run(&project, &input)?;
+    let expected_numbers = expected
+        .field("Row")
+        .and_then(Instance::as_repeated)
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row.field("Number").and_then(Instance::as_scalar))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        expected_numbers,
+        [
+            &Value::Int(5),
+            &Value::Int(7),
+            &Value::Int(5),
+            &Value::Int(7)
+        ]
+    );
+
+    let exported = dir.0.join("concatenated.mfd");
+    let warnings = mfd::export(&project, &exported)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&exported)?;
+    assert_eq!(xml.matches("name=\"auto-number\"").count(), 1);
+    assert!(!xml.contains("name=\"position\""));
+
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &input)?, expected);
+
+    let second_export = dir.0.join("concatenated-second.mfd");
+    let warnings = mfd::export(&reimported.project, &second_export)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
     Ok(())
 }

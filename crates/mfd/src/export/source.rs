@@ -77,6 +77,8 @@ impl<'a> SourceExports<'a> {
                 .ports
                 .key_for_abs(local)
                 .map_or(PortMatch::Missing, PortMatch::Unique)
+        } else if let Some(key) = source.ports.key_for_abs(local) {
+            PortMatch::Unique(key)
         } else {
             source.ports.match_suffix(local)
         }
@@ -134,6 +136,14 @@ impl<'a> SourceExports<'a> {
         Some(node)
     }
 
+    pub(super) fn is_named_extra_path(&self, path: &[String]) -> bool {
+        path.first().is_some_and(|name| {
+            self.extras
+                .iter()
+                .any(|source| source.name == name.as_str())
+        })
+    }
+
     fn owner<'s, 'p>(&'s self, path: &'p [String]) -> (&'s SourceExport<'a>, bool, &'p [String]) {
         if let Some(name) = path.first()
             && let Some(source) = self.extras.iter().find(|source| source.name == name)
@@ -179,4 +189,49 @@ fn build_source<'a>(
             format!("source-{}", index + 1)
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use ir::{ScalarType, SchemaNode};
+    use mapping::FormatOptions;
+
+    use super::{SourceExports, build_source};
+    use crate::export::schema::{KeyAlloc, PortMatch};
+
+    #[test]
+    fn exact_primary_path_wins_before_ambiguous_suffix_fallback() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Name", ScalarType::String),
+                SchemaNode::group(
+                    "Nested",
+                    vec![SchemaNode::scalar("Name", ScalarType::String)],
+                ),
+            ],
+        );
+        let options = FormatOptions::default();
+        let mut keys = KeyAlloc { next: 1 };
+        let Ok(primary) = build_source(
+            "Root",
+            &schema,
+            Some("source.xml"),
+            &options,
+            None,
+            0,
+            &mut keys,
+        ) else {
+            panic!("ordinary XML source should build");
+        };
+        let sources = SourceExports {
+            primary,
+            extras: Vec::new(),
+        };
+
+        assert!(matches!(
+            sources.match_field(&["Name".into()], false),
+            PortMatch::Unique(_)
+        ));
+    }
 }

@@ -13,7 +13,7 @@ use mapping::{
     SequenceExpr,
 };
 
-use crate::MfdError;
+use crate::{MfdError, canonical_function};
 
 mod aggregate;
 mod alternatives;
@@ -279,6 +279,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     pending_joins.read(component, &mut warnings);
                 }
                 "core" | "lang" => fn_components.push(read_fn_component(&component)),
+                "ferrule"
+                    if component.attribute("kind") == Some("5")
+                        && canonical_function::is_internal(&name) =>
+                {
+                    fn_components.push(read_fn_component(&component));
+                }
                 "edifact" if name == "to-datetime" => {
                     fn_components.push(read_fn_component(&component));
                 }
@@ -329,6 +335,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
 
     // Edges are indexed as to-key -> from-key; each input has at most one feed.
     let edge_from = read_edges(&structure, Some(&wrapper));
+    refine_database_roles(&mut schema_components, &edge_from);
     udf::refine_source_schemas(
         &mut schema_components,
         &udf_calls,
@@ -551,6 +558,24 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     };
     project.prune_unreachable_nodes();
     Ok(Imported { project, warnings })
+}
+
+/// Database components can expose read and write ports in one visual component.
+/// Their entry counts alone cannot determine the role when both sides have the
+/// same shape, so connected table inputs decide target ownership once the graph
+/// is available. A connected output still admits the same component as a source.
+fn refine_database_roles(components: &mut [SchemaComponent], edge_from: &BTreeMap<u32, u32>) {
+    for component in components {
+        if component.format == ComponentFormat::Db
+            && component.db_queries.is_empty()
+            && component
+                .input_keys
+                .iter()
+                .any(|key| edge_from.contains_key(key))
+        {
+            component.is_source = false;
+        }
+    }
 }
 
 fn refine_copied_json_root_schemas(

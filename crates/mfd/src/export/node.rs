@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 
 use mapping::{Node, NodeId, Project, RuntimeValue, SequenceExpr};
 
+use super::auto_number::{self, AutoNumbers};
 use super::function::{
     aggregate_component_name, constant_parts, function_library, scalar_type_name,
     unmap_function_name, value_scalar_type, value_text,
@@ -96,10 +97,21 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     }
 
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
+    let auto_numbers = AutoNumbers::collect(&project.graph);
+    let mut auto_number_inputs = Vec::new();
     let mut position_inputs = BTreeMap::new();
     let mut sequence_exists_pins = Vec::new();
     for (&id, node) in &project.graph.nodes {
         if joins.node_blocked(id) {
+            continue;
+        }
+        if auto_numbers.owns_internal(id) {
+            continue;
+        }
+        if let Some(pattern) = auto_numbers.pattern(id) {
+            let (out, inputs) = auto_number::render_component(pattern, keys, uid, components);
+            node_out_key.insert(id, out);
+            auto_number_inputs.push(inputs);
             continue;
         }
         match node {
@@ -490,6 +502,16 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         edges,
         warnings,
     );
+    for inputs in auto_number_inputs {
+        for (node, input) in [inputs.start, inputs.increment] {
+            match node_out_key.get(&node) {
+                Some(&output) => edges.push((output, input)),
+                None => warnings.push(format!(
+                    "auto-number input references unexported node {node}; connection skipped"
+                )),
+            }
+        }
+    }
 
     RenderedNodes {
         position_inputs,

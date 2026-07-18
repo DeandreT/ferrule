@@ -98,9 +98,12 @@ fn exports_and_reimports_one_table_with_nested_foreign_key_relations() {
     let xml = std::fs::read_to_string(&design).unwrap();
     assert!(xml.contains("name=\"departments\" type=\"table\" outkey="));
     assert!(xml.contains("name=\"people|department_id\" type=\"table\" outkey="));
+    assert!(xml.contains("name=\"id\" outkey="));
+    assert!(xml.contains("datatype=\"integer\""));
     assert!(xml.contains("Name=\"departments\" Kind=\"Table\""));
     assert!(xml.contains("Name=\"people\" Kind=\"Table\""));
 
+    std::fs::remove_file(database).unwrap();
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source, project.source);
@@ -171,6 +174,7 @@ fn exports_and_reimports_multiple_target_tables_with_a_nested_relation() {
     assert!(xml.contains("name=\"orders\" type=\"table\" inpkey="));
     assert!(xml.contains("name=\"addresses|customer_id\" type=\"table\" inpkey="));
 
+    std::fs::remove_file(database).unwrap();
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.target, project.target);

@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 
 use mapping::{Graph, JoinId, Node, NodeId};
 
+use super::auto_number;
 use super::schema::KeyAlloc;
 
 pub(super) fn render_component(
@@ -66,6 +67,10 @@ fn position_nodes_for_roots(
     let mut positions = BTreeSet::new();
     while let Some(id) = pending.pop() {
         if !visited.insert(id) {
+            continue;
+        }
+        if let Some(pattern) = auto_number::pattern_at(graph, id) {
+            pending.extend([pattern.start, pattern.increment]);
             continue;
         }
         match graph.nodes.get(&id) {
@@ -139,6 +144,7 @@ pub(super) fn connect_join_position_roots(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn connect_scope_position_roots(
     roots: impl IntoIterator<Item = NodeId>,
+    source_stages: Option<&[(Vec<String>, u32)]>,
     source_collection: Option<&[String]>,
     join: Option<JoinId>,
     allow_empty: bool,
@@ -150,17 +156,31 @@ pub(super) fn connect_scope_position_roots(
     warnings: &mut Vec<String>,
 ) {
     let roots = roots.into_iter().collect::<Vec<_>>();
-    connect_position_roots(
-        roots.iter().copied(),
-        source_collection,
-        allow_empty,
-        from,
-        graph,
-        position_inputs,
-        position_contexts,
-        edges,
-        warnings,
-    );
+    if let Some(stages) = source_stages {
+        connect_position_stage_roots(
+            roots.iter().copied(),
+            stages,
+            allow_empty,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+    } else {
+        connect_position_roots(
+            roots.iter().copied(),
+            source_collection,
+            allow_empty,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+    }
     if let Some(join) = join {
         connect_join_position_roots(
             roots,
@@ -172,6 +192,47 @@ pub(super) fn connect_scope_position_roots(
             edges,
             warnings,
         );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn connect_position_stage_roots(
+    roots: impl IntoIterator<Item = NodeId>,
+    stages: &[(Vec<String>, u32)],
+    allow_empty: bool,
+    current_from: u32,
+    graph: &Graph,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+) {
+    for id in position_nodes_for_roots(roots, graph) {
+        let Some(&input) = position_inputs.get(&id) else {
+            continue;
+        };
+        let Some(Node::Position { collection }) = graph.nodes.get(&id) else {
+            continue;
+        };
+        let stage = if collection.is_empty() {
+            allow_empty
+                .then(|| stages.iter().enumerate().next_back())
+                .flatten()
+        } else {
+            stages
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, (stage, _))| stage.ends_with(collection))
+        };
+        if let Some((index, (_, stage_from))) = stage {
+            let from = if index + 1 == stages.len() {
+                current_from
+            } else {
+                *stage_from
+            };
+            connect_one(id, input, from, position_contexts, edges, warnings);
+        }
     }
 }
 
