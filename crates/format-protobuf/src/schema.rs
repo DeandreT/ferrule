@@ -29,6 +29,8 @@ impl EnumId {
 pub enum Cardinality {
     Required,
     Optional,
+    /// A proto3 singular field without an explicit presence label.
+    Implicit,
     Repeated,
 }
 
@@ -202,7 +204,7 @@ impl Enum {
     }
 }
 
-/// Fully resolved and validated proto2-lite schema.
+/// Fully resolved and validated proto2/proto3-lite schema.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
     package: Option<String>,
@@ -409,6 +411,11 @@ fn resolve_message(
             .as_ref()
             .map(|value| resolve_default(value, ty, enums))
             .transpose()?;
+        let default = if field.cardinality == Cardinality::Implicit {
+            proto3_default(ty, enums)?
+        } else {
+            default
+        };
         fields.push(Field {
             name: field.name.clone(),
             number: field.number,
@@ -423,6 +430,40 @@ fn resolve_message(
         full_name: raw.full_name.clone(),
         fields,
     })
+}
+
+fn proto3_default(ty: FieldType, enums: &[RawEnum]) -> Result<Option<DefaultValue>, ProtobufError> {
+    let value = match ty {
+        FieldType::Message(_) => return Ok(None),
+        FieldType::Enum(id) => {
+            let enumeration = enums.get(id.0).ok_or_else(|| {
+                ProtobufError::schema(format!("unknown resolved enum id {}", id.index()))
+            })?;
+            if enumeration.values.first().map(EnumValue::number) != Some(0) {
+                return Err(ProtobufError::schema(format!(
+                    "proto3 enum `{}` must declare zero as its first value",
+                    enumeration.full_name
+                )));
+            }
+            DefaultValue::Enum(0)
+        }
+        FieldType::Scalar(ScalarType::Double | ScalarType::Float) => DefaultValue::Float(0.0),
+        FieldType::Scalar(
+            ScalarType::Int32
+            | ScalarType::Int64
+            | ScalarType::Sint32
+            | ScalarType::Sint64
+            | ScalarType::Sfixed32
+            | ScalarType::Sfixed64,
+        ) => DefaultValue::Signed(0),
+        FieldType::Scalar(
+            ScalarType::Uint32 | ScalarType::Uint64 | ScalarType::Fixed32 | ScalarType::Fixed64,
+        ) => DefaultValue::Unsigned(0),
+        FieldType::Scalar(ScalarType::Bool) => DefaultValue::Bool(false),
+        FieldType::Scalar(ScalarType::String) => DefaultValue::String(String::new()),
+        FieldType::Scalar(ScalarType::Bytes) => DefaultValue::Bytes(Vec::new()),
+    };
+    Ok(Some(value))
 }
 
 fn validate_field_number(message: &RawMessage, field: &RawField) -> Result<(), ProtobufError> {
@@ -776,6 +817,13 @@ struct Parser {
     package: Option<String>,
     messages: Vec<RawMessage>,
     enums: Vec<RawEnum>,
+    syntax: Syntax,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Syntax {
+    Proto2,
+    Proto3,
 }
 
 impl Parser {
@@ -786,6 +834,7 @@ impl Parser {
             package: None,
             messages: Vec::new(),
             enums: Vec::new(),
+            syntax: Syntax::Proto2,
         })
     }
 
@@ -828,9 +877,11 @@ impl Parser {
         self.expect_symbol('=')?;
         let syntax = self.expect_string()?;
         self.expect_symbol(';')?;
-        if syntax != "proto2" {
-            return self.error("only proto2 schemas are supported");
-        }
+        self.syntax = match syntax.as_str() {
+            "proto2" => Syntax::Proto2,
+            "proto3" => Syntax::Proto3,
+            _ => return self.error("syntax must be `proto2` or `proto3`"),
+        };
         Ok(())
     }
 
@@ -869,6 +920,10 @@ impl Parser {
                 || self.peek_identifier("repeated")
             {
                 fields.push(self.parse_field(&full_name)?);
+            } else if self.syntax == Syntax::Proto3
+                && matches!(self.peek().kind, TokenKind::Identifier(_))
+            {
+                fields.push(self.parse_implicit_field(&full_name)?);
             } else {
                 return self.error(
                     "expected a labeled field, nested message, nested enum, or closing `}`",
@@ -921,6 +976,11 @@ impl Parser {
         if values.is_empty() {
             return self.error(format!("enum `{full_name}` must declare a value"));
         }
+        if self.syntax == Syntax::Proto3 && values.first().map(EnumValue::number) != Some(0) {
+            return self.error(format!(
+                "proto3 enum `{full_name}` must declare zero as its first value"
+            ));
+        }
         self.enums.push(RawEnum {
             name,
             full_name,
@@ -931,11 +991,25 @@ impl Parser {
 
     fn parse_field(&mut self, scope: &str) -> Result<RawField, ProtobufError> {
         let cardinality = match self.expect_any_identifier()?.as_str() {
-            "required" => Cardinality::Required,
-            "optional" => Cardinality::Optional,
+            "required" if self.syntax == Syntax::Proto2 => Cardinality::Required,
+            "required" => return self.error("proto3 fields cannot be `required`"),
+            "optional" if self.syntax == Syntax::Proto2 => Cardinality::Optional,
+            "optional" => return self.error("explicit proto3 `optional` fields are not supported"),
             "repeated" => Cardinality::Repeated,
             _ => return self.error("field must be required, optional, or repeated"),
         };
+        self.parse_field_tail(scope, cardinality)
+    }
+
+    fn parse_implicit_field(&mut self, scope: &str) -> Result<RawField, ProtobufError> {
+        self.parse_field_tail(scope, Cardinality::Implicit)
+    }
+
+    fn parse_field_tail(
+        &mut self,
+        scope: &str,
+        cardinality: Cardinality,
+    ) -> Result<RawField, ProtobufError> {
         let type_name = self.parse_qualified_name(true)?;
         let name = self.expect_any_identifier()?;
         self.expect_symbol('=')?;
@@ -954,6 +1028,9 @@ impl Parser {
                         _ => return self.error("`packed` must be true or false"),
                     },
                     "default" => {
+                        if self.syntax == Syntax::Proto3 {
+                            return self.error("proto3 fields cannot declare explicit defaults");
+                        }
                         if default.replace(value).is_some() {
                             return self.error("field declares more than one default");
                         }

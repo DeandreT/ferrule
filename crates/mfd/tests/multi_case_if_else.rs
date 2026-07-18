@@ -31,6 +31,14 @@ fn source(value: f64) -> Instance {
     )])
 }
 
+fn label(project: &mapping::Project, value: f64) -> Result<Value, Box<dyn std::error::Error>> {
+    Ok(engine::run(project, &source(value))?
+        .field("Label")
+        .and_then(Instance::as_scalar)
+        .cloned()
+        .ok_or("missing label")?)
+}
+
 #[test]
 fn growable_if_else_evaluates_condition_value_pairs_before_default()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -71,15 +79,32 @@ fn growable_if_else_evaluates_condition_value_pairs_before_default()
     let imported = mfd::import(&mapping)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    let label = |value| -> Result<Value, Box<dyn std::error::Error>> {
-        Ok(engine::run(&imported.project, &source(value))?
-            .field("Label")
-            .and_then(Instance::as_scalar)
-            .cloned()
-            .ok_or("missing label")?)
-    };
-    assert_eq!(label(25.0)?, Value::String("high".into()));
-    assert_eq!(label(2.0)?, Value::String("low".into()));
-    assert_eq!(label(10.0)?, Value::Null);
+    assert_eq!(
+        label(&imported.project, 25.0)?,
+        Value::String("high".into())
+    );
+    assert_eq!(label(&imported.project, 2.0)?, Value::String("low".into()));
+    assert_eq!(label(&imported.project, 10.0)?, Value::Null);
+
+    let exported_path = dir.0.join("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &exported_path)?;
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let exported = std::fs::read_to_string(&exported_path)?;
+    assert!(
+        exported.contains("component name=\"set-empty\" library=\"core\""),
+        "{exported}"
+    );
+    let reimported = mfd::import(&exported_path)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(
+        label(&reimported.project, 25.0)?,
+        Value::String("high".into())
+    );
+    assert_eq!(
+        label(&reimported.project, 2.0)?,
+        Value::String("low".into())
+    );
+    assert_eq!(label(&reimported.project, 10.0)?, Value::Null);
     Ok(())
 }

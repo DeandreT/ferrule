@@ -84,12 +84,14 @@ pub(super) fn primary_index(
 
 fn group_below_repetition(schema: &SchemaNode, path: &[String]) -> bool {
     let mut node = schema;
-    let mut has_repeating_ancestor = false;
-    for segment in path {
-        has_repeating_ancestor |= node.repeating;
-        let Some(child) = node.child(segment) else {
+    let mut has_repeating_ancestor = schema.repeating;
+    for index in 0..path.len() {
+        let Some(child) = schema_node_at(schema, &path[..=index]) else {
             return false;
         };
+        if index + 1 < path.len() {
+            has_repeating_ancestor |= child.repeating;
+        }
         node = child;
     }
     has_repeating_ancestor && !node.repeating && matches!(node.kind, SchemaKind::Group { .. })
@@ -212,11 +214,14 @@ impl GraphBuilder<'_> {
             return None;
         }
 
-        let mut dependencies = Vec::new();
-        if !self.collect_scalar_dependencies(feed, &mut BTreeSet::new(), &mut dependencies) {
-            return None;
-        }
+        let dependencies = self.scalar_dependencies(feed)?;
         compatible_dependency_source(&dependencies, self.sources)
+    }
+
+    pub(super) fn scalar_dependencies(&self, feed: u32) -> Option<Vec<SourcePath>> {
+        let mut dependencies = Vec::new();
+        self.collect_scalar_dependencies(feed, &mut BTreeSet::new(), &mut dependencies)
+            .then_some(dependencies)
     }
 
     fn collect_scalar_dependencies(
@@ -289,9 +294,8 @@ impl GraphBuilder<'_> {
             && self.framed.contains(&root_frame)
             && active_anchor.starts_with(&root_frame))
         .then_some((root_frame, 0));
-        let mut node = schema;
-        for (index, segment) in source_path.path.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
+        for index in 0..source_path.path.len() {
+            let Some(child) = schema_node_at(schema, &source_path.path[..=index]) else {
                 break;
             };
             let prefix = self.context_prefix(source_path.source, &source_path.path[..=index]);
@@ -301,7 +305,6 @@ impl GraphBuilder<'_> {
             {
                 frame = Some((prefix, index + 1));
             }
-            node = child;
         }
         let (frame, path) = match frame {
             Some((frame, suffix_start)) => (Some(frame), source_path.path[suffix_start..].to_vec()),
@@ -362,16 +365,14 @@ impl GraphBuilder<'_> {
             return Some(self.context_prefix(source, &[]));
         };
         let mut suffix_start = 0;
-        let mut node = schema;
-        for (index, segment) in prefix.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
+        for index in 0..prefix.len() {
+            let Some(child) = schema_node_at(schema, &prefix[..=index]) else {
                 break;
             };
             let frame = self.context_prefix(source, &prefix[..=index]);
             if child.repeating && active_anchor.starts_with(&frame) {
                 suffix_start = index + 1;
             }
-            node = child;
         }
         let mut relative = collection[suffix_start..prefix.len()].to_vec();
         relative.push(last.clone());
@@ -389,16 +390,14 @@ impl GraphBuilder<'_> {
             self.framed
                 .insert(self.context_prefix(source_path.source, &[]));
         }
-        let mut node = &source.schema;
-        for (index, segment) in source_path.path.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
+        for index in 0..source_path.path.len() {
+            let Some(child) = schema_node_at(&source.schema, &source_path.path[..=index]) else {
                 break;
             };
             if child.repeating {
                 let prefix = self.context_prefix(source_path.source, &source_path.path[..=index]);
                 self.framed.insert(prefix);
             }
-            node = child;
         }
     }
 
@@ -408,12 +407,11 @@ impl GraphBuilder<'_> {
         schema: &SchemaNode,
         absolute: &[String],
     ) -> Vec<String> {
-        let mut node = schema;
         let mut suffix_start = 0;
         let root_frame = self.context_prefix(source, &[]);
         let mut has_frame = source > 0 && self.framed.contains(&root_frame);
-        for (index, segment) in absolute.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
+        for index in 0..absolute.len() {
+            let Some(child) = schema_node_at(schema, &absolute[..=index]) else {
                 break;
             };
             let prefix = self.context_prefix(source, &absolute[..=index]);
@@ -421,7 +419,6 @@ impl GraphBuilder<'_> {
                 suffix_start = index + 1;
                 has_frame = true;
             }
-            node = child;
         }
         if !has_frame {
             self.context_prefix(source, absolute)
@@ -436,18 +433,16 @@ impl GraphBuilder<'_> {
         schema: &SchemaNode,
         absolute: &[String],
     ) -> Option<Vec<String>> {
-        let mut node = schema;
         let root_frame = self.context_prefix(source, &[]);
         let mut frame = (source > 0 && self.framed.contains(&root_frame)).then_some(root_frame);
-        for (index, segment) in absolute.iter().enumerate() {
-            let Some(child) = node.child(segment) else {
+        for index in 0..absolute.len() {
+            let Some(child) = schema_node_at(schema, &absolute[..=index]) else {
                 break;
             };
             let prefix = self.context_prefix(source, &absolute[..=index]);
             if child.repeating && self.framed.contains(&prefix) {
                 frame = Some(prefix);
             }
-            node = child;
         }
         frame
     }

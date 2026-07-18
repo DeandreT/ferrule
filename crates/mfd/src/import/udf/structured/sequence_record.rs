@@ -116,6 +116,7 @@ pub(super) fn try_read(
                     | "first-items"
                     | "distinct-values"
                     | "tokenize"
+                    | "tokenize-regexp"
                     | "tokenize-by-length"
                     | "generate-sequence"
                     | "count"

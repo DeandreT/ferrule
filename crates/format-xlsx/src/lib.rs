@@ -20,7 +20,9 @@ mod update;
 
 pub use composite::{from_bytes_composite, read_composite};
 pub use grid::{from_bytes_grid, read_grid};
-pub use hierarchical::{to_bytes_hierarchical, write_hierarchical};
+pub use hierarchical::{
+    from_bytes_hierarchical, read_hierarchical, to_bytes_hierarchical, write_hierarchical,
+};
 pub use update::update;
 
 #[derive(Debug, Error)]

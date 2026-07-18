@@ -10,7 +10,7 @@ use crate::MfdError;
 use super::concatenation::TargetBranches;
 use super::schema::{
     DbLayout, PortTree, RenderedSchemaComponent, db_datasource_name, db_layout, db_selections_xml,
-    db_type_name, xml_escape,
+    db_type_name, db_wrapper_attr, xml_escape,
 };
 
 pub(super) struct RenderMixedArgs<'a> {
@@ -33,6 +33,7 @@ pub(super) fn render_mixed(args: RenderMixedArgs<'_>) -> Result<RenderedSchemaCo
     })?;
     let entries = mixed_entries(&layout, &args)?;
     let selections = db_selections_xml(&layout);
+    let wrapper = db_wrapper_attr(&layout);
     let datasource = db_datasource_name(args.instance_path);
     let properties = if args.default_output {
         "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t"
@@ -45,7 +46,7 @@ pub(super) fn render_mixed(args: RenderMixedArgs<'_>) -> Result<RenderedSchemaCo
          \t\t\t\t\t<data>\n\
          \t\t\t\t\t\t<root>\n\
          \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
-         \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\"{wrapper}>\n\
          {entries}\
          \t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t</root>\n\

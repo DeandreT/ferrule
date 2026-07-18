@@ -129,16 +129,13 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             "additional target",
         )?;
     }
-    if project.source_options.protobuf.is_some()
-        || project
-            .extra_sources
-            .iter()
-            .any(|source| source.options.protobuf.is_some())
-    {
-        return Err(MfdError::Unsupported(
-            "protobuf source component export is not supported; protobuf is an output-only format"
-                .to_string(),
-        ));
+    protobuf::validate_side(
+        &project.source,
+        &project.source_options,
+        super::schema::Side::Source,
+    )?;
+    for source in &project.extra_sources {
+        protobuf::validate_side(&source.schema, &source.options, super::schema::Side::Source)?;
     }
     if project.target_options.http_get.is_some()
         || project
@@ -163,6 +160,7 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
                 || source.options.http_get.is_some()
                 || source.options.external_source.is_some()
                 || source.options.xbrl.is_some()
+                || source.options.protobuf.is_some()
             {
                 return Err(MfdError::Unsupported(format!(
                     "dynamic extra source `{}` is exportable only as a local XML document component",
@@ -304,7 +302,7 @@ fn validate_target(
             "dynamic document paths are valid only on a target root scope".to_string(),
         ));
     }
-    protobuf::validate_target(schema, options)?;
+    protobuf::validate_side(schema, options, super::schema::Side::Target)?;
     if additional && options.lenient_segments && options.edi_kind.is_none() {
         return Err(MfdError::Unsupported(
             "an additional EDI target cannot be exported because its dialect marker is missing"

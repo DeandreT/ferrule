@@ -120,6 +120,7 @@ fn generated_sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
     match sequence {
         mapping::SequenceExpr::Tokenize { .. } => "tokenize",
         mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
+        mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
         mapping::SequenceExpr::Generate { .. } => "generate-sequence",
         mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
     }
@@ -673,6 +674,9 @@ fn node_label(node: &mapping::Node) -> String {
         }
         mapping::Node::DynamicSourceField { object, .. } => {
             format!("dynamic field {}", display_path(object))
+        }
+        mapping::Node::XmlMixedContent { path, .. } => {
+            format!("XML mixed content {}", display_path(path))
         }
         mapping::Node::CollectionFind { collection, .. } => {
             format!("find {}", display_path(collection))

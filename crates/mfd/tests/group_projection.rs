@@ -301,6 +301,63 @@ fn exact_repeating_group_descendants_are_copied_as_complete_items() {
 }
 
 #[test]
+fn filtered_copy_all_retains_exact_repeating_descendants() {
+    let dir = TempDir::new();
+    let source_xsd = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Wrapper" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Label" type="xs:string"/><xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Name" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:sequence></xs:complexType></xs:element></xs:schema>"#;
+    write(&dir.0.join("source.xsd"), source_xsd);
+    write(
+        &dir.0.join("target.xsd"),
+        &source_xsd.replace("name=\"Source\"", "name=\"Target\""),
+    );
+    write(
+        &dir.0.join("source.xml"),
+        "<Source><Wrapper><Label>keep</Label><Item><Name>A</Name></Item><Item><Name>B</Name></Item></Wrapper></Source>",
+    );
+    write(
+        &dir.0.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source"><entry name="Wrapper" outkey="10"><entry name="Label" outkey="11"/></entry></entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+          <component name="constant" library="core" kind="2"><targets><datapoint key="12"/></targets><data><constant value="true" datatype="boolean"/></data></component>
+          <component name="filter" library="core" kind="3"><sources><datapoint pos="0" key="13"/><datapoint pos="1" key="14"/></sources><targets><datapoint pos="0" key="15"/><datapoint/></targets></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target"><entry name="Wrapper" inpkey="20"><entry name="Label" inpkey="21"/></entry></entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+        </children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge><edge edgekey="91"><data><dataconnection type="2"/></data></edge></edges><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="13" edgekey="90"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="14"/></edges></vertex>
+          <vertex vertexkey="15"><edges><edge vertexkey="20" edgekey="91"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    );
+
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let wrapper_scope = &imported.project.root.children[0];
+    let item_scope = wrapper_scope
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Item")
+        .unwrap();
+    assert_eq!(
+        item_scope.construction,
+        mapping::ScopeConstruction::CopyCurrentSource
+    );
+
+    let source = format_xml::read(&dir.0.join("source.xml"), &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    let wrapper = &target
+        .field("Wrapper")
+        .and_then(Instance::as_repeated)
+        .unwrap()[0];
+    assert_eq!(scalar(wrapper, "Label"), &Value::String("keep".into()));
+    let items = wrapper
+        .field("Item")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(scalar(&items[1], "Name"), &Value::String("B".into()));
+}
+
+#[test]
 fn mismatched_repeating_group_descendants_are_not_copied_lossily() {
     let dir = TempDir::new();
     write(

@@ -350,6 +350,7 @@ pub(super) fn render_schema_component(
             let datasource = db_datasource_name(instance_path);
             let table_entries = db_entries_xml(&layout, ports, attr, target_branches)?;
             let selections = db_selections_xml(&layout);
+            let wrapper = db_wrapper_attr(&layout);
             let _ = write!(
                 out,
                 "\t\t\t\t<component name=\"{0}\" library=\"db\" uid=\"{uid}\" kind=\"15\">\n\
@@ -357,7 +358,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t<data>\n\
                  \t\t\t\t\t\t<root>\n\
                  \t\t\t\t\t\t\t<header><namespaces><namespace/></namespaces></header>\n\
-                 \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\">\n\
+                 \t\t\t\t\t\t\t<entry name=\"document\" expanded=\"1\"{wrapper}>\n\
                  {table_entries}\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
@@ -729,6 +730,13 @@ fn flat_fields(schema: &SchemaNode) -> Option<Vec<(&str, ScalarType)>> {
 pub(super) enum DbLayout<'a> {
     Table(&'a SchemaNode),
     Database(&'a [SchemaNode]),
+}
+
+pub(super) const fn db_wrapper_attr(layout: &DbLayout<'_>) -> &'static str {
+    match layout {
+        DbLayout::Database(_) => " ferrule-database-wrapper=\"1\"",
+        DbLayout::Table(_) => "",
+    }
 }
 
 pub(super) fn db_layout(schema: &SchemaNode) -> Option<DbLayout<'_>> {
@@ -1343,6 +1351,15 @@ impl PortTree {
                         );
                         if matches!(child.kind, SchemaKind::Scalar { .. }) {
                             out.push_str("/>\n");
+                            if let Some(branches) = target_branches {
+                                for clone_key in branches.binding_clone_keys(branch, path) {
+                                    let _ = writeln!(
+                                        out,
+                                        "{pad}<entry name=\"{}\"{type_attr} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"/>",
+                                        xml_escape(&child.name)
+                                    );
+                                }
+                            }
                         } else {
                             out.push_str(">\n");
                             if let Some(condition) = branch

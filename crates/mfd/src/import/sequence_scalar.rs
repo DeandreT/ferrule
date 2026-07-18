@@ -76,7 +76,7 @@ impl GraphBuilder<'_> {
         }
         if self.warned_scalar_filters.insert(filter_index) {
             self.warnings.push(format!(
-                "filter `{}` is consumed as one scalar but is not an equality lookup over one repeated sibling record; sequence input skipped",
+                "filter `{}` is consumed as one scalar but its value is not a scalar field below one repeated collection; sequence input skipped",
                 self.fn_components[filter_index].name
             ));
         }
@@ -89,52 +89,82 @@ impl GraphBuilder<'_> {
         }
         let value_feed = self.input_feed(filter_index, 0)?;
         let predicate_feed = self.input_feed(filter_index, 1)?;
-        let equal_index = *self.fn_by_output.get(&predicate_feed)?;
-        let equal = self.fn_components.get(equal_index)?;
-        if equal.library != "core" || equal.kind != 5 || equal.name != "equal" {
-            return None;
-        }
-        let left = self.input_feed(equal_index, 0)?;
-        let right = self.input_feed(equal_index, 1)?;
-        let value_path = self.source_abs_path(value_feed)?;
-        let value_path = self.source_value_path(value_path.source, value_path.path);
-        let source = self.sources.get(value_path.source)?;
-        let (collection, value) = split_at_innermost_repeating(&source.schema, &value_path.path);
-        if collection.is_empty()
-            || value.is_empty()
-            || !schema_node_at(&source.schema, &value_path.path).is_some_and(|node| {
-                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-            })
-        {
-            return None;
-        }
-
-        let matching_side = |feed| {
-            let path = self.source_abs_path(feed)?;
-            let same_source = path.source == value_path.source;
-            let key_collection = split_at_innermost_repeating(&source.schema, &path.path).0;
-            let relative = path.path.strip_prefix(collection.as_slice())?.to_vec();
-            (same_source
-                && key_collection == collection
-                && !relative.is_empty()
-                && schema_node_at(&source.schema, &path.path).is_some_and(|node| {
-                    !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
-                }))
-            .then_some(relative)
-        };
-        let (key, matches_feed) = match (matching_side(left), matching_side(right)) {
-            (Some(key), None) => (key, right),
-            (None, Some(key)) => (key, left),
-            _ => return None,
-        };
-        let matches = self.value_node(matches_feed)?;
-        let collection = self.collection_path(value_path.source, &collection)?;
-        let node = self.alloc(Node::Lookup {
-            collection,
-            key,
-            matches,
-            value,
+        let direct_value = self.source_abs_path(value_feed).map(|path| {
+            let path = self.source_value_path(path.source, path.path);
+            (path.source, path.path)
         });
+        let (source_index, collection_path, value) =
+            if let Some((source_index, path)) = direct_value {
+                let source = self.sources.get(source_index)?;
+                let (collection, value) = split_at_innermost_repeating(&source.schema, &path);
+                if collection.is_empty()
+                    || value.is_empty()
+                    || !schema_node_at(&source.schema, &path).is_some_and(|node| {
+                        !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                    })
+                {
+                    return None;
+                }
+                (source_index, collection, Some(value))
+            } else {
+                let dependency = self.computed_iteration_source(value_feed)?;
+                if dependency.path.is_empty() {
+                    return None;
+                }
+                (dependency.source, dependency.path, None)
+            };
+        let source = self.sources.get(source_index)?;
+        let collection = self.collection_path(source_index, &collection_path)?;
+        let lookup = value.as_ref().and_then(|value| {
+            self.fn_by_output
+                .get(&predicate_feed)
+                .copied()
+                .and_then(|equal_index| {
+                    let equal = self.fn_components.get(equal_index)?;
+                    (equal.library == "core" && equal.kind == 5 && equal.name == "equal")
+                        .then_some(equal_index)
+                })
+                .and_then(|equal_index| {
+                    let left = self.input_feed(equal_index, 0)?;
+                    let right = self.input_feed(equal_index, 1)?;
+                    let matching_side = |feed| {
+                        let path = self.source_abs_path(feed)?;
+                        let same_source = path.source == source_index;
+                        let key_collection =
+                            split_at_innermost_repeating(&source.schema, &path.path).0;
+                        let relative = path.path.strip_prefix(collection_path.as_slice())?.to_vec();
+                        (same_source
+                            && key_collection == collection_path
+                            && !relative.is_empty()
+                            && schema_node_at(&source.schema, &path.path).is_some_and(|node| {
+                                !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                            }))
+                        .then_some(relative)
+                    };
+                    match (matching_side(left), matching_side(right)) {
+                        (Some(key), None) => Some((key, right, value.clone())),
+                        (None, Some(key)) => Some((key, left, value.clone())),
+                        _ => None,
+                    }
+                })
+        });
+        let node = if let Some((key, matches_feed, value)) = lookup {
+            let matches = self.value_node(matches_feed)?;
+            self.alloc(Node::Lookup {
+                collection,
+                key,
+                matches,
+                value,
+            })
+        } else {
+            let predicate = self.value_node_in_collection(predicate_feed, &collection)?;
+            let value = self.value_node_in_collection(value_feed, &collection)?;
+            self.alloc(Node::CollectionFind {
+                collection,
+                predicate,
+                value,
+            })
+        };
         self.fn_nodes.insert(filter_index, node);
         Some(node)
     }

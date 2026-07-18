@@ -1,8 +1,12 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ir::{DocumentMember, Instance, ScalarType, SchemaKind, Value};
+use ir::{
+    DocumentMember, Instance, ScalarType, SchemaKind, Value, XML_MIXED_CONTENT_FIELD,
+    XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
+};
 use mapping::{
     Graph, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SortFilterOrder,
+    XmlMixedContentElement,
 };
 
 use crate::aggregate::value_ordering;
@@ -749,7 +753,79 @@ impl ItemEvaluator<'_> {
             )?;
             dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
         }
+        if let ScopeConstruction::XmlMixedContent { elements } = &scope.construction {
+            attach_xml_mixed_content(&mut fields, context.last().copied(), elements);
+        }
         Ok(Some(Instance::Group(fields)))
+    }
+}
+
+fn attach_xml_mixed_content(
+    fields: &mut Vec<(String, Instance)>,
+    source: Option<&Instance>,
+    elements: &[XmlMixedContentElement],
+) {
+    let Some(source_items) = source
+        .and_then(|source| source.field(XML_MIXED_CONTENT_FIELD))
+        .and_then(Instance::as_repeated)
+    else {
+        return;
+    };
+    let mut occurrences = BTreeMap::<&str, usize>::new();
+    let items = source_items
+        .iter()
+        .filter_map(|item| {
+            let name = item
+                .field(XML_NODE_NAME_FIELD)
+                .and_then(Instance::as_scalar)
+                .and_then(|value| match value {
+                    Value::String(name) => Some(name.as_str()),
+                    _ => None,
+                })?;
+            if name.is_empty() {
+                return Some(item.clone());
+            }
+            let element = elements.iter().find(|element| element.source == name)?;
+            let index = occurrences.entry(&element.target).or_default();
+            let value = fields
+                .iter()
+                .find(|(field, _)| field == &element.target)
+                .and_then(|(_, value)| value.as_repeated())?
+                .get(*index)?
+                .clone();
+            *index += 1;
+            let text = value
+                .as_scalar()
+                .map(mixed_content_text)
+                .unwrap_or_default();
+            Some(Instance::Group(vec![
+                (
+                    XML_NODE_NAME_FIELD.to_string(),
+                    Instance::Scalar(Value::String(element.target.clone())),
+                ),
+                (
+                    XML_TEXT_FIELD.to_string(),
+                    Instance::Scalar(Value::String(text)),
+                ),
+                (XML_MIXED_CONTENT_VALUE_FIELD.to_string(), value),
+            ]))
+        })
+        .collect::<Vec<_>>();
+    if !items.is_empty() {
+        fields.push((
+            XML_MIXED_CONTENT_FIELD.to_string(),
+            Instance::Repeated(items),
+        ));
+    }
+}
+
+fn mixed_content_text(value: &Value) -> String {
+    match value {
+        Value::Null | Value::XmlNil(_) => String::new(),
+        Value::Bool(value) => value.to_string(),
+        Value::Int(value) => value.to_string(),
+        Value::Float(value) => value.to_string(),
+        Value::String(value) => value.clone(),
     }
 }
 

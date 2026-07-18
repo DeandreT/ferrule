@@ -2,7 +2,7 @@ use ir::{Instance, Value};
 
 use crate::{
     Cardinality, DefaultValue, FieldType, Layout, MAX_SCHEMA_BYTES, ProtobufError, ScalarType,
-    to_ir_schema, to_vec,
+    from_slice, to_ir_schema, to_vec,
 };
 
 const CONTACT_SCHEMA: &str = r#"
@@ -45,6 +45,13 @@ fn encode(layout: &Layout, root: &str, instance: &Instance) -> Vec<u8> {
     match to_vec(layout, root, instance) {
         Ok(bytes) => bytes,
         Err(error) => panic!("instance should encode: {error}"),
+    }
+}
+
+fn decode(layout: &Layout, root: &str, bytes: &[u8]) -> Instance {
+    match from_slice(layout, root, bytes) {
+        Ok(instance) => instance,
+        Err(error) => panic!("message should decode: {error}"),
     }
 }
 
@@ -263,8 +270,20 @@ fn string_fields_lexically_coerce_finite_scalars() {
 fn rejects_invalid_schemas_before_encoding() {
     let cases = [
         (
-            r#"syntax = "proto3"; message M { string value = 1; }"#,
-            "only proto2",
+            r#"syntax = "proto3"; message M { required string value = 1; }"#,
+            "cannot be `required`",
+        ),
+        (
+            r#"syntax = "proto3"; message M { optional string value = 1; }"#,
+            "explicit proto3 `optional`",
+        ),
+        (
+            r#"syntax = "proto3"; message M { string value = 1 [default = "x"]; }"#,
+            "cannot declare explicit defaults",
+        ),
+        (
+            r#"syntax = "proto3"; enum E { ONE = 1; ZERO = 0; } message M { E value = 1; }"#,
+            "must declare zero as its first value",
         ),
         (
             "message M { required string a = 1; optional int32 b = 1; }",
@@ -295,6 +314,72 @@ fn rejects_invalid_schemas_before_encoding() {
             "`{error}` should contain `{expected}`"
         );
     }
+}
+
+#[test]
+fn parses_and_decodes_proto3_implicit_defaults() {
+    let layout = parse(
+        r#"
+        syntax = "proto3";
+        package example;
+        message Root {
+          string text = 1;
+          int32 count = 2;
+          bool enabled = 3;
+          float ratio = 4;
+          bytes data = 5;
+          State state = 6;
+          Child child = 7;
+          repeated int32 values = 8;
+        }
+        message Child { string name = 1; }
+        enum State { UNKNOWN = 0; READY = 1; }
+        "#,
+    );
+    let root_id = layout.resolve_message("example.Root").unwrap();
+    let root = layout.message(root_id).unwrap();
+    assert!(
+        root.fields()
+            .iter()
+            .take(7)
+            .all(|field| field.cardinality() == Cardinality::Implicit)
+    );
+    assert_eq!(
+        root.field("state").unwrap().default(),
+        Some(&DefaultValue::Enum(0))
+    );
+
+    assert_eq!(
+        decode(&layout, "example.Root", &[]),
+        group(vec![
+            ("text", scalar(Value::String(String::new()))),
+            ("count", scalar(Value::Int(0))),
+            ("enabled", scalar(Value::Bool(false))),
+            ("ratio", scalar(Value::Float(0.0))),
+            ("data", scalar(Value::String(String::new()))),
+            ("state", scalar(Value::Int(0))),
+            ("values", Instance::Repeated(Vec::new())),
+        ])
+    );
+
+    let bytes = [
+        0x0a, 0x02, b'o', b'k', // text
+        0x10, 0x07, // count
+        0x30, 0x01, // state READY
+        0x3a, 0x03, 0x0a, 0x01, b'x', // child name
+    ];
+    let decoded = decode(&layout, "example.Root", &bytes);
+    assert_eq!(
+        decoded.field("text").and_then(Instance::as_scalar),
+        Some(&Value::String("ok".to_string()))
+    );
+    assert_eq!(
+        decoded
+            .field("child")
+            .and_then(|child| child.field("name"))
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("x".to_string()))
+    );
 }
 
 #[test]
@@ -405,6 +490,116 @@ fn exposes_all_scalar_types_in_resolved_fields() {
     assert_eq!(fields[0].ty(), FieldType::Scalar(ScalarType::Bytes));
     assert_eq!(fields[1].ty(), FieldType::Scalar(ScalarType::Sfixed64));
     assert_eq!(fields[2].ty(), FieldType::Scalar(ScalarType::Bool));
+}
+
+#[test]
+fn decodes_nested_messages_packed_scalars_defaults_and_unknown_fields() {
+    let layout = parse(
+        r#"
+        message Child {
+          optional int32 left = 1;
+          optional int32 right = 2;
+        }
+        message Root {
+          required int32 id = 1;
+          optional string label = 2 [default = "fallback"];
+          repeated sint32 values = 3 [packed = true];
+          optional Child child = 4;
+        }
+        "#,
+    );
+    let bytes = [
+        0x08, 0x07, // id
+        0x1a, 0x03, 0x03, 0x00, 0x04, // packed -2, 0, 2
+        0x22, 0x02, 0x08, 0x01, // first child occurrence
+        0x22, 0x02, 0x10, 0x02, // second child occurrence merges
+        0x78, 0x63, // unknown varint field
+    ];
+    assert_eq!(
+        decode(&layout, "Root", &bytes),
+        group(vec![
+            ("id", scalar(Value::Int(7))),
+            ("label", scalar(Value::String("fallback".to_string()))),
+            (
+                "values",
+                Instance::Repeated(vec![
+                    scalar(Value::Int(-2)),
+                    scalar(Value::Int(0)),
+                    scalar(Value::Int(2)),
+                ]),
+            ),
+            (
+                "child",
+                group(vec![
+                    ("left", scalar(Value::Int(1))),
+                    ("right", scalar(Value::Int(2))),
+                ]),
+            ),
+        ])
+    );
+}
+
+#[test]
+fn all_scalar_wire_forms_roundtrip_through_the_decoder() {
+    let layout = parse(
+        r#"
+        message Wires {
+          required double d = 1;
+          required float f = 2;
+          required int32 i32 = 3;
+          required int64 i64 = 4;
+          required uint32 u32 = 5;
+          required uint64 u64 = 6;
+          required sint32 si32 = 7;
+          required sint64 si64 = 8;
+          required fixed32 fx32 = 9;
+          required fixed64 fx64 = 10;
+          required sfixed32 sfx32 = 11;
+          required sfixed64 sfx64 = 12;
+          required bool flag = 13;
+          required string text = 14;
+          required bytes data = 15;
+          repeated int32 packed_numbers = 16 [packed = true];
+        }
+        "#,
+    );
+    let instance = group(vec![
+        ("d", scalar(Value::Float(1.5))),
+        ("f", scalar(Value::Float(2.5))),
+        ("i32", scalar(Value::Int(-1))),
+        ("i64", scalar(Value::Int(300))),
+        ("u32", scalar(Value::Int(4))),
+        ("u64", scalar(Value::Int(5))),
+        ("si32", scalar(Value::Int(-2))),
+        ("si64", scalar(Value::Int(-3))),
+        ("fx32", scalar(Value::Int(0x0102_0304))),
+        ("fx64", scalar(Value::Int(0x0102_0304_0506_0708))),
+        ("sfx32", scalar(Value::Int(-2))),
+        ("sfx64", scalar(Value::Int(-3))),
+        ("flag", scalar(Value::Bool(true))),
+        ("text", scalar(Value::String("x".to_string()))),
+        ("data", scalar(Value::String("yz".to_string()))),
+        (
+            "packed_numbers",
+            Instance::Repeated(vec![scalar(Value::Int(1)), scalar(Value::Int(2))]),
+        ),
+    ]);
+    let bytes = encode(&layout, "Wires", &instance);
+    assert_eq!(decode(&layout, "Wires", &bytes), instance);
+}
+
+#[test]
+fn decoder_rejects_truncated_wrong_wire_and_non_utf8_values() {
+    let layout = parse("message M { required int32 id = 1; }");
+    let truncated = error_text(from_slice(&layout, "M", &[0x08, 0x80]));
+    assert!(truncated.contains("truncated int32"), "{truncated}");
+
+    let wrong_wire = error_text(from_slice(&layout, "M", &[0x0a, 0x01, 0x00]));
+    assert!(wrong_wire.contains("expected wire type 0"), "{wrong_wire}");
+
+    let strings = parse("message Text { required string value = 1; }");
+    let non_utf8 = error_text(from_slice(&strings, "Text", &[0x0a, 0x01, 0xff]));
+    assert!(non_utf8.contains("not valid UTF-8"), "{non_utf8}");
 }
 
 #[test]

@@ -35,6 +35,28 @@ pub(super) fn walk<'a>(
     acc: &[&'a Instance],
     positions: &[PositionFrame],
 ) -> Vec<WalkExtension<'a>> {
+    if !path.is_empty()
+        && let Instance::Repeated(items) = base
+    {
+        return items
+            .iter()
+            .enumerate()
+            .flat_map(|(index, item)| {
+                let mut next_instances = acc.to_vec();
+                next_instances.push(item);
+                let mut next_positions = positions.to_vec();
+                next_positions.push(PositionFrame {
+                    collection: prefix.to_vec(),
+                    index: index + 1,
+                    grouped: false,
+                    join: None,
+                    join_position: None,
+                    document_path: None,
+                });
+                walk(item, path, prefix, &next_instances, &next_positions)
+            })
+            .collect();
+    }
     match path.split_first() {
         None => match base {
             Instance::DocumentSet(documents) => documents
@@ -199,5 +221,32 @@ mod tests {
         );
         assert_eq!(walked[0].positions[1].collection, ["items"]);
         assert_eq!(walked[1].positions[1].index, 1);
+    }
+
+    #[test]
+    fn walks_named_descendants_across_an_unnamed_repeating_root() {
+        let child = |value: &str| {
+            Instance::Group(vec![(
+                "value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            )])
+        };
+        let parent =
+            |children| Instance::Group(vec![("children".into(), Instance::Repeated(children))]);
+        let source = Instance::Repeated(vec![
+            parent(vec![child("a"), child("b")]),
+            parent(vec![child("c")]),
+        ]);
+
+        let walked = walk(&source, &["children".into()], &[], &[], &[]);
+
+        assert_eq!(walked.len(), 3);
+        assert_eq!(walked[0].instances.len(), 2);
+        assert_eq!(walked[0].positions[0].collection, Vec::<String>::new());
+        assert_eq!(walked[0].positions[0].index, 1);
+        assert_eq!(walked[1].positions[1].collection, ["children"]);
+        assert_eq!(walked[1].positions[1].index, 2);
+        assert_eq!(walked[2].positions[0].index, 2);
+        assert_eq!(walked[2].positions[1].index, 1);
     }
 }

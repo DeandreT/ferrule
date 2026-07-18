@@ -3,7 +3,8 @@ use ir::SchemaNode;
 use mapping::{Binding, SequenceExpr};
 
 use crate::sequence::{
-    MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length,
+    MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length, tokenize_regex,
+    tokenize_regex_with_limit,
 };
 
 fn graph_from(nodes: Vec<(NodeId, Node)>) -> Graph {
@@ -1011,6 +1012,86 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
         .insert(1, Node::Const { value: Value::Null });
     let output = run(&missing_parameter, &Instance::Group(Vec::new())).unwrap();
     assert!(output.as_repeated().is_some_and(<[Instance]>::is_empty));
+}
+
+#[test]
+fn regex_tokenizer_supports_xpath_flags_and_rejects_unsafe_patterns() {
+    assert_eq!(
+        tokenize_regex(
+            Value::String("Alpha--beta---GAMMA".into()),
+            Value::String("-+ BETA -+".into()),
+            Some(Value::String("ix".into())),
+        )
+        .unwrap(),
+        vec![Value::String("Alpha".into()), Value::String("GAMMA".into()),]
+    );
+    assert_eq!(
+        tokenize_regex(
+            Value::String("--a--".into()),
+            Value::String("-+".into()),
+            None,
+        )
+        .unwrap(),
+        vec![
+            Value::String(String::new()),
+            Value::String("a".into()),
+            Value::String(String::new()),
+        ]
+    );
+    assert_eq!(
+        tokenize_regex(
+            Value::String(String::new()),
+            Value::String(",".into()),
+            None,
+        )
+        .unwrap(),
+        Vec::<Value>::new()
+    );
+    assert!(matches!(
+        tokenize_regex(Value::String("abc".into()), Value::String("(".into()), None,),
+        Err(EngineError::InvalidTokenizeRegex { .. })
+    ));
+    assert!(matches!(
+        tokenize_regex(
+            Value::String("abc".into()),
+            Value::String("a".into()),
+            Some(Value::String("q".into())),
+        ),
+        Err(EngineError::InvalidTokenizeRegexFlags { .. })
+    ));
+    assert!(matches!(
+        tokenize_regex(
+            Value::String("abc".into()),
+            Value::String("a*".into()),
+            None,
+        ),
+        Err(EngineError::ZeroWidthTokenizeRegex)
+    ));
+    assert!(matches!(
+        tokenize_regex(
+            Value::String("abc".into()),
+            Value::String(r"\b".into()),
+            None,
+        ),
+        Err(EngineError::ZeroWidthTokenizeRegex)
+    ));
+    assert!(matches!(
+        tokenize_regex(
+            Value::String("abc".into()),
+            Value::String("a".repeat(64 * 1024 + 1)),
+            None,
+        ),
+        Err(EngineError::TokenizeRegexPatternTooLarge { .. })
+    ));
+    assert_eq!(
+        tokenize_regex_with_limit(
+            Value::String("a,b,c".into()),
+            Value::String(",".into()),
+            None,
+            2,
+        ),
+        Err(EngineError::TokenizeRegexTooLarge { max: 2 })
+    );
 }
 
 #[test]

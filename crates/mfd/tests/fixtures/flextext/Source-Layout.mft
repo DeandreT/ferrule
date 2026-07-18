@@ -25,7 +25,7 @@
                               <Connection>
                                 <SplitSingle Orientation="Vertical">
                                   <Upper Offset="1"/>
-                                  <Lower Offset="8"/>
+                                  <Lower Offset="7"/>
                                   <Name Value="TitleInfo"/>
                                   <Connections>
                                     <Connection><Ignore><Connections><Connection/></Connections></Ignore></Connection>

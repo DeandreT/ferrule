@@ -234,9 +234,10 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
         config_directory.join("Defs.Segment"),
         r#"<Config><Elements>
           <Data name="F1" type="string"/>
+          <Data name="FDate" type="date" minLength="8" maxLength="8"/>
           <Segment name="ISA"><Data ref="F1"/></Segment>
           <Segment name="GS"><Data ref="F1"/></Segment>
-          <Segment name="ST"><Data ref="F1"/></Segment>
+          <Segment name="ST"><Data ref="F1"/><Data ref="FDate"/></Segment>
           <Segment name="SE"><Data ref="F1"/></Segment>
           <Segment name="GE"><Data ref="F1"/></Segment>
           <Segment name="IEA"><Data ref="F1"/></Segment>
@@ -333,6 +334,17 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
     assert_eq!(
         format_edi::dialect_of(&imported.project.source).unwrap(),
         format_edi::Dialect::X12
+    );
+    assert!(
+        imported
+            .project
+            .source_options
+            .edi_lexical_formats
+            .iter()
+            .any(|format| {
+                format.kind() == mapping::EdiLexicalKind::CompactDate8
+                    && format.path().ends_with(&["ST".into(), "FDate".into()])
+            })
     );
     assert!(
         imported
@@ -485,6 +497,79 @@ fn compiles_and_embeds_selected_swift_configuration() {
         imported.project.source_options.swift_mt
     );
     assert_source_boundary_roundtrip(&imported.project, directory.path());
+}
+
+#[test]
+fn compiles_and_executes_tradacoms_implied_decimals() {
+    let directory = TempDir::new("tradacoms_implicit_decimal");
+    let config = directory.path().join("TRADACOMS");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("Defs.Segment"),
+        r#"<Config><Elements>
+          <Data name="Code" type="string"/>
+          <Data name="Amount" type="decimal" implicitDecimals="3"/>
+          <Segment name="STX"><Data ref="Code"/></Segment>
+          <Segment name="MHD"><Data ref="Code"/></Segment>
+          <Segment name="LIN"><Data ref="Amount"/></Segment>
+          <Segment name="END"><Data ref="Code"/></Segment>
+        </Elements></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("Envelope.Config"),
+        r#"<Config><Format standard="TRADACOMS"/><Include href="Defs.Segment"/>
+          <Group name="Envelope"><Group name="Interchange" maxOccurs="unbounded">
+            <Segment ref="STX"/><Select field="MHD/Code"/><Segment ref="END"/>
+          </Group></Group></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("Invoice.Config"),
+        r#"<Config><Format standard="TRADACOMS"/><Include href="Defs.Segment"/>
+          <Message><MessageType>INVOICE</MessageType><Group name="Invoice" maxOccurs="unbounded">
+            <Segment ref="MHD"><Condition path="Code" value="INVOICE"/></Segment>
+            <Segment ref="LIN"/>
+          </Group></Message></Config>"#,
+    )
+    .unwrap();
+    let input = directory.path().join("input.edi");
+    std::fs::write(&input, "STX=START'MHD=INVOICE'LIN=12345'END=1'").unwrap();
+    let mfd_path = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &mfd_path,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="text" kind="16"><data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Envelope"><entry name="Interchange"><entry name="Message"><entry name="LIN"><entry name="Amount" outkey="10"/></entry></entry></entry></entry></entry></entry></root>
+            <text type="edi" kind="EDITRADACOMS" inputinstance="input.edi" config="TRADACOMS/Invoice.Config"/>
+          </data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="Result"><entry name="Amount" inpkey="20"/></entry></root>
+            <document outputinstance="result.xml" instanceroot="{}Result"/>
+          </data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mfd_path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(
+        imported.project.source_options.edi_implied_decimals.len(),
+        1
+    );
+    let mut source = format_edi::tradacoms::read(&input, &imported.project.source, false).unwrap();
+    format_edi::apply_implied_decimals(
+        &mut source,
+        &imported.project.source_options.edi_implied_decimals,
+    )
+    .unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(
+        output.field("Amount").and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::Float(12.345))
+    );
+    let xml = format_xml::to_string(&imported.project.target, &output).unwrap();
+    assert!(xml.contains("<Amount>12.345</Amount>"));
 }
 
 struct TempDir(PathBuf);
