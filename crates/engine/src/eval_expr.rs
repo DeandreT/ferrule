@@ -12,7 +12,7 @@ use crate::resolve::{
     scalar_in_frame, source_document_path,
 };
 use crate::sequence::eval_sequence_exists;
-use crate::source_iteration::PositionFrame;
+use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 
 pub(crate) fn eval_expr(
     graph: &Graph,
@@ -161,21 +161,15 @@ pub(crate) fn eval_expr(
             arg,
         } => {
             // Absent repeating data aggregates as an empty collection.
-            let items = repeated(context, collection).unwrap_or(&[]);
+            let items = aggregate_items(context, collection);
             let mut values = Vec::with_capacity(items.len());
-            for (item_index, item) in items.iter().enumerate() {
+            for item in &items {
+                let terminal = item.instances.last().copied();
                 let item_value = if let Some(expression) = expression {
                     let mut item_context = context.to_vec();
-                    item_context.push(item);
+                    item_context.extend(item.instances.iter().copied());
                     let mut item_positions = positions.to_vec();
-                    item_positions.push(PositionFrame {
-                        collection: collection.clone(),
-                        index: item_index + 1,
-                        grouped: false,
-                        join: None,
-                        join_position: None,
-                        document_path: None,
-                    });
+                    item_positions.extend(item.positions.iter().cloned());
                     eval_expr(
                         graph,
                         *expression,
@@ -184,9 +178,15 @@ pub(crate) fn eval_expr(
                         in_progress,
                     )?
                 } else if value.is_empty() {
-                    item.as_scalar().cloned().unwrap_or(Value::Null)
+                    terminal
+                        .and_then(Instance::as_scalar)
+                        .cloned()
+                        .unwrap_or(Value::Null)
                 } else {
-                    field_scalar(item, value).cloned().unwrap_or(Value::Null)
+                    terminal
+                        .and_then(|item| field_scalar(item, value))
+                        .cloned()
+                        .unwrap_or(Value::Null)
                 };
                 values.push(item_value);
             }
@@ -219,6 +219,23 @@ pub(crate) fn eval_expr(
 
     in_progress.remove(&node_id);
     result
+}
+
+fn aggregate_items<'a>(context: &[&'a Instance], collection: &[String]) -> Vec<WalkExtension<'a>> {
+    let base = if let Some(first) = collection.first() {
+        context
+            .iter()
+            .rev()
+            .copied()
+            .find(|item| item.field(first).is_some())
+    } else {
+        context
+            .iter()
+            .rev()
+            .copied()
+            .find(|item| matches!(item, Instance::Repeated(_) | Instance::DocumentSet(_)))
+    };
+    base.map_or_else(Vec::new, |base| walk(base, collection, &[], &[], &[]))
 }
 
 fn eval_collection_find(

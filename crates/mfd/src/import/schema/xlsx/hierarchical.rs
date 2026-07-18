@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaNode};
 use mapping::{
-    FormatOptions, XlsxCellKind, XlsxColumn, XlsxHierarchicalLayout, XlsxOutputColumn,
-    XlsxOutputRange, XlsxRangeStart, XlsxRow,
+    FormatOptions, TabularBoundaryKind, XlsxCellKind, XlsxColumn, XlsxHierarchicalLayout,
+    XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart, XlsxRow,
 };
 
 use super::{
@@ -175,6 +175,7 @@ pub(super) fn read(
         input_instance: excel.attribute("inputinstance").map(str::to_string),
         output_instance: excel.attribute("outputinstance").map(str::to_string),
         options: FormatOptions {
+            tabular_kind: Some(TabularBoundaryKind::Xlsx),
             xlsx_hierarchical: Some(XlsxHierarchicalLayout {
                 worksheets_path: vec![WORKSHEETS_FIELD.to_string()],
                 worksheet_name_path: vec![WORKSHEET_NAME_FIELD.to_string()],
@@ -185,6 +186,7 @@ pub(super) fn read(
         is_source: false,
         is_default_output: is_default_output(&component),
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),

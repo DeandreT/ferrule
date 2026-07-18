@@ -356,7 +356,15 @@ pub(super) fn build_target(
         return Err("its mapped sequence parameter is not a repeating group".to_string());
     }
     builder.note_framed_prefixes(&collection);
-    let filter = control.filter_expr.and_then(|key| builder.value_node(key));
+    let mut filter = control.filter_expr.and_then(|key| builder.value_node(key));
+    if control.filter_inverted
+        && let Some(predicate) = filter
+    {
+        filter = Some(builder.alloc(mapping::Node::Call {
+            function: "not".into(),
+            args: vec![predicate],
+        }));
+    }
     if control.has_filter && filter.is_none() {
         return Err("its mapped sequence parameter filter is not representable".to_string());
     }
@@ -405,6 +413,7 @@ pub(super) fn build_target(
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
         },
@@ -439,9 +448,10 @@ mod tests {
             inputs: input_keys.into_iter().map(Some).collect(),
             outputs: vec![output],
             output_pins: vec![Some(output)],
+            input_type: None,
             constant: None,
             valuemap: None,
-            sort_descending: None,
+            sort_directions: None,
             db_where: None,
             recursive: None,
         }

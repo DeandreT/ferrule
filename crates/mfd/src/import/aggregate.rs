@@ -36,6 +36,24 @@ impl GraphBuilder<'_> {
         op: AggregateOp,
         idx: usize,
     ) -> Result<Option<Node>, String> {
+        self.aggregate_node_inner(op, idx, None)
+    }
+
+    pub(super) fn aggregate_node_at_anchor(
+        &mut self,
+        op: AggregateOp,
+        idx: usize,
+        active_anchor: &[String],
+    ) -> Result<Option<Node>, String> {
+        self.aggregate_node_inner(op, idx, Some(active_anchor))
+    }
+
+    fn aggregate_node_inner(
+        &mut self,
+        op: AggregateOp,
+        idx: usize,
+        active_anchor: Option<&[String]>,
+    ) -> Result<Option<Node>, String> {
         let input_count = self.fn_components[idx].inputs.len();
         let two_pin_item_at = op == AggregateOp::ItemAt
             && input_count == 2
@@ -105,7 +123,12 @@ impl GraphBuilder<'_> {
                 (0, collection, Vec::new(), Some(expression))
             };
 
-            let collection = self.collection_path(collection_source, &collection_abs)?;
+            let collection = match active_anchor {
+                Some(anchor) => {
+                    self.collection_path_at_anchor(collection_source, &collection_abs, anchor)?
+                }
+                None => self.collection_path(collection_source, &collection_abs)?,
+            };
             Some(Node::Aggregate {
                 function: op,
                 collection,

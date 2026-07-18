@@ -276,14 +276,16 @@ fn filtered_cross_source_aggregate_does_not_broaden_an_enclosing_item_frame()
     )?;
 
     let imported = mfd::import(&design)?;
-    assert!(
-        imported.warnings.iter().any(
-            |warning| warning.contains("aggregate `sum`") && warning.contains("empty-sequence")
-        ),
-        "{:?}",
-        imported.warnings
-    );
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
+    assert!(
+        imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::JoinAggregate { .. }))
+    );
 
     let record = |fields: Vec<(&str, Value)>| {
         Instance::Group(
@@ -327,11 +329,11 @@ fn filtered_cross_source_aggregate_does_not_broaden_an_enclosing_item_frame()
         .and_then(Instance::as_repeated)
         .ok_or("output rows are absent")?;
     assert_eq!(rows.len(), 2);
-    assert!(
-        rows.iter().all(|row| {
-            row.field("Total").and_then(Instance::as_scalar) == Some(&Value::Int(0))
-        })
-    );
+    let totals = rows
+        .iter()
+        .filter_map(|row| row.field("Total").and_then(Instance::as_scalar))
+        .collect::<Vec<_>>();
+    assert_eq!(totals, vec![&Value::Float(20.0), &Value::Float(15.0)]);
     Ok(())
 }
 

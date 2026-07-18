@@ -44,6 +44,280 @@ fn scalar(instance: &Instance, field: &str) -> Value {
 }
 
 #[test]
+fn target_node_defaults_fill_missing_connected_and_unconnected_scalars() {
+    let temp = TempDir::new("target_node_defaults");
+    let source_xsd = temp.0.join("source.xsd");
+    let target_xsd = temp.0.join("target.xsd");
+    let mapping = temp.0.join("defaults.mfd");
+    std::fs::write(
+        &source_xsd,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Value" type="xs:string" minOccurs="0"/>
+    <xs:element name="SourceDefault" type="xs:string" minOccurs="0"/>
+    <xs:element name="Maybe" type="xs:string" minOccurs="0"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &target_xsd,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Target"><xs:complexType><xs:sequence>
+    <xs:element name="Name" type="xs:string"/>
+    <xs:element name="Value" type="xs:string"/>
+    <xs:element name="SourceDefault" type="xs:string"/>
+    <xs:element name="Maybe" minOccurs="0"><xs:complexType><xs:simpleContent>
+      <xs:extension base="xs:string"/>
+    </xs:simpleContent></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &mapping,
+        r#"<mapping version="31"><component name="defaultmap1" uid="1">
+  <structure><children>
+    <component name="Source" library="xml" kind="14" uid="2"><data><root>
+      <entry name="FileInstance"><entry name="document"><entry name="Source">
+        <entry name="Value" outkey="1"/>
+        <entry name="SourceDefault" outkey="3"><outputnodefunctions><rule applyto="self"><default value="from-source"/></rule></outputnodefunctions></entry>
+        <entry name="Maybe" outkey="5"/>
+      </entry></entry></entry>
+    </root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+    <component name="Target" library="xml" kind="14" uid="3"><properties XSLTDefaultOutput="1"/><data><root>
+      <entry name="FileInstance"><entry name="document"><entry name="Target">
+        <entry name="Name"><inputnodefunctions><rule applyto="self"><default value="generated"/></rule></inputnodefunctions></entry>
+        <entry name="Value" inpkey="2"><inputnodefunctions><rule applyto="self"><default value="fallback"/></rule></inputnodefunctions></entry>
+        <entry name="SourceDefault" inpkey="4"/>
+        <entry name="Maybe" inpkey="6"/>
+      </entry></entry></entry>
+    </root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+  </children></structure><connections><edge from="1" to="2"/><edge from="3" to="4"/><edge from="5" to="6"/></connections>
+</component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let missing = engine::run(
+        &imported.project,
+        &Instance::Group(vec![
+            ("Value".into(), Instance::Scalar(Value::Null)),
+            ("SourceDefault".into(), Instance::Scalar(Value::Null)),
+            ("Maybe".into(), Instance::Scalar(Value::Null)),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        missing.field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("generated".into()))
+    );
+    assert_eq!(
+        missing.field("Value").and_then(Instance::as_scalar),
+        Some(&Value::String("fallback".into()))
+    );
+    assert_eq!(
+        missing.field("SourceDefault").and_then(Instance::as_scalar),
+        Some(&Value::String("from-source".into()))
+    );
+    let missing_xml = format_xml::to_string(&imported.project.target, &missing).unwrap();
+    let missing_round_trip = format_xml::from_str(&missing_xml, &imported.project.target).unwrap();
+    assert!(missing_round_trip.field("Maybe").is_none());
+
+    let present = engine::run(
+        &imported.project,
+        &Instance::Group(vec![
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String("provided".into())),
+            ),
+            (
+                "SourceDefault".into(),
+                Instance::Scalar(Value::String("also-provided".into())),
+            ),
+            (
+                "Maybe".into(),
+                Instance::Scalar(Value::String("present".into())),
+            ),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        present.field("Value").and_then(Instance::as_scalar),
+        Some(&Value::String("provided".into()))
+    );
+    assert_eq!(
+        present.field("SourceDefault").and_then(Instance::as_scalar),
+        Some(&Value::String("also-provided".into()))
+    );
+    let present_xml = format_xml::to_string(&imported.project.target, &present).unwrap();
+    let present_round_trip = format_xml::from_str(&present_xml, &imported.project.target).unwrap();
+    assert_eq!(
+        present_round_trip
+            .field("Maybe")
+            .and_then(|group| group.field(XML_TEXT_FIELD))
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("present".into()))
+    );
+}
+
+#[test]
+fn structural_filter_false_output_inverts_the_iteration_predicate() {
+    let temp = TempDir::new("false_filter_output");
+    std::fs::write(
+        temp.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Keep" type="xs:boolean"/><xs:element name="Value" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        temp.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Target"><xs:complexType><xs:sequence>
+    <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Value" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    let mapping = temp.0.join("filter.mfd");
+    std::fs::write(
+        &mapping,
+        r#"<mapping version="31"><component name="defaultmap1" uid="1"><structure><children>
+  <component name="Source" library="xml" kind="14" uid="2"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source">
+    <entry name="Item" outkey="10"><entry name="Keep" outkey="11"/><entry name="Value" outkey="12"/></entry>
+  </entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+  <component name="Target" library="xml" kind="14" uid="3"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target">
+    <entry name="Item" inpkey="30"><entry name="Value" inpkey="31"/></entry>
+  </entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+  <component name="filter" library="core" kind="3" uid="4"><sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources><targets><datapoint pos="0" key="22"/><datapoint pos="1" key="23"/></targets></component>
+</children></structure><connections><edge from="10" to="20"/><edge from="11" to="21"/><edge from="23" to="30"/><edge from="12" to="31"/></connections></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let item = |keep, value: &str| {
+        Instance::Group(vec![
+            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+            (
+                "Value".into(),
+                Instance::Scalar(Value::String(value.into())),
+            ),
+        ])
+    };
+    let source = Instance::Group(vec![(
+        "Item".into(),
+        Instance::Repeated(vec![
+            item(true, "kept-by-true"),
+            item(false, "false-branch"),
+        ]),
+    )]);
+    let output = engine::run(&imported.project, &source).unwrap();
+    let items = output
+        .field("Item")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].field("Value").and_then(Instance::as_scalar),
+        Some(&Value::String("false-branch".into()))
+    );
+}
+
+#[test]
+fn filtered_structural_ancestor_constrains_nested_target_iteration() {
+    let temp = TempDir::new("ancestor_filter");
+    std::fs::write(
+        temp.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Office" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Keep" type="xs:boolean"/>
+      <xs:element name="Contact" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Value" type="xs:string"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        temp.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Target"><xs:complexType><xs:sequence>
+    <xs:element name="Person" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Value" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    let mapping = temp.0.join("filter.mfd");
+    std::fs::write(
+        &mapping,
+        r#"<mapping version="31"><component name="defaultmap1" uid="1"><structure><children>
+  <component name="Source" library="xml" kind="14" uid="2"><data><root><entry name="FileInstance"><entry name="document"><entry name="Source">
+    <entry name="Office" outkey="10"><entry name="Keep" outkey="11"/><entry name="Contact" outkey="12"><entry name="Value" outkey="13"/></entry></entry>
+  </entry></entry></entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/></data></component>
+  <component name="filter" library="core" kind="3" uid="3"><sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources><targets><datapoint pos="0" key="22"/><datapoint/></targets></component>
+  <component name="Target" library="xml" kind="14" uid="4"><properties XSLTDefaultOutput="1"/><data><root><entry name="FileInstance"><entry name="document"><entry name="Target" inpkey="30">
+    <entry name="Person" inpkey="31"><entry name="Value" inpkey="32"/></entry>
+  </entry></entry></entry></root><document schema="target.xsd" outputinstance="target.xml" instanceroot="{}Target"/></data></component>
+</children></structure><connections><edge from="10" to="20"/><edge from="11" to="21"/><edge from="22" to="30"/><edge from="12" to="31"/><edge from="13" to="32"/></connections></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let contact = |value: &str| {
+        Instance::Group(vec![(
+            "Value".into(),
+            Instance::Scalar(Value::String(value.into())),
+        )])
+    };
+    let office = |keep, values: &[&str]| {
+        Instance::Group(vec![
+            ("Keep".into(), Instance::Scalar(Value::Bool(keep))),
+            (
+                "Contact".into(),
+                Instance::Repeated(values.iter().map(|value| contact(value)).collect()),
+            ),
+        ])
+    };
+    let source = Instance::Group(vec![(
+        "Office".into(),
+        Instance::Repeated(vec![
+            office(false, &["A"]),
+            office(true, &["B", "C"]),
+            office(false, &["D"]),
+        ]),
+    )]);
+
+    let output = engine::run(&imported.project, &source).unwrap();
+    let values = output
+        .field("Person")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .map(|person| scalar(person, "Value"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        values,
+        [Value::String("B".into()), Value::String("C".into())]
+    );
+}
+
+#[test]
 fn imports_schemas_scopes_and_functions() {
     let imported = mfd::import(&fixture("people.mfd")).unwrap();
     let project = &imported.project;
@@ -551,6 +825,10 @@ fn csv_source_designs_import_and_run() {
     assert_eq!(project.source_path.as_deref(), Some("people.csv"));
     assert_eq!(project.source_options.delimiter, Some(','));
     assert_eq!(project.source_options.has_header_row, Some(true));
+    assert_eq!(
+        project.source_options.tabular_kind,
+        Some(mapping::TabularBoundaryKind::Csv)
+    );
 
     // The row block feeds the Person iteration; rows arrive as the
     // enclosing Repeated, so the scope path is empty.
@@ -582,6 +860,10 @@ fn csv_target_designs_import_run_and_roundtrip() {
     assert_eq!(project.target_path.as_deref(), Some("people-out.csv"));
     assert_eq!(project.target_options.delimiter, Some(';'));
     assert_eq!(project.target_options.has_header_row, Some(false));
+    assert_eq!(
+        project.target_options.tabular_kind,
+        Some(mapping::TabularBoundaryKind::Csv)
+    );
 
     // Rows iterate on the root scope itself.
     assert_eq!(
@@ -607,6 +889,10 @@ fn csv_target_designs_import_run_and_roundtrip() {
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert_eq!(project.target, reimported.project.target);
     assert_eq!(reimported.project.target_options.delimiter, Some(';'));
+    assert_eq!(
+        reimported.project.target_options.tabular_kind,
+        Some(mapping::TabularBoundaryKind::Csv)
+    );
     assert_eq!(
         reimported.project.target_options.has_header_row,
         Some(false)

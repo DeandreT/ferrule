@@ -211,6 +211,7 @@ fn evaluates_a_function_call_over_source_fields() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -324,6 +325,7 @@ fn missing_source_field_is_reported() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -370,6 +372,7 @@ fn self_referential_node_is_a_cycle() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -448,6 +451,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -525,7 +529,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
     assert_eq!(cust(2), Some(Value::String("John".into())));
     assert_eq!(item_id(2), Some(Value::String("E".into())));
     assert_eq!(position(2, "order_position"), Some(Value::Int(2)));
-    assert_eq!(position(2, "item_position"), Some(Value::Int(1)));
+    assert_eq!(position(2, "item_position"), Some(Value::Int(3)));
 }
 
 #[test]
@@ -581,6 +585,7 @@ fn if_only_evaluates_the_taken_branch() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -643,6 +648,7 @@ fn value_map_falls_back_to_default_on_miss() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -751,6 +757,7 @@ fn value_map_coerces_input_to_its_declared_type() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -822,6 +829,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -960,6 +968,100 @@ fn scope_sort_and_take_are_stable_and_reindex_positions() {
 }
 
 #[test]
+fn scope_sort_uses_mixed_direction_tie_breakers() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::SourceField {
+                frame: None,
+                path: vec!["score".into()],
+            },
+        ),
+        (
+            1,
+            Node::SourceField {
+                frame: None,
+                path: vec!["last".into()],
+            },
+        ),
+        (
+            2,
+            Node::SourceField {
+                frame: None,
+                path: vec!["first".into()],
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            iteration: mapping::ScopeIteration::Source(Vec::new()),
+            sort_by: Some(0),
+            sort_descending: true,
+            sort_then_by: vec![
+                mapping::SortKey {
+                    node: 1,
+                    descending: false,
+                },
+                mapping::SortKey {
+                    node: 2,
+                    descending: false,
+                },
+            ],
+            bindings: vec![Binding {
+                target_field: "first".into(),
+                node: 2,
+            }],
+            ..Scope::default()
+        },
+    };
+    let row = |first: &str, last: &str, score: i64| {
+        Instance::Group(vec![
+            (
+                "first".into(),
+                Instance::Scalar(Value::String(first.into())),
+            ),
+            ("last".into(), Instance::Scalar(Value::String(last.into()))),
+            ("score".into(), Instance::Scalar(Value::Int(score))),
+        ])
+    };
+    let source = Instance::Repeated(vec![
+        row("Susan", "Schmitt", 2),
+        row("Alex", "Martin", 2),
+        row("Fred", "Landis", 2),
+        row("Joe", "Martin", 2),
+        row("Lower", "Able", 1),
+    ]);
+
+    let output = run(&project, &source).unwrap();
+    let names = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .filter_map(|row| row.field("first").and_then(Instance::as_scalar))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        [
+            Value::String("Fred".into()),
+            Value::String("Alex".into()),
+            Value::String("Joe".into()),
+            Value::String("Susan".into()),
+            Value::String("Lower".into()),
+        ]
+    );
+}
+
+#[test]
 fn scope_can_filter_in_source_order_before_sorting_survivors() {
     let graph = graph_from(vec![
         (
@@ -1088,6 +1190,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -1164,6 +1267,7 @@ fn lookup_joins_rows_against_an_extra_source() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),
@@ -1385,6 +1489,7 @@ fn scope_source_path_reaches_an_extra_source() {
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
             iteration_output: Default::default(),

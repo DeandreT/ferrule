@@ -23,6 +23,7 @@ mod reachable;
 mod recursive;
 mod scope_serde;
 mod swift;
+mod tabular;
 mod xbrl;
 mod xlsx_output;
 
@@ -62,6 +63,7 @@ pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,
     SwiftValueExpr,
 };
+pub use tabular::TabularBoundaryKind;
 pub use xbrl::{
     XBRL_UNIT_FIELD_PREFIX, XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError,
     XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding,
@@ -207,9 +209,11 @@ pub enum Node {
         arg: Option<NodeId>,
     },
     /// Reduces the tuples produced by a naked inner join. The plan is
-    /// evaluated in the aggregate's parent context; `expression`, when set,
-    /// is evaluated once per joined tuple with that join's fields and
-    /// position active. `arg` remains a parent-context expression.
+    /// evaluated in the aggregate's parent context. A source collection
+    /// already active there contributes only its current item; other sources
+    /// enumerate normally. `expression`, when set, is evaluated once per
+    /// joined tuple with that join's fields and position active. `arg` remains
+    /// a parent-context expression.
     JoinAggregate {
         function: AggregateOp,
         join: JoinId,
@@ -391,6 +395,13 @@ pub enum SortFilterOrder {
 /// stably orders candidates before filtering/grouping, and `take` limits the
 /// number of produced items after filtering/grouping. These controls apply to
 /// both source-backed and generated iteration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SortKey {
+    pub node: NodeId,
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub descending: bool,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Scope {
     /// Name of the field this scope populates in its parent scope; ignored
@@ -423,6 +434,9 @@ pub struct Scope {
     /// their source order.
     pub sort_by: Option<NodeId>,
     pub sort_descending: bool,
+    /// Successive tie-breakers, evaluated in declaration order after the
+    /// primary `sort_by` key.
+    pub sort_then_by: Vec<SortKey>,
     pub sort_filter_order: SortFilterOrder,
     /// Expression evaluated once in the parent context to determine the
     /// maximum number of output items.
@@ -445,13 +459,28 @@ pub struct Scope {
 }
 
 impl Scope {
+    pub fn sort_keys(&self) -> impl Iterator<Item = SortKey> + '_ {
+        self.sort_by
+            .map(|node| SortKey {
+                node,
+                descending: self.sort_descending,
+            })
+            .into_iter()
+            .chain(self.sort_then_by.iter().copied())
+    }
+
+    pub fn has_sort(&self) -> bool {
+        self.sort_by.is_some() || !self.sort_then_by.is_empty()
+    }
+
     pub fn source(&self) -> Option<&[String]> {
         self.iteration.source()
     }
 
     pub fn source_mut(&mut self) -> Option<&mut Vec<String>> {
         match &mut self.iteration {
-            ScopeIteration::Source(path) => Some(path),
+            ScopeIteration::Source(path)
+            | ScopeIteration::DynamicDocuments { source: path, .. } => Some(path),
             ScopeIteration::None
             | ScopeIteration::Sequence(_)
             | ScopeIteration::InnerJoin { .. }
@@ -460,12 +489,53 @@ impl Scope {
     }
 
     pub fn set_source(&mut self, source: Option<Vec<String>>) {
-        match source {
-            Some(path) => self.iteration = ScopeIteration::Source(path),
-            None if matches!(self.iteration, ScopeIteration::Source(_)) => {
+        match (source, &mut self.iteration) {
+            (Some(path), ScopeIteration::DynamicDocuments { source, .. }) => *source = path,
+            (Some(path), _) => self.iteration = ScopeIteration::Source(path),
+            (None, ScopeIteration::Source(_) | ScopeIteration::DynamicDocuments { .. }) => {
                 self.iteration = ScopeIteration::None;
             }
-            None => {}
+            (None, _) => {}
+        }
+    }
+
+    /// Graph expression paired with every complete document produced by this
+    /// scope. The typed iteration variant keeps the path expression and its
+    /// source item context inseparable.
+    pub fn output_path(&self) -> Option<NodeId> {
+        match self.iteration {
+            ScopeIteration::DynamicDocuments { output_path, .. } => Some(output_path),
+            _ => None,
+        }
+    }
+
+    /// Adds or removes per-item output path ownership. Adding it requires an
+    /// existing source iteration and cannot silently replace another form.
+    pub fn set_output_path(&mut self, output_path: Option<NodeId>) -> bool {
+        match (output_path, &mut self.iteration) {
+            (Some(output_path), ScopeIteration::Source(source)) => {
+                self.iteration = ScopeIteration::DynamicDocuments {
+                    source: std::mem::take(source),
+                    output_path,
+                };
+                true
+            }
+            (
+                Some(output_path),
+                ScopeIteration::DynamicDocuments {
+                    output_path: current,
+                    ..
+                },
+            ) => {
+                *current = output_path;
+                true
+            }
+            (Some(_), _) => false,
+            (None, ScopeIteration::DynamicDocuments { source, .. }) => {
+                self.iteration = ScopeIteration::Source(std::mem::take(source));
+                true
+            }
+            (None, _) => true,
         }
     }
 
@@ -478,6 +548,7 @@ impl Scope {
             ScopeIteration::Sequence(sequence) => Some(sequence),
             ScopeIteration::None
             | ScopeIteration::Source(_)
+            | ScopeIteration::DynamicDocuments { .. }
             | ScopeIteration::InnerJoin { .. }
             | ScopeIteration::Concatenate(_) => None,
         }
@@ -746,6 +817,11 @@ pub struct FormatOptions {
     /// to carry a `.json`, `.jsonl`, or `.ndjson` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub json_document: bool,
+    /// Flat tabular component family retained when an instance filename has
+    /// no recognized format extension. Explicit extensions and embedded
+    /// format adapters take precedence over this fallback identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tabular_kind: Option<TabularBoundaryKind>,
     /// CSV: the field delimiter (default `,`).
     #[serde(default)]
     pub delimiter: Option<char>,
@@ -833,6 +909,7 @@ mod tests {
         assert!(!defaults.xml_document);
         assert!(!defaults.local_xml_file_set);
         assert!(!defaults.json_document);
+        assert!(defaults.tabular_kind.is_none());
         assert!(defaults.fixed_width.is_none());
         assert!(defaults.flextext.is_none());
         assert!(defaults.idoc.is_none());
@@ -882,6 +959,19 @@ mod tests {
         assert!(encoded.contains("\"local_xml_file_set\":true"));
         let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
         assert!(decoded.local_xml_file_set);
+    }
+
+    #[test]
+    fn tabular_boundary_kind_roundtrips() {
+        let options = FormatOptions {
+            tabular_kind: Some(TabularBoundaryKind::Xlsx),
+            ..FormatOptions::default()
+        };
+
+        let encoded = serde_json::to_string(&options).unwrap();
+        assert!(encoded.contains("\"tabular_kind\":\"xlsx\""));
+        let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.tabular_kind, Some(TabularBoundaryKind::Xlsx));
     }
 
     #[test]
@@ -1360,6 +1450,69 @@ mod tests {
         assert!(scope.sequence().is_some());
         scope.set_sequence(None);
         assert!(!scope.iterates());
+    }
+
+    #[test]
+    fn dynamic_document_iteration_roundtrips_with_its_source() {
+        let scope = Scope {
+            iteration: ScopeIteration::DynamicDocuments {
+                source: vec!["documents".into()],
+                output_path: 42,
+            },
+            ..Scope::default()
+        };
+
+        let encoded = serde_json::to_string(&scope).unwrap();
+        assert!(encoded.contains(r#""source":["documents"]"#));
+        assert!(encoded.contains(r#""output_path":42"#));
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.source(), Some(["documents".into()].as_slice()));
+        assert_eq!(decoded.output_path(), Some(42));
+    }
+
+    #[test]
+    fn secondary_sort_keys_roundtrip_without_changing_legacy_primary_fields() {
+        let scope = Scope {
+            iteration: ScopeIteration::Source(vec!["Rows".into()]),
+            sort_by: Some(4),
+            sort_descending: true,
+            sort_then_by: vec![SortKey {
+                node: 8,
+                descending: false,
+            }],
+            ..Scope::default()
+        };
+
+        let encoded = serde_json::to_string(&scope).unwrap();
+        let decoded: Scope = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.sort_by, Some(4));
+        assert!(decoded.sort_descending);
+        assert_eq!(
+            decoded.sort_then_by,
+            [SortKey {
+                node: 8,
+                descending: false
+            }]
+        );
+    }
+
+    #[test]
+    fn dynamic_document_output_path_requires_source_iteration() {
+        let without_source = serde_json::from_str::<Scope>(r#"{"output_path":42}"#);
+        assert!(
+            without_source
+                .unwrap_err()
+                .to_string()
+                .contains("requires source iteration")
+        );
+
+        let mut scope = Scope::default();
+        assert!(!scope.set_output_path(Some(42)));
+        scope.set_source(Some(Vec::new()));
+        assert!(scope.set_output_path(Some(42)));
+        assert_eq!(scope.output_path(), Some(42));
+        assert!(scope.set_output_path(None));
+        assert_eq!(scope.source(), Some([].as_slice()));
     }
 
     #[test]

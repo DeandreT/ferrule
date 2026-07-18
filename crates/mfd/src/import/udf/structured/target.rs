@@ -644,6 +644,7 @@ fn build_catalog_target(
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
         },
@@ -703,7 +704,15 @@ fn build_aggregate_target(
         return Err("its sequence parameter is not a repeating group".to_string());
     }
     builder.note_framed_prefixes(&collection);
-    let filter = control.filter_expr.and_then(|key| builder.value_node(key));
+    let mut filter = control.filter_expr.and_then(|key| builder.value_node(key));
+    if control.filter_inverted
+        && let Some(predicate) = filter
+    {
+        filter = Some(builder.alloc(Node::Call {
+            function: "not".into(),
+            args: vec![predicate],
+        }));
+    }
     if control.has_filter && filter.is_none() {
         return Err("its sequence parameter filter is not representable".to_string());
     }
@@ -746,6 +755,7 @@ fn build_aggregate_target(
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
+            sort_then_by: Vec::new(),
             sort_filter_order: Default::default(),
             take: None,
         },

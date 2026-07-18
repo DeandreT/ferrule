@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
-use mapping::{AggregateOp, Node};
+use mapping::{AggregateOp, Node, TabularBoundaryKind};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -20,6 +20,10 @@ fn imports_static_flat_xlsx_table_with_sparse_columns() {
     assert_eq!(project.source_options.xlsx_start_row, Some(2));
     assert_eq!(project.source_options.xlsx_columns, vec![2, 4]);
     assert_eq!(project.source_options.has_header_row, Some(true));
+    assert_eq!(
+        project.source_options.tabular_kind,
+        Some(TabularBoundaryKind::Xlsx)
+    );
     assert!(matches!(
         project.source.child("Name").map(|node| &node.kind),
         Some(SchemaKind::Scalar {
@@ -72,6 +76,10 @@ fn imports_fixed_rows_with_open_cells_as_a_transposed_table() {
     assert!(project.source_options.xlsx_columns.is_empty());
     assert!(project.source_options.xlsx_start_row.is_none());
     assert_eq!(project.source_options.has_header_row, Some(false));
+    assert_eq!(
+        project.source_options.tabular_kind,
+        Some(TabularBoundaryKind::Xlsx)
+    );
     assert!(matches!(
         project.source.child("Category").map(|node| &node.kind),
         Some(SchemaKind::Scalar {

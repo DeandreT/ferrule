@@ -38,6 +38,12 @@ impl fmt::Display for ValidationIssue {
 /// names, and cycles without reading input data or evaluating expressions.
 pub fn validate(project: &Project) -> Vec<ValidationIssue> {
     let mut issues = Vec::new();
+    if project.root.output_path().is_some() && project.target_path.is_some() {
+        issues.push(ValidationIssue::new(
+            "target path",
+            "a dynamic target path cannot be combined with a stored target path",
+        ));
+    }
     validate_xbrl_options(
         "source format options",
         &project.source_options,
@@ -105,6 +111,12 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
             &mut Vec::new(),
             &mut issues,
         );
+        if target.root.output_path().is_some() && target.path.is_some() {
+            issues.push(ValidationIssue::new(
+                format!("extra target `{name}` path"),
+                "a dynamic target path cannot be combined with a stored target path",
+            ));
+        }
     }
     let mut source_names = BTreeSet::new();
     for source in &project.extra_sources {
@@ -771,6 +783,7 @@ fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
             scope.group_into_blocks,
             scope.sort_by,
             scope.take,
+            scope.output_path(),
         ]
         .into_iter()
         .flatten(),
@@ -996,6 +1009,39 @@ fn validate_scope(
         format!("scope `{}`", path.join("/"))
     };
 
+    if let Some(node) = scope.output_path() {
+        if !path.is_empty() {
+            issues.push(ValidationIssue::new(
+                &location,
+                "dynamic target paths are valid only on a project root scope",
+            ));
+        }
+        if !project.graph.nodes.contains_key(&node) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!("dynamic target path references missing node {node}"),
+            ));
+        }
+        if !scope.iterates() {
+            issues.push(ValidationIssue::new(
+                &location,
+                "dynamic target paths require an iterating scope",
+            ));
+        }
+        if scope.iteration_output != IterationOutput::Repeated {
+            issues.push(ValidationIssue::new(
+                &location,
+                "dynamic target paths require repeated iteration output",
+            ));
+        }
+        if scope.concatenated().is_some() {
+            issues.push(ValidationIssue::new(
+                &location,
+                "dynamic target paths cannot be combined with concatenated scope segments",
+            ));
+        }
+    }
+
     if let Some(segments) = scope.concatenated() {
         if schemas
             .target
@@ -1150,7 +1196,9 @@ fn validate_scope(
                 "copy-current-source construction cannot iterate an inner join",
             )),
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
-            ScopeIteration::None | ScopeIteration::Source(_) => {}
+            ScopeIteration::None
+            | ScopeIteration::Source(_)
+            | ScopeIteration::DynamicDocuments { .. } => {}
         }
     }
 
@@ -1245,7 +1293,9 @@ fn validate_scope(
                 "recursive-filter construction cannot iterate an inner join",
             )),
             ScopeIteration::Concatenate(_) => unreachable!("handled above"),
-            ScopeIteration::None | ScopeIteration::Source(_) => {}
+            ScopeIteration::None
+            | ScopeIteration::Source(_)
+            | ScopeIteration::DynamicDocuments { .. } => {}
         }
     }
 
@@ -1541,6 +1591,7 @@ fn validate_scope(
         ("group block size", scope.group_into_blocks),
         ("sort key", scope.sort_by),
         ("take count", scope.take),
+        ("dynamic target path", scope.output_path()),
     ] {
         if let Some(node) = node
             && !project.graph.nodes.contains_key(&node)
@@ -1550,6 +1601,24 @@ fn validate_scope(
                 format!("{label} references missing node {node}"),
             ));
         }
+    }
+    for (index, key) in scope.sort_then_by.iter().enumerate() {
+        if !project.graph.nodes.contains_key(&key.node) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "secondary sort key {} references missing node {}",
+                    index + 1,
+                    key.node
+                ),
+            ));
+        }
+    }
+    if scope.sort_by.is_none() && !scope.sort_then_by.is_empty() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "secondary sort keys require a primary sort key",
+        ));
     }
     let iterates = scope.iterates();
     if scope.iteration_output == IterationOutput::First && !iterates {
@@ -1639,7 +1708,7 @@ fn validate_scope(
             "scope grouping modes are mutually exclusive",
         ));
     }
-    if !iterates && scope.sort_by.is_some() {
+    if !iterates && scope.has_sort() {
         issues.push(ValidationIssue::new(
             &location,
             "sort key has no iterated source",
@@ -1847,7 +1916,9 @@ fn current_source_schema<'a>(
 ) -> Option<&'a SchemaNode> {
     match iteration {
         ScopeIteration::None => parent,
-        ScopeIteration::Source(path) => source_schema_at(project, parent, path),
+        ScopeIteration::Source(path) | ScopeIteration::DynamicDocuments { source: path, .. } => {
+            source_schema_at(project, parent, path)
+        }
         ScopeIteration::Sequence(_)
         | ScopeIteration::InnerJoin { .. }
         | ScopeIteration::Concatenate(_) => None,

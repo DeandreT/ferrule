@@ -35,7 +35,7 @@ pub(crate) fn aggregate(
             if numbers.is_empty() {
                 return Ok(Value::Null);
             }
-            finite_float(function, incremental_average(&numbers)?).map(Value::Float)
+            finite_float(function, compensated_average(&numbers)?).map(Value::Float)
         }
         AggregateOp::Min | AggregateOp::Max => {
             let numbers = numeric_values(function, values)?;
@@ -191,17 +191,62 @@ fn compensated_sum(values: &[NumericValue]) -> Result<f64, EngineError> {
     finite_float(mapping::AggregateOp::Sum, normalized * scale)
 }
 
-fn incremental_average(values: &[NumericValue]) -> Result<f64, EngineError> {
-    let mut average = 0.0;
-    for (index, value) in values.iter().enumerate() {
-        let count = (index + 1) as f64;
-        let retained_weight = index as f64 / count;
-        average = finite_float(
-            mapping::AggregateOp::Avg,
-            average * retained_weight + value.as_float() / count,
-        )?;
+fn compensated_average(values: &[NumericValue]) -> Result<f64, EngineError> {
+    let mut sum = 0.0;
+    let mut correction = 0.0;
+    let mut unscaled = true;
+    for value in values {
+        let value = value.as_float();
+        let next = sum + value;
+        if !next.is_finite() {
+            unscaled = false;
+            break;
+        }
+        correction += if sum.abs() >= value.abs() {
+            (sum - next) + value
+        } else {
+            (value - next) + sum
+        };
+        if !correction.is_finite() {
+            unscaled = false;
+            break;
+        }
+        sum = next;
     }
-    Ok(average)
+    if unscaled {
+        let total = sum + correction;
+        let mean = total / values.len() as f64;
+        if mean.is_finite() {
+            return Ok(mean);
+        }
+    }
+
+    // Scaling keeps averages such as (MAX + MAX) / 2 finite when an
+    // ordinary compensated sum would overflow before division.
+    let scale = values
+        .iter()
+        .map(|value| value.as_float().abs())
+        .fold(0.0_f64, f64::max);
+    if scale == 0.0 {
+        return Ok(0.0);
+    }
+
+    let mut sum = 0.0;
+    let mut correction = 0.0;
+    for value in values {
+        let value = value.as_float() / scale;
+        let next = finite_float(mapping::AggregateOp::Avg, sum + value)?;
+        correction += if sum.abs() >= value.abs() {
+            (sum - next) + value
+        } else {
+            (value - next) + sum
+        };
+        correction = finite_float(mapping::AggregateOp::Avg, correction)?;
+        sum = next;
+    }
+    let normalized = finite_float(mapping::AggregateOp::Avg, sum + correction)?;
+    let mean = finite_float(mapping::AggregateOp::Avg, normalized / values.len() as f64)?;
+    finite_float(mapping::AggregateOp::Avg, mean * scale)
 }
 
 /// Compares an integer and a finite float without rounding the integer first.

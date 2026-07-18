@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ir::{Instance, Value};
+use ir::{DocumentMember, Instance, ScalarType, SchemaKind, Value};
 use mapping::{
     Graph, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SortFilterOrder,
 };
@@ -29,6 +29,11 @@ struct OwnedGroup {
     intermediate_frames: Vec<Instance>,
     members: Instance,
     positions: Vec<PositionFrame>,
+}
+
+struct ProducedItem {
+    instance: Instance,
+    output_path: Option<String>,
 }
 
 struct ItemEvaluator<'a> {
@@ -91,7 +96,7 @@ pub(crate) fn eval_scope(
         });
     let join_rows = scope
         .join()
-        .map(|(join, plan)| execute_join(context, join, plan))
+        .map(|(join, plan)| execute_join(context, positions, join, plan))
         .transpose()?;
     let dynamic_source = scope.source().and_then(|path| {
         let name = path.first()?;
@@ -227,7 +232,7 @@ pub(crate) fn eval_scope(
     };
 
     let filter_before_sort = scope.filter.is_some()
-        && scope.sort_by.is_some()
+        && scope.has_sort()
         && scope.sort_filter_order == SortFilterOrder::FilterThenSort;
     if filter_before_sort {
         let mut filtered = Vec::with_capacity(extensions.len());
@@ -243,30 +248,40 @@ pub(crate) fn eval_scope(
         extensions = filtered;
     }
 
-    if let Some(sort_node) = scope.sort_by {
+    let sort_keys = scope.sort_keys().collect::<Vec<_>>();
+    if !sort_keys.is_empty() {
         let mut keyed = Vec::with_capacity(extensions.len());
         for extension in extensions {
             let mut item_context = context.to_vec();
             item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
             item_positions.extend(extension.positions.iter().cloned());
-            let mut in_progress = HashSet::new();
-            let key = eval_expr(
-                graph,
-                sort_node,
-                &item_context,
-                &item_positions,
-                &mut in_progress,
-            )?;
-            keyed.push((extension, key));
+            let mut values = Vec::with_capacity(sort_keys.len());
+            for key in &sort_keys {
+                let mut in_progress = HashSet::new();
+                values.push(eval_expr(
+                    graph,
+                    key.node,
+                    &item_context,
+                    &item_positions,
+                    &mut in_progress,
+                )?);
+            }
+            keyed.push((extension, values));
         }
         keyed.sort_by(|(_, left), (_, right)| {
-            let ordering = value_ordering(left, right).unwrap_or(std::cmp::Ordering::Equal);
-            if scope.sort_descending {
-                ordering.reverse()
-            } else {
-                ordering
+            for ((left, right), key) in left.iter().zip(right).zip(&sort_keys) {
+                let ordering = value_ordering(left, right).unwrap_or(std::cmp::Ordering::Equal);
+                let ordering = if key.descending {
+                    ordering.reverse()
+                } else {
+                    ordering
+                };
+                if ordering != std::cmp::Ordering::Equal {
+                    return ordering;
+                }
             }
+            std::cmp::Ordering::Equal
         });
         extensions = keyed
             .into_iter()
@@ -428,6 +443,7 @@ pub(crate) fn eval_scope(
         }
     } else {
         let mut compact_positions: BTreeMap<Vec<usize>, usize> = BTreeMap::new();
+        let renumber_output = scope.filter.is_some() || scope.has_sort() || scope.take.is_some();
         for extension in &extensions {
             if take.is_some_and(|limit| produced.len() >= limit) {
                 break;
@@ -437,30 +453,35 @@ pub(crate) fn eval_scope(
             let mut candidate_positions = positions.to_vec();
             candidate_positions.extend(extension.positions.iter().cloned());
 
-            let parent_key: Vec<usize> = extension
-                .positions
-                .iter()
-                .take(extension.positions.len().saturating_sub(1))
-                .map(|position| position.index)
-                .collect();
+            // Intermediate repeating levels crossed by this scope belong to
+            // one flattened candidate sequence. Only already-active outer
+            // scopes identify distinct target parents for compact positions.
+            let parent_key: Vec<usize> = positions.iter().map(|position| position.index).collect();
             let joined = extension
                 .positions
                 .last()
                 .is_some_and(|position| position.join_position.is_some());
             let next_position = if joined {
                 produced.len() + 1
+            } else if !renumber_output {
+                extension
+                    .positions
+                    .last()
+                    .map_or(1, |position| position.index)
             } else {
                 compact_positions.get(&parent_key).copied().unwrap_or(0) + 1
             };
             let mut output_positions = candidate_positions.clone();
-            renumber_extension(&mut output_positions, next_position);
+            if joined || renumber_output {
+                renumber_extension(&mut output_positions, next_position);
+            }
             if let Some(instance) = item_evaluator.produce(
                 &next_context,
                 &candidate_positions,
                 &output_positions,
                 !filter_before_sort,
             )? {
-                if !joined && !extension.positions.is_empty() {
+                if !joined && renumber_output && !extension.positions.is_empty() {
                     compact_positions.insert(parent_key, next_position);
                 }
                 produced.push(instance);
@@ -468,11 +489,28 @@ pub(crate) fn eval_scope(
         }
     }
 
-    finalize_scope_output(
-        scope,
-        target.is_some_and(|target| target.repeating),
-        produced,
-    )
+    if let Some(node) = scope.output_path() {
+        let documents = produced
+            .into_iter()
+            .map(|produced| {
+                let path = produced
+                    .output_path
+                    .ok_or(EngineError::EmptyDynamicTargetPath { node })?;
+                DocumentMember::new(path, produced.instance)
+                    .ok_or(EngineError::EmptyDynamicTargetPath { node })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Instance::DocumentSet(documents))
+    } else {
+        finalize_scope_output(
+            scope,
+            target.is_some_and(|target| target.repeating),
+            produced
+                .into_iter()
+                .map(|produced| produced.instance)
+                .collect(),
+        )
+    }
 }
 
 fn renumber_extension(positions: &mut [PositionFrame], index: usize) {
@@ -525,6 +563,45 @@ fn eval_block_size(
 /// then the scope's bindings and child scopes.
 impl ItemEvaluator<'_> {
     fn produce(
+        &self,
+        context: &[&Instance],
+        filter_positions: &[PositionFrame],
+        output_positions: &[PositionFrame],
+        apply_filter: bool,
+    ) -> Result<Option<ProducedItem>, EngineError> {
+        let Some(instance) =
+            self.produce_instance(context, filter_positions, output_positions, apply_filter)?
+        else {
+            return Ok(None);
+        };
+        let output_path = self
+            .scope
+            .output_path()
+            .map(|node| {
+                let mut in_progress = HashSet::new();
+                match eval_expr(
+                    self.graph,
+                    node,
+                    context,
+                    output_positions,
+                    &mut in_progress,
+                )? {
+                    Value::String(path) if !path.trim().is_empty() => Ok(path),
+                    Value::String(_) => Err(EngineError::EmptyDynamicTargetPath { node }),
+                    value => Err(EngineError::DynamicTargetPath {
+                        node,
+                        found: value.type_name(),
+                    }),
+                }
+            })
+            .transpose()?;
+        Ok(Some(ProducedItem {
+            instance,
+            output_path,
+        }))
+    }
+
+    fn produce_instance(
         &self,
         context: &[&Instance],
         filter_positions: &[PositionFrame],
@@ -610,9 +687,12 @@ impl ItemEvaluator<'_> {
                 output_positions,
                 &mut in_progress,
             )?;
-            let repeating = target
-                .and_then(|schema| schema.child(&binding.target_field))
-                .is_some_and(|field| field.repeating);
+            let target_field = target.and_then(|schema| schema.child(&binding.target_field));
+            let value = match target_field.map(|field| &field.kind) {
+                Some(SchemaKind::Scalar { ty }) => adapt_numeric_target(value, *ty),
+                Some(SchemaKind::Group { .. }) | None => value,
+            };
+            let repeating = target_field.is_some_and(|field| field.repeating);
             let value = match repeating {
                 true => match value {
                     Value::Null => Instance::Repeated(Vec::new()),
@@ -670,6 +750,28 @@ impl ItemEvaluator<'_> {
             dynamic_target::insert_dynamic_target_field(&mut fields, key, child_instance, target)?;
         }
         Ok(Some(Instance::Group(fields)))
+    }
+}
+
+fn adapt_numeric_target(value: Value, expected: ScalarType) -> Value {
+    match (expected, value) {
+        (ScalarType::Int, Value::Float(value))
+            if value.is_finite()
+                && value.fract() == 0.0
+                && value >= i64::MIN as f64
+                && value < -(i64::MIN as f64) =>
+        {
+            Value::Int(value as i64)
+        }
+        (ScalarType::Float, Value::Int(value)) => {
+            let converted = value as f64;
+            if (converted as i128) == i128::from(value) {
+                Value::Float(converted)
+            } else {
+                Value::Int(value)
+            }
+        }
+        (_, value) => value,
     }
 }
 

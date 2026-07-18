@@ -70,7 +70,7 @@ pub fn read_lines(path: &Path, schema: &SchemaNode) -> Result<Instance, JsonForm
 /// This is the in-memory equivalent of [`read`], suitable for hosts without
 /// filesystem access such as WebAssembly applications.
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let value: serde_json::Value = serde_json::from_str(text)?;
+    let value: serde_json::Value = serde_json::from_str(strip_utf8_bom(text))?;
     if schema.repeating {
         read_repeated(&value, schema)
     } else {
@@ -80,7 +80,7 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatE
 
 /// Reads JSON Lines text into a repeated instance.
 pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
-    let items = text
+    let items = strip_utf8_bom(text)
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
@@ -89,6 +89,10 @@ pub fn from_lines(text: &str, schema: &SchemaNode) -> Result<Instance, JsonForma
         })
         .collect::<Result<Vec<_>, JsonFormatError>>()?;
     Ok(Instance::Repeated(items))
+}
+
+fn strip_utf8_bom(text: &str) -> &str {
+    text.strip_prefix('\u{feff}').unwrap_or(text)
 }
 
 fn read_repeated(
@@ -702,6 +706,22 @@ mod tests {
             text.replace("\n\n", "\n")
         );
         assert_eq!(rows.as_repeated().map(<[Instance]>::len), Some(2));
+    }
+
+    #[test]
+    fn leading_utf8_bom_is_accepted_for_json_documents_and_lines() {
+        let scalar = SchemaNode::scalar("Value", ScalarType::Int);
+        assert_eq!(
+            from_str("\u{feff}42", &scalar).unwrap(),
+            Instance::Scalar(Value::Int(42))
+        );
+        assert_eq!(
+            from_lines("\u{feff}1\n2\n", &scalar).unwrap(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::Int(1)),
+                Instance::Scalar(Value::Int(2)),
+            ])
+        );
     }
 
     #[test]

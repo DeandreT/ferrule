@@ -368,6 +368,9 @@ fn build_one(
     let target_path = iteration.target_path;
     let join = iteration.join;
     let feed = builder.resolve_iteration_feed(iteration.feed);
+    let inherited_filters =
+        inherited_structural_filters(target, iteration.target_port, &feed, builder);
+    let has_inherited_filter = !inherited_filters.is_empty();
     if let Some(id) = join {
         match builder.prepare_join_iteration(
             id,
@@ -453,6 +456,34 @@ fn build_one(
     let mut existing_filter = feed
         .filter_expr
         .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
+    if feed.filter_inverted
+        && let Some(filter) = existing_filter
+    {
+        existing_filter = Some(builder.alloc(Node::Call {
+            function: "not".into(),
+            args: vec![filter],
+        }));
+    }
+    for (predicate, inverted) in inherited_filters {
+        let Some(mut predicate) =
+            predicate.and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
+        else {
+            continue;
+        };
+        if inverted {
+            predicate = builder.alloc(Node::Call {
+                function: "not".into(),
+                args: vec![predicate],
+            });
+        }
+        existing_filter = Some(match existing_filter {
+            Some(existing) => builder.alloc(Node::Call {
+                function: "and".into(),
+                args: vec![existing, predicate],
+            }),
+            None => predicate,
+        });
+    }
     for output in &feed.udf_filters {
         let Some(udf_filter) = builder.udf_iteration_filter_node(*output) else {
             continue;
@@ -475,7 +506,7 @@ fn build_one(
         });
     }
     if let Some(id) = join
-        && feed.has_filter
+        && (feed.has_filter || has_inherited_filter)
         && existing_filter.is_none()
     {
         reject_join_control(
@@ -503,6 +534,7 @@ fn build_one(
     if query_at_most_one
         && (feed.db_where_component.is_some()
             || feed.has_filter
+            || has_inherited_filter
             || feed.has_key_grouping
             || feed.has_start_grouping
             || feed.has_block_grouping
@@ -563,11 +595,19 @@ fn build_one(
         });
     }
     let ordinary_sort = feed
-        .sort_expr
-        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
+        .sort_keys
+        .iter()
+        .map(|(key, descending)| {
+            key.and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor))
+                .map(|node| mapping::SortKey {
+                    node,
+                    descending: *descending,
+                })
+        })
+        .collect::<Option<Vec<_>>>();
     if let Some(id) = join
         && feed.has_sort
-        && ordinary_sort.is_none()
+        && ordinary_sort.as_ref().is_none_or(Vec::is_empty)
     {
         reject_join_control(
             builder,
@@ -578,12 +618,27 @@ fn build_one(
         );
         return;
     }
-    if ordinary_sort.is_some() && database_sort.is_some() {
+    if join.is_none() && feed.has_sort && ordinary_sort.as_ref().is_none_or(Vec::is_empty) {
+        builder.warnings.push(format!(
+            "sort feeding `{}` has a missing or unsupported key; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
+        return;
+    }
+    if ordinary_sort.as_ref().is_some_and(|keys| !keys.is_empty()) && database_sort.is_some() {
         builder.warn_conflicting_db_sort(&target_path);
         skipped.push(target_path);
         return;
     }
-    let sort = ordinary_sort.or(database_sort);
+    let mut sort_keys = ordinary_sort.unwrap_or_default();
+    if let Some(node) = database_sort {
+        sort_keys.push(mapping::SortKey {
+            node,
+            descending: database_descending,
+        });
+    }
+    let primary_sort = sort_keys.first().copied();
     let take = if query_at_most_one {
         Some(builder.alloc(Node::Const {
             value: Value::Int(1),
@@ -617,10 +672,9 @@ fn build_one(
         group_by: group,
         group_starting_with: start_group,
         group_into_blocks: block,
-        sort_by: sort,
-        sort_descending: ordinary_sort
-            .map(|_| feed.sort_descending)
-            .unwrap_or(database_descending),
+        sort_by: primary_sort.map(|key| key.node),
+        sort_descending: primary_sort.is_some_and(|key| key.descending),
+        sort_then_by: sort_keys.into_iter().skip(1).collect(),
         sort_filter_order: feed.sort_filter_order,
         take,
     };
@@ -632,6 +686,14 @@ fn build_one(
             return;
         };
         scopes.add_join(&target_path, id, plan, nodes, iteration.output);
+        project_join_branch(
+            target,
+            &target_path,
+            feed.source_key,
+            connected,
+            builder,
+            scopes,
+        );
     } else if let Some(sequence) = sequence {
         scopes.add_sequence(&target_path, sequence, nodes, iteration.output);
     } else if let Some(scope_source) = &scope_source {
@@ -669,6 +731,67 @@ fn build_one(
             scopes.add_binding(target, type_value);
         }
     }
+}
+
+fn project_join_branch(
+    target: &SchemaComponent,
+    target_path: &[String],
+    branch_port: u32,
+    connected: &BTreeSet<Vec<String>>,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+) {
+    let Some(target_group) = schema_node_at(&target.schema, target_path) else {
+        return;
+    };
+    for (relative, node) in builder.join_branch_fields(branch_port, target_group) {
+        let mut target_leaf = target_path.to_vec();
+        target_leaf.extend(relative);
+        let has_explicit_descendant = target.ports.iter().any(|(port, path)| {
+            path.len() > target_path.len()
+                && target_leaf.starts_with(path)
+                && builder.edge_from.contains_key(port)
+        });
+        if connected.contains(&target_leaf) || has_explicit_descendant {
+            continue;
+        }
+        if let Some(target) = TargetLeaf::from_path(&target_leaf) {
+            let node = builder.alloc(node);
+            scopes.add_binding(target, node);
+        }
+    }
+}
+
+fn inherited_structural_filters(
+    target: &SchemaComponent,
+    target_port: Option<u32>,
+    feed: &super::iteration::IterationFeed,
+    builder: &GraphBuilder<'_>,
+) -> Vec<(Option<u32>, bool)> {
+    let Some(target_port) = target_port else {
+        return Vec::new();
+    };
+    let Some(source) = builder.iteration_source_path(feed) else {
+        return Vec::new();
+    };
+    target
+        .input_ancestors
+        .get(&target_port)
+        .into_iter()
+        .flatten()
+        .filter_map(|ancestor| builder.edge_from.get(ancestor))
+        .filter_map(|ancestor_feed| {
+            let control = builder.resolve_iteration_feed(*ancestor_feed);
+            if !control.has_filter || !control.udf_filters.is_empty() {
+                return None;
+            }
+            let ancestor_source = builder.iteration_source_path(&control)?;
+            (ancestor_source.source == source.source
+                && source.path.starts_with(&ancestor_source.path)
+                && ancestor_source.path.len() < source.path.len())
+            .then_some((control.filter_expr, control.filter_inverted))
+        })
+        .collect()
 }
 
 fn xml_type_nodes(

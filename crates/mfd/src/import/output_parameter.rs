@@ -130,6 +130,7 @@ fn build(
         is_source: false,
         is_default_output: true,
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         input_keys: ports.keys().copied().collect(),
         output_keys: BTreeSet::new(),
@@ -147,11 +148,7 @@ pub(super) fn install_fallback(
     edge_from: &BTreeMap<u32, u32>,
     warnings: &mut Vec<String>,
 ) -> bool {
-    if parameters.is_empty()
-        || components
-            .iter()
-            .any(|component| !component.is_variable && !component.is_source)
-    {
+    if parameters.is_empty() || components.iter().any(SchemaComponent::is_target) {
         return false;
     }
     let built = build(parameters, edge_from);

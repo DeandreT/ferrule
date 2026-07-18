@@ -131,6 +131,12 @@ fn sequence_dependencies(builder: &GraphBuilder<'_>, feed: u32) -> BTreeSet<usiz
         let Some(component) = builder.fn_components.get(index) else {
             return;
         };
+        // `exists` reduces its input sequence to one scalar. A sequence below
+        // it is not an occurrence driver, even though `exists` is safe as a
+        // scalar bound of a separately declared generated sequence.
+        if component.name == "exists" {
+            return;
+        }
         if is_sequence_producer(component) {
             producers.insert(index);
             return;
@@ -152,7 +158,6 @@ fn sequence_dependencies(builder: &GraphBuilder<'_>, feed: u32) -> BTreeSet<usiz
 
 fn is_plain_scalar_component(component: &super::function::FnComponent) -> bool {
     produces_scalar(component)
-        && component.name != "exists"
         && aggregate_op(&component.name).is_none()
         && !is_filter(component)
         && !is_sort(component)

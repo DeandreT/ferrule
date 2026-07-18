@@ -303,6 +303,22 @@ impl Registry {
             .and_then(|idx| self.definition(idx))
     }
 
+    pub(super) fn scalar_expression_named(
+        &self,
+        library: &str,
+        name: &str,
+    ) -> Option<(BTreeSet<u32>, ScalarExpr)> {
+        let definition = self.definition_named(library, name)?;
+        let mut outputs = definition.outputs.values();
+        let OutputExpr::Scalar(expression) = outputs.next()? else {
+            return None;
+        };
+        outputs
+            .next()
+            .is_none()
+            .then(|| (definition.parameters.clone(), expression.clone()))
+    }
+
     pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
         std::mem::take(&mut self.sources)
     }

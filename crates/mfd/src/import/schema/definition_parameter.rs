@@ -101,6 +101,7 @@ fn read_db(component: &roxmltree::Node, warnings: &mut Vec<String>) -> Option<Sc
         is_source: out_count >= in_count,
         is_default_output: false,
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),

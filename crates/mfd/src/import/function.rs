@@ -55,9 +55,13 @@ pub(super) struct FnComponent {
     /// Declared output positions, retaining keyless pins so a secondary
     /// output cannot be mistaken for the primary result.
     pub(super) output_pins: Vec<Option<u32>>,
+    /// Scalar coercion declared by a transparent kind=6 input parameter.
+    pub(super) input_type: Option<ScalarType>,
     pub(super) constant: Option<(String, String)>,
     pub(super) valuemap: Option<ValueMapData>,
-    pub(super) sort_descending: Option<bool>,
+    /// Sort directions in key-index order; `Some` also identifies a sort
+    /// component whose key declarations are malformed or absent.
+    pub(super) sort_directions: Option<Vec<bool>>,
     pub(super) db_where: Option<DbWhereComponent>,
     pub(super) recursive: Option<RecursiveComponent>,
 }
@@ -136,6 +140,17 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
     let data = component
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "data");
+    let input_type = (library == "core" && kind == 6)
+        .then(|| {
+            data.and_then(|data| data.descendants().find(|node| node.has_tag_name("input")))
+                .and_then(|input| {
+                    input
+                        .attribute("datatype")
+                        .or_else(|| input.attribute("type"))
+                })
+                .map(parse_scalar_type)
+        })
+        .flatten();
     let constant = data
         .and_then(|d| {
             d.children()
@@ -196,12 +211,22 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 input_type,
             }
         });
-    let sort_descending = data
+    let sort_directions = data
         .and_then(|data| data.descendants().find(|node| node.has_tag_name("sort")))
         .map(|sort| {
-            sort.descendants()
-                .find(|node| node.has_tag_name("key"))
-                .is_some_and(|key| key.attribute("direction") == Some("descending"))
+            let mut keys = sort
+                .descendants()
+                .filter(|node| node.has_tag_name("key"))
+                .map(|key| {
+                    let index = key
+                        .attribute("index")
+                        .and_then(|index| index.parse::<usize>().ok())
+                        .unwrap_or(0);
+                    (index, key.attribute("direction") == Some("descending"))
+                })
+                .collect::<Vec<_>>();
+            keys.sort_by_key(|(index, _)| *index);
+            keys.into_iter().map(|(_, descending)| descending).collect()
         });
     let db_where =
         (library == "db" && kind == 21).then(|| parse_db_where(component, &inputs, &outputs));
@@ -213,9 +238,10 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         inputs,
         outputs,
         output_pins,
+        input_type,
         constant,
         valuemap,
-        sort_descending,
+        sort_directions,
         db_where,
         recursive: None,
     }
@@ -425,7 +451,7 @@ pub(super) fn is_input(component: &FnComponent) -> bool {
 }
 
 pub(super) fn is_sort(component: &FnComponent) -> bool {
-    component.library == "core" && component.kind == 30 && component.sort_descending.is_some()
+    component.library == "core" && component.kind == 30 && component.sort_directions.is_some()
 }
 
 pub(super) fn is_first_items(component: &FnComponent) -> bool {

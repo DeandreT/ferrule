@@ -40,16 +40,8 @@ fn output_scope() -> Scope {
     }
 }
 
-#[test]
-fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
--> Result<(), Box<dyn std::error::Error>> {
-    let dir = TempDir::new()?;
-    let project_path = dir.0.join("project.json");
-    let input_path = dir.0.join("input.xml");
-    let override_path = dir.0.join("override.xml");
-    let stored_primary = dir.0.join("stored-primary.xml");
-    let stored_secondary = dir.0.join("stored-secondary.xml");
-    let project = Project {
+fn project(extra_path: &str) -> Project {
+    Project {
         source: document("Source"),
         target: document("First"),
         source_path: None,
@@ -59,7 +51,7 @@ fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
         extra_sources: Vec::new(),
         extra_targets: vec![NamedTarget {
             name: "second".into(),
-            path: Some("stored-secondary.xml".into()),
+            path: Some(extra_path.into()),
             schema: document("Second"),
             options: Default::default(),
             root: output_scope(),
@@ -75,7 +67,19 @@ fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
             .into(),
         },
         root: output_scope(),
-    };
+    }
+}
+
+#[test]
+fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let project_path = dir.0.join("project.json");
+    let input_path = dir.0.join("input.xml");
+    let override_path = dir.0.join("override.xml");
+    let stored_primary = dir.0.join("stored-primary.xml");
+    let stored_secondary = dir.0.join("stored-secondary.xml");
+    let project = project("stored-secondary.xml");
     std::fs::write(&project_path, serde_json::to_vec_pretty(&project)?)?;
     std::fs::write(&input_path, "<Source><Value>shared</Value></Source>")?;
 
@@ -98,5 +102,68 @@ fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
         format_xml::read(&outcome.extra_outputs[0].path, &document("Second"))?,
         expected
     );
+    Ok(())
+}
+
+#[test]
+fn late_extra_render_failure_leaves_existing_primary_untouched()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    let project_path = dir.0.join("project.json");
+    let input_path = dir.0.join("input.xml");
+    let primary_path = dir.0.join("primary.xml");
+    let late_path = dir.0.join("late.pdf");
+    std::fs::write(
+        &project_path,
+        serde_json::to_vec_pretty(&project("late.pdf"))?,
+    )?;
+    std::fs::write(&input_path, "<Source><Value>new</Value></Source>")?;
+    std::fs::write(&primary_path, "keep primary")?;
+
+    let error = cli::run_project_with_paths(&project_path, Some(&input_path), Some(&primary_path))
+        .expect_err("the unsupported late target must fail the batch");
+
+    let message = format!("{error:#}");
+    assert!(
+        message.contains("writing extra target `second`"),
+        "{message}"
+    );
+    assert!(message.contains("PDF output is not supported"), "{message}");
+    assert_eq!(std::fs::read_to_string(primary_path)?, "keep primary");
+    assert!(!late_path.exists());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_parent_aliases_are_preflighted_as_one_output_path()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::symlink;
+
+    let dir = TempDir::new()?;
+    let project_path = dir.0.join("project.json");
+    let input_path = dir.0.join("input.xml");
+    let real = dir.0.join("real");
+    let alias = dir.0.join("alias");
+    std::fs::create_dir(&real)?;
+    symlink(&real, &alias)?;
+    std::fs::write(
+        &project_path,
+        serde_json::to_vec_pretty(&project("real/output.xml"))?,
+    )?;
+    std::fs::write(&input_path, "<Source><Value>value</Value></Source>")?;
+
+    let error = cli::run_project_with_paths(
+        &project_path,
+        Some(&input_path),
+        Some(&alias.join("output.xml")),
+    )
+    .expect_err("symlink aliases must collide before staging");
+
+    assert!(
+        format!("{error:#}").contains("resolve to the same path"),
+        "{error:#}"
+    );
+    assert!(!real.join("output.xml").exists());
     Ok(())
 }

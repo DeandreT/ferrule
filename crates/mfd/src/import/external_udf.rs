@@ -91,12 +91,18 @@ pub(super) fn capture_or_warn(
 pub(super) fn selected_target_inputs(components: &[SchemaComponent]) -> Option<BTreeSet<u32>> {
     let targets = components
         .iter()
-        .filter(|component| !component.is_variable && !component.is_source)
+        .filter(|component| component.is_target())
         .collect::<Vec<_>>();
     targets
         .iter()
         .copied()
         .find(|component| component.is_default_output)
+        .or_else(|| {
+            targets
+                .iter()
+                .copied()
+                .find(|component| !component.is_pass_through)
+        })
         .or_else(|| targets.first().copied())
         .map(|target| target.ports.keys().copied().collect())
 }
@@ -159,6 +165,7 @@ fn read_json_output_source(
         is_source: true,
         is_default_output: false,
         is_variable: false,
+        is_pass_through: false,
         compute_when_key: None,
         ports,
         input_ancestors: BTreeMap::new(),

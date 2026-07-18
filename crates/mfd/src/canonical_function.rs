@@ -10,6 +10,7 @@ pub(crate) fn is_internal(name: &str) -> bool {
             | "sql_like"
             | "to_number"
             | "json_serialize_object"
+            | "json_parse_field"
             | "flextext_parse_field"
     )
 }

@@ -4,22 +4,43 @@
 //! `cargo test -p mfd --test samples_execution_survey -- --ignored --nocapture`.
 //! Set `FERRULE_EXECUTION_SURVEY_JSON=/path/to/report.json` for a versioned
 //! machine-readable report and `FERRULE_EXECUTION_SURVEY_DETAILS=1` for every
-//! per-file outcome.
+//! per-file outcome. A manifest produced by `samples_reference_survey` can be
+//! supplied through `FERRULE_REFERENCE_SAMPLES_MANIFEST`; use the platform
+//! path-list separator to combine independently generated manifests.
 //!
-//! The harness resolves every input beneath the sample directory, rejects
-//! network and data-dependent sources, and writes projects and outputs only to
-//! a unique temporary workspace. Reference comparison is deliberately narrow:
-//! an existing primary `outputinstance` must be declared explicitly and must
-//! not also be an input or an update-in-place workbook.
+//! The harness resolves every input beneath the sample directory, including
+//! data-dependent secondary sources through a contained host loader, rejects
+//! network access, and writes projects and outputs only to a unique temporary
+//! workspace. Reference comparison prefers isolated outputs recorded by the
+//! reference survey, then falls back to an existing explicit primary
+//! `outputinstance` that is neither an input nor an update template.
 
-use std::collections::BTreeSet;
+#[path = "samples_execution_survey/format_io.rs"]
+mod format_io;
+#[path = "samples_execution_survey/output_support.rs"]
+mod output_support;
+#[path = "samples_execution_survey/reference_support.rs"]
+mod reference_support;
+
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::error::Error;
 use std::io;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use ir::{Instance, SchemaKind, SchemaNode};
-use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, Project};
+use format_io::{inferred_extension, is_http, portable_path, read_instance, resolve_sample_input};
+use ir::{Instance, SchemaNode};
+use mapping::{DynamicSourcePath, FormatOptions, NamedSource, Project, TabularBoundaryKind};
+use output_support::{
+    compare_generated_references, prepare_database_output, prepare_xlsx_update_output,
+    validate_document_paths, write_outputs,
+};
+use reference_support::{
+    GeneratedReferences, first_instance_difference, load_generated_references,
+    requested_generated_references,
+};
 
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_EXECUTION_SURVEY_JSON";
@@ -223,380 +244,6 @@ impl Drop for SurveyWorkspace {
     }
 }
 
-fn extension(path: &Path) -> Result<String, String> {
-    path.extension()
-        .and_then(|value| value.to_str())
-        .map(str::to_ascii_lowercase)
-        .ok_or_else(|| format!("path `{}` has no usable extension", path.display()))
-}
-
-fn is_http(value: &str) -> bool {
-    value.split_once("://").is_some_and(|(scheme, _)| {
-        scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
-    })
-}
-
-fn portable_path(value: &str) -> PathBuf {
-    PathBuf::from(value.replace('\\', "/"))
-}
-
-fn resolve_sample_input(samples_root: &Path, stored: &str) -> Result<PathBuf, String> {
-    if stored.trim().is_empty() {
-        return Err("input instance path is empty".to_string());
-    }
-    if is_http(stored) {
-        return Err("network input is disabled by the read-only execution survey".to_string());
-    }
-    let stored = portable_path(stored);
-    let candidate = if stored.is_absolute() {
-        stored
-    } else {
-        samples_root.join(stored)
-    };
-    let resolved = std::fs::canonicalize(&candidate).map_err(|error| {
-        format!(
-            "local input `{}` is unavailable: {error}",
-            candidate.display()
-        )
-    })?;
-    let canonical_root = std::fs::canonicalize(samples_root)
-        .map_err(|error| format!("resolving sample root failed: {error}"))?;
-    if !resolved.starts_with(&canonical_root) {
-        return Err(format!(
-            "local input `{}` escapes the read-only sample directory",
-            candidate.display()
-        ));
-    }
-    if !resolved.is_file() {
-        return Err(format!(
-            "local input `{}` is not a file",
-            resolved.display()
-        ));
-    }
-    Ok(resolved)
-}
-
-fn read_instance(
-    path: &Path,
-    schema: &SchemaNode,
-    options: &FormatOptions,
-) -> Result<Instance, String> {
-    if let Some(xbrl) = &options.xbrl {
-        return format_xbrl::read_with_options(path, schema, xbrl)
-            .map_err(|error| error.to_string());
-    }
-    if let Some(layout) = &options.idoc {
-        return format_edi::idoc::read(path, schema, layout, options.lenient_segments)
-            .map_err(|error| error.to_string());
-    }
-    if let Some(layout) = &options.swift_mt {
-        return format_edi::swift::read(path, schema, layout, options.lenient_segments)
-            .map_err(|error| error.to_string());
-    }
-    if let Some(boundary) = &options.external_source {
-        return match boundary.payload() {
-            ExternalPayloadFormat::Json => {
-                format_json::read(path, schema).map_err(|error| error.to_string())
-            }
-            ExternalPayloadFormat::Xml => {
-                format_xml::read(path, schema).map_err(|error| error.to_string())
-            }
-        };
-    }
-    if let Some(layout) = &options.pdf {
-        return format_pdf::read(path, layout).map_err(|error| error.to_string());
-    }
-    if let Some(layout) = &options.flextext {
-        return format_flextext::read(path, schema, layout).map_err(|error| error.to_string());
-    }
-    if options.protobuf.is_some() {
-        return Err("Protocol Buffers input is not supported".to_string());
-    }
-    if let Some(layout) = &options.fixed_width {
-        return format_csv::read_fixed_width(path, schema, layout)
-            .map(Instance::Repeated)
-            .map_err(|error| error.to_string());
-    }
-    if options.xml_document {
-        return format_xml::read(path, schema).map_err(|error| error.to_string());
-    }
-
-    match extension(path)?.as_str() {
-        "csv" | "txt" => format_csv::read(
-            path,
-            schema,
-            options.delimiter,
-            options.has_header_row.unwrap_or(true),
-        )
-        .map(Instance::Repeated)
-        .map_err(|error| error.to_string()),
-        "xlsx" => read_xlsx(path, schema, options),
-        "xml" => format_xml::read(path, schema).map_err(|error| error.to_string()),
-        "json" | "jsonl" | "ndjson" if options.json_lines => {
-            format_json::read_lines(path, schema).map_err(|error| error.to_string())
-        }
-        "json" | "jsonl" | "ndjson" => {
-            format_json::read(path, schema).map_err(|error| error.to_string())
-        }
-        "db" | "sqlite" | "sqlite3" => {
-            format_db::read_instance(path, schema).map_err(|error| error.to_string())
-        }
-        "edi" | "x12" | "edifact" | "hl7" => read_edi(path, schema, options),
-        "idoc" => Err("SAP IDoc input has no embedded layout".to_string()),
-        "fin" | "swift" => Err("SWIFT MT input has no embedded layout".to_string()),
-        "pdf" => Err("PDF input has no embedded extraction layout".to_string()),
-        other => Err(format!("unsupported input file extension `.{other}`")),
-    }
-}
-
-fn read_xlsx(
-    path: &Path,
-    schema: &SchemaNode,
-    options: &FormatOptions,
-) -> Result<Instance, String> {
-    if options.xlsx_hierarchical.is_some() {
-        return Err("hierarchical XLSX input is not supported".to_string());
-    }
-    if let Some(layout) = &options.xlsx_grid {
-        return format_xlsx::read_grid(path, schema, layout)
-            .map(Instance::Repeated)
-            .map_err(|error| error.to_string());
-    }
-    if let Some(layout) = &options.xlsx_composite {
-        return format_xlsx::read_composite(path, schema, layout)
-            .map_err(|error| error.to_string());
-    }
-    let rows = if options.xlsx_rows.is_empty() {
-        format_xlsx::read(
-            path,
-            schema,
-            options.xlsx_sheet.as_deref(),
-            options.xlsx_start_row.unwrap_or(1),
-            &options.xlsx_columns,
-            options.has_header_row.unwrap_or(true),
-        )
-    } else {
-        format_xlsx::read_transposed(
-            path,
-            schema,
-            options.xlsx_sheet.as_deref(),
-            &options.xlsx_rows,
-        )
-    };
-    rows.map(Instance::Repeated)
-        .map_err(|error| error.to_string())
-}
-
-fn read_edi(path: &Path, schema: &SchemaNode, options: &FormatOptions) -> Result<Instance, String> {
-    match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
-        format_edi::Dialect::X12 => format_edi::x12::read_with_separators(
-            path,
-            schema,
-            options.lenient_segments,
-            options.x12_separators.map(x12_separators),
-        ),
-        format_edi::Dialect::Edifact => {
-            format_edi::edifact::read(path, schema, options.lenient_segments)
-        }
-        format_edi::Dialect::Hl7 => format_edi::hl7::read(path, schema, options.lenient_segments),
-        format_edi::Dialect::Tradacoms => {
-            format_edi::tradacoms::read(path, schema, options.lenient_segments)
-        }
-    }
-    .map_err(|error| error.to_string())
-}
-
-fn write_instance(
-    path: &Path,
-    schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-) -> Result<(), String> {
-    if let Some(xbrl) = &options.xbrl {
-        return format_xbrl::write(path, schema, instance, xbrl).map_err(|error| error.to_string());
-    }
-    if options.idoc.is_some() {
-        return Err("SAP IDoc output is not supported".to_string());
-    }
-    if options.swift_mt.is_some() {
-        return Err("SWIFT MT output is not supported".to_string());
-    }
-    if options.pdf.is_some() {
-        return Err("PDF output is not supported".to_string());
-    }
-    if let Some(layout) = &options.flextext {
-        return format_flextext::write(path, schema, instance, layout)
-            .map_err(|error| error.to_string());
-    }
-    if let Some(protobuf) = &options.protobuf {
-        let layout =
-            format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| error.to_string())?;
-        return format_protobuf::write(path, &layout, &protobuf.root_message, instance)
-            .map_err(|error| error.to_string());
-    }
-    if let Some(layout) = &options.fixed_width {
-        let rows = instance
-            .as_repeated()
-            .ok_or_else(|| "fixed-width output is not a repeating row set".to_string())?;
-        return format_csv::write_fixed_width(path, schema, rows, layout)
-            .map_err(|error| error.to_string());
-    }
-    if options.xml_document {
-        return format_xml::write(path, schema, instance).map_err(|error| error.to_string());
-    }
-
-    match extension(path)?.as_str() {
-        "csv" | "txt" => {
-            let rows = instance
-                .as_repeated()
-                .ok_or_else(|| "CSV output is not a repeating row set".to_string())?;
-            format_csv::write(
-                path,
-                schema,
-                rows,
-                options.delimiter,
-                options.has_header_row.unwrap_or(true),
-            )
-            .map_err(|error| error.to_string())
-        }
-        "xlsx" => write_xlsx(path, schema, instance, options),
-        "xml" => format_xml::write(path, schema, instance).map_err(|error| error.to_string()),
-        "json" | "jsonl" | "ndjson" if options.json_lines => {
-            format_json::write_lines(path, schema, instance).map_err(|error| error.to_string())
-        }
-        "json" | "jsonl" | "ndjson" => {
-            format_json::write(path, schema, instance).map_err(|error| error.to_string())
-        }
-        "db" | "sqlite" | "sqlite3" => {
-            format_db::write_instance(path, schema, instance).map_err(|error| error.to_string())
-        }
-        "edi" | "x12" | "edifact" => {
-            match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
-                format_edi::Dialect::X12 => format_edi::x12::write_with_syntax(
-                    path,
-                    schema,
-                    instance,
-                    options
-                        .x12_separators
-                        .map(x12_separators)
-                        .unwrap_or_default(),
-                    options.x12_interchange_version.as_deref(),
-                ),
-                format_edi::Dialect::Edifact => format_edi::edifact::write(path, schema, instance),
-                format_edi::Dialect::Hl7 => return Err("HL7 output is not supported".to_string()),
-                format_edi::Dialect::Tradacoms => {
-                    return Err("TRADACOMS output is not supported".to_string());
-                }
-            }
-            .map_err(|error| error.to_string())
-        }
-        "hl7" => Err("HL7 output is not supported".to_string()),
-        other => Err(format!("unsupported output file extension `.{other}`")),
-    }
-}
-
-fn x12_separators(separators: mapping::X12Separators) -> format_edi::x12::Separators {
-    format_edi::x12::Separators {
-        element: separators.element,
-        component: separators.component,
-        segment: separators.segment,
-        repetition: separators.repetition,
-        release: separators.release,
-    }
-}
-
-fn write_xlsx(
-    path: &Path,
-    schema: &SchemaNode,
-    instance: &Instance,
-    options: &FormatOptions,
-) -> Result<(), String> {
-    if options.xlsx_update_existing {
-        return Err(
-            "update-in-place XLSX output is excluded from the read-only survey".to_string(),
-        );
-    }
-    if let Some(layout) = &options.xlsx_hierarchical {
-        return format_xlsx::write_hierarchical(path, schema, instance, layout)
-            .map(|_| ())
-            .map_err(|error| error.to_string());
-    }
-    if options.xlsx_grid.is_some()
-        || options.xlsx_composite.is_some()
-        || !options.xlsx_rows.is_empty()
-    {
-        return Err("the selected XLSX input layout cannot be used for output".to_string());
-    }
-    let rows = instance
-        .as_repeated()
-        .ok_or_else(|| "XLSX output is not a repeating row set".to_string())?;
-    format_xlsx::write(
-        path,
-        schema,
-        rows,
-        options.xlsx_sheet.as_deref(),
-        options.xlsx_start_row.unwrap_or(1),
-        &options.xlsx_columns,
-        options.has_header_row.unwrap_or(true),
-    )
-    .map_err(|error| error.to_string())
-}
-
-fn inferred_extension(options: &FormatOptions) -> Option<&'static str> {
-    if options.xbrl.is_some() {
-        Some("xbrl")
-    } else if options.protobuf.is_some() {
-        Some("bin")
-    } else if options.flextext.is_some() || options.fixed_width.is_some() {
-        Some("txt")
-    } else if options.xlsx_sheet.is_some()
-        || options.xlsx_start_row.is_some()
-        || !options.xlsx_columns.is_empty()
-        || options.xlsx_update_existing
-        || !options.xlsx_rows.is_empty()
-        || options.xlsx_composite.is_some()
-        || options.xlsx_grid.is_some()
-        || options.xlsx_hierarchical.is_some()
-    {
-        Some("xlsx")
-    } else if options.delimiter.is_some() || options.has_header_row.is_some() {
-        Some("csv")
-    } else if options.json_lines {
-        Some("jsonl")
-    } else if options.json_document {
-        Some("json")
-    } else if options.xml_document {
-        Some("xml")
-    } else {
-        match options.edi_kind {
-            Some(EdiBoundaryKind::X12) => Some("x12"),
-            Some(EdiBoundaryKind::Edifact) => Some("edifact"),
-            Some(EdiBoundaryKind::Hl7) => Some("hl7"),
-            Some(EdiBoundaryKind::Tradacoms) => Some("edi"),
-            Some(EdiBoundaryKind::Idoc) => Some("idoc"),
-            Some(EdiBoundaryKind::SwiftMt) => Some("fin"),
-            None => None,
-        }
-    }
-}
-
-fn output_path(
-    sample_dir: &Path,
-    stored: Option<&str>,
-    options: &FormatOptions,
-    label: &str,
-) -> Result<PathBuf, String> {
-    let file_name = stored
-        .filter(|value| !value.trim().is_empty() && !is_http(value))
-        .and_then(|value| portable_path(value).file_name().map(|name| name.to_owned()));
-    if let Some(file_name) = file_name {
-        return Ok(sample_dir.join(file_name));
-    }
-    let extension = inferred_extension(options)
-        .ok_or_else(|| format!("{label} has no stored output path or retained format marker"))?;
-    Ok(sample_dir.join(format!("{label}.{extension}")))
-}
-
 fn explicit_reference(
     mfd_path: &Path,
     samples_root: &Path,
@@ -657,10 +304,7 @@ fn load_sources(project: &Project, samples_root: &Path) -> Result<LoadedSources,
     let mut extras = Vec::with_capacity(project.extra_sources.len());
     for source in &project.extra_sources {
         if source.dynamic_path.is_some() {
-            return Err(format!(
-                "extra source `{}` has a data-dependent path",
-                source.name
-            ));
+            continue;
         }
         let (instance, source_paths) =
             load_source(samples_root, &source.path, &source.schema, &source.options).map_err(
@@ -674,6 +318,49 @@ fn load_sources(project: &Project, samples_root: &Path) -> Result<LoadedSources,
         extras,
         paths,
     })
+}
+
+struct SurveyDynamicSourceLoader<'a> {
+    samples_root: PathBuf,
+    sources: &'a [NamedSource],
+    cache: RefCell<BTreeMap<(String, PathBuf), Arc<Instance>>>,
+    loaded_paths: RefCell<BTreeSet<PathBuf>>,
+}
+
+impl<'a> SurveyDynamicSourceLoader<'a> {
+    fn new(samples_root: &Path, sources: &'a [NamedSource]) -> Result<Self, String> {
+        let samples_root = std::fs::canonicalize(samples_root)
+            .map_err(|error| format!("resolving sample root failed: {error}"))?;
+        Ok(Self {
+            samples_root,
+            sources,
+            cache: RefCell::new(BTreeMap::new()),
+            loaded_paths: RefCell::new(BTreeSet::new()),
+        })
+    }
+
+    fn loaded_paths(&self) -> BTreeSet<PathBuf> {
+        self.loaded_paths.borrow().clone()
+    }
+}
+
+impl engine::DynamicSourceLoader for SurveyDynamicSourceLoader<'_> {
+    fn load(&self, source_name: &str, path: &str) -> Result<Arc<Instance>, String> {
+        let source = self
+            .sources
+            .iter()
+            .find(|source| source.name == source_name && source.dynamic_path.is_some())
+            .ok_or_else(|| format!("dynamic source `{source_name}` is not declared"))?;
+        let resolved = resolve_sample_input(&self.samples_root, path)?;
+        let key = (source_name.to_string(), resolved.clone());
+        if let Some(instance) = self.cache.borrow().get(&key).cloned() {
+            return Ok(instance);
+        }
+        let instance = Arc::new(read_instance(&resolved, &source.schema, &source.options)?);
+        self.loaded_paths.borrow_mut().insert(resolved);
+        self.cache.borrow_mut().insert(key, Arc::clone(&instance));
+        Ok(instance)
+    }
 }
 
 fn load_source(
@@ -704,142 +391,12 @@ fn load_source(
     Ok((loaded.instance, loaded.paths.into_iter().collect()))
 }
 
-#[derive(Debug, Default, PartialEq, Eq)]
-struct FileInstanceConnections {
-    target_path: bool,
-}
-
-fn connected_file_instances(mfd_path: &Path) -> Result<FileInstanceConnections, String> {
-    let text = std::fs::read_to_string(mfd_path)
-        .map_err(|error| format!("reading MFD target metadata failed: {error}"))?;
-    let document = roxmltree::Document::parse(&text)
-        .map_err(|error| format!("parsing MFD target metadata failed: {error}"))?;
-    let xml_components = document
-        .descendants()
-        .filter(|node| node.has_tag_name("component") && node.attribute("library") == Some("xml"))
-        .collect::<Vec<_>>();
-    let mut target_keys = BTreeSet::new();
-    for component in xml_components {
-        let source = component
-            .descendants()
-            .any(|node| node.has_tag_name("document") && node.attribute("inputinstance").is_some());
-        for entry in component.descendants().filter(|entry| {
-            entry.has_tag_name("entry") && entry.attribute("name") == Some("FileInstance")
-        }) {
-            if !source
-                && let Some(key) = entry
-                    .attribute("inpkey")
-                    .and_then(|key| key.parse::<u32>().ok())
-            {
-                target_keys.insert(key);
-            }
-        }
-    }
-    let mut connections = FileInstanceConnections::default();
-    for edge in document
-        .descendants()
-        .filter(|node| node.has_tag_name("edge"))
-    {
-        let to = edge
-            .attribute("to")
-            .or_else(|| edge.attribute("vertexkey"))
-            .and_then(|key| key.parse::<u32>().ok());
-        connections.target_path |= to.is_some_and(|key| target_keys.contains(&key));
-    }
-    Ok(connections)
-}
-
-fn write_outputs(
-    project: &Project,
-    outputs: &engine::ExecutionOutputs,
-    sample_dir: &Path,
-    samples_root: &Path,
-) -> Result<PathBuf, String> {
-    let primary_path = output_path(
-        sample_dir,
-        project.target_path.as_deref(),
-        &project.target_options,
-        "primary-output",
-    )?;
-    prepare_database_output(
-        samples_root,
-        project.target_path.as_deref(),
-        &primary_path,
-        &project.target,
-    )?;
-    write_instance(
-        &primary_path,
-        &project.target,
-        &outputs.primary,
-        &project.target_options,
-    )
-    .map_err(|error| format!("writing primary output failed: {error}"))?;
-    if outputs.extras.len() != project.extra_targets.len() {
-        return Err("engine returned an unexpected number of additional targets".to_string());
-    }
-    for (index, (target, output)) in project
-        .extra_targets
-        .iter()
-        .zip(&outputs.extras)
-        .enumerate()
-    {
-        let path = output_path(
-            sample_dir,
-            target.path.as_deref(),
-            &target.options,
-            &format!("extra-output-{index}"),
-        )?;
-        prepare_database_output(samples_root, target.path.as_deref(), &path, &target.schema)?;
-        write_instance(&path, &target.schema, &output.instance, &target.options)
-            .map_err(|error| format!("writing extra target `{}` failed: {error}", target.name))?;
-    }
-    Ok(primary_path)
-}
-
-fn prepare_database_output(
-    samples_root: &Path,
-    stored: Option<&str>,
-    output: &Path,
-    schema: &SchemaNode,
-) -> Result<(), String> {
-    if !matches!(extension(output)?.as_str(), "db" | "sqlite" | "sqlite3") {
-        return Ok(());
-    }
-    let relational = matches!(
-        &schema.kind,
-        SchemaKind::Group { children, .. }
-            if children
-                .iter()
-                .any(|child| matches!(child.kind, SchemaKind::Group { .. }))
-    );
-    let Some(stored) = stored else {
-        return if relational {
-            Err("relational SQLite output has no stored database template".to_string())
-        } else {
-            Ok(())
-        };
-    };
-    match resolve_sample_input(samples_root, stored) {
-        Ok(template) => std::fs::copy(&template, output)
-            .map(|_| ())
-            .map_err(|error| {
-                format!(
-                    "copying SQLite output template `{}` failed: {error}",
-                    template.display()
-                )
-            }),
-        Err(reason) if relational => Err(format!(
-            "relational SQLite output requires its stored database template: {reason}"
-        )),
-        Err(_) => Ok(()),
-    }
-}
-
 fn survey_file(
     index: usize,
     mfd_path: &Path,
     samples_root: &Path,
     workspace: &SurveyWorkspace,
+    generated_references: Option<&GeneratedReferences>,
 ) -> SampleOutcome {
     let mut outcome = SampleOutcome::pending(mfd_path);
     let imported = match mfd::import(mfd_path) {
@@ -872,24 +429,6 @@ fn survey_file(
     outcome.validation = StageOutcome::passed();
     outcome.source = imported.project.source_path.clone();
 
-    if imported.project.source_options.local_xml_file_set {
-        match connected_file_instances(mfd_path) {
-            Ok(FileInstanceConnections {
-                target_path: true, ..
-            }) => {
-                outcome.execution = StageOutcome::skipped(
-                    "target FileInstance is connected: per-source output filenames are not represented yet",
-                );
-                return outcome;
-            }
-            Ok(_) => {}
-            Err(reason) => {
-                outcome.execution = StageOutcome::skipped(reason);
-                return outcome;
-            }
-        }
-    }
-
     let sample_dir = match workspace.sample_dir(index) {
         Ok(path) => path,
         Err(error) => {
@@ -912,15 +451,32 @@ fn survey_file(
         return outcome;
     }
 
-    let sources = match load_sources(&imported.project, samples_root) {
+    let mut sources = match load_sources(&imported.project, samples_root) {
         Ok(sources) => sources,
         Err(reason) => {
             outcome.execution = StageOutcome::skipped(reason);
             return outcome;
         }
     };
-    let execution =
-        engine::ExecutionContext::new(&project_path).with_current_datetime(FIXED_CURRENT_DATETIME);
+    let dynamic_loader =
+        match SurveyDynamicSourceLoader::new(samples_root, &imported.project.extra_sources) {
+            Ok(loader) => loader,
+            Err(reason) => {
+                outcome.execution = StageOutcome::failed(reason);
+                return outcome;
+            }
+        };
+    let runtime_mapping_path = match std::fs::canonicalize(mfd_path) {
+        Ok(path) => path,
+        Err(error) => {
+            outcome.execution =
+                StageOutcome::failed(format!("resolving the active mapping path failed: {error}"));
+            return outcome;
+        }
+    };
+    let execution = engine::ExecutionContext::new(&runtime_mapping_path)
+        .with_current_datetime(FIXED_CURRENT_DATETIME)
+        .with_dynamic_source_loader(&dynamic_loader);
     let outputs = match engine::run_outputs_with_sources_and_context(
         &imported.project,
         &sources.primary,
@@ -933,17 +489,37 @@ fn survey_file(
             return outcome;
         }
     };
+    sources.paths.extend(dynamic_loader.loaded_paths());
     outcome.execution = StageOutcome::passed();
 
-    let output_path = match write_outputs(&imported.project, &outputs, &sample_dir, samples_root) {
-        Ok(path) => path,
+    let written = match write_outputs(&imported.project, &outputs, &sample_dir, samples_root) {
+        Ok(written) => written,
         Err(reason) => {
             outcome.output_write = StageOutcome::skipped(reason);
             return outcome;
         }
     };
-    outcome.output = Some(output_path.display().to_string());
+    outcome.output = Some(written.primary.display().to_string());
     outcome.output_write = StageOutcome::passed();
+
+    let generated = match generated_references
+        .map(|references| references.for_sample(mfd_path, samples_root))
+        .transpose()
+    {
+        Ok(generated) => generated.flatten(),
+        Err(reason) => {
+            outcome.reference_match = StageOutcome::failed(reason);
+            return outcome;
+        }
+    };
+    if let Some(references) = generated {
+        outcome.reference_match =
+            match compare_generated_references(&imported.project, &written, references) {
+                Ok(()) => StageOutcome::passed(),
+                Err(reason) => StageOutcome::failed(reason),
+            };
+        return outcome;
+    }
 
     let reference = match explicit_reference(
         mfd_path,
@@ -970,12 +546,25 @@ fn survey_file(
             return outcome;
         }
     };
-    if expected == outputs.primary {
+    let actual = match read_instance(
+        &written.primary,
+        &imported.project.target,
+        &imported.project.target_options,
+    ) {
+        Ok(instance) => instance,
+        Err(error) => {
+            outcome.reference_match =
+                StageOutcome::failed(format!("reading ferrule output failed: {error}"));
+            return outcome;
+        }
+    };
+    if expected == actual {
         outcome.reference_match = StageOutcome::passed();
     } else {
         outcome.reference_match = StageOutcome::failed(format!(
-            "runtime value differs from explicit reference `{}`",
-            reference.display()
+            "written output differs from reference `{}`: {}",
+            reference.display(),
+            first_instance_difference(&expected, &actual)
         ));
     }
     outcome
@@ -1004,7 +593,7 @@ fn write_json_report(
             "network_access": false,
             "inputs_restricted_to_samples_dir": true,
             "generated_files_restricted_to_temp_dir": true,
-            "reference_policy": "existing explicit outputinstance, not reused as input or update template",
+            "reference_policy": "isolated generated manifest when available; otherwise an existing explicit outputinstance not reused as input or update template",
             "fixed_current_datetime": FIXED_CURRENT_DATETIME,
         },
         "summary": summary.to_json(),
@@ -1074,6 +663,7 @@ fn summary_counts_attempts_separately_from_skips() {
 #[test]
 fn retained_tabular_options_select_a_pathless_output_format() {
     let csv = FormatOptions {
+        tabular_kind: Some(TabularBoundaryKind::Csv),
         delimiter: Some(';'),
         has_header_row: Some(false),
         ..FormatOptions::default()
@@ -1081,11 +671,66 @@ fn retained_tabular_options_select_a_pathless_output_format() {
     assert_eq!(inferred_extension(&csv), Some("csv"));
 
     let xlsx = FormatOptions {
+        tabular_kind: Some(TabularBoundaryKind::Xlsx),
         has_header_row: Some(true),
         xlsx_sheet: Some("Summary".into()),
         ..FormatOptions::default()
     };
     assert_eq!(inferred_extension(&xlsx), Some("xlsx"));
+}
+
+#[test]
+fn xlsx_update_templates_are_atomically_detached_from_samples() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let sample_root = workspace.0.join("samples");
+    let output_root = workspace.0.join("outputs");
+    std::fs::create_dir(&sample_root)?;
+    std::fs::create_dir(&output_root)?;
+    let template = sample_root.join("template.xlsx");
+    std::fs::write(&template, b"workbook-template")?;
+    let output = output_root.join("result.xlsx");
+    std::fs::hard_link(&template, &output)?;
+    let options = FormatOptions {
+        tabular_kind: Some(TabularBoundaryKind::Xlsx),
+        xlsx_update_existing: true,
+        ..FormatOptions::default()
+    };
+
+    prepare_xlsx_update_output(
+        &sample_root,
+        &output_root,
+        Some("template.xlsx"),
+        &output,
+        &options,
+    )?;
+    std::fs::write(&output, b"changed writable copy")?;
+    assert_eq!(std::fs::read(&template)?, b"workbook-template");
+
+    let escaped = workspace.0.join("escaped.xlsx");
+    assert!(
+        prepare_xlsx_update_output(
+            &sample_root,
+            &output_root,
+            Some("template.xlsx"),
+            &escaped,
+            &options,
+        )
+        .is_err()
+    );
+    assert!(!escaped.exists());
+
+    assert!(
+        prepare_xlsx_update_output(
+            &sample_root,
+            &sample_root,
+            Some("template.xlsx"),
+            &sample_root.join("forbidden.xlsx"),
+            &options,
+        )
+        .is_err()
+    );
+    assert!(!sample_root.join("forbidden.xlsx").exists());
+    Ok(())
 }
 
 #[test]
@@ -1099,6 +744,90 @@ fn network_and_parent_paths_are_not_local_sample_inputs() -> Result<(), Box<dyn 
     assert!(resolve_sample_input(&sample_root, "input.xml").is_ok());
     assert!(resolve_sample_input(&sample_root, "https://example.test/input.xml").is_err());
     assert!(resolve_sample_input(&sample_root, "../outside.xml").is_err());
+    Ok(())
+}
+
+#[test]
+fn dynamic_sources_load_only_declared_contained_files_and_cache_them() -> Result<(), Box<dyn Error>>
+{
+    let workspace = SurveyWorkspace::new()?;
+    let sample_root = workspace.0.join("samples");
+    let nested = sample_root.join("nested");
+    std::fs::create_dir_all(&nested)?;
+    let input = nested.join("input.xml");
+    std::fs::write(&input, "<Root><Value>inside</Value></Root>")?;
+    std::fs::write(
+        workspace.0.join("outside.xml"),
+        "<Root><Value>outside</Value></Root>",
+    )?;
+    let source = NamedSource {
+        name: "document".into(),
+        path: String::new(),
+        schema: SchemaNode::group(
+            "Root",
+            vec![SchemaNode::scalar("Value", ir::ScalarType::String)],
+        ),
+        options: FormatOptions {
+            xml_document: true,
+            ..FormatOptions::default()
+        },
+        dynamic_path: Some(DynamicSourcePath {
+            node: 0,
+            iteration: Vec::new(),
+        }),
+    };
+    let sources = [source];
+    let loader = SurveyDynamicSourceLoader::new(&sample_root, &sources)?;
+
+    let first = engine::DynamicSourceLoader::load(&loader, "document", "nested/input.xml")?;
+    let second =
+        engine::DynamicSourceLoader::load(&loader, "document", input.to_string_lossy().as_ref())?;
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(
+        first.field("Value"),
+        Some(&Instance::Scalar(ir::Value::String("inside".into())))
+    );
+    assert_eq!(
+        loader.loaded_paths(),
+        BTreeSet::from([input.canonicalize()?])
+    );
+    assert!(
+        engine::DynamicSourceLoader::load(&loader, "document", "https://example.test/input.xml")
+            .is_err()
+    );
+    assert!(engine::DynamicSourceLoader::load(&loader, "document", "../outside.xml").is_err());
+    assert!(engine::DynamicSourceLoader::load(&loader, "document", "missing.xml").is_err());
+    assert!(engine::DynamicSourceLoader::load(&loader, "undeclared", "nested/input.xml").is_err());
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn dynamic_sources_reject_symlinks_outside_the_sample_root() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let sample_root = workspace.0.join("samples");
+    std::fs::create_dir(&sample_root)?;
+    let outside = workspace.0.join("outside.xml");
+    std::fs::write(&outside, "<Root/>")?;
+    std::os::unix::fs::symlink(&outside, sample_root.join("linked.xml"))?;
+    let source = NamedSource {
+        name: "document".into(),
+        path: String::new(),
+        schema: SchemaNode::group("Root", Vec::new()),
+        options: FormatOptions {
+            xml_document: true,
+            ..FormatOptions::default()
+        },
+        dynamic_path: Some(DynamicSourcePath {
+            node: 0,
+            iteration: Vec::new(),
+        }),
+    };
+    let sources = [source];
+    let loader = SurveyDynamicSourceLoader::new(&sample_root, &sources)?;
+
+    assert!(engine::DynamicSourceLoader::load(&loader, "document", "linked.xml").is_err());
+    assert!(loader.loaded_paths().is_empty());
     Ok(())
 }
 
@@ -1155,6 +884,71 @@ fn report_creation_never_follows_an_existing_leaf() -> Result<(), Box<dyn Error>
 }
 
 #[test]
+fn generated_reference_manifests_resolve_only_contained_outputs() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let references = workspace.0.join("references");
+    let output_dir = references.join("000-example");
+    let samples = workspace.0.join("samples/ReferenceSamples");
+    std::fs::create_dir_all(&output_dir)?;
+    std::fs::create_dir_all(&samples)?;
+    let expected = output_dir.join("result.json");
+    let second = output_dir.join("summary.json");
+    std::fs::write(&expected, "{}")?;
+    std::fs::write(&second, "{}")?;
+    let sample = samples.join("example.mfd");
+    std::fs::write(&sample, "<mapping/>")?;
+    let manifest = references.join("manifest.json");
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec(&serde_json::json!({
+            "schema_version": 1,
+            "kind": "ferrule.reference_samples_outputs",
+            "samples": [{
+                "file": "ReferenceSamples/example.mfd",
+                "directory": "000-example",
+                "status": "passed",
+                "outputs": ["result.json", "summary.json"],
+            }],
+        }))?,
+    )?;
+
+    let loaded = load_generated_references(&manifest)?;
+    let expected = [expected.canonicalize()?, second.canonicalize()?];
+    assert_eq!(
+        loaded.for_sample(&sample, &samples)?,
+        Some(expected.as_slice())
+    );
+
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec(&serde_json::json!({
+            "schema_version": 1,
+            "kind": "ferrule.reference_samples_outputs",
+            "samples": [{
+                "file": "example.mfd",
+                "directory": "..",
+                "status": "passed",
+                "outputs": ["outside.json"],
+            }],
+        }))?,
+    )?;
+    assert!(load_generated_references(&manifest).is_err());
+    Ok(())
+}
+
+#[test]
+fn dynamic_document_paths_reject_escape_duplicates_and_ancestor_overlap() {
+    let member = |path: &str| {
+        ir::DocumentMember::new(path, Instance::Group(Vec::new()))
+            .unwrap_or_else(|| panic!("valid test member path: {path}"))
+    };
+    assert!(validate_document_paths(&[member("nested/a.xml"), member("b.xml")]).is_ok());
+    assert!(validate_document_paths(&[member("../escape.xml")]).is_err());
+    assert!(validate_document_paths(&[member("same.xml"), member("same.xml")]).is_err());
+    assert!(validate_document_paths(&[member("parent"), member("parent/child.xml")]).is_err());
+}
+
+#[test]
 #[ignore = "needs the local MapForce sample set; informational only"]
 fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
@@ -1176,10 +970,19 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
     paths.sort();
 
     let workspace = SurveyWorkspace::new()?;
+    let generated_references = requested_generated_references()?;
     let outcomes = paths
         .iter()
         .enumerate()
-        .map(|(index, path)| survey_file(index, path, &samples_root, &workspace))
+        .map(|(index, path)| {
+            survey_file(
+                index,
+                path,
+                &samples_root,
+                &workspace,
+                generated_references.as_ref(),
+            )
+        })
         .collect::<Vec<_>>();
     let summary = Summary::from_outcomes(&outcomes);
 
@@ -1196,7 +999,7 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
     );
     println!("redirected outputs written: {}", summary.outputs_written);
     println!(
-        "explicit references: {} available; {} matched; {} mismatched",
+        "references: {} available; {} matched; {} mismatched",
         summary.references_available, summary.references_matched, summary.references_mismatched
     );
 

@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Scope, SequenceExpr};
+use crate::{NodeId, Scope, SequenceExpr};
 
 /// Stable identity of one joined iteration within a project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -314,6 +314,11 @@ pub enum ScopeIteration {
     #[default]
     None,
     Source(Vec<String>),
+    /// Produces one independently named document per source item.
+    DynamicDocuments {
+        source: Vec<String>,
+        output_path: NodeId,
+    },
     Sequence(SequenceExpr),
     InnerJoin {
         id: JoinId,
@@ -325,7 +330,7 @@ pub enum ScopeIteration {
 impl ScopeIteration {
     pub fn source(&self) -> Option<&[String]> {
         match self {
-            Self::Source(path) => Some(path),
+            Self::Source(path) | Self::DynamicDocuments { source: path, .. } => Some(path),
             Self::None | Self::Sequence(_) | Self::InnerJoin { .. } | Self::Concatenate(_) => None,
         }
     }
@@ -333,28 +338,44 @@ impl ScopeIteration {
     pub fn sequence(&self) -> Option<&SequenceExpr> {
         match self {
             Self::Sequence(sequence) => Some(sequence),
-            Self::None | Self::Source(_) | Self::InnerJoin { .. } | Self::Concatenate(_) => None,
+            Self::None
+            | Self::Source(_)
+            | Self::DynamicDocuments { .. }
+            | Self::InnerJoin { .. }
+            | Self::Concatenate(_) => None,
         }
     }
 
     pub fn join(&self) -> Option<(JoinId, &JoinPlan)> {
         match self {
             Self::InnerJoin { id, plan } => Some((*id, plan)),
-            Self::None | Self::Source(_) | Self::Sequence(_) | Self::Concatenate(_) => None,
+            Self::None
+            | Self::Source(_)
+            | Self::DynamicDocuments { .. }
+            | Self::Sequence(_)
+            | Self::Concatenate(_) => None,
         }
     }
 
     pub fn concatenated(&self) -> Option<&ScopeSequence> {
         match self {
             Self::Concatenate(sequence) => Some(sequence),
-            Self::None | Self::Source(_) | Self::Sequence(_) | Self::InnerJoin { .. } => None,
+            Self::None
+            | Self::Source(_)
+            | Self::DynamicDocuments { .. }
+            | Self::Sequence(_)
+            | Self::InnerJoin { .. } => None,
         }
     }
 
     pub fn concatenated_mut(&mut self) -> Option<&mut ScopeSequence> {
         match self {
             Self::Concatenate(sequence) => Some(sequence),
-            Self::None | Self::Source(_) | Self::Sequence(_) | Self::InnerJoin { .. } => None,
+            Self::None
+            | Self::Source(_)
+            | Self::DynamicDocuments { .. }
+            | Self::Sequence(_)
+            | Self::InnerJoin { .. } => None,
         }
     }
 

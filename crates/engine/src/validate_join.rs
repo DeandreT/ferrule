@@ -75,9 +75,11 @@ pub(super) fn validate_scope_nodes(
         scope.group_starting_with,
         scope.group_into_blocks,
         scope.sort_by,
+        scope.output_path(),
     ]
     .into_iter()
     .flatten()
+    .chain(scope.sort_then_by.iter().map(|key| key.node))
     .chain(scope.bindings.iter().map(|binding| binding.node))
     .chain(
         scope

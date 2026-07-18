@@ -16,6 +16,13 @@ fn assert_source_boundary_roundtrip(project: &mapping::Project, directory: &Path
     assert!(exported.contains("library=\"text\""));
     assert!(exported.contains("type=\"edi\""));
     assert!(exported.contains("ferrule-repeating="));
+    if let Some(path) = project.source_path.as_deref() {
+        assert!(
+            exported.contains(&format!("<file role=\"inputinstance\" name=\"{path}\"/>")),
+            "{exported}"
+        );
+    }
+    assert_edi_text_has_no_instance_attributes(&exported);
 
     let reimported = mfd::import(&design).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
@@ -23,6 +30,17 @@ fn assert_source_boundary_roundtrip(project: &mapping::Project, directory: &Path
     assert_eq!(reimported.project.source, project.source);
     assert_eq!(reimported.project.source_options, project.source_options);
     assert_eq!(reimported.project.source_path, project.source_path);
+}
+
+fn assert_edi_text_has_no_instance_attributes(text: &str) {
+    let document = roxmltree::Document::parse(text).unwrap();
+    for node in document
+        .descendants()
+        .filter(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi"))
+    {
+        assert!(node.attribute("inputinstance").is_none());
+        assert!(node.attribute("outputinstance").is_none());
+    }
 }
 
 #[test]
@@ -152,6 +170,62 @@ fn imports_self_describing_edi_entry_tree_without_external_config() {
 }
 
 #[test]
+fn retains_nested_edifact_output_instance_through_export() {
+    let directory = TempDir::new("nested_edifact_output");
+    let design = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="text" kind="16"><data>
+            <root><entry name="FileInstance"><file role="inputinstance" name="orders.x12"/><entry name="document">
+              <entry name="Envelope" ferrule-repeating="0"><entry name="Message" ferrule-repeating="1">
+                <entry name="Code" ferrule-repeating="0" datatype="string" outkey="10"/>
+              </entry></entry>
+            </entry></entry></root>
+            <text type="edi" kind="EDIX12"/>
+          </data></component>
+          <component name="target" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="FileInstance"><file role="outputinstance" name="result.edi"/><entry name="document">
+              <entry name="Envelope" ferrule-repeating="0"><entry name="Message" ferrule-repeating="1">
+                <entry name="Code" ferrule-repeating="0" datatype="string" inpkey="20"/>
+              </entry></entry>
+            </entry></entry></root>
+            <text type="edi" kind="EDIFACT"/>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.source_path.as_deref(), Some("orders.x12"));
+    assert_eq!(imported.project.target_path.as_deref(), Some("result.edi"));
+    assert_eq!(
+        imported.project.target_options.edi_kind,
+        Some(EdiBoundaryKind::Edifact)
+    );
+
+    let roundtrip = directory.path().join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &roundtrip).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&roundtrip).unwrap();
+    assert!(exported.contains("<file role=\"inputinstance\" name=\"orders.x12\"/>"));
+    assert!(exported.contains("<file role=\"outputinstance\" name=\"result.edi\"/>"));
+    assert_edi_text_has_no_instance_attributes(&exported);
+
+    let reimported = mfd::import(&roundtrip).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(reimported.project.source_path, imported.project.source_path);
+    assert_eq!(reimported.project.target_path, imported.project.target_path);
+    assert_eq!(
+        reimported.project.target_options,
+        imported.project.target_options
+    );
+}
+
+#[test]
 fn compiles_relative_x12_configuration_into_an_executable_schema() {
     let directory = TempDir::new("x12_config");
     let config_directory = directory.path().join("X12");
@@ -193,7 +267,7 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
         r#"<mapping version="22"><resources/><component name="defaultmap" uid="1">
           <structure><children>
             <component name="edi" library="text" uid="2" kind="16"><properties/><data>
-              <root><entry name="FileInstance"><entry name="document"><entry name="Envelope">
+              <root><entry name="FileInstance"><file role="inputinstance" name="input.x12"/><entry name="document"><entry name="Envelope">
                 <entry name="Interchange"><entry name="Group"><entry name="Message">
                   <entry name="ST"><entry name="F1" outkey="10"/></entry>
                   <entry name="ParserErrors_Message">
@@ -209,7 +283,7 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
                   <entry name="MF_AK9" outkey="35"><entry name="F715" outkey="14"/></entry>
                 </entry></entry></entry>
               </entry></entry></entry></root>
-              <text type="edi" kind="EDIX12" config="X12\850.Config" inputinstance="input.x12">
+              <text type="edi" kind="EDIX12" config="X12\850.Config">
                 <settings interchangecontrolversionnumber="00505"><separators dataelement="+" component=":" segment="%27" repetition="%21" escape="%3F"/></settings>
               </text>
             </data></component>
@@ -237,6 +311,7 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
         imported.project.source_options.edi_kind,
         Some(EdiBoundaryKind::X12)
     );
+    assert_eq!(imported.project.source_path.as_deref(), Some("input.x12"));
     assert_eq!(
         imported.project.source_options.x12_separators,
         Some(X12Separators {
@@ -390,7 +465,7 @@ fn compiles_and_embeds_selected_swift_configuration() {
         &mfd_path,
         r#"<mapping version="22"><resources/><component name="defaultmap" uid="1"><structure><children>
           <component name="swift" library="text" uid="2" kind="16"><properties/><data>
-            <root><entry name="FileInstance"><entry name="document"><entry name="Messages"><entry name="Message"><entry name="MT950"><entry name="20" outkey="10"/></entry></entry></entry></entry></entry></root>
+            <root><entry name="FileInstance"><file role="inputinstance" name="input.mt950"/><entry name="document"><entry name="Messages"><entry name="Message"><entry name="MT950"><entry name="20" outkey="10"/></entry></entry></entry></entry></entry></root>
             <text type="edi" kind="SWIFTMT" config="SWIFT/Envelope.Config"><messages><message type="MT950"/></messages></text>
           </data></component>
           <component name="output" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Outputs"><entry name="Value" inpkey="20"/></entry></root></data></component>
@@ -400,6 +475,7 @@ fn compiles_and_embeds_selected_swift_configuration() {
 
     let imported = mfd::import(&mfd_path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.source_path.as_deref(), Some("input.mt950"));
     let layout = imported.project.source_options.swift_mt.as_ref().unwrap();
     assert_eq!(layout.message("MT950").unwrap().fields().len(), 1);
     let encoded = serde_json::to_string(&imported.project).unwrap();

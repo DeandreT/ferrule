@@ -243,6 +243,41 @@ fn imports_executes_and_serializes_computed_json_properties_in_order() {
 }
 
 #[test]
+fn computed_dynamic_item_values_keep_the_current_nested_source_frame() {
+    let dir = TempDir::new("computed_item_frame");
+    let design = write_fixture(&dir.0);
+    let text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace(
+            r#"  <component name="group-by" library="core" kind="5">"#,
+            r#"  <component name="constant" library="core" kind="2"><targets><datapoint key="42"/></targets><data><constant value="!" datatype="string"/></data></component>
+  <component name="concat" library="core" kind="5"><sources><datapoint pos="0" key="50"/><datapoint pos="1" key="51"/></sources><targets><datapoint pos="0" key="52"/></targets></component>
+  <component name="group-by" library="core" kind="5">"#,
+        )
+        .replace(
+            r#"  <vertex vertexkey="3"><edges><edge vertexkey="32"/><edge vertexkey="34"/></edges></vertex>"#,
+            r#"  <vertex vertexkey="3"><edges><edge vertexkey="32"/><edge vertexkey="50"/></edges></vertex>
+  <vertex vertexkey="42"><edges><edge vertexkey="51"/></edges></vertex>
+  <vertex vertexkey="52"><edges><edge vertexkey="34"/></edges></vertex>"#,
+        );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source =
+        format_json::read(&dir.0.join("departments.json"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let output_path = dir.0.join("out.json");
+    format_json::write(&output_path, &imported.project.target, &output).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(output_path).unwrap()).unwrap();
+
+    assert_eq!(value["Engineering"][0]["Name"], "Ada!");
+    assert_eq!(value["Engineering"][1]["Name"], "Linus!");
+}
+
+#[test]
 fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
     let dir = TempDir::new("nested");
     let design = write_nested_fixture(&dir.0);

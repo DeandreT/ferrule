@@ -260,3 +260,72 @@ fn scalar_only_cloned_occurrences_keep_document_order_around_sequences()
     );
     Ok(())
 }
+
+#[test]
+fn cloned_repeating_scalars_use_entry_order_instead_of_pin_order()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    std::fs::write(
+        dir.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Street" type="xs:string"/>
+    <xs:element name="Locality" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Target"><xs:complexType><xs:sequence>
+    <xs:element name="Address"><xs:complexType><xs:sequence>
+      <xs:element name="Line" type="xs:string" maxOccurs="4"/>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    let mapping = dir.0.join("mapping.mfd");
+    std::fs::write(
+        &mapping,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data>
+    <root><entry name="Source"><entry name="Street" outkey="10"/><entry name="Locality" outkey="20"/></entry></root>
+    <document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/>
+  </data></component>
+  <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="Target"><entry name="Address">
+      <entry name="Line" inpkey="60"/><entry name="Line" inpkey="30" clone="1"/>
+    </entry></entry></root>
+    <document schema="target.xsd" instanceroot="{}Target"/>
+  </data></component>
+</children><graph><vertices>
+  <vertex vertexkey="10"><edges><edge vertexkey="60"/></edges></vertex>
+  <vertex vertexkey="20"><edges><edge vertexkey="30"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&mapping)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = format_xml::from_str(
+        "<Source><Street>8 Oak Avenue</Street><Locality>Old Town</Locality></Source>",
+        &imported.project.source,
+    )?;
+    let target = engine::run(&imported.project, &source)?;
+    let lines = target
+        .field("Address")
+        .and_then(|address| address.field("Line"))
+        .and_then(Instance::as_repeated)
+        .ok_or("missing address lines")?;
+    assert_eq!(
+        lines
+            .iter()
+            .filter_map(Instance::as_scalar)
+            .collect::<Vec<_>>(),
+        [
+            &Value::String("8 Oak Avenue".into()),
+            &Value::String("Old Town".into())
+        ]
+    );
+    Ok(())
+}

@@ -1216,3 +1216,202 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
             .any(|issue| issue.message == "sequence upper boundary references missing node 999")
     );
 }
+
+#[test]
+fn filtered_positions_compact_across_intermediate_repeating_levels() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::SourceField {
+                frame: None,
+                path: vec!["Last".into()],
+            },
+        ),
+        (
+            1,
+            Node::Const {
+                value: Value::String("M".into()),
+            },
+        ),
+        (
+            2,
+            Node::Call {
+                function: "greater_than".into(),
+                args: vec![0, 1],
+            },
+        ),
+        (
+            3,
+            Node::Position {
+                collection: vec!["Contact".into()],
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Row".into(),
+                iteration: mapping::ScopeIteration::Source(vec!["Office".into(), "Contact".into()]),
+                filter: Some(2),
+                bindings: vec![Binding {
+                    target_field: "Position".into(),
+                    node: 3,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    let contact = |last: &str| {
+        Instance::Group(vec![(
+            "Last".into(),
+            Instance::Scalar(Value::String(last.into())),
+        )])
+    };
+    let office = |last_names: &[&str]| {
+        Instance::Group(vec![(
+            "Contact".into(),
+            Instance::Repeated(last_names.iter().map(|last| contact(last)).collect()),
+        )])
+    };
+    let source = Instance::Group(vec![(
+        "Office".into(),
+        Instance::Repeated(vec![office(&["Able", "North"]), office(&["Young", "West"])]),
+    )]);
+
+    let output = run(&project, &source).unwrap();
+    let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
+    let positions = rows
+        .iter()
+        .filter_map(|row| row.field("Position").and_then(Instance::as_scalar))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(positions, [Value::Int(1), Value::Int(2), Value::Int(3)]);
+}
+
+#[test]
+fn uncontrolled_multi_hop_positions_remain_relative_to_their_source_parent() {
+    let graph = graph_from(vec![(
+        0,
+        Node::Position {
+            collection: vec!["Contact".into()],
+        },
+    )]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Row".into(),
+                iteration: mapping::ScopeIteration::Source(vec!["Office".into(), "Contact".into()]),
+                bindings: vec![Binding {
+                    target_field: "Position".into(),
+                    node: 0,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+    let office = |count| {
+        Instance::Group(vec![(
+            "Contact".into(),
+            Instance::Repeated((0..count).map(|_| Instance::Group(Vec::new())).collect()),
+        )])
+    };
+    let source = Instance::Group(vec![(
+        "Office".into(),
+        Instance::Repeated(vec![office(2), office(1)]),
+    )]);
+
+    let output = run(&project, &source).unwrap();
+    let positions = output
+        .field("Row")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .filter_map(|row| row.field("Position").and_then(Instance::as_scalar))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(positions, [Value::Int(1), Value::Int(2), Value::Int(1)]);
+}
+
+#[test]
+fn aggregate_flattens_nested_repeating_collection_paths() {
+    use mapping::AggregateOp;
+
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::Const {
+                value: Value::String(", ".into()),
+            },
+        ),
+        (
+            1,
+            Node::Aggregate {
+                function: AggregateOp::Join,
+                collection: vec!["Office".into(), "Contact".into()],
+                value: vec!["First".into()],
+                expression: None,
+                arg: Some(0),
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "Names".into(),
+                node: 1,
+            }],
+            ..Scope::default()
+        },
+    };
+    let contact = |first: &str| {
+        Instance::Group(vec![(
+            "First".into(),
+            Instance::Scalar(Value::String(first.into())),
+        )])
+    };
+    let office = |first_names: &[&str]| {
+        Instance::Group(vec![(
+            "Contact".into(),
+            Instance::Repeated(first_names.iter().map(|first| contact(first)).collect()),
+        )])
+    };
+    let source = Instance::Group(vec![(
+        "Office".into(),
+        Instance::Repeated(vec![office(&["Ana", "Bo"]), office(&["Cy"])]),
+    )]);
+
+    let output = run(&project, &source).unwrap();
+    assert_eq!(
+        output.field("Names").and_then(Instance::as_scalar),
+        Some(&Value::String("Ana, Bo, Cy".into()))
+    );
+}

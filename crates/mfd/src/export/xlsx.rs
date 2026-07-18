@@ -4,7 +4,10 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{FormatOptions, XlsxCompositeLayout, XlsxFixedCell, XlsxGridLayout};
+use mapping::{
+    FormatOptions, XlsxCellKind, XlsxCompositeLayout, XlsxFixedCell, XlsxGridLayout,
+    XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
+};
 
 use crate::MfdError;
 
@@ -32,6 +35,328 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
         return render_transposed(&args).map(Some);
     }
     Ok(None)
+}
+
+/// Renders a canonical runtime-named hierarchical XLSX target.
+pub(super) fn render_hierarchical(
+    args: RenderArgs<'_>,
+    layout: &XlsxHierarchicalLayout,
+    default_output: bool,
+) -> Result<String, MfdError> {
+    if layout.worksheets_path != ["Worksheets"] || layout.worksheet_name_path != ["Name"] {
+        return Err(unsupported(
+            "hierarchical XLSX target paths must use canonical `Worksheets/Name` fields",
+        ));
+    }
+    let root_children = exact_group_children(args.schema, "hierarchical XLSX target root")?;
+    if args.schema.repeating
+        || root_children.len() != 1
+        || root_children[0].name != layout.worksheets_path[0]
+    {
+        return Err(unsupported(
+            "a hierarchical XLSX target root must contain only its worksheet collection",
+        ));
+    }
+    let worksheets = schema_at(args.schema, &layout.worksheets_path)
+        .ok_or_else(|| unsupported("the hierarchical XLSX worksheet collection is missing"))?;
+    let worksheet_children =
+        exact_group_children(worksheets, "hierarchical XLSX worksheet collection")?;
+    if !worksheets.repeating {
+        return Err(unsupported(
+            "the hierarchical XLSX worksheet path must select a repeating group",
+        ));
+    }
+    let expected_worksheet_fields = std::iter::once(layout.worksheet_name_path[0].as_str())
+        .chain(
+            layout
+                .ranges
+                .iter()
+                .map(|range| range.path.first().map_or("", String::as_str)),
+        )
+        .collect::<Vec<_>>();
+    if worksheet_children
+        .iter()
+        .map(|child| child.name.as_str())
+        .ne(expected_worksheet_fields)
+    {
+        return Err(unsupported(
+            "the hierarchical XLSX worksheet schema must exactly match its retained ranges",
+        ));
+    }
+    let worksheet_key = args
+        .ports
+        .required_key_for_abs(&layout.worksheets_path, "hierarchical XLSX worksheet")?;
+    let worksheet_name = schema_at(worksheets, &layout.worksheet_name_path)
+        .ok_or_else(|| unsupported("the hierarchical XLSX worksheet-name field is missing"))?;
+    if scalar_type(worksheet_name, "hierarchical XLSX worksheet name")? != ScalarType::String {
+        return Err(unsupported(
+            "the hierarchical XLSX worksheet name must be a string scalar",
+        ));
+    }
+    let mut name_path = layout.worksheets_path.clone();
+    name_path.extend(layout.worksheet_name_path.iter().cloned());
+    let name_key = args
+        .ports
+        .required_key_for_abs(&name_path, "hierarchical XLSX worksheet name")?;
+    if layout.ranges.is_empty() {
+        return Err(unsupported(
+            "a hierarchical XLSX target must contain at least one row range",
+        ));
+    }
+
+    let mut ranges_xml = String::new();
+    let mut rows_xml = String::new();
+    let mut range_ids = BTreeSet::new();
+    for range in &layout.ranges {
+        render_hierarchical_range(
+            &args,
+            worksheets,
+            &layout.worksheets_path,
+            range,
+            &mut range_ids,
+            &mut ranges_xml,
+            &mut rows_xml,
+        )?;
+    }
+
+    let properties = if default_output {
+        "<properties XSLTDefaultOutput=\"1\"/>\n\t\t\t\t\t"
+    } else {
+        ""
+    };
+    let instance = args
+        .instance_path
+        .map(|path| format!(" outputinstance=\"{}\"", xml_escape(path)))
+        .unwrap_or_default();
+    Ok(format!(
+        "\t\t\t\t<component name=\"{}\" library=\"xlsx\" uid=\"{}\" kind=\"26\">\n\
+         \t\t\t\t\t{properties}<view ltx=\"700\" rbx=\"1000\" rby=\"400\"/>\n\
+         \t\t\t\t\t<data>\n\
+         \t\t\t\t\t\t<root>\n\
+         \t\t\t\t\t\t\t<header><namespaces><namespace/><namespace uid=\"http://www.altova.com/mapforce\"/></namespaces></header>\n\
+         \t\t\t\t\t\t\t<entry name=\"FileInstance\" ns=\"1\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t<entry name=\"document\" ns=\"1\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t<entry name=\"Workbook\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t\t<entry name=\"Worksheet\" inpkey=\"{worksheet_key}\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t\t\t<ranges>\n\
+         {ranges_xml}\
+         \t\t\t\t\t\t\t\t\t\t\t</ranges>\n\
+         \t\t\t\t\t\t\t\t\t\t\t<entry name=\"Name\" type=\"attribute\" inpkey=\"{name_key}\"/>\n\
+         {rows_xml}\
+         \t\t\t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t</root>\n\
+         \t\t\t\t\t\t<excel{instance}/>\n\
+         \t\t\t\t\t</data>\n\
+         \t\t\t\t</component>\n",
+        xml_escape(args.component_name),
+        args.component_uid,
+    ))
+}
+
+fn render_hierarchical_range(
+    args: &RenderArgs<'_>,
+    worksheets: &SchemaNode,
+    worksheets_path: &[String],
+    range: &XlsxOutputRange,
+    range_ids: &mut BTreeSet<String>,
+    ranges_xml: &mut String,
+    rows_xml: &mut String,
+) -> Result<(), MfdError> {
+    let range_name = one_segment(&range.path, "hierarchical XLSX range path")?;
+    let range_id = range_name
+        .strip_prefix("Range")
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| {
+            unsupported("hierarchical XLSX range fields must use canonical `Range<id>` names")
+        })?;
+    if !range_ids.insert(range_id.to_string()) {
+        return Err(unsupported("hierarchical XLSX range IDs must be unique"));
+    }
+    let range_schema = schema_at(worksheets, &range.path)
+        .ok_or_else(|| unsupported("a hierarchical XLSX range path is missing from the schema"))?;
+    let range_children = exact_group_children(range_schema, "hierarchical XLSX row range")?;
+    if range_children
+        .iter()
+        .map(|field| field.name.as_str())
+        .ne(range
+            .columns
+            .iter()
+            .map(|column| column.path.first().map_or("", String::as_str)))
+    {
+        return Err(unsupported(
+            "a hierarchical XLSX range schema must exactly match its retained columns",
+        ));
+    }
+    match (range_schema.repeating, range.count.map(|count| count.get())) {
+        (true, None) | (false, Some(1)) => {}
+        (true, Some(_)) => {
+            return Err(unsupported(
+                "a repeating hierarchical XLSX range cannot have a fixed row count",
+            ));
+        }
+        (false, _) => {
+            return Err(unsupported(
+                "a non-repeating hierarchical XLSX range must have a row count of one",
+            ));
+        }
+    }
+    if range.columns.is_empty() {
+        return Err(unsupported(
+            "a hierarchical XLSX range must contain at least one output column",
+        ));
+    }
+
+    let start = match range.start {
+        XlsxRangeStart::Absolute { row } => format!(" start=\"{}\"", row.get()),
+        XlsxRangeStart::AfterPrevious { offset } => format!(" offset=\"{}\"", offset.get()),
+    };
+    let count = range
+        .count
+        .map(|count| format!(" count=\"{}\"", count.get()))
+        .unwrap_or_default();
+    let _ = writeln!(
+        ranges_xml,
+        "\t\t\t\t\t\t\t\t\t\t\t\t<range id=\"{}\"{start}{count}/>",
+        xml_escape(range_id),
+    );
+
+    let mut range_path = worksheets_path.to_vec();
+    range_path.extend(range.path.iter().cloned());
+    let row_port = if range_schema.repeating {
+        let key = args
+            .ports
+            .required_key_for_abs(&range_path, "hierarchical XLSX row range")?;
+        format!(" inpkey=\"{key}\"")
+    } else {
+        String::new()
+    };
+    let header = if range.has_header {
+        " enabletitlerow=\"1\""
+    } else {
+        ""
+    };
+    let mut cells = String::new();
+    let mut columns = BTreeSet::new();
+    let mut names = BTreeSet::new();
+    for column in &range.columns {
+        render_hierarchical_column(
+            args,
+            range_schema,
+            &range_path,
+            range,
+            column,
+            &mut columns,
+            &mut names,
+            &mut cells,
+        )?;
+    }
+    let _ = write!(
+        rows_xml,
+        "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\"{row_port}{header} expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"{}\"/></expression></function></expression></condition>\n\
+         {cells}\
+         \t\t\t\t\t\t\t\t\t\t\t</entry>\n",
+        xml_escape(range_id),
+    );
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_hierarchical_column(
+    args: &RenderArgs<'_>,
+    range_schema: &SchemaNode,
+    range_path: &[String],
+    range: &XlsxOutputRange,
+    column: &XlsxOutputColumn,
+    columns: &mut BTreeSet<u32>,
+    names: &mut BTreeSet<String>,
+    cells: &mut String,
+) -> Result<(), MfdError> {
+    let field_name = one_segment(&column.path, "hierarchical XLSX column path")?;
+    if !columns.insert(column.column.get()) || !names.insert(field_name.to_string()) {
+        return Err(unsupported(
+            "hierarchical XLSX field names and physical columns must be unique within a range",
+        ));
+    }
+    let field = schema_at(range_schema, &column.path)
+        .ok_or_else(|| unsupported("a hierarchical XLSX column path is missing from the schema"))?;
+    let ty = scalar_type(field, "hierarchical XLSX output column")?;
+    let datatype = hierarchical_datatype(ty, column.kind)?;
+    let annotation = hierarchical_annotation(range, column, field_name)?;
+    let annotation = annotation
+        .map(|value| format!(" annotation=\"{}\"", xml_escape(value)))
+        .unwrap_or_default();
+    let mut path = range_path.to_vec();
+    path.extend(column.path.iter().cloned());
+    let key = args
+        .ports
+        .required_key_for_abs(&path, "hierarchical XLSX output cell")?;
+    let _ = write!(
+        cells,
+        "\t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" inpkey=\"{key}\"{annotation} datatype=\"{datatype}\">\n\
+         \t\t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"n\"/></expression><expression><constant value=\"{}\" datatype=\"long\"/></expression></function></expression></condition>\n\
+         \t\t\t\t\t\t\t\t\t\t\t\t</entry>\n",
+        column.column.get(),
+    );
+    Ok(())
+}
+
+fn hierarchical_annotation<'a>(
+    range: &XlsxOutputRange,
+    column: &'a XlsxOutputColumn,
+    field_name: &'a str,
+) -> Result<Option<&'a str>, MfdError> {
+    if !range.has_header {
+        if column.header.is_some() {
+            return Err(unsupported(
+                "a headerless hierarchical XLSX range cannot retain a column header",
+            ));
+        }
+        return Ok(Some(field_name));
+    }
+    match column.header.as_deref() {
+        Some(header) if header == field_name => Ok(Some(field_name)),
+        Some("") if field_name == format!("Column{}", column.column.get()) => Ok(None),
+        _ => Err(unsupported(
+            "hierarchical XLSX headers must match their canonical schema field names",
+        )),
+    }
+}
+
+fn hierarchical_datatype(ty: ScalarType, kind: XlsxCellKind) -> Result<&'static str, MfdError> {
+    match (ty, kind) {
+        (ScalarType::String, XlsxCellKind::String) => Ok("string"),
+        (ScalarType::Int, XlsxCellKind::Number) => Ok("integer"),
+        (ScalarType::Float, XlsxCellKind::Number) => Ok("decimal"),
+        (ScalarType::Bool, XlsxCellKind::Boolean) => Ok("boolean"),
+        (ScalarType::String, XlsxCellKind::Date) => Ok("date"),
+        (ScalarType::String, XlsxCellKind::DateTime) => Ok("dateTime"),
+        (ScalarType::String, XlsxCellKind::Time) => Ok("time"),
+        _ => Err(unsupported(
+            "a hierarchical XLSX cell kind conflicts with its scalar schema type",
+        )),
+    }
+}
+
+fn exact_group_children<'a>(
+    node: &'a SchemaNode,
+    label: &str,
+) -> Result<&'a [SchemaNode], MfdError> {
+    match &node.kind {
+        SchemaKind::Group {
+            children,
+            alternatives,
+            dynamic,
+        } if node.recursive_ref.is_none() && alternatives.is_empty() && dynamic.is_none() => {
+            Ok(children)
+        }
+        _ => Err(unsupported(&format!(
+            "the {label} must be a closed non-recursive group"
+        ))),
+    }
 }
 
 fn render_transposed(args: &RenderArgs<'_>) -> Result<String, MfdError> {

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
+use ir::{Instance, Value, ValueGeneration};
 use rusqlite::Connection;
 
 struct TempDir(PathBuf);
@@ -29,9 +29,9 @@ impl Drop for TempDir {
 fn write_fixture(dir: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let connection = Connection::open(dir.join("ledger.sqlite"))?;
     connection.execute_batch(
-        "CREATE TABLE Updates (Value TEXT, Note TEXT); \
-         CREATE TABLE Journal (Count INTEGER); \
-         INSERT INTO Journal VALUES (7);",
+        "CREATE TABLE Updates (Number INTEGER PRIMARY KEY AUTOINCREMENT, Value TEXT, Note TEXT); \
+         CREATE TABLE Journal (Number INTEGER PRIMARY KEY AUTOINCREMENT, Count INTEGER); \
+         INSERT INTO Journal (Count) VALUES (7);",
     )?;
     drop(connection);
 
@@ -178,7 +178,8 @@ fn balanced_database_ports_classify_one_component_as_source_and_target()
 fn mixed_database_component_is_both_a_named_source_and_target()
 -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0)?)?;
+    let design = write_fixture(&dir.0)?;
+    let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -189,7 +190,15 @@ fn mixed_database_component_is_both_a_named_source_and_target()
     assert!(database.dynamic_path.is_none());
     assert_eq!(imported.project.extra_targets.len(), 1);
     assert_eq!(imported.project.extra_targets[0].name, database.name);
-    assert_eq!(imported.project.extra_targets[0].schema, database.schema);
+    let target_schema = &imported.project.extra_targets[0].schema;
+    assert!(target_schema.child("Journal").is_none());
+    assert_eq!(
+        target_schema
+            .child("Updates")
+            .and_then(|table| table.child("Number"))
+            .and_then(|column| column.value_generation),
+        Some(ValueGeneration::MaxNumber)
+    );
     assert_eq!(
         imported.project.extra_targets[0].path.as_deref(),
         Some(database.path.as_str())
@@ -201,11 +210,14 @@ fn mixed_database_component_is_both_a_named_source_and_target()
         &imported.project.source,
     )?;
     let ledger = format_db::read_instance(&dir.0.join("ledger.sqlite"), &database.schema)?;
-    let target = engine::run_with_sources(
+    let execution = engine::ExecutionContext::new(&design);
+    let outputs = engine::run_outputs_with_sources_and_context(
         &imported.project,
         &source,
         vec![(database.name.clone(), ledger)],
+        &execution,
     )?;
+    let target = outputs.primary;
     let rows = target
         .as_repeated()
         .ok_or("CSV target did not produce rows")?;
@@ -215,6 +227,34 @@ fn mixed_database_component_is_both_a_named_source_and_target()
             row.field("Count").and_then(Instance::as_scalar) == Some(&Value::Int(7))
         })
     );
+    let [database_output] = outputs.extras.as_slice() else {
+        return Err("mixed database target did not execute".into());
+    };
+    let written_database = dir.0.join("written.sqlite");
+    std::fs::copy(dir.0.join("ledger.sqlite"), &written_database)?;
+    format_db::write_instance(&written_database, target_schema, &database_output.instance)?;
+    let written = Connection::open(&written_database)?;
+    let updates = written
+        .prepare("SELECT Number, Value, Note FROM Updates ORDER BY Number")?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    let journal_count: i64 =
+        written.query_row("SELECT Count FROM Journal", [], |row| row.get(0))?;
+    assert_eq!(
+        updates,
+        vec![
+            (1, "A".to_string(), "first".to_string()),
+            (2, "B".to_string(), "second".to_string()),
+        ]
+    );
+    assert_eq!(journal_count, 7);
+    drop(written);
 
     let exported = dir.0.join("roundtrip.mfd");
     assert!(mfd::export(&imported.project, &exported)?.is_empty());
@@ -225,21 +265,26 @@ fn mixed_database_component_is_both_a_named_source_and_target()
         .filter(|node| node.has_tag_name("component") && node.attribute("library") == Some("db"))
         .collect::<Vec<_>>();
     assert_eq!(database_components.len(), 1);
-    let database_component = database_components[0];
-    assert!(database_component.descendants().any(|entry| {
-        entry.has_tag_name("entry")
-            && entry.attribute("name") == Some("Updates")
-            && entry.attribute("inpkey").is_some()
+    assert!(database_components.iter().any(|database_component| {
+        database_component.descendants().any(|entry| {
+            entry.has_tag_name("entry")
+                && entry.attribute("name") == Some("Updates")
+                && entry.attribute("inpkey").is_some()
+        })
     }));
-    assert!(database_component.descendants().any(|entry| {
-        entry.has_tag_name("entry")
-            && entry.attribute("name") == Some("Journal")
-            && entry.attribute("outkey").is_some()
+    assert!(database_components.iter().any(|database_component| {
+        database_component.descendants().any(|entry| {
+            entry.has_tag_name("entry")
+                && entry.attribute("name") == Some("Journal")
+                && entry.attribute("outkey").is_some()
+        })
     }));
-    assert!(database_component.descendants().any(|entry| {
-        entry.has_tag_name("entry")
-            && entry.attribute("name") == Some("Count")
-            && entry.attribute("datatype") == Some("integer")
+    assert!(database_components.iter().any(|database_component| {
+        database_component.descendants().any(|entry| {
+            entry.has_tag_name("entry")
+                && entry.attribute("name") == Some("Count")
+                && entry.attribute("datatype") == Some("integer")
+        })
     }));
 
     let roundtrip = mfd::import(&exported)?;
@@ -272,9 +317,14 @@ fn mixed_database_component_is_both_a_named_source_and_target()
         return Err("detached roundtrip did not retain the database source".into());
     };
     assert_eq!(detached_database.schema, database.schema);
+    let detached_target = &detached_roundtrip.project.extra_targets[0].schema;
+    let detached_table = detached_target.child("Updates").unwrap_or(detached_target);
+    assert_eq!(detached_table.name, "Updates");
     assert_eq!(
-        detached_roundtrip.project.extra_targets[0].schema,
-        database.schema
+        detached_table
+            .child("Number")
+            .and_then(|column| column.value_generation),
+        Some(ValueGeneration::MaxNumber)
     );
     Ok(())
 }

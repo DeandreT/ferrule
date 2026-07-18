@@ -30,7 +30,7 @@ fn write(path: &Path, contents: &str) {
 }
 
 #[test]
-fn xml_passthrough_components_are_graph_intermediates() {
+fn xml_passthrough_components_are_intermediates_and_independent_targets() {
     let dir = TempDir::new();
     let schema = r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Source"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#;
     write(&dir.0.join("source.xsd"), schema);
@@ -50,14 +50,59 @@ fn xml_passthrough_components_are_graph_intermediates() {
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(imported.project.extra_sources.is_empty());
+    assert_eq!(imported.project.target.name, "Target");
+    let [passthrough] = imported.project.extra_targets.as_slice() else {
+        panic!("expected the pass-through component as an additional target");
+    };
+    assert_eq!(passthrough.name, "buffer");
+    assert_eq!(passthrough.schema.name, "Source");
+    assert_eq!(passthrough.path.as_deref(), Some("buffer.xml"));
+    assert!(engine::validate(&imported.project).is_empty());
 
     let source = Instance::Group(vec![(
         "Value".to_string(),
         Instance::Scalar(Value::String("passed through".to_string())),
     )]);
-    let output = engine::run(&imported.project, &source).unwrap();
+    let outputs = engine::run_outputs(&imported.project, &source).unwrap();
     assert_eq!(
-        output.field("Value").and_then(Instance::as_scalar),
+        outputs.primary.field("Value").and_then(Instance::as_scalar),
         Some(&Value::String("passed through".to_string()))
+    );
+    let [passthrough] = outputs.extras.as_slice() else {
+        panic!("expected one pass-through output");
+    };
+    assert_eq!(passthrough.name, "buffer");
+    assert_eq!(
+        passthrough
+            .instance
+            .field("Value")
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("passed through".to_string()))
+    );
+
+    let roundtrip_path = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &roundtrip_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&roundtrip_path).unwrap();
+    assert_eq!(exported.matches("XSLTDefaultOutput=\"1\"").count(), 1);
+
+    let roundtrip = mfd::import(&roundtrip_path).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert_eq!(roundtrip.project.target.name, "Target");
+    let [passthrough] = roundtrip.project.extra_targets.as_slice() else {
+        panic!("expected one pass-through output after re-import");
+    };
+    assert_eq!(passthrough.name, "buffer");
+    assert_eq!(passthrough.path.as_deref(), Some("buffer.xml"));
+    assert!(engine::validate(&roundtrip.project).is_empty());
+
+    let outputs = engine::run_outputs(&roundtrip.project, &source).unwrap();
+    assert_eq!(outputs.extras.len(), 1);
+    assert_eq!(
+        outputs.primary.field("Value").and_then(Instance::as_scalar),
+        outputs.extras[0]
+            .instance
+            .field("Value")
+            .and_then(Instance::as_scalar)
     );
 }

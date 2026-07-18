@@ -76,6 +76,100 @@ pub(super) fn connect(args: ConnectArgs<'_>) {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn append_sort_control(
+    scope: &Scope,
+    chain: &[String],
+    source_stages: Option<&[(Vec<String>, u32)]>,
+    source_collection: Option<&[String]>,
+    join: Option<JoinId>,
+    graph: &Graph,
+    node_out_key: &BTreeMap<NodeId, u32>,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    keys: &mut KeyAlloc,
+    uid: &mut u32,
+    components: &mut String,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+    from: u32,
+) -> u32 {
+    let sort_keys = scope.sort_keys().collect::<Vec<_>>();
+    connect_scope_position_roots(
+        sort_keys.iter().map(|key| key.node),
+        source_stages,
+        source_collection,
+        join,
+        true,
+        from,
+        graph,
+        position_inputs,
+        position_contexts,
+        edges,
+        warnings,
+    );
+    let Some(key_sources) = sort_keys
+        .iter()
+        .map(|key| node_out_key.get(&key.node).copied())
+        .collect::<Option<Vec<_>>>()
+    else {
+        warnings.push(format!(
+            "scope `{}` sort key references an unexported node; sorting dropped",
+            chain.join("/")
+        ));
+        return from;
+    };
+
+    let in_nodes = keys.next();
+    let in_keys = (0..sort_keys.len())
+        .map(|_| keys.next())
+        .collect::<Vec<_>>();
+    let out_nodes = keys.next();
+    *uid += 1;
+    let _ = write!(
+        components,
+        "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
+         \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/>"
+    );
+    for (index, input) in in_keys.iter().enumerate() {
+        let position = index + 1;
+        let _ = write!(
+            components,
+            "<datapoint pos=\"{position}\" key=\"{input}\"/>"
+        );
+    }
+    let _ = write!(
+        components,
+        "</sources>\n\
+         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
+         \t\t\t\t\t<data><sort><collation/>"
+    );
+    for (index, key) in sort_keys.iter().enumerate() {
+        let direction = if key.descending {
+            "descending"
+        } else {
+            "ascending"
+        };
+        if index == 0 {
+            let _ = write!(components, "<key direction=\"{direction}\"/>");
+        } else {
+            let _ = write!(
+                components,
+                "<key index=\"{index}\" direction=\"{direction}\"/>"
+            );
+        }
+    }
+    let _ = write!(
+        components,
+        "</sort></data>\n\
+         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+         \t\t\t\t</component>\n"
+    );
+    edges.push((from, in_nodes));
+    edges.extend(key_sources.into_iter().zip(in_keys));
+    out_nodes
+}
+
+#[allow(clippy::too_many_arguments)]
 fn append_scope_controls(
     scope: &Scope,
     chain: &[String],
@@ -94,51 +188,24 @@ fn append_scope_controls(
     mut from: u32,
     absorbed_filter: Option<NodeId>,
 ) -> u32 {
-    if scope.sort_filter_order == SortFilterOrder::SortThenFilter
-        && let Some(sort_by) = scope.sort_by
-    {
-        connect_scope_position_roots(
-            [sort_by],
+    if scope.sort_filter_order == SortFilterOrder::SortThenFilter && scope.has_sort() {
+        from = append_sort_control(
+            scope,
+            chain,
             source_stages,
             source_collection,
             join,
-            true,
-            from,
             graph,
+            node_out_key,
             position_inputs,
             position_contexts,
+            keys,
+            uid,
+            components,
             edges,
             warnings,
+            from,
         );
-        match node_out_key.get(&sort_by) {
-            Some(&key_src) => {
-                let in_nodes = keys.next();
-                let in_key = keys.next();
-                let out_nodes = keys.next();
-                let direction = if scope.sort_descending {
-                    "descending"
-                } else {
-                    "ascending"
-                };
-                *uid += 1;
-                let _ = write!(
-                    components,
-                    "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
-                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
-                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
-                     \t\t\t\t\t<data><sort><collation/><key direction=\"{direction}\"/></sort></data>\n\
-                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                     \t\t\t\t</component>\n"
-                );
-                edges.push((from, in_nodes));
-                edges.push((key_src, in_key));
-                from = out_nodes;
-            }
-            None => warnings.push(format!(
-                "scope `{}` sort key references an unexported node; sorting dropped",
-                chain.join("/")
-            )),
-        }
     }
     if let Some(filter) = scope.filter
         && Some(filter) != absorbed_filter
@@ -180,51 +247,24 @@ fn append_scope_controls(
             )),
         }
     }
-    if scope.sort_filter_order == SortFilterOrder::FilterThenSort
-        && let Some(sort_by) = scope.sort_by
-    {
-        connect_scope_position_roots(
-            [sort_by],
+    if scope.sort_filter_order == SortFilterOrder::FilterThenSort && scope.has_sort() {
+        from = append_sort_control(
+            scope,
+            chain,
             source_stages,
             source_collection,
             join,
-            true,
-            from,
             graph,
+            node_out_key,
             position_inputs,
             position_contexts,
+            keys,
+            uid,
+            components,
             edges,
             warnings,
+            from,
         );
-        match node_out_key.get(&sort_by) {
-            Some(&key_src) => {
-                let in_nodes = keys.next();
-                let in_key = keys.next();
-                let out_nodes = keys.next();
-                let direction = if scope.sort_descending {
-                    "descending"
-                } else {
-                    "ascending"
-                };
-                *uid += 1;
-                let _ = write!(
-                    components,
-                    "\t\t\t\t<component name=\"sort\" library=\"core\" uid=\"{uid}\" kind=\"30\">\n\
-                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
-                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/></targets>\n\
-                     \t\t\t\t\t<data><sort><collation/><key direction=\"{direction}\"/></sort></data>\n\
-                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                     \t\t\t\t</component>\n"
-                );
-                edges.push((from, in_nodes));
-                edges.push((key_src, in_key));
-                from = out_nodes;
-            }
-            None => warnings.push(format!(
-                "scope `{}` sort key references an unexported node; sorting dropped",
-                chain.join("/")
-            )),
-        }
     }
     if let Some(group_by) = scope.group_by {
         connect_scope_position_roots(
@@ -690,11 +730,19 @@ fn collect_scope_edges(
         && !target_root_iterable
         && scope.iteration_output != mapping::IterationOutput::First
     {
-        warnings.push(
-            "the root scope iterates rows but the target document is not row/array \
-             shaped in MapForce terms; the iteration wire is skipped"
-                .to_string(),
-        );
+        if scope.output_path().is_none() {
+            warnings.push(
+                "the root scope iterates rows but the target document is not row/array \
+                 shaped in MapForce terms; the iteration wire is skipped"
+                    .to_string(),
+            );
+        } else if let Some(source) = scope.source() {
+            if sources.is_named_extra_path(source) {
+                anchor.clone_from(&source.to_vec());
+            } else {
+                anchor.extend(source.iter().cloned());
+            }
+        }
     } else if let Some(source) = scope.source() {
         let mapped_source =
             mapped_plan.and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()));

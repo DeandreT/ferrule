@@ -1,8 +1,69 @@
-use ir::Value;
+use ir::{Instance, SchemaNode, Value};
 
 use crate::FunctionError;
 
 const FUNCTION: &str = "json_serialize_object";
+const PARSE_FUNCTION: &str = "json_parse_field";
+
+pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
+    let [input, schema, path] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: PARSE_FUNCTION,
+            expected: 3,
+            got: args.len(),
+        });
+    };
+    let Value::String(schema) = schema else {
+        return Err(FunctionError::TypeMismatch {
+            function: PARSE_FUNCTION,
+            got: schema.type_name(),
+        });
+    };
+    let Value::String(path) = path else {
+        return Err(FunctionError::TypeMismatch {
+            function: PARSE_FUNCTION,
+            got: path.type_name(),
+        });
+    };
+    let Value::String(input) = input else {
+        if matches!(input, Value::Null) {
+            return Ok(Value::Null);
+        }
+        return Err(FunctionError::TypeMismatch {
+            function: PARSE_FUNCTION,
+            got: input.type_name(),
+        });
+    };
+    let schema: SchemaNode =
+        serde_json::from_str(schema).map_err(|_| FunctionError::InvalidArgument {
+            function: PARSE_FUNCTION,
+            message: "schema descriptor is invalid",
+        })?;
+    let path: Vec<String> =
+        serde_json::from_str(path).map_err(|_| FunctionError::InvalidArgument {
+            function: PARSE_FUNCTION,
+            message: "field path descriptor is invalid",
+        })?;
+    let parsed =
+        format_json::from_str(input, &schema).map_err(|_| FunctionError::InvalidArgument {
+            function: PARSE_FUNCTION,
+            message: "input does not match the JSON schema",
+        })?;
+    scalar_at(&parsed, &path)
+        .cloned()
+        .ok_or(FunctionError::InvalidArgument {
+            function: PARSE_FUNCTION,
+            message: "field path does not resolve to a scalar",
+        })
+}
+
+fn scalar_at<'a>(instance: &'a Instance, path: &[String]) -> Option<&'a Value> {
+    let mut current = instance;
+    for segment in path {
+        current = current.field(segment)?;
+    }
+    current.as_scalar()
+}
 
 pub(super) fn serialize_object(args: &[Value]) -> Result<Value, FunctionError> {
     if args.is_empty() || !args.len().is_multiple_of(3) {
@@ -131,9 +192,39 @@ fn insert(
 
 #[cfg(test)]
 mod tests {
-    use ir::Value;
+    use ir::{ScalarType, SchemaNode, Value};
 
-    use super::serialize_object;
+    use crate::FunctionError;
+
+    use super::{parse_field, serialize_object};
+
+    #[test]
+    fn parses_a_nested_field_with_schema_types() {
+        let schema = SchemaNode::group(
+            "payload",
+            vec![SchemaNode::group(
+                "Leaves",
+                vec![SchemaNode::scalar("Total", ScalarType::Float)],
+            )],
+        );
+        let result = parse_field(&[
+            Value::String(r#"{"Leaves":{"Total":3.5}}"#.into()),
+            Value::String(serde_json::to_string(&schema).unwrap()),
+            Value::String(r#"["Leaves","Total"]"#.into()),
+        ]);
+        assert_eq!(result, Ok(Value::Float(3.5)));
+    }
+
+    #[test]
+    fn rejects_json_that_does_not_match_the_schema() {
+        let schema = SchemaNode::scalar("count", ScalarType::Int);
+        let result = parse_field(&[
+            Value::String(r#""not an integer""#.into()),
+            Value::String(serde_json::to_string(&schema).unwrap()),
+            Value::String("[]".into()),
+        ]);
+        assert!(matches!(result, Err(FunctionError::InvalidArgument { .. })));
+    }
 
     #[test]
     fn serializes_nested_typed_properties_and_omits_nulls() {

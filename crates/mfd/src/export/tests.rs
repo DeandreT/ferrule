@@ -1,5 +1,5 @@
 use ir::{ScalarType, SchemaNode};
-use mapping::FormatOptions;
+use mapping::{FormatOptions, TabularBoundaryKind};
 
 use super::function::{function_library, unmap_function_name};
 use super::schema::{KeyAlloc, PortMatch, PortTree, SideFormat, side_format};
@@ -40,6 +40,24 @@ fn recognized_instance_extension_overrides_a_fallback_document_marker() {
     ));
     assert!(matches!(
         side_format(&Some("records.csv".into()), &options),
+        SideFormat::Csv
+    ));
+}
+
+#[test]
+fn tabular_identity_is_a_fallback_for_neutral_or_missing_paths() {
+    let options = FormatOptions {
+        tabular_kind: Some(TabularBoundaryKind::Xlsx),
+        ..FormatOptions::default()
+    };
+
+    assert!(matches!(side_format(&None, &options), SideFormat::Xlsx));
+    assert!(matches!(
+        side_format(&Some("report.capture".into()), &options),
+        SideFormat::Xlsx
+    ));
+    assert!(matches!(
+        side_format(&Some("report.csv".into()), &options),
         SideFormat::Csv
     ));
 }

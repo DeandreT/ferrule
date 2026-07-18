@@ -1,9 +1,13 @@
+use std::path::Path;
+
 use ir::{SchemaKind, SchemaNode};
-use mapping::{ExternalPayloadFormat, FormatOptions, Project, Scope, ScopeConstruction};
+use mapping::{
+    ExternalPayloadFormat, FormatOptions, Project, Scope, ScopeConstruction, TabularBoundaryKind,
+};
 
 use crate::MfdError;
 
-use super::schema::side_format;
+use super::schema::{SideFormat, side_format};
 use super::{concatenation, edi, external_source, flextext, pdf, protobuf, recursive, xbrl};
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
@@ -16,6 +20,15 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
         return Err(MfdError::Unsupported(
             "projects with more than 256 additional targets cannot be exported to .mfd".to_string(),
         ));
+    }
+    validate_tabular_identity(&project.source_path, &project.source_options, "source")?;
+    for source in &project.extra_sources {
+        let path = (!source.path.is_empty()).then_some(source.path.clone());
+        validate_tabular_identity(&path, &source.options, "additional source")?;
+    }
+    validate_tabular_identity(&project.target_path, &project.target_options, "target")?;
+    for target in &project.extra_targets {
+        validate_tabular_identity(&target.path, &target.options, "additional target")?;
     }
     validate_xml_identity(&project.source_options, "source", true)?;
     for source in &project.extra_sources {
@@ -168,6 +181,58 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     Ok(())
 }
 
+fn validate_tabular_identity(
+    path: &Option<String>,
+    options: &FormatOptions,
+    side_name: &str,
+) -> Result<(), MfdError> {
+    let recognized_extension = path
+        .as_deref()
+        .and_then(|path| Path::new(path).extension())
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .is_some_and(|extension| {
+            matches!(
+                extension.as_str(),
+                "json"
+                    | "jsonl"
+                    | "ndjson"
+                    | "csv"
+                    | "txt"
+                    | "xlsx"
+                    | "db"
+                    | "sqlite"
+                    | "sqlite3"
+                    | "xml"
+            )
+        });
+    if recognized_extension {
+        return Ok(());
+    }
+    match (side_format(path, options), options.tabular_kind) {
+        (SideFormat::Csv, Some(TabularBoundaryKind::Csv))
+            if options.xlsx_sheet.is_some()
+                || options.xlsx_start_row.is_some()
+                || !options.xlsx_columns.is_empty()
+                || options.xlsx_update_existing
+                || !options.xlsx_rows.is_empty()
+                || options.xlsx_composite.is_some()
+                || options.xlsx_grid.is_some()
+                || options.xlsx_hierarchical.is_some() =>
+        {
+            Err(MfdError::Unsupported(format!(
+                "the {side_name} CSV fallback identity conflicts with XLSX layout options"
+            )))
+        }
+        (SideFormat::Xlsx, Some(TabularBoundaryKind::Xlsx)) if options.delimiter.is_some() => {
+            Err(MfdError::Unsupported(format!(
+                "the {side_name} XLSX fallback identity conflicts with a CSV delimiter"
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
 fn validate_xml_identity(
     options: &FormatOptions,
     side_name: &str,
@@ -227,6 +292,18 @@ fn validate_target(
     root: &Scope,
     additional: bool,
 ) -> Result<(), MfdError> {
+    if root.output_path().is_some()
+        && (path.is_some() || side_format(path, options) != SideFormat::Xml)
+    {
+        return Err(MfdError::Unsupported(
+            "dynamic document paths require a pathless XML target boundary".to_string(),
+        ));
+    }
+    if nested_scopes(root).any(|scope| scope.output_path().is_some()) {
+        return Err(MfdError::Unsupported(
+            "dynamic document paths are valid only on a target root scope".to_string(),
+        ));
+    }
     protobuf::validate_target(schema, options)?;
     if additional && options.lenient_segments && options.edi_kind.is_none() {
         return Err(MfdError::Unsupported(
@@ -241,7 +318,7 @@ fn validate_target(
             "inner joins owned by additional targets cannot be exported to .mfd yet".to_string(),
         ));
     }
-    validate_copy_current_source(project, schema, root)
+    validate_copy_current_source(project, schema, root, side_format(path, options))
 }
 
 fn has_join(scope: &Scope) -> bool {
@@ -288,14 +365,29 @@ fn validate_copy_current_source(
     project: &Project,
     target: &SchemaNode,
     root: &Scope,
+    target_format: SideFormat,
 ) -> Result<(), MfdError> {
+    let root_row_copy = root.source().is_some_and(<[String]>::is_empty)
+        && collection_root(
+            side_format(&project.source_path, &project.source_options),
+            &project.source,
+        )
+        && collection_root(target_format, target);
     validate_copy_scope(
         project,
         root,
         Some(&project.source),
         Some(target),
         &mut Vec::new(),
+        root_row_copy,
     )
+}
+
+fn collection_root(format: SideFormat, schema: &SchemaNode) -> bool {
+    matches!(
+        format,
+        SideFormat::Csv | SideFormat::FixedWidth | SideFormat::Xlsx | SideFormat::Db
+    ) || format == SideFormat::Json && schema.repeating
 }
 
 fn validate_copy_scope(
@@ -304,17 +396,18 @@ fn validate_copy_scope(
     parent_source: Option<&SchemaNode>,
     target: Option<&SchemaNode>,
     path: &mut Vec<String>,
+    root_row_copy: bool,
 ) -> Result<(), MfdError> {
     if let Some(segments) = scope.concatenated() {
         for segment in segments.iter() {
-            validate_copy_scope(project, segment, parent_source, target, path)?;
+            validate_copy_scope(project, segment, parent_source, target, path, root_row_copy)?;
         }
         return Ok(());
     }
 
     let current_source = scope_source_schema(project, parent_source, scope);
     if scope.construction == ScopeConstruction::CopyCurrentSource {
-        validate_copy_scope_shape(scope, current_source, target, path)?;
+        validate_copy_scope_shape(scope, current_source, target, path, root_row_copy)?;
     }
 
     for child in &scope.children {
@@ -325,6 +418,7 @@ fn validate_copy_scope(
             current_source,
             target.and_then(|node| node.child(&child.target_field)),
             path,
+            root_row_copy,
         )?;
         path.pop();
     }
@@ -336,6 +430,7 @@ fn validate_copy_scope(
             current_source,
             target.and_then(SchemaNode::dynamic_fields),
             path,
+            root_row_copy,
         )?;
         path.pop();
     }
@@ -347,10 +442,12 @@ fn validate_copy_scope_shape(
     source: Option<&SchemaNode>,
     target: Option<&SchemaNode>,
     path: &[String],
+    root_row_copy: bool,
 ) -> Result<(), MfdError> {
-    if path.is_empty() && scope.source().is_some() {
+    if path.is_empty() && scope.source().is_some() && !root_row_copy {
         return Err(MfdError::Unsupported(
-            "copy-current-source export requires an uncontrolled document-root copy".to_string(),
+            "copy-current-source export requires an uncontrolled document-root copy or an exact row-root collection copy"
+                .to_string(),
         ));
     }
     if scope.sequence().is_some()
@@ -378,13 +475,14 @@ fn validate_copy_scope_shape(
             display_scope_path(path)
         )));
     };
+    let schemas_match = if path.is_empty() && !root_row_copy {
+        source == target
+    } else {
+        source.kind == target.kind
+    };
     if !matches!(source.kind, SchemaKind::Group { .. })
         || !matches!(target.kind, SchemaKind::Group { .. })
-        || if path.is_empty() {
-            source != target
-        } else {
-            source.kind != target.kind
-        }
+        || !schemas_match
     {
         return Err(MfdError::Unsupported(format!(
             "copy-current-source scope `{}` requires matching source and target group fields",
@@ -440,6 +538,25 @@ mod tests {
     use super::validate_copy_scope_shape;
 
     #[test]
+    fn row_root_copy_accepts_matching_fields_with_distinct_boundary_names() {
+        let source = SchemaNode::group(
+            "People",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let target = SchemaNode::group(
+            "Text file",
+            vec![SchemaNode::scalar("Value", ScalarType::String)],
+        );
+        let mut scope = Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Scope::default()
+        };
+        scope.set_source(Some(Vec::new()));
+
+        assert!(validate_copy_scope_shape(&scope, Some(&source), Some(&target), &[], true).is_ok());
+    }
+
+    #[test]
     fn nested_copy_rejects_mismatched_group_fields() {
         let source = SchemaNode::group(
             "Item",
@@ -459,6 +576,7 @@ mod tests {
             Some(&source),
             Some(&target),
             &["Rows".into(), "Item".into()],
+            false,
         );
         assert!(matches!(
             result,
@@ -484,6 +602,7 @@ mod tests {
             Some(&item),
             Some(&item),
             &["Rows".into(), "Item".into()],
+            false,
         );
         assert!(matches!(
             result,

@@ -81,6 +81,10 @@ pub enum EngineError {
         source_name: String,
         found: &'static str,
     },
+    #[error("node {node}: dynamic target path produced {found}, expected a string")]
+    DynamicTargetPath { node: NodeId, found: &'static str },
+    #[error("node {node}: dynamic target path cannot be empty")]
+    EmptyDynamicTargetPath { node: NodeId },
     #[error("loading dynamic source `{source_name}` from `{path}` failed: {message}")]
     DynamicSourceLoad {
         source_name: String,
@@ -336,6 +340,8 @@ mod aggregate_tests;
 mod collection_tests;
 #[cfg(test)]
 mod core_tests;
+#[cfg(test)]
+mod dynamic_document_output_tests;
 #[cfg(test)]
 mod dynamic_source_tests;
 #[cfg(test)]

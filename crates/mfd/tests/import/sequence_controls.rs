@@ -1,6 +1,73 @@
 use super::*;
 
 #[test]
+fn mixed_direction_sort_keys_execute_and_roundtrip() {
+    let mut project = mfd::import(&fixture("ranked.mfd")).unwrap().project;
+    let top = project
+        .root
+        .children
+        .iter_mut()
+        .find(|scope| scope.target_field == "Top")
+        .unwrap();
+    let name = top
+        .bindings
+        .iter()
+        .find(|binding| binding.target_field == "Name")
+        .map(|binding| binding.node)
+        .unwrap();
+    top.sort_then_by = vec![mapping::SortKey {
+        node: name,
+        descending: true,
+    }];
+    top.take = None;
+
+    let source = format_xml::read(&fixture("ranked.xml"), &project.source).unwrap();
+    let output = engine::run(&project, &source).unwrap();
+    let names = output
+        .field("Top")
+        .and_then(Instance::as_repeated)
+        .unwrap()
+        .iter()
+        .map(|row| scalar(row, "Name"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        ["First", "Tie", "Second", "Third", "Low"].map(|name| Value::String(name.into()))
+    );
+
+    let dir = TempDir::new("mixed_sort");
+    let design = dir.0.join("mixed-sort.mfd");
+    let warnings = mfd::export(&project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&design).unwrap();
+    let document = roxmltree::Document::parse(&exported).unwrap();
+    let sort = document
+        .descendants()
+        .find(|node| node.has_tag_name("sort"))
+        .unwrap();
+    let directions = sort
+        .children()
+        .filter(|node| node.has_tag_name("key"))
+        .map(|key| key.attribute("direction"))
+        .collect::<Vec<_>>();
+    assert_eq!(directions, [Some("descending"), Some("descending")]);
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let reimported_top = reimported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Top")
+        .unwrap();
+    assert_eq!(reimported_top.sort_then_by.len(), 1);
+    assert!(reimported_top.sort_then_by[0].descending);
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
+}
+
+#[test]
 fn group_starting_with_imports_executes_and_roundtrips() {
     let imported = mfd::import(&fixture("group-starting.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

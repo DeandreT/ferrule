@@ -17,12 +17,16 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
-use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions};
+use mapping::{EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, TabularBoundaryKind};
 
 const DEFAULT_HTTP_TIMEOUT_SECONDS: u64 = 30;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_HTTP_RESPONSE_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_REDIRECTS: u32 = 5;
+
+mod output_documents;
+
+use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 
 /// Result of running a project after resolving its input and output paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +34,9 @@ pub struct RunOutcome {
     pub records_written: usize,
     pub input_path: PathBuf,
     pub output_path: PathBuf,
+    /// Files emitted by a per-document dynamic primary target. Ordinary
+    /// single-file targets leave this empty.
+    pub primary_outputs: Vec<WrittenOutput>,
     pub extra_outputs: Vec<WrittenOutput>,
 }
 
@@ -73,18 +80,38 @@ pub fn run_project_with_paths(
         "source_path",
         true,
     )?;
-    let output_path = resolve_run_path(
-        project_path,
-        output_path,
-        project.target_path.as_deref(),
-        "output",
-        "target_path",
-        false,
-    )?;
+    let primary_destination = if project.root.output_path().is_some() {
+        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
+            project_path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_path_buf()
+        }))
+    } else {
+        OutputDestination::Static(resolve_run_path(
+            project_path,
+            output_path,
+            project.target_path.as_deref(),
+            "output",
+            "target_path",
+            false,
+        )?)
+    };
+    let output_path = match &primary_destination {
+        OutputDestination::Static(path) | OutputDestination::DynamicBase(path) => path.clone(),
+    };
     let extra_output_paths = project
         .extra_targets
         .iter()
         .map(|target| {
+            if target.root.output_path().is_some() {
+                return Ok(OutputDestination::DynamicBase(
+                    project_path
+                        .parent()
+                        .unwrap_or(Path::new("."))
+                        .to_path_buf(),
+                ));
+            }
             let stored = target
                 .path
                 .as_deref()
@@ -93,6 +120,7 @@ pub fn run_project_with_paths(
                     format!("extra target `{}` has no stored output path", target.name)
                 })?;
             resolve_stored_path(project_path, stored, false)
+                .map(OutputDestination::Static)
                 .with_context(|| format!("resolving extra target `{}` output", target.name))
         })
         .collect::<anyhow::Result<Vec<_>>>()?;
@@ -139,36 +167,50 @@ pub fn run_project_with_paths(
         primary,
         extras: target_outputs,
     } = outputs;
-    let row_count = write_output(
-        &output_path,
-        &project.target,
-        &primary,
-        &project.target_options,
-    )?;
     if target_outputs.len() != project.extra_targets.len() {
         bail!("engine returned an unexpected number of additional target values");
     }
-    let mut extra_outputs = Vec::with_capacity(project.extra_targets.len());
-    for ((target, path), output) in project
+
+    let mut target_writes = Vec::with_capacity(1 + project.extra_targets.len());
+    target_writes.push(TargetOutput {
+        destination: &primary_destination,
+        name: &project.target.name,
+        schema: &project.target,
+        instance: &primary,
+        options: &project.target_options,
+        additional: false,
+    });
+    for ((target, destination), output) in project
         .extra_targets
         .iter()
-        .zip(extra_output_paths)
-        .zip(target_outputs)
+        .zip(&extra_output_paths)
+        .zip(&target_outputs)
     {
-        let records_written =
-            write_output(&path, &target.schema, &output.instance, &target.options)
-                .with_context(|| format!("writing extra target `{}`", target.name))?;
-        extra_outputs.push(WrittenOutput {
-            name: output.name,
-            records_written,
-            path,
+        target_writes.push(TargetOutput {
+            destination,
+            name: &output.name,
+            schema: &target.schema,
+            instance: &output.instance,
+            options: &target.options,
+            additional: true,
         });
     }
+    let mut written = write_target_outputs(&target_writes)?.into_iter();
+    let primary_result = written
+        .next()
+        .context("output batch did not return a primary target result")?;
+    let row_count = primary_result.records_written;
+    let mut primary_outputs = primary_result.outputs;
+    if matches!(primary_destination, OutputDestination::Static(_)) {
+        primary_outputs.clear();
+    }
+    let extra_outputs = written.flat_map(|target| target.outputs).collect();
 
     Ok(RunOutcome {
         records_written: row_count,
         input_path,
         output_path,
+        primary_outputs,
         extra_outputs,
     })
 }
@@ -415,7 +457,9 @@ fn write_output(
         return Ok(rows.len());
     }
 
-    match extension_of(path)?.as_str() {
+    validate_tabular_fallback(path, options, "output")?;
+
+    match extension_for_dispatch(path, options)?.as_str() {
         "csv" | "txt" => {
             let rows = instance
                 .as_repeated()
@@ -635,7 +679,9 @@ fn read_instance(
         return Ok(Instance::Repeated(rows));
     }
 
-    let instance = match extension_of(path)?.as_str() {
+    validate_tabular_fallback(path, options, "input")?;
+
+    let instance = match extension_for_dispatch(path, options)?.as_str() {
         "csv" | "txt" => {
             let rows = format_csv::read(
                 path,
@@ -1215,4 +1261,79 @@ fn extension_of(path: &Path) -> anyhow::Result<String> {
         .and_then(|e| e.to_str())
         .map(str::to_lowercase)
         .with_context(|| format!("{} has no file extension", path.display()))
+}
+
+fn extension_for_dispatch(path: &Path, options: &FormatOptions) -> anyhow::Result<String> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_lowercase);
+    match (extension, options.tabular_kind) {
+        (Some(extension), _) if is_recognized_instance_extension(&extension) => Ok(extension),
+        (_, Some(TabularBoundaryKind::Csv)) => Ok("csv".to_string()),
+        (_, Some(TabularBoundaryKind::Xlsx)) => Ok("xlsx".to_string()),
+        (Some(extension), None) => Ok(extension),
+        (None, None) => bail!("{} has no file extension", path.display()),
+    }
+}
+
+fn validate_tabular_fallback(
+    path: &Path,
+    options: &FormatOptions,
+    side: &str,
+) -> anyhow::Result<()> {
+    if path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(str::to_lowercase)
+        .as_deref()
+        .is_some_and(is_recognized_instance_extension)
+    {
+        return Ok(());
+    }
+    match options.tabular_kind {
+        Some(TabularBoundaryKind::Csv) if has_xlsx_specific_layout(options) => {
+            bail!("CSV fallback identity cannot be combined with XLSX layout options for {side}")
+        }
+        Some(TabularBoundaryKind::Xlsx) if options.delimiter.is_some() => {
+            bail!("XLSX fallback identity cannot be combined with `delimiter` for {side}")
+        }
+        Some(_) | None => Ok(()),
+    }
+}
+
+fn has_xlsx_specific_layout(options: &FormatOptions) -> bool {
+    options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || options.xlsx_update_existing
+        || !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some()
+}
+
+fn is_recognized_instance_extension(extension: &str) -> bool {
+    matches!(
+        extension,
+        "csv"
+            | "txt"
+            | "xlsx"
+            | "xml"
+            | "json"
+            | "jsonl"
+            | "ndjson"
+            | "db"
+            | "sqlite"
+            | "sqlite3"
+            | "edi"
+            | "x12"
+            | "edifact"
+            | "hl7"
+            | "idoc"
+            | "fin"
+            | "swift"
+            | "pdf"
+            | "xbrl"
+    )
 }

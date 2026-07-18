@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
-use mapping::{IterationOutput, JoinId, ScopeConstruction};
+use mapping::{IterationOutput, JoinId, Node, ScopeConstruction, SequenceExpr};
 
 use super::function::{aggregate_op, produces_scalar};
 use super::graph::GraphBuilder;
@@ -147,7 +147,9 @@ pub(super) fn classify_target_connection(
             ComponentFormat::Csv | ComponentFormat::Xlsx | ComponentFormat::Db
         ) || (target.format == ComponentFormat::Json && target_node.repeating);
         if row_shaped {
-            iterations.push(TargetIteration::repeated(target_path, feed, input_key));
+            let mut iteration = TargetIteration::repeated(target_path, feed, input_key);
+            iteration.projects_whole_group = copy_all;
+            iterations.push(iteration);
         } else if copy_all && has_connected_descendant(target, target_path, builder) {
             builder.warnings.push(
                 "copy-all document connection also has connected descendants; mapping skipped"
@@ -227,7 +229,8 @@ pub(super) fn classify_target_connection(
         if connection_role.driver_port == input_key
             && is_xml_text_group(target, target_node)
             && !text_is_connected(target, target_path, builder)
-            && builder.fn_by_output.contains_key(&feed)
+            && (builder.fn_by_output.contains_key(&feed)
+                || target_node.name != ir::XML_ELEMENTS_FIELD)
             && is_scalar_feed(builder, feed)
         {
             projections.push(Projection::Text(target_path.to_vec(), feed));
@@ -518,7 +521,7 @@ fn mapped_group_sequence(
         || feed.projects_whole_group
         || !feed.projections.is_empty()
         || feed.has_filter && feed.filter_expr.is_none() && feed.udf_filters.is_empty()
-        || feed.has_sort && feed.sort_expr.is_none()
+        || feed.has_sort && feed.sort_keys.is_empty()
     {
         return false;
     }
@@ -710,10 +713,10 @@ pub(super) fn build(
                 }
                 let mut text_path = target_path.clone();
                 text_path.push(XML_TEXT_FIELD.to_string());
-                if let Some(target) = TargetLeaf::from_path(&text_path)
+                if let Some(leaf) = TargetLeaf::from_path(&text_path)
                     && let Some(node) = builder.binding_node(feed, &text_path)
                 {
-                    scopes.add_binding(target, node);
+                    scopes.add_binding(leaf, node);
                 }
                 continue;
             }
@@ -813,6 +816,81 @@ pub(super) fn build(
             }
         }
     }
+}
+
+pub(super) fn install_optional_text_occurrences(
+    target: &SchemaComponent,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+) {
+    fn collect(
+        scope: &mapping::Scope,
+        path: &mut Vec<String>,
+        target: &SchemaComponent,
+        output: &mut Vec<(Vec<String>, mapping::NodeId)>,
+    ) {
+        let text_only = schema_node_at(&target.schema, path).is_some_and(|node| {
+            matches!(&node.kind, SchemaKind::Group { children, .. }
+                if children.len() == 1 && children[0].name == XML_TEXT_FIELD)
+        });
+        if !scope.iterates()
+            && text_only
+            && let Some(binding) = scope
+                .bindings
+                .iter()
+                .find(|binding| binding.target_field == XML_TEXT_FIELD)
+        {
+            output.push((path.clone(), binding.node));
+        }
+        for child in &scope.children {
+            path.push(child.target_field.clone());
+            collect(child, path, target, output);
+            path.pop();
+        }
+    }
+
+    let mut optional = Vec::new();
+    collect(&scopes.root, &mut Vec::new(), target, &mut optional);
+    for (path, value) in optional {
+        install_optional_text_occurrence(&path, value, builder, scopes);
+    }
+}
+
+fn install_optional_text_occurrence(
+    target_path: &[String],
+    value: mapping::NodeId,
+    builder: &mut GraphBuilder<'_>,
+    scopes: &mut ScopeBuilder,
+) {
+    let scope = scopes.ensure_scope(target_path);
+    if scope.iterates() {
+        return;
+    }
+    let present = builder.alloc(Node::Call {
+        function: "exists".to_string(),
+        args: vec![value],
+    });
+    let one = builder.alloc(Node::Const {
+        value: ir::Value::Int(1),
+    });
+    let zero = builder.alloc(Node::Const {
+        value: ir::Value::Int(0),
+    });
+    let end = builder.alloc(Node::If {
+        condition: present,
+        then: one,
+        else_: zero,
+    });
+    let item = builder.alloc(Node::SourceField {
+        path: Vec::new(),
+        frame: None,
+    });
+    scope.set_sequence(Some(SequenceExpr::Generate {
+        from: None,
+        to: end,
+        item,
+    }));
+    scope.iteration_output = IterationOutput::MappedSequence;
 }
 
 enum GroupProjectionStep {
