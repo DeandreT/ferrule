@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, SchemaNode, Value};
+use mapping::{Binding, FormatOptions, Graph, NamedTarget, Node, Project, Scope};
 
 struct TempDir(PathBuf);
 
@@ -82,5 +84,115 @@ fn every_connected_target_imports_and_executes() -> Result<(), Box<dyn std::erro
             .and_then(Instance::as_scalar),
         Some(&Value::String("shared".into()))
     );
+    Ok(())
+}
+
+fn scalar_target(name: &str) -> SchemaNode {
+    SchemaNode::group(name, vec![SchemaNode::scalar("Value", ScalarType::String)])
+}
+
+fn two_target_project() -> Project {
+    let binding = Binding {
+        target_field: "Value".into(),
+        node: 0,
+    };
+    Project {
+        source: scalar_target("Source"),
+        target: scalar_target("Primary"),
+        source_path: Some("source.xml".into()),
+        target_path: Some("primary.xml".into()),
+        source_options: FormatOptions::default(),
+        target_options: FormatOptions::default(),
+        extra_sources: Vec::new(),
+        extra_targets: vec![NamedTarget {
+            name: "Secondary report".into(),
+            path: Some("secondary.xml".into()),
+            schema: scalar_target("Secondary"),
+            options: FormatOptions::default(),
+            root: Scope {
+                bindings: vec![binding.clone()],
+                ..Scope::default()
+            },
+        }],
+        graph: Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::SourceField {
+                    path: vec!["Value".into()],
+                    frame: None,
+                },
+            )]),
+        },
+        root: Scope {
+            bindings: vec![binding],
+            ..Scope::default()
+        },
+    }
+}
+
+#[test]
+fn exports_reimports_and_executes_independent_xml_targets() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let design = dir.0.join("mapping.mfd");
+    let project = two_target_project();
+
+    let warnings = mfd::export(&project, &design)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&design)?;
+    assert_eq!(xml.matches("XSLTDefaultOutput=\"1\"").count(), 1);
+    assert!(xml.contains("component name=\"Secondary report\""));
+    assert!(xml.contains("uid=\"3\""));
+    assert!(xml.contains("uid=\"4\""));
+    assert!(dir.0.join("mapping-target.xsd").is_file());
+    assert!(dir.0.join("mapping-target-2.xsd").is_file());
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert_eq!(imported.project.target.name, "Primary");
+    let [secondary] = imported.project.extra_targets.as_slice() else {
+        return Err("expected one additional target".into());
+    };
+    assert_eq!(secondary.name, "Secondary report");
+    assert_eq!(secondary.schema.name, "Secondary");
+    assert_eq!(secondary.path.as_deref(), Some("secondary.xml"));
+
+    let source = Instance::Group(vec![(
+        "Value".into(),
+        Instance::Scalar(Value::String("shared".into())),
+    )]);
+    let outputs = engine::run_outputs(&imported.project, &source)?;
+    assert_eq!(
+        outputs.primary.field("Value").and_then(Instance::as_scalar),
+        Some(&Value::String("shared".into()))
+    );
+    assert_eq!(outputs.extras.len(), 1);
+    assert_eq!(outputs.extras[0].name, "Secondary report");
+    assert_eq!(
+        outputs.extras[0]
+            .instance
+            .field("Value")
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("shared".into()))
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_unretained_additional_edi_boundary_atomically() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let design = dir.0.join("mapping.mfd");
+    std::fs::write(&design, "sentinel")?;
+    let mut project = two_target_project();
+    project.extra_targets[0].path = None;
+    project.extra_targets[0].options.lenient_segments = true;
+
+    let error = mfd::export(&project, &design).expect_err("EDI target should be rejected");
+    assert!(format!("{error:#}").contains("configuration and dialect are not retained"));
+    assert_eq!(std::fs::read_to_string(&design)?, "sentinel");
+    assert!(!dir.0.join("mapping-source.xsd").exists());
+    assert!(!dir.0.join("mapping-target.xsd").exists());
     Ok(())
 }

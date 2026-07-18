@@ -496,7 +496,7 @@ fn filtered_group_port_emits_zero_one_or_many_non_repeating_xml_elements() {
 }
 
 #[test]
-fn computed_text_mapping_rejects_an_ambiguous_occurrence_port() {
+fn computed_text_mapping_uses_a_distinct_occurrence_port() {
     let dir = TempDir::new();
     let source = SchemaNode::group(
         "Source",
@@ -545,11 +545,20 @@ fn computed_text_mapping_rejects_an_ambiguous_occurrence_port() {
     };
 
     let path = dir.0.join("computed-text.mfd");
-    assert!(matches!(
-        mfd::export(&project, &path),
-        Err(mfd::MfdError::Unsupported(message)) if message.contains("mapped XML group sequences")
-    ));
-    assert!(!path.exists());
+    assert!(mfd::export(&project, &path).unwrap().is_empty());
+    let design = std::fs::read_to_string(&path).unwrap();
+    assert!(design.contains("name=\"#text\""), "{design}");
+    let imported = mfd::import(&path).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+    let source_xml = "<Source><Row><Value>A</Value></Row><Row><Value>B</Value></Row></Source>";
+    let expected = output_xml(&project, source_xml);
+    assert_eq!(expected.matches("<Item>computed</Item>").count(), 2);
+    assert_eq!(expected, output_xml(&imported.project, source_xml));
 }
 
 #[test]

@@ -18,10 +18,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use ir::{ScalarType, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
+use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use roxmltree::Node;
 
 use crate::XmlFormatError;
+
+mod alternatives_export;
+
+use alternatives_export::AlternativeExportPlan;
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
 
@@ -426,7 +430,11 @@ fn parse_element(
         if let Some(resolved) = resolve_complex_type(ty, schema_el, schema_path, state, Some(&name))
         {
             match resolved {
-                ComplexTypeResolution::Children(children) => SchemaNode::group(name, children),
+                ComplexTypeResolution::Children(children) => {
+                    let mut node = SchemaNode::group(name, children);
+                    attach_direct_type_alternatives(&mut node, ty, schema_el, schema_path, state);
+                    node
+                }
                 ComplexTypeResolution::Recursive(anchor) => {
                     SchemaNode::recursive_group(name, anchor)
                 }
@@ -447,6 +455,121 @@ fn parse_element(
     } else {
         node
     }
+}
+
+fn attach_direct_type_alternatives(
+    node: &mut SchemaNode,
+    base_qname: &str,
+    schema_el: &Node,
+    schema_path: &Path,
+    state: &mut ParseState,
+) {
+    let base_local = local_name(base_qname);
+    let base_declaration = top_level(schema_el, "complexType", base_local);
+    let base_is_abstract = base_declaration
+        .as_ref()
+        .and_then(|declaration| declaration.attribute("abstract"))
+        .is_some_and(|value| matches!(value, "true" | "1"));
+    let derived_names = schema_el
+        .children()
+        .filter(|candidate| {
+            candidate.is_element()
+                && candidate.tag_name().name() == "complexType"
+                && candidate.attribute("name").is_some()
+                && direct_extension_base(candidate).is_some_and(|base| {
+                    local_name(&base) == base_local && is_local_qname(schema_el, &base)
+                })
+        })
+        .filter_map(|candidate| candidate.attribute("name"))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if derived_names.is_empty() {
+        return;
+    }
+
+    let SchemaKind::Group {
+        children: base_children,
+        ..
+    } = &node.kind
+    else {
+        return;
+    };
+    let base_members = base_children
+        .iter()
+        .map(|child| child.name.clone())
+        .collect::<Vec<_>>();
+    let original_children = base_children.clone();
+    let mut resolved = Vec::new();
+    for name in derived_names {
+        let Some(ComplexTypeResolution::Children(children)) =
+            resolve_complex_type(&name, schema_el, schema_path, state, None)
+        else {
+            return;
+        };
+        resolved.push((type_identity(schema_el, &name), children));
+    }
+    let alternative_count = resolved.len() + usize::from(!base_is_abstract);
+    if alternative_count < 2 {
+        return;
+    }
+
+    let mut merged = base_children.clone();
+    for (_, children) in &resolved {
+        for child in children {
+            if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
+                if existing != child {
+                    return;
+                }
+            } else {
+                merged.push(child.clone());
+            }
+        }
+    }
+    let mut alternatives = Vec::with_capacity(alternative_count);
+    if !base_is_abstract {
+        alternatives.push(ir::GroupAlternative {
+            name: type_identity(schema_el, base_local),
+            members: base_members,
+            required: Vec::new(),
+        });
+    }
+    alternatives.extend(
+        resolved
+            .into_iter()
+            .map(|(name, children)| ir::GroupAlternative {
+                name,
+                members: children.into_iter().map(|child| child.name).collect(),
+                required: Vec::new(),
+            }),
+    );
+    if let SchemaKind::Group { children, .. } = &mut node.kind {
+        *children = merged;
+    }
+    if !node.set_alternatives(alternatives)
+        && let SchemaKind::Group { children, .. } = &mut node.kind
+    {
+        *children = original_children;
+    }
+}
+
+fn direct_extension_base(declaration: &Node<'_, '_>) -> Option<String> {
+    declaration
+        .children()
+        .find(|child| child.is_element() && child.tag_name().name() == "complexContent")?
+        .children()
+        .find(|child| child.is_element() && child.tag_name().name() == "extension")?
+        .attribute("base")
+        .map(str::to_string)
+}
+
+fn type_identity(schema_el: &Node, local: &str) -> String {
+    schema_el
+        .attribute("targetNamespace")
+        .filter(|namespace| !namespace.is_empty())
+        .map_or_else(
+            || local.to_string(),
+            |namespace| format!("{{{namespace}}}{local}"),
+        )
 }
 
 /// Finds a named top-level declaration (`xs:complexType name=..` etc.).
@@ -968,11 +1091,24 @@ fn map_xsd_type(ty: &str) -> ScalarType {
 /// producing the same `xs:element`/`xs:complexType`/`xs:sequence` subset it
 /// reads (repeating nodes get `maxOccurs="unbounded"`). Returns an error when
 /// XML role flags describe a shape this subset cannot preserve.
+pub fn export_namespace(schema: &SchemaNode) -> Result<Option<String>, XmlFormatError> {
+    Ok(AlternativeExportPlan::build(schema)?
+        .namespace()
+        .map(str::to_string))
+}
+
 pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
     let recursive_anchors = recursive_export_anchors(schema)?;
+    let alternatives = AlternativeExportPlan::build(schema)?;
     validate_export_node(schema, true, &schema.name, &recursive_anchors)?;
-    let mut out = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" elementFormDefault=\"qualified\">\n",
+    let element_form = if alternatives.namespace().is_some() {
+        "unqualified"
+    } else {
+        "qualified"
+    };
+    let mut out = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"{} elementFormDefault=\"{element_form}\">\n",
+        alternatives.schema_attributes(),
     );
     for (anchor, node) in &recursive_anchors {
         write_complex_type(
@@ -981,10 +1117,19 @@ pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
             Some(&recursive_type_name(anchor)),
             &schema.name,
             &recursive_anchors,
+            &alternatives,
             &mut out,
         )?;
     }
-    write_element(schema, 1, &schema.name, &recursive_anchors, &mut out)?;
+    alternatives.write_definitions(&schema.name, &recursive_anchors, &mut out)?;
+    write_element(
+        schema,
+        1,
+        &schema.name,
+        &recursive_anchors,
+        &alternatives,
+        &mut out,
+    )?;
     out.push_str("</xs:schema>\n");
     Ok(out)
 }
@@ -1099,19 +1244,9 @@ fn validate_export_node(
             })
         };
     }
-    let ir::SchemaKind::Group {
-        children,
-        alternatives,
-        ..
-    } = &node.kind
-    else {
+    let ir::SchemaKind::Group { children, .. } = &node.kind else {
         return Ok(());
     };
-    if !alternatives.is_empty() {
-        return Err(XmlFormatError::UnsupportedGroupAlternatives {
-            group: node.name.clone(),
-        });
-    }
     if node.name == XML_ELEMENTS_FIELD {
         return if node.repeating {
             Ok(())
@@ -1156,6 +1291,27 @@ fn write_element(
     depth: usize,
     root_name: &str,
     recursive_anchors: &BTreeMap<String, &SchemaNode>,
+    alternatives: &AlternativeExportPlan<'_>,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
+    write_element_required(
+        node,
+        depth,
+        true,
+        root_name,
+        recursive_anchors,
+        alternatives,
+        out,
+    )
+}
+
+fn write_element_required(
+    node: &SchemaNode,
+    depth: usize,
+    required: bool,
+    root_name: &str,
+    recursive_anchors: &BTreeMap<String, &SchemaNode>,
+    alternatives: &AlternativeExportPlan<'_>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     let pad = "  ".repeat(depth);
@@ -1167,6 +1323,8 @@ fn write_element(
     }
     let occurs = if node.repeating {
         " minOccurs=\"0\" maxOccurs=\"unbounded\""
+    } else if !required {
+        " minOccurs=\"0\""
     } else {
         ""
     };
@@ -1197,6 +1355,13 @@ fn write_element(
         ));
         return Ok(());
     }
+    if let Some(type_name) = alternatives.type_for(node) {
+        out.push_str(&format!(
+            "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}/>\n",
+            node.name
+        ));
+        return Ok(());
+    }
     match &node.kind {
         ir::SchemaKind::Scalar { ty } => {
             out.push_str(&format!(
@@ -1210,7 +1375,15 @@ fn write_element(
                 "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n",
                 node.name
             ));
-            write_complex_type(node, depth + 1, None, root_name, recursive_anchors, out)?;
+            write_complex_type(
+                node,
+                depth + 1,
+                None,
+                root_name,
+                recursive_anchors,
+                alternatives,
+                out,
+            )?;
             out.push_str(&format!("{pad}</xs:element>\n"));
         }
     }
@@ -1223,6 +1396,7 @@ fn write_complex_type(
     name: Option<&str>,
     root_name: &str,
     recursive_anchors: &BTreeMap<String, &SchemaNode>,
+    alternatives: &AlternativeExportPlan<'_>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
     let ir::SchemaKind::Group { children, .. } = &node.kind else {
@@ -1272,7 +1446,14 @@ fn write_complex_type(
         "{pad}<xs:complexType{name}{mixed}>\n{pad}  <xs:sequence>\n"
     ));
     for child in nested_elements {
-        write_element(child, depth + 2, root_name, recursive_anchors, out)?;
+        write_element(
+            child,
+            depth + 2,
+            root_name,
+            recursive_anchors,
+            alternatives,
+            out,
+        )?;
     }
     out.push_str(&format!("{pad}  </xs:sequence>\n"));
     for attr in attrs {

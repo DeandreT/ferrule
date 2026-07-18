@@ -189,7 +189,7 @@ fn post_response_is_an_executable_captured_json_boundary() -> Result<(), Box<dyn
     assert!(matches!(
         mfd::export(&imported.project, &exported),
         Err(mfd::MfdError::Unsupported(message))
-            if message.contains("external-response")
+            if message.contains("captured external response in secondary source")
     ));
     assert!(!exported.exists());
     Ok(())

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{IterationOutput, Scope, ScopeConstruction, ScopeIteration};
@@ -18,9 +18,21 @@ struct BranchSet {
 }
 
 impl TargetBranches {
-    pub(super) fn build(schema: &SchemaNode, scope: &Scope, keys: &mut KeyAlloc) -> Self {
+    pub(super) fn build(
+        schema: &SchemaNode,
+        scope: &Scope,
+        keys: &mut KeyAlloc,
+        explicit_text: &BTreeSet<Vec<String>>,
+    ) -> Self {
         let mut branches = Self::default();
-        collect_branches(schema, scope, &mut Vec::new(), keys, &mut branches);
+        collect_branches(
+            schema,
+            scope,
+            &mut Vec::new(),
+            keys,
+            explicit_text,
+            &mut branches,
+        );
         branches
     }
 
@@ -55,14 +67,12 @@ impl TargetBranches {
     }
 }
 
-pub(super) fn validate(project: &mapping::Project, format: SideFormat) -> Result<(), MfdError> {
-    validate_scope(
-        &project.root,
-        &project.target,
-        format,
-        &mut Vec::new(),
-        false,
-    )
+pub(super) fn validate(
+    root: &Scope,
+    target: &SchemaNode,
+    format: SideFormat,
+) -> Result<(), MfdError> {
+    validate_scope(root, target, format, &mut Vec::new(), false)
 }
 
 pub(super) fn needs_source_root_port(scope: &Scope) -> bool {
@@ -96,13 +106,15 @@ fn validate_scope(
         }
         validate_container(scope, path)?;
         match format {
-            SideFormat::Xml if !path.is_empty() => {
+            SideFormat::Xml | SideFormat::Xbrl | SideFormat::Db
+                if !path.is_empty() && (format != SideFormat::Db || path.len() == 1) =>
+            {
                 let node = schema_node_at(target, path)
                     .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
                 if !node.repeating || !matches!(node.kind, SchemaKind::Group { .. }) {
                     return Err(unsupported(
                         path,
-                        "XML concatenation requires a repeating target group",
+                        "XML/database concatenation requires a repeating target group",
                     ));
                 }
             }
@@ -117,7 +129,7 @@ fn validate_scope(
             _ => {
                 return Err(unsupported(
                     path,
-                    "only repeating XML groups and flat CSV roots are supported",
+                    "only repeating XML/database groups and flat CSV roots are supported",
                 ));
             }
         }
@@ -239,6 +251,7 @@ fn collect_branches(
     scope: &Scope,
     path: &mut Vec<String>,
     keys: &mut KeyAlloc,
+    explicit_text: &BTreeSet<Vec<String>>,
     branches: &mut TargetBranches,
 ) {
     if let Some(segments) = scope.concatenated()
@@ -249,7 +262,7 @@ fn collect_branches(
             .skip(1)
             .map(|_| {
                 let mut ports = BTreeMap::new();
-                allocate_subtree(node, path, None, keys, &mut ports);
+                allocate_subtree(node, path, None, keys, explicit_text, &mut ports);
                 ports
             })
             .collect();
@@ -264,7 +277,7 @@ fn collect_branches(
     }
     for child in &scope.children {
         path.push(child.target_field.clone());
-        collect_branches(schema, child, path, keys, branches);
+        collect_branches(schema, child, path, keys, explicit_text, branches);
         path.pop();
     }
 }
@@ -274,6 +287,7 @@ fn allocate_subtree(
     path: &mut Vec<String>,
     shared_key: Option<u32>,
     keys: &mut KeyAlloc,
+    explicit_text: &BTreeSet<Vec<String>>,
     ports: &mut BTreeMap<Vec<String>, u32>,
 ) {
     let key = shared_key.unwrap_or_else(|| keys.next());
@@ -281,7 +295,8 @@ fn allocate_subtree(
     if let SchemaKind::Group { children, .. } = &node.kind {
         for child in children {
             path.push(child.name.clone());
-            allocate_subtree(child, path, child.text.then_some(key), keys, ports);
+            let shared_key = (child.text && !explicit_text.contains(path)).then_some(key);
+            allocate_subtree(child, path, shared_key, keys, explicit_text, ports);
             path.pop();
         }
     }

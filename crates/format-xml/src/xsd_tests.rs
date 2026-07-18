@@ -810,20 +810,98 @@ fn export_represents_generic_element_groups_as_xsd_wildcards() {
 }
 
 #[test]
-fn export_rejects_group_alternatives_instead_of_flattening_them() {
+fn export_roundtrips_named_base_and_derived_group_alternatives() {
+    let address = SchemaNode::group(
+        "Address",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("city", ScalarType::String),
+            SchemaNode::scalar("postcode", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        ir::GroupAlternative {
+            name: "{urn:ferrule:address}BaseAddress".into(),
+            members: vec!["name".into(), "city".into()],
+            required: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: "{urn:ferrule:address}PostalAddress".into(),
+            members: vec!["name".into(), "city".into(), "postcode".into()],
+            required: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let schema = SchemaNode::group("Root", vec![address]);
+
+    let xsd = export(&schema).unwrap();
+    assert!(xsd.contains(r#"targetNamespace="urn:ferrule:address""#));
+    assert!(xsd.contains(r#"<xs:complexType name="BaseAddress">"#));
+    assert!(xsd.contains(r#"<xs:extension base="tns:BaseAddress">"#));
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_alternatives_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+
+    assert_eq!(imported.child("Address").unwrap().alternatives().len(), 2);
+    assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
+    let choice = SchemaNode::group(
+        "Address",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::scalar("state", ScalarType::String),
+            SchemaNode::scalar("postcode", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![
+        ir::GroupAlternative {
+            name: "Domestic".into(),
+            members: vec!["name".into(), "state".into()],
+            required: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: "International".into(),
+            members: vec!["name".into(), "postcode".into()],
+            required: Vec::new(),
+        },
+    ])
+    .unwrap();
+    let schema = SchemaNode::group("Root", vec![choice]);
+
+    let xsd = export(&schema).unwrap();
+    assert!(xsd.contains(r#"name="DomesticBaseType" abstract="true""#));
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_sibling_alternatives_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_rejects_alternatives_from_incompatible_namespaces() {
     let schema = SchemaNode::group(
         "Root",
         vec![SchemaNode::scalar("Value", ScalarType::String)],
     )
     .with_alternatives(vec![
         ir::GroupAlternative {
-            name: "first".into(),
+            name: "{urn:ferrule:first}First".into(),
             members: vec!["Value".into()],
-            required: vec!["Value".into()],
+            required: Vec::new(),
         },
         ir::GroupAlternative {
-            name: "second".into(),
-            members: Vec::new(),
+            name: "{urn:ferrule:second}Second".into(),
+            members: vec!["Value".into()],
             required: Vec::new(),
         },
     ])
@@ -831,6 +909,43 @@ fn export_rejects_group_alternatives_instead_of_flattening_them() {
     assert!(matches!(
         export(&schema),
         Err(XmlFormatError::UnsupportedGroupAlternatives { ref group }) if group == "Root"
+    ));
+}
+
+#[test]
+fn export_rejects_different_derived_views_of_one_base_type() {
+    fn address(name: &str, derived: &str, extra: &str) -> SchemaNode {
+        SchemaNode::group(
+            name,
+            vec![
+                SchemaNode::scalar("name", ScalarType::String),
+                SchemaNode::scalar(extra, ScalarType::String),
+            ],
+        )
+        .with_alternatives(vec![
+            ir::GroupAlternative {
+                name: "BaseAddress".into(),
+                members: vec!["name".into()],
+                required: Vec::new(),
+            },
+            ir::GroupAlternative {
+                name: derived.into(),
+                members: vec!["name".into(), extra.into()],
+                required: Vec::new(),
+            },
+        ])
+        .unwrap()
+    }
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            address("Shipping", "PostalAddress", "postcode"),
+            address("Billing", "DomesticAddress", "state"),
+        ],
+    );
+    assert!(matches!(
+        export(&schema),
+        Err(XmlFormatError::UnsupportedGroupAlternatives { ref group }) if group == "Billing"
     ));
 }
 

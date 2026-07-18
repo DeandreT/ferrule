@@ -483,6 +483,8 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "substring" => "substring",
         "substring-before" => "substring_before",
         "substring-after" => "substring_after",
+        "normalize-space" => "normalize_space",
+        "empty" => "is_empty",
         "get-folder" => "get_folder",
         "remove-folder" => "remove_folder",
         "resolve-filepath" => "resolve_filepath",
@@ -524,6 +526,8 @@ mod tests {
         assert_eq!(map_name("string"), Some("string"));
         assert_eq!(map_name("numeric"), Some("is_numeric"));
         assert_eq!(map_name("format-number"), Some("format_number"));
+        assert_eq!(map_name("normalize-space"), Some("normalize_space"));
+        assert_eq!(map_name("empty"), Some("is_empty"));
         assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
         assert_eq!(map_name("year-from-datetime"), Some("year_from_datetime"));
         assert_eq!(map_name("month-from-datetime"), Some("month_from_datetime"));

@@ -158,6 +158,23 @@ fn computed_descendants_generate_mapped_text_occurrences_per_outer_item() {
     assert_eq!(xml.matches("<Price discount=").count(), 8);
     assert!(xml.contains("<Label>A</Label>"));
     assert!(xml.contains("<Label>B</Label>"));
+
+    let exported = dir.0.join("roundtrip.mfd");
+    assert!(
+        mfd::export(&imported.project, &exported)
+            .unwrap()
+            .is_empty()
+    );
+    let design = std::fs::read_to_string(&exported).unwrap();
+    assert!(design.contains("name=\"#text\""), "{design}");
+    let reimported = mfd::import(&exported).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(
+        engine::validate(&reimported.project).is_empty(),
+        "{:?}",
+        engine::validate(&reimported.project)
+    );
+    assert_eq!(output, engine::run(&reimported.project, &source).unwrap());
 }
 
 #[test]

@@ -154,7 +154,7 @@ pub(super) fn classify_target_connection(
                     .to_string(),
             );
         } else if target.format.is_xml_like()
-            && max_one_database_source
+            && (max_one_database_source || resolved.take_default_one)
             && matches!(target_node.kind, SchemaKind::Group { .. })
             && has_connected_descendant(target, target_path, builder)
         {

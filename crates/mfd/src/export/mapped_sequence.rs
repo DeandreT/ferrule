@@ -1,50 +1,89 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
-use ir::{SchemaKind, SchemaNode};
-use mapping::{Graph, IterationOutput, Node, Project, Scope};
+use ir::{SchemaKind, SchemaNode, Value};
+use mapping::{Graph, IterationOutput, Node, Scope};
 
 use crate::MfdError;
 
 use super::schema::{KeyAlloc, SideFormat};
 
 pub(super) struct ScopePlan {
-    pub(super) source_collection: Vec<String>,
-    pub(super) source_group: Vec<String>,
-    pub(super) copy_all: bool,
+    source: Option<SourcePlan>,
+    explicit_text_port: bool,
 }
 
-pub(super) type ScopePlans = BTreeMap<Vec<String>, ScopePlan>;
+struct SourcePlan {
+    collection: Vec<String>,
+    group: Vec<String>,
+    copy_all: bool,
+}
+
+impl ScopePlan {
+    pub(super) fn source(&self) -> Option<(&[String], &[String])> {
+        self.source
+            .as_ref()
+            .map(|source| (source.collection.as_slice(), source.group.as_slice()))
+    }
+
+    pub(super) fn copy_all(&self) -> bool {
+        self.source.as_ref().is_some_and(|source| source.copy_all)
+    }
+}
+
+#[derive(Default)]
+pub(super) struct ScopePlans(BTreeMap<Vec<String>, ScopePlan>);
+
+impl ScopePlans {
+    pub(super) fn get(&self, path: &[String]) -> Option<&ScopePlan> {
+        self.0.get(path)
+    }
+
+    pub(super) fn explicit_text_ports(&self) -> BTreeSet<Vec<String>> {
+        self.0
+            .iter()
+            .filter(|(_, plan)| plan.explicit_text_port)
+            .map(|(path, _)| {
+                let mut text = path.clone();
+                text.push(ir::XML_TEXT_FIELD.to_string());
+                text
+            })
+            .collect()
+    }
+}
 
 pub(super) fn preflight_mapped_sequences(
-    project: &Project,
+    graph: &Graph,
+    source: &SchemaNode,
+    target: &SchemaNode,
+    root: &Scope,
     target_format: SideFormat,
 ) -> Result<ScopePlans, MfdError> {
-    if scope_has_dynamic_mapping(&project.root) {
+    if scope_has_dynamic_mapping(root) {
         return Err(MfdError::Unsupported(
             "computed JSON property mappings do not yet have a lossless MapForce export"
                 .to_string(),
         ));
     }
-    if scope_has_output(&project.root, IterationOutput::First) {
+    if !first_outputs_are_exportable(root, graph, target, target_format, &mut Vec::new()) {
         return Err(MfdError::Unsupported(
             "first-item scope output does not yet have a lossless MapForce export".to_string(),
         ));
     }
-    if scope_has_output(&project.root, IterationOutput::MappedSequence)
-        && target_format != SideFormat::Xml
+    if scope_has_output(root, IterationOutput::MappedSequence)
+        && !matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
     {
         return Err(MfdError::Unsupported(
             "mapped-sequence output is exportable only for XML targets".to_string(),
         ));
     }
 
-    let mut plans = BTreeMap::new();
+    let mut plans = ScopePlans::default();
     if !collect_scope_plans(
-        &project.root,
-        &project.graph,
-        &project.source,
-        &project.target,
+        root,
+        graph,
+        source,
+        target,
         &mut Vec::new(),
         &[],
         &mut plans,
@@ -120,7 +159,7 @@ fn collect_scope_plans(
         ) else {
             return false;
         };
-        plans.insert(chain.clone(), plan);
+        plans.0.insert(chain.clone(), plan);
     }
     for child in &scope.children {
         chain.push(child.target_field.clone());
@@ -148,37 +187,56 @@ fn mapped_scope_plan(
     target_path: &[String],
     collection: &[String],
 ) -> Option<ScopePlan> {
-    if scope.source().is_none() || scope.sequence().is_some() || target_path.is_empty() {
+    if target_path.is_empty() {
         return None;
     }
     let target_group = schema_node_at(target_schema, target_path)?;
     if target_group.repeating || !matches!(target_group.kind, SchemaKind::Group { .. }) {
         return None;
     }
+    let explicit_text_port = scope
+        .bindings
+        .iter()
+        .any(|binding| binding.target_field == ir::XML_TEXT_FIELD);
+    if explicit_text_port
+        && !target_group.child(ir::XML_TEXT_FIELD).is_some_and(|text| {
+            text.text && !text.repeating && matches!(text.kind, SchemaKind::Scalar { .. })
+        })
+    {
+        return None;
+    }
+
+    if scope.sequence().is_some() {
+        return Some(ScopePlan {
+            source: None,
+            explicit_text_port,
+        });
+    }
+    scope.source()?;
 
     let source_collection = schema_node_at(source_schema, collection)?;
     if !matches!(source_collection.kind, SchemaKind::Group { .. }) {
         return None;
     }
 
-    if let Some(plan) = mapped_copy_plan(scope, graph, source_schema, target_group, collection) {
+    if let Some(plan) = mapped_copy_plan(
+        scope,
+        graph,
+        source_schema,
+        target_group,
+        collection,
+        explicit_text_port,
+    ) {
         return Some(plan);
     }
 
-    if scope
-        .bindings
-        .iter()
-        .any(|binding| binding.target_field == ir::XML_TEXT_FIELD)
-    {
-        // XML text and its owning group share one MapForce port. An ordinary
-        // occurrence wire plus a direct text wire would connect that input twice.
-        return None;
-    }
-
     Some(ScopePlan {
-        source_collection: collection.to_vec(),
-        source_group: collection.to_vec(),
-        copy_all: false,
+        source: Some(SourcePlan {
+            collection: collection.to_vec(),
+            group: collection.to_vec(),
+            copy_all: false,
+        }),
+        explicit_text_port,
     })
 }
 
@@ -188,6 +246,7 @@ fn mapped_copy_plan(
     source_schema: &SchemaNode,
     target_group: &SchemaNode,
     collection: &[String],
+    explicit_text_port: bool,
 ) -> Option<ScopePlan> {
     let mut bindings = Vec::new();
     collect_mapped_bindings(scope, graph, &mut Vec::new(), &mut bindings)?;
@@ -220,16 +279,51 @@ fn mapped_copy_plan(
         return None;
     }
     let copy_all = binding_paths == compatible;
-    if !copy_all && binding_paths.contains(&vec![ir::XML_TEXT_FIELD.to_string()]) {
-        // XML text and its owning group share one MapForce port. An ordinary
-        // occurrence wire plus a direct text wire would connect that input twice.
-        return None;
-    }
     Some(ScopePlan {
-        source_collection: collection.to_vec(),
-        source_group,
-        copy_all,
+        source: Some(SourcePlan {
+            collection: collection.to_vec(),
+            group: source_group,
+            copy_all,
+        }),
+        explicit_text_port: explicit_text_port && !copy_all,
     })
+}
+
+fn first_outputs_are_exportable(
+    scope: &Scope,
+    graph: &Graph,
+    target: &SchemaNode,
+    target_format: SideFormat,
+    path: &mut Vec<String>,
+) -> bool {
+    if scope.iteration_output == IterationOutput::First
+        && (!path.is_empty()
+            || !matches!(target_format, SideFormat::Xml | SideFormat::Xbrl)
+            || scope.source() != Some(&[])
+            || target.repeating
+            || !matches!(target.kind, SchemaKind::Group { .. })
+            || scope.group_by.is_some()
+            || scope.group_starting_with.is_some()
+            || scope.group_into_blocks.is_some()
+            || !scope.take.is_some_and(|take| {
+                matches!(
+                    graph.nodes.get(&take),
+                    Some(Node::Const {
+                        value: Value::Int(1)
+                    })
+                )
+            }))
+    {
+        return false;
+    }
+    for child in &scope.children {
+        path.push(child.target_field.clone());
+        if !first_outputs_are_exportable(child, graph, target, target_format, path) {
+            return false;
+        }
+        path.pop();
+    }
+    true
 }
 
 fn resolve_source_collection(
