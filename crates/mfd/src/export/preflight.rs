@@ -4,7 +4,7 @@ use mapping::{FormatOptions, Project, Scope, ScopeConstruction};
 use crate::MfdError;
 
 use super::schema::side_format;
-use super::{concatenation, external_source, flextext, xbrl};
+use super::{concatenation, external_source, flextext, protobuf, xbrl};
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     if project.extra_sources.len() > 256 {
@@ -87,14 +87,9 @@ pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
             .extra_sources
             .iter()
             .any(|source| source.options.protobuf.is_some())
-        || project.target_options.protobuf.is_some()
-        || project
-            .extra_targets
-            .iter()
-            .any(|target| target.options.protobuf.is_some())
     {
         return Err(MfdError::Unsupported(
-            "protobuf component export is not supported; remove protobuf format options before exporting this project"
+            "protobuf source component export is not supported; protobuf is an output-only format"
                 .to_string(),
         ));
     }
@@ -163,6 +158,7 @@ fn validate_target(
     root: &Scope,
     additional: bool,
 ) -> Result<(), MfdError> {
+    protobuf::validate_target(schema, options)?;
     if additional && options.lenient_segments {
         return Err(MfdError::Unsupported(
             "an additional EDI target cannot be exported because its configuration and dialect are not retained in the project"

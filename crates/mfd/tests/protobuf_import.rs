@@ -100,15 +100,75 @@ fn imports_executes_and_encodes_proto2_target() {
 }
 
 #[test]
-fn protobuf_options_reject_export_before_replacing_the_design() {
+fn protobuf_target_exports_reimports_and_preserves_encoded_output() {
     let imported = mfd::import(&fixture("protobuf-target.mfd")).unwrap();
+    let source = format_xml::read(
+        &fixture("protobuf-target-source.xml"),
+        &imported.project.source,
+    )
+    .unwrap();
+    let original_target = engine::run(&imported.project, &source).unwrap();
+    let original_options = imported.project.target_options.protobuf.as_ref().unwrap();
+    let original_layout = format_protobuf::Layout::parse(&original_options.schema).unwrap();
+    let original_bytes = format_protobuf::to_vec(
+        &original_layout,
+        &original_options.root_message,
+        &original_target,
+    )
+    .unwrap();
+
     let temp = TempDir::new();
     let design = temp.0.join("mapping.mfd");
+    let warnings = mfd::export(&imported.project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(
+        std::fs::read_to_string(temp.0.join("mapping-target.proto")).unwrap(),
+        original_options.schema
+    );
+    let exported = std::fs::read_to_string(&design).unwrap();
+    assert_eq!(exported.matches("library=\"binary\"").count(), 1);
+    assert!(exported.contains("kind=\"33\""));
+    assert!(exported.contains("type=\"doc-protobuf\""));
+
+    let reimported = mfd::import(&design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(reimported.project.target, imported.project.target);
+    assert_eq!(
+        reimported.project.target_options,
+        imported.project.target_options
+    );
+    assert_eq!(reimported.project.target_path, imported.project.target_path);
+
+    let reimported_target = engine::run(&reimported.project, &source).unwrap();
+    assert_eq!(reimported_target, original_target);
+    let options = reimported.project.target_options.protobuf.as_ref().unwrap();
+    let layout = format_protobuf::Layout::parse(&options.schema).unwrap();
+    let bytes =
+        format_protobuf::to_vec(&layout, &options.root_message, &reimported_target).unwrap();
+    assert_eq!(bytes, original_bytes);
+}
+
+#[test]
+fn invalid_protobuf_metadata_does_not_replace_existing_artifacts() {
+    let mut imported = mfd::import(&fixture("protobuf-target.mfd")).unwrap();
+    imported
+        .project
+        .target_options
+        .protobuf
+        .as_mut()
+        .unwrap()
+        .schema = "not a proto schema".to_string();
+    let temp = TempDir::new();
+    let design = temp.0.join("mapping.mfd");
+    let schema = temp.0.join("mapping-target.proto");
     std::fs::write(&design, "keep this design").unwrap();
+    std::fs::write(&schema, "keep this schema").unwrap();
 
     let result = mfd::export(&imported.project, &design);
     assert!(
-        matches!(result, Err(mfd::MfdError::Unsupported(message)) if message.contains("protobuf component export is not supported"))
+        matches!(result, Err(mfd::MfdError::Unsupported(message)) if message.contains("embedded protobuf schema is invalid"))
     );
     assert_eq!(std::fs::read_to_string(design).unwrap(), "keep this design");
+    assert_eq!(std::fs::read_to_string(schema).unwrap(), "keep this schema");
 }

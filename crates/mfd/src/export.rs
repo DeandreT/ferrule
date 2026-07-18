@@ -22,6 +22,7 @@ mod mapped_sequence;
 mod node;
 mod position;
 mod preflight;
+mod protobuf;
 mod schema;
 mod scope;
 mod sequence;
