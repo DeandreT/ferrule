@@ -63,6 +63,7 @@ impl Fixture {
             target_leaves: &self.target_leaves,
             source_paths: &self.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
+            node_sizes: None,
             error: None,
         }
     }
@@ -178,6 +179,7 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         target_leaves: &target_leaves,
         source_paths: &source_paths,
         colors: crate::appearance::SemanticThemeColors::default(),
+        node_sizes: None,
         error: None,
     };
 

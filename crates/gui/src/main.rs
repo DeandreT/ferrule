@@ -3,6 +3,7 @@ mod appearance;
 mod appearance_editor;
 mod canvas;
 mod canvas_keyboard;
+mod canvas_layout;
 mod diagnostics;
 mod document;
 mod extra_sources;

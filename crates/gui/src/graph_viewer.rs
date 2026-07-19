@@ -39,6 +39,7 @@ pub struct GraphViewer<'a> {
     pub target_leaves: &'a [TargetLeaf],
     pub source_paths: &'a SourcePathCatalog,
     pub colors: SemanticThemeColors,
+    pub node_sizes: Option<&'a mut std::collections::BTreeMap<CanvasNode, egui::Vec2>>,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
     /// line.
@@ -607,6 +608,24 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 None => "<missing>".to_string(),
             },
+        }
+    }
+
+    fn final_node_rect(
+        &mut self,
+        node: SnarlNodeId,
+        rect: egui::Rect,
+        _ui: &mut Ui,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let size = rect.size();
+        if size.x.is_finite()
+            && size.y.is_finite()
+            && size.x > 1.0
+            && size.y > 1.0
+            && let Some(node_sizes) = self.node_sizes.as_deref_mut()
+        {
+            node_sizes.insert(snarl[node], size);
         }
     }
 
