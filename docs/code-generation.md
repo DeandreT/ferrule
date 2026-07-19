@@ -45,8 +45,9 @@ The current portable model includes:
   positions
 - explicit active/main mapping paths and an optional stable current date-time
   supplied by the execution host
-- lazy conditionals and a closed set of boolean, string-predicate, arithmetic,
-  and comparison functions
+- lazy conditionals and a closed set of boolean, arithmetic, comparison, scalar
+  text, XML-whitespace, substring, missing-value, XML-nil, and lexical path
+  functions
 - ordered value maps with optional declared-input coercion, first-match wins,
   and explicit or Null fallback
 - collection aggregates over direct fields or computed per-item expressions
