@@ -5,9 +5,9 @@ use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, GeneratedSequence, IterationPlan,
-    IterationSource, LowerError, Program, ProjectFeature, ScalarFunction, ScopeConstructionKind,
-    ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope,
-    UnsupportedNodeKind, UnsupportedSequenceKind,
+    IterationSource, LowerError, NamedTargetProgram, Program, ProjectFeature, ScalarFunction,
+    ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration,
+    TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -36,6 +36,21 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         &mut roots,
         &mut diagnostics,
     );
+    let mut extra_targets = Vec::with_capacity(project.extra_targets.len());
+    for target in &project.extra_targets {
+        let root = lower_scope(
+            &target.root,
+            &target.schema,
+            &mut Vec::new(),
+            &mut roots,
+            &mut diagnostics,
+        );
+        extra_targets.push(NamedTargetProgram {
+            name: target.name.clone(),
+            target: target.schema.clone(),
+            root,
+        });
+    }
     let reachable = reachable_nodes(project, roots);
     let mut expressions = Vec::with_capacity(reachable.len());
     for id in reachable {
@@ -54,6 +69,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             target: project.target.clone(),
             expressions,
             root,
+            extra_targets,
         })
     } else {
         Err(LowerError::new(diagnostics))
@@ -63,7 +79,6 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
 fn inspect_project_features(project: &Project, diagnostics: &mut Vec<Diagnostic>) {
     for (feature, count) in [
         (ProjectFeature::ExtraSources, project.extra_sources.len()),
-        (ProjectFeature::ExtraTargets, project.extra_targets.len()),
         (ProjectFeature::FailureRules, project.failure_rules.len()),
     ] {
         if count != 0 {

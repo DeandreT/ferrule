@@ -1,0 +1,47 @@
+use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::{execute, execute_outputs};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let output = execute_outputs(&source(false))?;
+    assert_eq!(output.primary, primary_expected());
+    assert_eq!(output.extras.len(), 2);
+    assert_eq!(output.extras[0].name, "audit");
+    assert_eq!(output.extras[0].instance, audit_expected());
+    assert_eq!(output.extras[1].name, "late");
+    assert_eq!(output.extras[1].instance, late_expected());
+    assert_eq!(execute(&source(false))?, primary_expected());
+    assert_eq!(
+        execute(&source(true)),
+        Err(RuntimeError::Function(FunctionError::TypeMismatch {
+            function: "normalize_space",
+            got: "int",
+        })),
+    );
+    Ok(())
+}
+
+fn source(fail_extra: bool) -> Instance {
+    group([
+        field("Name", scalar(Value::String("primary".into()))),
+        field("FailExtra", scalar(Value::Bool(fail_extra))),
+        field("Rows", repeated([
+            group([field("Value", scalar(Value::Int(3)))]),
+            group([field("Value", scalar(Value::Int(5)))]),
+        ])),
+    ])
+}
+
+fn primary_expected() -> Instance {
+    group([field("PrimaryName", scalar(Value::String("primary".into())))])
+}
+
+fn audit_expected() -> Instance {
+    group([field("AuditRow", repeated([
+        group([field("Value", scalar(Value::Int(3)))]),
+        group([field("Value", scalar(Value::Int(5)))]),
+    ]))])
+}
+
+fn late_expected() -> Instance {
+    group([field("Status", scalar(Value::String("safe-extra".into())))])
+}
