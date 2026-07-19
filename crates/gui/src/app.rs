@@ -9,13 +9,17 @@
 use std::path::PathBuf;
 
 use editor_ui::{DocumentOrigin, SnapshotHistory};
-use egui_snarl::{InPinId, OutPinId, Snarl};
-use mapping::{Graph, Node, NodeId, Project, Scope};
+use egui_snarl::Snarl;
+#[cfg(test)]
+use egui_snarl::{InPinId, OutPinId};
+#[cfg(test)]
+use mapping::Node;
+use mapping::{Graph, NodeId, Project, Scope};
 use serde::{Deserialize, Serialize};
 
 use crate::appearance::EditorAppearance;
 use crate::appearance_editor::AppearanceTab;
-use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf, source_leaves, target_leaves};
+use crate::canvas::{CanvasNode, source_blocks, target_blocks};
 use crate::canvas_layout::arrange_snarl;
 use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
 use crate::document::DocumentLocation;
@@ -32,6 +36,8 @@ use crate::scope_editor::{
 use crate::theme::{Palette, ThemeState};
 use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVisibility};
 
+#[path = "app_canvas.rs"]
+mod canvas_build;
 #[path = "app_extra_sources.rs"]
 mod extra_source_ui;
 #[path = "app_new_mapping.rs"]
@@ -42,6 +48,9 @@ mod run_ui;
 mod scope_ui;
 #[path = "app_workspace.rs"]
 mod workspace_ui;
+
+pub(crate) use canvas_build::endpoint_block_size;
+use canvas_build::{build_snarl, build_snarl_with_layout};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 1;
@@ -64,17 +73,27 @@ struct CanvasNodeLayout {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum PersistedCanvasNode {
-    Source,
-    Target,
-    Graph { id: NodeId },
-    Placeholder { id: NodeId },
+    Source {
+        #[serde(default)]
+        block: usize,
+    },
+    Target {
+        #[serde(default)]
+        block: usize,
+    },
+    Graph {
+        id: NodeId,
+    },
+    Placeholder {
+        id: NodeId,
+    },
 }
 
 impl From<CanvasNode> for PersistedCanvasNode {
     fn from(node: CanvasNode) -> Self {
         match node {
-            CanvasNode::Source => Self::Source,
-            CanvasNode::Target => Self::Target,
+            CanvasNode::SourceBlock(block) => Self::Source { block },
+            CanvasNode::TargetBlock(block) => Self::Target { block },
             CanvasNode::Graph(id) => Self::Graph { id },
             CanvasNode::Placeholder(id) => Self::Placeholder { id },
         }
@@ -279,232 +298,6 @@ impl CanvasLayout {
         self.version == LAYOUT_VERSION
             && self.project_fingerprint.as_deref() == Some(project_fingerprint(project).as_str())
     }
-}
-
-fn node_inputs(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Const { .. }
-        | Node::RuntimeValue { .. } => vec![],
-        Node::Call { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } | Node::Lookup { matches: input, .. } => vec![*input],
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence.inputs().into_iter().chain([*predicate]).collect(),
-        Node::SequenceItemAt { sequence, index } => {
-            sequence.inputs().into_iter().chain([*index]).collect()
-        }
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
-    }
-}
-
-/// Collects `(node, target-leaf-index)` for every binding, walking the
-/// scope tree with its target_field chain.
-fn walk_scopes(
-    scope: &Scope,
-    chain: &mut Vec<String>,
-    target_pins: &[TargetLeaf],
-    out: &mut Vec<(NodeId, usize)>,
-) {
-    for binding in &scope.bindings {
-        if let Some(leaf) = target_pins
-            .iter()
-            .position(|l| l.chain == *chain && l.field == binding.target_field)
-        {
-            out.push((binding.node, leaf));
-        }
-    }
-    if let Some(segments) = scope.concatenated() {
-        for segment in segments.iter() {
-            walk_scopes(segment, chain, target_pins, out);
-        }
-    }
-    for child in &scope.children {
-        chain.push(child.target_field.clone());
-        walk_scopes(child, chain, target_pins, out);
-        chain.pop();
-    }
-}
-
-/// Rebuilds the canvas from a project: Source/Target endpoints at the
-/// edges, the graph's nodes in a grid between them, and wires recreated
-/// from node inputs and scope bindings. `SourceField` nodes whose path
-/// matches a source leaf are hidden -- wires leave the Source endpoint's
-/// pin directly.
-fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
-    build_snarl_with_layout(project, None)
-}
-
-fn build_snarl_with_layout(
-    project: &Project,
-    saved_layout: Option<&CanvasLayout>,
-) -> Snarl<CanvasNode> {
-    let saved_layout = saved_layout.filter(|layout| layout.matches_project(project));
-    let source_pins = source_leaves(&project.source);
-    let target_pins = target_leaves(&project.target);
-
-    let mut snarl = Snarl::new();
-    let source_node = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
-
-    // A SourceField is hidden when a source leaf carries its exact frame and
-    // relative path. The frame distinguishes equal leaf paths in siblings.
-    let leaf_for_field = |frame: &Option<Vec<String>>, path: &[String]| {
-        let exact = source_pins
-            .iter()
-            .position(|leaf| &leaf.frame == frame && leaf.path == path);
-        if exact.is_some() || frame.is_some() {
-            return exact;
-        }
-        // Older GUI projects stored repeating source fields without a
-        // frame. Preserve their endpoint wire only when the suffix is
-        // unique; ambiguous fields stay visible instead of being miswired.
-        let mut legacy_matches = source_pins
-            .iter()
-            .enumerate()
-            .filter(|(_, leaf)| leaf.path == path)
-            .map(|(index, _)| index);
-        let first = legacy_matches.next()?;
-        legacy_matches.next().is_none().then_some(first)
-    };
-    let hidden: std::collections::BTreeMap<NodeId, usize> = project
-        .graph
-        .nodes
-        .iter()
-        .filter_map(|(&id, node)| match node {
-            Node::SourceField { path, frame } => leaf_for_field(frame, path).map(|leaf| (id, leaf)),
-            _ => None,
-        })
-        .collect();
-
-    // Binding order drives row placement: nodes sit near the target pins
-    // they feed. Collected up front; also reused for the binding wires.
-    let mut binding_order = Vec::new();
-    walk_scopes(
-        &project.root,
-        &mut Vec::new(),
-        &target_pins,
-        &mut binding_order,
-    );
-    let placeholders: std::collections::BTreeSet<NodeId> = saved_layout
-        .into_iter()
-        .flat_map(|layout| &layout.nodes)
-        .filter_map(|entry| match entry.node {
-            PersistedCanvasNode::Placeholder { id }
-                if matches!(
-                    project.graph.nodes.get(&id),
-                    Some(Node::Const {
-                        value: ir::Value::Null
-                    })
-                ) =>
-            {
-                Some(id)
-            }
-            _ => None,
-        })
-        .collect();
-    let mut snarl_ids = std::collections::BTreeMap::new();
-    for &id in project
-        .graph
-        .nodes
-        .keys()
-        .filter(|id| !hidden.contains_key(id))
-    {
-        let snarl_id = snarl.insert_node(
-            egui::Pos2::ZERO,
-            if placeholders.contains(&id) {
-                CanvasNode::Placeholder(id)
-            } else {
-                CanvasNode::Graph(id)
-            },
-        );
-        snarl_ids.insert(id, snarl_id);
-    }
-    let target_node = snarl.insert_node(egui::Pos2::ZERO, CanvasNode::Target);
-
-    // The producing pin for a mapping node: the Source endpoint's leaf pin
-    // for hidden SourceFields, the node's own output otherwise.
-    let out_pin_for = |id: NodeId| -> Option<OutPinId> {
-        if let Some(&leaf) = hidden.get(&id) {
-            Some(OutPinId {
-                node: source_node,
-                output: leaf,
-            })
-        } else {
-            snarl_ids.get(&id).map(|&node| OutPinId { node, output: 0 })
-        }
-    };
-
-    for (&id, node) in &project.graph.nodes {
-        let Some(&to_node) = snarl_ids.get(&id) else {
-            continue;
-        };
-        for (input, arg) in node_inputs(node).iter().enumerate() {
-            if let Some(from) = out_pin_for(*arg) {
-                snarl.connect(
-                    from,
-                    InPinId {
-                        node: to_node,
-                        input,
-                    },
-                );
-            }
-        }
-    }
-
-    for &(node_id, leaf) in &binding_order {
-        if let Some(from) = out_pin_for(node_id) {
-            snarl.connect(
-                from,
-                InPinId {
-                    node: target_node,
-                    input: leaf,
-                },
-            );
-        }
-    }
-
-    if let Some(layout) = saved_layout {
-        layout.apply(&mut snarl);
-    } else {
-        let source_width = source_pins
-            .iter()
-            .map(|leaf| leaf.label.chars().count())
-            .max()
-            .map_or(320.0, |length| (length as f32 * 9.0 + 180.0).max(320.0));
-        let initial_sizes = std::collections::BTreeMap::from([(
-            CanvasNode::Source,
-            egui::vec2(source_width, 160.0),
-        )]);
-        arrange_snarl(
-            &mut snarl,
-            &initial_sizes,
-            crate::appearance::WireAppearance::default(),
-        );
-    }
-    snarl
 }
 
 /// Runs a native open dialog on its own thread; the result arrives through
