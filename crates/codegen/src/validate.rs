@@ -1,10 +1,16 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
-use crate::{Expression, IterationOutput, Program, TargetScope};
+use crate::{Expression, IterationOutput, IterationSource, Program, TargetScope};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceExpressionRole {
+    Input(usize),
+    Item,
+}
 
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +37,25 @@ pub enum ProgramValidationError {
     InvalidSourceIteration {
         target_path: Vec<String>,
         source_path: Vec<String>,
+    },
+    MissingSequenceExpression {
+        target_path: Vec<String>,
+        role: SequenceExpressionRole,
+        expression: NodeId,
+    },
+    InvalidSequenceItem {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
+    DuplicateSequenceItem {
+        target_path: Vec<String>,
+        first_target_path: Vec<String>,
+        expression: NodeId,
+    },
+    SequenceItemOutOfContext {
+        target_path: Vec<String>,
+        expression: NodeId,
+        item: NodeId,
     },
     MissingBindingExpression {
         target_path: Vec<String>,
@@ -86,13 +111,70 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
     validate_aggregate_paths(&program.source, &expressions)?;
+    let mut sequence_items = BTreeMap::new();
+    collect_sequence_items(
+        &program.root,
+        &expressions,
+        &mut Vec::new(),
+        &mut sequence_items,
+    )?;
     validate_scope(
         &program.root,
         &expressions,
         &program.source,
         &program.target,
         &mut Vec::new(),
+        &sequence_items.keys().copied().collect(),
+        &[],
     )
+}
+
+fn collect_sequence_items(
+    scope: &TargetScope,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    target_path: &mut Vec<String>,
+    owners: &mut BTreeMap<NodeId, Vec<String>>,
+) -> Result<(), ProgramValidationError> {
+    if let Some(sequence) = scope
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.generated_sequence())
+    {
+        let item = sequence.item();
+        if let Some(first_target_path) = owners.insert(item, target_path.clone()) {
+            return Err(ProgramValidationError::DuplicateSequenceItem {
+                target_path: target_path.clone(),
+                first_target_path,
+                expression: item,
+            });
+        }
+        let Some(expression) = expressions.get(&item) else {
+            return Err(ProgramValidationError::MissingSequenceExpression {
+                target_path: target_path.clone(),
+                role: SequenceExpressionRole::Item,
+                expression: item,
+            });
+        };
+        if !matches!(
+            expression,
+            Expression::SourceField {
+                frame: None,
+                path
+            } if path.is_empty()
+        ) {
+            return Err(ProgramValidationError::InvalidSequenceItem {
+                target_path: target_path.clone(),
+                expression: item,
+            });
+        }
+    }
+    for child in &scope.children {
+        target_path.push(child.target_field.clone());
+        let result = collect_sequence_items(child, expressions, target_path, owners);
+        target_path.pop();
+        result?;
+    }
+    Ok(())
 }
 
 fn collect_expressions(
@@ -281,13 +363,39 @@ fn validate_scope(
     source: &SchemaNode,
     target: &SchemaNode,
     target_path: &mut Vec<String>,
+    sequence_items: &BTreeSet<NodeId>,
+    active_sequence_items: &[NodeId],
 ) -> Result<(), ProgramValidationError> {
+    let mut item_context = active_sequence_items.to_vec();
     if let Some(iteration) = &scope.iteration {
-        if !schema_path_matches(source, iteration.source_iteration().path(), |_| true) {
-            return Err(ProgramValidationError::InvalidSourceIteration {
-                target_path: target_path.clone(),
-                source_path: iteration.source_iteration().path().to_vec(),
-            });
+        match iteration.input() {
+            IterationSource::Source(source_iteration) => {
+                if !schema_path_matches(source, source_iteration.path(), |_| true) {
+                    return Err(ProgramValidationError::InvalidSourceIteration {
+                        target_path: target_path.clone(),
+                        source_path: source_iteration.path().to_vec(),
+                    });
+                }
+            }
+            IterationSource::Generated(sequence) => {
+                for (input, expression) in sequence.inputs().enumerate() {
+                    if !expressions.contains_key(&expression) {
+                        return Err(ProgramValidationError::MissingSequenceExpression {
+                            target_path: target_path.clone(),
+                            role: SequenceExpressionRole::Input(input),
+                            expression,
+                        });
+                    }
+                    validate_sequence_context(
+                        expression,
+                        expressions,
+                        sequence_items,
+                        active_sequence_items,
+                        target_path,
+                    )?;
+                }
+                item_context.push(sequence.item());
+            }
         }
         if let Some(expression) = iteration.filter()
             && !expressions.contains_key(&expression)
@@ -296,6 +404,15 @@ fn validate_scope(
                 target_path: target_path.clone(),
                 expression,
             });
+        }
+        if let Some(expression) = iteration.filter() {
+            validate_sequence_context(
+                expression,
+                expressions,
+                sequence_items,
+                &item_context,
+                target_path,
+            )?;
         }
         if let Some(sort) = iteration.sort() {
             for (key, sort_key) in sort.keys().enumerate() {
@@ -306,6 +423,13 @@ fn validate_scope(
                         expression: sort_key.expression,
                     });
                 }
+                validate_sequence_context(
+                    sort_key.expression,
+                    expressions,
+                    sequence_items,
+                    &item_context,
+                    target_path,
+                )?;
             }
         }
         for (window, sequence_window) in iteration.windows().iter().copied().enumerate() {
@@ -318,6 +442,13 @@ fn validate_scope(
                         expression,
                     });
                 }
+                validate_sequence_context(
+                    expression,
+                    expressions,
+                    sequence_items,
+                    active_sequence_items,
+                    target_path,
+                )?;
             }
         }
         let target_is_nonrepeating_group = follow_schema_from(target, target, target_path)
@@ -348,6 +479,13 @@ fn validate_scope(
                 expression: binding.expression,
             });
         }
+        validate_sequence_context(
+            binding.expression,
+            expressions,
+            sequence_items,
+            &item_context,
+            target_path,
+        )?;
         if let Some(&(first_binding, repeating, target_type)) =
             bindings.get(binding.target_field.as_str())
         {
@@ -390,9 +528,45 @@ fn validate_scope(
 
     for child in &scope.children {
         target_path.push(child.target_field.clone());
-        let result = validate_scope(child, expressions, source, target, target_path);
+        let result = validate_scope(
+            child,
+            expressions,
+            source,
+            target,
+            target_path,
+            sequence_items,
+            &item_context,
+        );
         target_path.pop();
         result?;
+    }
+    Ok(())
+}
+
+fn validate_sequence_context(
+    expression: NodeId,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    sequence_items: &BTreeSet<NodeId>,
+    active_sequence_items: &[NodeId],
+    target_path: &[String],
+) -> Result<(), ProgramValidationError> {
+    let active: BTreeSet<_> = active_sequence_items.iter().copied().collect();
+    let mut pending = vec![expression];
+    let mut visited = BTreeSet::new();
+    while let Some(node) = pending.pop() {
+        if !visited.insert(node) {
+            continue;
+        }
+        if sequence_items.contains(&node) && !active.contains(&node) {
+            return Err(ProgramValidationError::SequenceItemOutOfContext {
+                target_path: target_path.to_vec(),
+                expression,
+                item: node,
+            });
+        }
+        if let Some(expression) = expressions.get(&node) {
+            pending.extend(dependencies(expression));
+        }
     }
     Ok(())
 }
@@ -438,6 +612,43 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} source iteration {} matches no source path",
                 display_path(target_path),
                 display_path(source_path)
+            ),
+            Self::MissingSequenceExpression {
+                target_path,
+                role,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} generated sequence {} references missing expression {expression}",
+                display_path(target_path),
+                role
+            ),
+            Self::InvalidSequenceItem {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} generated sequence item expression {expression} is not an unframed empty-path source field",
+                display_path(target_path)
+            ),
+            Self::DuplicateSequenceItem {
+                target_path,
+                first_target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} generated sequence item expression {expression} is already owned by target scope {}",
+                display_path(target_path),
+                display_path(first_target_path)
+            ),
+            Self::SequenceItemOutOfContext {
+                target_path,
+                expression,
+                item,
+            } => write!(
+                formatter,
+                "target scope {} expression {expression} references generated sequence item {item} outside its owning context",
+                display_path(target_path)
             ),
             Self::MissingBindingExpression {
                 target_path,
@@ -522,6 +733,15 @@ impl fmt::Display for ProgramValidationError {
 
 impl std::error::Error for ProgramValidationError {}
 
+impl fmt::Display for SequenceExpressionRole {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Input(index) => write!(formatter, "input {}", index + 1),
+            Self::Item => formatter.write_str("item"),
+        }
+    }
+}
+
 fn display_path(path: &[String]) -> String {
     if path.is_empty() {
         "<root>".into()
@@ -539,486 +759,4 @@ fn display_cycle(cycle: &[NodeId]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use ir::{ScalarType, SchemaNode, Value};
-
-    use super::*;
-    use crate::{
-        AggregateFunction, AggregateValue, Binding, ExpressionNode, IterationPlan, ScalarFunction,
-        SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
-    };
-
-    fn program() -> Program {
-        Program {
-            source: SchemaNode::group(
-                "Source",
-                vec![SchemaNode::group("Rows", Vec::new()).repeating()],
-            ),
-            target: SchemaNode::group("Target", Vec::new()),
-            expressions: vec![
-                ExpressionNode {
-                    id: 1,
-                    expression: Expression::Const {
-                        value: Value::Int(1),
-                    },
-                },
-                ExpressionNode {
-                    id: 2,
-                    expression: Expression::Call {
-                        function: ScalarFunction::Add,
-                        args: vec![1, 1],
-                    },
-                },
-            ],
-            root: TargetScope {
-                target_field: String::new(),
-                repeating: false,
-                iteration: None,
-                bindings: vec![Binding {
-                    target_field: "Value".into(),
-                    expression: 2,
-                    target_type: ScalarType::Int,
-                    repeating: false,
-                }],
-                children: Vec::new(),
-            },
-        }
-    }
-
-    #[test]
-    fn accepts_valid_repeating_duplicate_bindings() {
-        let mut program = program();
-        program.root.bindings = vec![
-            Binding {
-                target_field: "Values".into(),
-                expression: 1,
-                target_type: ScalarType::Int,
-                repeating: true,
-            },
-            Binding {
-                target_field: "Values".into(),
-                expression: 2,
-                target_type: ScalarType::Int,
-                repeating: true,
-            },
-        ];
-
-        assert_eq!(validate_program(&program), Ok(()));
-    }
-
-    #[test]
-    fn accepts_empty_and_named_source_iterations() {
-        let mut program = program();
-        program.root.iteration = Some(IterationPlan::source(Vec::new()));
-        assert_eq!(validate_program(&program), Ok(()));
-
-        program.root.iteration = Some(IterationPlan::source(vec!["Rows".into()]));
-        assert_eq!(validate_program(&program), Ok(()));
-
-        program.root.iteration = Some(IterationPlan::source(vec!["Missing".into()]));
-        assert_eq!(
-            validate_program(&program),
-            Err(ProgramValidationError::InvalidSourceIteration {
-                target_path: Vec::new(),
-                source_path: vec!["Missing".into()],
-            })
-        );
-    }
-
-    #[test]
-    fn accepts_framed_fields_positions_and_source_filters() {
-        let mut program = program();
-        program.expressions.extend([
-            ExpressionNode {
-                id: 3,
-                expression: Expression::SourceField {
-                    frame: Some(Vec::new()),
-                    path: vec!["Value".into()],
-                },
-            },
-            ExpressionNode {
-                id: 4,
-                expression: Expression::Position {
-                    collection: vec!["Rows".into()],
-                },
-            },
-            ExpressionNode {
-                id: 5,
-                expression: Expression::Position {
-                    collection: Vec::new(),
-                },
-            },
-            ExpressionNode {
-                id: 6,
-                expression: Expression::Const {
-                    value: Value::Bool(true),
-                },
-            },
-        ]);
-        program.root.iteration = Some(IterationPlan::new(
-            SourceIteration::new(vec!["Rows".into()]),
-            Some(6),
-            None,
-            Vec::new(),
-            IterationOutput::Repeated,
-        ));
-
-        assert_eq!(validate_program(&program), Ok(()));
-    }
-
-    #[test]
-    fn rejects_invalid_filters_at_the_exact_target_path() {
-        let child = |filter| TargetScope {
-            target_field: "Child".into(),
-            repeating: true,
-            iteration: Some(IterationPlan::new(
-                SourceIteration::new(vec!["Rows".into()]),
-                filter,
-                None,
-                Vec::new(),
-                IterationOutput::Repeated,
-            )),
-            bindings: Vec::new(),
-            children: Vec::new(),
-        };
-
-        let mut missing = program();
-        missing.root.children.push(child(Some(99)));
-        assert_eq!(
-            validate_program(&missing),
-            Err(ProgramValidationError::MissingFilterExpression {
-                target_path: vec!["Child".into()],
-                expression: 99,
-            })
-        );
-    }
-
-    #[test]
-    fn validates_sort_window_and_iteration_output_controls() {
-        let child = |iteration, repeating| TargetScope {
-            target_field: "Child".into(),
-            repeating,
-            iteration: Some(iteration),
-            bindings: Vec::new(),
-            children: Vec::new(),
-        };
-        let sort = |then| {
-            SortPlan::new(
-                SortKey {
-                    expression: 1,
-                    descending: false,
-                },
-                then,
-                SortFilterOrder::SortThenFilter,
-            )
-        };
-
-        let mut missing_sort = program();
-        missing_sort.root.children.push(child(
-            IterationPlan::new(
-                SourceIteration::new(vec!["Rows".into()]),
-                None,
-                Some(sort(vec![SortKey {
-                    expression: 99,
-                    descending: true,
-                }])),
-                Vec::new(),
-                IterationOutput::Repeated,
-            ),
-            true,
-        ));
-        assert_eq!(
-            validate_program(&missing_sort),
-            Err(ProgramValidationError::MissingSortExpression {
-                target_path: vec!["Child".into()],
-                key: 1,
-                expression: 99,
-            })
-        );
-
-        let mut missing_window = program();
-        missing_window.root.children.push(child(
-            IterationPlan::new(
-                SourceIteration::new(vec!["Rows".into()]),
-                None,
-                None,
-                vec![SequenceWindow::FromTo { first: 1, last: 99 }],
-                IterationOutput::Repeated,
-            ),
-            true,
-        ));
-        assert_eq!(
-            validate_program(&missing_window),
-            Err(ProgramValidationError::MissingWindowExpression {
-                target_path: vec!["Child".into()],
-                window: 0,
-                bound: 1,
-                expression: 99,
-            })
-        );
-
-        let mut invalid_first = program();
-        invalid_first.root.children.push(child(
-            IterationPlan::new(
-                SourceIteration::new(vec!["Rows".into()]),
-                None,
-                None,
-                Vec::new(),
-                IterationOutput::First,
-            ),
-            true,
-        ));
-        assert_eq!(
-            validate_program(&invalid_first),
-            Err(ProgramValidationError::InvalidIterationOutput {
-                target_path: vec!["Child".into()],
-                output: IterationOutput::First,
-            })
-        );
-
-        let mut mapped_root = program();
-        mapped_root.root.iteration = Some(IterationPlan::new(
-            SourceIteration::new(Vec::new()),
-            None,
-            None,
-            Vec::new(),
-            IterationOutput::MappedSequence,
-        ));
-        assert_eq!(
-            validate_program(&mapped_root),
-            Err(ProgramValidationError::InvalidIterationOutput {
-                target_path: Vec::new(),
-                output: IterationOutput::MappedSequence,
-            })
-        );
-
-        let mut scalar_first = program();
-        scalar_first.target = SchemaNode::group(
-            "Target",
-            vec![SchemaNode::scalar("Child", ScalarType::String)],
-        );
-        scalar_first.root.children.push(child(
-            IterationPlan::new(
-                SourceIteration::new(vec!["Rows".into()]),
-                None,
-                None,
-                Vec::new(),
-                IterationOutput::First,
-            ),
-            false,
-        ));
-        assert_eq!(
-            validate_program(&scalar_first),
-            Err(ProgramValidationError::InvalidIterationOutput {
-                target_path: vec!["Child".into()],
-                output: IterationOutput::First,
-            })
-        );
-
-        let mut group_first = scalar_first;
-        group_first.target =
-            SchemaNode::group("Target", vec![SchemaNode::group("Child", Vec::new())]);
-        assert_eq!(validate_program(&group_first), Ok(()));
-    }
-
-    #[test]
-    fn rejects_duplicate_and_missing_expressions() {
-        let mut duplicate = program();
-        duplicate.expressions.push(duplicate.expressions[0].clone());
-        assert_eq!(
-            validate_program(&duplicate),
-            Err(ProgramValidationError::DuplicateExpression { node: 1 })
-        );
-
-        let mut missing = program();
-        missing.expressions[1].expression = Expression::Call {
-            function: ScalarFunction::Add,
-            args: vec![1, 99],
-        };
-        assert_eq!(
-            validate_program(&missing),
-            Err(ProgramValidationError::MissingDependency {
-                node: 2,
-                dependency: 99,
-            })
-        );
-    }
-
-    #[test]
-    fn validates_aggregate_projection_and_argument_dependencies() {
-        let aggregate = |value, arg| Expression::Aggregate {
-            function: AggregateFunction::Sum,
-            collection: vec!["Rows".into()],
-            value,
-            arg,
-        };
-
-        let mut missing_projection = program();
-        missing_projection.expressions[1].expression =
-            aggregate(AggregateValue::Expression(99), Some(98));
-        assert_eq!(
-            validate_program(&missing_projection),
-            Err(ProgramValidationError::MissingDependency {
-                node: 2,
-                dependency: 99,
-            })
-        );
-
-        let mut missing_argument = program();
-        missing_argument.expressions[1].expression =
-            aggregate(AggregateValue::Expression(1), Some(99));
-        assert_eq!(
-            validate_program(&missing_argument),
-            Err(ProgramValidationError::MissingDependency {
-                node: 2,
-                dependency: 99,
-            })
-        );
-
-        let mut cycle = program();
-        cycle.expressions[1].expression = aggregate(AggregateValue::Expression(2), Some(1));
-        assert_eq!(
-            validate_program(&cycle),
-            Err(ProgramValidationError::ExpressionCycle { cycle: vec![2, 2] })
-        );
-    }
-
-    #[test]
-    fn validates_aggregate_collection_and_direct_value_paths() {
-        let mut program = program();
-        program.source = SchemaNode::group(
-            "Source",
-            vec![
-                SchemaNode::group(
-                    "Rows",
-                    vec![
-                        SchemaNode::scalar("Amount", ScalarType::Int),
-                        SchemaNode::group("Nested", Vec::new()),
-                    ],
-                )
-                .repeating(),
-            ],
-        );
-        let aggregate = |collection: &[&str], value: &[&str]| Expression::Aggregate {
-            function: AggregateFunction::Sum,
-            collection: collection.iter().map(|segment| (*segment).into()).collect(),
-            value: AggregateValue::Path(value.iter().map(|segment| (*segment).into()).collect()),
-            arg: None,
-        };
-
-        program.expressions[1].expression = aggregate(&["Rows"], &["Amount"]);
-        assert_eq!(validate_program(&program), Ok(()));
-
-        program.expressions[1].expression = aggregate(&["Missing"], &["Amount"]);
-        assert_eq!(
-            validate_program(&program),
-            Err(ProgramValidationError::InvalidAggregateCollection {
-                node: 2,
-                collection: vec!["Missing".into()],
-            })
-        );
-
-        program.expressions[1].expression = aggregate(&["Rows"], &["Missing"]);
-        assert_eq!(
-            validate_program(&program),
-            Err(ProgramValidationError::InvalidAggregateValuePath {
-                node: 2,
-                collection: vec!["Rows".into()],
-                value: vec!["Missing".into()],
-            })
-        );
-
-        program.expressions[1].expression = aggregate(&["Rows"], &["Nested"]);
-        assert!(matches!(
-            validate_program(&program),
-            Err(ProgramValidationError::InvalidAggregateValuePath { node: 2, .. })
-        ));
-
-        // Empty value paths are valid for count and sum because a scalar
-        // collection item is used directly and a structural item becomes Null.
-        program.expressions[1].expression = aggregate(&["Rows"], &[]);
-        assert_eq!(validate_program(&program), Ok(()));
-    }
-
-    #[test]
-    fn rejects_self_and_multi_expression_cycles() {
-        let mut self_cycle = program();
-        self_cycle.expressions[1].expression = Expression::Call {
-            function: ScalarFunction::Add,
-            args: vec![2, 1],
-        };
-        assert_eq!(
-            validate_program(&self_cycle),
-            Err(ProgramValidationError::ExpressionCycle { cycle: vec![2, 2] })
-        );
-
-        let mut multi_cycle = program();
-        multi_cycle.expressions[0].expression = Expression::If {
-            condition: 2,
-            then: 2,
-            else_: 2,
-        };
-        assert_eq!(
-            validate_program(&multi_cycle),
-            Err(ProgramValidationError::ExpressionCycle {
-                cycle: vec![1, 2, 1],
-            })
-        );
-    }
-
-    #[test]
-    fn rejects_invalid_target_scope_states() {
-        let mut missing = program();
-        missing.root.bindings[0].expression = 99;
-        assert!(matches!(
-            validate_program(&missing),
-            Err(ProgramValidationError::MissingBindingExpression { expression: 99, .. })
-        ));
-
-        let mut duplicate_binding = program();
-        duplicate_binding.root.bindings.push(Binding {
-            target_field: "Value".into(),
-            expression: 1,
-            target_type: ScalarType::Int,
-            repeating: false,
-        });
-        assert!(matches!(
-            validate_program(&duplicate_binding),
-            Err(ProgramValidationError::InvalidDuplicateBinding {
-                first_binding: 0,
-                duplicate_binding: 1,
-                ..
-            })
-        ));
-
-        let child = TargetScope {
-            target_field: "Child".into(),
-            repeating: false,
-            iteration: None,
-            bindings: Vec::new(),
-            children: Vec::new(),
-        };
-        let mut duplicate_child = program();
-        duplicate_child.root.children = vec![child.clone(), child.clone()];
-        assert!(matches!(
-            validate_program(&duplicate_child),
-            Err(ProgramValidationError::DuplicateChildTarget {
-                first_child: 0,
-                duplicate_child: 1,
-                ..
-            })
-        ));
-
-        let mut collision = program();
-        collision.root.bindings[0].target_field = "Child".into();
-        collision.root.children.push(child);
-        assert!(matches!(
-            validate_program(&collision),
-            Err(ProgramValidationError::BindingChildCollision {
-                binding: 0,
-                child: 0,
-                ..
-            })
-        ));
-    }
-}
+mod tests;

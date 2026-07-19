@@ -1,0 +1,185 @@
+use codegen_runtime::{
+    FunctionError, Instance, RuntimeError, Value, field, group, repeated, scalar,
+};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source(false))?, expected());
+    assert_eq!(
+        execute(&source(true)),
+        Err(RuntimeError::Function(FunctionError::DivideByZero)),
+    );
+    Ok(())
+}
+
+fn source(error_precedence: bool) -> Instance {
+    group([
+        field(
+            "ErrorInput",
+            scalar(if error_precedence {
+                Value::Int(7)
+            } else {
+                Value::String("left,right".into())
+            }),
+        ),
+        field("TriggerError", scalar(Value::Bool(error_precedence))),
+        field(
+            "Parents",
+            repeated([
+                parent("Alpha", "delta,,alpha,beta,gamma", "aé🙂z", ",", 2, 2, 4),
+                parent("Beta", "one|three|two", "", "|", 2, 4, 2),
+            ]),
+        ),
+    ])
+}
+
+fn parent(
+    name: &str,
+    tokens: &str,
+    unicode: &str,
+    delimiter: &str,
+    length: i64,
+    from: i64,
+    to: i64,
+) -> Instance {
+    group([
+        field("Name", scalar(Value::String(name.into()))),
+        field("Tokens", scalar(Value::String(tokens.into()))),
+        field("Unicode", scalar(Value::String(unicode.into()))),
+        field("Delimiter", scalar(Value::String(delimiter.into()))),
+        field("Length", scalar(Value::Int(length))),
+        field("From", scalar(Value::Int(from))),
+        field("To", scalar(Value::Int(to))),
+    ])
+}
+
+fn expected() -> Instance {
+    group([
+        field(
+            "ParentOut",
+            repeated([
+                parent_output(
+                    "Alpha",
+                    &["beta", "delta"],
+                    &["aé", "🙂z"],
+                    &[1, 2, 3, 4],
+                    &[2, 3, 4],
+                    "delta",
+                    &["delta", "alpha", "beta", "gamma"],
+                    &[
+                        ("delta", &["de", "lt", "a"]),
+                        ("", &[]),
+                        ("alpha", &["al", "ph", "a"]),
+                        ("beta", &["be", "ta"]),
+                        ("gamma", &["ga", "mm", "a"]),
+                    ],
+                ),
+                parent_output(
+                    "Beta",
+                    &["three", "two"],
+                    &[],
+                    &[1, 2],
+                    &[],
+                    "one",
+                    &["one", "three", "two"],
+                    &[
+                        ("one", &["on", "e"]),
+                        ("three", &["th", "re", "e"]),
+                        ("two", &["tw", "o"]),
+                    ],
+                ),
+            ]),
+        ),
+        field("EmptyTokens", repeated([simple_string("", 1)])),
+        field("EmptyChunks", repeated(Vec::<Instance>::new())),
+        field("NullTokens", repeated(Vec::<Instance>::new())),
+        field("NullRange", repeated(Vec::<Instance>::new())),
+        field(
+            "ErrorCheck",
+            repeated([simple_string("left", 1), simple_string("right", 2)]),
+        ),
+    ])
+}
+
+fn parent_output(
+    name: &str,
+    controlled: &[&str],
+    chunks: &[&str],
+    default_range: &[i64],
+    explicit_range: &[i64],
+    first: &str,
+    mapped: &[&str],
+    nested: &[(&str, &[&str])],
+) -> Instance {
+    group([
+        field("Name", scalar(Value::String(name.into()))),
+        field("Controlled", repeated(parent_strings(name, controlled))),
+        field("Chunks", repeated(parent_strings(name, chunks))),
+        field("DefaultRange", repeated(parent_ints(name, default_range))),
+        field("ExplicitRange", repeated(parent_ints(name, explicit_range))),
+        field("First", parent_string(first, name, 1)),
+        field(
+            "Mapped",
+            Instance::MappedSequence(parent_strings(name, mapped)),
+        ),
+        field(
+            "Nested",
+            repeated(
+                nested
+                    .iter()
+                    .enumerate()
+                    .map(|(outer_index, (value, pieces))| {
+                        group([
+                            field("Value", scalar(Value::String((*value).into()))),
+                            field("Position", scalar(Value::Int(outer_index as i64 + 1))),
+                            field(
+                                "Pieces",
+                                repeated(pieces.iter().enumerate().map(|(inner_index, piece)| {
+                                    simple_string(piece, inner_index as i64 + 1)
+                                })),
+                            ),
+                        ])
+                    }),
+            ),
+        ),
+    ])
+}
+
+fn parent_strings(parent: &str, values: &[&str]) -> Vec<Instance> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| parent_string(value, parent, index as i64 + 1))
+        .collect()
+}
+
+fn parent_ints(parent: &str, values: &[i64]) -> Vec<Instance> {
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| parent_int(*value, parent, index as i64 + 1))
+        .collect()
+}
+
+fn parent_string(value: &str, parent: &str, position: i64) -> Instance {
+    group([
+        field("Value", scalar(Value::String(value.into()))),
+        field("Parent", scalar(Value::String(parent.into()))),
+        field("Position", scalar(Value::Int(position))),
+    ])
+}
+
+fn parent_int(value: i64, parent: &str, position: i64) -> Instance {
+    group([
+        field("Value", scalar(Value::Int(value))),
+        field("Parent", scalar(Value::String(parent.into()))),
+        field("Position", scalar(Value::Int(position))),
+    ])
+}
+
+fn simple_string(value: &str, position: i64) -> Instance {
+    group([
+        field("Value", scalar(Value::String(value.into()))),
+        field("Position", scalar(Value::Int(position))),
+    ])
+}

@@ -28,6 +28,9 @@ internal static class Program
             ("stable multi-key sorting", StableMultiKeySorting),
             ("typed item counts", TypedItemCounts),
             ("ordered sequence windows", OrderedSequenceWindows),
+            ("generated sequence values", GeneratedSequenceValues),
+            ("generated sequence contexts", GeneratedSequenceContexts),
+            ("typed generated sequence errors", TypedGeneratedSequenceErrors),
         };
 
         foreach (var test in tests)
@@ -739,6 +742,67 @@ internal static class Program
             FerruleSequenceWindow.SkipFirst(2));
         WindowEquals(string.Empty, Array.Empty<int>(), FerruleSequenceWindow.Last(2));
     }
+
+    private static void GeneratedSequenceValues()
+    {
+        Equal(
+            "a||b|",
+            string.Join('|', FerruleSequences.Tokenize(Text("a,,b,"), Text(",")).Select(ValueText)));
+        Equal(
+            string.Empty,
+            string.Join('|', FerruleSequences.TokenizeByLength(Text(string.Empty), FerruleValue.FromInt64(2))));
+        Equal(
+            "aé|🙂z",
+            string.Join('|', FerruleSequences.TokenizeByLength(Text("aé🙂z"), FerruleValue.FromDouble(2.9)).Select(ValueText)));
+        Equal(
+            "1,2,3",
+            string.Join(',', FerruleSequences.GenerateRange(null, FerruleValue.FromInt64(3)).Select(ValueText)));
+        Equal(
+            "-2,-1,0",
+            string.Join(',', FerruleSequences.GenerateRange(Text("-2.0"), FerruleValue.FromDouble(0.0)).Select(ValueText)));
+        Equal(
+            0,
+            FerruleSequences.GenerateRange(FerruleValue.FromInt64(3), FerruleValue.FromInt64(2)).Count);
+    }
+
+    private static void GeneratedSequenceContexts()
+    {
+        var parent = ScopeContext.FromSource(Group(Field("Parent", Scalar(Text("outer")))));
+        var contexts = parent.IterateGenerated(new[] { Text("first"), Text("second") });
+        Equal(2, contexts.Count);
+        Equal(Text("first"), contexts[0].ResolveScalar());
+        Equal(Text("outer"), contexts[0].ResolveScalar("Parent"));
+        Equal(1L, contexts[0].Position());
+        Equal(2L, contexts[1].Position());
+        Equal(7L, contexts[1].WithCompactedPosition(7).Position());
+    }
+
+    private static void TypedGeneratedSequenceErrors()
+    {
+        var wrongType = Error(
+            FerruleRuntimeError.FunctionType,
+            () => FerruleSequences.Tokenize(FerruleValue.XmlNil, Text(",")));
+        Equal("tokenize", wrongType.Function);
+        Equal(FerruleValueKind.XmlNil, wrongType.FoundKind);
+
+        var delimiter = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleSequences.Tokenize(Text("a"), Text(string.Empty)));
+        Equal("requires a non-empty delimiter", delimiter.Detail);
+        Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleSequences.TokenizeByLength(Text("abc"), Text("2.0")));
+
+        var tooLarge = Error(
+            FerruleRuntimeError.GeneratedSequenceTooLarge,
+            () => FerruleSequences.GenerateRange(
+                FerruleValue.FromInt64(long.MinValue),
+                FerruleValue.FromInt64(long.MaxValue)));
+        Equal((UInt128)ulong.MaxValue + 1, tooLarge.RequestedItems);
+        Equal((UInt128)FerruleSequences.MaximumGeneratedSequenceItems, tooLarge.MaximumItems);
+    }
+
+    private static string ValueText(FerruleValue value) => value.ToString();
 
     private static void WindowEquals(
         string expected,

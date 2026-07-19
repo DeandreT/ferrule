@@ -130,6 +130,13 @@ first-item, or mapped-sequence output. Sort keys and filter-before-sort predicat
 observe raw positions; filters after sorting observe sorted positions; output
 items and their descendants observe final positions compacted per parent. Window
 bounds execute once in the parent context and retain typed item-count failures.
+Scopes can also generate scalar candidates by literal tokenization,
+Unicode-scalar fixed-length tokenization, or bounded inclusive integer ranges.
+Generated values expose the same private empty-path item and 1-based position
+semantics in both backends, while named fields continue to fall back to the
+parent source context. Sequence arguments evaluate once from left to right;
+Null yields no items and skips later arguments, and range materialization keeps
+the engine's one-million-item limit and structured size failures.
 It also supports all ordinary collection aggregates (`count`, `sum`, `avg`,
 `min`, `max`, `join`, and `item_at`) over direct fields or computed per-item
 expressions, with parent-context scalar arguments and typed numeric failures.

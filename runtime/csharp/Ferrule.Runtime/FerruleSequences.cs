@@ -57,6 +57,112 @@ public readonly struct FerruleSequenceWindow
 /// <summary>Engine-compatible sorting, item-count, and window primitives.</summary>
 public static class FerruleSequences
 {
+    public const ulong MaximumGeneratedSequenceItems = 1_000_000;
+
+    /// <summary>Splits around a literal delimiter while preserving empty items.</summary>
+    public static IReadOnlyList<FerruleValue> Tokenize(
+        FerruleValue input,
+        FerruleValue delimiter)
+    {
+        var text = RequireString(input, "tokenize");
+        var separator = RequireString(delimiter, "tokenize");
+        if (separator.Length == 0)
+        {
+            throw InvalidArgument("tokenize", "requires a non-empty delimiter");
+        }
+
+        var values = new List<FerruleValue>();
+        var start = 0;
+        while (true)
+        {
+            var next = text.IndexOf(separator, start, StringComparison.Ordinal);
+            if (next < 0)
+            {
+                values.Add(FerruleValue.FromString(text[start..]));
+                break;
+            }
+            values.Add(FerruleValue.FromString(text[start..next]));
+            start = next + separator.Length;
+        }
+        return new ReadOnlyCollection<FerruleValue>(values);
+    }
+
+    /// <summary>Chunks text by Unicode scalar count.</summary>
+    public static IReadOnlyList<FerruleValue> TokenizeByLength(
+        FerruleValue input,
+        FerruleValue length)
+    {
+        var text = RequireString(input, "tokenize-by-length");
+        var chunkLength = length.Kind switch
+        {
+            FerruleValueKind.Int64 => length.Int64Value,
+            FerruleValueKind.Double when double.IsFinite(length.DoubleValue) =>
+                TruncatedInt64(length.DoubleValue),
+            FerruleValueKind.String => ParseItemCount(length.StringValue),
+            _ => null,
+        };
+        if (!chunkLength.HasValue || chunkLength.Value <= 0)
+        {
+            throw InvalidArgument(
+                "tokenize-by-length",
+                "requires a positive integer length");
+        }
+
+        var runes = text.EnumerateRunes().ToArray();
+        var size = chunkLength.Value > int.MaxValue
+            ? int.MaxValue
+            : (int)chunkLength.Value;
+        var values = new List<FerruleValue>();
+        for (var start = 0; start < runes.Length;)
+        {
+            var count = Math.Min(size, runes.Length - start);
+            var builder = new StringBuilder();
+            for (var index = 0; index < count; index++)
+            {
+                builder.Append(runes[start + index].ToString());
+            }
+            values.Add(FerruleValue.FromString(builder.ToString()));
+            start += count;
+        }
+        return new ReadOnlyCollection<FerruleValue>(values);
+    }
+
+    /// <summary>Generates a bounded inclusive integer range.</summary>
+    public static IReadOnlyList<FerruleValue> GenerateRange(
+        FerruleValue? from,
+        FerruleValue to)
+    {
+        var first = from.HasValue ? SequenceInteger(from.Value) : 1L;
+        var last = SequenceInteger(to);
+        if (first > last)
+        {
+            return Array.Empty<FerruleValue>();
+        }
+
+        var requested = (UInt128)((Int128)last - (Int128)first + 1);
+        if (requested > MaximumGeneratedSequenceItems)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.GeneratedSequenceTooLarge,
+                $"generate-sequence requested {requested} items; maximum is {MaximumGeneratedSequenceItems}",
+                requestedItems: requested,
+                maximumItems: MaximumGeneratedSequenceItems);
+        }
+
+        var values = new List<FerruleValue>((int)requested);
+        var current = first;
+        while (true)
+        {
+            values.Add(FerruleValue.FromInt64(current));
+            if (current == last)
+            {
+                break;
+            }
+            current++;
+        }
+        return new ReadOnlyCollection<FerruleValue>(values);
+    }
+
     /// <summary>
     /// Evaluates every key once in item/key order and returns a stable multi-key sort.
     /// Incomparable values behave as equal for that key.
@@ -268,6 +374,85 @@ public static class FerruleSequences
             ? count
             : null;
     }
+
+    private static string RequireString(FerruleValue value, string function)
+    {
+        if (value.Kind == FerruleValueKind.String)
+        {
+            return value.StringValue;
+        }
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.FunctionType,
+            $"`{function}` cannot accept a {ValueTypeName(value)} argument.",
+            function: function,
+            foundKind: value.Kind);
+    }
+
+    private static long SequenceInteger(FerruleValue value)
+    {
+        long? integer = value.Kind switch
+        {
+            FerruleValueKind.Int64 => value.Int64Value,
+            FerruleValueKind.Double => ExactDoubleInteger(value.DoubleValue),
+            FerruleValueKind.String => ParseSequenceInteger(value.StringValue),
+            _ => null,
+        };
+        if (integer.HasValue)
+        {
+            return integer.Value;
+        }
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.FunctionType,
+            $"`generate-sequence` cannot accept a {ValueTypeName(value)} argument.",
+            function: "generate-sequence",
+            foundKind: value.Kind);
+    }
+
+    private static long? ParseSequenceInteger(string value)
+    {
+        var trimmed = value.Trim();
+        if (long.TryParse(
+            trimmed,
+            NumberStyles.AllowLeadingSign,
+            CultureInfo.InvariantCulture,
+            out var integer))
+        {
+            return integer;
+        }
+        return double.TryParse(
+            trimmed,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var floating)
+            ? ExactDoubleInteger(floating)
+            : null;
+    }
+
+    private static long? ExactDoubleInteger(double value) =>
+        double.IsFinite(value) &&
+        Math.Truncate(value) == value &&
+        value >= (double)long.MinValue &&
+        value < (double)long.MaxValue
+            ? (long)value
+            : null;
+
+    private static FerruleRuntimeException InvalidArgument(string function, string detail) =>
+        new(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            $"`{function}` {detail}.",
+            function: function,
+            detail: detail);
+
+    private static string ValueTypeName(FerruleValue value) => value.Kind switch
+    {
+        FerruleValueKind.Null => "null",
+        FerruleValueKind.XmlNil => "xml nil",
+        FerruleValueKind.Bool => "bool",
+        FerruleValueKind.Int64 => "int",
+        FerruleValueKind.Double => "float",
+        FerruleValueKind.String => "string",
+        _ => "unknown",
+    };
 
     private static (int Skip, int Take) WindowRange(
         int length,
