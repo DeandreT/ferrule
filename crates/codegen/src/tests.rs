@@ -7,8 +7,8 @@ use mapping::{
 
 use crate::{
     ArtifactPath, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError, Diagnostic, Expression,
-    GeneratedFile, IterationPlan, ProjectFeature, SUPPORTED_SCALAR_CALLS, ScalarFunction,
-    ScopeFeature, UnsupportedNodeKind, lower,
+    GeneratedFile, GeneratedSequence, IterationPlan, ProjectFeature, SUPPORTED_SCALAR_CALLS,
+    ScalarFunction, ScopeFeature, UnsupportedNodeKind, UnsupportedSequenceKind, lower,
 };
 
 fn scalar(name: &str) -> SchemaNode {
@@ -393,6 +393,129 @@ fn lowers_source_iteration_at_the_static_target_path() {
     assert_eq!(
         program.root.children[0].iteration,
         Some(IterationPlan::source(Vec::new()))
+    );
+}
+
+#[test]
+fn lowers_portable_generated_sequences_and_their_item_roots() {
+    let project = |sequence: mapping::SequenceExpr, nodes: Vec<(u32, Node)>| {
+        let mut project = supported_project();
+        project.graph.nodes.extend(nodes);
+        project.root.children[0].iteration = ScopeIteration::Sequence(sequence);
+        project.root.children[0].bindings[0].node = 42;
+        project
+    };
+    let item = || Node::SourceField {
+        path: Vec::new(),
+        frame: None,
+    };
+
+    let tokenize = project(
+        mapping::SequenceExpr::Tokenize {
+            input: 40,
+            delimiter: 41,
+            item: 42,
+        },
+        vec![
+            (
+                40,
+                Node::Const {
+                    value: Value::String("a,b".into()),
+                },
+            ),
+            (
+                41,
+                Node::Const {
+                    value: Value::String(",".into()),
+                },
+            ),
+            (42, item()),
+        ],
+    );
+    let lowered = lower(&tokenize).expect("literal tokenize lowers");
+    assert_eq!(
+        lowered.root.children[0].iteration,
+        Some(IterationPlan::generated(GeneratedSequence::Tokenize {
+            input: 40,
+            delimiter: 41,
+            item: 42,
+        }))
+    );
+    assert_eq!(
+        lowered
+            .expressions
+            .iter()
+            .map(|expression| expression.id)
+            .collect::<Vec<_>>(),
+        vec![10, 20, 40, 41, 42]
+    );
+
+    let chunks = project(
+        mapping::SequenceExpr::TokenizeByLength {
+            input: 40,
+            length: 41,
+            item: 42,
+        },
+        vec![
+            (
+                40,
+                Node::Const {
+                    value: Value::String("abcd".into()),
+                },
+            ),
+            (
+                41,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
+            (42, item()),
+        ],
+    );
+    assert_eq!(
+        lower(&chunks)
+            .expect("length tokenize lowers")
+            .root
+            .children[0]
+            .iteration,
+        Some(IterationPlan::generated(
+            GeneratedSequence::TokenizeByLength {
+                input: 40,
+                length: 41,
+                item: 42,
+            }
+        ))
+    );
+
+    let range = project(
+        mapping::SequenceExpr::Generate {
+            from: Some(40),
+            to: 41,
+            item: 42,
+        },
+        vec![
+            (
+                40,
+                Node::Const {
+                    value: Value::Int(2),
+                },
+            ),
+            (
+                41,
+                Node::Const {
+                    value: Value::Int(4),
+                },
+            ),
+            (42, item()),
+        ],
+    );
+    assert_eq!(
+        lower(&range).expect("inclusive range lowers").root.children[0].iteration,
+        Some(IterationPlan::generated(GeneratedSequence::Range {
+            from: Some(40),
+            to: 41,
+            item: 42,
+        }))
     );
 }
 
@@ -858,10 +981,11 @@ fn rejects_filters_without_iteration_before_subset_lowering() {
 fn reports_other_iteration_forms_at_the_static_target_path() {
     let mut project = supported_project();
     project.root.children[0].iteration =
-        ScopeIteration::Sequence(mapping::SequenceExpr::Generate {
+        ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeRegex {
+            input: 20,
+            pattern: 20,
+            flags: None,
             item: 40,
-            from: Some(10),
-            to: 10,
         });
     project.graph.nodes.insert(
         40,
@@ -870,14 +994,26 @@ fn reports_other_iteration_forms_at_the_static_target_path() {
             frame: None,
         },
     );
+    project.graph.nodes.insert(
+        41,
+        Node::Call {
+            function: "concat".into(),
+            args: vec![20, 20],
+        },
+    );
+    project.root.children[0].filter = Some(41);
 
     let diagnostics = lower(&project)
-        .expect_err("generated sequences remain outside the supported subset")
+        .expect_err("regex tokenize remains outside the portable subset")
         .into_diagnostics();
 
     assert!(diagnostics.contains(&Diagnostic::UnsupportedScope {
         target_path: vec!["Details".into()],
-        feature: ScopeFeature::Iteration,
+        feature: ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex),
+    }));
+    assert!(diagnostics.contains(&Diagnostic::UnsupportedFunction {
+        node: 41,
+        function: "concat".into(),
     }));
 }
 

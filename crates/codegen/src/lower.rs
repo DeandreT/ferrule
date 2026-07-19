@@ -4,9 +4,10 @@ use ir::{SchemaKind, SchemaNode, Value};
 use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
-    Binding, Diagnostic, Expression, ExpressionNode, IterationPlan, LowerError, Program,
-    ProjectFeature, ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey,
-    SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind,
+    Binding, Diagnostic, Expression, ExpressionNode, GeneratedSequence, IterationPlan,
+    IterationSource, LowerError, Program, ProjectFeature, ScalarFunction, ScopeConstructionKind,
+    ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope,
+    UnsupportedNodeKind, UnsupportedSequenceKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -79,6 +80,7 @@ fn lower_scope(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> TargetScope {
     inspect_scope_features(scope, target_path, diagnostics);
+    let iteration = lower_iteration(scope);
     roots.extend(scope.filter);
     roots.extend(scope.sort_keys().map(|key| key.node));
     roots.extend(
@@ -88,6 +90,10 @@ fn lower_scope(
             .copied()
             .flat_map(mapping::SequenceWindow::nodes),
     );
+    if let Some(sequence) = scope.sequence() {
+        roots.extend(sequence.inputs());
+        roots.push(sequence.item());
+    }
 
     let bindings = scope
         .bindings
@@ -138,42 +144,78 @@ fn lower_scope(
     TargetScope {
         target_field: scope.target_field.clone(),
         repeating: target.repeating,
-        iteration: match &scope.iteration {
-            ScopeIteration::Source(path) => Some(IterationPlan::new(
-                SourceIteration::new(path.clone()),
-                scope.filter,
-                scope.sort_by.map(|expression| {
-                    SortPlan::new(
-                        SortKey {
-                            expression,
-                            descending: scope.sort_descending,
-                        },
-                        scope
-                            .sort_then_by
-                            .iter()
-                            .copied()
-                            .map(SortKey::from)
-                            .collect(),
-                        scope.sort_filter_order.into(),
-                    )
-                }),
-                scope
-                    .windows
-                    .iter()
-                    .copied()
-                    .map(SequenceWindow::from)
-                    .collect(),
-                scope.iteration_output.into(),
-            )),
-            ScopeIteration::None
-            | ScopeIteration::DynamicDocuments { .. }
-            | ScopeIteration::Sequence(_)
-            | ScopeIteration::InnerJoin { .. }
-            | ScopeIteration::Concatenate(_) => None,
-        },
+        iteration,
         bindings,
         children,
     }
+}
+
+fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
+    let input: IterationSource = match &scope.iteration {
+        ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
+        ScopeIteration::Sequence(mapping::SequenceExpr::Tokenize {
+            input,
+            delimiter,
+            item,
+        }) => GeneratedSequence::Tokenize {
+            input: *input,
+            delimiter: *delimiter,
+            item: *item,
+        }
+        .into(),
+        ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeByLength {
+            input,
+            length,
+            item,
+        }) => GeneratedSequence::TokenizeByLength {
+            input: *input,
+            length: *length,
+            item: *item,
+        }
+        .into(),
+        ScopeIteration::Sequence(mapping::SequenceExpr::Generate { from, to, item }) => {
+            GeneratedSequence::Range {
+                from: *from,
+                to: *to,
+                item: *item,
+            }
+            .into()
+        }
+        ScopeIteration::None
+        | ScopeIteration::DynamicDocuments { .. }
+        | ScopeIteration::Sequence(
+            mapping::SequenceExpr::TokenizeRegex { .. }
+            | mapping::SequenceExpr::RecursiveCollect { .. },
+        )
+        | ScopeIteration::InnerJoin { .. }
+        | ScopeIteration::Concatenate(_) => return None,
+    };
+    Some(IterationPlan::new(
+        input,
+        scope.filter,
+        scope.sort_by.map(|expression| {
+            SortPlan::new(
+                SortKey {
+                    expression,
+                    descending: scope.sort_descending,
+                },
+                scope
+                    .sort_then_by
+                    .iter()
+                    .copied()
+                    .map(SortKey::from)
+                    .collect(),
+                scope.sort_filter_order.into(),
+            )
+        }),
+        scope
+            .windows
+            .iter()
+            .copied()
+            .map(SequenceWindow::from)
+            .collect(),
+        scope.iteration_output.into(),
+    ))
 }
 
 fn display_target_scope(path: &[String]) -> String {
@@ -203,11 +245,23 @@ fn inspect_scope_features(
             feature,
         });
     };
-    if !matches!(
-        scope.iteration,
-        ScopeIteration::None | ScopeIteration::Source(_)
-    ) {
-        report(ScopeFeature::Iteration);
+    match &scope.iteration {
+        ScopeIteration::None
+        | ScopeIteration::Source(_)
+        | ScopeIteration::Sequence(
+            mapping::SequenceExpr::Tokenize { .. }
+            | mapping::SequenceExpr::TokenizeByLength { .. }
+            | mapping::SequenceExpr::Generate { .. },
+        ) => {}
+        ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeRegex { .. }) => report(
+            ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex),
+        ),
+        ScopeIteration::Sequence(mapping::SequenceExpr::RecursiveCollect { .. }) => report(
+            ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::RecursiveCollect),
+        ),
+        ScopeIteration::DynamicDocuments { .. }
+        | ScopeIteration::InnerJoin { .. }
+        | ScopeIteration::Concatenate(_) => report(ScopeFeature::Iteration),
     }
     if let Some(kind) = construction_kind(&scope.construction) {
         report(ScopeFeature::Construction(kind));

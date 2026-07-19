@@ -1,0 +1,190 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+AssertOutput((FerruleGroup)GeneratedMapping.Execute(Source(false)));
+var error = Error(() => GeneratedMapping.Execute(Source(true)));
+Assert(error.Error == FerruleRuntimeError.DivideByZero);
+
+static FerruleGroup Source(bool errorPrecedence) =>
+    new(new FerruleField[]
+    {
+        new(
+            "ErrorInput",
+            Scalar(errorPrecedence
+                ? FerruleValue.FromInt64(7)
+                : FerruleValue.FromString("left,right"))),
+        new("TriggerError", Scalar(FerruleValue.FromBoolean(errorPrecedence))),
+        new("Parents", new FerruleRepeated(new FerruleInstance[]
+        {
+            Parent("Alpha", "delta,,alpha,beta,gamma", "aé🙂z", ",", 2, 2, 4),
+            Parent("Beta", "one|three|two", string.Empty, "|", 2, 4, 2),
+        })),
+    });
+
+static FerruleGroup Parent(
+    string name,
+    string tokens,
+    string unicode,
+    string delimiter,
+    long length,
+    long from,
+    long to) =>
+    new(new FerruleField[]
+    {
+        new("Name", Scalar(FerruleValue.FromString(name))),
+        new("Tokens", Scalar(FerruleValue.FromString(tokens))),
+        new("Unicode", Scalar(FerruleValue.FromString(unicode))),
+        new("Delimiter", Scalar(FerruleValue.FromString(delimiter))),
+        new("Length", Scalar(FerruleValue.FromInt64(length))),
+        new("From", Scalar(FerruleValue.FromInt64(from))),
+        new("To", Scalar(FerruleValue.FromInt64(to))),
+    });
+
+static void AssertOutput(FerruleGroup root)
+{
+    var parents = (FerruleRepeated)Field(root, "ParentOut");
+    Assert(parents.Items.Count == 2);
+    AssertParent(
+        (FerruleGroup)parents.Items[0],
+        "Alpha",
+        new[] { "beta", "delta" },
+        new[] { "aé", "🙂z" },
+        new long[] { 1, 2, 3, 4 },
+        new long[] { 2, 3, 4 },
+        "delta",
+        new[] { "delta", "alpha", "beta", "gamma" },
+        new (string Value, string[] Pieces)[]
+        {
+            ("delta", new[] { "de", "lt", "a" }),
+            (string.Empty, Array.Empty<string>()),
+            ("alpha", new[] { "al", "ph", "a" }),
+            ("beta", new[] { "be", "ta" }),
+            ("gamma", new[] { "ga", "mm", "a" }),
+        });
+    AssertParent(
+        (FerruleGroup)parents.Items[1],
+        "Beta",
+        new[] { "three", "two" },
+        Array.Empty<string>(),
+        new long[] { 1, 2 },
+        Array.Empty<long>(),
+        "one",
+        new[] { "one", "three", "two" },
+        new (string Value, string[] Pieces)[]
+        {
+            ("one", new[] { "on", "e" }),
+            ("three", new[] { "th", "re", "e" }),
+            ("two", new[] { "tw", "o" }),
+        });
+
+    AssertStringRows((FerruleRepeated)Field(root, "EmptyTokens"), null, "");
+    Assert(((FerruleRepeated)Field(root, "EmptyChunks")).Items.Count == 0);
+    Assert(((FerruleRepeated)Field(root, "NullTokens")).Items.Count == 0);
+    Assert(((FerruleRepeated)Field(root, "NullRange")).Items.Count == 0);
+    AssertStringRows((FerruleRepeated)Field(root, "ErrorCheck"), null, "left", "right");
+}
+
+static void AssertParent(
+    FerruleGroup parent,
+    string name,
+    string[] controlled,
+    string[] chunks,
+    long[] defaultRange,
+    long[] explicitRange,
+    string first,
+    string[] mapped,
+    (string Value, string[] Pieces)[] nested)
+{
+    Assert(Value(parent, "Name") == FerruleValue.FromString(name));
+    AssertStringRows((FerruleRepeated)Field(parent, "Controlled"), name, controlled);
+    AssertStringRows((FerruleRepeated)Field(parent, "Chunks"), name, chunks);
+    AssertIntRows((FerruleRepeated)Field(parent, "DefaultRange"), name, defaultRange);
+    AssertIntRows((FerruleRepeated)Field(parent, "ExplicitRange"), name, explicitRange);
+    AssertStringRow((FerruleGroup)Field(parent, "First"), name, first, 1);
+    AssertStringRows((FerruleMappedSequence)Field(parent, "Mapped"), name, mapped);
+    AssertNested((FerruleRepeated)Field(parent, "Nested"), nested);
+}
+
+static void AssertNested(
+    FerruleRepeated rows,
+    (string Value, string[] Pieces)[] expected)
+{
+    Assert(rows.Items.Count == expected.Length);
+    for (var outerIndex = 0; outerIndex < expected.Length; outerIndex++)
+    {
+        var row = (FerruleGroup)rows.Items[outerIndex];
+        Assert(Value(row, "Value") == FerruleValue.FromString(expected[outerIndex].Value));
+        Assert(Value(row, "Position") == FerruleValue.FromInt64(outerIndex + 1));
+        AssertStringRows(
+            (FerruleRepeated)Field(row, "Pieces"),
+            null,
+            expected[outerIndex].Pieces);
+    }
+}
+
+static void AssertStringRows(FerruleInstance sequence, string? parent, params string[] values)
+{
+    var items = sequence switch
+    {
+        FerruleRepeated repeated => repeated.Items,
+        FerruleMappedSequence mapped => mapped.Items,
+        _ => throw new InvalidOperationException("Expected a string sequence."),
+    };
+    Assert(items.Count == values.Length);
+    for (var index = 0; index < values.Length; index++)
+    {
+        AssertStringRow((FerruleGroup)items[index], parent, values[index], index + 1);
+    }
+}
+
+static void AssertStringRow(FerruleGroup row, string? parent, string value, long position)
+{
+    Assert(Value(row, "Value") == FerruleValue.FromString(value));
+    if (parent is not null)
+    {
+        Assert(Value(row, "Parent") == FerruleValue.FromString(parent));
+    }
+    Assert(Value(row, "Position") == FerruleValue.FromInt64(position));
+}
+
+static void AssertIntRows(FerruleRepeated rows, string parent, params long[] values)
+{
+    Assert(rows.Items.Count == values.Length);
+    for (var index = 0; index < values.Length; index++)
+    {
+        var row = (FerruleGroup)rows.Items[index];
+        Assert(Value(row, "Value") == FerruleValue.FromInt64(values[index]));
+        Assert(Value(row, "Parent") == FerruleValue.FromString(parent));
+        Assert(Value(row, "Position") == FerruleValue.FromInt64(index + 1));
+    }
+}
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static FerruleInstance Field(FerruleGroup group, string name) =>
+    group.Fields.Single(field => field.Name == name).Value;
+
+static FerruleValue Value(FerruleGroup group, string name) =>
+    ((FerruleScalar)Field(group, name)).Value;
+
+static FerruleRuntimeException Error(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected generated sequence evaluation to fail.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("generated sequence output differs from the engine");
+    }
+}

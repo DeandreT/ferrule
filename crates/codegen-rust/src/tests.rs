@@ -5,7 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 use codegen::{
-    Binding, ExpressionNode, IterationOutput, IterationPlan, ScalarFunction, SourceIteration,
+    Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, ScalarFunction,
+    SourceIteration,
 };
 use ir::SchemaNode;
 
@@ -559,6 +560,170 @@ group([
     assert!(
         result.status.success(),
         "generated Rust project failed:\n{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
+fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|parent| parent.join("codegen-runtime"))
+        .unwrap();
+    let output = TempDir::new("rust_generated_sequence_codegen");
+    let program = Program {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar("Name", ScalarType::String),
+                SchemaNode::scalar("From", ScalarType::Int),
+                SchemaNode::scalar("To", ScalarType::Int),
+            ],
+        ),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group(
+                    "Rows",
+                    vec![
+                        SchemaNode::scalar("Value", ScalarType::Int),
+                        SchemaNode::scalar("Position", ScalarType::Int),
+                        SchemaNode::scalar("Parent", ScalarType::String),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        expressions: vec![
+            ExpressionNode {
+                id: 1,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["From".into()],
+                },
+            },
+            ExpressionNode {
+                id: 2,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["To".into()],
+                },
+            },
+            ExpressionNode {
+                id: 3,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 4,
+                expression: Expression::Position {
+                    collection: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 5,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Name".into()],
+                },
+            },
+        ],
+        root: TargetScope {
+            target_field: String::new(),
+            repeating: false,
+            iteration: None,
+            bindings: Vec::new(),
+            children: vec![TargetScope {
+                target_field: "Rows".into(),
+                repeating: true,
+                iteration: Some(IterationPlan::generated(GeneratedSequence::Range {
+                    from: Some(1),
+                    to: 2,
+                    item: 3,
+                })),
+                bindings: vec![
+                    Binding {
+                        target_field: "Value".into(),
+                        expression: 3,
+                        target_type: ScalarType::Int,
+                        repeating: false,
+                    },
+                    Binding {
+                        target_field: "Position".into(),
+                        expression: 4,
+                        target_type: ScalarType::Int,
+                        repeating: false,
+                    },
+                    Binding {
+                        target_field: "Parent".into(),
+                        expression: 5,
+                        target_type: ScalarType::String,
+                        repeating: false,
+                    },
+                ],
+                children: Vec::new(),
+            }],
+        },
+    };
+    let artifacts = emit(
+        &program,
+        &Options {
+            package_name: "generated-range-map".to_string(),
+            runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
+        },
+    )
+    .unwrap();
+    write_artifacts(output.path(), &artifacts);
+    fs::write(
+        output.path().join("src/main.rs"),
+        r#"use codegen_runtime::{Instance, Value, field, group, repeated, scalar};
+
+fn main() {
+    let source = group([
+        field("Name", scalar(Value::String("parent".into()))),
+        field("From", scalar(Value::Int(2))),
+        field("To", scalar(Value::Int(4))),
+    ]);
+    let expected = group([field("Rows", repeated([
+        row(2, 1),
+        row(3, 2),
+        row(4, 3),
+    ]))]);
+    assert_eq!(generated_range_map::execute(&source).unwrap(), expected);
+
+    let null_from = group([
+        field("Name", scalar(Value::String("parent".into()))),
+        field("From", scalar(Value::Null)),
+    ]);
+    assert_eq!(
+        generated_range_map::execute(&null_from).unwrap(),
+        group([field("Rows", repeated(Vec::<Instance>::new()))]),
+    );
+}
+
+fn row(value: i64, position: i64) -> Instance {
+    group([
+        field("Value", scalar(Value::Int(value))),
+        field("Position", scalar(Value::Int(position))),
+        field("Parent", scalar(Value::String("parent".into()))),
+    ])
+}
+"#,
+    )
+    .unwrap();
+
+    let result = Command::new("cargo")
+        .args(["run", "--quiet"])
+        .current_dir(output.path())
+        .env("CARGO_TARGET_DIR", output.path().join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "generated Rust range project failed:\n{}\n{}",
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );

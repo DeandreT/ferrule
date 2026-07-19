@@ -60,6 +60,30 @@ public sealed class ScopeContext
     }
 
     /// <summary>
+    /// Appends generated scalar items as an empty-path collection while
+    /// retaining every parent frame and collection identity.
+    /// </summary>
+    public IReadOnlyList<ScopeContext> IterateGenerated(IReadOnlyList<FerruleValue> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        var output = new ScopeContext[values.Count];
+        for (var index = 0; index < values.Count; index++)
+        {
+            var item = new FerruleScalar(values[index]);
+            var frames = new List<FerruleInstance>(_frames.Count + 1);
+            frames.AddRange(_frames);
+            frames.Add(item);
+            var collections = new List<CollectionIdentity>(_collections.Count + 1);
+            collections.AddRange(_collections);
+            collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index + 1));
+            output[index] = new ScopeContext(
+                new ReadOnlyCollection<FerruleInstance>(frames),
+                new ReadOnlyCollection<CollectionIdentity>(collections));
+        }
+        return new ReadOnlyCollection<ScopeContext>(output);
+    }
+
+    /// <summary>
     /// Returns the flattened source items reduced by an aggregate expression.
     /// A named path starts at the nearest frame that owns its first field. An
     /// empty path instead starts at the nearest repeated or document-set frame.

@@ -11,12 +11,14 @@ public enum FerruleRuntimeError
     UnknownFunction,
     FunctionArity,
     FunctionType,
+    FunctionInvalidArgument,
     DivideByZero,
     IntegerOverflow,
     NotABool,
     NotAnItemCount,
     AggregateIntegerOverflow,
     AggregateNonFinite,
+    GeneratedSequenceTooLarge,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -30,7 +32,10 @@ public sealed class FerruleRuntimeException : Exception
         int? expectedArity = null,
         int? actualArity = null,
         FerruleValueKind? foundKind = null,
-        FerruleAggregateOperation? aggregateOperation = null)
+        FerruleAggregateOperation? aggregateOperation = null,
+        string? detail = null,
+        UInt128? requestedItems = null,
+        UInt128? maximumItems = null)
         : base(message)
     {
         Error = error;
@@ -40,6 +45,9 @@ public sealed class FerruleRuntimeException : Exception
         ActualArity = actualArity;
         FoundKind = foundKind;
         AggregateOperation = aggregateOperation;
+        Detail = detail;
+        RequestedItems = requestedItems;
+        MaximumItems = maximumItems;
     }
 
     public FerruleRuntimeException(
@@ -51,7 +59,10 @@ public sealed class FerruleRuntimeException : Exception
         int? expectedArity = null,
         int? actualArity = null,
         FerruleValueKind? foundKind = null,
-        FerruleAggregateOperation? aggregateOperation = null)
+        FerruleAggregateOperation? aggregateOperation = null,
+        string? detail = null,
+        UInt128? requestedItems = null,
+        UInt128? maximumItems = null)
         : base(message, innerException)
     {
         Error = error;
@@ -61,6 +72,9 @@ public sealed class FerruleRuntimeException : Exception
         ActualArity = actualArity;
         FoundKind = foundKind;
         AggregateOperation = aggregateOperation;
+        Detail = detail;
+        RequestedItems = requestedItems;
+        MaximumItems = maximumItems;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -76,4 +90,10 @@ public sealed class FerruleRuntimeException : Exception
     public FerruleValueKind? FoundKind { get; }
 
     public FerruleAggregateOperation? AggregateOperation { get; }
+
+    public string? Detail { get; }
+
+    public UInt128? RequestedItems { get; }
+
+    public UInt128? MaximumItems { get; }
 }

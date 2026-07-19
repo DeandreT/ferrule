@@ -8,13 +8,19 @@
 
 mod aggregate;
 mod context;
+mod generated_sequence;
 mod iteration;
 
 use std::fmt;
 
 pub use aggregate::{AggregateFunction, aggregate};
-pub use context::{InstanceKind, ScopeContext, SourcePathError, clone_scalar, resolve_scalar};
+pub use context::{
+    GeneratedItems, InstanceKind, ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
+};
 pub use functions::FunctionError;
+pub use generated_sequence::{
+    MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length,
+};
 pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
@@ -27,6 +33,7 @@ pub enum RuntimeError {
     Function(FunctionError),
     AggregateIntegerOverflow { function: AggregateFunction },
     AggregateNonFinite { function: AggregateFunction },
+    GeneratedSequenceTooLarge { requested: u128, max: u128 },
     NotABool { node: u32, found: &'static str },
     NotAnItemCount { node: u32, found: &'static str },
 }
@@ -45,6 +52,10 @@ impl fmt::Display for RuntimeError {
             Self::AggregateNonFinite { function } => write!(
                 formatter,
                 "{function:?} aggregate encountered or produced a non-finite number"
+            ),
+            Self::GeneratedSequenceTooLarge { requested, max } => write!(
+                formatter,
+                "generate-sequence requested {requested} items; maximum is {max}"
             ),
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
@@ -66,6 +77,7 @@ impl std::error::Error for RuntimeError {
             Self::Function(error) => Some(error),
             Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
+            | Self::GeneratedSequenceTooLarge { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. } => None,
         }
@@ -245,6 +257,31 @@ mod tests {
             document_contexts[1].resolve_scalar(&["Name"]),
             Ok(string("document two"))
         );
+    }
+
+    #[test]
+    fn generated_items_retain_parent_fallback_and_independent_positions() {
+        let source = group([field(
+            "Rows",
+            repeated([
+                group([field("Name", scalar(string("first")))]),
+                group([field("Name", scalar(string("second")))]),
+            ]),
+        )]);
+        let rows = ScopeContext::new(&source).walk_source(&["Rows"]);
+        let generated = GeneratedItems::new(vec![integer(10), integer(20)]);
+        let items = rows[1].generated_items(&generated);
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[1].resolve_scalar(&[]), Ok(integer(20)));
+        assert_eq!(items[1].resolve_scalar(&["Name"]), Ok(string("second")));
+        assert_eq!(items[1].position(&[]), 2);
+        assert_eq!(items[1].position(&["Rows"]), 2);
+
+        let compact = items[1].with_compact_last_position(7);
+        assert_eq!(compact.resolve_scalar(&[]), Ok(integer(20)));
+        assert_eq!(compact.position(&[]), 7);
+        assert_eq!(compact.position(&["Rows"]), 2);
     }
 
     #[test]
