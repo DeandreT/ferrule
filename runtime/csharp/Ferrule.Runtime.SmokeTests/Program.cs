@@ -22,6 +22,7 @@ internal static partial class Program
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),
             ("portable scalar function batch A", ScalarFunctionBatchA),
+            ("portable scalar function batch B", ScalarFunctionBatchB),
             ("typed function errors", TypedFunctionErrors),
             ("scope source iteration", ScopeSourceIteration),
             ("aggregate source contexts", AggregateSourceContexts),

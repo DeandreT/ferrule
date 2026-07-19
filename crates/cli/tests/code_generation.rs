@@ -21,6 +21,8 @@ mod iteration_metadata;
 mod recursive_sequences;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
+#[path = "code_generation/scalar_algorithms.rs"]
+mod scalar_algorithms;
 #[path = "code_generation/scalar_functions.rs"]
 mod scalar_functions;
 #[path = "code_generation/sequence_reducers.rs"]

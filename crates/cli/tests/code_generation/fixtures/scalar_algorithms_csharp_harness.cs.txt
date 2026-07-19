@@ -1,0 +1,109 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false, false));
+foreach (var (group, name, expected) in ExpectedValues())
+{
+    AssertValue(output, group, name, expected);
+}
+AssertError(
+    () => GeneratedMapping.Execute(Source(true, false, false)),
+    FerruleRuntimeError.FunctionType,
+    "substring",
+    found: FerruleValueKind.Int64);
+AssertError(
+    () => GeneratedMapping.Execute(Source(false, true, false)),
+    FerruleRuntimeError.FunctionInvalidArgument,
+    "isbn10_to_isbn13",
+    detail: "ISBN-10 check digit is invalid");
+AssertError(
+    () => GeneratedMapping.Execute(Source(false, false, true)),
+    FerruleRuntimeError.FunctionArity,
+    "date_from_datetime",
+    expectedArity: 1,
+    actualArity: 0);
+
+static FerruleGroup Source(bool failType, bool failInvalid, bool failArity) => new(new FerruleField[]
+{
+    new("FailType", new FerruleScalar(FerruleValue.FromBoolean(failType))),
+    new("FailInvalid", new FerruleScalar(FerruleValue.FromBoolean(failInvalid))),
+    new("FailArity", new FerruleScalar(FerruleValue.FromBoolean(failArity))),
+    new("NaN", new FerruleScalar(FerruleValue.FromDouble(double.NaN))),
+    new("Infinity", new FerruleScalar(FerruleValue.FromDouble(double.PositiveInfinity))),
+});
+
+static void AssertValue(FerruleGroup output, string group, string name, FerruleValue expected)
+{
+    var nested = (FerruleGroup)output.Fields.Single(field => field.Name == group).Value;
+    var value = (FerruleScalar)nested.Fields.Single(field => field.Name == name).Value;
+    if (value.Value != expected)
+    {
+        throw new InvalidOperationException($"Scalar algorithm output {group}/{name} differs: {value.Value} != {expected}.");
+    }
+}
+
+static void AssertError(
+    Action action,
+    FerruleRuntimeError expected,
+    string function,
+    int? expectedArity = null,
+    int? actualArity = null,
+    FerruleValueKind? found = null,
+    string? detail = null)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (
+        error.Error == expected &&
+        error.Function == function &&
+        error.ExpectedArity == expectedArity &&
+        error.ActualArity == actualArity &&
+        error.FoundKind == found &&
+        error.Detail == detail)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected {expected} from {function}.");
+}
+
+static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValues()
+{
+    yield return ("Substring", "Unicode", Text("🙂é"));
+    yield return ("Substring", "RoundedStart", Text("cdef"));
+    yield return ("Substring", "RoundedLength", Text("bcd"));
+    yield return ("Substring", "ZeroStart", Text("a"));
+    yield return ("Substring", "Maximum", Text(""));
+    yield return ("Substring", "NaN", Text("abc"));
+    yield return ("Substring", "Infinity", Text(""));
+    yield return ("Like", "AsciiFold", FerruleValue.FromBoolean(true));
+    yield return ("Like", "UnicodeWildcards", FerruleValue.FromBoolean(true));
+    yield return ("Like", "NonAsciiExact", FerruleValue.FromBoolean(false));
+    yield return ("Like", "EmptyPercent", FerruleValue.FromBoolean(true));
+    yield return ("Like", "RepeatedPercent", FerruleValue.FromBoolean(true));
+    yield return ("Pad", "FloatLength", Text("007"));
+    yield return ("Pad", "EmojiPadding", Text("🙂🙂é"));
+    yield return ("Pad", "EmojiValue", Text("🙂éé"));
+    yield return ("Pad", "Negative", Text("abc"));
+    yield return ("Pad", "Exact", Text("abc"));
+    yield return ("Pad", "NullValue", Text("**"));
+    yield return ("Isbn", "Hyphenated", Text("9780764549649"));
+    yield return ("Isbn", "LowerXAndSpaces", Text("9780804429573"));
+    yield return ("Round", "Integer", FerruleValue.FromInt64(7));
+    yield return ("Round", "PositiveHalf", FerruleValue.FromDouble(3.0));
+    yield return ("Round", "NegativeHalf", FerruleValue.FromDouble(-3.0));
+    yield return ("Round", "Precision", FerruleValue.FromDouble(1.23));
+    yield return ("Round", "RoundedDigits", FerruleValue.FromDouble(1.23));
+    yield return ("Round", "NegativeDigits", FerruleValue.FromDouble(150.0));
+    yield return ("Round", "Infinity", FerruleValue.FromDouble(double.PositiveInfinity));
+    yield return ("Date", "DateTime", Text("2024-03-01"));
+    yield return ("Date", "DateOnly", Text("2024-03-01Z"));
+    yield return ("Date", "MultipleT", Text("alpha"));
+    yield return ("Errors", "Type", Text("safe-type"));
+    yield return ("Errors", "Invalid", Text("safe-invalid"));
+    yield return ("Errors", "Arity", Text("safe-arity"));
+}
+
+static FerruleValue Text(string value) => FerruleValue.FromString(value);

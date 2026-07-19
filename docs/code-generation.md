@@ -45,8 +45,9 @@ The current portable model includes:
   positions
 - explicit active/main mapping paths and an optional stable current date-time
   supplied by the execution host
-- lazy conditionals and a closed set of boolean, arithmetic, comparison, scalar
-  text, XML-whitespace, substring, missing-value, XML-nil, and lexical path
+- lazy conditionals and a closed set of 37 boolean, arithmetic, comparison,
+  scalar text, XML-whitespace, Unicode-scalar substring and padding, SQL LIKE,
+  ISBN, rounding, date-extraction, missing-value, XML-nil, and lexical path
   functions
 - ordered value maps with optional declared-input coercion, first-match wins,
   and explicit or Null fallback
@@ -71,7 +72,10 @@ The legacy no-context entry points remain valid and produce a typed missing
 runtime-value error only when a reachable host value is actually evaluated.
 
 Features outside this model produce a specific diagnostic naming the unsupported
-node, function, scope control, endpoint, or target construction. Regex
+node, function, scope control, endpoint, or target construction. The portable
+function implementations preserve the interpreter's typed arity, type, and
+invalid-argument failures, including the one-million-character padding bound.
+Regex
 tokenization remains interpreter-only because Rust and .NET expose materially
 different regex dialects and Unicode behavior; exact cross-backend support needs
 a Ferrule-owned matcher. Recursive-filter, path-hierarchy, and adjacency-tree
