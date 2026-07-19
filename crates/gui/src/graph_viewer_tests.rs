@@ -62,6 +62,7 @@ impl Fixture {
             source_leaves: &self.source_leaves,
             target_leaves: &self.target_leaves,
             source_paths: &self.source_paths,
+            colors: crate::appearance::SemanticThemeColors::default(),
             error: None,
         }
     }
@@ -176,6 +177,7 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         source_leaves: &source_leaves,
         target_leaves: &target_leaves,
         source_paths: &source_paths,
+        colors: crate::appearance::SemanticThemeColors::default(),
         error: None,
     };
 
@@ -625,11 +627,11 @@ fn graph_connections_reject_invalid_inputs_and_cycles_atomically() {
 #[test]
 fn aggregate_argument_pins_match_the_operation() {
     let mut fx = fixture();
-    let count = GraphViewer::aggregate_node(AggregateOp::Count, None);
+    let count = node_palette::aggregate_node(AggregateOp::Count, None);
     assert_eq!(GraphViewer::input_count(&count), 0);
 
     let arg = fx.viewer().fresh_const();
-    let join = GraphViewer::aggregate_node(AggregateOp::Join, Some(arg));
+    let join = node_palette::aggregate_node(AggregateOp::Join, Some(arg));
     assert_eq!(GraphViewer::input_count(&join), 1);
     let Node::Aggregate { arg: Some(arg), .. } = join else {
         panic!("join should get a separator placeholder");
@@ -652,6 +654,69 @@ fn aggregate_argument_pins_match_the_operation() {
         arg: Some(1),
     };
     assert_eq!(GraphViewer::input_count(&computed_join), 2);
+}
+
+#[test]
+fn every_palette_template_creates_one_complete_atomic_node_unit() {
+    fn expected_placeholders(template: NodeTemplate) -> usize {
+        match template {
+            NodeTemplate::If => 3,
+            NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
+            NodeTemplate::CollectionFind => 2,
+            NodeTemplate::Aggregate(AggregateOp::Join | AggregateOp::ItemAt) => 1,
+            NodeTemplate::Constant
+            | NodeTemplate::SourceField
+            | NodeTemplate::Position
+            | NodeTemplate::Call
+            | NodeTemplate::Aggregate(_) => 0,
+        }
+    }
+
+    fn matches_template(template: NodeTemplate, node: &Node) -> bool {
+        match (template, node) {
+            (NodeTemplate::Constant, Node::Const { value: Value::Null })
+            | (NodeTemplate::SourceField, Node::SourceField { .. })
+            | (NodeTemplate::Position, Node::Position { .. })
+            | (NodeTemplate::Call, Node::Call { .. })
+            | (NodeTemplate::If, Node::If { .. })
+            | (NodeTemplate::ValueMap, Node::ValueMap { .. })
+            | (NodeTemplate::Lookup, Node::Lookup { .. })
+            | (NodeTemplate::CollectionFind, Node::CollectionFind { .. }) => true,
+            (
+                NodeTemplate::Aggregate(expected),
+                Node::Aggregate {
+                    function: actual, ..
+                },
+            ) => expected == *actual,
+            _ => false,
+        }
+    }
+
+    for template in node_palette::templates() {
+        let mut fx = fixture();
+        let mut snarl = std::mem::take(&mut fx.snarl);
+        let graph_before = fx.graph.nodes.len();
+        let snarl_before = snarl.nodes().count();
+        let wire_before = snarl.wires().count();
+        let placeholders = expected_placeholders(template);
+
+        let (created, created_snarl) =
+            fx.viewer()
+                .insert_palette_node(&mut snarl, egui::pos2(240.0, 160.0), template);
+
+        assert!(matches_template(template, &fx.graph.nodes[&created]));
+        assert_eq!(snarl[created_snarl], CanvasNode::Graph(created));
+        assert_eq!(fx.graph.nodes.len(), graph_before + placeholders + 1);
+        assert_eq!(snarl.nodes().count(), snarl_before + placeholders + 1);
+        assert_eq!(snarl.wires().count(), wire_before + placeholders);
+        assert_eq!(
+            snarl
+                .nodes()
+                .filter(|node| matches!(node, CanvasNode::Placeholder(_)))
+                .count(),
+            placeholders
+        );
+    }
 }
 
 #[test]

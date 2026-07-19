@@ -1,4 +1,6 @@
 mod app;
+mod appearance;
+mod appearance_editor;
 mod canvas;
 mod canvas_keyboard;
 mod diagnostics;
@@ -9,6 +11,7 @@ mod icons;
 mod layout_store;
 mod new_mapping;
 mod path_picker;
+mod preferences;
 mod schema_tree;
 mod scope_editor;
 mod theme;
@@ -25,7 +28,7 @@ fn main() -> eframe::Result<()> {
         native_options,
         Box::new(|creation| {
             icons::install(&creation.egui_ctx);
-            Ok(Box::new(app::FerruleApp::default()))
+            Ok(Box::new(app::FerruleApp::from_storage(creation.storage)))
         }),
     )
 }

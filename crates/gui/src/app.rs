@@ -13,6 +13,8 @@ use egui_snarl::{InPinId, OutPinId, Snarl};
 use mapping::{Graph, Node, NodeId, Project, Scope};
 use serde::{Deserialize, Serialize};
 
+use crate::appearance::EditorAppearance;
+use crate::appearance_editor::AppearanceTab;
 use crate::canvas::{
     CanvasNode, SourceLeaf, TargetLeaf, layered_layout, source_leaves, target_leaves,
 };
@@ -23,7 +25,7 @@ use crate::graph_viewer::GraphViewer;
 use crate::layout_store::{project_fingerprint, read_layout, write_layout};
 use crate::new_mapping::{NewMappingSetup, SchemaSide, blank_project};
 use crate::path_picker::SourcePathCatalog;
-use crate::schema_tree::show_schema_tree;
+use crate::schema_tree::{SchemaExplorerState, schema_field_count, show_schema_tree};
 use crate::scope_editor::{
     ScopePath, available_static_child_scopes, binding_target_fields, create_static_child_scope,
     remove_child_scope, scope_at_mut, scope_target_chain, show_scope_editor, show_scope_tree,
@@ -107,11 +109,16 @@ pub struct FerruleApp {
     narrow_pane: WorkspacePane,
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
+    show_appearance_editor: bool,
+    appearance_tab: AppearanceTab,
     theme: ThemeState,
+    appearance: EditorAppearance,
     palette: Palette,
     document: DocumentLocation,
     input_path: String,
     output_path: String,
+    source_schema_explorer: SchemaExplorerState,
+    target_schema_explorer: SchemaExplorerState,
     selected_scope: ScopePath,
     status: String,
     diagnostics: Diagnostics,
@@ -178,11 +185,16 @@ impl Default for FerruleApp {
             narrow_pane: WorkspacePane::Canvas,
             last_layout_class: None,
             show_run_setup: false,
+            show_appearance_editor: false,
+            appearance_tab: AppearanceTab::default(),
             theme: ThemeState::default(),
+            appearance: EditorAppearance::default(),
             palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
             output_path: String::new(),
+            source_schema_explorer: SchemaExplorerState::default(),
+            target_schema_explorer: SchemaExplorerState::default(),
             selected_scope: Vec::new(),
             status: String::new(),
             diagnostics: Diagnostics::default(),
@@ -543,6 +555,15 @@ fn save_file(
 }
 
 impl FerruleApp {
+    pub fn from_storage(storage: Option<&dyn eframe::Storage>) -> Self {
+        let preferences = crate::preferences::load(storage);
+        Self {
+            theme: preferences.theme,
+            appearance: preferences.appearance,
+            ..Self::default()
+        }
+    }
+
     fn is_dirty(&self) -> bool {
         let state = editor_state(&self.project, &self.snarl);
         self.history.is_dirty_by(&state, |snapshot| &snapshot.state)
@@ -1026,6 +1047,13 @@ fn nonempty_path(value: &str) -> Option<PathBuf> {
 }
 
 impl eframe::App for FerruleApp {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        crate::preferences::store(
+            storage,
+            crate::preferences::EditorPreferences::new(self.theme, self.appearance),
+        );
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.palette = self.theme.apply(ui.ctx());
         let layout_class = LayoutClass::from_width(ui.available_width());
@@ -1139,6 +1167,15 @@ impl eframe::App for FerruleApp {
             WorkspacePane::Canvas => self.show_canvas(ui, project_editing_enabled),
             WorkspacePane::Inspector => self.show_inspector(ui, project_editing_enabled),
         });
+
+        crate::appearance_editor::show(
+            ui.ctx(),
+            &mut self.show_appearance_editor,
+            &mut self.appearance_tab,
+            &mut self.theme,
+            &mut self.appearance,
+            self.palette,
+        );
 
         self.show_unsaved_confirmation(ui.ctx());
         self.show_new_mapping_setup(ui.ctx());

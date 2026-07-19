@@ -166,15 +166,10 @@ impl FerruleApp {
                     ui.checkbox(&mut self.show_source_panel, "Source schema");
                     ui.checkbox(&mut self.show_inspector_panel, "Inspector");
                     ui.separator();
-                    ui.menu_button("Theme", |ui| {
-                        for preference in crate::theme::ThemePreference::ALL {
-                            ui.selectable_value(
-                                &mut self.theme.preference,
-                                preference,
-                                preference.label(),
-                            );
-                        }
-                    });
+                    if ui.button("Appearance...").clicked() {
+                        self.show_appearance_editor = true;
+                        ui.close();
+                    }
                 });
             });
             ui.separator();
@@ -216,6 +211,9 @@ impl FerruleApp {
             .clicked()
             {
                 self.save_with_continuation(None, ui.ctx());
+            }
+            if crate::icons::button(ui, true, lucide_icons::Icon::Palette, "Appearance").clicked() {
+                self.show_appearance_editor = true;
             }
             ui.separator();
             if crate::icons::button(
@@ -380,29 +378,74 @@ impl FerruleApp {
                 }
             });
         });
+        show_schema_search_input(ui, "source_schema_search", &mut self.source_schema_explorer);
+        let source_matches = self
+            .source_schema_explorer
+            .match_count(&self.project.source)
+            + self
+                .project
+                .extra_sources
+                .iter()
+                .map(|source| self.source_schema_explorer.match_count(&source.schema))
+                .sum::<usize>();
+        let source_fields = schema_field_count(&self.project.source)
+            + self
+                .project
+                .extra_sources
+                .iter()
+                .map(|source| schema_field_count(&source.schema))
+                .sum::<usize>();
+        show_schema_result_count(
+            ui,
+            &self.source_schema_explorer,
+            source_matches,
+            source_fields,
+        );
         let mut remove = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
-            show_schema_tree(ui, &self.project.source);
-            for (index, extra) in self.project.extra_sources.iter().enumerate() {
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.strong(format!("Extra: {}", extra.name));
-                    if ui
-                        .add_enabled(
-                            editing_enabled,
-                            egui::Button::new(crate::icons::text(
-                                lucide_icons::Icon::Trash2,
-                                crate::theme::METRICS.icon_size,
-                            ))
-                            .small(),
-                        )
-                        .on_hover_text("Remove source")
-                        .clicked()
+            if source_matches == 0 && self.source_schema_explorer.is_filtering() {
+                ui.weak("No matching fields or groups");
+            } else {
+                let mut section_shown = show_schema_tree(
+                    ui,
+                    &self.project.source,
+                    &self.source_schema_explorer,
+                    "primary_source_schema",
+                );
+                for (index, extra) in self.project.extra_sources.iter().enumerate() {
+                    if self.source_schema_explorer.is_filtering()
+                        && self.source_schema_explorer.match_count(&extra.schema) == 0
                     {
-                        remove = Some(index);
+                        continue;
                     }
-                });
-                show_schema_tree(ui, &extra.schema);
+                    if section_shown {
+                        ui.separator();
+                    }
+                    ui.horizontal(|ui| {
+                        ui.strong(format!("Extra: {}", extra.name));
+                        if ui
+                            .add_enabled(
+                                editing_enabled,
+                                egui::Button::new(crate::icons::text(
+                                    lucide_icons::Icon::Trash2,
+                                    crate::theme::METRICS.icon_size,
+                                ))
+                                .small(),
+                            )
+                            .on_hover_text("Remove source")
+                            .clicked()
+                        {
+                            remove = Some(index);
+                        }
+                    });
+                    show_schema_tree(
+                        ui,
+                        &extra.schema,
+                        &self.source_schema_explorer,
+                        ("extra_source_schema", index),
+                    );
+                    section_shown = true;
+                }
             }
         });
         if let Some(index) = remove {
@@ -415,9 +458,30 @@ impl FerruleApp {
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         ui.add_enabled_ui(editing_enabled, |ui| {
             ui.strong("Target schema");
+            show_schema_search_input(ui, "target_schema_search", &mut self.target_schema_explorer);
+            let target_matches = self
+                .target_schema_explorer
+                .match_count(&self.project.target);
+            show_schema_result_count(
+                ui,
+                &self.target_schema_explorer,
+                target_matches,
+                schema_field_count(&self.project.target),
+            );
             egui::ScrollArea::vertical()
                 .max_height(200.0)
-                .show(ui, |ui| show_schema_tree(ui, &self.project.target));
+                .show(ui, |ui| {
+                    if target_matches == 0 && self.target_schema_explorer.is_filtering() {
+                        ui.weak("No matching fields or groups");
+                    } else {
+                        show_schema_tree(
+                            ui,
+                            &self.project.target,
+                            &self.target_schema_explorer,
+                            "target_schema",
+                        );
+                    }
+                });
 
             ui.separator();
             ui.strong("Scopes");
@@ -466,12 +530,14 @@ impl FerruleApp {
                 source_leaves: &source_pins,
                 target_leaves: &target_pins,
                 source_paths: &source_paths,
+                colors: self.appearance.resolved_colors(self.palette),
                 error: None,
             };
             crate::canvas_keyboard::show(
                 &mut self.snarl,
                 &mut viewer,
                 self.canvas_view_generation,
+                self.appearance.to_snarl_style_with_palette(self.palette),
                 ui,
             );
             if let Some(error) = viewer.error {
@@ -528,4 +594,54 @@ impl FerruleApp {
             }
         });
     }
+}
+
+fn show_schema_search_input(
+    ui: &mut egui::Ui,
+    id_salt: impl egui::AsIdSalt,
+    state: &mut SchemaExplorerState,
+) {
+    ui.horizontal(|ui| {
+        let search_width = (ui.available_width()
+            - crate::theme::METRICS.icon_button_size
+            - ui.spacing().item_spacing.x)
+            .max(64.0);
+        ui.add(
+            egui::TextEdit::singleline(state.query_mut())
+                .id_source(id_salt)
+                .hint_text("Search fields and groups")
+                .desired_width(search_width),
+        )
+        .on_hover_text("Filter by field, group, path, or scalar type");
+        if crate::icons::button(
+            ui,
+            state.is_filtering(),
+            lucide_icons::Icon::SearchX,
+            "Clear schema search",
+        )
+        .clicked()
+        {
+            state.clear();
+        }
+    });
+}
+
+fn show_schema_result_count(
+    ui: &mut egui::Ui,
+    state: &SchemaExplorerState,
+    matches: usize,
+    fields: usize,
+) {
+    let summary = if state.is_filtering() {
+        match matches {
+            1 => "1 match".to_string(),
+            count => format!("{count} matches"),
+        }
+    } else {
+        match fields {
+            1 => "1 field".to_string(),
+            count => format!("{count} fields"),
+        }
+    };
+    ui.weak(summary);
 }
