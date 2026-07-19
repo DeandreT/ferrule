@@ -20,6 +20,10 @@ internal static class Program
             ("scalar functions", ScalarFunctions),
             ("typed function errors", TypedFunctionErrors),
             ("scope source iteration", ScopeSourceIteration),
+            ("aggregate source contexts", AggregateSourceContexts),
+            ("aggregate reductions", AggregateReductions),
+            ("aggregate numeric precision", AggregateNumericPrecision),
+            ("typed aggregate errors", TypedAggregateErrors),
         };
 
         foreach (var test in tests)
@@ -346,6 +350,281 @@ internal static class Program
         Equal(Text("a"), documents[0].ResolveScalar("Document"));
         Equal(Text("doc-b"), documents[1].ResolveScalar("Rows", "Sku"));
     }
+
+    private static void AggregateSourceContexts()
+    {
+        var contact = (string name) => Group(
+            Field("Name", Scalar(Text(name))),
+            Field("Nested", new FerruleRepeated(new[] { Scalar(Text($"nested-{name}")) })));
+        var office = (string code, params FerruleInstance[] contacts) => Group(
+            Field("Code", Scalar(Text(code))),
+            Field("Contacts", new FerruleRepeated(contacts)));
+        var source = Group(
+            Field("Outside", Scalar(Text("outer"))),
+            Field("Offices", new FerruleRepeated(new FerruleInstance[]
+            {
+                office("A", contact("Ana"), contact("Bo")),
+                office("B", contact("Cy")),
+            })));
+
+        var context = ScopeContext.FromSource(source);
+        var contacts = context.AggregateItems("Offices", "Contacts");
+        Equal(3, contacts.Count);
+        Equal(Text("Ana"), contacts[0].AggregateCurrentScalar("Name"));
+        Equal(Text("Cy"), contacts[2].AggregateCurrentScalar("Name"));
+        Equal(1L, contacts[0].Position(new[] { "Offices" }));
+        Equal(2L, contacts[1].Position(new[] { "Contacts" }));
+        Equal(2L, contacts[2].Position(new[] { "Offices" }));
+        Equal(1L, contacts[2].Position(new[] { "Contacts" }));
+        Equal(FerruleValue.Null, contacts[0].AggregateCurrentScalar("Outside"));
+        Equal(FerruleValue.Null, contacts[0].AggregateCurrentScalar("Nested"));
+        Equal(FerruleValue.Null, contacts[0].AggregateCurrentScalar("Missing"));
+        Equal(0, context.AggregateItems("Missing").Count);
+        Equal(0, context.AggregateItems().Count);
+
+        var rows = new FerruleRepeated(new FerruleInstance[]
+        {
+            Group(Field("Value", Scalar(FerruleValue.FromInt64(11)))),
+            Group(Field("Value", Scalar(FerruleValue.FromInt64(22)))),
+        });
+        var rowContext = ScopeContext.FromSource(rows);
+        var allRows = rowContext.AggregateItems();
+        Equal(2, allRows.Count);
+        Equal(FerruleValue.FromInt64(22), allRows[1].AggregateCurrentScalar("Value"));
+        Equal(2L, allRows[1].Position(Array.Empty<string>()));
+
+        var scalarItems = ScopeContext
+            .FromSource(new FerruleRepeated(new[]
+            {
+                Scalar(Text("one")),
+                Scalar(Text("two")),
+            }))
+            .AggregateItems();
+        Equal(Text("two"), scalarItems[1].AggregateCurrentScalar());
+
+        var currentRow = rowContext.IterateSource()[0];
+        var rowsFromCurrentItem = currentRow.AggregateItems();
+        Equal(2, rowsFromCurrentItem.Count);
+        Equal(FerruleValue.FromInt64(22), rowsFromCurrentItem[1].AggregateCurrentScalar("Value"));
+
+        var documents = ScopeContext.FromSource(new FerruleDocumentSet(new[]
+        {
+            new FerruleDocument("first.xml", Group(Field("Value", Scalar(Text("first"))))),
+            new FerruleDocument("second.xml", Group(Field("Value", Scalar(Text("second"))))),
+        })).AggregateItems();
+        Equal(2, documents.Count);
+        Equal(Text("second"), documents[1].AggregateCurrentScalar("Value"));
+    }
+
+    private static void AggregateReductions()
+    {
+        Equal(
+            FerruleValue.FromInt64(3),
+            Aggregate(
+                FerruleAggregateOperation.Count,
+                FerruleValue.Null,
+                FerruleValue.XmlNil,
+                Text("ignored")));
+        Equal(
+            FerruleValue.FromDouble(2.5),
+            Aggregate(
+                FerruleAggregateOperation.Sum,
+                Text("2"),
+                FerruleValue.FromDouble(0.5),
+                Text("not numeric"),
+                FerruleValue.Null,
+                FerruleValue.XmlNil,
+                Bool(true)));
+        Equal(
+            FerruleValue.FromDouble(2.5),
+            Aggregate(
+                FerruleAggregateOperation.Avg,
+                FerruleValue.FromInt64(2),
+                Text("3"),
+                Text("ignored")));
+        Equal(
+            Text("a||true|2|100000000000000000000|b"),
+            FerruleAggregates.Apply(
+                FerruleAggregateOperation.Join,
+                new[]
+                {
+                    Text("a"),
+                    FerruleValue.Null,
+                    FerruleValue.XmlNil,
+                    Bool(true),
+                    FerruleValue.FromInt64(2),
+                    FerruleValue.FromDouble(1e20),
+                    Text("b"),
+                },
+                Text("|")));
+        Equal(
+            Text("ab"),
+            FerruleAggregates.Apply(
+                FerruleAggregateOperation.Join,
+                new[] { Text("a"), Text("b") }));
+
+        var items = new[] { Text("first"), Text("second"), Text("third") };
+        Equal(
+            Text("second"),
+            FerruleAggregates.Apply(
+                FerruleAggregateOperation.ItemAt,
+                items,
+                FerruleValue.FromDouble(1.5)));
+        Equal(
+            Text("third"),
+            FerruleAggregates.Apply(
+                FerruleAggregateOperation.ItemAt,
+                items,
+                FerruleValue.FromDouble(2.5)));
+        Equal(
+            Text("second"),
+            FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, items, Text(" 2 ")));
+        Equal(
+            FerruleValue.Null,
+            FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, items, Text("2.0")));
+        Equal(
+            FerruleValue.Null,
+            FerruleAggregates.Apply(
+                FerruleAggregateOperation.ItemAt,
+                items,
+                FerruleValue.FromDouble(double.PositiveInfinity)));
+
+        var empty = Array.Empty<FerruleValue>();
+        Equal(FerruleValue.FromInt64(0), FerruleAggregates.Apply(FerruleAggregateOperation.Count, empty));
+        Equal(FerruleValue.FromInt64(0), FerruleAggregates.Apply(FerruleAggregateOperation.Sum, empty));
+        Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.Avg, empty));
+        Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.Min, empty));
+        Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.Max, empty));
+        Equal(Text(string.Empty), FerruleAggregates.Apply(FerruleAggregateOperation.Join, empty));
+        Equal(FerruleValue.Null, FerruleAggregates.Apply(FerruleAggregateOperation.ItemAt, empty));
+    }
+
+    private static void AggregateNumericPrecision()
+    {
+        Equal(
+            FerruleValue.FromInt64(9_007_199_254_740_993),
+            Aggregate(
+                FerruleAggregateOperation.Sum,
+                FerruleValue.FromInt64(9_007_199_254_740_992),
+                FerruleValue.FromInt64(1)));
+        Equal(
+            FerruleValue.FromDouble(double.MaxValue),
+            Aggregate(
+                FerruleAggregateOperation.Avg,
+                FerruleValue.FromDouble(double.MaxValue),
+                FerruleValue.FromDouble(double.MaxValue)));
+        Equal(
+            FerruleValue.FromDouble(double.MaxValue),
+            Aggregate(
+                FerruleAggregateOperation.Sum,
+                FerruleValue.FromDouble(double.MaxValue),
+                FerruleValue.FromDouble(double.MaxValue),
+                FerruleValue.FromDouble(-double.MaxValue)));
+        Equal(
+            FerruleValue.FromDouble(11.375),
+            Aggregate(
+                FerruleAggregateOperation.Avg,
+                13.6, 15.6, 16.2, 10.0, 7.3, 7.6, 13.6, 7.1));
+
+        var mixed = new[]
+        {
+            FerruleValue.FromInt64(9_007_199_254_740_993),
+            FerruleValue.FromDouble(9_007_199_254_740_992.0),
+        };
+        Equal(
+            FerruleValue.FromDouble(9_007_199_254_740_992.0),
+            FerruleAggregates.Apply(FerruleAggregateOperation.Min, mixed));
+        Equal(
+            FerruleValue.FromInt64(9_007_199_254_740_993),
+            FerruleAggregates.Apply(FerruleAggregateOperation.Max, mixed));
+        Equal(
+            FerruleValue.FromDouble(2.5),
+            Aggregate(FerruleAggregateOperation.Min, Text("10"), Text("2.5")));
+        Equal(
+            FerruleValue.FromInt64(10),
+            Aggregate(FerruleAggregateOperation.Max, Text("10"), Text("2.5")));
+
+        foreach (var operation in new[] { FerruleAggregateOperation.Min, FerruleAggregateOperation.Max })
+        {
+            var negativeFirst = FerruleAggregates.Apply(
+                operation,
+                new[]
+                {
+                    FerruleValue.FromDouble(-0.0),
+                    FerruleValue.FromDouble(0.0),
+                    FerruleValue.FromInt64(0),
+                });
+            Equal(
+                BitConverter.DoubleToInt64Bits(-0.0),
+                BitConverter.DoubleToInt64Bits(negativeFirst.DoubleValue));
+
+            var positiveFirst = FerruleAggregates.Apply(
+                operation,
+                new[]
+                {
+                    FerruleValue.FromDouble(0.0),
+                    FerruleValue.FromDouble(-0.0),
+                    FerruleValue.FromInt64(0),
+                });
+            Equal(
+                BitConverter.DoubleToInt64Bits(0.0),
+                BitConverter.DoubleToInt64Bits(positiveFirst.DoubleValue));
+        }
+    }
+
+    private static void TypedAggregateErrors()
+    {
+        var overflow = Error(
+            FerruleRuntimeError.AggregateIntegerOverflow,
+            () => Aggregate(
+                FerruleAggregateOperation.Sum,
+                FerruleValue.FromInt64(long.MaxValue),
+                FerruleValue.FromInt64(1)));
+        Equal(FerruleAggregateOperation.Sum, overflow.AggregateOperation);
+
+        foreach (var operation in new[]
+        {
+            FerruleAggregateOperation.Sum,
+            FerruleAggregateOperation.Avg,
+            FerruleAggregateOperation.Min,
+            FerruleAggregateOperation.Max,
+        })
+        {
+            var direct = Error(
+                FerruleRuntimeError.AggregateNonFinite,
+                () => Aggregate(operation, FerruleValue.FromDouble(double.PositiveInfinity)));
+            Equal(operation, direct.AggregateOperation);
+            var lexical = Error(
+                FerruleRuntimeError.AggregateNonFinite,
+                () => Aggregate(operation, Text("inf")));
+            Equal(operation, lexical.AggregateOperation);
+        }
+
+        var produced = Error(
+            FerruleRuntimeError.AggregateNonFinite,
+            () => Aggregate(
+                FerruleAggregateOperation.Sum,
+                FerruleValue.FromDouble(double.MaxValue),
+                FerruleValue.FromDouble(double.MaxValue)));
+        Equal(FerruleAggregateOperation.Sum, produced.AggregateOperation);
+
+        var nan = Error(
+            FerruleRuntimeError.AggregateNonFinite,
+            () => Aggregate(FerruleAggregateOperation.Avg, Text("NaN")));
+        Equal(FerruleAggregateOperation.Avg, nan.AggregateOperation);
+    }
+
+    private static FerruleValue Aggregate(
+        FerruleAggregateOperation operation,
+        params FerruleValue[] values) =>
+        FerruleAggregates.Apply(operation, values);
+
+    private static FerruleValue Aggregate(
+        FerruleAggregateOperation operation,
+        params double[] values) =>
+        FerruleAggregates.Apply(
+            operation,
+            values.Select(FerruleValue.FromDouble).ToArray());
 
     private static void CallEquals(
         FerruleValue expected,
