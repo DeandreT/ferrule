@@ -912,6 +912,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "codegen",
+ "codegen-csharp",
+ "codegen-rust",
  "engine",
  "format-csv",
  "format-db",
@@ -946,6 +949,39 @@ name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+
+[[package]]
+name = "codegen"
+version = "0.1.0"
+dependencies = [
+ "engine",
+ "ir",
+ "mapping",
+]
+
+[[package]]
+name = "codegen-csharp"
+version = "0.1.0"
+dependencies = [
+ "codegen",
+ "ir",
+]
+
+[[package]]
+name = "codegen-runtime"
+version = "0.1.0"
+dependencies = [
+ "ir",
+]
+
+[[package]]
+name = "codegen-rust"
+version = "0.1.0"
+dependencies = [
+ "codegen",
+ "ir",
+ "mapping",
+]
 
 [[package]]
 name = "codepage"

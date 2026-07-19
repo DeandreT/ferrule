@@ -27,8 +27,10 @@ const MAX_HTTP_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_HTTP_RESPONSE_HEADER_BYTES: usize = 64 * 1024;
 const MAX_HTTP_REDIRECTS: u32 = 5;
 
+mod code_generation;
 mod output_documents;
 
+pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 
 /// Result of running a project after resolving its input and output paths.

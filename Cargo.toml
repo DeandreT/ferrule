@@ -6,6 +6,10 @@ members = [
     "crates/mapping",
     "crates/functions",
     "crates/engine",
+    "crates/codegen",
+    "crates/codegen-runtime",
+    "crates/codegen-rust",
+    "crates/codegen-csharp",
     "crates/format-xml",
     "crates/format-json",
     "crates/format-csv",
@@ -34,6 +38,10 @@ ir = { path = "crates/ir" }
 mapping = { path = "crates/mapping" }
 functions = { path = "crates/functions" }
 engine = { path = "crates/engine" }
+codegen = { path = "crates/codegen" }
+codegen-runtime = { path = "crates/codegen-runtime" }
+codegen-rust = { path = "crates/codegen-rust" }
+codegen-csharp = { path = "crates/codegen-csharp" }
 format-xml = { path = "crates/format-xml" }
 format-json = { path = "crates/format-json" }
 format-csv = { path = "crates/format-csv" }

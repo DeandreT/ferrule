@@ -1,0 +1,12 @@
+[package]
+name = "codegen-rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust source generator for compiled ferrule mappings"
+
+[dependencies]
+codegen = { workspace = true }
+ir = { workspace = true }
+mapping = { workspace = true }
