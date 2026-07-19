@@ -64,6 +64,7 @@ impl Fixture {
             target_blocks: &self.target_blocks,
             source_paths: &self.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
+            wire_color_mode: crate::appearance::WireColorMode::Theme,
             node_sizes: None,
             error: None,
         }
@@ -102,6 +103,7 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
             target_blocks: &fx.target_blocks,
             source_paths: &fx.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
+            wire_color_mode: crate::appearance::WireColorMode::Theme,
             node_sizes: Some(&mut node_sizes),
             error: None,
         };
@@ -230,6 +232,7 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         target_blocks: &target_blocks,
         source_paths: &source_paths,
         colors: crate::appearance::SemanticThemeColors::default(),
+        wire_color_mode: crate::appearance::WireColorMode::Theme,
         node_sizes: None,
         error: None,
     };

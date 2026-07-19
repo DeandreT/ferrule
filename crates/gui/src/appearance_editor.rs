@@ -6,8 +6,8 @@ use crate::appearance::{
     AppearancePreset, CanvasPattern, EditorAppearance, MAX_CORNER_RADIUS, MAX_GRID_ANGLE_DEGREES,
     MAX_GRID_SPACING, MAX_GRID_STROKE_WIDTH, MAX_WIRE_FRAME_SIZE, MAX_WIRE_WIDTH,
     MIN_CORNER_RADIUS, MIN_GRID_ANGLE_DEGREES, MIN_GRID_SPACING, MIN_GRID_STROKE_WIDTH,
-    MIN_WIRE_FRAME_SIZE, MIN_WIRE_WIDTH, RgbaColor, SemanticThemeColors, WireFrameAdjustment,
-    WireGeometry,
+    MIN_WIRE_FRAME_SIZE, MIN_WIRE_WIDTH, RgbaColor, SemanticThemeColors, WireColorMode,
+    WireFrameAdjustment, WireGeometry,
 };
 use crate::theme::{CustomTheme, ResolvedTheme, ThemeColor, ThemePreference, ThemeState, palette};
 
@@ -118,6 +118,26 @@ fn show_wires(
     let mut wire = *appearance.wire();
     wire_preview(ui, wire.geometry(), wire.width(), appearance, palette);
 
+    ui.label(RichText::new("Color").strong());
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .selectable_label(wire.color_mode() == WireColorMode::Theme, "Theme color")
+            .clicked()
+        {
+            wire.set_color_mode(WireColorMode::Theme);
+        }
+        if ui
+            .selectable_label(
+                wire.color_mode() == WireColorMode::UniquePerWire,
+                "Unique per wire",
+            )
+            .clicked()
+        {
+            wire.set_color_mode(WireColorMode::UniquePerWire);
+        }
+    });
+
+    ui.add_space(8.0);
     ui.label(RichText::new("Geometry").strong());
     ui.horizontal_wrapped(|ui| {
         if ui
@@ -377,7 +397,6 @@ fn wire_preview(
     let painter = ui.painter_at(rect);
     let colors = appearance.resolved_colors(palette);
     let canvas = colors.canvas.to_egui();
-    let wire = colors.wire.to_egui();
     let border = colors.node_border.to_egui();
     painter.rect_filled(rect, 4.0, canvas);
     painter.rect_stroke(
@@ -387,12 +406,27 @@ fn wire_preview(
         egui::StrokeKind::Inside,
     );
 
-    let start = pos2(rect.left() + 34.0, rect.center().y + 18.0);
-    let end = pos2(rect.right() - 34.0, rect.center().y - 18.0);
-    let points = preview_points(start, end, geometry);
-    painter.add(egui::Shape::line(points, Stroke::new(width, wire)));
-    painter.circle_filled(start, 5.0, wire);
-    painter.circle_filled(end, 5.0, wire);
+    let mode = appearance.wire().color_mode();
+    let wire_count = if mode == WireColorMode::UniquePerWire {
+        3
+    } else {
+        1
+    };
+    for wire_index in 0..wire_count {
+        let offset = (wire_index as f32 - (wire_count - 1) as f32 / 2.0) * 18.0;
+        let start = pos2(rect.left() + 34.0, rect.center().y + offset);
+        let end = pos2(rect.right() - 34.0, rect.center().y - offset);
+        let color = crate::wire_colors::connected_color(
+            mode,
+            colors,
+            crate::canvas::CanvasNode::TargetBlock(0),
+            wire_index,
+        );
+        let points = preview_points(start, end, geometry);
+        painter.add(egui::Shape::line(points, Stroke::new(width, color)));
+        painter.circle_filled(start, 5.0, color);
+        painter.circle_filled(end, 5.0, color);
+    }
 }
 
 fn preview_points(start: egui::Pos2, end: egui::Pos2, geometry: WireGeometry) -> Vec<egui::Pos2> {
