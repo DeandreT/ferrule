@@ -263,6 +263,29 @@ internal static class Program
         Equal(Text("B"), candidates[2].ResolveScalar("Orders", "OrderCode"));
         Equal(Text("B-1"), candidates[2].ResolveScalar("Orders", "Items", "Sku"));
         Equal(Text("second-root"), candidates[3].ResolveScalar("RootName"));
+        Equal(2L, candidates[1].Position(new[] { "Items" }));
+        Equal(1L, candidates[2].Position(Array.Empty<string>()));
+        Equal(1L, candidates[2].Position(new[] { "Missing" }));
+        Equal(
+            Text("Lin"),
+            candidates[2].ResolveScalarInFrame(
+                new[] { "Source", "Orders" },
+                new[] { "Customer" }));
+        Equal(
+            Text("B-1"),
+            candidates[2].ResolveScalarInFrame(
+                new[] { "Orders", "Items" },
+                new[] { "Sku" }));
+        Error(
+            FerruleRuntimeError.MissingSourceField,
+            () => candidates[2].ResolveScalarInFrame(
+                new[] { "Missing" },
+                new[] { "Customer" }));
+
+        var compacted = candidates[2].WithCompactedPosition(3);
+        Equal(1L, candidates[2].Position(new[] { "Items" }));
+        Equal(3L, compacted.Position(new[] { "Items" }));
+        Equal(2L, compacted.Position(new[] { "Orders" }));
 
         var rows = context.IterateSource();
         Equal(2, rows.Count);

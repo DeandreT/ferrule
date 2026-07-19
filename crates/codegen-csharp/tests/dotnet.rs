@@ -66,6 +66,7 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 1,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["Account".into(), "Name".into()],
                 },
             },
@@ -119,6 +120,7 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 10,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["Condition".into()],
                 },
             },
@@ -159,18 +161,21 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 16,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["Customer".into()],
                 },
             },
             ExpressionNode {
                 id: 17,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["Sku".into()],
                 },
             },
             ExpressionNode {
                 id: 18,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["Orders".into(), "OrderCode".into()],
                 },
             },
@@ -179,11 +184,13 @@ fn fixture() -> Program {
             target_field: String::new(),
             repeating: true,
             iteration: None,
+            filter: None,
             bindings: vec![binding("RootInt", 2, ScalarType::Int, false)],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
                 repeating: true,
                 iteration: Some(SourceIteration::new(vec!["Orders".into(), "Items".into()])),
+                filter: None,
                 bindings: vec![
                     binding("Copied", 1, ScalarType::String, false),
                     binding("Lines", 5, ScalarType::String, true),

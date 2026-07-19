@@ -104,6 +104,80 @@ public sealed class ScopeContext
             $"Source scalar '{display}' does not exist in the active scope context.");
     }
 
+    /// <summary>
+    /// Resolves a scalar only inside the nearest active collection matching
+    /// <paramref name="frame"/>, without outward fallback.
+    /// </summary>
+    public FerruleValue ResolveScalarInFrame(
+        IReadOnlyList<string> frame,
+        IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(frame);
+        ValidatePath(path);
+
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var collection = _collections[index];
+            if (!FrameMatches(frame, collection.Path))
+            {
+                continue;
+            }
+
+            var resolved = TryResolveScalar(collection.Item, path, 0);
+            if (resolved.Found)
+            {
+                return resolved.Value;
+            }
+            break;
+        }
+
+        var fullPath = frame.Concat(path);
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.MissingSourceField,
+            $"Framed source scalar '{string.Join('/', fullPath)}' does not exist in the active scope context.");
+    }
+
+    /// <summary>Returns the active collection's 1-based position, or 1.</summary>
+    public long Position(params string[] collection) =>
+        Position((IReadOnlyList<string>)collection);
+
+    public long Position(IReadOnlyList<string> collection)
+    {
+        ArgumentNullException.ThrowIfNull(collection);
+        ValidatePath(collection);
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var active = _collections[index];
+            if (collection.Count == 0 || EndsWith(active.Path, collection))
+            {
+                return active.Index;
+            }
+        }
+        return 1;
+    }
+
+    /// <summary>
+    /// Returns a context whose innermost active collection has a compacted
+    /// output position. Source instances and all outer positions are retained.
+    /// </summary>
+    public ScopeContext WithCompactedPosition(int index)
+    {
+        if (index < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+        if (_collections.Count == 0)
+        {
+            return this;
+        }
+
+        var collections = _collections.ToArray();
+        collections[^1] = collections[^1] with { Index = index };
+        return new ScopeContext(_frames, new ReadOnlyCollection<CollectionIdentity>(collections));
+    }
+
     private FerruleInstance? FindIterationBase(IReadOnlyList<string> path)
     {
         if (path.Count == 0)
@@ -133,9 +207,10 @@ public sealed class ScopeContext
     {
         if (pathIndex < path.Count && current is FerruleRepeated leadingRepeated)
         {
-            foreach (var item in leadingRepeated.Items)
+            for (var index = 0; index < leadingRepeated.Items.Count; index++)
             {
-                PushCollection(item, prefix, frames, collections);
+                var item = leadingRepeated.Items[index];
+                PushCollection(item, prefix, index + 1, frames, collections);
                 Walk(item, path, pathIndex, prefix, frames, collections, output);
                 PopCollection(frames, collections);
             }
@@ -147,17 +222,19 @@ public sealed class ScopeContext
             switch (current)
             {
                 case FerruleDocumentSet documents:
-                    foreach (var document in documents.Documents)
+                    for (var index = 0; index < documents.Documents.Count; index++)
                     {
-                        PushCollection(document.Value, prefix, frames, collections);
+                        var document = documents.Documents[index];
+                        PushCollection(document.Value, prefix, index + 1, frames, collections);
                         AddCandidate(frames, collections, output);
                         PopCollection(frames, collections);
                     }
                     return;
                 case FerruleRepeated repeated:
-                    foreach (var item in repeated.Items)
+                    for (var index = 0; index < repeated.Items.Count; index++)
                     {
-                        PushCollection(item, prefix, frames, collections);
+                        var item = repeated.Items[index];
+                        PushCollection(item, prefix, index + 1, frames, collections);
                         AddCandidate(frames, collections, output);
                         PopCollection(frames, collections);
                     }
@@ -172,9 +249,10 @@ public sealed class ScopeContext
 
         if (current is FerruleDocumentSet documentSet)
         {
-            foreach (var document in documentSet.Documents)
+            for (var index = 0; index < documentSet.Documents.Count; index++)
             {
-                PushCollection(document.Value, prefix, frames, collections);
+                var document = documentSet.Documents[index];
+                PushCollection(document.Value, prefix, index + 1, frames, collections);
                 Walk(document.Value, path, pathIndex, prefix, frames, collections, output);
                 PopCollection(frames, collections);
             }
@@ -189,9 +267,10 @@ public sealed class ScopeContext
 
         if (next is FerruleRepeated repeatedField)
         {
-            foreach (var item in repeatedField.Items)
+            for (var index = 0; index < repeatedField.Items.Count; index++)
             {
-                PushCollection(item, nextPrefix, frames, collections);
+                var item = repeatedField.Items[index];
+                PushCollection(item, nextPrefix, index + 1, frames, collections);
                 if (pathIndex + 1 == path.Count)
                 {
                     AddCandidate(frames, collections, output);
@@ -227,11 +306,12 @@ public sealed class ScopeContext
     private static void PushCollection(
         FerruleInstance item,
         IReadOnlyList<string> path,
+        int index,
         ICollection<FerruleInstance> frames,
         ICollection<CollectionIdentity> collections)
     {
         frames.Add(item);
-        collections.Add(new CollectionIdentity(path.ToArray(), item));
+        collections.Add(new CollectionIdentity(path.ToArray(), item, index));
     }
 
     private static void PopCollection(
@@ -315,6 +395,35 @@ public sealed class ScopeContext
         return true;
     }
 
+    private static bool FrameMatches(
+        IReadOnlyList<string> frame,
+        IReadOnlyList<string> active) =>
+        SamePath(frame, active) || active.Count > 0 && EndsWith(frame, active);
+
+    private static bool SamePath(
+        IReadOnlyList<string> left,
+        IReadOnlyList<string> right) =>
+        left.Count == right.Count && EndsWith(left, right);
+
+    private static bool EndsWith(
+        IReadOnlyList<string> path,
+        IReadOnlyList<string> suffix)
+    {
+        if (suffix.Count > path.Count)
+        {
+            return false;
+        }
+        var offset = path.Count - suffix.Count;
+        for (var index = 0; index < suffix.Count; index++)
+        {
+            if (!string.Equals(path[offset + index], suffix[index], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static void ValidatePath(IReadOnlyList<string> path)
     {
         for (var index = 0; index < path.Count; index++)
@@ -325,7 +434,8 @@ public sealed class ScopeContext
 
     private sealed record CollectionIdentity(
         IReadOnlyList<string> Path,
-        FerruleInstance Item);
+        FerruleInstance Item,
+        int Index);
 
     private readonly record struct ScalarResolution(bool Found, FerruleValue Value)
     {
