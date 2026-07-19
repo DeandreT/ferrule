@@ -73,7 +73,21 @@ pub fn run_project_with_paths(
     output_path: Option<&Path>,
 ) -> anyhow::Result<RunOutcome> {
     let project = load_project(project_path)?;
-    require_valid(&project)?;
+    run_project_value_with_paths(&project, project_path, input_path, output_path)
+}
+
+/// Runs an in-memory project without requiring it to be saved first.
+///
+/// `project_path` supplies the base directory for relative resources and the
+/// value exposed by mapping-path runtime nodes. The path itself may be a
+/// not-yet-created file, which lets graphical hosts execute an unsaved draft.
+pub fn run_project_value_with_paths(
+    project: &mapping::Project,
+    project_path: &Path,
+    input_path: Option<&Path>,
+    output_path: Option<&Path>,
+) -> anyhow::Result<RunOutcome> {
+    require_valid(project)?;
 
     let input_path = resolve_run_path(
         project_path,
@@ -150,8 +164,7 @@ pub fn run_project_with_paths(
         ));
     }
 
-    let runtime_project_path = std::fs::canonicalize(project_path)
-        .with_context(|| format!("resolving project path {}", project_path.display()))?;
+    let runtime_project_path = absolute_mapping_path(project_path)?;
     let current_datetime = jiff::Zoned::now()
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
@@ -160,7 +173,7 @@ pub fn run_project_with_paths(
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
     let outputs = engine::run_outputs_with_sources_and_context(
-        &project,
+        project,
         &source_instance,
         extras,
         &execution,
@@ -218,6 +231,20 @@ pub fn run_project_with_paths(
         primary_outputs,
         extra_outputs,
     })
+}
+
+fn absolute_mapping_path(project_path: &Path) -> anyhow::Result<Cow<'_, Path>> {
+    if let Ok(canonical) = std::fs::canonicalize(project_path) {
+        return Ok(Cow::Owned(canonical));
+    }
+    if project_path.is_absolute() {
+        return Ok(Cow::Borrowed(project_path));
+    }
+    Ok(Cow::Owned(
+        std::env::current_dir()
+            .context("resolving the current directory for an unsaved project")?
+            .join(project_path),
+    ))
 }
 
 struct ProjectDynamicSourceLoader<'a> {
