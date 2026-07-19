@@ -126,7 +126,10 @@ with flattened source-order output, innermost-to-outermost field fallback,
 active collection ownership, first-item reads through repetitions that are not
 iterated, and boolean filters. Filters observe raw source positions; surviving
 items and their descendants observe positions compacted per parent. It also
-supports lazy `if` expressions plus scalar calls for boolean `and`/`or`/`not`, `exists` and
+supports all ordinary collection aggregates (`count`, `sum`, `avg`, `min`,
+`max`, `join`, and `item_at`) over direct fields or computed per-item
+expressions, with parent-context scalar arguments and typed numeric failures.
+Lazy `if` expressions and scalar calls cover boolean `and`/`or`/`not`, `exists`,
 the `is_empty`/`starts_with`/`contains` string predicates, arithmetic
 `add`/`subtract`/`multiply`/`divide`, and the `equal`/`not_equal`/`less_than`/
 `greater_than`/`less_or_equal`/`greater_or_equal` comparisons. Call arguments

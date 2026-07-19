@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use ir::ScalarType;
+use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
 use crate::{Expression, Program, TargetScope};
@@ -18,6 +18,15 @@ pub enum ProgramValidationError {
     },
     ExpressionCycle {
         cycle: Vec<NodeId>,
+    },
+    InvalidAggregateCollection {
+        node: NodeId,
+        collection: Vec<String>,
+    },
+    InvalidAggregateValuePath {
+        node: NodeId,
+        collection: Vec<String>,
+        value: Vec<String>,
     },
     MissingBindingExpression {
         target_path: Vec<String>,
@@ -60,6 +69,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
+    validate_aggregate_paths(&program.source, &expressions)?;
     validate_scope(&program.root, &expressions, &mut Vec::new())
 }
 
@@ -144,7 +154,103 @@ fn dependencies(expression: &Expression) -> Vec<NodeId> {
             then,
             else_,
         } => vec![*condition, *then, *else_],
+        Expression::Aggregate { value, arg, .. } => {
+            value.expression().into_iter().chain(*arg).collect()
+        }
     }
+}
+
+fn validate_aggregate_paths(
+    source: &SchemaNode,
+    expressions: &BTreeMap<NodeId, &Expression>,
+) -> Result<(), ProgramValidationError> {
+    for (&node, expression) in expressions {
+        let Expression::Aggregate {
+            collection, value, ..
+        } = expression
+        else {
+            continue;
+        };
+        if !schema_path_matches(source, collection, |_| true) {
+            return Err(ProgramValidationError::InvalidAggregateCollection {
+                node,
+                collection: collection.clone(),
+            });
+        }
+        let crate::AggregateValue::Path(value) = value else {
+            continue;
+        };
+        if !value.is_empty()
+            && !schema_path_matches(source, collection, |collection| {
+                follow_schema_from(source, collection, value)
+                    .is_some_and(|leaf| matches!(leaf.kind, SchemaKind::Scalar { .. }))
+            })
+        {
+            return Err(ProgramValidationError::InvalidAggregateValuePath {
+                node,
+                collection: collection.clone(),
+                value: value.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Expression paths are relative to the active source frame, so a valid path
+/// can begin at any group in the source schema rather than only at its root.
+fn schema_path_matches(
+    root: &SchemaNode,
+    path: &[String],
+    predicate: impl Fn(&SchemaNode) -> bool + Copy,
+) -> bool {
+    fn visit(
+        root: &SchemaNode,
+        current: &SchemaNode,
+        path: &[String],
+        predicate: impl Fn(&SchemaNode) -> bool + Copy,
+    ) -> bool {
+        if follow_schema_from(root, current, path).is_some_and(predicate) {
+            return true;
+        }
+        match &current.kind {
+            SchemaKind::Group { children, .. } => children
+                .iter()
+                .any(|child| visit(root, child, path, predicate)),
+            SchemaKind::Scalar { .. } => false,
+        }
+    }
+
+    visit(root, root, path, predicate)
+}
+
+fn follow_schema_from<'a>(
+    root: &'a SchemaNode,
+    current: &'a SchemaNode,
+    path: &[String],
+) -> Option<&'a SchemaNode> {
+    let mut current = current;
+    for segment in path {
+        if let Some(anchor) = &current.recursive_ref {
+            current = find_concrete_schema_group(root, anchor)?;
+        }
+        current = current.child(segment)?;
+    }
+    Some(current)
+}
+
+fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
+    if current.recursive_ref.is_none()
+        && current.name == anchor
+        && matches!(current.kind, SchemaKind::Group { .. })
+    {
+        return Some(current);
+    }
+    let SchemaKind::Group { children, .. } = &current.kind else {
+        return None;
+    };
+    children
+        .iter()
+        .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
 fn validate_scope(
@@ -242,6 +348,21 @@ impl fmt::Display for ProgramValidationError {
                 "compiled mapping expressions contain a cycle: {}",
                 display_cycle(cycle)
             ),
+            Self::InvalidAggregateCollection { node, collection } => write!(
+                formatter,
+                "compiled mapping aggregate expression {node} collection {} matches no source path",
+                display_path(collection)
+            ),
+            Self::InvalidAggregateValuePath {
+                node,
+                collection,
+                value,
+            } => write!(
+                formatter,
+                "compiled mapping aggregate expression {node} value {} is not a scalar under collection {}",
+                display_path(value),
+                display_path(collection)
+            ),
             Self::MissingBindingExpression {
                 target_path,
                 target_field,
@@ -321,7 +442,9 @@ mod tests {
     use ir::{ScalarType, SchemaNode, Value};
 
     use super::*;
-    use crate::{Binding, ExpressionNode, ScalarFunction, SourceIteration};
+    use crate::{
+        AggregateFunction, AggregateValue, Binding, ExpressionNode, ScalarFunction, SourceIteration,
+    };
 
     fn program() -> Program {
         Program {
@@ -480,6 +603,102 @@ mod tests {
                 dependency: 99,
             })
         );
+    }
+
+    #[test]
+    fn validates_aggregate_projection_and_argument_dependencies() {
+        let aggregate = |value, arg| Expression::Aggregate {
+            function: AggregateFunction::Sum,
+            collection: vec!["Rows".into()],
+            value,
+            arg,
+        };
+
+        let mut missing_projection = program();
+        missing_projection.expressions[1].expression =
+            aggregate(AggregateValue::Expression(99), Some(98));
+        assert_eq!(
+            validate_program(&missing_projection),
+            Err(ProgramValidationError::MissingDependency {
+                node: 2,
+                dependency: 99,
+            })
+        );
+
+        let mut missing_argument = program();
+        missing_argument.expressions[1].expression =
+            aggregate(AggregateValue::Expression(1), Some(99));
+        assert_eq!(
+            validate_program(&missing_argument),
+            Err(ProgramValidationError::MissingDependency {
+                node: 2,
+                dependency: 99,
+            })
+        );
+
+        let mut cycle = program();
+        cycle.expressions[1].expression = aggregate(AggregateValue::Expression(2), Some(1));
+        assert_eq!(
+            validate_program(&cycle),
+            Err(ProgramValidationError::ExpressionCycle { cycle: vec![2, 2] })
+        );
+    }
+
+    #[test]
+    fn validates_aggregate_collection_and_direct_value_paths() {
+        let mut program = program();
+        program.source = SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group(
+                    "Rows",
+                    vec![
+                        SchemaNode::scalar("Amount", ScalarType::Int),
+                        SchemaNode::group("Nested", Vec::new()),
+                    ],
+                )
+                .repeating(),
+            ],
+        );
+        let aggregate = |collection: &[&str], value: &[&str]| Expression::Aggregate {
+            function: AggregateFunction::Sum,
+            collection: collection.iter().map(|segment| (*segment).into()).collect(),
+            value: AggregateValue::Path(value.iter().map(|segment| (*segment).into()).collect()),
+            arg: None,
+        };
+
+        program.expressions[1].expression = aggregate(&["Rows"], &["Amount"]);
+        assert_eq!(validate_program(&program), Ok(()));
+
+        program.expressions[1].expression = aggregate(&["Missing"], &["Amount"]);
+        assert_eq!(
+            validate_program(&program),
+            Err(ProgramValidationError::InvalidAggregateCollection {
+                node: 2,
+                collection: vec!["Missing".into()],
+            })
+        );
+
+        program.expressions[1].expression = aggregate(&["Rows"], &["Missing"]);
+        assert_eq!(
+            validate_program(&program),
+            Err(ProgramValidationError::InvalidAggregateValuePath {
+                node: 2,
+                collection: vec!["Rows".into()],
+                value: vec!["Missing".into()],
+            })
+        );
+
+        program.expressions[1].expression = aggregate(&["Rows"], &["Nested"]);
+        assert!(matches!(
+            validate_program(&program),
+            Err(ProgramValidationError::InvalidAggregateValuePath { node: 2, .. })
+        ));
+
+        // Empty value paths are valid for count and sum because a scalar
+        // collection item is used directly and a structural item becomes Null.
+        program.expressions[1].expression = aggregate(&["Rows"], &[]);
+        assert_eq!(validate_program(&program), Ok(()));
     }
 
     #[test]

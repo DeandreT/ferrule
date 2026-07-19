@@ -14,6 +14,8 @@ public enum FerruleRuntimeError
     DivideByZero,
     IntegerOverflow,
     NotABool,
+    AggregateIntegerOverflow,
+    AggregateNonFinite,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -26,7 +28,8 @@ public sealed class FerruleRuntimeException : Exception
         string? function = null,
         int? expectedArity = null,
         int? actualArity = null,
-        FerruleValueKind? foundKind = null)
+        FerruleValueKind? foundKind = null,
+        FerruleAggregateOperation? aggregateOperation = null)
         : base(message)
     {
         Error = error;
@@ -35,6 +38,7 @@ public sealed class FerruleRuntimeException : Exception
         ExpectedArity = expectedArity;
         ActualArity = actualArity;
         FoundKind = foundKind;
+        AggregateOperation = aggregateOperation;
     }
 
     public FerruleRuntimeException(
@@ -45,7 +49,8 @@ public sealed class FerruleRuntimeException : Exception
         string? function = null,
         int? expectedArity = null,
         int? actualArity = null,
-        FerruleValueKind? foundKind = null)
+        FerruleValueKind? foundKind = null,
+        FerruleAggregateOperation? aggregateOperation = null)
         : base(message, innerException)
     {
         Error = error;
@@ -54,6 +59,7 @@ public sealed class FerruleRuntimeException : Exception
         ExpectedArity = expectedArity;
         ActualArity = actualArity;
         FoundKind = foundKind;
+        AggregateOperation = aggregateOperation;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -67,4 +73,6 @@ public sealed class FerruleRuntimeException : Exception
     public int? ActualArity { get; }
 
     public FerruleValueKind? FoundKind { get; }
+
+    public FerruleAggregateOperation? AggregateOperation { get; }
 }

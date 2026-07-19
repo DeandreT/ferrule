@@ -1,5 +1,55 @@
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::NodeId;
+use mapping::{AggregateOp, NodeId};
+
+/// Collection reductions implemented identically by every generated backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum AggregateFunction {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+    Join,
+    ItemAt,
+}
+
+impl AggregateFunction {
+    pub const ALL: &'static [Self] = &[
+        Self::Count,
+        Self::Sum,
+        Self::Avg,
+        Self::Min,
+        Self::Max,
+        Self::Join,
+        Self::ItemAt,
+    ];
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Count => "count",
+            Self::Sum => "sum",
+            Self::Avg => "avg",
+            Self::Min => "min",
+            Self::Max => "max",
+            Self::Join => "join",
+            Self::ItemAt => "item_at",
+        }
+    }
+}
+
+impl From<AggregateOp> for AggregateFunction {
+    fn from(function: AggregateOp) -> Self {
+        match function {
+            AggregateOp::Count => Self::Count,
+            AggregateOp::Sum => Self::Sum,
+            AggregateOp::Avg => Self::Avg,
+            AggregateOp::Min => Self::Min,
+            AggregateOp::Max => Self::Max,
+            AggregateOp::Join => Self::Join,
+            AggregateOp::ItemAt => Self::ItemAt,
+        }
+    }
+}
 
 /// Scalar calls that every code-generation backend must implement.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -133,6 +183,33 @@ pub enum Expression {
         then: NodeId,
         else_: NodeId,
     },
+    /// Reduces a source collection. The value expression executes once per
+    /// item, while `arg` executes once afterward in the parent context.
+    Aggregate {
+        function: AggregateFunction,
+        collection: Vec<String>,
+        value: AggregateValue,
+        arg: Option<NodeId>,
+    },
+}
+
+/// Exactly one way to obtain each aggregate item's scalar value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AggregateValue {
+    /// Reads a scalar relative to the terminal collection item. An empty path
+    /// selects scalar collection items directly.
+    Path(Vec<String>),
+    /// Evaluates a graph expression in each collection item's context.
+    Expression(NodeId),
+}
+
+impl AggregateValue {
+    pub const fn expression(&self) -> Option<NodeId> {
+        match self {
+            Self::Path(_) => None,
+            Self::Expression(node) => Some(*node),
+        }
+    }
 }
 
 /// One statically named constructed target group.

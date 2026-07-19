@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use codegen::{Binding, Expression, Program, TargetScope};
+use codegen::{AggregateFunction, AggregateValue, Binding, Expression, Program, TargetScope};
 use ir::ScalarType;
 
 use crate::{EmitError, literal};
@@ -93,6 +93,46 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 ));
                 output.push_str(&format!("        return Node_{else_}(context);\n    }}\n"));
             }
+            Expression::Aggregate {
+                function,
+                collection,
+                value,
+                arg,
+            } => {
+                output.push_str("\n    {\n");
+                output.push_str(&format!(
+                    "        var items_{node} = context.AggregateItems("
+                ));
+                render_path(collection, &mut output);
+                output.push_str(&format!(
+                    ");\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(items_{node}.Count);\n        foreach (var item_context_{node} in items_{node})\n        {{\n"
+                ));
+                match value {
+                    AggregateValue::Path(path) => {
+                        output.push_str(&format!(
+                            "            values_{node}.Add(item_context_{node}.AggregateCurrentScalar("
+                        ));
+                        render_path(path, &mut output);
+                        output.push_str("));\n");
+                    }
+                    AggregateValue::Expression(expression) => output.push_str(&format!(
+                        "            values_{node}.Add(Node_{expression}(item_context_{node}));\n"
+                    )),
+                }
+                output.push_str("        }\n");
+                match arg {
+                    Some(arg) => output.push_str(&format!(
+                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
+                    )),
+                    None => output.push_str(&format!(
+                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
+                    )),
+                }
+                output.push_str(&format!(
+                    "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
+                    aggregate_function_name(*function)
+                ));
+            }
         }
     }
 
@@ -180,6 +220,18 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     }
     output.push_str("}\n");
     Ok(output)
+}
+
+const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
+    match function {
+        AggregateFunction::Count => "Count",
+        AggregateFunction::Sum => "Sum",
+        AggregateFunction::Avg => "Avg",
+        AggregateFunction::Min => "Min",
+        AggregateFunction::Max => "Max",
+        AggregateFunction::Join => "Join",
+        AggregateFunction::ItemAt => "ItemAt",
+    }
 }
 
 fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usize {

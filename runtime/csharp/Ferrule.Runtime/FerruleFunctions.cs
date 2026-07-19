@@ -255,7 +255,7 @@ public static class FerruleFunctions
         }
     }
 
-    private static string ScalarText(FerruleValue value) => value.Kind switch
+    internal static string ScalarText(FerruleValue value) => value.Kind switch
     {
         FerruleValueKind.Null or FerruleValueKind.XmlNil => string.Empty,
         FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",

@@ -1,0 +1,178 @@
+use codegen_runtime::{
+    AggregateFunction, FunctionError, Instance, RuntimeError, Value, field, group, repeated,
+    scalar,
+};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source(Mode::Normal))?, expected());
+    assert_eq!(
+        execute(&source(Mode::Overflow)),
+        Err(RuntimeError::AggregateIntegerOverflow {
+            function: AggregateFunction::Sum,
+        }),
+    );
+    assert_eq!(
+        execute(&source(Mode::NonFinite)),
+        Err(RuntimeError::AggregateNonFinite {
+            function: AggregateFunction::Sum,
+        }),
+    );
+    assert_eq!(
+        execute(&source(Mode::Projection)),
+        Err(RuntimeError::Function(FunctionError::DivideByZero)),
+    );
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum Mode {
+    Normal,
+    Overflow,
+    NonFinite,
+    Projection,
+}
+
+fn source(mode: Mode) -> Instance {
+    let orders = match mode {
+        Mode::Normal => vec![
+            order(
+                "|",
+                2.5,
+                [
+                    item(Value::String("10".into()), Value::String("A".into()), 2, 1),
+                    item(Value::String("2.5".into()), Value::Null, 3, 1),
+                    item(Value::String("junk".into()), Value::xml_nil(), 4, 1),
+                    item(Value::Null, Value::String("B".into()), 5, 1),
+                ],
+            ),
+            order(
+                "~",
+                2.0,
+                [
+                    item(Value::String("4".into()), Value::String("X".into()), 1, 1),
+                    item(Value::String("6".into()), Value::String("Y".into()), 1, 1),
+                ],
+            ),
+        ],
+        Mode::Overflow => vec![order(
+            "|",
+            1.0,
+            [
+                item(
+                    Value::String(i64::MAX.to_string()),
+                    Value::String("A".into()),
+                    1,
+                    1,
+                ),
+                item(Value::String("1".into()), Value::String("B".into()), 1, 1),
+            ],
+        )],
+        Mode::NonFinite => vec![order(
+            "|",
+            1.0,
+            [item(
+                Value::String("inf".into()),
+                Value::String("A".into()),
+                1,
+                1,
+            )],
+        )],
+        Mode::Projection => vec![order(
+            "|",
+            1.0,
+            [item(
+                Value::String("1".into()),
+                Value::String("A".into()),
+                1,
+                0,
+            )],
+        )],
+    };
+
+    group([
+        field(
+            "Offices",
+            repeated([office(["Ada", "Lin"]), office(["Sam"])]),
+        ),
+        field("Orders", repeated(orders)),
+    ])
+}
+
+fn office<'a>(names: impl IntoIterator<Item = &'a str>) -> Instance {
+    group([field(
+        "Contacts",
+        repeated(names.into_iter().map(|name| {
+            group([field("First", scalar(Value::String(name.into())))])
+        })),
+    )])
+}
+
+fn order(
+    separator: &str,
+    pick: f64,
+    items: impl IntoIterator<Item = Instance>,
+) -> Instance {
+    group([
+        field("Separator", scalar(Value::String(separator.into()))),
+        field("Pick", scalar(Value::Float(pick))),
+        field("Items", repeated(items)),
+        field("EmptyItems", repeated([])),
+    ])
+}
+
+fn item(amount: Value, label: Value, factor: i64, divisor: i64) -> Instance {
+    group([
+        field("Amount", scalar(amount)),
+        field("Label", scalar(label)),
+        field("Factor", scalar(Value::Int(factor))),
+        field("Divisor", scalar(Value::Int(divisor))),
+    ])
+}
+
+fn expected() -> Instance {
+    group([
+        field("AllContacts", scalar(Value::String("Ada,Lin,Sam".into()))),
+        field(
+            "OrderOut",
+            repeated([
+                target_order([
+                    ("Count", Value::Int(4)),
+                    ("Sum", Value::Float(12.5)),
+                    ("Average", Value::Float(6.25)),
+                    ("Minimum", Value::Float(2.5)),
+                    ("Maximum", Value::Int(10)),
+                    ("Joined", Value::String("A||B".into())),
+                    ("Picked", Value::xml_nil()),
+                    ("Computed", Value::Int(40)),
+                    ("EvaluatedCount", Value::Int(4)),
+                    ("EmptyCount", Value::Int(0)),
+                    ("EmptySum", Value::Int(0)),
+                    ("EmptyAverage", Value::Null),
+                ]),
+                target_order([
+                    ("Count", Value::Int(2)),
+                    ("Sum", Value::Float(10.0)),
+                    ("Average", Value::Float(5.0)),
+                    ("Minimum", Value::Float(4.0)),
+                    ("Maximum", Value::Int(6)),
+                    ("Joined", Value::String("X~Y".into())),
+                    ("Picked", Value::String("Y".into())),
+                    ("Computed", Value::Int(3)),
+                    ("EvaluatedCount", Value::Int(2)),
+                    ("EmptyCount", Value::Int(0)),
+                    ("EmptySum", Value::Int(0)),
+                    ("EmptyAverage", Value::Null),
+                ]),
+            ]),
+        ),
+    ])
+}
+
+fn target_order<const N: usize>(values: [(&str, Value); N]) -> Instance {
+    group(
+        values
+            .into_iter()
+            .map(|(name, value)| field(name, scalar(value))),
+    )
+}

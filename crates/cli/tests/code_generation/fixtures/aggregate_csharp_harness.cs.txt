@@ -1,0 +1,202 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+AssertOutput((FerruleGroup)GeneratedMapping.Execute(Source(Mode.Normal)));
+AssertError(
+    FerruleRuntimeError.AggregateIntegerOverflow,
+    FerruleAggregateOperation.Sum,
+    () => GeneratedMapping.Execute(Source(Mode.Overflow)));
+AssertError(
+    FerruleRuntimeError.AggregateNonFinite,
+    FerruleAggregateOperation.Sum,
+    () => GeneratedMapping.Execute(Source(Mode.NonFinite)));
+AssertError(
+    FerruleRuntimeError.DivideByZero,
+    null,
+    () => GeneratedMapping.Execute(Source(Mode.Projection)));
+
+static FerruleGroup Source(Mode mode)
+{
+    FerruleInstance[] orders = mode switch
+    {
+        Mode.Normal =>
+        [
+            Order(
+                "|",
+                2.5,
+                Item(FerruleValue.FromString("10"), FerruleValue.FromString("A"), 2, 1),
+                Item(FerruleValue.FromString("2.5"), FerruleValue.Null, 3, 1),
+                Item(FerruleValue.FromString("junk"), FerruleValue.XmlNil, 4, 1),
+                Item(FerruleValue.Null, FerruleValue.FromString("B"), 5, 1)),
+            Order(
+                "~",
+                2.0,
+                Item(FerruleValue.FromString("4"), FerruleValue.FromString("X"), 1, 1),
+                Item(FerruleValue.FromString("6"), FerruleValue.FromString("Y"), 1, 1)),
+        ],
+        Mode.Overflow =>
+        [
+            Order(
+                "|",
+                1.0,
+                Item(FerruleValue.FromString(long.MaxValue.ToString()), FerruleValue.FromString("A"), 1, 1),
+                Item(FerruleValue.FromString("1"), FerruleValue.FromString("B"), 1, 1)),
+        ],
+        Mode.NonFinite =>
+        [
+            Order(
+                "|",
+                1.0,
+                Item(FerruleValue.FromString("inf"), FerruleValue.FromString("A"), 1, 1)),
+        ],
+        Mode.Projection =>
+        [
+            Order(
+                "|",
+                1.0,
+                Item(FerruleValue.FromString("1"), FerruleValue.FromString("A"), 1, 0)),
+        ],
+        _ => throw new InvalidOperationException(),
+    };
+
+    return new FerruleGroup(new FerruleField[]
+    {
+        new("Offices", new FerruleRepeated(new FerruleInstance[]
+        {
+            Office("Ada", "Lin"),
+            Office("Sam"),
+        })),
+        new("Orders", new FerruleRepeated(orders)),
+    });
+}
+
+static FerruleGroup Office(params string[] names) =>
+    new(new FerruleField[]
+    {
+        new("Contacts", new FerruleRepeated(names.Select(name =>
+            new FerruleGroup(new FerruleField[]
+            {
+                new("First", Scalar(FerruleValue.FromString(name))),
+            })))),
+    });
+
+static FerruleGroup Order(
+    string separator,
+    double pick,
+    params FerruleGroup[] items) =>
+    new(new FerruleField[]
+    {
+        new("Separator", Scalar(FerruleValue.FromString(separator))),
+        new("Pick", Scalar(FerruleValue.FromDouble(pick))),
+        new("Items", new FerruleRepeated(items)),
+        new("EmptyItems", new FerruleRepeated(Array.Empty<FerruleInstance>())),
+    });
+
+static FerruleGroup Item(
+    FerruleValue amount,
+    FerruleValue label,
+    long factor,
+    long divisor) =>
+    new(new FerruleField[]
+    {
+        new("Amount", Scalar(amount)),
+        new("Label", Scalar(label)),
+        new("Factor", Scalar(FerruleValue.FromInt64(factor))),
+        new("Divisor", Scalar(FerruleValue.FromInt64(divisor))),
+    });
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static void AssertOutput(FerruleGroup root)
+{
+    Assert(Value(root, "AllContacts") == FerruleValue.FromString("Ada,Lin,Sam"));
+    var orders = (FerruleRepeated)Field(root, "OrderOut");
+    Assert(orders.Items.Count == 2);
+    AssertOrder(
+        (FerruleGroup)orders.Items[0],
+        new Dictionary<string, FerruleValue>
+        {
+            ["Count"] = FerruleValue.FromInt64(4),
+            ["Sum"] = FerruleValue.FromDouble(12.5),
+            ["Average"] = FerruleValue.FromDouble(6.25),
+            ["Minimum"] = FerruleValue.FromDouble(2.5),
+            ["Maximum"] = FerruleValue.FromInt64(10),
+            ["Joined"] = FerruleValue.FromString("A||B"),
+            ["Picked"] = FerruleValue.XmlNil,
+            ["Computed"] = FerruleValue.FromInt64(40),
+            ["EvaluatedCount"] = FerruleValue.FromInt64(4),
+            ["EmptyCount"] = FerruleValue.FromInt64(0),
+            ["EmptySum"] = FerruleValue.FromInt64(0),
+            ["EmptyAverage"] = FerruleValue.Null,
+        });
+    AssertOrder(
+        (FerruleGroup)orders.Items[1],
+        new Dictionary<string, FerruleValue>
+        {
+            ["Count"] = FerruleValue.FromInt64(2),
+            ["Sum"] = FerruleValue.FromDouble(10.0),
+            ["Average"] = FerruleValue.FromDouble(5.0),
+            ["Minimum"] = FerruleValue.FromDouble(4.0),
+            ["Maximum"] = FerruleValue.FromInt64(6),
+            ["Joined"] = FerruleValue.FromString("X~Y"),
+            ["Picked"] = FerruleValue.FromString("Y"),
+            ["Computed"] = FerruleValue.FromInt64(3),
+            ["EvaluatedCount"] = FerruleValue.FromInt64(2),
+            ["EmptyCount"] = FerruleValue.FromInt64(0),
+            ["EmptySum"] = FerruleValue.FromInt64(0),
+            ["EmptyAverage"] = FerruleValue.Null,
+        });
+}
+
+static void AssertOrder(
+    FerruleGroup order,
+    IReadOnlyDictionary<string, FerruleValue> expected)
+{
+    Assert(order.Fields.Count == expected.Count);
+    foreach (var field in order.Fields)
+    {
+        Assert(expected.TryGetValue(field.Name, out var value));
+        Assert(((FerruleScalar)field.Value).Value == value);
+    }
+}
+
+static FerruleInstance Field(FerruleGroup group, string name) =>
+    group.Fields.Single(field => field.Name == name).Value;
+
+static FerruleValue Value(FerruleGroup group, string name) =>
+    ((FerruleScalar)Field(group, name)).Value;
+
+static void AssertError(
+    FerruleRuntimeError expected,
+    FerruleAggregateOperation? operation,
+    Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        Assert(exception.Error == expected);
+        Assert(exception.AggregateOperation == operation);
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected Ferrule runtime error {expected}.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("generated aggregate mapping differs from the engine");
+    }
+}
+
+enum Mode
+{
+    Normal,
+    Overflow,
+    NonFinite,
+    Projection,
+}

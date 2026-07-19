@@ -60,6 +60,69 @@ public sealed class ScopeContext
     }
 
     /// <summary>
+    /// Returns the flattened source items reduced by an aggregate expression.
+    /// A named path starts at the nearest frame that owns its first field. An
+    /// empty path instead starts at the nearest repeated or document-set frame.
+    /// Missing collections produce no items.
+    /// </summary>
+    public IReadOnlyList<ScopeContext> AggregateItems(params string[] path) =>
+        AggregateItems((IReadOnlyList<string>)path);
+
+    public IReadOnlyList<ScopeContext> AggregateItems(IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(path);
+
+        var baseInstance = FindAggregateBase(path);
+        if (baseInstance is null)
+        {
+            return Array.Empty<ScopeContext>();
+        }
+
+        var output = new List<ScopeContext>();
+        Walk(
+            baseInstance,
+            path,
+            0,
+            new List<string>(),
+            new List<FerruleInstance>(),
+            new List<CollectionIdentity>(),
+            output);
+        return new ReadOnlyCollection<ScopeContext>(output);
+    }
+
+    /// <summary>
+    /// Reads a scalar relative only to the terminal item selected by
+    /// <see cref="AggregateItems(IReadOnlyList{string})"/>. Missing fields and
+    /// structural terminal values become Null; there is no outward fallback or
+    /// implicit first-item traversal through a repeated value.
+    /// </summary>
+    public FerruleValue AggregateCurrentScalar(params string[] path) =>
+        AggregateCurrentScalar((IReadOnlyList<string>)path);
+
+    public FerruleValue AggregateCurrentScalar(IReadOnlyList<string> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ValidatePath(path);
+        if (_frames.Count == 0)
+        {
+            return FerruleValue.Null;
+        }
+
+        var current = _frames[^1];
+        for (var index = 0; index < path.Count; index++)
+        {
+            if (!TryGetField(current, path[index], out var next))
+            {
+                return FerruleValue.Null;
+            }
+            current = next;
+        }
+
+        return current is FerruleScalar scalar ? scalar.Value : FerruleValue.Null;
+    }
+
+    /// <summary>
     /// Resolves an unframed scalar through active collection owners first,
     /// then through source frames from innermost to outermost.
     /// </summary>
@@ -194,6 +257,30 @@ public sealed class ScopeContext
         }
 
         return _frames.Count == 0 ? null : _frames[^1];
+    }
+
+    private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
+    {
+        if (path.Count == 0)
+        {
+            for (var index = _frames.Count - 1; index >= 0; index--)
+            {
+                if (_frames[index] is FerruleRepeated or FerruleDocumentSet)
+                {
+                    return _frames[index];
+                }
+            }
+            return null;
+        }
+
+        for (var index = _frames.Count - 1; index >= 0; index--)
+        {
+            if (TryGetField(_frames[index], path[0], out _))
+            {
+                return _frames[index];
+            }
+        }
+        return null;
     }
 
     private void Walk(

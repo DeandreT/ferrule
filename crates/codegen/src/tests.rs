@@ -547,6 +547,144 @@ fn lowers_framed_fields_positions_and_filter_dependencies() {
 }
 
 #[test]
+fn lowers_all_ordinary_aggregate_inputs_without_ignored_state() {
+    use mapping::AggregateOp;
+
+    let mut project = supported_project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Rows",
+                vec![typed_scalar("Amount", ScalarType::Int), scalar("Label")],
+            )
+            .repeating(),
+        ],
+    );
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            typed_scalar("Direct", ScalarType::Int),
+            typed_scalar("Computed", ScalarType::Int),
+            scalar("Joined"),
+        ],
+    );
+    project.graph.nodes = BTreeMap::from([
+        (
+            1,
+            Node::Aggregate {
+                function: AggregateOp::Sum,
+                collection: vec!["Rows".into()],
+                value: vec!["Amount".into()],
+                expression: None,
+                arg: None,
+            },
+        ),
+        (
+            2,
+            Node::SourceField {
+                frame: Some(vec!["Rows".into()]),
+                path: vec!["Amount".into()],
+            },
+        ),
+        (
+            3,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (
+            4,
+            Node::Call {
+                function: "multiply".into(),
+                args: vec![2, 3],
+            },
+        ),
+        (
+            5,
+            Node::Aggregate {
+                function: AggregateOp::Sum,
+                collection: vec!["Rows".into()],
+                value: vec!["ignored".into()],
+                expression: Some(4),
+                arg: None,
+            },
+        ),
+        (
+            6,
+            Node::Const {
+                value: Value::String(" | ".into()),
+            },
+        ),
+        (
+            7,
+            Node::Aggregate {
+                function: AggregateOp::Join,
+                collection: vec!["Rows".into()],
+                value: vec!["Label".into()],
+                expression: None,
+                arg: Some(6),
+            },
+        ),
+    ]);
+    project.root = Scope {
+        bindings: vec![
+            MappingBinding {
+                target_field: "Direct".into(),
+                node: 1,
+            },
+            MappingBinding {
+                target_field: "Computed".into(),
+                node: 5,
+            },
+            MappingBinding {
+                target_field: "Joined".into(),
+                node: 7,
+            },
+        ],
+        ..Scope::default()
+    };
+
+    let program = lower(&project).expect("ordinary aggregates lower");
+
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|expression| expression.id)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3, 4, 5, 6, 7]
+    );
+    assert_eq!(
+        program.expressions[0].expression,
+        Expression::Aggregate {
+            function: crate::AggregateFunction::Sum,
+            collection: vec!["Rows".into()],
+            value: crate::AggregateValue::Path(vec!["Amount".into()]),
+            arg: None,
+        }
+    );
+    assert_eq!(
+        program.expressions[4].expression,
+        Expression::Aggregate {
+            function: crate::AggregateFunction::Sum,
+            collection: vec!["Rows".into()],
+            value: crate::AggregateValue::Expression(4),
+            arg: None,
+        }
+    );
+    assert_eq!(
+        program.expressions[6].expression,
+        Expression::Aggregate {
+            function: crate::AggregateFunction::Join,
+            collection: vec!["Rows".into()],
+            value: crate::AggregateValue::Path(vec!["Label".into()]),
+            arg: Some(6),
+        }
+    );
+}
+
+#[test]
 fn rejects_filters_without_iteration_before_subset_lowering() {
     let mut project = supported_project();
     project.graph.nodes.insert(
