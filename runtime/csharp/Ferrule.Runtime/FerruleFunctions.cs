@@ -27,14 +27,24 @@ public static class FerruleFunctions
                 arguments,
                 static value => value[..^CountTrailingXmlWhitespace(value)]),
             "length" => Length(arguments),
+            "sql_like" => BinaryString(function, arguments, SqlLike),
+            "pad_string_left" => PadString(function, arguments, left: true),
+            "pad_string_right" => PadString(function, arguments, left: false),
+            "substring" => Substring(arguments),
             "substring_before" => SplitString(function, arguments, before: true),
             "substring_after" => SplitString(function, arguments, before: false),
             "string" => StringValue(arguments),
+            "round" => Round(arguments),
+            "date_from_datetime" => UnaryString(
+                function,
+                arguments,
+                DateFromDateTime),
             "substitute_missing" => SubstituteMissing(arguments),
             "is_xml_nil" => IsXmlNil(arguments),
             "get_folder" => UnaryString(function, arguments, GetFolder),
             "remove_folder" => UnaryString(function, arguments, RemoveFolder),
             "resolve_filepath" => ResolveFilePath(arguments),
+            "isbn10_to_isbn13" => Isbn10ToIsbn13(arguments),
             "and" => BinaryBoolean(function, arguments, (left, right) => left && right),
             "or" => BinaryBoolean(function, arguments, (left, right) => left || right),
             "not" => UnaryBoolean(function, arguments, value => !value),
@@ -120,6 +130,204 @@ public static class FerruleFunctions
         }
 
         return FerruleValue.FromInt64(length);
+    }
+
+    private static FerruleValue Substring(IReadOnlyList<FerruleValue> arguments)
+    {
+        if (arguments.Count > 0 && arguments[0].Kind != FerruleValueKind.String)
+        {
+            throw Type("substring", arguments[0]);
+        }
+        if (arguments.Count is not (2 or 3))
+        {
+            throw Arity("substring", 2, arguments.Count);
+        }
+
+        var value = arguments[0].StringValue;
+        var start = SaturatingInt64(RustRound(NumberArgument(arguments[1], "substring")));
+        long? end = arguments.Count == 3
+            ? SaturatingAdd(
+                start,
+                SaturatingInt64(RustRound(NumberArgument(arguments[2], "substring"))))
+            : null;
+        var result = new StringBuilder(value.Length);
+        long position = 1;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (position >= start && (!end.HasValue || position < end.Value))
+            {
+                result.Append(rune.ToString());
+            }
+            position++;
+        }
+        return FerruleValue.FromString(result.ToString());
+    }
+
+    private static bool SqlLike(string value, string pattern)
+    {
+        var valueRunes = Runes(value);
+        var previous = new bool[valueRunes.Count + 1];
+        previous[0] = true;
+        foreach (var token in pattern.EnumerateRunes())
+        {
+            var current = new bool[valueRunes.Count + 1];
+            if (token.Value == '%')
+            {
+                current[0] = previous[0];
+                for (var index = 1; index <= valueRunes.Count; index++)
+                {
+                    current[index] = previous[index] || current[index - 1];
+                }
+            }
+            else if (token.Value == '_')
+            {
+                for (var index = 1; index <= valueRunes.Count; index++)
+                {
+                    current[index] = previous[index - 1];
+                }
+            }
+            else
+            {
+                for (var index = 1; index <= valueRunes.Count; index++)
+                {
+                    current[index] = previous[index - 1] &&
+                        EqualIgnoringAsciiCase(valueRunes[index - 1], token);
+                }
+            }
+            previous = current;
+        }
+        return previous[valueRunes.Count];
+    }
+
+    private static FerruleValue PadString(
+        string function,
+        IReadOnlyList<FerruleValue> arguments,
+        bool left)
+    {
+        RequireArity(function, arguments, 3);
+        var desiredLength = arguments[1].Kind switch
+        {
+            FerruleValueKind.Int64 => arguments[1].Int64Value,
+            FerruleValueKind.Double when double.IsFinite(arguments[1].DoubleValue) =>
+                SaturatingInt64(arguments[1].DoubleValue),
+            FerruleValueKind.Double => throw InvalidArgument(
+                function,
+                "requires a finite desired length"),
+            _ => throw Type(function, arguments[1]),
+        };
+        if (desiredLength > 1_000_000)
+        {
+            throw InvalidArgument(
+                function,
+                "requested output exceeds 1000000 characters");
+        }
+
+        var paddingRunes = Runes(ScalarText(arguments[2]));
+        if (paddingRunes.Count != 1)
+        {
+            throw InvalidArgument(function, "requires one padding character");
+        }
+
+        var value = ScalarText(arguments[0]);
+        var valueLength = RuneCount(value);
+        var paddingCount = desiredLength > valueLength
+            ? (int)(desiredLength - valueLength)
+            : 0;
+        var paddingText = paddingRunes[0].ToString();
+        var padding = new StringBuilder(paddingCount * paddingText.Length);
+        for (var index = 0; index < paddingCount; index++)
+        {
+            padding.Append(paddingText);
+        }
+
+        return FerruleValue.FromString(left
+            ? padding + value
+            : value + padding.ToString());
+    }
+
+    private static FerruleValue Round(IReadOnlyList<FerruleValue> arguments)
+    {
+        if (arguments.Count == 1 && arguments[0].Kind == FerruleValueKind.Int64)
+        {
+            return arguments[0];
+        }
+        if (arguments.Count == 1)
+        {
+            return FerruleValue.FromDouble(
+                RustRound(NumberArgument(arguments[0], "round")));
+        }
+        if (arguments.Count == 2)
+        {
+            var value = NumberArgument(arguments[0], "round");
+            var digits = SaturatingInt32(
+                RustRound(NumberArgument(arguments[1], "round")));
+            var factor = PowInteger(10.0, digits);
+            return FerruleValue.FromDouble(RustRound(value * factor) / factor);
+        }
+        throw Arity("round", 1, arguments.Count);
+    }
+
+    private static string DateFromDateTime(string value)
+    {
+        var separator = value.IndexOf('T');
+        var date = separator >= 0 ? value[..separator] : value;
+        var start = 0;
+        while (start < date.Length && IsRustWhitespace(date[start]))
+        {
+            start++;
+        }
+        var end = date.Length;
+        while (end > start && IsRustWhitespace(date[end - 1]))
+        {
+            end--;
+        }
+        return date[start..end];
+    }
+
+    private static FerruleValue Isbn10ToIsbn13(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("isbn10_to_isbn13", arguments, 1);
+        var input = RequireString(arguments[0], "isbn10_to_isbn13");
+        var normalized = new StringBuilder(10);
+        foreach (var character in input)
+        {
+            if (character is not (' ' or '-'))
+            {
+                normalized.Append(character);
+            }
+        }
+
+        var isbn = normalized.ToString();
+        if (isbn.Length != 10 ||
+            isbn[..9].Any(character => character is < '0' or > '9') ||
+            !(isbn[9] is >= '0' and <= '9' or 'X' or 'x'))
+        {
+            throw InvalidArgument(
+                "isbn10_to_isbn13",
+                "expected a 10-character ISBN with an optional final X check digit");
+        }
+
+        var isbn10Sum = 0;
+        for (var index = 0; index < 9; index++)
+        {
+            isbn10Sum += (isbn[index] - '0') * (10 - index);
+        }
+        isbn10Sum += isbn[9] is 'X' or 'x' ? 10 : isbn[9] - '0';
+        if (isbn10Sum % 11 != 0)
+        {
+            throw InvalidArgument(
+                "isbn10_to_isbn13",
+                "ISBN-10 check digit is invalid");
+        }
+
+        var output = "978" + isbn[..9];
+        var weighted = 0;
+        for (var index = 0; index < output.Length; index++)
+        {
+            weighted += (output[index] - '0') * (index % 2 == 0 ? 1 : 3);
+        }
+        var checkDigit = (char)('0' + ((10 - weighted % 10) % 10));
+        return FerruleValue.FromString(output + checkDigit);
     }
 
     private static FerruleValue SplitString(
@@ -541,6 +749,123 @@ public static class FerruleFunctions
         }
     }
 
+    private static List<Rune> Runes(string value)
+    {
+        var runes = new List<Rune>(value.Length);
+        foreach (var rune in value.EnumerateRunes())
+        {
+            runes.Add(rune);
+        }
+        return runes;
+    }
+
+    private static int RuneCount(string value)
+    {
+        var count = 0;
+        foreach (var _ in value.EnumerateRunes())
+        {
+            count++;
+        }
+        return count;
+    }
+
+    private static bool EqualIgnoringAsciiCase(Rune left, Rune right) =>
+        AsciiLower(left.Value) == AsciiLower(right.Value);
+
+    private static int AsciiLower(int value) => value is >= 'A' and <= 'Z'
+        ? value + ('a' - 'A')
+        : value;
+
+    private static double NumberArgument(FerruleValue value, string function) => value.Kind switch
+    {
+        FerruleValueKind.Int64 => value.Int64Value,
+        FerruleValueKind.Double => value.DoubleValue,
+        _ => throw Type(function, value),
+    };
+
+    private static double RustRound(double value) =>
+        Math.Round(value, MidpointRounding.AwayFromZero);
+
+    private static long SaturatingInt64(double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return 0;
+        }
+        if (value >= -(double)long.MinValue)
+        {
+            return long.MaxValue;
+        }
+        if (value <= long.MinValue)
+        {
+            return long.MinValue;
+        }
+        return (long)Math.Truncate(value);
+    }
+
+    private static int SaturatingInt32(double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return 0;
+        }
+        if (value >= int.MaxValue)
+        {
+            return int.MaxValue;
+        }
+        if (value <= int.MinValue)
+        {
+            return int.MinValue;
+        }
+        return (int)Math.Truncate(value);
+    }
+
+    private static long SaturatingAdd(long left, long right)
+    {
+        if (right > 0 && left > long.MaxValue - right)
+        {
+            return long.MaxValue;
+        }
+        if (right < 0 && left < long.MinValue - right)
+        {
+            return long.MinValue;
+        }
+        return left + right;
+    }
+
+    private static double PowInteger(double value, int exponent)
+    {
+        var reciprocal = exponent < 0;
+        var result = 1.0;
+        while (true)
+        {
+            if ((exponent & 1) != 0)
+            {
+                result *= value;
+            }
+            exponent /= 2;
+            if (exponent == 0)
+            {
+                break;
+            }
+            value *= value;
+        }
+        return reciprocal ? 1.0 / result : result;
+    }
+
+    private static bool IsRustWhitespace(char character) => character is
+        >= '\u0009' and <= '\u000D' or
+        '\u0020' or
+        '\u0085' or
+        '\u00A0' or
+        '\u1680' or
+        >= '\u2000' and <= '\u200A' or
+        '\u2028' or
+        '\u2029' or
+        '\u202F' or
+        '\u205F' or
+        '\u3000';
+
     internal static string ScalarText(FerruleValue value) => value.Kind switch
     {
         FerruleValueKind.Null or FerruleValueKind.XmlNil => string.Empty,
@@ -662,6 +987,13 @@ public static class FerruleFunctions
             $"`{function}` cannot accept a {TypeName(value)} argument.",
             function: function,
             foundKind: value.Kind);
+
+    private static FerruleRuntimeException InvalidArgument(string function, string detail) =>
+        new(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            $"`{function}` {detail}.",
+            function: function,
+            detail: detail);
 
     private static string TypeName(FerruleValue value) => value.Kind switch
     {
