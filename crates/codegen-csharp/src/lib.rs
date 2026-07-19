@@ -35,8 +35,8 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 #[cfg(test)]
 mod tests {
     use codegen::{
-        Binding, Expression, ExpressionNode, Program, ProgramValidationError, ScalarFunction,
-        SourceIteration, TargetScope,
+        Binding, Expression, ExpressionNode, IterationOutput, IterationPlan, Program,
+        ProgramValidationError, ScalarFunction, SourceIteration, TargetScope,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -65,7 +65,6 @@ mod tests {
                 target_field: String::new(),
                 repeating: false,
                 iteration: None,
-                filter: None,
                 bindings: vec![Binding {
                     target_field: "root value".into(),
                     expression: 9,
@@ -76,7 +75,6 @@ mod tests {
                     target_field: "child group".into(),
                     repeating: false,
                     iteration: None,
-                    filter: None,
                     bindings: vec![Binding {
                         target_field: "copied value".into(),
                         expression: 2,
@@ -188,8 +186,23 @@ mod tests {
     #[test]
     fn source_iterating_scopes_flatten_context_candidates() {
         let mut program = program();
-        program.root.children[0].iteration =
-            Some(SourceIteration::new(vec!["orders".into(), "items".into()]));
+        program.source = SchemaNode::group(
+            "source",
+            vec![
+                SchemaNode::group(
+                    "orders",
+                    vec![SchemaNode::group("items", Vec::new()).repeating()],
+                )
+                .repeating(),
+            ],
+        );
+        program.root.children[0].iteration = Some(IterationPlan::new(
+            SourceIteration::new(vec!["orders".into(), "items".into()]),
+            Some(12),
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        ));
         program.expressions.extend([
             ExpressionNode {
                 id: 10,
@@ -211,7 +224,6 @@ mod tests {
                 },
             },
         ]);
-        program.root.children[0].filter = Some(12);
         program.root.children[0].bindings[0].expression = 10;
         program.root.children[0].bindings.push(Binding {
             target_field: "position".into(),
@@ -223,7 +235,7 @@ mod tests {
         let artifacts = emit(&program).expect("source iteration emits");
         let source = generated_source(&artifacts);
         assert!(source.contains(
-            "foreach (var item_context_1 in context.IterateSource(new string[] { \"orders\", \"items\" }))"
+            "var candidates_1 = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateSource(new string[] { \"orders\", \"items\" }));"
         ));
         assert!(source.contains("Node_12(item_context_1)"));
         assert!(source.contains("RequireBoolean(filter_1, 12U)"));
@@ -357,7 +369,6 @@ mod tests {
             target_field: "root value".into(),
             repeating: false,
             iteration: None,
-            filter: None,
             bindings: Vec::new(),
             children: Vec::new(),
         });
@@ -378,7 +389,6 @@ mod tests {
             target_field: "child group".into(),
             repeating: false,
             iteration: None,
-            filter: None,
             bindings: Vec::new(),
             children: Vec::new(),
         });

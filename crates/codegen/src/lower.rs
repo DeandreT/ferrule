@@ -1,15 +1,12 @@
 use std::collections::BTreeSet;
 
 use ir::{SchemaKind, SchemaNode, Value};
-use mapping::{
-    IterationOutput, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration,
-    SortFilterOrder,
-};
+use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
-    Binding, Diagnostic, Expression, ExpressionNode, LowerError, Program, ProjectFeature,
-    ScalarFunction, ScopeConstructionKind, ScopeFeature, SourceIteration, TargetScope,
-    UnsupportedNodeKind,
+    Binding, Diagnostic, Expression, ExpressionNode, IterationPlan, LowerError, Program,
+    ProjectFeature, ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey,
+    SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -83,6 +80,14 @@ fn lower_scope(
 ) -> TargetScope {
     inspect_scope_features(scope, target_path, diagnostics);
     roots.extend(scope.filter);
+    roots.extend(scope.sort_keys().map(|key| key.node));
+    roots.extend(
+        scope
+            .windows
+            .iter()
+            .copied()
+            .flat_map(mapping::SequenceWindow::nodes),
+    );
 
     let bindings = scope
         .bindings
@@ -134,14 +139,38 @@ fn lower_scope(
         target_field: scope.target_field.clone(),
         repeating: target.repeating,
         iteration: match &scope.iteration {
-            ScopeIteration::Source(path) => Some(SourceIteration::new(path.clone())),
+            ScopeIteration::Source(path) => Some(IterationPlan::new(
+                SourceIteration::new(path.clone()),
+                scope.filter,
+                scope.sort_by.map(|expression| {
+                    SortPlan::new(
+                        SortKey {
+                            expression,
+                            descending: scope.sort_descending,
+                        },
+                        scope
+                            .sort_then_by
+                            .iter()
+                            .copied()
+                            .map(SortKey::from)
+                            .collect(),
+                        scope.sort_filter_order.into(),
+                    )
+                }),
+                scope
+                    .windows
+                    .iter()
+                    .copied()
+                    .map(SequenceWindow::from)
+                    .collect(),
+                scope.iteration_output.into(),
+            )),
             ScopeIteration::None
             | ScopeIteration::DynamicDocuments { .. }
             | ScopeIteration::Sequence(_)
             | ScopeIteration::InnerJoin { .. }
             | ScopeIteration::Concatenate(_) => None,
         },
-        filter: scope.filter,
         bindings,
         children,
     }
@@ -188,18 +217,6 @@ fn inspect_scope_features(
         || scope.group_into_blocks.is_some()
     {
         report(ScopeFeature::Grouping);
-    }
-    if scope.has_sort()
-        || scope.sort_descending
-        || scope.sort_filter_order != SortFilterOrder::SortThenFilter
-    {
-        report(ScopeFeature::Sorting);
-    }
-    if !scope.windows.is_empty() {
-        report(ScopeFeature::SequenceWindows);
-    }
-    if scope.iteration_output != IterationOutput::Repeated {
-        report(ScopeFeature::IterationOutput);
     }
     if !scope.dynamic_bindings.is_empty() {
         report(ScopeFeature::DynamicBindings);

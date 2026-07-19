@@ -212,6 +212,120 @@ impl AggregateValue {
     }
 }
 
+/// Cardinality retained by one iterating target scope.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IterationOutput {
+    #[default]
+    Repeated,
+    First,
+    MappedSequence,
+}
+
+impl From<mapping::IterationOutput> for IterationOutput {
+    fn from(output: mapping::IterationOutput) -> Self {
+        match output {
+            mapping::IterationOutput::Repeated => Self::Repeated,
+            mapping::IterationOutput::First => Self::First,
+            mapping::IterationOutput::MappedSequence => Self::MappedSequence,
+        }
+    }
+}
+
+/// Relative evaluation order for the ordinary per-item filter and sort.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SortFilterOrder {
+    #[default]
+    SortThenFilter,
+    FilterThenSort,
+}
+
+impl From<mapping::SortFilterOrder> for SortFilterOrder {
+    fn from(order: mapping::SortFilterOrder) -> Self {
+        match order {
+            mapping::SortFilterOrder::SortThenFilter => Self::SortThenFilter,
+            mapping::SortFilterOrder::FilterThenSort => Self::FilterThenSort,
+        }
+    }
+}
+
+/// One per-item scalar key and its direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SortKey {
+    pub expression: NodeId,
+    pub descending: bool,
+}
+
+impl From<mapping::SortKey> for SortKey {
+    fn from(key: mapping::SortKey) -> Self {
+        Self {
+            expression: key.node,
+            descending: key.descending,
+        }
+    }
+}
+
+/// A nonempty stable sort plan. Keeping the primary key separate makes an
+/// orphaned secondary key unrepresentable in backend-neutral programs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SortPlan {
+    primary: SortKey,
+    then: Vec<SortKey>,
+    filter_order: SortFilterOrder,
+}
+
+impl SortPlan {
+    pub fn new(primary: SortKey, then: Vec<SortKey>, filter_order: SortFilterOrder) -> Self {
+        Self {
+            primary,
+            then,
+            filter_order,
+        }
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = SortKey> + '_ {
+        std::iter::once(self.primary).chain(self.then.iter().copied())
+    }
+
+    pub const fn filter_order(&self) -> SortFilterOrder {
+        self.filter_order
+    }
+}
+
+/// One ordered sequence window whose bounds execute in the parent context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SequenceWindow {
+    SkipFirst { count: NodeId },
+    First { count: NodeId },
+    From { position: NodeId },
+    FromTo { first: NodeId, last: NodeId },
+    Last { count: NodeId },
+}
+
+impl SequenceWindow {
+    pub fn nodes(self) -> impl Iterator<Item = NodeId> {
+        let nodes = match self {
+            Self::SkipFirst { count } | Self::First { count } | Self::Last { count } => {
+                [Some(count), None]
+            }
+            Self::From { position } => [Some(position), None],
+            Self::FromTo { first, last } => [Some(first), Some(last)],
+        };
+        nodes.into_iter().flatten()
+    }
+}
+
+impl From<mapping::SequenceWindow> for SequenceWindow {
+    fn from(window: mapping::SequenceWindow) -> Self {
+        match window {
+            mapping::SequenceWindow::SkipFirst { count } => Self::SkipFirst { count },
+            mapping::SequenceWindow::First { count } => Self::First { count },
+            mapping::SequenceWindow::From { position } => Self::From { position },
+            mapping::SequenceWindow::FromTo { first, last } => Self::FromTo { first, last },
+            mapping::SequenceWindow::Last { count } => Self::Last { count },
+        }
+    }
+}
+
 /// One statically named constructed target group.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetScope {
@@ -222,13 +336,81 @@ pub struct TargetScope {
     pub repeating: bool,
     /// Source-backed iteration evaluated relative to the parent scope's
     /// current item. Absence means the scope runs exactly once.
-    pub iteration: Option<SourceIteration>,
-    /// Per-candidate boolean expression evaluated before output positions are
-    /// compacted and the target item is constructed.
-    pub filter: Option<NodeId>,
+    pub iteration: Option<IterationPlan>,
     /// Declaration order is semantically significant and is preserved.
     pub bindings: Vec<Binding>,
     pub children: Vec<TargetScope>,
+}
+
+/// One source-backed candidate pipeline. Controls live inside the iteration,
+/// so a filter, sort, or window cannot exist on a non-iterating scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IterationPlan {
+    source: SourceIteration,
+    filter: Option<NodeId>,
+    sort: Option<SortPlan>,
+    windows: Vec<SequenceWindow>,
+    output: IterationOutput,
+}
+
+impl IterationPlan {
+    pub fn source(path: Vec<String>) -> Self {
+        Self::new(
+            SourceIteration::new(path),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        )
+    }
+
+    pub fn new(
+        source: SourceIteration,
+        filter: Option<NodeId>,
+        sort: Option<SortPlan>,
+        windows: Vec<SequenceWindow>,
+        output: IterationOutput,
+    ) -> Self {
+        Self {
+            source,
+            filter,
+            sort,
+            windows,
+            output,
+        }
+    }
+
+    pub const fn source_iteration(&self) -> &SourceIteration {
+        &self.source
+    }
+
+    pub const fn filter(&self) -> Option<NodeId> {
+        self.filter
+    }
+
+    pub const fn sort(&self) -> Option<&SortPlan> {
+        self.sort.as_ref()
+    }
+
+    pub fn windows(&self) -> &[SequenceWindow] {
+        &self.windows
+    }
+
+    pub const fn output(&self) -> IterationOutput {
+        self.output
+    }
+
+    pub fn roots(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.filter
+            .into_iter()
+            .chain(
+                self.sort
+                    .iter()
+                    .flat_map(SortPlan::keys)
+                    .map(|key| key.expression),
+            )
+            .chain(self.windows.iter().copied().flat_map(SequenceWindow::nodes))
+    }
 }
 
 /// One source path that drives a target scope's repeated output.

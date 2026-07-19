@@ -4,7 +4,9 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
-use codegen::{Binding, ExpressionNode, ScalarFunction, SourceIteration};
+use codegen::{
+    Binding, ExpressionNode, IterationOutput, IterationPlan, ScalarFunction, SourceIteration,
+};
 use ir::SchemaNode;
 
 fn program() -> Program {
@@ -168,7 +170,6 @@ fn program() -> Program {
             target_field: String::new(),
             repeating: false,
             iteration: None,
-            filter: None,
             bindings: vec![
                 Binding {
                     target_field: "Copied".to_string(),
@@ -206,7 +207,6 @@ fn program() -> Program {
                     target_field: "Nested".to_string(),
                     repeating: true,
                     iteration: None,
-                    filter: None,
                     bindings: vec![Binding {
                         target_field: "Constant".to_string(),
                         expression: 4,
@@ -218,11 +218,13 @@ fn program() -> Program {
                 TargetScope {
                     target_field: "Rows".to_string(),
                     repeating: true,
-                    iteration: Some(SourceIteration::new(vec![
-                        "Parents".to_string(),
-                        "Children".to_string(),
-                    ])),
-                    filter: Some(16),
+                    iteration: Some(IterationPlan::new(
+                        SourceIteration::new(vec!["Parents".to_string(), "Children".to_string()]),
+                        Some(16),
+                        None,
+                        Vec::new(),
+                        IterationOutput::Repeated,
+                    )),
                     bindings: vec![
                         Binding {
                             target_field: "ParentId".to_string(),
@@ -277,7 +279,7 @@ fn emits_deterministic_rust_project() {
     assert!(source.contains("repeated_1.push(scalar(value_1))"));
     assert!(source.contains("scope_root_0(context)?"));
     assert!(
-        source.contains("for item_context in context.walk_source(&[\"Parents\", \"Children\"])")
+        source.contains("let mut candidates = context.walk_source(&[\"Parents\", \"Children\"]);")
     );
     assert!(source.contains("context.resolve_scalar_in_frame(&[\"Parents\"], &[\"Id\"])"));
     assert!(source.contains("Ok(Value::Int(context.position(&[\"Children\"]) as i64))"));

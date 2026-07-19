@@ -4,7 +4,7 @@ use std::fmt;
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
-use crate::{Expression, Program, TargetScope};
+use crate::{Expression, IterationOutput, Program, TargetScope};
 
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +28,10 @@ pub enum ProgramValidationError {
         collection: Vec<String>,
         value: Vec<String>,
     },
+    InvalidSourceIteration {
+        target_path: Vec<String>,
+        source_path: Vec<String>,
+    },
     MissingBindingExpression {
         target_path: Vec<String>,
         target_field: String,
@@ -37,8 +41,20 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         expression: NodeId,
     },
-    FilterWithoutIteration {
+    MissingSortExpression {
         target_path: Vec<String>,
+        key: usize,
+        expression: NodeId,
+    },
+    MissingWindowExpression {
+        target_path: Vec<String>,
+        window: usize,
+        bound: usize,
+        expression: NodeId,
+    },
+    InvalidIterationOutput {
+        target_path: Vec<String>,
+        output: IterationOutput,
     },
     InvalidDuplicateBinding {
         target_path: Vec<String>,
@@ -70,7 +86,13 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
     validate_aggregate_paths(&program.source, &expressions)?;
-    validate_scope(&program.root, &expressions, &mut Vec::new())
+    validate_scope(
+        &program.root,
+        &expressions,
+        &program.source,
+        &program.target,
+        &mut Vec::new(),
+    )
 }
 
 fn collect_expressions(
@@ -256,18 +278,63 @@ fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Opti
 fn validate_scope(
     scope: &TargetScope,
     expressions: &BTreeMap<NodeId, &Expression>,
+    source: &SchemaNode,
+    target: &SchemaNode,
     target_path: &mut Vec<String>,
 ) -> Result<(), ProgramValidationError> {
-    if let Some(expression) = scope.filter {
-        if scope.iteration.is_none() {
-            return Err(ProgramValidationError::FilterWithoutIteration {
+    if let Some(iteration) = &scope.iteration {
+        if !schema_path_matches(source, iteration.source_iteration().path(), |_| true) {
+            return Err(ProgramValidationError::InvalidSourceIteration {
                 target_path: target_path.clone(),
+                source_path: iteration.source_iteration().path().to_vec(),
             });
         }
-        if !expressions.contains_key(&expression) {
+        if let Some(expression) = iteration.filter()
+            && !expressions.contains_key(&expression)
+        {
             return Err(ProgramValidationError::MissingFilterExpression {
                 target_path: target_path.clone(),
                 expression,
+            });
+        }
+        if let Some(sort) = iteration.sort() {
+            for (key, sort_key) in sort.keys().enumerate() {
+                if !expressions.contains_key(&sort_key.expression) {
+                    return Err(ProgramValidationError::MissingSortExpression {
+                        target_path: target_path.clone(),
+                        key,
+                        expression: sort_key.expression,
+                    });
+                }
+            }
+        }
+        for (window, sequence_window) in iteration.windows().iter().copied().enumerate() {
+            for (bound, expression) in sequence_window.nodes().enumerate() {
+                if !expressions.contains_key(&expression) {
+                    return Err(ProgramValidationError::MissingWindowExpression {
+                        target_path: target_path.clone(),
+                        window,
+                        bound,
+                        expression,
+                    });
+                }
+            }
+        }
+        let target_is_nonrepeating_group = follow_schema_from(target, target, target_path)
+            .is_some_and(|target| {
+                !target.repeating && matches!(target.kind, SchemaKind::Group { .. })
+            });
+        let invalid_output = match iteration.output() {
+            IterationOutput::Repeated => false,
+            IterationOutput::First => scope.repeating || !target_is_nonrepeating_group,
+            IterationOutput::MappedSequence => {
+                scope.repeating || target_path.is_empty() || !target_is_nonrepeating_group
+            }
+        };
+        if invalid_output {
+            return Err(ProgramValidationError::InvalidIterationOutput {
+                target_path: target_path.clone(),
+                output: iteration.output(),
             });
         }
     }
@@ -323,7 +390,7 @@ fn validate_scope(
 
     for child in &scope.children {
         target_path.push(child.target_field.clone());
-        let result = validate_scope(child, expressions, target_path);
+        let result = validate_scope(child, expressions, source, target, target_path);
         target_path.pop();
         result?;
     }
@@ -363,6 +430,15 @@ impl fmt::Display for ProgramValidationError {
                 display_path(value),
                 display_path(collection)
             ),
+            Self::InvalidSourceIteration {
+                target_path,
+                source_path,
+            } => write!(
+                formatter,
+                "target scope {} source iteration {} matches no source path",
+                display_path(target_path),
+                display_path(source_path)
+            ),
             Self::MissingBindingExpression {
                 target_path,
                 target_field,
@@ -380,9 +456,34 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} filter references missing expression {expression}",
                 display_path(target_path)
             ),
-            Self::FilterWithoutIteration { target_path } => write!(
+            Self::MissingSortExpression {
+                target_path,
+                key,
+                expression,
+            } => write!(
                 formatter,
-                "target scope {} has a filter without source iteration",
+                "target scope {} sort key {} references missing expression {expression}",
+                display_path(target_path),
+                key + 1
+            ),
+            Self::MissingWindowExpression {
+                target_path,
+                window,
+                bound,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} sequence window {} bound {} references missing expression {expression}",
+                display_path(target_path),
+                window + 1,
+                bound + 1
+            ),
+            Self::InvalidIterationOutput {
+                target_path,
+                output,
+            } => write!(
+                formatter,
+                "target scope {} cannot use {output:?} iteration output with its target cardinality or location",
                 display_path(target_path)
             ),
             Self::InvalidDuplicateBinding {
@@ -443,12 +544,16 @@ mod tests {
 
     use super::*;
     use crate::{
-        AggregateFunction, AggregateValue, Binding, ExpressionNode, ScalarFunction, SourceIteration,
+        AggregateFunction, AggregateValue, Binding, ExpressionNode, IterationPlan, ScalarFunction,
+        SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
     };
 
     fn program() -> Program {
         Program {
-            source: SchemaNode::group("Source", Vec::new()),
+            source: SchemaNode::group(
+                "Source",
+                vec![SchemaNode::group("Rows", Vec::new()).repeating()],
+            ),
             target: SchemaNode::group("Target", Vec::new()),
             expressions: vec![
                 ExpressionNode {
@@ -469,7 +574,6 @@ mod tests {
                 target_field: String::new(),
                 repeating: false,
                 iteration: None,
-                filter: None,
                 bindings: vec![Binding {
                     target_field: "Value".into(),
                     expression: 2,
@@ -505,11 +609,20 @@ mod tests {
     #[test]
     fn accepts_empty_and_named_source_iterations() {
         let mut program = program();
-        program.root.iteration = Some(SourceIteration::new(Vec::new()));
+        program.root.iteration = Some(IterationPlan::source(Vec::new()));
         assert_eq!(validate_program(&program), Ok(()));
 
-        program.root.iteration = Some(SourceIteration::new(vec!["Rows".into()]));
+        program.root.iteration = Some(IterationPlan::source(vec!["Rows".into()]));
         assert_eq!(validate_program(&program), Ok(()));
+
+        program.root.iteration = Some(IterationPlan::source(vec!["Missing".into()]));
+        assert_eq!(
+            validate_program(&program),
+            Err(ProgramValidationError::InvalidSourceIteration {
+                target_path: Vec::new(),
+                source_path: vec!["Missing".into()],
+            })
+        );
     }
 
     #[test]
@@ -542,28 +655,35 @@ mod tests {
                 },
             },
         ]);
-        program.root.iteration = Some(SourceIteration::new(vec!["Rows".into()]));
-        program.root.filter = Some(6);
+        program.root.iteration = Some(IterationPlan::new(
+            SourceIteration::new(vec!["Rows".into()]),
+            Some(6),
+            None,
+            Vec::new(),
+            IterationOutput::Repeated,
+        ));
 
         assert_eq!(validate_program(&program), Ok(()));
     }
 
     #[test]
     fn rejects_invalid_filters_at_the_exact_target_path() {
-        let child = |iteration, filter| TargetScope {
+        let child = |filter| TargetScope {
             target_field: "Child".into(),
             repeating: true,
-            iteration,
-            filter,
+            iteration: Some(IterationPlan::new(
+                SourceIteration::new(vec!["Rows".into()]),
+                filter,
+                None,
+                Vec::new(),
+                IterationOutput::Repeated,
+            )),
             bindings: Vec::new(),
             children: Vec::new(),
         };
 
         let mut missing = program();
-        missing.root.children.push(child(
-            Some(SourceIteration::new(vec!["Rows".into()])),
-            Some(99),
-        ));
+        missing.root.children.push(child(Some(99)));
         assert_eq!(
             validate_program(&missing),
             Err(ProgramValidationError::MissingFilterExpression {
@@ -571,15 +691,134 @@ mod tests {
                 expression: 99,
             })
         );
+    }
 
-        let mut uniterated = program();
-        uniterated.root.children.push(child(None, Some(1)));
+    #[test]
+    fn validates_sort_window_and_iteration_output_controls() {
+        let child = |iteration, repeating| TargetScope {
+            target_field: "Child".into(),
+            repeating,
+            iteration: Some(iteration),
+            bindings: Vec::new(),
+            children: Vec::new(),
+        };
+        let sort = |then| {
+            SortPlan::new(
+                SortKey {
+                    expression: 1,
+                    descending: false,
+                },
+                then,
+                SortFilterOrder::SortThenFilter,
+            )
+        };
+
+        let mut missing_sort = program();
+        missing_sort.root.children.push(child(
+            IterationPlan::new(
+                SourceIteration::new(vec!["Rows".into()]),
+                None,
+                Some(sort(vec![SortKey {
+                    expression: 99,
+                    descending: true,
+                }])),
+                Vec::new(),
+                IterationOutput::Repeated,
+            ),
+            true,
+        ));
         assert_eq!(
-            validate_program(&uniterated),
-            Err(ProgramValidationError::FilterWithoutIteration {
+            validate_program(&missing_sort),
+            Err(ProgramValidationError::MissingSortExpression {
                 target_path: vec!["Child".into()],
+                key: 1,
+                expression: 99,
             })
         );
+
+        let mut missing_window = program();
+        missing_window.root.children.push(child(
+            IterationPlan::new(
+                SourceIteration::new(vec!["Rows".into()]),
+                None,
+                None,
+                vec![SequenceWindow::FromTo { first: 1, last: 99 }],
+                IterationOutput::Repeated,
+            ),
+            true,
+        ));
+        assert_eq!(
+            validate_program(&missing_window),
+            Err(ProgramValidationError::MissingWindowExpression {
+                target_path: vec!["Child".into()],
+                window: 0,
+                bound: 1,
+                expression: 99,
+            })
+        );
+
+        let mut invalid_first = program();
+        invalid_first.root.children.push(child(
+            IterationPlan::new(
+                SourceIteration::new(vec!["Rows".into()]),
+                None,
+                None,
+                Vec::new(),
+                IterationOutput::First,
+            ),
+            true,
+        ));
+        assert_eq!(
+            validate_program(&invalid_first),
+            Err(ProgramValidationError::InvalidIterationOutput {
+                target_path: vec!["Child".into()],
+                output: IterationOutput::First,
+            })
+        );
+
+        let mut mapped_root = program();
+        mapped_root.root.iteration = Some(IterationPlan::new(
+            SourceIteration::new(Vec::new()),
+            None,
+            None,
+            Vec::new(),
+            IterationOutput::MappedSequence,
+        ));
+        assert_eq!(
+            validate_program(&mapped_root),
+            Err(ProgramValidationError::InvalidIterationOutput {
+                target_path: Vec::new(),
+                output: IterationOutput::MappedSequence,
+            })
+        );
+
+        let mut scalar_first = program();
+        scalar_first.target = SchemaNode::group(
+            "Target",
+            vec![SchemaNode::scalar("Child", ScalarType::String)],
+        );
+        scalar_first.root.children.push(child(
+            IterationPlan::new(
+                SourceIteration::new(vec!["Rows".into()]),
+                None,
+                None,
+                Vec::new(),
+                IterationOutput::First,
+            ),
+            false,
+        ));
+        assert_eq!(
+            validate_program(&scalar_first),
+            Err(ProgramValidationError::InvalidIterationOutput {
+                target_path: vec!["Child".into()],
+                output: IterationOutput::First,
+            })
+        );
+
+        let mut group_first = scalar_first;
+        group_first.target =
+            SchemaNode::group("Target", vec![SchemaNode::group("Child", Vec::new())]);
+        assert_eq!(validate_program(&group_first), Ok(()));
     }
 
     #[test]
@@ -756,7 +995,6 @@ mod tests {
             target_field: "Child".into(),
             repeating: false,
             iteration: None,
-            filter: None,
             bindings: Vec::new(),
             children: Vec::new(),
         };

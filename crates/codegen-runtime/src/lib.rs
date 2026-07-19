@@ -8,6 +8,7 @@
 
 mod aggregate;
 mod context;
+mod iteration;
 
 use std::fmt;
 
@@ -15,6 +16,9 @@ pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{InstanceKind, ScopeContext, SourcePathError, clone_scalar, resolve_scalar};
 pub use functions::FunctionError;
 pub use ir::{Instance, ScalarType, Value};
+pub use iteration::{
+    SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
+};
 
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
@@ -24,6 +28,7 @@ pub enum RuntimeError {
     AggregateIntegerOverflow { function: AggregateFunction },
     AggregateNonFinite { function: AggregateFunction },
     NotABool { node: u32, found: &'static str },
+    NotAnItemCount { node: u32, found: &'static str },
 }
 
 impl fmt::Display for RuntimeError {
@@ -44,6 +49,12 @@ impl fmt::Display for RuntimeError {
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
             }
+            Self::NotAnItemCount { node, found } => {
+                write!(
+                    formatter,
+                    "node {node}: expected an item count, got {found}"
+                )
+            }
         }
     }
 }
@@ -55,7 +66,8 @@ impl std::error::Error for RuntimeError {
             Self::Function(error) => Some(error),
             Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
-            | Self::NotABool { .. } => None,
+            | Self::NotABool { .. }
+            | Self::NotAnItemCount { .. } => None,
         }
     }
 }

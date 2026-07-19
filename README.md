@@ -124,10 +124,14 @@ nested/repeating target groups, exact numeric target adaptation and repeating
 scalar bindings. Source-backed scopes support empty, nested, and multi-hop paths
 with flattened source-order output, innermost-to-outermost field fallback,
 active collection ownership, first-item reads through repetitions that are not
-iterated, and boolean filters. Filters observe raw source positions; surviving
-items and their descendants observe positions compacted per parent. It also
-supports all ordinary collection aggregates (`count`, `sum`, `avg`, `min`,
-`max`, `join`, and `item_at`) over direct fields or computed per-item
+iterated, boolean filters, stable mixed-direction multi-key sorting, both
+sort/filter orders, ordered skip/first/from/range/last windows, and repeated,
+first-item, or mapped-sequence output. Sort keys and filter-before-sort predicates
+observe raw positions; filters after sorting observe sorted positions; output
+items and their descendants observe final positions compacted per parent. Window
+bounds execute once in the parent context and retain typed item-count failures.
+It also supports all ordinary collection aggregates (`count`, `sum`, `avg`,
+`min`, `max`, `join`, and `item_at`) over direct fields or computed per-item
 expressions, with parent-context scalar arguments and typed numeric failures.
 Lazy `if` expressions and scalar calls cover boolean `and`/`or`/`not`, `exists`,
 the `is_empty`/`starts_with`/`contains` string predicates, arithmetic

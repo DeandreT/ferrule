@@ -1,0 +1,160 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+AssertOutput((FerruleGroup)GeneratedMapping.Execute(Source(false)));
+var error = Error(() => GeneratedMapping.Execute(Source(true)));
+Assert(error.Error == FerruleRuntimeError.NotAnItemCount);
+Assert(error.Node == 20U);
+Assert(error.FoundKind == FerruleValueKind.Bool);
+
+static FerruleGroup Source(bool invalidBound) =>
+    new(new FerruleField[]
+    {
+        new("Parents", new FerruleRepeated(new FerruleInstance[]
+        {
+            Parent(
+                "P1",
+                invalidBound ? FerruleValue.FromBoolean(true) : FerruleValue.FromString("1")),
+            Parent("P2", FerruleValue.FromDouble(2.9)),
+        })),
+    });
+
+static FerruleGroup Parent(string name, FerruleValue bound) =>
+    new(new FerruleField[]
+    {
+        new("Name", Scalar(FerruleValue.FromString(name))),
+        new("Bound", Scalar(bound)),
+        new("Rows", new FerruleRepeated(new FerruleInstance[]
+        {
+            SourceRow($"{name}-A", 1, "b", true, 1),
+            SourceRow($"{name}-B", 3, "z", true, 0),
+            SourceRow($"{name}-C", 3, "a", true, 1),
+            SourceRow($"{name}-D", 3, "a", true, 1),
+            SourceRow($"{name}-E", 2, "x", true, 1),
+            SourceRow($"{name}-F", 4, "m", false, 1),
+            SourceRow($"{name}-G", 0, "q", true, 1),
+            SourceRow($"{name}-H", 5, "r", true, 1),
+        })),
+    });
+
+static FerruleGroup SourceRow(
+    string label,
+    long primary,
+    string secondary,
+    bool keep,
+    long divisor) =>
+    new(new FerruleField[]
+    {
+        new("Label", Scalar(FerruleValue.FromString(label))),
+        new("Primary", Scalar(FerruleValue.FromInt64(primary))),
+        new("Secondary", Scalar(FerruleValue.FromString(secondary))),
+        new("Keep", Scalar(FerruleValue.FromBoolean(keep))),
+        new("Divisor", Scalar(FerruleValue.FromInt64(divisor))),
+    });
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static void AssertOutput(FerruleGroup root)
+{
+    var parents = (FerruleRepeated)Field(root, "ParentOut");
+    Assert(parents.Items.Count == 2);
+    AssertParent((FerruleGroup)parents.Items[0], "P1", 1, "C", "D");
+    AssertParent((FerruleGroup)parents.Items[1], "P2", 2, "D", "E");
+}
+
+static void AssertParent(
+    FerruleGroup parent,
+    string name,
+    long parentPosition,
+    params string[] windowLabels)
+{
+    Assert(Value(parent, "Parent") == FerruleValue.FromString(name));
+    AssertRows(
+        (FerruleRepeated)Field(parent, "SortThenFilter"),
+        name,
+        parentPosition,
+        "H",
+        "C",
+        "D");
+    AssertRows(
+        (FerruleRepeated)Field(parent, "FilterThenSort"),
+        name,
+        parentPosition,
+        "C",
+        "D",
+        "B",
+        "A");
+    AssertRows(
+        (FerruleRepeated)Field(parent, "Windows"),
+        name,
+        parentPosition,
+        windowLabels);
+
+    AssertRow((FerruleGroup)Field(parent, "First"), $"{name}-A", parentPosition, 1);
+    Assert(((FerruleGroup)Field(parent, "EmptyFirst")).Fields.Count == 0);
+    var mapped = (FerruleMappedSequence)Field(parent, "Mapped");
+    AssertRows(mapped, name, parentPosition, "A", "B");
+    Assert(Value((FerruleGroup)Field(parent, "LazyFirst"), "Value") == FerruleValue.FromInt64(1));
+}
+
+static void AssertRows(
+    FerruleInstance sequence,
+    string parent,
+    long parentPosition,
+    params string[] labels)
+{
+    var rows = sequence switch
+    {
+        FerruleRepeated repeated => repeated.Items,
+        FerruleMappedSequence mapped => mapped.Items,
+        _ => throw new InvalidOperationException("Expected a sequence output."),
+    };
+    Assert(rows.Count == labels.Length);
+    for (var index = 0; index < labels.Length; index++)
+    {
+        AssertRow(
+            (FerruleGroup)rows[index],
+            $"{parent}-{labels[index]}",
+            parentPosition,
+            index + 1);
+    }
+}
+
+static void AssertRow(
+    FerruleGroup row,
+    string label,
+    long parentPosition,
+    long itemPosition)
+{
+    Assert(Value(row, "Label") == FerruleValue.FromString(label));
+    Assert(Value(row, "ParentPosition") == FerruleValue.FromInt64(parentPosition));
+    Assert(Value(row, "ItemPosition") == FerruleValue.FromInt64(itemPosition));
+}
+
+static FerruleInstance Field(FerruleGroup group, string name) =>
+    group.Fields.Single(field => field.Name == name).Value;
+
+static FerruleValue Value(FerruleGroup group, string name) =>
+    ((FerruleScalar)Field(group, name)).Value;
+
+static FerruleRuntimeException Error(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected an invalid item-count error.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("generated iteration controls differ from the engine");
+    }
+}

@@ -7,8 +7,8 @@ use mapping::{
 
 use crate::{
     ArtifactPath, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError, Diagnostic, Expression,
-    GeneratedFile, ProjectFeature, SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeFeature,
-    SourceIteration, UnsupportedNodeKind, lower,
+    GeneratedFile, IterationPlan, ProjectFeature, SUPPORTED_SCALAR_CALLS, ScalarFunction,
+    ScopeFeature, UnsupportedNodeKind, lower,
 };
 
 fn scalar(name: &str) -> SchemaNode {
@@ -392,7 +392,148 @@ fn lowers_source_iteration_at_the_static_target_path() {
 
     assert_eq!(
         program.root.children[0].iteration,
-        Some(SourceIteration::new(Vec::new()))
+        Some(IterationPlan::source(Vec::new()))
+    );
+}
+
+#[test]
+fn lowers_complete_source_iteration_controls_and_reachability() {
+    let mut project = supported_project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            scalar("First"),
+            scalar("Second"),
+            scalar("NestedValue"),
+            SchemaNode::group(
+                "Rows",
+                vec![
+                    typed_scalar("Keep", ScalarType::Bool),
+                    typed_scalar("Score", ScalarType::Int),
+                    scalar("Tie"),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    project.graph.nodes.extend([
+        (
+            40,
+            Node::SourceField {
+                path: vec!["Keep".into()],
+                frame: None,
+            },
+        ),
+        (
+            41,
+            Node::SourceField {
+                path: vec!["Score".into()],
+                frame: None,
+            },
+        ),
+        (
+            42,
+            Node::SourceField {
+                path: vec!["Tie".into()],
+                frame: None,
+            },
+        ),
+        (
+            43,
+            Node::Const {
+                value: Value::Int(1),
+            },
+        ),
+        (
+            44,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+        (
+            45,
+            Node::Const {
+                value: Value::Int(3),
+            },
+        ),
+        (
+            46,
+            Node::Const {
+                value: Value::Int(4),
+            },
+        ),
+        (
+            47,
+            Node::Const {
+                value: Value::Int(5),
+            },
+        ),
+    ]);
+    project.root.children[0] = Scope {
+        target_field: "Details".into(),
+        iteration: ScopeIteration::Source(vec!["Rows".into()]),
+        filter: Some(40),
+        sort_by: Some(41),
+        sort_descending: true,
+        sort_then_by: vec![mapping::SortKey {
+            node: 42,
+            descending: false,
+        }],
+        sort_filter_order: mapping::SortFilterOrder::FilterThenSort,
+        windows: vec![
+            mapping::SequenceWindow::SkipFirst { count: 43 },
+            mapping::SequenceWindow::First { count: 44 },
+            mapping::SequenceWindow::From { position: 45 },
+            mapping::SequenceWindow::FromTo {
+                first: 46,
+                last: 47,
+            },
+            mapping::SequenceWindow::Last { count: 43 },
+        ],
+        bindings: vec![MappingBinding {
+            target_field: "Value".into(),
+            node: 30,
+        }],
+        ..Scope::default()
+    };
+
+    let program = lower(&project).expect("all source iteration controls lower together");
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![10, 20, 30, 40, 41, 42, 43, 44, 45, 46, 47]
+    );
+    assert_eq!(
+        program.root.children[0].iteration,
+        Some(crate::IterationPlan::new(
+            crate::SourceIteration::new(vec!["Rows".into()]),
+            Some(40),
+            Some(crate::SortPlan::new(
+                crate::SortKey {
+                    expression: 41,
+                    descending: true,
+                },
+                vec![crate::SortKey {
+                    expression: 42,
+                    descending: false,
+                }],
+                crate::SortFilterOrder::FilterThenSort,
+            )),
+            vec![
+                crate::SequenceWindow::SkipFirst { count: 43 },
+                crate::SequenceWindow::First { count: 44 },
+                crate::SequenceWindow::From { position: 45 },
+                crate::SequenceWindow::FromTo {
+                    first: 46,
+                    last: 47,
+                },
+                crate::SequenceWindow::Last { count: 43 },
+            ],
+            crate::IterationOutput::Repeated,
+        ))
     );
 }
 
@@ -503,9 +644,14 @@ fn lowers_framed_fields_positions_and_filter_dependencies() {
     );
     assert_eq!(
         details.iteration,
-        Some(SourceIteration::new(vec!["Rows".into()]))
+        Some(IterationPlan::new(
+            crate::SourceIteration::new(vec!["Rows".into()]),
+            Some(44),
+            None,
+            Vec::new(),
+            crate::IterationOutput::Repeated,
+        ))
     );
-    assert_eq!(details.filter, Some(44));
     assert_eq!(
         program.expressions[2],
         crate::ExpressionNode {

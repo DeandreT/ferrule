@@ -1,4 +1,4 @@
-use crate::{RuntimeError, Value};
+use crate::{RuntimeError, Value, iteration::compare_int_float};
 
 /// A scalar reduction over one source collection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,26 +245,6 @@ fn compensated_average(values: &[NumericValue]) -> Result<f64, RuntimeError> {
     let normalized = finite_float(AggregateFunction::Avg, sum + correction)?;
     let mean = finite_float(AggregateFunction::Avg, normalized / values.len() as f64)?;
     finite_float(AggregateFunction::Avg, mean * scale)
-}
-
-fn compare_int_float(integer: i64, float: f64) -> std::cmp::Ordering {
-    if float >= i64::MAX as f64 {
-        return std::cmp::Ordering::Less;
-    }
-    if float < i64::MIN as f64 {
-        return std::cmp::Ordering::Greater;
-    }
-
-    let truncated = float.trunc() as i64;
-    match integer.cmp(&truncated) {
-        std::cmp::Ordering::Equal if float.fract().is_sign_positive() && float.fract() != 0.0 => {
-            std::cmp::Ordering::Less
-        }
-        std::cmp::Ordering::Equal if float.fract().is_sign_negative() && float.fract() != 0.0 => {
-            std::cmp::Ordering::Greater
-        }
-        ordering => ordering,
-    }
 }
 
 fn value_text(value: &Value) -> String {

@@ -1,0 +1,133 @@
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source(false))?, expected());
+    assert_eq!(
+        execute(&source(true)),
+        Err(RuntimeError::NotAnItemCount {
+            node: 20,
+            found: "bool",
+        }),
+    );
+    Ok(())
+}
+
+fn source(invalid_bound: bool) -> Instance {
+    group([field(
+        "Parents",
+        repeated([
+            parent(
+                "P1",
+                if invalid_bound {
+                    Value::Bool(true)
+                } else {
+                    Value::String("1".into())
+                },
+            ),
+            parent("P2", Value::Float(2.9)),
+        ]),
+    )])
+}
+
+fn parent(name: &str, bound: Value) -> Instance {
+    let rows = [
+        ("A", 1, "b", true, 1),
+        ("B", 3, "z", true, 0),
+        ("C", 3, "a", true, 1),
+        ("D", 3, "a", true, 1),
+        ("E", 2, "x", true, 1),
+        ("F", 4, "m", false, 1),
+        ("G", 0, "q", true, 1),
+        ("H", 5, "r", true, 1),
+    ];
+    group([
+        field("Name", scalar(Value::String(name.into()))),
+        field("Bound", scalar(bound)),
+        field(
+            "Rows",
+            repeated(
+                rows.into_iter()
+                    .map(|(label, primary, secondary, keep, divisor)| {
+                        source_row(
+                            &format!("{name}-{label}"),
+                            primary,
+                            secondary,
+                            keep,
+                            divisor,
+                        )
+                    }),
+            ),
+        ),
+    ])
+}
+
+fn source_row(label: &str, primary: i64, secondary: &str, keep: bool, divisor: i64) -> Instance {
+    group([
+        field("Label", scalar(Value::String(label.into()))),
+        field("Primary", scalar(Value::Int(primary))),
+        field("Secondary", scalar(Value::String(secondary.into()))),
+        field("Keep", scalar(Value::Bool(keep))),
+        field("Divisor", scalar(Value::Int(divisor))),
+    ])
+}
+
+fn expected() -> Instance {
+    group([field(
+        "ParentOut",
+        repeated([
+            target_parent("P1", 1, ["C", "D"]),
+            target_parent("P2", 2, ["D", "E"]),
+        ]),
+    )])
+}
+
+fn target_parent<const N: usize>(name: &str, parent_position: i64, windows: [&str; N]) -> Instance {
+    group([
+        field("Parent", scalar(Value::String(name.into()))),
+        field(
+            "SortThenFilter",
+            repeated(target_rows(name, parent_position, ["H", "C", "D"])),
+        ),
+        field(
+            "FilterThenSort",
+            repeated(target_rows(name, parent_position, ["C", "D", "B", "A"])),
+        ),
+        field(
+            "Windows",
+            repeated(target_rows(name, parent_position, windows)),
+        ),
+        field("First", target_row(&format!("{name}-A"), parent_position, 1)),
+        field("EmptyFirst", group([])),
+        field(
+            "Mapped",
+            Instance::MappedSequence(target_rows(name, parent_position, ["A", "B"])),
+        ),
+        field(
+            "LazyFirst",
+            group([field("Value", scalar(Value::Int(1)))]),
+        ),
+    ])
+}
+
+fn target_rows<'a>(
+    parent: &str,
+    parent_position: i64,
+    labels: impl IntoIterator<Item = &'a str>,
+) -> Vec<Instance> {
+    labels.into_iter().enumerate().map(move |(index, label)| {
+        target_row(
+            &format!("{parent}-{label}"),
+            parent_position,
+            index as i64 + 1,
+        )
+    }).collect()
+}
+
+fn target_row(label: &str, parent_position: i64, item_position: i64) -> Instance {
+    group([
+        field("Label", scalar(Value::String(label.into()))),
+        field("ParentPosition", scalar(Value::Int(parent_position))),
+        field("ItemPosition", scalar(Value::Int(item_position))),
+    ])
+}
