@@ -346,6 +346,9 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         Node::Const { value } => Expression::Const {
             value: value.clone(),
         },
+        Node::RuntimeValue { value } => Expression::RuntimeValue {
+            value: (*value).into(),
+        },
         Node::Call { function, args } => {
             let Some(function) = ScalarFunction::from_name(function) else {
                 return Err(Diagnostic::UnsupportedFunction {
@@ -425,7 +428,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::SourceDocumentPath => UnsupportedNodeKind::SourceDocumentPath,
         Node::JoinField { .. } => UnsupportedNodeKind::JoinField,
         Node::JoinPosition { .. } => UnsupportedNodeKind::JoinPosition,
-        Node::RuntimeValue { .. } => UnsupportedNodeKind::RuntimeValue,
         Node::Lookup { .. } => UnsupportedNodeKind::Lookup,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
@@ -436,6 +438,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::SourceField { .. }
         | Node::Position { .. }
         | Node::Const { .. }
+        | Node::RuntimeValue { .. }
         | Node::Call { .. }
         | Node::If { .. }
         | Node::ValueMap { .. }

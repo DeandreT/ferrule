@@ -1,0 +1,52 @@
+use std::path::Path;
+
+use codegen_runtime::{
+    ExecutionContext, Instance, RuntimeError, RuntimeValue, Value, field, group, scalar,
+};
+use ferrule_generated_mapping::{execute, execute_with_context};
+
+const ACTIVE: &str = "/maps/library.ferrule.json";
+const MAIN: &str = "/maps/main.ferrule.json";
+const CURRENT: &str = "2026-07-19T11:22:33.45-07:00";
+const SKIPPED: &str = "missing-current-skipped";
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let full = ExecutionContext::with_main_mapping_file_path(
+        Path::new(ACTIVE),
+        Path::new(MAIN),
+    )
+    .with_current_datetime(CURRENT);
+    let paths = ExecutionContext::with_main_mapping_file_path(
+        Path::new(ACTIVE),
+        Path::new(MAIN),
+    );
+    assert_eq!(execute_with_context(&source(true), &full)?, expected(CURRENT));
+    assert_eq!(execute_with_context(&source(false), &paths)?, expected(SKIPPED));
+    assert_eq!(
+        execute(&source(true)),
+        Err(RuntimeError::MissingRuntimeValue {
+            value: RuntimeValue::MappingFilePath,
+        }),
+    );
+    assert_eq!(
+        execute_with_context(&source(true), &paths),
+        Err(RuntimeError::MissingRuntimeValue {
+            value: RuntimeValue::CurrentDateTime,
+        }),
+    );
+    Ok(())
+}
+
+fn source(use_current: bool) -> Instance {
+    group([field("UseCurrent", scalar(Value::Bool(use_current)))])
+}
+
+fn expected(current: &str) -> Instance {
+    group([
+        field("Active", scalar(Value::String(ACTIVE.into()))),
+        field("Main", scalar(Value::String(MAIN.into()))),
+        field("CurrentOne", scalar(Value::String(current.into()))),
+        field("CurrentTwo", scalar(Value::String(current.into()))),
+        field("Lazy", scalar(Value::String("lazy".into()))),
+    ])
+}

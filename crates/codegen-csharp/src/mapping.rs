@@ -39,6 +39,9 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     output.push_str(
         "    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        return Scope_0(global::Ferrule.Runtime.ScopeContext.FromSource(source));\n    }\n",
     );
+    output.push_str(
+        "\n    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        return Scope_0(global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext));\n    }\n",
+    );
 
     for (node, expression) in expressions {
         output.push('\n');
@@ -70,6 +73,12 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 output.push_str(" =>\n        ");
                 output.push_str(&literal::value(node, value)?);
                 output.push_str(";\n");
+            }
+            Expression::RuntimeValue { value } => {
+                output.push_str(" =>\n        context.ResolveRuntimeValue(");
+                output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
+                output.push_str(runtime_value_name(*value));
+                output.push_str(");\n");
             }
             Expression::Call { function, args } => {
                 output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
@@ -487,6 +496,14 @@ const fn aggregate_function_name(function: AggregateFunction) -> &'static str {
         AggregateFunction::Max => "Max",
         AggregateFunction::Join => "Join",
         AggregateFunction::ItemAt => "ItemAt",
+    }
+}
+
+const fn runtime_value_name(value: codegen::RuntimeValue) -> &'static str {
+    match value {
+        codegen::RuntimeValue::MappingFilePath => "MappingFilePath",
+        codegen::RuntimeValue::MainMappingFilePath => "MainMappingFilePath",
+        codegen::RuntimeValue::CurrentDateTime => "CurrentDateTime",
     }
 }
 

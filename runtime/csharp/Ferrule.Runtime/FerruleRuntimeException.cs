@@ -19,6 +19,7 @@ public enum FerruleRuntimeError
     AggregateIntegerOverflow,
     AggregateNonFinite,
     CopyCurrentSourceRequiresGroup,
+    MissingRuntimeValue,
     GeneratedSequenceTooLarge,
     RecursiveSequenceDepth,
     RecursiveSequenceTooLarge,
@@ -39,7 +40,8 @@ public sealed class FerruleRuntimeException : Exception
         string? detail = null,
         UInt128? requestedItems = null,
         UInt128? maximumItems = null,
-        int? maximumDepth = null)
+        int? maximumDepth = null,
+        FerruleRuntimeValue? runtimeValue = null)
         : base(message)
     {
         Error = error;
@@ -53,6 +55,7 @@ public sealed class FerruleRuntimeException : Exception
         RequestedItems = requestedItems;
         MaximumItems = maximumItems;
         MaximumDepth = maximumDepth;
+        RuntimeValue = runtimeValue;
     }
 
     public FerruleRuntimeException(
@@ -68,7 +71,8 @@ public sealed class FerruleRuntimeException : Exception
         string? detail = null,
         UInt128? requestedItems = null,
         UInt128? maximumItems = null,
-        int? maximumDepth = null)
+        int? maximumDepth = null,
+        FerruleRuntimeValue? runtimeValue = null)
         : base(message, innerException)
     {
         Error = error;
@@ -82,6 +86,7 @@ public sealed class FerruleRuntimeException : Exception
         RequestedItems = requestedItems;
         MaximumItems = maximumItems;
         MaximumDepth = maximumDepth;
+        RuntimeValue = runtimeValue;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -105,4 +110,6 @@ public sealed class FerruleRuntimeException : Exception
     public UInt128? MaximumItems { get; }
 
     public int? MaximumDepth { get; }
+
+    public FerruleRuntimeValue? RuntimeValue { get; }
 }

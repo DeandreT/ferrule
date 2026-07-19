@@ -21,7 +21,7 @@ pub use diagnostic::{
 pub use lower::lower;
 pub use model::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, GeneratedSequence,
-    IterationOutput, IterationPlan, IterationSource, Program, SUPPORTED_SCALAR_CALLS,
+    IterationOutput, IterationPlan, IterationSource, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS,
     ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
     TargetConstruction, TargetScope,
 };

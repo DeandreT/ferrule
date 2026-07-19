@@ -354,6 +354,64 @@ fn lowers_direct_calls_with_ordered_arguments() {
 }
 
 #[test]
+fn lowers_all_runtime_values_as_dependency_free_expressions() {
+    let mut project = supported_project();
+    project.graph.nodes = BTreeMap::from([
+        (
+            1,
+            Node::RuntimeValue {
+                value: mapping::RuntimeValue::MappingFilePath,
+            },
+        ),
+        (
+            2,
+            Node::RuntimeValue {
+                value: mapping::RuntimeValue::MainMappingFilePath,
+            },
+        ),
+        (
+            3,
+            Node::RuntimeValue {
+                value: mapping::RuntimeValue::CurrentDateTime,
+            },
+        ),
+    ]);
+    project.root.bindings[0].node = 1;
+    project.root.bindings[1].node = 2;
+    project.root.children[0].bindings[0].node = 3;
+
+    let program = lower(&project).expect("runtime values are portable host inputs");
+
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|node| (&node.expression, node.id))
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                &Expression::RuntimeValue {
+                    value: crate::RuntimeValue::MappingFilePath,
+                },
+                1,
+            ),
+            (
+                &Expression::RuntimeValue {
+                    value: crate::RuntimeValue::MainMappingFilePath,
+                },
+                2,
+            ),
+            (
+                &Expression::RuntimeValue {
+                    value: crate::RuntimeValue::CurrentDateTime,
+                },
+                3,
+            ),
+        ]
+    );
+}
+
+#[test]
 fn nested_calls_and_if_retain_every_dependency_deterministically() {
     let mut project = supported_project();
     project.graph.nodes.extend([

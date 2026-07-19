@@ -10,23 +10,43 @@ public sealed class ScopeContext
 {
     private readonly IReadOnlyList<FerruleInstance> _frames;
     private readonly IReadOnlyList<CollectionIdentity> _collections;
+    private readonly FerruleExecutionContext? _executionContext;
 
     private ScopeContext(
         IReadOnlyList<FerruleInstance> frames,
-        IReadOnlyList<CollectionIdentity> collections)
+        IReadOnlyList<CollectionIdentity> collections,
+        FerruleExecutionContext? executionContext)
     {
         _frames = frames;
         _collections = collections;
+        _executionContext = executionContext;
     }
 
     public IReadOnlyList<FerruleInstance> Frames => _frames;
 
-    public static ScopeContext FromSource(FerruleInstance source)
+    public static ScopeContext FromSource(
+        FerruleInstance source,
+        FerruleExecutionContext? executionContext = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         return new ScopeContext(
             new ReadOnlyCollection<FerruleInstance>(new[] { source }),
-            Array.Empty<CollectionIdentity>());
+            Array.Empty<CollectionIdentity>(),
+            executionContext);
+    }
+
+    /// <summary>Returns one exact host value or a typed missing-context error.</summary>
+    public FerruleValue ResolveRuntimeValue(FerruleRuntimeValue value)
+    {
+        var resolved = _executionContext?.GetValue(value);
+        if (resolved is null)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.MissingRuntimeValue,
+                $"execution context does not provide {value}",
+                runtimeValue: value);
+        }
+        return FerruleValue.FromString(resolved);
     }
 
     /// <summary>
@@ -271,7 +291,10 @@ public sealed class ScopeContext
 
         var collections = _collections.ToArray();
         collections[^1] = collections[^1] with { Index = index };
-        return new ScopeContext(_frames, new ReadOnlyCollection<CollectionIdentity>(collections));
+        return new ScopeContext(
+            _frames,
+            new ReadOnlyCollection<CollectionIdentity>(collections),
+            _executionContext);
     }
 
     /// <summary>Clones the innermost source group for independent target ownership.</summary>
@@ -343,7 +366,8 @@ public sealed class ScopeContext
         collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index));
         return new ScopeContext(
             new ReadOnlyCollection<FerruleInstance>(frames),
-            new ReadOnlyCollection<CollectionIdentity>(collections));
+            new ReadOnlyCollection<CollectionIdentity>(collections),
+            _executionContext);
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)
@@ -474,7 +498,8 @@ public sealed class ScopeContext
         allCollections.AddRange(collections);
         output.Add(new ScopeContext(
             new ReadOnlyCollection<FerruleInstance>(allFrames),
-            new ReadOnlyCollection<CollectionIdentity>(allCollections)));
+            new ReadOnlyCollection<CollectionIdentity>(allCollections),
+            _executionContext));
     }
 
     private static void PushCollection(
