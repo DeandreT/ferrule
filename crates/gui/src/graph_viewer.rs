@@ -31,6 +31,52 @@ mod node_palette;
 use graph_references::node_inputs;
 use node_palette::NodeTemplate;
 
+const ENDPOINT_LABEL_WIDTH: f32 = 190.0;
+const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
+
+fn compact_endpoint_label(path: &str) -> String {
+    if path.chars().count() <= ENDPOINT_LABEL_CHAR_LIMIT {
+        return path.to_string();
+    }
+
+    let segments = path.split('/').collect::<Vec<_>>();
+    if segments.len() > 2 {
+        let tail = format!(
+            ".../{}/{}",
+            segments[segments.len() - 2],
+            segments[segments.len() - 1]
+        );
+        if tail.chars().count() <= ENDPOINT_LABEL_CHAR_LIMIT {
+            return tail;
+        }
+    }
+
+    let suffix = path
+        .chars()
+        .rev()
+        .take(ENDPOINT_LABEL_CHAR_LIMIT - 3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("...{suffix}")
+}
+
+fn show_endpoint_label(
+    ui: &mut Ui,
+    path: &str,
+    align: egui::Align,
+    hover_text: impl Into<egui::WidgetText>,
+) {
+    ui.add_sized(
+        [ENDPOINT_LABEL_WIDTH, crate::theme::METRICS.node_row_height],
+        egui::Label::new(compact_endpoint_label(path))
+            .truncate()
+            .halign(align),
+    )
+    .on_hover_text(hover_text);
+}
+
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
     pub root_scope: &'a mut Scope,
@@ -656,13 +702,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
         };
         let label = match snarl[pin.id.node] {
-            CanvasNode::Target => self
-                .target_leaves
-                .get(idx)
-                .map_or_else(String::new, |l| l.label.clone()),
-            CanvasNode::Source => String::new(),
+            CanvasNode::Target => None,
+            CanvasNode::Source => Some(String::new()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
-                match self.graph.nodes.get(&id) {
+                Some(match self.graph.nodes.get(&id) {
                     Some(Node::Call { .. }) => format!("arg {idx}"),
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                     Some(Node::ValueMap { .. }) => "input".to_string(),
@@ -684,10 +727,26 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ) if expression.is_some() && idx == 0 => "values".to_string(),
                     Some(Node::Aggregate { .. } | Node::JoinAggregate { .. }) => "arg".to_string(),
                     _ => String::new(),
-                }
+                })
             }
         };
-        ui.label(label);
+        if let CanvasNode::Target = snarl[pin.id.node] {
+            if let Some(leaf) = self.target_leaves.get(idx) {
+                let state = if pin.remotes.is_empty() {
+                    "Unmapped target"
+                } else {
+                    "Mapped target"
+                };
+                show_endpoint_label(
+                    ui,
+                    &leaf.label,
+                    egui::Align::LEFT,
+                    format!("{state}: {}", leaf.label),
+                );
+            }
+        } else if let Some(label) = label {
+            ui.label(label);
+        }
         PinInfo::circle()
             .with_fill(fill.to_egui())
             .with_wire_color(self.colors.wire.to_egui())
@@ -704,7 +763,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             if let CanvasNode::Source = snarl[pin.id.node]
                 && let Some(leaf) = self.source_leaves.get(pin.id.output)
             {
-                ui.label(&leaf.label);
+                let context = leaf.frame.as_ref().map_or_else(
+                    || format!("Source: {}", leaf.label),
+                    |frame| {
+                        let frame = if frame.is_empty() {
+                            "document rows".to_string()
+                        } else {
+                            frame.join("/")
+                        };
+                        format!("Source: {}\nRepeating context: {frame}", leaf.label)
+                    },
+                );
+                show_endpoint_label(ui, &leaf.label, egui::Align::RIGHT, context);
             }
             return PinInfo::circle()
                 .with_fill(fill.to_egui())
