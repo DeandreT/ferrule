@@ -21,7 +21,7 @@ pub use diagnostic::{
 pub use lower::lower;
 pub use model::{
     Binding, Expression, ExpressionNode, Program, SUPPORTED_SCALAR_CALLS, ScalarFunction,
-    TargetScope,
+    SourceIteration, TargetScope,
 };
 pub use validate::{ProgramValidationError, validate_program};
 
