@@ -1,0 +1,134 @@
+use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let output = execute(&source(false, false))?;
+    for (group, name, expected) in expected_values() {
+        assert_value(&output, group, name, expected);
+    }
+    assert_eq!(
+        execute(&source(true, false)),
+        Err(RuntimeError::Function(FunctionError::TypeMismatch {
+            function: "normalize_space",
+            got: "int",
+        })),
+    );
+    assert_eq!(
+        execute(&source(false, true)),
+        Err(RuntimeError::Function(FunctionError::ArityMismatch {
+            function: "resolve_filepath",
+            expected: 2,
+            got: 1,
+        })),
+    );
+    Ok(())
+}
+
+fn source(fail_type: bool, fail_arity: bool) -> Instance {
+    group([
+        field("FailType", scalar(Value::Bool(fail_type))),
+        field("FailArity", scalar(Value::Bool(fail_arity))),
+    ])
+}
+
+fn assert_value(output: &Instance, group: &str, name: &str, expected: Value) {
+    let actual = output
+        .field(group)
+        .and_then(|value| value.field(name))
+        .and_then(Instance::as_scalar);
+    assert_eq!(actual, Some(&expected), "{group}/{name}");
+}
+
+fn expected_values() -> Vec<(&'static str, &'static str, Value)> {
+    vec![
+        ("Concat", "Empty", Value::String(String::new())),
+        ("Concat", "Mixed", Value::String("false-71.25|done".into())),
+        (
+            "Whitespace",
+            "Normalized",
+            Value::String("alpha beta\u{000b}gamma\u{00a0} delta".into()),
+        ),
+        (
+            "Whitespace",
+            "Left",
+            Value::String("\u{000b}\u{00a0}left \t".into()),
+        ),
+        (
+            "Whitespace",
+            "Right",
+            Value::String(" \t right\u{00a0}\u{000b}".into()),
+        ),
+        ("Length", "Unicode", Value::Int(5)),
+        ("Length", "Null", Value::Int(0)),
+        ("Length", "Nil", Value::Int(0)),
+        ("Split", "BeforeEmpty", Value::String(String::new())),
+        ("Split", "AfterEmpty", Value::String("alpha".into())),
+        ("Split", "BeforeMiss", Value::String(String::new())),
+        ("Split", "AfterMiss", Value::String(String::new())),
+        ("Split", "BeforeUnicode", Value::String("head".into())),
+        (
+            "Split",
+            "AfterUnicode",
+            Value::String("tail🙂end".into()),
+        ),
+        ("String", "Null", Value::String(String::new())),
+        ("String", "Nil", Value::String(String::new())),
+        ("String", "Bool", Value::String("false".into())),
+        ("String", "Int", Value::String("-42".into())),
+        (
+            "Missing",
+            "Null",
+            Value::String("fallback-null".into()),
+        ),
+        ("Missing", "Nil", Value::String("fallback-nil".into())),
+        ("Missing", "Empty", Value::String(String::new())),
+        ("Missing", "Int", Value::Int(0)),
+        ("Nil", "Nil", Value::Bool(true)),
+        ("Nil", "Null", Value::Bool(false)),
+        ("Nil", "Empty", Value::Bool(false)),
+        ("Paths", "MixedFolder", Value::String("one/two\\".into())),
+        ("Paths", "MixedName", Value::String("file.xml".into())),
+        (
+            "Paths",
+            "UrlFolder",
+            Value::String("https://example.test/a/".into()),
+        ),
+        (
+            "Paths",
+            "DriveFolder",
+            Value::String("C:\\work\\data\\".into()),
+        ),
+        (
+            "Paths",
+            "MixedBase",
+            Value::String("C:/work\\data/reports/out.xml".into()),
+        ),
+        (
+            "Paths",
+            "MixedPath",
+            Value::String("/var/data\\reports\\out.xml".into()),
+        ),
+        (
+            "Paths",
+            "Windows",
+            Value::String("C:\\work\\reports/out.xml".into()),
+        ),
+        (
+            "Paths",
+            "Url",
+            Value::String("https://example.test/config.xml".into()),
+        ),
+        (
+            "Paths",
+            "Drive",
+            Value::String("D:\\data\\config.xml".into()),
+        ),
+        (
+            "Paths",
+            "Parent",
+            Value::String("C:\\work\\out.xml".into()),
+        ),
+        ("Errors", "Type", Value::String("safe-type".into())),
+        ("Errors", "Arity", Value::String("safe-arity".into())),
+    ]
+}

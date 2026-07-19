@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Numerics;
+using System.Text;
 
 namespace Ferrule.Runtime;
 
-/// <summary>Scalar functions supported by the initial generated-code subset.</summary>
+/// <summary>Scalar functions supported by generated mappings.</summary>
 public static class FerruleFunctions
 {
     public static FerruleValue Call(string function, IReadOnlyList<FerruleValue> arguments)
@@ -12,6 +13,28 @@ public static class FerruleFunctions
         ArgumentNullException.ThrowIfNull(arguments);
         return function switch
         {
+            "concat" => Concat(arguments),
+            "normalize_space" => UnaryString(
+                function,
+                arguments,
+                NormalizeXmlSpace),
+            "left_trim" => UnaryString(
+                function,
+                arguments,
+                static value => value[CountLeadingXmlWhitespace(value)..]),
+            "right_trim" => UnaryString(
+                function,
+                arguments,
+                static value => value[..^CountTrailingXmlWhitespace(value)]),
+            "length" => Length(arguments),
+            "substring_before" => SplitString(function, arguments, before: true),
+            "substring_after" => SplitString(function, arguments, before: false),
+            "string" => StringValue(arguments),
+            "substitute_missing" => SubstituteMissing(arguments),
+            "is_xml_nil" => IsXmlNil(arguments),
+            "get_folder" => UnaryString(function, arguments, GetFolder),
+            "remove_folder" => UnaryString(function, arguments, RemoveFolder),
+            "resolve_filepath" => ResolveFilePath(arguments),
             "and" => BinaryBoolean(function, arguments, (left, right) => left && right),
             "or" => BinaryBoolean(function, arguments, (left, right) => left || right),
             "not" => UnaryBoolean(function, arguments, value => !value),
@@ -63,6 +86,269 @@ public static class FerruleFunctions
         RequireArity("is_empty", arguments, 1);
         return FerruleValue.FromBoolean(RequireString(arguments[0], "is_empty").Length == 0);
     }
+
+    private static FerruleValue Concat(IReadOnlyList<FerruleValue> arguments)
+    {
+        var result = new StringBuilder();
+        foreach (var argument in arguments)
+        {
+            if (argument.Kind is not (FerruleValueKind.Null or FerruleValueKind.XmlNil))
+            {
+                result.Append(ScalarText(argument));
+            }
+        }
+
+        return FerruleValue.FromString(result.ToString());
+    }
+
+    private static FerruleValue UnaryString(
+        string function,
+        IReadOnlyList<FerruleValue> arguments,
+        Func<string, string> operation)
+    {
+        RequireArity(function, arguments, 1);
+        return FerruleValue.FromString(operation(RequireString(arguments[0], function)));
+    }
+
+    private static FerruleValue Length(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("length", arguments, 1);
+        long length = 0;
+        foreach (var _ in ScalarText(arguments[0]).EnumerateRunes())
+        {
+            length++;
+        }
+
+        return FerruleValue.FromInt64(length);
+    }
+
+    private static FerruleValue SplitString(
+        string function,
+        IReadOnlyList<FerruleValue> arguments,
+        bool before)
+    {
+        RequireArity(function, arguments, 2);
+        var value = RequireString(arguments[0], function);
+        var separator = RequireString(arguments[1], function);
+        var index = value.IndexOf(separator, StringComparison.Ordinal);
+        if (index < 0)
+        {
+            return FerruleValue.FromString(string.Empty);
+        }
+
+        var result = before
+            ? value[..index]
+            : value[(index + separator.Length)..];
+        return FerruleValue.FromString(result);
+    }
+
+    private static FerruleValue StringValue(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("string", arguments, 1);
+        return FerruleValue.FromString(ScalarText(arguments[0]));
+    }
+
+    private static FerruleValue SubstituteMissing(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("substitute_missing", arguments, 2);
+        return arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil
+            ? arguments[1]
+            : arguments[0];
+    }
+
+    private static FerruleValue IsXmlNil(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("is_xml_nil", arguments, 1);
+        return FerruleValue.FromBoolean(arguments[0].Kind == FerruleValueKind.XmlNil);
+    }
+
+    private static string NormalizeXmlSpace(string value)
+    {
+        var result = new StringBuilder(value.Length);
+        var pendingSeparator = false;
+        foreach (var character in value)
+        {
+            if (IsXmlWhitespace(character))
+            {
+                pendingSeparator = result.Length > 0;
+                continue;
+            }
+
+            if (pendingSeparator)
+            {
+                result.Append(' ');
+                pendingSeparator = false;
+            }
+            result.Append(character);
+        }
+
+        return result.ToString();
+    }
+
+    private static int CountLeadingXmlWhitespace(string value)
+    {
+        var count = 0;
+        while (count < value.Length && IsXmlWhitespace(value[count]))
+        {
+            count++;
+        }
+        return count;
+    }
+
+    private static int CountTrailingXmlWhitespace(string value)
+    {
+        var count = 0;
+        while (count < value.Length && IsXmlWhitespace(value[^(count + 1)]))
+        {
+            count++;
+        }
+        return count;
+    }
+
+    private static bool IsXmlWhitespace(char character) =>
+        character is ' ' or '\t' or '\r' or '\n';
+
+    private static string GetFolder(string path)
+    {
+        var separator = LastSeparator(path);
+        return separator >= 0 ? path[..(separator + 1)] : string.Empty;
+    }
+
+    private static string RemoveFolder(string path)
+    {
+        var separator = LastSeparator(path);
+        return separator >= 0 ? path[(separator + 1)..] : path;
+    }
+
+    private static FerruleValue ResolveFilePath(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("resolve_filepath", arguments, 2);
+        var basePath = RequireString(arguments[0], "resolve_filepath");
+        var path = RequireString(arguments[1], "resolve_filepath");
+        if (IsAbsolute(path))
+        {
+            return FerruleValue.FromString(path);
+        }
+
+        var delimiter = CommonSeparator(basePath, path);
+        var folder = basePath;
+        if (folder.Length > 0 && !EndsWithSeparator(folder))
+        {
+            folder += delimiter;
+        }
+
+        var relative = StripCurrentDirectories(path);
+        while (TryParentRemainder(relative, out var remainder))
+        {
+            folder = ParentFolder(folder, delimiter);
+            relative = remainder;
+        }
+
+        return FerruleValue.FromString(folder + relative);
+    }
+
+    private static int LastSeparator(string path) => path.LastIndexOfAny(['/', '\\']);
+
+    private static char? PathSeparator(string path)
+    {
+        var forward = path.Contains('/');
+        var backward = path.Contains('\\');
+        return (forward, backward) switch
+        {
+            (true, false) => '/',
+            (false, true) => '\\',
+            _ => null,
+        };
+    }
+
+    private static char CommonSeparator(string basePath, string path)
+    {
+        var left = PathSeparator(basePath);
+        var right = PathSeparator(path);
+        if (left.HasValue && right.HasValue && left == right)
+        {
+            return left.Value;
+        }
+        if (left.HasValue && !right.HasValue)
+        {
+            return left.Value;
+        }
+        if (!left.HasValue && right.HasValue)
+        {
+            return right.Value;
+        }
+        return '\\';
+    }
+
+    private static bool IsAbsolute(string path) =>
+        StartsWithSeparator(path) || path.Contains(':');
+
+    private static string StripCurrentDirectories(string path)
+    {
+        while (true)
+        {
+            if (path == ".")
+            {
+                return string.Empty;
+            }
+            if (path.StartsWith("./", StringComparison.Ordinal) ||
+                path.StartsWith(".\\", StringComparison.Ordinal))
+            {
+                path = path[2..];
+                continue;
+            }
+            return path;
+        }
+    }
+
+    private static bool TryParentRemainder(string path, out string remainder)
+    {
+        if (path == "..")
+        {
+            remainder = string.Empty;
+            return true;
+        }
+        if (path.StartsWith("../", StringComparison.Ordinal) ||
+            path.StartsWith("..\\", StringComparison.Ordinal))
+        {
+            remainder = path[3..];
+            return true;
+        }
+
+        remainder = string.Empty;
+        return false;
+    }
+
+    private static string ParentFolder(string folder, char delimiter)
+    {
+        var trimmed = folder.TrimEnd('/', '\\');
+        if (trimmed.Length == 0 && StartsWithSeparator(folder))
+        {
+            return delimiter.ToString();
+        }
+        if (IsDrivePrefix(trimmed))
+        {
+            return trimmed + delimiter;
+        }
+
+        var separator = LastSeparator(trimmed);
+        if (separator >= 0)
+        {
+            return trimmed[..(separator + 1)];
+        }
+        return trimmed.Length == 0 ? $"..{delimiter}" : string.Empty;
+    }
+
+    private static bool StartsWithSeparator(string path) =>
+        path.Length > 0 && path[0] is '/' or '\\';
+
+    private static bool EndsWithSeparator(string path) =>
+        path.Length > 0 && path[^1] is '/' or '\\';
+
+    private static bool IsDrivePrefix(string path) =>
+        path.Length == 2 &&
+        ((path[0] is >= 'a' and <= 'z') || (path[0] is >= 'A' and <= 'Z')) &&
+        path[1] == ':';
 
     private static FerruleValue UnaryBoolean(
         string function,

@@ -21,6 +21,7 @@ internal static partial class Program
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),
+            ("portable scalar function batch A", ScalarFunctionBatchA),
             ("typed function errors", TypedFunctionErrors),
             ("scope source iteration", ScopeSourceIteration),
             ("aggregate source contexts", AggregateSourceContexts),
