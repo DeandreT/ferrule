@@ -8,7 +8,8 @@ use mapping::{
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, LowerError, Program, ProjectFeature,
-    ScalarFunction, ScopeConstructionKind, ScopeFeature, TargetScope, UnsupportedNodeKind,
+    ScalarFunction, ScopeConstructionKind, ScopeFeature, SourceIteration, TargetScope,
+    UnsupportedNodeKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -131,6 +132,14 @@ fn lower_scope(
     TargetScope {
         target_field: scope.target_field.clone(),
         repeating: target.repeating,
+        iteration: match &scope.iteration {
+            ScopeIteration::Source(path) => Some(SourceIteration::new(path.clone())),
+            ScopeIteration::None
+            | ScopeIteration::DynamicDocuments { .. }
+            | ScopeIteration::Sequence(_)
+            | ScopeIteration::InnerJoin { .. }
+            | ScopeIteration::Concatenate(_) => None,
+        },
         bindings,
         children,
     }
@@ -163,7 +172,10 @@ fn inspect_scope_features(
             feature,
         });
     };
-    if !matches!(scope.iteration, ScopeIteration::None) {
+    if !matches!(
+        scope.iteration,
+        ScopeIteration::None | ScopeIteration::Source(_)
+    ) {
         report(ScopeFeature::Iteration);
     }
     if let Some(kind) = construction_kind(&scope.construction) {

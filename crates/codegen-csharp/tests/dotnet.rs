@@ -2,7 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use codegen::{Binding, Expression, ExpressionNode, Program, ScalarFunction, TargetScope};
+use codegen::{
+    Binding, Expression, ExpressionNode, Program, ScalarFunction, SourceIteration, TargetScope,
+};
 use ir::{ScalarType, SchemaNode, Value};
 
 #[test]
@@ -154,14 +156,34 @@ fn fixture() -> Program {
                     args: vec![14, 7],
                 },
             },
+            ExpressionNode {
+                id: 16,
+                expression: Expression::SourceField {
+                    path: vec!["Customer".into()],
+                },
+            },
+            ExpressionNode {
+                id: 17,
+                expression: Expression::SourceField {
+                    path: vec!["Sku".into()],
+                },
+            },
+            ExpressionNode {
+                id: 18,
+                expression: Expression::SourceField {
+                    path: vec!["Orders".into(), "OrderCode".into()],
+                },
+            },
         ],
         root: TargetScope {
             target_field: String::new(),
             repeating: true,
+            iteration: None,
             bindings: vec![binding("RootInt", 2, ScalarType::Int, false)],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
                 repeating: true,
+                iteration: Some(SourceIteration::new(vec!["Orders".into(), "Items".into()])),
                 bindings: vec![
                     binding("Copied", 1, ScalarType::String, false),
                     binding("Lines", 5, ScalarType::String, true),
@@ -171,6 +193,9 @@ fn fixture() -> Program {
                     binding("ExactFloat", 3, ScalarType::Float, false),
                     binding("LazyValue", 14, ScalarType::Int, false),
                     binding("Compared", 15, ScalarType::Bool, false),
+                    binding("Customer", 16, ScalarType::String, false),
+                    binding("Sku", 17, ScalarType::String, false),
+                    binding("OrderCode", 18, ScalarType::String, false),
                 ],
                 children: Vec::new(),
             }],
@@ -214,10 +239,10 @@ Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt"
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromInt64(7));
 
 var nestedRows = (FerruleRepeated)output.Fields[1].Value;
-Assert(nestedRows.Items.Count == 1);
+Assert(nestedRows.Items.Count == 3);
 var nested = (FerruleGroup)nestedRows.Items[0];
 Assert(nested.Fields.Select(field => field.Name).SequenceEqual(
-    new[] { "Copied", "Lines", "Middle", "ExactFloat", "LazyValue", "Compared" }));
+    new[] { "Copied", "Lines", "Middle", "ExactFloat", "LazyValue", "Compared", "Customer", "Sku", "OrderCode" }));
 Assert(((FerruleScalar)nested.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
 var lines = (FerruleRepeated)nested.Fields[1].Value;
 Assert(lines.Items.Count == 2);
@@ -227,6 +252,13 @@ Assert(((FerruleScalar)nested.Fields[2].Value).Value == FerruleValue.FromInt64(7
 Assert(((FerruleScalar)nested.Fields[3].Value).Value == FerruleValue.FromDouble(8.0));
 Assert(((FerruleScalar)nested.Fields[4].Value).Value == FerruleValue.FromInt64(42));
 Assert(((FerruleScalar)nested.Fields[5].Value).Value == FerruleValue.FromBoolean(true));
+Assert(((FerruleScalar)nested.Fields[6].Value).Value == FerruleValue.FromString("Ada"));
+Assert(((FerruleScalar)nested.Fields[7].Value).Value == FerruleValue.FromString("A-1"));
+Assert(((FerruleScalar)nested.Fields[8].Value).Value == FerruleValue.FromString("A"));
+var lastNested = (FerruleGroup)nestedRows.Items[2];
+Assert(((FerruleScalar)lastNested.Fields[6].Value).Value == FerruleValue.FromString("Lin"));
+Assert(((FerruleScalar)lastNested.Fields[7].Value).Value == FerruleValue.FromString("B-1"));
+Assert(((FerruleScalar)lastNested.Fields[8].Value).Value == FerruleValue.FromString("B"));
 
 Error(
     FerruleRuntimeError.DivideByZero,
@@ -246,6 +278,37 @@ static FerruleGroup Source(FerruleValue condition) =>
             new("Name", new FerruleScalar(FerruleValue.FromString("Ada"))),
         })),
         new("Condition", new FerruleScalar(condition)),
+        new("Orders", new FerruleRepeated(new FerruleInstance[]
+        {
+            new FerruleGroup(new FerruleField[]
+            {
+                new("Customer", new FerruleScalar(FerruleValue.FromString("Ada"))),
+                new("OrderCode", new FerruleScalar(FerruleValue.FromString("A"))),
+                new("Items", new FerruleRepeated(new FerruleInstance[]
+                {
+                    new FerruleGroup(new FerruleField[]
+                    {
+                        new("Sku", new FerruleScalar(FerruleValue.FromString("A-1"))),
+                    }),
+                    new FerruleGroup(new FerruleField[]
+                    {
+                        new("Sku", new FerruleScalar(FerruleValue.FromString("A-2"))),
+                    }),
+                })),
+            }),
+            new FerruleGroup(new FerruleField[]
+            {
+                new("Customer", new FerruleScalar(FerruleValue.FromString("Lin"))),
+                new("OrderCode", new FerruleScalar(FerruleValue.FromString("B"))),
+                new("Items", new FerruleRepeated(new FerruleInstance[]
+                {
+                    new FerruleGroup(new FerruleField[]
+                    {
+                        new("Sku", new FerruleScalar(FerruleValue.FromString("B-1"))),
+                    }),
+                })),
+            }),
+        })),
     });
 
 static void Assert(bool condition)

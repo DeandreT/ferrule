@@ -139,9 +139,28 @@ pub struct TargetScope {
     /// Non-iterating scopes targeting a repeating group still produce one
     /// repeated item, matching the engine's target-boundary cardinality.
     pub repeating: bool,
+    /// Source-backed iteration evaluated relative to the parent scope's
+    /// current item. Absence means the scope runs exactly once.
+    pub iteration: Option<SourceIteration>,
     /// Declaration order is semantically significant and is preserved.
     pub bindings: Vec<Binding>,
     pub children: Vec<TargetScope>,
+}
+
+/// One source path that drives a target scope's repeated output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceIteration {
+    path: Vec<String>,
+}
+
+impl SourceIteration {
+    pub fn new(path: Vec<String>) -> Self {
+        Self { path }
+    }
+
+    pub fn path(&self) -> &[String] {
+        &self.path
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

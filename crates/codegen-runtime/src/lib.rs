@@ -1,8 +1,8 @@
 //! Runtime primitives used by generated Rust mappings.
 //!
-//! This crate intentionally contains only construction, static source-path,
-//! and scalar builtin operations. Scope iteration and expression control flow
-//! belong in generated code, not in a second mapping interpreter.
+//! This crate intentionally contains only construction, source-context
+//! traversal, and scalar builtin operations. Scope orchestration and expression
+//! control flow belong in generated code, not in a second mapping interpreter.
 
 #![forbid(unsafe_code)]
 
@@ -181,6 +181,232 @@ impl fmt::Display for InstanceKind {
     }
 }
 
+/// Ordered source frames visible to one generated target scope.
+///
+/// Cloning a context clones only its frame metadata; source instances remain
+/// borrowed from the input. Source iteration appends one frame for every
+/// repeated or document collection it crosses, plus a plain terminal frame
+/// when the selected value is not itself a collection.
+#[derive(Clone)]
+pub struct ScopeContext<'a> {
+    frames: Vec<ScopeFrame<'a>>,
+}
+
+#[derive(Clone)]
+struct ScopeFrame<'a> {
+    instance: &'a Instance,
+    collection: Option<CollectionIdentity>,
+}
+
+#[derive(Clone)]
+enum CollectionIdentity {
+    Repeated(Vec<String>),
+    Document(Vec<String>),
+}
+
+impl CollectionIdentity {
+    fn path(&self) -> &[String] {
+        match self {
+            Self::Repeated(path) | Self::Document(path) => path,
+        }
+    }
+}
+
+impl<'a> ScopeContext<'a> {
+    /// Creates the root context for one generated mapping execution.
+    pub fn new(source: &'a Instance) -> Self {
+        Self {
+            frames: vec![ScopeFrame {
+                instance: source,
+                collection: None,
+            }],
+        }
+    }
+
+    /// Produces one child context for every item selected by `path`.
+    ///
+    /// The path is evaluated from the innermost frame that owns its first
+    /// field, falling back to the current frame. An empty path iterates the
+    /// current repeated/document value, or selects one ordinary current
+    /// value. Repetition crossed at any depth branches in source order.
+    pub fn walk_source(&self, path: &[&str]) -> Vec<Self> {
+        let Some(base) = self
+            .frames
+            .iter()
+            .rev()
+            .find(|frame| match path.first() {
+                Some(first) => frame.instance.field(first).is_some(),
+                None => true,
+            })
+            .or_else(|| self.frames.last())
+        else {
+            return Vec::new();
+        };
+
+        walk_source_frames(base.instance, path, &[], &[])
+            .into_iter()
+            .map(|extension| {
+                let mut frames = self.frames.clone();
+                frames.extend(extension);
+                Self { frames }
+            })
+            .collect()
+    }
+
+    /// Resolves a scalar using active collection identity before ordinary
+    /// innermost-to-outermost fallback.
+    ///
+    /// Uniterated repetitions contribute their first item. An empty
+    /// repetition resolves to `Null` immediately and therefore shadows an
+    /// outer field with the same path.
+    pub fn resolve_scalar(&self, path: &[&str]) -> Result<Value, SourcePathError> {
+        let owned_path = owned_path(path);
+        let mut first_error = None;
+
+        for frame in self.frames.iter().rev() {
+            let Some(collection) = &frame.collection else {
+                continue;
+            };
+            let prefix = collection.path();
+            if prefix.is_empty() || !has_prefix(path, prefix) {
+                continue;
+            }
+            match resolve_scalar_in(
+                frame.instance,
+                &path[prefix.len()..],
+                &owned_path,
+                prefix.len(),
+            ) {
+                Ok(value) => return Ok(value),
+                Err(error) => first_error.get_or_insert(error),
+            };
+        }
+
+        for frame in self.frames.iter().rev() {
+            match resolve_scalar_in(frame.instance, path, &owned_path, 0) {
+                Ok(value) => return Ok(value),
+                Err(error) => first_error.get_or_insert(error),
+            };
+        }
+
+        Err(first_error.unwrap_or(SourcePathError::ExpectedScalar {
+            path: owned_path,
+            found: InstanceKind::Group,
+        }))
+    }
+}
+
+fn walk_source_frames<'a>(
+    base: &'a Instance,
+    path: &[&str],
+    prefix: &[String],
+    acc: &[ScopeFrame<'a>],
+) -> Vec<Vec<ScopeFrame<'a>>> {
+    match base {
+        Instance::Repeated(items) if !path.is_empty() => {
+            return items
+                .iter()
+                .flat_map(|item| {
+                    let mut next = acc.to_vec();
+                    next.push(collection_frame(
+                        item,
+                        CollectionIdentity::Repeated(prefix.to_vec()),
+                    ));
+                    walk_source_frames(item, path, prefix, &next)
+                })
+                .collect();
+        }
+        _ => {}
+    }
+
+    match path.split_first() {
+        None => match base {
+            Instance::DocumentSet(documents) => documents
+                .iter()
+                .map(|document| {
+                    let mut next = acc.to_vec();
+                    next.push(collection_frame(
+                        document.value(),
+                        CollectionIdentity::Document(prefix.to_vec()),
+                    ));
+                    next
+                })
+                .collect(),
+            Instance::Repeated(items) => items
+                .iter()
+                .map(|item| {
+                    let mut next = acc.to_vec();
+                    next.push(collection_frame(
+                        item,
+                        CollectionIdentity::Repeated(prefix.to_vec()),
+                    ));
+                    next
+                })
+                .collect(),
+            _ => {
+                let mut next = acc.to_vec();
+                next.push(ScopeFrame {
+                    instance: base,
+                    collection: None,
+                });
+                vec![next]
+            }
+        },
+        Some((segment, rest)) => {
+            if let Instance::DocumentSet(documents) = base {
+                return documents
+                    .iter()
+                    .flat_map(|document| {
+                        let mut next = acc.to_vec();
+                        next.push(collection_frame(
+                            document.value(),
+                            CollectionIdentity::Document(prefix.to_vec()),
+                        ));
+                        walk_source_frames(document.value(), path, prefix, &next)
+                    })
+                    .collect();
+            }
+
+            let mut collection_path = prefix.to_vec();
+            collection_path.push((*segment).to_string());
+            match base.field(segment) {
+                None => Vec::new(),
+                Some(Instance::Repeated(items)) => items
+                    .iter()
+                    .flat_map(|item| {
+                        let mut next = acc.to_vec();
+                        next.push(collection_frame(
+                            item,
+                            CollectionIdentity::Repeated(collection_path.clone()),
+                        ));
+                        if rest.is_empty() {
+                            vec![next]
+                        } else {
+                            walk_source_frames(item, rest, &collection_path, &next)
+                        }
+                    })
+                    .collect(),
+                Some(other) => walk_source_frames(other, rest, &collection_path, acc),
+            }
+        }
+    }
+}
+
+fn collection_frame<'a>(instance: &'a Instance, collection: CollectionIdentity) -> ScopeFrame<'a> {
+    ScopeFrame {
+        instance,
+        collection: Some(collection),
+    }
+}
+
+fn has_prefix(path: &[&str], prefix: &[String]) -> bool {
+    path.len() >= prefix.len()
+        && path
+            .iter()
+            .zip(prefix)
+            .all(|(segment, expected)| *segment == expected)
+}
+
 /// Failure to resolve a generated mapping's static scalar source path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourcePathError {
@@ -243,9 +469,28 @@ impl std::error::Error for SourcePathError {}
 /// [`Instance::field`], which selects its first document. An empty path is
 /// valid only when `source` itself is scalar.
 pub fn resolve_scalar(source: &Instance, path: &[&str]) -> Result<Value, SourcePathError> {
-    let owned_path = owned_path(path);
-    let mut current = source;
+    ScopeContext::new(source).resolve_scalar(path)
+}
 
+/// Resolves and clones one scalar value for independent target ownership.
+pub fn clone_scalar(source: &Instance, path: &[&str]) -> Result<Value, SourcePathError> {
+    resolve_scalar(source, path)
+}
+
+fn first_repeated(instance: &Instance) -> Option<&Instance> {
+    match instance {
+        Instance::Repeated(items) => items.first(),
+        _ => Some(instance),
+    }
+}
+
+fn resolve_scalar_in(
+    source: &Instance,
+    path: &[&str],
+    owned_path: &[String],
+    segment_offset: usize,
+) -> Result<Value, SourcePathError> {
+    let mut current = source;
     for (segment, field_name) in path.iter().enumerate() {
         let Some(next) = first_repeated(current) else {
             return Ok(Value::Null);
@@ -255,14 +500,14 @@ pub fn resolve_scalar(source: &Instance, path: &[&str]) -> Result<Value, SourceP
             let found = InstanceKind::of(current);
             if matches!(found, InstanceKind::Group | InstanceKind::DocumentSet) {
                 SourcePathError::MissingField {
-                    path: owned_path.clone(),
-                    segment,
+                    path: owned_path.to_vec(),
+                    segment: segment_offset + segment,
                     field: field_name.to_string(),
                 }
             } else {
                 SourcePathError::CannotTraverse {
-                    path: owned_path.clone(),
-                    segment,
+                    path: owned_path.to_vec(),
+                    segment: segment_offset + segment,
                     found,
                 }
             }
@@ -276,21 +521,9 @@ pub fn resolve_scalar(source: &Instance, path: &[&str]) -> Result<Value, SourceP
         .as_scalar()
         .cloned()
         .ok_or_else(|| SourcePathError::ExpectedScalar {
-            path: owned_path,
+            path: owned_path.to_vec(),
             found: InstanceKind::of(current),
         })
-}
-
-/// Resolves and clones one scalar value for independent target ownership.
-pub fn clone_scalar(source: &Instance, path: &[&str]) -> Result<Value, SourcePathError> {
-    resolve_scalar(source, path)
-}
-
-fn first_repeated(instance: &Instance) -> Option<&Instance> {
-    match instance {
-        Instance::Repeated(items) => items.first(),
-        _ => Some(instance),
-    }
 }
 
 fn owned_path(path: &[&str]) -> Vec<String> {
@@ -338,6 +571,103 @@ mod tests {
             clone_scalar(&source, &["Rows", "Name"]),
             Ok(Value::String("first".to_string()))
         );
+    }
+
+    #[test]
+    fn source_walk_handles_empty_nonrepeating_and_document_collections() {
+        let row = |name: &str| group([field("Name", scalar(string(name)))]);
+        let rows = repeated([row("first"), row("second")]);
+        let empty_context = ScopeContext::new(&rows).walk_source(&[]);
+        assert_eq!(empty_context.len(), 2);
+        assert_eq!(
+            empty_context[1].resolve_scalar(&["Name"]),
+            Ok(string("second"))
+        );
+
+        let profile_source = group([field("Profile", row("only"))]);
+        let profile_context = ScopeContext::new(&profile_source).walk_source(&["Profile"]);
+        assert_eq!(profile_context.len(), 1);
+        assert_eq!(
+            profile_context[0].resolve_scalar(&["Name"]),
+            Ok(string("only"))
+        );
+
+        let Some(first) = DocumentMember::new("first.xml", row("document one")) else {
+            panic!("valid first document member")
+        };
+        let Some(second) = DocumentMember::new("second.xml", row("document two")) else {
+            panic!("valid second document member")
+        };
+        let documents = Instance::DocumentSet(vec![first, second]);
+        let document_contexts = ScopeContext::new(&documents).walk_source(&[]);
+        assert_eq!(document_contexts.len(), 2);
+        assert_eq!(
+            document_contexts[1].resolve_scalar(&["Name"]),
+            Ok(string("document two"))
+        );
+    }
+
+    #[test]
+    fn active_collection_prefixes_select_current_multi_hop_items() {
+        let child = |name: &str| group([field("Name", scalar(string(name)))]);
+        let parent = |id: i64, children: Vec<Instance>| {
+            group([
+                field("Id", scalar(integer(id))),
+                field("Children", repeated(children)),
+            ])
+        };
+        let source = group([field(
+            "Parents",
+            repeated([
+                parent(1, vec![child("a"), child("b")]),
+                parent(2, vec![child("c")]),
+            ]),
+        )]);
+
+        let contexts = ScopeContext::new(&source).walk_source(&["Parents", "Children"]);
+
+        assert_eq!(contexts.len(), 3);
+        assert_eq!(
+            contexts[1].resolve_scalar(&["Parents", "Id"]),
+            Ok(integer(1))
+        );
+        assert_eq!(
+            contexts[1].resolve_scalar(&["Parents", "Children", "Name"]),
+            Ok(string("b"))
+        );
+        assert_eq!(
+            contexts[2].resolve_scalar(&["Parents", "Id"]),
+            Ok(integer(2))
+        );
+    }
+
+    #[test]
+    fn innermost_fallback_and_empty_repetition_shadowing_match_the_engine() {
+        let source = group([
+            field(
+                "Rows",
+                repeated([group([field("Name", scalar(string("outer")))])]),
+            ),
+            field(
+                "Inner",
+                group([
+                    field("Rows", repeated(Vec::<Instance>::new())),
+                    field("Local", scalar(string("inner"))),
+                ]),
+            ),
+        ]);
+        let contexts = ScopeContext::new(&source).walk_source(&["Inner"]);
+
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0].resolve_scalar(&["Local"]), Ok(string("inner")));
+        assert_eq!(
+            contexts[0].resolve_scalar(&["Rows", "Name"]),
+            Ok(Value::Null)
+        );
+        assert!(matches!(
+            contexts[0].resolve_scalar(&["Missing"]),
+            Err(SourcePathError::MissingField { field, .. }) if field == "Missing"
+        ));
     }
 
     #[test]

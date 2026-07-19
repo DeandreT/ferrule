@@ -36,7 +36,7 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 mod tests {
     use codegen::{
         Binding, Expression, ExpressionNode, Program, ProgramValidationError, ScalarFunction,
-        TargetScope,
+        SourceIteration, TargetScope,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -63,6 +63,7 @@ mod tests {
             root: TargetScope {
                 target_field: String::new(),
                 repeating: false,
+                iteration: None,
                 bindings: vec![Binding {
                     target_field: "root value".into(),
                     expression: 9,
@@ -72,6 +73,7 @@ mod tests {
                 children: vec![TargetScope {
                     target_field: "child group".into(),
                     repeating: false,
+                    iteration: None,
                     bindings: vec![Binding {
                         target_field: "copied value".into(),
                         expression: 2,
@@ -102,6 +104,12 @@ mod tests {
                 .files()
                 .iter()
                 .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.cs")
+        );
+        assert!(
+            first
+                .files()
+                .iter()
+                .any(|file| file.path.as_str() == "Runtime/ScopeContext.cs")
         );
     }
 
@@ -149,13 +157,13 @@ mod tests {
         let other = source.find("FerruleField(\"other\"").expect("other field");
         assert!(line < other);
         let first = source
-            .find("var value_0_0 = Node_9(source)")
+            .find("var value_0_0 = Node_9(context)")
             .expect("first binding evaluation");
         let middle = source
-            .find("var value_0_1 = Node_2(source)")
+            .find("var value_0_1 = Node_2(context)")
             .expect("middle binding evaluation");
         let last = source
-            .find("var value_0_2 = Node_2(source)")
+            .find("var value_0_2 = Node_2(context)")
             .expect("last binding evaluation");
         assert!(first < middle && middle < last);
         assert!(source.contains("{ value_0_0, value_0_2 }"));
@@ -169,9 +177,25 @@ mod tests {
 
         let artifacts = emit(&program).expect("repeating scopes emit");
         let source = generated_source(&artifacts);
-        assert!(source.contains("FerruleInstance[] { group_0 }"));
-        assert!(source.contains("FerruleInstance[] { group_1 }"));
-        assert_eq!(source.matches("FerruleInstance[] { group_").count(), 2);
+        assert!(source.contains("FerruleInstance[] { item_0 }"));
+        assert!(source.contains("FerruleInstance[] { item_1 }"));
+        assert_eq!(source.matches("FerruleInstance[] { item_").count(), 2);
+    }
+
+    #[test]
+    fn source_iterating_scopes_flatten_context_candidates() {
+        let mut program = program();
+        program.root.children[0].iteration =
+            Some(SourceIteration::new(vec!["orders".into(), "items".into()]));
+
+        let artifacts = emit(&program).expect("source iteration emits");
+        let source = generated_source(&artifacts);
+        assert!(source.contains(
+            "foreach (var item_context_1 in context.IterateSource(new string[] { \"orders\", \"items\" }))"
+        ));
+        assert!(source.contains("items_1.Add(ScopeItem_1(item_context_1));"));
+        assert!(source.contains("return new global::Ferrule.Runtime.FerruleRepeated(items_1);"));
+        assert!(!source.contains("FerruleInstance[] { item_1 }"));
     }
 
     #[test]
@@ -291,6 +315,7 @@ mod tests {
         binding_child.root.children.push(TargetScope {
             target_field: "root value".into(),
             repeating: false,
+            iteration: None,
             bindings: Vec::new(),
             children: Vec::new(),
         });
@@ -310,6 +335,7 @@ mod tests {
         duplicate_child.root.children.push(TargetScope {
             target_field: "child group".into(),
             repeating: false,
+            iteration: None,
             bindings: Vec::new(),
             children: Vec::new(),
         });
@@ -357,17 +383,17 @@ mod tests {
         let artifacts = emit(&program).expect("calls and conditionals emit");
         let source = generated_source(&artifacts);
         assert!(source.contains(
-            "FerruleFunctions.Call(\"not\", new global::Ferrule.Runtime.FerruleValue[] { Node_10(source) })"
+            "FerruleFunctions.Call(\"not\", new global::Ferrule.Runtime.FerruleValue[] { Node_10(context) })"
         ));
         assert_eq!(
             source
-                .matches("var condition_12 = Node_10(source);")
+                .matches("var condition_12 = Node_10(context);")
                 .count(),
             1
         );
         assert!(source.contains("RequireBoolean(condition_12, 10U)"));
-        assert!(source.contains("return Node_9(source);"));
-        assert!(source.contains("return Node_2(source);"));
+        assert!(source.contains("return Node_9(context);"));
+        assert!(source.contains("return Node_2(context);"));
     }
 
     #[test]

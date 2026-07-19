@@ -285,7 +285,7 @@ mod tests {
     use ir::{ScalarType, SchemaNode, Value};
 
     use super::*;
-    use crate::{Binding, ExpressionNode, ScalarFunction};
+    use crate::{Binding, ExpressionNode, ScalarFunction, SourceIteration};
 
     fn program() -> Program {
         Program {
@@ -309,6 +309,7 @@ mod tests {
             root: TargetScope {
                 target_field: String::new(),
                 repeating: false,
+                iteration: None,
                 bindings: vec![Binding {
                     target_field: "Value".into(),
                     expression: 2,
@@ -338,6 +339,16 @@ mod tests {
             },
         ];
 
+        assert_eq!(validate_program(&program), Ok(()));
+    }
+
+    #[test]
+    fn accepts_empty_and_named_source_iterations() {
+        let mut program = program();
+        program.root.iteration = Some(SourceIteration::new(Vec::new()));
+        assert_eq!(validate_program(&program), Ok(()));
+
+        program.root.iteration = Some(SourceIteration::new(vec!["Rows".into()]));
         assert_eq!(validate_program(&program), Ok(()));
     }
 
@@ -418,6 +429,7 @@ mod tests {
         let child = TargetScope {
             target_field: "Child".into(),
             repeating: false,
+            iteration: None,
             bindings: Vec::new(),
             children: Vec::new(),
         };
