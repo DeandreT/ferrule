@@ -1,6 +1,24 @@
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{AggregateOp, NodeId};
 
+/// Host-supplied values available to generated mappings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum RuntimeValue {
+    MappingFilePath,
+    MainMappingFilePath,
+    CurrentDateTime,
+}
+
+impl From<mapping::RuntimeValue> for RuntimeValue {
+    fn from(value: mapping::RuntimeValue) -> Self {
+        match value {
+            mapping::RuntimeValue::MappingFilePath => Self::MappingFilePath,
+            mapping::RuntimeValue::MainMappingFilePath => Self::MainMappingFilePath,
+            mapping::RuntimeValue::CurrentDateTime => Self::CurrentDateTime,
+        }
+    }
+}
+
 /// Collection reductions implemented identically by every generated backend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AggregateFunction {
@@ -171,6 +189,9 @@ pub enum Expression {
     },
     Const {
         value: Value,
+    },
+    RuntimeValue {
+        value: RuntimeValue,
     },
     Call {
         function: ScalarFunction,

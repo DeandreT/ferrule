@@ -14,7 +14,8 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// Emits a complete package-free .NET 10 class library.
 ///
 /// The artifact embeds the small Ferrule C# runtime and exposes
-/// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)`.
+/// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)`, plus an
+/// overload accepting host-supplied execution context.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     let generated_mapping = mapping::render(program)?;

@@ -19,7 +19,9 @@ cargo +nightly run -p cli -- generate \
 ```
 
 The result is a standalone, package-free .NET 10 library. Its generated artifact
-tree includes the C# runtime sources required by the mapping.
+tree includes the C# runtime sources required by the mapping. The generated
+class retains `Execute(source)` and adds `Execute(source, executionContext)` for
+host-supplied mapping paths and the run's stable current date-time text.
 
 ## Rust
 
@@ -33,6 +35,7 @@ cargo +nightly run -p cli -- generate \
 
 Rust generation currently requires `--rust-runtime-path`. The generated crate
 links that local runtime until the runtime is published as a versioned package.
+It exposes both `execute(source)` and `execute_with_context(source, execution)`.
 
 ## Portable Subset
 
@@ -40,6 +43,8 @@ The current portable model includes:
 
 - exact-bit scalar constants, source fields, frame-pinned fields, and 1-based
   positions
+- explicit active/main mapping paths and an optional stable current date-time
+  supplied by the execution host
 - lazy conditionals and a closed set of boolean, string-predicate, arithmetic,
   and comparison functions
 - ordered value maps with optional declared-input coercion, first-match wins,
@@ -61,6 +66,8 @@ a serialized project plus the general-purpose interpreter. Arguments retain the
 engine's left-to-right evaluation and lazy-branch behavior, while aggregate and
 sequence size failures remain structured. Floating-point constants preserve
 their complete IEEE-754 bit patterns, including infinities and NaN payloads.
+The legacy no-context entry points remain valid and produce a typed missing
+runtime-value error only when a reachable host value is actually evaluated.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. Regex

@@ -1,0 +1,59 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+const string Active = "/maps/library.ferrule.json";
+const string Main = "/maps/main.ferrule.json";
+const string Current = "2026-07-19T11:22:33.45-07:00";
+const string Skipped = "missing-current-skipped";
+
+var full = new FerruleExecutionContext(Active, Main, Current);
+var paths = new FerruleExecutionContext(Active, Main);
+AssertOutput(GeneratedMapping.Execute(Source(true), full), Current);
+AssertOutput(GeneratedMapping.Execute(Source(false), paths), Skipped);
+AssertError(
+    () => GeneratedMapping.Execute(Source(true)),
+    FerruleRuntimeValue.MappingFilePath);
+AssertError(
+    () => GeneratedMapping.Execute(Source(true), paths),
+    FerruleRuntimeValue.CurrentDateTime);
+
+static FerruleGroup Source(bool useCurrent) => new(new FerruleField[]
+{
+    new("UseCurrent", new FerruleScalar(FerruleValue.FromBoolean(useCurrent))),
+});
+
+static void AssertOutput(FerruleInstance instance, string current)
+{
+    var output = (FerruleGroup)instance;
+    AssertField(output, "Active", Active);
+    AssertField(output, "Main", Main);
+    AssertField(output, "CurrentOne", current);
+    AssertField(output, "CurrentTwo", current);
+    AssertField(output, "Lazy", "lazy");
+}
+
+static void AssertField(FerruleGroup output, string name, string expected)
+{
+    var field = output.Fields.Single(field => field.Name == name);
+    if (field.Value is not FerruleScalar scalar ||
+        scalar.Value != FerruleValue.FromString(expected))
+    {
+        throw new InvalidOperationException($"Runtime-value output {name} differs from the engine.");
+    }
+}
+
+static void AssertError(Action action, FerruleRuntimeValue expected)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (
+        error.Error == FerruleRuntimeError.MissingRuntimeValue &&
+        error.RuntimeValue == expected)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected missing runtime value {expected}.");
+}

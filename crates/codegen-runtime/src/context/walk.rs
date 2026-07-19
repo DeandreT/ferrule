@@ -74,7 +74,10 @@ impl<'a> ScopeContext<'a> {
     fn extend(&self, extension: Vec<ScopeFrame<'a>>) -> Self {
         let mut frames = self.frames.clone();
         frames.extend(extension);
-        Self { frames }
+        Self {
+            frames,
+            execution: self.execution,
+        }
     }
 }
 

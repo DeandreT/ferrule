@@ -10,6 +10,7 @@ mod aggregate;
 mod context;
 mod generated_sequence;
 mod iteration;
+mod runtime_value;
 mod value_map;
 
 use std::fmt;
@@ -28,6 +29,7 @@ pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
+pub use runtime_value::{ExecutionContext, RuntimeValue};
 pub use value_map::value_map;
 
 /// Failure produced while executing generated mapping code.
@@ -41,6 +43,7 @@ pub enum RuntimeError {
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     RecursiveSequenceDepth { limit: usize },
     RecursiveSequenceTooLarge { max: u128 },
+    MissingRuntimeValue { value: RuntimeValue },
     NotABool { node: u32, found: &'static str },
     NotAnItemCount { node: u32, found: &'static str },
 }
@@ -80,6 +83,9 @@ impl fmt::Display for RuntimeError {
                     "recursive sequence produced more than {max} items"
                 )
             }
+            Self::MissingRuntimeValue { value } => {
+                write!(formatter, "execution context does not provide {value:?}")
+            }
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
             }
@@ -104,6 +110,7 @@ impl std::error::Error for RuntimeError {
             | Self::GeneratedSequenceTooLarge { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }
+            | Self::MissingRuntimeValue { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. } => None,
         }

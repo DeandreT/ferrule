@@ -19,6 +19,8 @@ mod iteration_controls;
 mod iteration_metadata;
 #[path = "code_generation/recursive_sequences.rs"]
 mod recursive_sequences;
+#[path = "code_generation/runtime_values.rs"]
+mod runtime_values;
 #[path = "code_generation/sequence_reducers.rs"]
 mod sequence_reducers;
 #[path = "code_generation/value_maps.rs"]
@@ -585,7 +587,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 12,
+            files_written: 13,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -596,6 +598,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "GeneratedMapping.cs",
             "GeneratedTargetBuilder.cs",
             "Runtime/FerruleAggregates.cs",
+            "Runtime/FerruleExecutionContext.cs",
             "Runtime/FerruleFunctions.cs",
             "Runtime/FerruleInstance.cs",
             "Runtime/FerruleRuntimeException.cs",
