@@ -36,6 +36,8 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod extra_source_ui;
 #[path = "app_new_mapping.rs"]
 mod new_mapping_ui;
+#[path = "app_run.rs"]
+mod run_ui;
 #[path = "app_scopes.rs"]
 mod scope_ui;
 #[path = "app_workspace.rs"]
@@ -109,6 +111,7 @@ pub struct FerruleApp {
     narrow_pane: WorkspacePane,
     last_layout_class: Option<LayoutClass>,
     show_run_setup: bool,
+    show_run_report: bool,
     show_appearance_editor: bool,
     appearance_tab: AppearanceTab,
     theme: ThemeState,
@@ -122,6 +125,7 @@ pub struct FerruleApp {
     selected_scope: ScopePath,
     status: String,
     diagnostics: Diagnostics,
+    run_report: Option<crate::run_report::RunReportView>,
     new_mapping_setup: Option<NewMappingSetup>,
     extra_source_draft: Option<ExtraSourceDraft>,
     pending_extra_source_removal: Option<usize>,
@@ -186,6 +190,7 @@ impl Default for FerruleApp {
             narrow_pane: WorkspacePane::Canvas,
             last_layout_class: None,
             show_run_setup: false,
+            show_run_report: false,
             show_appearance_editor: false,
             appearance_tab: AppearanceTab::default(),
             theme: ThemeState::default(),
@@ -199,6 +204,7 @@ impl Default for FerruleApp {
             selected_scope: Vec::new(),
             status: String::new(),
             diagnostics: Diagnostics::default(),
+            run_report: None,
             new_mapping_setup: None,
             extra_source_draft: None,
             pending_extra_source_removal: None,
@@ -688,6 +694,7 @@ impl FerruleApp {
                 ));
             }
             DestructiveAction::NewProject => {
+                self.clear_run_report();
                 self.project = blank_project();
                 self.snarl = build_snarl(&self.project);
                 self.reset_canvas_view();
@@ -762,6 +769,7 @@ impl FerruleApp {
                 };
                 self.snarl = build_snarl_with_layout(&project, layout.as_ref());
                 self.reset_canvas_view();
+                self.clear_run_report();
                 self.project = project;
                 self.document = DocumentLocation::saved(path);
                 self.selected_scope.clear();
@@ -926,6 +934,7 @@ impl FerruleApp {
             }
             DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
                 Ok(imported) => {
+                    self.clear_run_report();
                     self.snarl = build_snarl(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
@@ -988,49 +997,6 @@ impl FerruleApp {
             }
         }
     }
-
-    fn run(&mut self, ctx: &egui::Context) {
-        let issues = cli::validate(&self.project);
-        if !issues.is_empty() {
-            self.status = format!("run blocked by {} validation issue(s)", issues.len());
-            self.diagnostics.validation(issues);
-            return;
-        }
-        self.diagnostics.clear();
-        self.save_with_continuation(Some(SaveContinuation::Run), ctx);
-    }
-
-    fn run_saved(&mut self) {
-        let Some(project_path) = self.document.saved_path() else {
-            self.diagnostics
-                .error("Run failed", "project has no saved file");
-            return;
-        };
-        let input_path = nonempty_path(&self.input_path);
-        let output_path = nonempty_path(&self.output_path);
-        match cli::run_project_with_paths(
-            project_path,
-            input_path.as_deref(),
-            output_path.as_deref(),
-        ) {
-            Ok(outcome) => {
-                self.status = format!(
-                    "wrote {} record(s) to {}",
-                    outcome.records_written,
-                    outcome.output_path.display()
-                );
-                self.diagnostics.clear();
-            }
-            Err(error) => {
-                self.status = "run failed".to_string();
-                self.diagnostics.error("Run failed", error.to_string());
-            }
-        }
-    }
-}
-
-fn nonempty_path(value: &str) -> Option<PathBuf> {
-    (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()))
 }
 
 impl eframe::App for FerruleApp {
@@ -1163,6 +1129,12 @@ impl eframe::App for FerruleApp {
             &mut self.appearance,
             self.palette,
         );
+
+        if let Some(report) = &mut self.run_report {
+            crate::run_report::show(ui.ctx(), &mut self.show_run_report, report);
+        } else {
+            self.show_run_report = false;
+        }
 
         self.show_unsaved_confirmation(ui.ctx());
         self.show_new_mapping_setup(ui.ctx());
