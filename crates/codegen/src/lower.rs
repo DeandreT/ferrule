@@ -153,40 +153,9 @@ fn lower_scope(
 fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
     let input: IterationSource = match &scope.iteration {
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
-        ScopeIteration::Sequence(mapping::SequenceExpr::Tokenize {
-            input,
-            delimiter,
-            item,
-        }) => GeneratedSequence::Tokenize {
-            input: *input,
-            delimiter: *delimiter,
-            item: *item,
-        }
-        .into(),
-        ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeByLength {
-            input,
-            length,
-            item,
-        }) => GeneratedSequence::TokenizeByLength {
-            input: *input,
-            length: *length,
-            item: *item,
-        }
-        .into(),
-        ScopeIteration::Sequence(mapping::SequenceExpr::Generate { from, to, item }) => {
-            GeneratedSequence::Range {
-                from: *from,
-                to: *to,
-                item: *item,
-            }
-            .into()
-        }
+        ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence)?.into(),
         ScopeIteration::None
         | ScopeIteration::DynamicDocuments { .. }
-        | ScopeIteration::Sequence(
-            mapping::SequenceExpr::TokenizeRegex { .. }
-            | mapping::SequenceExpr::RecursiveCollect { .. },
-        )
         | ScopeIteration::InnerJoin { .. }
         | ScopeIteration::Concatenate(_) => return None,
     };
@@ -216,6 +185,36 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
             .collect(),
         scope.iteration_output.into(),
     ))
+}
+
+fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> Option<GeneratedSequence> {
+    match sequence {
+        mapping::SequenceExpr::Tokenize {
+            input,
+            delimiter,
+            item,
+        } => Some(GeneratedSequence::Tokenize {
+            input: *input,
+            delimiter: *delimiter,
+            item: *item,
+        }),
+        mapping::SequenceExpr::TokenizeByLength {
+            input,
+            length,
+            item,
+        } => Some(GeneratedSequence::TokenizeByLength {
+            input: *input,
+            length: *length,
+            item: *item,
+        }),
+        mapping::SequenceExpr::Generate { from, to, item } => Some(GeneratedSequence::Range {
+            from: *from,
+            to: *to,
+            item: *item,
+        }),
+        mapping::SequenceExpr::TokenizeRegex { .. }
+        | mapping::SequenceExpr::RecursiveCollect { .. } => None,
+    }
 }
 
 fn display_target_scope(path: &[String]) -> String {
@@ -366,6 +365,23 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             ),
             arg: *arg,
         },
+        Node::SequenceExists {
+            sequence,
+            predicate,
+        } => Expression::SequenceExists {
+            sequence: lower_generated_sequence(sequence).ok_or(Diagnostic::UnsupportedNode {
+                node: id,
+                kind: UnsupportedNodeKind::SequenceExists,
+            })?,
+            predicate: *predicate,
+        },
+        Node::SequenceItemAt { sequence, index } => Expression::SequenceItemAt {
+            sequence: lower_generated_sequence(sequence).ok_or(Diagnostic::UnsupportedNode {
+                node: id,
+                kind: UnsupportedNodeKind::SequenceItemAt,
+            })?,
+            index: *index,
+        },
         node => {
             return Err(Diagnostic::UnsupportedNode {
                 node: id,
@@ -396,9 +412,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::Call { .. }
         | Node::If { .. }
         | Node::Aggregate { .. } => {
-            unreachable!(
-                "source fields, positions, constants, calls, conditionals, and aggregates are handled above"
-            )
+            unreachable!("portable expressions are handled above")
         }
     }
 }

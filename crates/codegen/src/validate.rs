@@ -12,6 +12,13 @@ pub enum SequenceExpressionRole {
     Item,
 }
 
+/// Lexical owner of one private generated-sequence item expression.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SequenceOwner {
+    Scope(Vec<String>),
+    Expression(NodeId),
+}
+
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
@@ -39,21 +46,21 @@ pub enum ProgramValidationError {
         source_path: Vec<String>,
     },
     MissingSequenceExpression {
-        target_path: Vec<String>,
+        owner: SequenceOwner,
         role: SequenceExpressionRole,
         expression: NodeId,
     },
     InvalidSequenceItem {
-        target_path: Vec<String>,
+        owner: SequenceOwner,
         expression: NodeId,
     },
     DuplicateSequenceItem {
-        target_path: Vec<String>,
-        first_target_path: Vec<String>,
+        owner: SequenceOwner,
+        first_owner: SequenceOwner,
         expression: NodeId,
     },
     SequenceItemOutOfContext {
-        target_path: Vec<String>,
+        owner: SequenceOwner,
         expression: NodeId,
         item: NodeId,
     },
@@ -112,9 +119,10 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_cycles(&expressions)?;
     validate_aggregate_paths(&program.source, &expressions)?;
     let mut sequence_items = BTreeMap::new();
+    collect_expression_sequence_items(&expressions, &mut sequence_items)?;
     collect_sequence_items(
-        &program.root,
         &expressions,
+        &program.root,
         &mut Vec::new(),
         &mut sequence_items,
     )?;
@@ -129,50 +137,85 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     )
 }
 
-fn collect_sequence_items(
-    scope: &TargetScope,
+fn collect_expression_sequence_items(
     expressions: &BTreeMap<NodeId, &Expression>,
+    owners: &mut BTreeMap<NodeId, SequenceOwner>,
+) -> Result<(), ProgramValidationError> {
+    for (&node, expression) in expressions {
+        let sequence = match expression {
+            Expression::SequenceExists { sequence, .. }
+            | Expression::SequenceItemAt { sequence, .. } => sequence,
+            _ => continue,
+        };
+        register_sequence_item(
+            sequence,
+            SequenceOwner::Expression(node),
+            expressions,
+            owners,
+        )?;
+    }
+    Ok(())
+}
+
+fn collect_sequence_items(
+    expressions: &BTreeMap<NodeId, &Expression>,
+    scope: &TargetScope,
     target_path: &mut Vec<String>,
-    owners: &mut BTreeMap<NodeId, Vec<String>>,
+    owners: &mut BTreeMap<NodeId, SequenceOwner>,
 ) -> Result<(), ProgramValidationError> {
     if let Some(sequence) = scope
         .iteration
         .as_ref()
         .and_then(|iteration| iteration.generated_sequence())
     {
-        let item = sequence.item();
-        if let Some(first_target_path) = owners.insert(item, target_path.clone()) {
-            return Err(ProgramValidationError::DuplicateSequenceItem {
-                target_path: target_path.clone(),
-                first_target_path,
-                expression: item,
-            });
-        }
-        let Some(expression) = expressions.get(&item) else {
-            return Err(ProgramValidationError::MissingSequenceExpression {
-                target_path: target_path.clone(),
-                role: SequenceExpressionRole::Item,
-                expression: item,
-            });
-        };
-        if !matches!(
-            expression,
-            Expression::SourceField {
-                frame: None,
-                path
-            } if path.is_empty()
-        ) {
-            return Err(ProgramValidationError::InvalidSequenceItem {
-                target_path: target_path.clone(),
-                expression: item,
-            });
-        }
+        register_sequence_item(
+            sequence,
+            SequenceOwner::Scope(target_path.clone()),
+            expressions,
+            owners,
+        )?;
     }
     for child in &scope.children {
         target_path.push(child.target_field.clone());
-        let result = collect_sequence_items(child, expressions, target_path, owners);
+        let result = collect_sequence_items(expressions, child, target_path, owners);
         target_path.pop();
         result?;
+    }
+    Ok(())
+}
+
+fn register_sequence_item(
+    sequence: &crate::GeneratedSequence,
+    owner: SequenceOwner,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    owners: &mut BTreeMap<NodeId, SequenceOwner>,
+) -> Result<(), ProgramValidationError> {
+    let item = sequence.item();
+    if let Some(first_owner) = owners.insert(item, owner.clone()) {
+        return Err(ProgramValidationError::DuplicateSequenceItem {
+            owner,
+            first_owner,
+            expression: item,
+        });
+    }
+    let Some(expression) = expressions.get(&item) else {
+        return Err(ProgramValidationError::MissingSequenceExpression {
+            owner,
+            role: SequenceExpressionRole::Item,
+            expression: item,
+        });
+    };
+    if !matches!(
+        expression,
+        Expression::SourceField {
+            frame: None,
+            path
+        } if path.is_empty()
+    ) {
+        return Err(ProgramValidationError::InvalidSequenceItem {
+            owner,
+            expression: item,
+        });
     }
     Ok(())
 }
@@ -260,6 +303,13 @@ fn dependencies(expression: &Expression) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
+        }
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence.inputs().chain([*predicate]).collect(),
+        Expression::SequenceItemAt { sequence, index } => {
+            sequence.inputs().chain([*index]).collect()
         }
     }
 }
@@ -381,7 +431,7 @@ fn validate_scope(
                 for (input, expression) in sequence.inputs().enumerate() {
                     if !expressions.contains_key(&expression) {
                         return Err(ProgramValidationError::MissingSequenceExpression {
-                            target_path: target_path.clone(),
+                            owner: SequenceOwner::Scope(target_path.clone()),
                             role: SequenceExpressionRole::Input(input),
                             expression,
                         });
@@ -391,7 +441,7 @@ fn validate_scope(
                         expressions,
                         sequence_items,
                         active_sequence_items,
-                        target_path,
+                        &SequenceOwner::Scope(target_path.clone()),
                     )?;
                 }
                 item_context.push(sequence.item());
@@ -411,7 +461,7 @@ fn validate_scope(
                 expressions,
                 sequence_items,
                 &item_context,
-                target_path,
+                &SequenceOwner::Scope(target_path.clone()),
             )?;
         }
         if let Some(sort) = iteration.sort() {
@@ -428,7 +478,7 @@ fn validate_scope(
                     expressions,
                     sequence_items,
                     &item_context,
-                    target_path,
+                    &SequenceOwner::Scope(target_path.clone()),
                 )?;
             }
         }
@@ -447,7 +497,7 @@ fn validate_scope(
                     expressions,
                     sequence_items,
                     active_sequence_items,
-                    target_path,
+                    &SequenceOwner::Scope(target_path.clone()),
                 )?;
             }
         }
@@ -484,7 +534,7 @@ fn validate_scope(
             expressions,
             sequence_items,
             &item_context,
-            target_path,
+            &SequenceOwner::Scope(target_path.clone()),
         )?;
         if let Some(&(first_binding, repeating, target_type)) =
             bindings.get(binding.target_field.as_str())
@@ -548,27 +598,106 @@ fn validate_sequence_context(
     expressions: &BTreeMap<NodeId, &Expression>,
     sequence_items: &BTreeSet<NodeId>,
     active_sequence_items: &[NodeId],
-    target_path: &[String],
+    owner: &SequenceOwner,
 ) -> Result<(), ProgramValidationError> {
-    let active: BTreeSet<_> = active_sequence_items.iter().copied().collect();
-    let mut pending = vec![expression];
     let mut visited = BTreeSet::new();
-    while let Some(node) = pending.pop() {
-        if !visited.insert(node) {
-            continue;
+    visit_sequence_context(
+        expression,
+        expression,
+        expressions,
+        sequence_items,
+        active_sequence_items,
+        owner,
+        &mut visited,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn visit_sequence_context(
+    node: NodeId,
+    root: NodeId,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    sequence_items: &BTreeSet<NodeId>,
+    active_sequence_items: &[NodeId],
+    owner: &SequenceOwner,
+    visited: &mut BTreeSet<(NodeId, Vec<NodeId>)>,
+) -> Result<(), ProgramValidationError> {
+    if !visited.insert((node, active_sequence_items.to_vec())) {
+        return Ok(());
+    }
+    if sequence_items.contains(&node) && !active_sequence_items.contains(&node) {
+        return Err(ProgramValidationError::SequenceItemOutOfContext {
+            owner: owner.clone(),
+            expression: root,
+            item: node,
+        });
+    }
+    let Some(expression) = expressions.get(&node) else {
+        return Ok(());
+    };
+    match expression {
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => {
+            let reducer = SequenceOwner::Expression(node);
+            for input in sequence.inputs() {
+                visit_sequence_context(
+                    input,
+                    root,
+                    expressions,
+                    sequence_items,
+                    active_sequence_items,
+                    &reducer,
+                    visited,
+                )?;
+            }
+            // Empty-path generated items are resolved innermost-first. An
+            // enclosing item expression would therefore read this reducer's
+            // item rather than its owner, so only the private item is valid.
+            let predicate_items = [sequence.item()];
+            visit_sequence_context(
+                *predicate,
+                root,
+                expressions,
+                sequence_items,
+                &predicate_items,
+                &reducer,
+                visited,
+            )
         }
-        if sequence_items.contains(&node) && !active.contains(&node) {
-            return Err(ProgramValidationError::SequenceItemOutOfContext {
-                target_path: target_path.to_vec(),
-                expression,
-                item: node,
-            });
+        Expression::SequenceItemAt { sequence, index } => {
+            let reducer = SequenceOwner::Expression(node);
+            // The interpreter treats every generated item as private to its
+            // owner for item-at inputs and its parent-context index.
+            for input in sequence.inputs().chain([*index]) {
+                visit_sequence_context(
+                    input,
+                    root,
+                    expressions,
+                    sequence_items,
+                    &[],
+                    &reducer,
+                    visited,
+                )?;
+            }
+            Ok(())
         }
-        if let Some(expression) = expressions.get(&node) {
-            pending.extend(dependencies(expression));
+        _ => {
+            for dependency in dependencies(expression) {
+                visit_sequence_context(
+                    dependency,
+                    root,
+                    expressions,
+                    sequence_items,
+                    active_sequence_items,
+                    owner,
+                    visited,
+                )?;
+            }
+            Ok(())
         }
     }
-    Ok(())
 }
 
 impl fmt::Display for ProgramValidationError {
@@ -614,41 +743,38 @@ impl fmt::Display for ProgramValidationError {
                 display_path(source_path)
             ),
             Self::MissingSequenceExpression {
-                target_path,
+                owner,
                 role,
                 expression,
             } => write!(
                 formatter,
-                "target scope {} generated sequence {} references missing expression {expression}",
-                display_path(target_path),
+                "{} generated sequence {} references missing expression {expression}",
+                display_owner(owner),
                 role
             ),
-            Self::InvalidSequenceItem {
-                target_path,
-                expression,
-            } => write!(
+            Self::InvalidSequenceItem { owner, expression } => write!(
                 formatter,
-                "target scope {} generated sequence item expression {expression} is not an unframed empty-path source field",
-                display_path(target_path)
+                "{} generated sequence item expression {expression} is not an unframed empty-path source field",
+                display_owner(owner)
             ),
             Self::DuplicateSequenceItem {
-                target_path,
-                first_target_path,
+                owner,
+                first_owner,
                 expression,
             } => write!(
                 formatter,
-                "target scope {} generated sequence item expression {expression} is already owned by target scope {}",
-                display_path(target_path),
-                display_path(first_target_path)
+                "{} generated sequence item expression {expression} is already owned by {}",
+                display_owner(owner),
+                display_owner(first_owner)
             ),
             Self::SequenceItemOutOfContext {
-                target_path,
+                owner,
                 expression,
                 item,
             } => write!(
                 formatter,
-                "target scope {} expression {expression} references generated sequence item {item} outside its owning context",
-                display_path(target_path)
+                "{} expression {expression} references generated sequence item {item} outside its owning context",
+                display_owner(owner)
             ),
             Self::MissingBindingExpression {
                 target_path,
@@ -747,6 +873,13 @@ fn display_path(path: &[String]) -> String {
         "<root>".into()
     } else {
         format!("`{}`", path.join("/"))
+    }
+}
+
+fn display_owner(owner: &SequenceOwner) -> String {
+    match owner {
+        SequenceOwner::Scope(path) => format!("target scope {}", display_path(path)),
+        SequenceOwner::Expression(node) => format!("compiled mapping expression {node}"),
     }
 }
 

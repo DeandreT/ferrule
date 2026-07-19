@@ -191,6 +191,20 @@ pub enum Expression {
         value: AggregateValue,
         arg: Option<NodeId>,
     },
+    /// Generates a private scalar sequence and returns whether its predicate
+    /// is true for any item. The predicate runs in a one-based item context
+    /// and short-circuits after the first match.
+    SequenceExists {
+        sequence: GeneratedSequence,
+        predicate: NodeId,
+    },
+    /// Generates a private scalar sequence and selects one one-based item.
+    /// The index executes after sequence materialization in the parent
+    /// context.
+    SequenceItemAt {
+        sequence: GeneratedSequence,
+        index: NodeId,
+    },
 }
 
 /// Exactly one way to obtain each aggregate item's scalar value.
@@ -301,9 +315,9 @@ pub enum SequenceWindow {
     Last { count: NodeId },
 }
 
-/// One scalar sequence evaluated once in an iterating scope's parent
-/// context. `item` owns the unframed empty-path source-field expression that
-/// becomes visible only while each generated candidate is evaluated.
+/// One scalar sequence evaluated in its owner's parent context. `item` owns
+/// the unframed empty-path source-field expression that becomes visible only
+/// while a scope candidate or existential predicate is evaluated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeneratedSequence {
     Tokenize {

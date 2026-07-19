@@ -25,7 +25,9 @@ pub use model::{
     ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
     TargetScope,
 };
-pub use validate::{ProgramValidationError, SequenceExpressionRole, validate_program};
+pub use validate::{
+    ProgramValidationError, SequenceExpressionRole, SequenceOwner, validate_program,
+};
 
 #[cfg(test)]
 mod tests;

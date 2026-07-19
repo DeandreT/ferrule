@@ -676,6 +676,15 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
         },
     )
     .unwrap();
+    let Some(generated_source) = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .and_then(|file| std::str::from_utf8(&file.contents).ok())
+    else {
+        panic!("generated Rust source artifact")
+    };
+    assert!(generated_source.contains("context.generated_items(&generated_items)"));
     write_artifacts(output.path(), &artifacts);
     fs::write(
         output.path().join("src/main.rs"),
@@ -724,6 +733,241 @@ fn row(value: i64, position: i64) -> Instance {
     assert!(
         result.status.success(),
         "generated Rust range project failed:\n{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
+fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|parent| parent.join("codegen-runtime"))
+        .unwrap();
+    let output = TempDir::new("rust_generated_sequence_reducers");
+    let program = Program {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar("Text", ScalarType::String),
+                SchemaNode::scalar("Delimiter", ScalarType::String),
+                SchemaNode::scalar("Index", ScalarType::Int),
+                SchemaNode::scalar("FailIndex", ScalarType::Bool),
+            ],
+        ),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::scalar("Selected", ScalarType::String),
+                SchemaNode::scalar("Exists", ScalarType::Bool),
+            ],
+        ),
+        expressions: vec![
+            ExpressionNode {
+                id: 1,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Text".into()],
+                },
+            },
+            ExpressionNode {
+                id: 2,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Delimiter".into()],
+                },
+            },
+            ExpressionNode {
+                id: 3,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 4,
+                expression: Expression::Const {
+                    value: Value::String("hit".into()),
+                },
+            },
+            ExpressionNode {
+                id: 5,
+                expression: Expression::Call {
+                    function: ScalarFunction::Equal,
+                    args: vec![3, 4],
+                },
+            },
+            ExpressionNode {
+                id: 6,
+                expression: Expression::Const {
+                    value: Value::Int(1),
+                },
+            },
+            ExpressionNode {
+                id: 7,
+                expression: Expression::Const {
+                    value: Value::Int(0),
+                },
+            },
+            ExpressionNode {
+                id: 8,
+                expression: Expression::Call {
+                    function: ScalarFunction::Divide,
+                    args: vec![6, 7],
+                },
+            },
+            ExpressionNode {
+                id: 9,
+                expression: Expression::If {
+                    condition: 5,
+                    then: 5,
+                    else_: 8,
+                },
+            },
+            ExpressionNode {
+                id: 10,
+                expression: Expression::SequenceExists {
+                    sequence: GeneratedSequence::Tokenize {
+                        input: 1,
+                        delimiter: 2,
+                        item: 3,
+                    },
+                    predicate: 9,
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Index".into()],
+                },
+            },
+            ExpressionNode {
+                id: 13,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["FailIndex".into()],
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::If {
+                    condition: 13,
+                    then: 8,
+                    else_: 12,
+                },
+            },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::SequenceItemAt {
+                    sequence: GeneratedSequence::Tokenize {
+                        input: 1,
+                        delimiter: 2,
+                        item: 11,
+                    },
+                    index: 14,
+                },
+            },
+        ],
+        root: TargetScope {
+            target_field: String::new(),
+            repeating: false,
+            iteration: None,
+            bindings: vec![
+                Binding {
+                    target_field: "Selected".into(),
+                    expression: 15,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                },
+                Binding {
+                    target_field: "Exists".into(),
+                    expression: 10,
+                    target_type: ScalarType::Bool,
+                    repeating: false,
+                },
+            ],
+            children: Vec::new(),
+        },
+    };
+    let artifacts = emit(
+        &program,
+        &Options {
+            package_name: "generated-sequence-reducers".to_string(),
+            runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
+        },
+    )
+    .unwrap();
+    let Some(generated_source) = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .and_then(|file| std::str::from_utf8(&file.contents).ok())
+    else {
+        panic!("generated Rust source artifact")
+    };
+    assert!(generated_source.contains("context.generated_item_contexts(&generated_items)"));
+    write_artifacts(output.path(), &artifacts);
+    fs::write(
+        output.path().join("src/main.rs"),
+        r#"use codegen_runtime::{
+    FunctionError, Instance, RuntimeError, Value, field, group, scalar,
+};
+
+fn main() {
+    let source = input(Value::String("hit,bad".into()), ",", 2, false);
+    assert_eq!(
+        generated_sequence_reducers::execute(&source).unwrap(),
+        group([
+            field("Selected", scalar(Value::String("bad".into()))),
+            field("Exists", scalar(Value::Bool(true))),
+        ]),
+    );
+
+    let empty = input(Value::Null, ",", 2, false);
+    assert_eq!(
+        generated_sequence_reducers::execute(&empty).unwrap(),
+        group([
+            field("Selected", scalar(Value::Null)),
+            field("Exists", scalar(Value::Bool(false))),
+        ]),
+    );
+
+    let failing_index = input(Value::Null, ",", 2, true);
+    assert_eq!(
+        generated_sequence_reducers::execute(&failing_index),
+        Err(RuntimeError::Function(FunctionError::DivideByZero)),
+    );
+}
+
+fn input(text: Value, delimiter: &str, index: i64, fail_index: bool) -> Instance {
+    group([
+        field("Text", scalar(text)),
+        field("Delimiter", scalar(Value::String(delimiter.into()))),
+        field("Index", scalar(Value::Int(index))),
+        field("FailIndex", scalar(Value::Bool(fail_index))),
+    ])
+}
+"#,
+    )
+    .unwrap();
+
+    let result = Command::new("cargo")
+        .args(["run", "--quiet"])
+        .current_dir(output.path())
+        .env("CARGO_TARGET_DIR", output.path().join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "generated Rust reducer project failed:\n{}\n{}",
         String::from_utf8_lossy(&result.stdout),
         String::from_utf8_lossy(&result.stderr)
     );

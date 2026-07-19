@@ -259,6 +259,25 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
             ));
             body
         }
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => {
+            let mut body = String::from("{\n");
+            render_generated_values(sequence, "        ", &mut body);
+            body.push_str(&format!(
+                "        let generated_items = GeneratedItems::new(sequence_values);\n        for item_context in context.generated_item_contexts(&generated_items) {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if require_bool({predicate}, predicate)? {{\n                return Ok(Value::Bool(true));\n            }}\n        }}\n        Ok(Value::Bool(false))\n    }}"
+            ));
+            body
+        }
+        Expression::SequenceItemAt { sequence, index } => {
+            let mut body = String::from("{\n");
+            render_generated_values(sequence, "        ", &mut body);
+            body.push_str(&format!(
+                "        let index = expression_{index}(context)?;\n        aggregate(AggregateFunction::ItemAt, &sequence_values, Some(index))\n    }}"
+            ));
+            body
+        }
     };
     Ok(format!(
         "fn expression_{id}(context: &ScopeContext<'_>) -> Result<Value, RuntimeError> {{\n    let _ = context;\n    {body}\n}}\n\n"
@@ -415,7 +434,7 @@ fn render_iteration_candidates(input: &IterationSource, output: &mut String) {
             ));
         }
         IterationSource::Generated(sequence) => {
-            render_generated_values(sequence, output);
+            render_generated_values(sequence, "    ", output);
             output.push_str(
                 "    let generated_items = GeneratedItems::new(sequence_values);\n    let mut candidates = context.generated_items(&generated_items);\n",
             );
@@ -423,25 +442,25 @@ fn render_iteration_candidates(input: &IterationSource, output: &mut String) {
     }
 }
 
-fn render_generated_values(sequence: &GeneratedSequence, output: &mut String) {
+fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &mut String) {
     match sequence {
         GeneratedSequence::Tokenize {
             input, delimiter, ..
         } => output.push_str(&format!(
-            "    let sequence_input = expression_{input}(context)?;\n    let sequence_values = if sequence_input == Value::Null {{\n        Vec::new()\n    }} else {{\n        let sequence_parameter = expression_{delimiter}(context)?;\n        if sequence_parameter == Value::Null {{\n            Vec::new()\n        }} else {{\n            tokenize(sequence_input, sequence_parameter)?\n        }}\n    }};\n"
+            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{delimiter}(context)?;\n{indent}    if sequence_parameter == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
         )),
         GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
-            "    let sequence_input = expression_{input}(context)?;\n    let sequence_values = if sequence_input == Value::Null {{\n        Vec::new()\n    }} else {{\n        let sequence_parameter = expression_{length}(context)?;\n        if sequence_parameter == Value::Null {{\n            Vec::new()\n        }} else {{\n            tokenize_by_length(sequence_input, sequence_parameter)?\n        }}\n    }};\n"
+            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{length}(context)?;\n{indent}    if sequence_parameter == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize_by_length(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
         )),
         GeneratedSequence::Range {
             from: Some(from),
             to,
             ..
         } => output.push_str(&format!(
-            "    let sequence_from = expression_{from}(context)?;\n    let sequence_values = if sequence_from == Value::Null {{\n        Vec::new()\n    }} else {{\n        let sequence_to = expression_{to}(context)?;\n        if sequence_to == Value::Null {{\n            Vec::new()\n        }} else {{\n            generate_sequence(Some(sequence_from), sequence_to)?\n        }}\n    }};\n"
+            "{indent}let sequence_from = expression_{from}(context)?;\n{indent}let sequence_values = if sequence_from == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_to = expression_{to}(context)?;\n{indent}    if sequence_to == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        generate_sequence(Some(sequence_from), sequence_to)?\n{indent}    }}\n{indent}}};\n"
         )),
         GeneratedSequence::Range { from: None, to, .. } => output.push_str(&format!(
-            "    let sequence_to = expression_{to}(context)?;\n    let sequence_values = if sequence_to == Value::Null {{\n        Vec::new()\n    }} else {{\n        generate_sequence(None, sequence_to)?\n    }};\n"
+            "{indent}let sequence_to = expression_{to}(context)?;\n{indent}let sequence_values = if sequence_to == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    generate_sequence(None, sequence_to)?\n{indent}}};\n"
         )),
     }
 }

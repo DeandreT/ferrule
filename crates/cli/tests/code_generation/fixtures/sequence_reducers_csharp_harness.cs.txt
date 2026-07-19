@@ -1,0 +1,88 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+AssertOutput((FerruleGroup)GeneratedMapping.Execute(Source(ErrorMode.None)));
+
+var nonBool = Error(() => GeneratedMapping.Execute(Source(ErrorMode.NonBool)));
+Assert(nonBool.Error == FerruleRuntimeError.NotABool);
+Assert(nonBool.Node == 24U);
+Assert(nonBool.FoundKind == FerruleValueKind.String);
+
+var emptyIndex = Error(() => GeneratedMapping.Execute(Source(ErrorMode.EmptyIndex)));
+Assert(emptyIndex.Error == FerruleRuntimeError.DivideByZero);
+
+foreach (var mode in new[] { ErrorMode.ExistsSequence, ErrorMode.ItemAtSequence })
+{
+    var sequence = Error(() => GeneratedMapping.Execute(Source(mode)));
+    Assert(sequence.Error == FerruleRuntimeError.FunctionType);
+    Assert(sequence.Function == "tokenize");
+    Assert(sequence.FoundKind == FerruleValueKind.Int64);
+}
+
+static FerruleGroup Source(ErrorMode mode) =>
+    new(new FerruleField[]
+    {
+        new("Words", Scalar(FerruleValue.FromString("alpha,beta,gamma"))),
+        new("Index", Scalar(FerruleValue.FromInt64(2))),
+        new("FailNonBool", Scalar(FerruleValue.FromBoolean(mode == ErrorMode.NonBool))),
+        new("FailEmptyIndex", Scalar(FerruleValue.FromBoolean(mode == ErrorMode.EmptyIndex))),
+        new(
+            "FailExistsSequence",
+            Scalar(FerruleValue.FromBoolean(mode == ErrorMode.ExistsSequence))),
+        new(
+            "FailItemAtSequence",
+            Scalar(FerruleValue.FromBoolean(mode == ErrorMode.ItemAtSequence))),
+    });
+
+static void AssertOutput(FerruleGroup output)
+{
+    Assert(Value(output, "ExistsTrue") == FerruleValue.FromBoolean(true));
+    Assert(Value(output, "ExistsFalse") == FerruleValue.FromBoolean(false));
+    Assert(Value(output, "ExistsPosition") == FerruleValue.FromBoolean(true));
+    Assert(Value(output, "ExistsShortCircuit") == FerruleValue.FromBoolean(true));
+    Assert(Value(output, "NullSkipsPredicate") == FerruleValue.FromBoolean(false));
+    Assert(Value(output, "EmptySkipsPredicate") == FerruleValue.FromBoolean(false));
+    Assert(Value(output, "ItemAtOne") == FerruleValue.FromInt64(3));
+    Assert(Value(output, "ItemAtOutOfRange").Kind == FerruleValueKind.Null);
+    Assert(Value(output, "ItemAtParentIndex") == FerruleValue.FromString("beta"));
+    Assert(Value(output, "NonBoolProbe") == FerruleValue.FromBoolean(true));
+    Assert(Value(output, "EmptyIndexProbe") == FerruleValue.FromString("safe"));
+    Assert(Value(output, "ExistsSequenceProbe") == FerruleValue.FromBoolean(true));
+    Assert(Value(output, "ItemAtSequenceProbe") == FerruleValue.FromString("safe"));
+}
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static FerruleValue Value(FerruleGroup group, string name) =>
+    ((FerruleScalar)group.Fields.Single(field => field.Name == name).Value).Value;
+
+static FerruleRuntimeException Error(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("Expected sequence reducer evaluation to fail.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("generated sequence reducer output differs from the engine");
+    }
+}
+
+enum ErrorMode
+{
+    None,
+    NonBool,
+    EmptyIndex,
+    ExistsSequence,
+    ItemAtSequence,
+}

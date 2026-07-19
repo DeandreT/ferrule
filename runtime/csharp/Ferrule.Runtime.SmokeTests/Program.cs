@@ -30,6 +30,7 @@ internal static class Program
             ("ordered sequence windows", OrderedSequenceWindows),
             ("generated sequence values", GeneratedSequenceValues),
             ("generated sequence contexts", GeneratedSequenceContexts),
+            ("lazy generated sequence contexts", LazyGeneratedSequenceContexts),
             ("typed generated sequence errors", TypedGeneratedSequenceErrors),
         };
 
@@ -777,6 +778,21 @@ internal static class Program
         Equal(7L, contexts[1].WithCompactedPosition(7).Position());
     }
 
+    private static void LazyGeneratedSequenceContexts()
+    {
+        var parent = ScopeContext.FromSource(Group(Field("Parent", Scalar(Text("outer")))));
+        var yielded = 0;
+        foreach (var context in parent.EnumerateGenerated(new FirstOnlyValues()))
+        {
+            Equal(Text("first"), context.ResolveScalar());
+            Equal(Text("outer"), context.ResolveScalar("Parent"));
+            Equal(1L, context.Position());
+            yielded++;
+            break;
+        }
+        Equal(1, yielded);
+    }
+
     private static void TypedGeneratedSequenceErrors()
     {
         var wrongType = Error(
@@ -873,4 +889,24 @@ internal static class Program
         string Name,
         FerruleValue Score,
         FerruleValue Tie);
+
+    private sealed class FirstOnlyValues : IReadOnlyList<FerruleValue>
+    {
+        public int Count => 2;
+
+        public FerruleValue this[int index] => index switch
+        {
+            0 => Text("first"),
+            _ => throw new InvalidOperationException("lazy enumeration read a later value"),
+        };
+
+        public IEnumerator<FerruleValue> GetEnumerator()
+        {
+            yield return this[0];
+            yield return this[1];
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() =>
+            GetEnumerator();
+    }
 }

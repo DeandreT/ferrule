@@ -111,33 +111,40 @@ impl<'a> ScopeContext<'a> {
 
     /// Reborrows the parent frames and appends each generated scalar as an
     /// empty-path collection frame with its raw one-based position.
+    pub fn generated_item_contexts<'b>(
+        &'b self,
+        items: &'b GeneratedItems,
+    ) -> impl Iterator<Item = ScopeContext<'b>> + 'b
+    where
+        'a: 'b,
+    {
+        items.items.iter().enumerate().map(move |(index, item)| {
+            let mut frames = self
+                .frames
+                .iter()
+                .map(|frame| ScopeFrame {
+                    instance: frame.instance,
+                    collection: frame.collection.clone(),
+                })
+                .collect::<Vec<_>>();
+            frames.push(collection_frame(
+                item,
+                CollectionIdentity::Repeated {
+                    path: Vec::new(),
+                    index: index + 1,
+                },
+            ));
+            ScopeContext { frames }
+        })
+    }
+
+    /// Materializes all generated-item contexts for scope sorting, filtering,
+    /// and windowing while retaining the lazy iterator's frame semantics.
     pub fn generated_items<'b>(&'b self, items: &'b GeneratedItems) -> Vec<ScopeContext<'b>>
     where
         'a: 'b,
     {
-        items
-            .items
-            .iter()
-            .enumerate()
-            .map(|(index, item)| {
-                let mut frames = self
-                    .frames
-                    .iter()
-                    .map(|frame| ScopeFrame {
-                        instance: frame.instance,
-                        collection: frame.collection.clone(),
-                    })
-                    .collect::<Vec<_>>();
-                frames.push(collection_frame(
-                    item,
-                    CollectionIdentity::Repeated {
-                        path: Vec::new(),
-                        index: index + 1,
-                    },
-                ));
-                ScopeContext { frames }
-            })
-            .collect()
+        self.generated_item_contexts(items).collect()
     }
 }
 

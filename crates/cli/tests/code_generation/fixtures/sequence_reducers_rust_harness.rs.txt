@@ -1,0 +1,77 @@
+use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group, scalar};
+use ferrule_generated_mapping::execute;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ErrorMode {
+    None,
+    NonBool,
+    EmptyIndex,
+    ExistsSequence,
+    ItemAtSequence,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source(ErrorMode::None))?, expected());
+    assert_eq!(
+        execute(&source(ErrorMode::NonBool)),
+        Err(RuntimeError::NotABool {
+            node: 24,
+            found: "string",
+        }),
+    );
+    assert_eq!(
+        execute(&source(ErrorMode::EmptyIndex)),
+        Err(RuntimeError::Function(FunctionError::DivideByZero)),
+    );
+    for mode in [ErrorMode::ExistsSequence, ErrorMode::ItemAtSequence] {
+        assert_eq!(
+            execute(&source(mode)),
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "tokenize",
+                got: "int",
+            })),
+        );
+    }
+    Ok(())
+}
+
+fn source(mode: ErrorMode) -> Instance {
+    group([
+        field("Words", scalar(Value::String("alpha,beta,gamma".into()))),
+        field("Index", scalar(Value::Int(2))),
+        field(
+            "FailNonBool",
+            scalar(Value::Bool(mode == ErrorMode::NonBool)),
+        ),
+        field(
+            "FailEmptyIndex",
+            scalar(Value::Bool(mode == ErrorMode::EmptyIndex)),
+        ),
+        field(
+            "FailExistsSequence",
+            scalar(Value::Bool(mode == ErrorMode::ExistsSequence)),
+        ),
+        field(
+            "FailItemAtSequence",
+            scalar(Value::Bool(mode == ErrorMode::ItemAtSequence)),
+        ),
+    ])
+}
+
+fn expected() -> Instance {
+    group([
+        field("ExistsTrue", scalar(Value::Bool(true))),
+        field("ExistsFalse", scalar(Value::Bool(false))),
+        field("ExistsPosition", scalar(Value::Bool(true))),
+        field("ExistsShortCircuit", scalar(Value::Bool(true))),
+        field("NullSkipsPredicate", scalar(Value::Bool(false))),
+        field("EmptySkipsPredicate", scalar(Value::Bool(false))),
+        field("ItemAtOne", scalar(Value::Int(3))),
+        field("ItemAtOutOfRange", scalar(Value::Null)),
+        field("ItemAtParentIndex", scalar(Value::String("beta".into()))),
+        field("NonBoolProbe", scalar(Value::Bool(true))),
+        field("EmptyIndexProbe", scalar(Value::String("safe".into()))),
+        field("ExistsSequenceProbe", scalar(Value::Bool(true))),
+        field("ItemAtSequenceProbe", scalar(Value::String("safe".into()))),
+    ])
+}

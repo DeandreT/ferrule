@@ -135,6 +135,25 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     aggregate_function_name(*function)
                 ));
             }
+            Expression::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                output.push_str("\n    {\n");
+                let identifier = format!("node_{node}");
+                render_generated_values(&identifier, sequence, &mut output);
+                output.push_str(&format!(
+                    "        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                return global::Ferrule.Runtime.FerruleValue.FromBoolean(true);\n            }}\n        }}\n        return global::Ferrule.Runtime.FerruleValue.FromBoolean(false);\n    }}\n"
+                ));
+            }
+            Expression::SequenceItemAt { sequence, index } => {
+                output.push_str("\n    {\n");
+                let identifier = format!("node_{node}");
+                render_generated_values(&identifier, sequence, &mut output);
+                output.push_str(&format!(
+                    "        var sequence_index_{identifier} = Node_{index}(context);\n        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.ItemAt, sequence_values_{identifier}, sequence_index_{identifier});\n    }}\n"
+                ));
+            }
         }
     }
 
@@ -291,36 +310,37 @@ fn render_iteration_candidates(scope: usize, input: &IterationSource, output: &m
             output.push_str("));\n");
         }
         IterationSource::Generated(sequence) => {
-            render_generated_values(scope, sequence, output);
+            let identifier = format!("scope_{scope}");
+            render_generated_values(&identifier, sequence, output);
             output.push_str(&format!(
-                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{scope}));\n"
+                "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{identifier}));\n"
             ));
         }
     }
 }
 
-fn render_generated_values(scope: usize, sequence: &GeneratedSequence, output: &mut String) {
+fn render_generated_values(identifier: &str, sequence: &GeneratedSequence, output: &mut String) {
     output.push_str(&format!(
-        "        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> sequence_values_{scope} = global::System.Array.Empty<global::Ferrule.Runtime.FerruleValue>();\n"
+        "        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> sequence_values_{identifier} = global::System.Array.Empty<global::Ferrule.Runtime.FerruleValue>();\n"
     ));
     match sequence {
         GeneratedSequence::Tokenize {
             input, delimiter, ..
         } => output.push_str(&format!(
-            "        var sequence_input_{scope} = Node_{input}(context);\n        if (sequence_input_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_parameter_{scope} = Node_{delimiter}(context);\n            if (sequence_parameter_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{scope} = global::Ferrule.Runtime.FerruleSequences.Tokenize(sequence_input_{scope}, sequence_parameter_{scope});\n            }}\n        }}\n"
+            "        var sequence_input_{identifier} = Node_{input}(context);\n        if (sequence_input_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_parameter_{identifier} = Node_{delimiter}(context);\n            if (sequence_parameter_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.Tokenize(sequence_input_{identifier}, sequence_parameter_{identifier});\n            }}\n        }}\n"
         )),
         GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
-            "        var sequence_input_{scope} = Node_{input}(context);\n        if (sequence_input_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_parameter_{scope} = Node_{length}(context);\n            if (sequence_parameter_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{scope} = global::Ferrule.Runtime.FerruleSequences.TokenizeByLength(sequence_input_{scope}, sequence_parameter_{scope});\n            }}\n        }}\n"
+            "        var sequence_input_{identifier} = Node_{input}(context);\n        if (sequence_input_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_parameter_{identifier} = Node_{length}(context);\n            if (sequence_parameter_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.TokenizeByLength(sequence_input_{identifier}, sequence_parameter_{identifier});\n            }}\n        }}\n"
         )),
         GeneratedSequence::Range {
             from: Some(from),
             to,
             ..
         } => output.push_str(&format!(
-            "        var sequence_from_{scope} = Node_{from}(context);\n        if (sequence_from_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_to_{scope} = Node_{to}(context);\n            if (sequence_to_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{scope} = global::Ferrule.Runtime.FerruleSequences.GenerateRange(sequence_from_{scope}, sequence_to_{scope});\n            }}\n        }}\n"
+            "        var sequence_from_{identifier} = Node_{from}(context);\n        if (sequence_from_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_to_{identifier} = Node_{to}(context);\n            if (sequence_to_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.GenerateRange(sequence_from_{identifier}, sequence_to_{identifier});\n            }}\n        }}\n"
         )),
         GeneratedSequence::Range { from: None, to, .. } => output.push_str(&format!(
-            "        var sequence_to_{scope} = Node_{to}(context);\n        if (sequence_to_{scope}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            sequence_values_{scope} = global::Ferrule.Runtime.FerruleSequences.GenerateRange(null, sequence_to_{scope});\n        }}\n"
+            "        var sequence_to_{identifier} = Node_{to}(context);\n        if (sequence_to_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.GenerateRange(null, sequence_to_{identifier});\n        }}\n"
         )),
     }
 }

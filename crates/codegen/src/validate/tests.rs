@@ -115,7 +115,7 @@ fn validates_generated_sequence_references_and_item_shape() {
     assert_eq!(
         validate_program(&missing_input),
         Err(ProgramValidationError::MissingSequenceExpression {
-            target_path: Vec::new(),
+            owner: SequenceOwner::Scope(Vec::new()),
             role: SequenceExpressionRole::Input(0),
             expression: 99,
         })
@@ -126,7 +126,7 @@ fn validates_generated_sequence_references_and_item_shape() {
     assert_eq!(
         validate_program(&missing_item),
         Err(ProgramValidationError::MissingSequenceExpression {
-            target_path: Vec::new(),
+            owner: SequenceOwner::Scope(Vec::new()),
             role: SequenceExpressionRole::Item,
             expression: 99,
         })
@@ -137,7 +137,7 @@ fn validates_generated_sequence_references_and_item_shape() {
     assert_eq!(
         validate_program(&wrong_item),
         Err(ProgramValidationError::InvalidSequenceItem {
-            target_path: Vec::new(),
+            owner: SequenceOwner::Scope(Vec::new()),
             expression: 2,
         })
     );
@@ -184,8 +184,8 @@ fn generated_items_are_unique_and_lexically_scoped() {
     assert_eq!(
         validate_program(&duplicate),
         Err(ProgramValidationError::DuplicateSequenceItem {
-            target_path: vec!["Second".into()],
-            first_target_path: vec!["First".into()],
+            owner: SequenceOwner::Scope(vec!["Second".into()]),
+            first_owner: SequenceOwner::Scope(vec!["First".into()]),
             expression: 3,
         })
     );
@@ -199,7 +199,7 @@ fn generated_items_are_unique_and_lexically_scoped() {
     assert_eq!(
         validate_program(&sibling_leak),
         Err(ProgramValidationError::SequenceItemOutOfContext {
-            target_path: vec!["Second".into()],
+            owner: SequenceOwner::Scope(vec!["Second".into()]),
             expression: 3,
             item: 3,
         })
@@ -211,7 +211,7 @@ fn generated_items_are_unique_and_lexically_scoped() {
     assert_eq!(
         validate_program(&own_input),
         Err(ProgramValidationError::SequenceItemOutOfContext {
-            target_path: Vec::new(),
+            owner: SequenceOwner::Scope(Vec::new()),
             expression: 3,
             item: 3,
         })
@@ -222,6 +222,218 @@ fn generated_items_are_unique_and_lexically_scoped() {
     nested.root.iteration = Some(sequence(1, 3));
     nested.root.children = vec![child("Nested", sequence(3, 4), Some(4))];
     assert_eq!(validate_program(&nested), Ok(()));
+}
+
+#[test]
+fn reducer_items_are_private_unique_and_boundary_aware() {
+    let item = |id| ExpressionNode {
+        id,
+        expression: Expression::SourceField {
+            frame: None,
+            path: Vec::new(),
+        },
+    };
+    let exists = |item, predicate| Expression::SequenceExists {
+        sequence: GeneratedSequence::Range {
+            from: None,
+            to: 1,
+            item,
+        },
+        predicate,
+    };
+
+    let mut valid = program();
+    valid.expressions.extend([
+        item(3),
+        ExpressionNode {
+            id: 4,
+            expression: Expression::Call {
+                function: ScalarFunction::Equal,
+                args: vec![3, 1],
+            },
+        },
+        ExpressionNode {
+            id: 5,
+            expression: exists(3, 4),
+        },
+    ]);
+    valid.root.bindings[0].expression = 5;
+    assert_eq!(validate_program(&valid), Ok(()));
+
+    let mut own_input = valid.clone();
+    let Some(ExpressionNode {
+        expression: Expression::SequenceExists { sequence, .. },
+        ..
+    }) = own_input.expressions.iter_mut().find(|node| node.id == 5)
+    else {
+        panic!("expected sequence-exists expression");
+    };
+    *sequence = GeneratedSequence::Range {
+        from: None,
+        to: 3,
+        item: 3,
+    };
+    assert_eq!(
+        validate_program(&own_input),
+        Err(ProgramValidationError::SequenceItemOutOfContext {
+            owner: SequenceOwner::Expression(5),
+            expression: 5,
+            item: 3,
+        })
+    );
+
+    let mut leaked = valid;
+    leaked.root.bindings.push(Binding {
+        target_field: "Leaked".into(),
+        expression: 3,
+        target_type: ScalarType::Int,
+        repeating: false,
+    });
+    assert_eq!(
+        validate_program(&leaked),
+        Err(ProgramValidationError::SequenceItemOutOfContext {
+            owner: SequenceOwner::Scope(Vec::new()),
+            expression: 3,
+            item: 3,
+        })
+    );
+}
+
+#[test]
+fn reducer_items_share_global_ownership_with_scope_sequences() {
+    let mut program = program();
+    program.expressions.extend([
+        ExpressionNode {
+            id: 3,
+            expression: Expression::SourceField {
+                frame: None,
+                path: Vec::new(),
+            },
+        },
+        ExpressionNode {
+            id: 4,
+            expression: Expression::SequenceItemAt {
+                sequence: GeneratedSequence::Range {
+                    from: None,
+                    to: 1,
+                    item: 3,
+                },
+                index: 1,
+            },
+        },
+    ]);
+    program.root.iteration = Some(IterationPlan::generated(GeneratedSequence::Range {
+        from: None,
+        to: 2,
+        item: 3,
+    }));
+
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::DuplicateSequenceItem {
+            owner: SequenceOwner::Scope(Vec::new()),
+            first_owner: SequenceOwner::Expression(4),
+            expression: 3,
+        })
+    );
+}
+
+#[test]
+fn nested_reducers_can_read_active_scope_items_but_not_foreign_private_items() {
+    let item = |id| ExpressionNode {
+        id,
+        expression: Expression::SourceField {
+            frame: None,
+            path: Vec::new(),
+        },
+    };
+    let mut nested = program();
+    nested.expressions.extend([
+        item(3),
+        item(4),
+        ExpressionNode {
+            id: 5,
+            expression: Expression::SequenceExists {
+                sequence: GeneratedSequence::Range {
+                    from: Some(3),
+                    to: 2,
+                    item: 4,
+                },
+                predicate: 4,
+            },
+        },
+    ]);
+    nested.root.iteration = Some(IterationPlan::generated(GeneratedSequence::Range {
+        from: None,
+        to: 2,
+        item: 3,
+    }));
+    nested.root.bindings[0].expression = 5;
+    assert_eq!(validate_program(&nested), Ok(()));
+
+    let mut shadowed = nested.clone();
+    let Some(ExpressionNode {
+        expression: Expression::SequenceExists { predicate, .. },
+        ..
+    }) = shadowed.expressions.iter_mut().find(|node| node.id == 5)
+    else {
+        panic!("expected sequence-exists expression");
+    };
+    *predicate = 3;
+    assert_eq!(
+        validate_program(&shadowed),
+        Err(ProgramValidationError::SequenceItemOutOfContext {
+            owner: SequenceOwner::Expression(5),
+            expression: 5,
+            item: 3,
+        })
+    );
+
+    let mut item_at_outer = nested.clone();
+    item_at_outer.expressions.extend([
+        item(6),
+        ExpressionNode {
+            id: 7,
+            expression: Expression::SequenceItemAt {
+                sequence: GeneratedSequence::Range {
+                    from: Some(3),
+                    to: 2,
+                    item: 6,
+                },
+                index: 1,
+            },
+        },
+    ]);
+    item_at_outer.root.bindings[0].expression = 7;
+    assert_eq!(
+        validate_program(&item_at_outer),
+        Err(ProgramValidationError::SequenceItemOutOfContext {
+            owner: SequenceOwner::Expression(7),
+            expression: 7,
+            item: 3,
+        })
+    );
+
+    nested.root.iteration = None;
+    nested.expressions.push(ExpressionNode {
+        id: 6,
+        expression: Expression::SequenceItemAt {
+            sequence: GeneratedSequence::Range {
+                from: None,
+                to: 2,
+                item: 3,
+            },
+            index: 1,
+        },
+    });
+    assert_eq!(
+        validate_program(&nested),
+        Err(ProgramValidationError::SequenceItemOutOfContext {
+            owner: SequenceOwner::Expression(5),
+            expression: 5,
+            item: 3,
+        })
+    );
 }
 
 #[test]

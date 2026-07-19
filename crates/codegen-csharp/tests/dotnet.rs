@@ -3,7 +3,8 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, IterationPlan, Program, ScalarFunction, TargetScope,
+    Binding, Expression, ExpressionNode, GeneratedSequence, IterationPlan, Program, ScalarFunction,
+    TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -201,12 +202,89 @@ fn fixture() -> Program {
                     path: vec!["Orders".into(), "OrderCode".into()],
                 },
             },
+            ExpressionNode {
+                id: 19,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 20,
+                expression: Expression::Const {
+                    value: Value::String("alpha,beta".into()),
+                },
+            },
+            ExpressionNode {
+                id: 21,
+                expression: Expression::Const {
+                    value: Value::String(",".into()),
+                },
+            },
+            ExpressionNode {
+                id: 22,
+                expression: Expression::Const {
+                    value: Value::String("beta".into()),
+                },
+            },
+            ExpressionNode {
+                id: 23,
+                expression: Expression::Call {
+                    function: ScalarFunction::Equal,
+                    args: vec![19, 22],
+                },
+            },
+            ExpressionNode {
+                id: 24,
+                expression: Expression::SequenceExists {
+                    sequence: GeneratedSequence::Tokenize {
+                        input: 20,
+                        delimiter: 21,
+                        item: 19,
+                    },
+                    predicate: 23,
+                },
+            },
+            ExpressionNode {
+                id: 25,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 26,
+                expression: Expression::Const {
+                    value: Value::Int(3),
+                },
+            },
+            ExpressionNode {
+                id: 27,
+                expression: Expression::Const {
+                    value: Value::Int(2),
+                },
+            },
+            ExpressionNode {
+                id: 28,
+                expression: Expression::SequenceItemAt {
+                    sequence: GeneratedSequence::Range {
+                        from: None,
+                        to: 26,
+                        item: 25,
+                    },
+                    index: 27,
+                },
+            },
         ],
         root: TargetScope {
             target_field: String::new(),
             repeating: true,
             iteration: None,
-            bindings: vec![binding("RootInt", 2, ScalarType::Int, false)],
+            bindings: vec![
+                binding("RootInt", 2, ScalarType::Int, false),
+                binding("Exists", 24, ScalarType::Bool, false),
+                binding("Selected", 28, ScalarType::Int, false),
+            ],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
                 repeating: true,
@@ -262,10 +340,12 @@ var source = Source(FerruleValue.FromBoolean(true));
 var outputRows = (FerruleRepeated)GeneratedMapping.Execute(source);
 Assert(outputRows.Items.Count == 1);
 var output = (FerruleGroup)outputRows.Items[0];
-Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Nested" }));
+Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "Nested" }));
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromInt64(7));
+Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.FromBoolean(true));
+Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.FromInt64(2));
 
-var nestedRows = (FerruleRepeated)output.Fields[1].Value;
+var nestedRows = (FerruleRepeated)output.Fields[3].Value;
 Assert(nestedRows.Items.Count == 3);
 var nested = (FerruleGroup)nestedRows.Items[0];
 Assert(nested.Fields.Select(field => field.Name).SequenceEqual(
