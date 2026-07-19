@@ -72,6 +72,7 @@ fn dynamic_project() -> Project {
             }),
         }],
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

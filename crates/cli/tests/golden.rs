@@ -348,6 +348,7 @@ fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
         target_options: FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -571,6 +572,7 @@ fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
         target_options: FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -944,6 +946,7 @@ fn composite_sqlite_input_iterates_a_selected_table() {
         target_options: FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,

@@ -625,6 +625,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(vec![]),
@@ -719,6 +720,7 @@ fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![
@@ -766,6 +768,7 @@ fn build_snarl_only_hides_legacy_frameless_fields_with_unique_suffixes() {
             target_options: Default::default(),
             extra_sources: Vec::new(),
             extra_targets: Vec::new(),
+            failure_rules: Vec::new(),
             graph,
             root: Scope {
                 bindings: vec![Binding {

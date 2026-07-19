@@ -113,6 +113,7 @@ fn imported_protobuf_target_writes_binary_independent_of_extension() {
         },
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: mapping::Graph::default(),
         root: mapping::Scope {
             construction: mapping::ScopeConstruction::CopyCurrentSource,

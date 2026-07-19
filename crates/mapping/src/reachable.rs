@@ -18,6 +18,14 @@ impl Project {
                 .filter_map(|source| source.dynamic_path.as_ref())
                 .map(|path| path.node),
         );
+        for rule in &self.failure_rules {
+            pending.extend(rule.message);
+            pending.extend(rule.selection.predicate());
+            if let crate::FailureIteration::Sequence { sequence } = &rule.iteration {
+                pending.extend(sequence.inputs());
+                pending.push(sequence.item());
+            }
+        }
 
         let mut reachable = BTreeSet::new();
         while let Some(id) = pending.pop() {
@@ -138,7 +146,10 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
 mod tests {
     use ir::{ScalarType, SchemaNode, Value};
 
-    use crate::{Binding, Graph, NamedSource, Node, Project, Scope};
+    use crate::{
+        Binding, FailureIteration, FailureRule, FailureSelection, Graph, NamedSource, Node,
+        Project, Scope,
+    };
 
     #[test]
     fn project_prunes_only_nodes_outside_executable_roots() {
@@ -163,6 +174,26 @@ mod tests {
                 }),
             }],
             extra_targets: Vec::new(),
+            failure_rules: vec![
+                FailureRule {
+                    iteration: FailureIteration::Source {
+                        collection: Vec::new(),
+                    },
+                    selection: FailureSelection::WhenTrue { predicate: 5 },
+                    message: Some(4),
+                },
+                FailureRule {
+                    iteration: FailureIteration::Sequence {
+                        sequence: crate::SequenceExpr::Generate {
+                            from: Some(6),
+                            to: 7,
+                            item: 8,
+                        },
+                    },
+                    selection: FailureSelection::All,
+                    message: None,
+                },
+            ],
             graph: Graph {
                 nodes: [
                     (0, Node::Const { value: Value::Null }),
@@ -175,6 +206,38 @@ mod tests {
                     ),
                     (2, Node::Const { value: Value::Null }),
                     (3, Node::Const { value: Value::Null }),
+                    (
+                        4,
+                        Node::Call {
+                            function: "concat".into(),
+                            args: vec![2],
+                        },
+                    ),
+                    (
+                        5,
+                        Node::Const {
+                            value: Value::Bool(true),
+                        },
+                    ),
+                    (
+                        6,
+                        Node::Const {
+                            value: Value::Int(1),
+                        },
+                    ),
+                    (
+                        7,
+                        Node::Const {
+                            value: Value::Int(2),
+                        },
+                    ),
+                    (
+                        8,
+                        Node::SourceField {
+                            path: Vec::new(),
+                            frame: None,
+                        },
+                    ),
                 ]
                 .into_iter()
                 .collect(),
@@ -192,7 +255,7 @@ mod tests {
 
         assert_eq!(
             project.graph.nodes.keys().copied().collect::<Vec<_>>(),
-            vec![0, 1, 3]
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8]
         );
     }
 }

@@ -49,6 +49,7 @@ fn project(output_path: u32) -> Project {
         },
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: [
                 (0, Node::SourceDocumentPath),

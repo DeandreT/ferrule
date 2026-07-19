@@ -8,9 +8,12 @@ use mapping::{
 use crate::MfdError;
 
 use super::schema::{SideFormat, side_format};
-use super::{concatenation, edi, external_source, flextext, pdf, protobuf, recursive, xbrl};
+use super::{
+    concatenation, edi, exception, external_source, flextext, pdf, protobuf, recursive, xbrl,
+};
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    exception::validate(project)?;
     if project.extra_sources.len() > 256 {
         return Err(MfdError::Unsupported(
             "projects with more than 256 additional sources cannot be exported to .mfd".to_string(),

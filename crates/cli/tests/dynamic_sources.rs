@@ -77,6 +77,7 @@ fn loads_relative_dynamic_xml_sources_per_primary_item() -> Result<(), Box<dyn s
             }),
         }],
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

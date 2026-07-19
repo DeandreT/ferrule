@@ -65,6 +65,7 @@ fn project() -> Result<Project, Box<dyn Error>> {
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![Binding {

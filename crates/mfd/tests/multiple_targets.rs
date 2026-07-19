@@ -114,6 +114,7 @@ fn two_target_project() -> Project {
                 ..Scope::default()
             },
         }],
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,
