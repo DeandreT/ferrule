@@ -442,6 +442,15 @@ fn blank_run_paths_fall_back_to_stored_project_paths() {
 
     assert!(directory.join("output.xml").is_file(), "{}", app.status);
     assert!(app.diagnostics.is_empty(), "{}", app.status);
+    assert!(app.show_run_report);
+    let report = app
+        .run_report
+        .as_ref()
+        .expect("successful run has a report");
+    assert_eq!(report.selected_output(), 0);
+    assert_eq!(report.report.outputs.len(), 1);
+    assert_eq!(report.report.outputs[0].path, directory.join("output.xml"));
+    assert!(!app.is_dirty());
     std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
 }
 

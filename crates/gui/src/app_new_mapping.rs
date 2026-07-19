@@ -121,6 +121,7 @@ impl FerruleApp {
             self.new_mapping_setup = Some(setup);
             return;
         };
+        self.clear_run_report();
         self.project = Project {
             source: source.schema,
             target: target.schema,

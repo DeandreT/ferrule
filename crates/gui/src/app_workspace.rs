@@ -148,6 +148,13 @@ impl FerruleApp {
                         self.run(ui.ctx());
                         ui.close();
                     }
+                    if ui
+                        .add_enabled(self.run_report.is_some(), egui::Button::new("Run results"))
+                        .clicked()
+                    {
+                        self.show_run_report = true;
+                        ui.close();
+                    }
                     if ui.button("Arrange canvas").clicked() {
                         self.arrange_canvas();
                         ui.close();
@@ -269,6 +276,16 @@ impl FerruleApp {
             .clicked()
             {
                 self.show_run_setup = !self.show_run_setup;
+            }
+            if crate::icons::button(
+                ui,
+                self.run_report.is_some(),
+                lucide_icons::Icon::FileOutput,
+                "Show last run results",
+            )
+            .clicked()
+            {
+                self.show_run_report = true;
             }
             ui.separator();
             if crate::icons::button(
