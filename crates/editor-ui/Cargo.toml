@@ -1,0 +1,13 @@
+[package]
+name = "editor-ui"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+repository = "https://github.com/DeandreT/ferrule"
+description = "Platform-neutral editor document, selection, and history state"
+
+[dependencies]
+mapping = { workspace = true }
+
+[dev-dependencies]
+ir = { workspace = true }
