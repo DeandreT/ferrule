@@ -1,0 +1,86 @@
+use codegen_runtime::{Instance, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source())?, expected());
+    Ok(())
+}
+
+fn source() -> Instance {
+    group([
+        field(
+            "Row",
+            repeated([
+                source_row("numeric-tags", 1, 1.0),
+                source_row("missing-value", 2, 2.0),
+                source_row("after-missing-key", 3, 3.0),
+                source_row("miss", 99, 99.0),
+            ]),
+        ),
+        field(
+            "Catalog",
+            repeated([
+                catalog(None, Some("missing-key-must-be-skipped")),
+                catalog(Some(Value::Int(1)), Some("first-integer")),
+                catalog(Some(Value::Int(1)), Some("second-integer")),
+                catalog(Some(Value::Float(1.0)), Some("float")),
+                catalog(Some(Value::Int(2)), None),
+                catalog(Some(Value::Int(2)), Some("must-not-continue")),
+                catalog(Some(Value::Int(3)), Some("after-missing-key")),
+            ]),
+        ),
+    ])
+}
+
+fn source_row(label: &str, integer: i64, float: f64) -> Instance {
+    group([
+        field("Label", scalar(Value::String(label.into()))),
+        field("IntegerNeedle", scalar(Value::Int(integer))),
+        field("FloatNeedle", scalar(Value::Float(float))),
+    ])
+}
+
+fn catalog(key: Option<Value>, value: Option<&str>) -> Instance {
+    let mut fields = Vec::new();
+    if let Some(key) = key {
+        fields.push(field(
+            "Identity",
+            group([field("Code", scalar(key))]),
+        ));
+    }
+    if let Some(value) = value {
+        fields.push(field(
+            "Payload",
+            group([field("Text", scalar(Value::String(value.into())))]),
+        ));
+    }
+    group(fields)
+}
+
+fn expected() -> Instance {
+    group([field(
+        "Result",
+        repeated([
+            target_row(
+                "numeric-tags",
+                Value::String("first-integer".into()),
+                Value::String("float".into()),
+            ),
+            target_row("missing-value", Value::Null, Value::Null),
+            target_row(
+                "after-missing-key",
+                Value::String("after-missing-key".into()),
+                Value::Null,
+            ),
+            target_row("miss", Value::Null, Value::Null),
+        ]),
+    )])
+}
+
+fn target_row(label: &str, integer: Value, float: Value) -> Instance {
+    group([
+        field("Label", scalar(Value::String(label.into()))),
+        field("IntegerMatch", scalar(integer)),
+        field("FloatMatch", scalar(float)),
+    ])
+}

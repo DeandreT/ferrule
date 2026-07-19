@@ -145,6 +145,48 @@ public sealed class ScopeContext
     }
 
     /// <summary>
+    /// Finds the first item whose exact scalar key equals <paramref name="matches"/>
+    /// and returns its exact scalar value. Collection resolution falls back from
+    /// innermost to outermost source frames but never flattens repeated path segments.
+    /// </summary>
+    public FerruleValue Lookup(
+        IReadOnlyList<string> collection,
+        IReadOnlyList<string> key,
+        FerruleValue matches,
+        IReadOnlyList<string> value)
+    {
+        ArgumentNullException.ThrowIfNull(collection);
+        ArgumentNullException.ThrowIfNull(key);
+        ArgumentNullException.ThrowIfNull(value);
+        ValidatePath(collection);
+        ValidatePath(key);
+        ValidatePath(value);
+
+        var items = FindLookupCollection(collection);
+        if (items is null)
+        {
+            var display = collection.Count == 0 ? "<current>" : string.Join('/', collection);
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.MissingSourceField,
+                $"Source collection '{display}' does not exist in the active scope context.");
+        }
+
+        foreach (var item in items)
+        {
+            if (!TryResolveExactScalar(item, key, out var candidate) || candidate != matches)
+            {
+                continue;
+            }
+
+            return TryResolveExactScalar(item, value, out var result)
+                ? result
+                : FerruleValue.Null;
+        }
+
+        return FerruleValue.Null;
+    }
+
+    /// <summary>
     /// Reads a scalar relative only to the terminal item selected by
     /// <see cref="AggregateItems(IReadOnlyList{string})"/>. Missing fields and
     /// structural terminal values become Null; there is no outward fallback or
@@ -392,6 +434,57 @@ public sealed class ScopeContext
             }
         }
         return null;
+    }
+
+    private IReadOnlyList<FerruleInstance>? FindLookupCollection(IReadOnlyList<string> path)
+    {
+        for (var frameIndex = _frames.Count - 1; frameIndex >= 0; frameIndex--)
+        {
+            var current = _frames[frameIndex];
+            var found = true;
+            for (var pathIndex = 0; pathIndex < path.Count; pathIndex++)
+            {
+                if (!TryGetField(current, path[pathIndex], out var next))
+                {
+                    found = false;
+                    break;
+                }
+                current = next;
+            }
+
+            if (found && current is FerruleRepeated repeated)
+            {
+                return repeated.Items;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveExactScalar(
+        FerruleInstance item,
+        IReadOnlyList<string> path,
+        out FerruleValue value)
+    {
+        var current = item;
+        for (var index = 0; index < path.Count; index++)
+        {
+            if (!TryGetField(current, path[index], out var next))
+            {
+                value = FerruleValue.Null;
+                return false;
+            }
+            current = next;
+        }
+
+        if (current is FerruleScalar scalar)
+        {
+            value = scalar.Value;
+            return true;
+        }
+
+        value = FerruleValue.Null;
+        return false;
     }
 
     private void Walk(

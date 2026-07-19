@@ -41,6 +41,8 @@ impl fmt::Display for InstanceKind {
 /// Failure to resolve a generated mapping's static scalar source path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourcePathError {
+    /// A lookup collection path was absent or did not end in a repetition.
+    MissingCollection { path: Vec<String> },
     /// A frame-pinned source field was evaluated without its collection active.
     MissingFrame {
         frame: Vec<String>,
@@ -68,6 +70,11 @@ pub enum SourcePathError {
 impl fmt::Display for SourcePathError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MissingCollection { path } => write!(
+                formatter,
+                "source collection {} does not exist in the active scope context",
+                display_path(path)
+            ),
             Self::MissingFrame { frame, path } => write!(
                 formatter,
                 "source frame {} is not active while resolving {}",

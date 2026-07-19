@@ -1,6 +1,6 @@
 use crate::{Instance, Value};
 
-use super::{CollectionIdentity, ScopeContext, ScopeFrame, collection_frame};
+use super::{CollectionIdentity, ScopeContext, ScopeFrame, SourcePathError, collection_frame};
 
 impl<'a> ScopeContext<'a> {
     /// Produces one child context for every item selected by `path`.
@@ -69,6 +69,34 @@ impl<'a> ScopeContext<'a> {
             .and_then(|frame| direct_scalar(frame.instance, path))
             .cloned()
             .unwrap_or(Value::Null)
+    }
+
+    /// Scans one directly resolved repeated collection in source order.
+    /// Lookup paths never flatten an intermediate repetition and row fields
+    /// never fall back to an enclosing source frame.
+    pub fn lookup(
+        &self,
+        collection: &[&str],
+        key: &[&str],
+        needle: &Value,
+        value: &[&str],
+    ) -> Result<Value, SourcePathError> {
+        let items = self
+            .frames
+            .iter()
+            .rev()
+            .find_map(|frame| direct_repeated(frame.instance, collection))
+            .ok_or_else(|| SourcePathError::MissingCollection {
+                path: collection
+                    .iter()
+                    .map(|segment| (*segment).to_string())
+                    .collect(),
+            })?;
+        Ok(items
+            .iter()
+            .find(|item| direct_scalar(item, key).is_some_and(|candidate| candidate == needle))
+            .and_then(|item| direct_scalar(item, value).cloned())
+            .unwrap_or(Value::Null))
     }
 
     fn extend(&self, extension: Vec<ScopeFrame<'a>>) -> Self {
@@ -202,4 +230,12 @@ fn direct_scalar<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a Value> {
         current = current.field(segment)?;
     }
     current.as_scalar()
+}
+
+fn direct_repeated<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a [Instance]> {
+    let mut current = source;
+    for segment in path {
+        current = current.field(segment)?;
+    }
+    current.as_repeated()
 }

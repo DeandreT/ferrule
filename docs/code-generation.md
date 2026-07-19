@@ -51,6 +51,8 @@ The current portable model includes:
   functions
 - ordered value maps with optional declared-input coercion, first-match wins,
   and explicit or Null fallback
+- first-match lookups over exact repeating collections in the primary source,
+  with strict scalar-tag equality and Null on a miss
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings
@@ -79,9 +81,11 @@ Regex
 tokenization remains interpreter-only because Rust and .NET expose materially
 different regex dialects and Unicode behavior; exact cross-backend support needs
 a Ferrule-owned matcher. Recursive-filter, path-hierarchy, and adjacency-tree
-target construction remain interpreter-only. Code generation is expanding
-incrementally toward interpreter parity; see the [roadmap](../ROADMAP.md) for the
-broader direction.
+target construction remain interpreter-only. Named extra-source inputs are also
+still interpreter-only, so cross-source lookups are rejected until generated
+callers have an explicit API for supplying those instances. Code generation is
+expanding incrementally toward interpreter parity; see the
+[roadmap](../ROADMAP.md) for the broader direction.
 
 ## Output Safety
 

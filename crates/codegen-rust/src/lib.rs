@@ -249,6 +249,19 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
                 "{{\n        let input = expression_{input}(context)?;\n        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
             )
         }
+        Expression::Lookup {
+            collection,
+            key,
+            matches,
+            value,
+        } => {
+            let collection = render_string_path(collection);
+            let key = render_string_path(key);
+            let value = render_string_path(value);
+            format!(
+                "{{\n        let needle = expression_{matches}(context)?;\n        context.lookup(&[{collection}], &[{key}], &needle, &[{value}]).map_err(RuntimeError::from)\n    }}"
+            )
+        }
         Expression::Aggregate {
             function,
             collection,
@@ -314,6 +327,13 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
     Ok(format!(
         "fn expression_{id}(context: &ScopeContext<'_>) -> Result<Value, RuntimeError> {{\n    let _ = context;\n    {body}\n}}\n\n"
     ))
+}
+
+fn render_string_path(path: &[String]) -> String {
+    path.iter()
+        .map(|segment| rust_string(segment))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 const fn aggregate_function_name(function: AggregateFunction) -> &'static str {

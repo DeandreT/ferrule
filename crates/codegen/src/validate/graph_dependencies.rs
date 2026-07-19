@@ -1,0 +1,30 @@
+use mapping::NodeId;
+
+use crate::Expression;
+
+pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
+    match expression {
+        Expression::SourceField { .. }
+        | Expression::Position { .. }
+        | Expression::Const { .. }
+        | Expression::RuntimeValue { .. } => Vec::new(),
+        Expression::Call { args, .. } => args.clone(),
+        Expression::If {
+            condition,
+            then,
+            else_,
+        } => vec![*condition, *then, *else_],
+        Expression::ValueMap { input, .. } => vec![*input],
+        Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::Aggregate { value, arg, .. } => {
+            value.expression().into_iter().chain(*arg).collect()
+        }
+        Expression::SequenceExists {
+            sequence,
+            predicate,
+        } => sequence.inputs().chain([*predicate]).collect(),
+        Expression::SequenceItemAt { sequence, index } => {
+            sequence.inputs().chain([*index]).collect()
+        }
+    }
+}

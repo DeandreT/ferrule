@@ -703,6 +703,83 @@ mod tests {
     }
 
     #[test]
+    fn lookup_is_direct_strict_first_match_and_outward() {
+        let row = |key: Value, value: Option<Value>| {
+            let mut fields = vec![field("Key", scalar(key))];
+            if let Some(value) = value {
+                fields.push(field("Value", scalar(value)));
+            }
+            group(fields)
+        };
+        let outer = repeated([row(integer(1), Some(string("outer")))]);
+        let inner = repeated([
+            row(integer(1), Some(string("first"))),
+            row(integer(1), Some(string("second"))),
+            row(float(1.0), Some(string("float"))),
+            group([field("Value", scalar(string("missing key")))]),
+            row(Value::Null, Some(string("explicit null"))),
+            row(string("missing value"), None),
+            row(string("missing value"), Some(string("later"))),
+        ]);
+        let source = group([
+            field("Catalog", outer),
+            field(
+                "Rows",
+                repeated([
+                    group([field("Catalog", inner)]),
+                    group([field("Catalog", scalar(string("not repeated")))]),
+                ]),
+            ),
+        ]);
+        let rows = ScopeContext::new(&source).walk_source(&["Rows"]);
+
+        assert_eq!(
+            rows[0].lookup(&["Catalog"], &["Key"], &integer(1), &["Value"]),
+            Ok(string("first"))
+        );
+        assert_eq!(
+            rows[0].lookup(&["Catalog"], &["Key"], &float(1.0), &["Value"]),
+            Ok(string("float"))
+        );
+        assert_eq!(
+            rows[0].lookup(&["Catalog"], &["Key"], &Value::Null, &["Value"]),
+            Ok(string("explicit null"))
+        );
+        assert_eq!(
+            rows[0].lookup(&["Catalog"], &["Key"], &string("missing value"), &["Value"]),
+            Ok(Value::Null)
+        );
+        assert_eq!(
+            rows[1].lookup(&["Catalog"], &["Key"], &integer(1), &["Value"]),
+            Ok(string("outer"))
+        );
+        let scalars = repeated([scalar(string("first")), scalar(string("second"))]);
+        assert_eq!(
+            ScopeContext::new(&scalars).lookup(&[], &[], &string("first"), &[]),
+            Ok(string("first"))
+        );
+
+        let multi_hop = group([field(
+            "Groups",
+            repeated([group([field(
+                "Catalog",
+                repeated([row(string("A"), Some(string("flattened")))]),
+            )])]),
+        )]);
+        assert_eq!(
+            ScopeContext::new(&multi_hop).lookup(
+                &["Groups", "Catalog"],
+                &["Key"],
+                &string("A"),
+                &["Value"]
+            ),
+            Err(SourcePathError::MissingCollection {
+                path: vec!["Groups".into(), "Catalog".into()],
+            })
+        );
+    }
+
+    #[test]
     fn scalar_calls_preserve_typed_function_failures() {
         assert_eq!(
             call("add", &[Value::Int(4), Value::Int(5)]),

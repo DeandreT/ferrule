@@ -292,6 +292,15 @@ pub enum Expression {
         table: Vec<(Value, Value)>,
         default: Option<Value>,
     },
+    /// Scans one exact repeating collection in source order. The first item
+    /// whose scalar key equals `matches` contributes its scalar value; a miss
+    /// or missing value produces Null.
+    Lookup {
+        collection: Vec<String>,
+        key: Vec<String>,
+        matches: NodeId,
+        value: Vec<String>,
+    },
     /// Reduces a source collection. The value expression executes once per
     /// item, while `arg` executes once afterward in the parent context.
     Aggregate {

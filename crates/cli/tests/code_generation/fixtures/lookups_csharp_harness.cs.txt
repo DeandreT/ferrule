@@ -1,0 +1,86 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(Source());
+var results = (FerruleRepeated)output.Fields.Single(field => field.Name == "Result").Value;
+AssertRow(results.Items[0], "numeric-tags", FerruleValue.FromString("first-integer"), FerruleValue.FromString("float"));
+AssertRow(results.Items[1], "missing-value", FerruleValue.Null, FerruleValue.Null);
+AssertRow(results.Items[2], "after-missing-key", FerruleValue.FromString("after-missing-key"), FerruleValue.Null);
+AssertRow(results.Items[3], "miss", FerruleValue.Null, FerruleValue.Null);
+if (results.Items.Count != 4)
+{
+    throw new InvalidOperationException("Generated lookup result count differs from the engine.");
+}
+
+static FerruleGroup Source() =>
+    new(new FerruleField[]
+    {
+        new("Row", new FerruleRepeated(new FerruleInstance[]
+        {
+            SourceRow("numeric-tags", 1, 1.0),
+            SourceRow("missing-value", 2, 2.0),
+            SourceRow("after-missing-key", 3, 3.0),
+            SourceRow("miss", 99, 99.0),
+        })),
+        new("Catalog", new FerruleRepeated(new FerruleInstance[]
+        {
+            Catalog(null, "missing-key-must-be-skipped"),
+            Catalog(FerruleValue.FromInt64(1), "first-integer"),
+            Catalog(FerruleValue.FromInt64(1), "second-integer"),
+            Catalog(FerruleValue.FromDouble(1.0), "float"),
+            Catalog(FerruleValue.FromInt64(2), null),
+            Catalog(FerruleValue.FromInt64(2), "must-not-continue"),
+            Catalog(FerruleValue.FromInt64(3), "after-missing-key"),
+        })),
+    });
+
+static FerruleGroup SourceRow(string label, long integer, double floating) =>
+    new(new FerruleField[]
+    {
+        new("Label", Scalar(FerruleValue.FromString(label))),
+        new("IntegerNeedle", Scalar(FerruleValue.FromInt64(integer))),
+        new("FloatNeedle", Scalar(FerruleValue.FromDouble(floating))),
+    });
+
+static FerruleGroup Catalog(FerruleValue? key, string? value)
+{
+    var fields = new List<FerruleField>();
+    if (key is not null)
+    {
+        fields.Add(new("Identity", new FerruleGroup(new FerruleField[]
+        {
+            new("Code", Scalar(key.Value)),
+        })));
+    }
+    if (value is not null)
+    {
+        fields.Add(new("Payload", new FerruleGroup(new FerruleField[]
+        {
+            new("Text", Scalar(FerruleValue.FromString(value))),
+        })));
+    }
+    return new FerruleGroup(fields);
+}
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static void AssertRow(
+    FerruleInstance instance,
+    string label,
+    FerruleValue integer,
+    FerruleValue floating)
+{
+    var row = (FerruleGroup)instance;
+    AssertScalar(row, "Label", FerruleValue.FromString(label));
+    AssertScalar(row, "IntegerMatch", integer);
+    AssertScalar(row, "FloatMatch", floating);
+}
+
+static void AssertScalar(FerruleGroup group, string name, FerruleValue expected)
+{
+    var field = group.Fields.Single(field => field.Name == name);
+    if (field.Value is not FerruleScalar scalar || scalar.Value != expected)
+    {
+        throw new InvalidOperationException($"Generated lookup field {name} differs from the engine.");
+    }
+}
