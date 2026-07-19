@@ -285,6 +285,35 @@ mod tests {
     }
 
     #[test]
+    fn generated_item_contexts_iterate_with_parent_fallback_and_raw_positions() {
+        let source = group([field(
+            "Rows",
+            repeated([
+                group([field("Name", scalar(string("first")))]),
+                group([field("Name", scalar(string("second")))]),
+            ]),
+        )]);
+        let rows = ScopeContext::new(&source).walk_source(&["Rows"]);
+        let generated = GeneratedItems::new(vec![integer(10), integer(20)]);
+        let mut items = rows[1].generated_item_contexts(&generated);
+
+        let Some(first) = items.next() else {
+            panic!("first generated item context")
+        };
+        assert_eq!(first.resolve_scalar(&[]), Ok(integer(10)));
+        assert_eq!(first.resolve_scalar(&["Name"]), Ok(string("second")));
+        assert_eq!(first.position(&[]), 1);
+        assert_eq!(first.position(&["Rows"]), 2);
+
+        let Some(second) = items.next() else {
+            panic!("second generated item context")
+        };
+        assert_eq!(second.resolve_scalar(&[]), Ok(integer(20)));
+        assert_eq!(second.position(&[]), 2);
+        assert!(items.next().is_none());
+    }
+
+    #[test]
     fn active_collection_prefixes_select_current_multi_hop_items() {
         let child = |name: &str| group([field("Name", scalar(string(name)))]);
         let parent = |id: i64, children: Vec<Instance>| {
