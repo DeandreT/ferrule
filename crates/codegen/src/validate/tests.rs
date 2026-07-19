@@ -320,6 +320,90 @@ fn validates_scalar_scope_construction() {
 }
 
 #[test]
+fn validates_copy_current_source_construction() {
+    let source = SchemaNode::group("Source", vec![SchemaNode::scalar("Value", ScalarType::Int)]);
+    let mut target = source.clone();
+    target.name = "Target".into();
+
+    let mut valid = program();
+    valid.source = source;
+    valid.target = target;
+    valid.root.construction = TargetConstruction::CopyCurrentSource;
+    valid.root.bindings.clear();
+    assert_eq!(validate_program(&valid), Ok(()));
+
+    let mut scalar_source = valid.clone();
+    scalar_source.source = SchemaNode::scalar("Source", ScalarType::Int);
+    assert_eq!(
+        validate_program(&scalar_source),
+        Err(
+            ProgramValidationError::CopyConstructionRequiresGroupSource {
+                target_path: Vec::new(),
+            }
+        )
+    );
+
+    let mut scalar_target = valid.clone();
+    scalar_target.target = SchemaNode::scalar("Target", ScalarType::Int);
+    assert_eq!(
+        validate_program(&scalar_target),
+        Err(
+            ProgramValidationError::CopyConstructionRequiresGroupTarget {
+                target_path: Vec::new(),
+            }
+        )
+    );
+
+    let mut mismatched = valid.clone();
+    mismatched.target =
+        SchemaNode::group("Target", vec![SchemaNode::scalar("Other", ScalarType::Int)]);
+    assert_eq!(
+        validate_program(&mismatched),
+        Err(
+            ProgramValidationError::CopyConstructionRequiresMatchingGroups {
+                target_path: Vec::new(),
+            }
+        )
+    );
+
+    let mut content = valid.clone();
+    content.root.bindings.push(Binding {
+        target_field: "Value".into(),
+        expression: 1,
+        target_type: ScalarType::Int,
+        repeating: false,
+    });
+    assert_eq!(
+        validate_program(&content),
+        Err(ProgramValidationError::CopyConstructionHasContent {
+            target_path: Vec::new(),
+        })
+    );
+
+    let mut generated = valid;
+    generated.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::SourceField {
+            frame: None,
+            path: Vec::new(),
+        },
+    });
+    generated.root.iteration = Some(IterationPlan::generated(GeneratedSequence::Range {
+        from: None,
+        to: 1,
+        item: 3,
+    }));
+    assert_eq!(
+        validate_program(&generated),
+        Err(
+            ProgramValidationError::CopyConstructionRequiresGroupSource {
+                target_path: Vec::new(),
+            }
+        )
+    );
+}
+
+#[test]
 fn rejects_missing_target_scopes_and_cardinality_mismatches() {
     let child = |repeating| TargetScope {
         target_field: "Child".into(),

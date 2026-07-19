@@ -35,6 +35,7 @@ pub enum RuntimeError {
     Function(FunctionError),
     AggregateIntegerOverflow { function: AggregateFunction },
     AggregateNonFinite { function: AggregateFunction },
+    CopyCurrentSourceRequiresGroup { found: &'static str },
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
     RecursiveSequenceDepth { limit: usize },
     RecursiveSequenceTooLarge { max: u128 },
@@ -56,6 +57,10 @@ impl fmt::Display for RuntimeError {
             Self::AggregateNonFinite { function } => write!(
                 formatter,
                 "{function:?} aggregate encountered or produced a non-finite number"
+            ),
+            Self::CopyCurrentSourceRequiresGroup { found } => write!(
+                formatter,
+                "copy-current-source construction requires a group item, got {found}"
             ),
             Self::GeneratedSequenceTooLarge { requested, max } => write!(
                 formatter,
@@ -93,6 +98,7 @@ impl std::error::Error for RuntimeError {
             Self::Function(error) => Some(error),
             Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
+            | Self::CopyCurrentSourceRequiresGroup { .. }
             | Self::GeneratedSequenceTooLarge { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }
@@ -511,6 +517,23 @@ mod tests {
 
         assert_eq!(clone_scalar(&source, &["Absent"]), Ok(Value::Null));
         assert_eq!(clone_scalar(&source, &["Nil"]), Ok(Value::xml_nil()));
+    }
+
+    #[test]
+    fn current_group_copy_uses_only_the_innermost_frame() {
+        let first = group([field("Id", scalar(integer(1)))]);
+        let second = group([
+            field("Id", scalar(integer(2))),
+            field("Nested", group([field("Value", scalar(null()))])),
+        ]);
+        let source = group([field("Rows", repeated([first, second.clone()]))]);
+        let rows = ScopeContext::new(&source).walk_source(&["Rows"]);
+
+        assert_eq!(rows[1].copy_current_group(), Ok(second));
+        assert_eq!(
+            ScopeContext::new(&scalar(integer(9))).copy_current_group(),
+            Err(RuntimeError::CopyCurrentSourceRequiresGroup { found: "scalar" })
+        );
     }
 
     #[test]

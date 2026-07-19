@@ -188,6 +188,10 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             ));
             continue;
         }
+        if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
+            output.push_str("        return context.CopyCurrentGroup();\n    }\n");
+            continue;
+        }
         for (binding_index, expression) in scope.evaluations.iter().enumerate() {
             output.push_str(&format!(
                 "        var value_{scope_index}_{binding_index} = Node_{expression}(context);\n"

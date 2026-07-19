@@ -42,8 +42,8 @@ The current portable model includes:
 - lazy conditionals and a closed set of boolean, string-predicate, arithmetic,
   and comparison functions
 - collection aggregates over direct fields or computed per-item expressions
-- nested, repeating-group, and repeating-scalar target construction with
-  numeric target adaptation for ordinary field bindings
+- nested, repeating-group, repeating-scalar, and exact whole-current-group
+  target construction with numeric target adaptation for ordinary field bindings
 - source-backed empty, nested, and multi-hop iteration
 - filters, stable multi-key sorting, ordered sequence windows, and mapped output
 - literal tokenization, Unicode-scalar fixed-length tokenization, bounded

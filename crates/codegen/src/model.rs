@@ -425,6 +425,7 @@ impl From<mapping::SequenceWindow> for SequenceWindow {
 pub enum TargetConstruction {
     #[default]
     Group,
+    CopyCurrentSource,
     Scalar {
         expression: NodeId,
     },
