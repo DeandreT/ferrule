@@ -69,6 +69,26 @@ fn run_uses_project_relative_input_and_output_defaults() {
 }
 
 #[test]
+fn in_memory_project_runs_before_its_project_file_exists() {
+    let dir = test_dir("unsaved_project");
+    std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
+    let project = project_with_paths(Some("input.csv"), Some("output.csv"));
+    let virtual_project_path = dir.join("not-saved-yet.json");
+
+    let outcome =
+        cli::run_project_value_with_paths(&project, &virtual_project_path, None, None).unwrap();
+
+    assert!(!virtual_project_path.exists());
+    assert_eq!(outcome.records_written, 2);
+    assert_eq!(outcome.output_path, dir.join("output.csv"));
+    assert_eq!(
+        std::fs::read_to_string(dir.join("output.csv")).unwrap(),
+        std::fs::read_to_string(fixture_dir().join("expected_output.csv")).unwrap()
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn explicit_paths_override_project_defaults() {
     let dir = test_dir("overrides");
     std::fs::copy(
