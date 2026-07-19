@@ -1,0 +1,95 @@
+use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source(false, false, false))?, expected());
+    assert_eq!(
+        execute(&source(true, false, false)),
+        Err(RuntimeError::Function(FunctionError::TypeMismatch {
+            function: "substring",
+            got: "int",
+        })),
+    );
+    assert_eq!(
+        execute(&source(false, true, false)),
+        Err(RuntimeError::Function(FunctionError::InvalidArgument {
+            function: "isbn10_to_isbn13",
+            message: "ISBN-10 check digit is invalid".into(),
+        })),
+    );
+    assert_eq!(
+        execute(&source(false, false, true)),
+        Err(RuntimeError::Function(FunctionError::ArityMismatch {
+            function: "date_from_datetime",
+            expected: 1,
+            got: 0,
+        })),
+    );
+    Ok(())
+}
+
+fn source(fail_type: bool, fail_invalid: bool, fail_arity: bool) -> Instance {
+    group([
+        field("FailType", scalar(Value::Bool(fail_type))),
+        field("FailInvalid", scalar(Value::Bool(fail_invalid))),
+        field("FailArity", scalar(Value::Bool(fail_arity))),
+        field("NaN", scalar(Value::Float(f64::NAN))),
+        field("Infinity", scalar(Value::Float(f64::INFINITY))),
+    ])
+}
+
+fn values(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
+    group(fields.into_iter().map(|(name, value)| field(name, scalar(value))))
+}
+
+fn expected() -> Instance {
+    group([
+        field("Substring", values([
+            ("Unicode", Value::String("🙂é".into())),
+            ("RoundedStart", Value::String("cdef".into())),
+            ("RoundedLength", Value::String("bcd".into())),
+            ("ZeroStart", Value::String("a".into())),
+            ("Maximum", Value::String(String::new())),
+            ("NaN", Value::String("abc".into())),
+            ("Infinity", Value::String(String::new())),
+        ])),
+        field("Like", values([
+            ("AsciiFold", Value::Bool(true)),
+            ("UnicodeWildcards", Value::Bool(true)),
+            ("NonAsciiExact", Value::Bool(false)),
+            ("EmptyPercent", Value::Bool(true)),
+            ("RepeatedPercent", Value::Bool(true)),
+        ])),
+        field("Pad", values([
+            ("FloatLength", Value::String("007".into())),
+            ("EmojiPadding", Value::String("🙂🙂é".into())),
+            ("EmojiValue", Value::String("🙂éé".into())),
+            ("Negative", Value::String("abc".into())),
+            ("Exact", Value::String("abc".into())),
+            ("NullValue", Value::String("**".into())),
+        ])),
+        field("Isbn", values([
+            ("Hyphenated", Value::String("9780764549649".into())),
+            ("LowerXAndSpaces", Value::String("9780804429573".into())),
+        ])),
+        field("Round", values([
+            ("Integer", Value::Int(7)),
+            ("PositiveHalf", Value::Float(3.0)),
+            ("NegativeHalf", Value::Float(-3.0)),
+            ("Precision", Value::Float(1.23)),
+            ("RoundedDigits", Value::Float(1.23)),
+            ("NegativeDigits", Value::Float(150.0)),
+            ("Infinity", Value::Float(f64::INFINITY)),
+        ])),
+        field("Date", values([
+            ("DateTime", Value::String("2024-03-01".into())),
+            ("DateOnly", Value::String("2024-03-01Z".into())),
+            ("MultipleT", Value::String("alpha".into())),
+        ])),
+        field("Errors", values([
+            ("Type", Value::String("safe-type".into())),
+            ("Invalid", Value::String("safe-invalid".into())),
+            ("Arity", Value::String("safe-arity".into())),
+        ])),
+    ])
+}
