@@ -8,6 +8,8 @@ use crate::{
     Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
 };
 
+mod graph_dependencies;
+mod lookup;
 mod recursive_sequence;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +52,20 @@ pub enum ProgramValidationError {
         collection: Vec<String>,
     },
     InvalidAggregateValuePath {
+        node: NodeId,
+        collection: Vec<String>,
+        value: Vec<String>,
+    },
+    InvalidLookupCollection {
+        node: NodeId,
+        collection: Vec<String>,
+    },
+    InvalidLookupKeyPath {
+        node: NodeId,
+        collection: Vec<String>,
+        key: Vec<String>,
+    },
+    InvalidLookupValuePath {
         node: NodeId,
         collection: Vec<String>,
         value: Vec<String>,
@@ -169,6 +185,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
     validate_aggregate_paths(&program.source, &expressions)?;
+    lookup::validate(&program.source, &expressions)?;
     let mut sequence_items = BTreeMap::new();
     collect_expression_sequence_items(&expressions, &mut sequence_items)?;
     validate_expression_sequence_paths(&program.source, &expressions)?;
@@ -306,7 +323,7 @@ fn validate_dependencies(
     expressions: &BTreeMap<NodeId, &Expression>,
 ) -> Result<(), ProgramValidationError> {
     for (&node, expression) in expressions {
-        for dependency in dependencies(expression) {
+        for dependency in graph_dependencies::of(expression) {
             if !expressions.contains_key(&dependency) {
                 return Err(ProgramValidationError::MissingDependency { node, dependency });
             }
@@ -351,39 +368,13 @@ fn visit_expression(
     visits.insert(node, Visit::Active(stack.len()));
     stack.push(node);
     if let Some(expression) = expressions.get(&node) {
-        for dependency in dependencies(expression) {
+        for dependency in graph_dependencies::of(expression) {
             visit_expression(dependency, expressions, visits, stack)?;
         }
     }
     stack.pop();
     visits.insert(node, Visit::Complete);
     Ok(())
-}
-
-fn dependencies(expression: &Expression) -> Vec<NodeId> {
-    match expression {
-        Expression::SourceField { .. }
-        | Expression::Position { .. }
-        | Expression::Const { .. }
-        | Expression::RuntimeValue { .. } => Vec::new(),
-        Expression::Call { args, .. } => args.clone(),
-        Expression::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Expression::ValueMap { input, .. } => vec![*input],
-        Expression::Aggregate { value, arg, .. } => {
-            value.expression().into_iter().chain(*arg).collect()
-        }
-        Expression::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence.inputs().chain([*predicate]).collect(),
-        Expression::SequenceItemAt { sequence, index } => {
-            sequence.inputs().chain([*index]).collect()
-        }
-    }
 }
 
 fn validate_aggregate_paths(
@@ -889,7 +880,7 @@ fn visit_sequence_context(
             Ok(())
         }
         _ => {
-            for dependency in dependencies(expression) {
+            for dependency in graph_dependencies::of(expression) {
                 visit_sequence_context(
                     dependency,
                     root,
@@ -935,6 +926,31 @@ impl fmt::Display for ProgramValidationError {
             } => write!(
                 formatter,
                 "compiled mapping aggregate expression {node} value {} is not a scalar under collection {}",
+                display_path(value),
+                display_path(collection)
+            ),
+            Self::InvalidLookupCollection { node, collection } => write!(
+                formatter,
+                "compiled mapping lookup expression {node} collection {} is not a repeating source collection",
+                display_path(collection)
+            ),
+            Self::InvalidLookupKeyPath {
+                node,
+                collection,
+                key,
+            } => write!(
+                formatter,
+                "compiled mapping lookup expression {node} key {} is not a scalar under collection {}",
+                display_path(key),
+                display_path(collection)
+            ),
+            Self::InvalidLookupValuePath {
+                node,
+                collection,
+                value,
+            } => write!(
+                formatter,
+                "compiled mapping lookup expression {node} value {} is not a scalar under collection {}",
                 display_path(value),
                 display_path(collection)
             ),
