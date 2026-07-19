@@ -15,9 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::appearance::EditorAppearance;
 use crate::appearance_editor::AppearanceTab;
-use crate::canvas::{
-    CanvasNode, SourceLeaf, TargetLeaf, layered_layout, source_leaves, target_leaves,
-};
+use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf, source_leaves, target_leaves};
+use crate::canvas_layout::arrange_snarl;
 use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
 use crate::document::DocumentLocation;
 use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
@@ -101,6 +100,7 @@ impl PartialEq for EditorSnapshot {
 pub struct FerruleApp {
     project: Project,
     snarl: Snarl<CanvasNode>,
+    canvas_node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
     canvas_view_generation: u64,
     show_source_panel: bool,
     show_inspector_panel: bool,
@@ -177,6 +177,7 @@ impl Default for FerruleApp {
         Self {
             project,
             snarl,
+            canvas_node_sizes: std::collections::BTreeMap::new(),
             canvas_view_generation: 0,
             show_source_panel: true,
             show_inspector_panel: true,
@@ -351,25 +352,6 @@ fn build_snarl(project: &Project) -> Snarl<CanvasNode> {
     build_snarl_with_layout(project, None)
 }
 
-fn arrange_snarl(project: &Project, current: &Snarl<CanvasNode>) -> Snarl<CanvasNode> {
-    let placeholders: std::collections::BTreeSet<_> = current
-        .nodes()
-        .filter_map(|node| match node {
-            CanvasNode::Placeholder(id) => Some(*id),
-            _ => None,
-        })
-        .collect();
-    let mut arranged = build_snarl(project);
-    for node in arranged.nodes_mut() {
-        if let CanvasNode::Graph(id) = *node
-            && placeholders.contains(&id)
-        {
-            *node = CanvasNode::Placeholder(id);
-        }
-    }
-    arranged
-}
-
 fn build_snarl_with_layout(
     project: &Project,
     saved_layout: Option<&CanvasLayout>,
@@ -420,8 +402,6 @@ fn build_snarl_with_layout(
         &target_pins,
         &mut binding_order,
     );
-    let hidden_set: std::collections::BTreeSet<NodeId> = hidden.keys().copied().collect();
-    let layout = layered_layout(&project.graph, &hidden_set, &binding_order);
     let placeholders: std::collections::BTreeSet<NodeId> = saved_layout
         .into_iter()
         .flat_map(|layout| &layout.nodes)
@@ -439,18 +419,15 @@ fn build_snarl_with_layout(
             _ => None,
         })
         .collect();
-    let graph_start = source_pins
-        .iter()
-        .map(|leaf| leaf.label.chars().count())
-        .max()
-        .map_or(420.0, |length| (length as f32 * 9.0 + 180.0).max(420.0));
-
     let mut snarl_ids = std::collections::BTreeMap::new();
-    let mut max_col = 0usize;
-    for (&id, &(col, row)) in &layout {
-        max_col = max_col.max(col);
+    for &id in project
+        .graph
+        .nodes
+        .keys()
+        .filter(|id| !hidden.contains_key(id))
+    {
         let snarl_id = snarl.insert_node(
-            egui::pos2(graph_start + col as f32 * 420.0, row as f32 * 190.0),
+            egui::Pos2::ZERO,
             if placeholders.contains(&id) {
                 CanvasNode::Placeholder(id)
             } else {
@@ -459,12 +436,7 @@ fn build_snarl_with_layout(
         );
         snarl_ids.insert(id, snarl_id);
     }
-    let target_x = if layout.is_empty() {
-        graph_start
-    } else {
-        graph_start + (max_col as f32 + 1.0) * 420.0
-    };
-    let target_node = snarl.insert_node(egui::pos2(target_x, 0.0), CanvasNode::Target);
+    let target_node = snarl.insert_node(egui::Pos2::ZERO, CanvasNode::Target);
 
     // The producing pin for a mapping node: the Source endpoint's leaf pin
     // for hidden SourceFields, the node's own output otherwise.
@@ -510,6 +482,21 @@ fn build_snarl_with_layout(
 
     if let Some(layout) = saved_layout {
         layout.apply(&mut snarl);
+    } else {
+        let source_width = source_pins
+            .iter()
+            .map(|leaf| leaf.label.chars().count())
+            .max()
+            .map_or(320.0, |length| (length as f32 * 9.0 + 180.0).max(320.0));
+        let initial_sizes = std::collections::BTreeMap::from([(
+            CanvasNode::Source,
+            egui::vec2(source_width, 160.0),
+        )]);
+        arrange_snarl(
+            &mut snarl,
+            &initial_sizes,
+            crate::appearance::WireAppearance::default(),
+        );
     }
     snarl
 }

@@ -252,7 +252,11 @@ fn canvas_moves_and_arrange_roundtrip_through_history() {
     app.mark_clean();
     app.rebase_history();
 
-    app.snarl = arrange_snarl(&app.project, &app.snarl);
+    arrange_snarl(
+        &mut app.snarl,
+        &app.canvas_node_sizes,
+        crate::appearance::WireAppearance::default(),
+    );
     app.observe_editor_history(std::time::Instant::now(), false);
     assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
     assert!(app.is_dirty());
@@ -288,19 +292,26 @@ fn arrange_preserves_placeholder_identity_and_wiring() {
         }
     }
 
-    let arranged = arrange_snarl(&project, &current);
+    let identities_before: Vec<_> = current.node_ids().map(|(id, node)| (id, *node)).collect();
+    let wires_before: Vec<_> = current.wires().collect();
+    arrange_snarl(
+        &mut current,
+        &std::collections::BTreeMap::new(),
+        crate::appearance::WireAppearance::default(),
+    );
     assert!(
-        arranged
+        current
             .nodes()
             .any(|node| *node == CanvasNode::Placeholder(0))
     );
     assert_eq!(
-        arranged
-            .wires()
-            .map(|(from, to)| (arranged[from.node], arranged[to.node]))
+        current
+            .node_ids()
+            .map(|(id, node)| (id, *node))
             .collect::<Vec<_>>(),
-        vec![(CanvasNode::Placeholder(0), CanvasNode::Graph(1))]
+        identities_before
     );
+    assert_eq!(current.wires().collect::<Vec<_>>(), wires_before);
 }
 
 #[test]
