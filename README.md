@@ -115,6 +115,30 @@ cargo run -p cli -- export-mfd --project project.json --out design.mfd
 
 MapForce is a trademark of its owner; ferrule is an independent project.
 
+## Code generation
+
+ferrule can generate buildable Rust and C# mapping libraries. The initial
+code-generation subset covers constants, unframed source fields, and static
+constructed target scopes, including nested/repeating target groups, exact
+numeric target adaptation, and repeating scalar bindings. Projects using
+other graph or scope features receive actionable capability diagnostics before
+any output directory is created.
+
+```sh
+# Standalone, package-free .NET 10 library
+cargo run -p cli -- generate \
+    --project project.json --language csharp --out generated-csharp
+
+# Rust library linked to a local runtime crate during workspace development
+cargo run -p cli -- generate \
+    --project project.json --language rust --out generated-rust \
+    --rust-runtime-path crates/codegen-runtime
+```
+
+Rust generation currently requires `--rust-runtime-path`; this will become an
+optional versioned dependency after the runtime crate is published. Generation
+rejects an existing output directory rather than replacing user files.
+
 ## Quick start
 
 ```sh
@@ -153,6 +177,10 @@ against a JSON reference file. See `crates/cli/tests/fixtures/`.
 - `crates/mapping` — mapping graph IR (nodes/edges/functions/conditions) and project file format
 - `crates/functions` — built-in function library (string/math/comparison/boolean)
 - `crates/engine` — interprets a mapping graph against source instance(s) to produce target instance(s)
+- `crates/codegen` — validated backend-neutral lowering and generated artifact model
+- `crates/codegen-runtime` — runtime primitives used by generated Rust mappings
+- `crates/codegen-rust` — deterministic Rust library source generator
+- `crates/codegen-csharp` — deterministic standalone C# library source generator
 - `crates/format-xml` — XSD-lite/DTD-lite schema import and XML instance read/write
 - `crates/format-json` — JSON Schema import and JSON instance read/write
 - `crates/format-csv` — delimited flat file schema and read/write

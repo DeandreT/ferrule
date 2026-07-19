@@ -1,0 +1,11 @@
+[package]
+name = "codegen-csharp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Deterministic standalone C# emitter for ferrule mappings"
+
+[dependencies]
+codegen = { workspace = true }
+ir = { workspace = true }

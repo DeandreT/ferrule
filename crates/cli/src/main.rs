@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use anyhow::bail;
+use anyhow::{Context, bail};
 use clap::error::ErrorKind;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::json;
@@ -24,6 +24,12 @@ enum DiagnosticFormat {
     Json,
 }
 
+#[derive(Clone, Copy, ValueEnum)]
+enum CodegenLanguage {
+    Rust,
+    Csharp,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Run a mapping project, including configured PDF input. Output supports
@@ -43,6 +49,19 @@ enum Command {
     Validate {
         #[arg(long)]
         project: PathBuf,
+    },
+    /// Generate a standalone Rust or C# mapping library.
+    Generate {
+        #[arg(long)]
+        project: PathBuf,
+        #[arg(long, value_enum)]
+        language: CodegenLanguage,
+        #[arg(long)]
+        out: PathBuf,
+        /// Local `codegen-runtime` crate used by generated Rust projects.
+        /// Required for Rust generation until the runtime is published.
+        #[arg(long)]
+        rust_runtime_path: Option<PathBuf>,
     },
     /// Import an XSD file's root element as a SchemaNode, printed as JSON --
     /// a starting point for hand-authoring a project file's schema.
@@ -84,6 +103,7 @@ impl Command {
         match self {
             Self::Run { .. } => "run",
             Self::Validate { .. } => "validate",
+            Self::Generate { .. } => "generate",
             Self::ImportXsd { .. } => "import-xsd",
             Self::ImportJsonSchema { .. } => "import-json-schema",
             Self::ImportDb { .. } => "import-db",
@@ -175,9 +195,10 @@ fn json_diagnostics_requested(args: &[OsString]) -> bool {
 }
 
 fn command_name_from_args(args: &[OsString]) -> Option<&'static str> {
-    const COMMANDS: [&str; 7] = [
+    const COMMANDS: [&str; 8] = [
         "run",
         "validate",
+        "generate",
         "import-xsd",
         "import-json-schema",
         "import-db",
@@ -250,6 +271,33 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
                 return Ok(ExitCode::FAILURE);
             }
             bail!("project has {} validation issue(s)", issues.len())
+        }
+        Command::Generate {
+            project,
+            language,
+            out,
+            rust_runtime_path,
+        } => {
+            let target = match language {
+                CodegenLanguage::Rust => cli::GenerateTarget::Rust {
+                    runtime_path: rust_runtime_path.context(
+                        "--rust-runtime-path is required for --language rust until the runtime crate is published",
+                    )?,
+                },
+                CodegenLanguage::Csharp => {
+                    if rust_runtime_path.is_some() {
+                        bail!("--rust-runtime-path applies only to --language rust");
+                    }
+                    cli::GenerateTarget::CSharp
+                }
+            };
+            let outcome = cli::generate_project(&project, &out, target)?;
+            println!(
+                "generated {} file(s) in {}",
+                outcome.files_written,
+                outcome.output_directory.display()
+            );
+            Ok(ExitCode::SUCCESS)
         }
         Command::ImportXsd { xsd } => {
             println!("{}", cli::import_xsd(&xsd)?);
