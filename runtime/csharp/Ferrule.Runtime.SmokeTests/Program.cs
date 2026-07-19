@@ -9,6 +9,7 @@ internal static class Program
         var tests = new (string Name, Action Run)[]
         {
             ("group traversal", GroupTraversal),
+            ("copy current group", CopyCurrentGroup),
             ("repeated first item", RepeatedFirstItem),
             ("document first item", DocumentFirstItem),
             ("mapped sequence remains non-scalar", MappedSequenceIsNotRepeated),
@@ -54,6 +55,47 @@ internal static class Program
             FerruleValue.FromString("Ferrule"),
             ScalarPathResolver.Resolve(root, "Company", "Name"));
         Equal(FerruleValue.FromInt64(7), ScalarPathResolver.Resolve(Scalar(FerruleValue.FromInt64(7))));
+    }
+
+    private static void CopyCurrentGroup()
+    {
+        var source = Group(
+            Field("Null", Scalar(FerruleValue.Null)),
+            Field("Nil", Scalar(FerruleValue.XmlNil)),
+            Field("Rows", new FerruleRepeated(new[]
+            {
+                Group(Field("Value", Scalar(Text("row")))),
+            })),
+            Field("Mapped", new FerruleMappedSequence(new[]
+            {
+                Scalar(Text("mapped")),
+            })),
+            Field("Documents", new FerruleDocumentSet(new[]
+            {
+                new FerruleDocument(
+                    "logical.xml",
+                    Group(Field("Value", Scalar(Text("document")))),
+                    "/resolved/logical.xml"),
+            })));
+
+        var copy = ScopeContext.FromSource(source).CopyCurrentGroup();
+
+        Equal(false, ReferenceEquals(source, copy));
+        Equal(
+            "Null,Nil,Rows,Mapped,Documents",
+            string.Join(',', copy.Fields.Select(field => field.Name)));
+        Equal(FerruleValue.Null, ScalarPathResolver.Resolve(copy, "Null"));
+        Equal(FerruleValue.XmlNil, ScalarPathResolver.Resolve(copy, "Nil"));
+        Equal(Text("row"), ScalarPathResolver.Resolve(copy, "Rows", "Value"));
+        Equal(false, ReferenceEquals(source.Fields[2].Value, copy.Fields[2].Value));
+        var documents = (FerruleDocumentSet)copy.Fields[4].Value;
+        Equal("logical.xml", documents.Documents[0].Path);
+        Equal("/resolved/logical.xml", documents.Documents[0].ResolvedSourcePath);
+
+        var error = Error(
+            FerruleRuntimeError.CopyCurrentSourceRequiresGroup,
+            () => ScopeContext.FromSource(Scalar(Text("not a group"))).CopyCurrentGroup());
+        Equal("scalar", error.Detail);
     }
 
     private static void RepeatedFirstItem()

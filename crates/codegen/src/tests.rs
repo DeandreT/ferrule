@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
-    Binding as MappingBinding, Graph, NamedSource, Node, Project, Scope, ScopeIteration,
+    Binding as MappingBinding, Graph, NamedSource, Node, Project, Scope, ScopeConstruction,
+    ScopeIteration,
 };
 
 use crate::{
@@ -129,6 +130,83 @@ fn lowers_static_constructed_scopes_in_declaration_order() {
             value: Value::Int(7)
         }
     ));
+}
+
+#[test]
+fn lowers_exact_whole_current_source_group_copy() {
+    let source = SchemaNode::group(
+        "Source",
+        vec![
+            typed_scalar("Id", ScalarType::Int),
+            SchemaNode::group("Items", vec![scalar("Name")]).repeating(),
+        ],
+    );
+    let mut target = source.clone();
+    target.name = "Target".into();
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        graph: Graph::default(),
+        root: Scope {
+            construction: ScopeConstruction::CopyCurrentSource,
+            ..Scope::default()
+        },
+    };
+
+    let program = lower(&project).expect("whole current source group copy lowers");
+    assert_eq!(
+        program.root.construction,
+        crate::TargetConstruction::CopyCurrentSource
+    );
+    assert!(program.expressions.is_empty());
+}
+
+#[test]
+fn rejects_copy_current_source_with_dynamic_target_paths() {
+    let source = SchemaNode::group("Source", vec![scalar("Value")]).repeating();
+    let mut target = source.clone();
+    target.name = "Target".into();
+    let mut root = Scope {
+        iteration: ScopeIteration::Source(Vec::new()),
+        construction: ScopeConstruction::CopyCurrentSource,
+        ..Scope::default()
+    };
+    assert!(root.set_output_path(Some(1)));
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([(
+                1,
+                Node::Const {
+                    value: Value::String("item.xml".into()),
+                },
+            )]),
+        },
+        root,
+    };
+
+    let diagnostics = lower(&project)
+        .expect_err("dynamic target documents remain outside code generation")
+        .into_diagnostics();
+    assert!(diagnostics.contains(&Diagnostic::UnsupportedScope {
+        target_path: Vec::new(),
+        feature: ScopeFeature::Iteration,
+    }));
 }
 
 #[test]

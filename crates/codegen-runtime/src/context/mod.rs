@@ -76,6 +76,34 @@ impl<'a> ScopeContext<'a> {
         }
     }
 
+    /// Clones the innermost source group for independent target ownership.
+    pub fn copy_current_group(&self) -> Result<Instance, crate::RuntimeError> {
+        match self.frames.last().map(|frame| frame.instance) {
+            Some(current @ Instance::Group(_)) => Ok(current.clone()),
+            Some(Instance::Scalar(_)) => {
+                Err(crate::RuntimeError::CopyCurrentSourceRequiresGroup { found: "scalar" })
+            }
+            Some(Instance::Repeated(_)) => {
+                Err(crate::RuntimeError::CopyCurrentSourceRequiresGroup {
+                    found: "repeated collection",
+                })
+            }
+            Some(Instance::MappedSequence(_)) => {
+                Err(crate::RuntimeError::CopyCurrentSourceRequiresGroup {
+                    found: "mapped sequence",
+                })
+            }
+            Some(Instance::DocumentSet(_)) => {
+                Err(crate::RuntimeError::CopyCurrentSourceRequiresGroup {
+                    found: "document set",
+                })
+            }
+            None => Err(crate::RuntimeError::CopyCurrentSourceRequiresGroup {
+                found: "missing context",
+            }),
+        }
+    }
+
     /// Returns the 1-based position of the innermost active collection whose
     /// path ends with `collection`. An empty path selects the innermost active
     /// collection. Missing collection context has the engine's default value

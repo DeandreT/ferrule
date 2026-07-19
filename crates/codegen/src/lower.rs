@@ -99,6 +99,7 @@ fn lower_scope(
             roots.push(value);
             crate::TargetConstruction::Scalar { expression: value }
         }
+        ScopeConstruction::CopyCurrentSource => crate::TargetConstruction::CopyCurrentSource,
         _ => crate::TargetConstruction::Group,
     };
 
@@ -309,7 +310,7 @@ fn inspect_scope_features(
 fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructionKind> {
     match construction {
         ScopeConstruction::Constructed => None,
-        ScopeConstruction::CopyCurrentSource => Some(ScopeConstructionKind::CopyCurrentSource),
+        ScopeConstruction::CopyCurrentSource => None,
         ScopeConstruction::Scalar { .. } => None,
         ScopeConstruction::XmlMixedContent { .. } => Some(ScopeConstructionKind::XmlMixedContent),
         ScopeConstruction::RecursiveFilter { .. } => Some(ScopeConstructionKind::RecursiveFilter),

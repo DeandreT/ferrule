@@ -1,0 +1,28 @@
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = copy_source();
+    assert_eq!(execute(&source)?, source);
+    assert_eq!(
+        execute(&scalar(Value::String("wrong".into()))),
+        Err(RuntimeError::CopyCurrentSourceRequiresGroup { found: "scalar" }),
+    );
+    Ok(())
+}
+
+fn copy_source() -> Instance {
+    group([
+        field("Id", scalar(Value::Int(7))),
+        field("Missing", scalar(Value::Null)),
+        field("Nil", scalar(Value::xml_nil())),
+        field("Empty", group(Vec::new())),
+        field(
+            "Items",
+            Instance::MappedSequence(vec![
+                group([field("Name", scalar(Value::String("first".into())))]),
+                group([field("Name", scalar(Value::String("second".into())))]),
+            ]),
+        ),
+    ])
+}

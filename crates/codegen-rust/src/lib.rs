@@ -563,6 +563,12 @@ fn render_scope_item(
         ));
         return output;
     }
+    if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
+        output.push_str(&format!(
+            "{indent}let output = {context}.copy_current_group()?;\n"
+        ));
+        return output;
+    }
     for (index, binding) in scope.bindings.iter().enumerate() {
         output.push_str(&format!(
             "{indent}let value_{index} = adapt_target_value(expression_{}({context})?, ScalarType::{});\n",

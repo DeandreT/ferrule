@@ -18,6 +18,7 @@ public enum FerruleRuntimeError
     NotAnItemCount,
     AggregateIntegerOverflow,
     AggregateNonFinite,
+    CopyCurrentSourceRequiresGroup,
     GeneratedSequenceTooLarge,
     RecursiveSequenceDepth,
     RecursiveSequenceTooLarge,

@@ -53,7 +53,6 @@ pub enum UnsupportedSequenceKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeConstructionKind {
-    CopyCurrentSource,
     XmlMixedContent,
     RecursiveFilter,
     PathHierarchy,
@@ -184,7 +183,6 @@ impl fmt::Display for UnsupportedSequenceKind {
 impl fmt::Display for ScopeConstructionKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::CopyCurrentSource => "copy-current-source",
             Self::XmlMixedContent => "XML mixed-content",
             Self::RecursiveFilter => "recursive-filter",
             Self::PathHierarchy => "path-hierarchy",
