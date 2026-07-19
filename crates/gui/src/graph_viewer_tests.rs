@@ -1,5 +1,6 @@
 use super::*;
 use crate::canvas::{source_leaves, target_leaves};
+use egui_snarl::ui::SnarlWidget;
 use egui_snarl::{InPinId, OutPinId};
 use ir::{ScalarType, SchemaNode};
 
@@ -67,6 +68,53 @@ impl Fixture {
             error: None,
         }
     }
+}
+
+#[test]
+fn endpoint_labels_keep_the_field_name_when_compacting_deep_paths() {
+    let label =
+        compact_endpoint_label("Workbook/Worksheets/Regional Offices/Departments/PrimaryKey");
+
+    assert_eq!(label, ".../Departments/PrimaryKey");
+    assert!(label.chars().count() <= ENDPOINT_LABEL_CHAR_LIMIT);
+}
+
+#[test]
+fn endpoint_labels_keep_short_paths_unchanged() {
+    assert_eq!(compact_endpoint_label("Office/Name"), "Office/Name");
+}
+
+#[test]
+fn long_endpoint_paths_do_not_expand_the_source_node() {
+    let mut fx = fixture();
+    fx.source_leaves[0].label =
+        "Workbook/Worksheets/Regional Offices/Departments/People/PrimaryKey".into();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let mut node_sizes = std::collections::BTreeMap::new();
+
+    egui::__run_test_ui(|ui| {
+        ui.set_min_size(egui::vec2(800.0, 600.0));
+        let mut viewer = GraphViewer {
+            graph: &mut fx.graph,
+            root_scope: &mut fx.root_scope,
+            extra_targets: &[],
+            source_leaves: &fx.source_leaves,
+            target_leaves: &fx.target_leaves,
+            source_paths: &fx.source_paths,
+            colors: crate::appearance::SemanticThemeColors::default(),
+            node_sizes: Some(&mut node_sizes),
+            error: None,
+        };
+        SnarlWidget::new().show(&mut snarl, &mut viewer, ui);
+    });
+
+    let source_width = node_sizes
+        .get(&CanvasNode::Source)
+        .map_or(f32::INFINITY, |size| size.x);
+    assert!(
+        source_width <= ENDPOINT_LABEL_WIDTH + 55.0,
+        "source endpoint widened to {source_width}"
+    );
 }
 
 #[test]
