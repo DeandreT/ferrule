@@ -61,12 +61,10 @@ pub enum ScopeConstructionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
-    NonFiniteFloatLiteral,
     SourceDocumentPath,
     JoinField,
     JoinPosition,
     RuntimeValue,
-    ValueMap,
     Lookup,
     DynamicSourceField,
     XmlMixedContent,
@@ -194,12 +192,10 @@ impl fmt::Display for ScopeConstructionKind {
 impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::NonFiniteFloatLiteral => "a non-finite float literal",
             Self::SourceDocumentPath => "current-document-path",
             Self::JoinField => "a join field",
             Self::JoinPosition => "join position",
             Self::RuntimeValue => "a runtime value",
-            Self::ValueMap => "a value map",
             Self::Lookup => "a lookup",
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",

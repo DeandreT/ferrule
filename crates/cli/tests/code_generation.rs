@@ -21,6 +21,8 @@ mod iteration_metadata;
 mod recursive_sequences;
 #[path = "code_generation/sequence_reducers.rs"]
 mod sequence_reducers;
+#[path = "code_generation/value_maps.rs"]
+mod value_maps;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 type ArtifactFiles = Vec<(String, Vec<u8>)>;
@@ -583,7 +585,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 11,
+            files_written: 12,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -599,6 +601,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleRuntimeException.cs",
             "Runtime/FerruleSequences.cs",
             "Runtime/FerruleValue.cs",
+            "Runtime/FerruleValueMaps.cs",
             "Runtime/ScalarPathResolver.cs",
             "Runtime/ScopeContext.cs",
         ]

@@ -425,7 +425,41 @@ fn nested_calls_and_if_retain_every_dependency_deterministically() {
 }
 
 #[test]
-fn rejects_non_finite_constants_during_shared_lowering() {
+fn lowers_ordered_value_maps_without_normalizing_rows_or_defaults() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        40,
+        Node::ValueMap {
+            input: 10,
+            input_type: Some(ScalarType::Float),
+            table: vec![
+                (Value::Float(7.0), Value::String("first".into())),
+                (Value::Float(7.0), Value::String("second".into())),
+                (Value::Null, Value::Float(f64::INFINITY)),
+            ],
+            default: Some(Value::xml_nil()),
+        },
+    );
+    project.root.bindings[0].node = 40;
+
+    let program = lower(&project).expect("value maps are portable expressions");
+
+    assert!(matches!(
+        program.expressions.last().map(|node| &node.expression),
+        Some(Expression::ValueMap {
+            input: 10,
+            input_type: Some(ScalarType::Float),
+            table,
+            default: Some(Value::XmlNil(_)),
+        }) if table.len() == 3
+            && table[0] == (Value::Float(7.0), Value::String("first".into()))
+            && table[1] == (Value::Float(7.0), Value::String("second".into()))
+            && matches!(table[2].1, Value::Float(value) if value.is_infinite())
+    ));
+}
+
+#[test]
+fn preserves_non_finite_constant_bits_during_shared_lowering() {
     let mut project = supported_project();
     project.graph.nodes.insert(
         40,
@@ -435,17 +469,18 @@ fn rejects_non_finite_constants_during_shared_lowering() {
     );
     project.root.bindings[0].node = 40;
 
-    let diagnostics = lower(&project)
-        .expect_err("non-finite constants cannot be represented by every backend")
-        .into_diagnostics();
+    let program = lower(&project).expect("IEEE-754 literals are portable by exact bits");
 
-    assert_eq!(
-        diagnostics,
-        vec![Diagnostic::UnsupportedNode {
-            node: 40,
-            kind: UnsupportedNodeKind::NonFiniteFloatLiteral,
-        }]
-    );
+    assert!(matches!(
+        program
+            .expressions
+            .iter()
+            .find(|node| node.id == 40)
+            .map(|node| &node.expression),
+        Some(Expression::Const {
+            value: Value::Float(value)
+        }) if value.to_bits() == f64::INFINITY.to_bits()
+    ));
 }
 
 #[test]

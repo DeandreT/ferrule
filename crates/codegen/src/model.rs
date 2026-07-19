@@ -183,6 +183,14 @@ pub enum Expression {
         then: NodeId,
         else_: NodeId,
     },
+    /// Applies optional scalar coercion, then selects the first exactly
+    /// matching row. A failed coercion retains the original input value.
+    ValueMap {
+        input: NodeId,
+        input_type: Option<ScalarType>,
+        table: Vec<(Value, Value)>,
+        default: Option<Value>,
+    },
     /// Reduces a source collection. The value expression executes once per
     /// item, while `arg` executes once afterward in the parent context.
     Aggregate {

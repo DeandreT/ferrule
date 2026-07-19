@@ -1,0 +1,24 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(
+    new FerruleGroup(Array.Empty<FerruleField>()));
+AssertField(output, "Duplicate", FerruleValue.FromString("first"));
+AssertField(output, "Default", FerruleValue.FromString("fallback"));
+AssertField(output, "NoDefault", FerruleValue.Null);
+AssertField(output, "FloatString", FerruleValue.FromString("float-string"));
+AssertField(output, "Int", FerruleValue.FromString("int"));
+AssertField(output, "Float", FerruleValue.FromString("float"));
+AssertField(output, "Bool", FerruleValue.FromString("bool"));
+AssertField(output, "Failed", FerruleValue.FromString("retained"));
+AssertField(output, "Null", FerruleValue.FromString("null"));
+AssertField(output, "XmlNil", FerruleValue.FromString("xml-nil"));
+
+static void AssertField(FerruleGroup output, string name, FerruleValue expected)
+{
+    var field = output.Fields.Single(field => field.Name == name);
+    if (field.Value is not FerruleScalar scalar || scalar.Value != expected)
+    {
+        throw new InvalidOperationException($"Value-map output {name} differs from the engine.");
+    }
+}

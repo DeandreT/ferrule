@@ -617,13 +617,14 @@ mod tests {
     }
 
     #[test]
-    fn nonfinite_constants_abort_before_artifacts_are_created() {
+    fn nonfinite_constants_preserve_exact_bits() {
         let mut program = program();
         program.expressions[0].expression = Expression::Const {
             value: Value::Float(f64::NAN),
         };
 
-        assert_eq!(emit(&program), Err(EmitError::NonFiniteFloat { node: 9 }));
+        let artifacts = emit(&program).expect("IEEE-754 literals emit by exact bits");
+        assert!(generated_source(&artifacts).contains("7FF8000000000000"));
     }
 
     fn generated_source(artifacts: &ArtifactSet) -> &str {

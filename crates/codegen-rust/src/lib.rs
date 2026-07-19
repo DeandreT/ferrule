@@ -37,7 +37,6 @@ pub struct Options {
 pub enum EmitError {
     InvalidProgram(ProgramValidationError),
     InvalidPackageName(String),
-    NonFiniteFloat { node: NodeId },
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
 }
@@ -48,12 +47,6 @@ impl fmt::Display for EmitError {
             Self::InvalidProgram(error) => error.fmt(formatter),
             Self::InvalidPackageName(name) => {
                 write!(formatter, "invalid generated Rust package name {name:?}")
-            }
-            Self::NonFiniteFloat { node } => {
-                write!(
-                    formatter,
-                    "graph node {node} contains a non-finite float literal"
-                )
             }
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
@@ -67,7 +60,7 @@ impl std::error::Error for EmitError {
             Self::InvalidProgram(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
-            Self::InvalidPackageName(_) | Self::NonFiniteFloat { .. } => None,
+            Self::InvalidPackageName(_) => None,
         }
     }
 }
@@ -144,7 +137,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              SequenceWindow, SortDirection, Value, adapt_target_value, aggregate,\n\
              apply_sequence_windows, call, field, generate_sequence, group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
-             sort_candidates, tokenize, tokenize_by_length,\n\
+             sort_candidates, tokenize, tokenize_by_length, value_map,\n\
          };\n\n",
     );
     source.push_str(
@@ -219,6 +212,35 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
         } => format!(
             "{{\n        let condition = expression_{condition}(context)?;\n        if require_bool({condition}, condition)? {{\n            expression_{then}(context)\n        }} else {{\n            expression_{else_}(context)\n        }}\n    }}"
         ),
+        Expression::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => {
+            let input_type = input_type.map_or_else(
+                || "None".to_string(),
+                |value| format!("Some(ScalarType::{})", scalar_type_name(value)),
+            );
+            let table = table
+                .iter()
+                .map(|(from, to)| {
+                    Ok(format!(
+                        "({}, {})",
+                        rust_value(id, from)?,
+                        rust_value(id, to)?
+                    ))
+                })
+                .collect::<Result<Vec<_>, EmitError>>()?
+                .join(", ");
+            let default = match default {
+                Some(value) => format!("Some({})", rust_value(id, value)?),
+                None => "None".to_string(),
+            };
+            format!(
+                "{{\n        let input = expression_{input}(context)?;\n        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
+            )
+        }
         Expression::Aggregate {
             function,
             collection,
@@ -654,17 +676,17 @@ fn scalar_type_name(value: ScalarType) -> &'static str {
     }
 }
 
-fn rust_value(node: NodeId, value: &Value) -> Result<String, EmitError> {
+fn rust_value(_node: NodeId, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "Value::Null".to_string(),
         Value::XmlNil(_) => "Value::xml_nil()".to_string(),
         Value::Bool(value) => format!("Value::Bool({value})"),
         Value::Int(i64::MIN) => "Value::Int(i64::MIN)".to_string(),
         Value::Int(value) => format!("Value::Int({value}_i64)"),
-        Value::Float(value) if value.is_finite() => {
-            format!("Value::Float({value:?}_f64)")
-        }
-        Value::Float(_) => return Err(EmitError::NonFiniteFloat { node }),
+        Value::Float(value) => format!(
+            "Value::Float(f64::from_bits(0x{:016x}_u64))",
+            value.to_bits()
+        ),
         Value::String(value) => format!("Value::String({}.to_string())", rust_string(value)),
     })
 }

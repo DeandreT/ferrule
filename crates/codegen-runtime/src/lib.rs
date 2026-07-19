@@ -10,6 +10,7 @@ mod aggregate;
 mod context;
 mod generated_sequence;
 mod iteration;
+mod value_map;
 
 use std::fmt;
 
@@ -27,6 +28,7 @@ pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
+pub use value_map::value_map;
 
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]

@@ -97,6 +97,38 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 ));
                 output.push_str(&format!("        return Node_{else_}(context);\n    }}\n"));
             }
+            Expression::ValueMap {
+                input,
+                input_type,
+                table,
+                default,
+            } => {
+                output.push_str("\n    {\n");
+                output.push_str(&format!(
+                    "        var input_{node} = Node_{input}(context);\n        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, "
+                ));
+                match input_type {
+                    Some(value) => output.push_str(&format!(
+                        "global::Ferrule.Runtime.FerruleScalarType.{}",
+                        scalar_type_name(*value)
+                    )),
+                    None => output.push_str("null"),
+                }
+                output.push_str(",\n            new global::Ferrule.Runtime.FerruleValueMapEntry[]\n            {\n");
+                for (from, to) in table {
+                    output.push_str("                new(");
+                    output.push_str(&literal::value(node, from)?);
+                    output.push_str(", ");
+                    output.push_str(&literal::value(node, to)?);
+                    output.push_str("),\n");
+                }
+                output.push_str("            },\n            ");
+                match default {
+                    Some(value) => output.push_str(&literal::value(node, value)?),
+                    None => output.push_str("null"),
+                }
+                output.push_str(");\n    }\n");
+            }
             Expression::Aggregate {
                 function,
                 collection,
@@ -531,5 +563,14 @@ fn target_type(target_type: ScalarType) -> &'static str {
         ScalarType::Int => "TargetScalarType.Int64",
         ScalarType::Float => "TargetScalarType.Double",
         ScalarType::Bool => "TargetScalarType.Bool",
+    }
+}
+
+const fn scalar_type_name(value: ScalarType) -> &'static str {
+    match value {
+        ScalarType::String => "String",
+        ScalarType::Int => "Int64",
+        ScalarType::Float => "Double",
+        ScalarType::Bool => "Bool",
     }
 }

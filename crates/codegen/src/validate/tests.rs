@@ -1000,6 +1000,21 @@ fn rejects_duplicate_and_missing_expressions() {
             dependency: 99,
         })
     );
+
+    let mut missing_value_map_input = program();
+    missing_value_map_input.expressions[1].expression = Expression::ValueMap {
+        input: 99,
+        input_type: Some(ScalarType::String),
+        table: Vec::new(),
+        default: None,
+    };
+    assert_eq!(
+        validate_program(&missing_value_map_input),
+        Err(ProgramValidationError::MissingDependency {
+            node: 2,
+            dependency: 99,
+        })
+    );
 }
 
 #[test]

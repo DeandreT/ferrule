@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use ir::{SchemaKind, SchemaNode, Value};
+use ir::{SchemaKind, SchemaNode};
 use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
@@ -343,14 +343,6 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         Node::Position { collection } => Expression::Position {
             collection: collection.clone(),
         },
-        Node::Const {
-            value: Value::Float(value),
-        } if !value.is_finite() => {
-            return Err(Diagnostic::UnsupportedNode {
-                node: id,
-                kind: UnsupportedNodeKind::NonFiniteFloatLiteral,
-            });
-        }
         Node::Const { value } => Expression::Const {
             value: value.clone(),
         },
@@ -374,6 +366,17 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             condition: *condition,
             then: *then,
             else_: *else_,
+        },
+        Node::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => Expression::ValueMap {
+            input: *input,
+            input_type: *input_type,
+            table: table.clone(),
+            default: default.clone(),
         },
         Node::Aggregate {
             function,
@@ -423,7 +426,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::JoinField { .. } => UnsupportedNodeKind::JoinField,
         Node::JoinPosition { .. } => UnsupportedNodeKind::JoinPosition,
         Node::RuntimeValue { .. } => UnsupportedNodeKind::RuntimeValue,
-        Node::ValueMap { .. } => UnsupportedNodeKind::ValueMap,
         Node::Lookup { .. } => UnsupportedNodeKind::Lookup,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
@@ -436,6 +438,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::Const { .. }
         | Node::Call { .. }
         | Node::If { .. }
+        | Node::ValueMap { .. }
         | Node::Aggregate { .. } => {
             unreachable!("portable expressions are handled above")
         }
