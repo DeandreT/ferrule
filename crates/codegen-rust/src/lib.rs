@@ -142,11 +142,52 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
          };\n\n",
     );
     source.push_str(
-        "pub fn execute(source: &Instance) -> Result<Instance, RuntimeError> {\n    scope_root(&ScopeContext::new(source))\n}\n\n",
+        "#[derive(Clone, Debug, PartialEq)]\n\
+         pub struct NamedOutput {\n\
+             pub name: &'static str,\n\
+             pub instance: Instance,\n\
+         }\n\n\
+         #[derive(Clone, Debug, PartialEq)]\n\
+         pub struct ExecutionOutputs {\n\
+             pub primary: Instance,\n\
+             pub extras: Vec<NamedOutput>,\n\
+         }\n\n",
     );
     source.push_str(
-        "pub fn execute_with_context(\n    source: &Instance,\n    execution: &ExecutionContext<'_>,\n) -> Result<Instance, RuntimeError> {\n    scope_root(&ScopeContext::with_execution_context(source, execution))\n}\n\n",
+        "pub fn execute(source: &Instance) -> Result<Instance, RuntimeError> {\n\
+             Ok(execute_outputs(source)?.primary)\n\
+         }\n\n\
+         pub fn execute_with_context(\n\
+             source: &Instance,\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<Instance, RuntimeError> {\n\
+             Ok(execute_outputs_with_context(source, execution)?.primary)\n\
+         }\n\n\
+         pub fn execute_outputs(source: &Instance) -> Result<ExecutionOutputs, RuntimeError> {\n\
+             execute_outputs_from_context(&ScopeContext::new(source))\n\
+         }\n\n\
+         pub fn execute_outputs_with_context(\n\
+             source: &Instance,\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<ExecutionOutputs, RuntimeError> {\n\
+             execute_outputs_from_context(&ScopeContext::with_execution_context(source, execution))\n\
+         }\n\n",
     );
+
+    source.push_str(
+        "fn execute_outputs_from_context(\n    context: &ScopeContext<'_>,\n) -> Result<ExecutionOutputs, RuntimeError> {\n    let primary = scope_root(context)?;\n",
+    );
+    source.push_str(&format!(
+        "    let mut extras = Vec::with_capacity({});\n",
+        program.extra_targets.len()
+    ));
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        source.push_str(&format!(
+            "    extras.push(NamedOutput {{\n        name: {},\n        instance: scope_extra_{index}(context)?,\n    }});\n",
+            rust_string(&target.name)
+        ));
+    }
+    source.push_str("    Ok(ExecutionOutputs { primary, extras })\n}\n\n");
 
     for node in &program.expressions {
         source.push_str(&render_expression(node.id, &node.expression)?);
@@ -154,6 +195,9 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
 
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".to_string(), &mut scopes);
+    for (index, target) in program.extra_targets.iter().enumerate() {
+        collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
+    }
     for (name, scope, child_names) in scopes {
         source.push_str(&render_scope(&name, scope, &child_names)?);
     }

@@ -3,8 +3,8 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, GeneratedSequence, IterationPlan, Program, ScalarFunction,
-    TargetScope,
+    Binding, Expression, ExpressionNode, GeneratedSequence, IterationPlan, NamedTargetProgram,
+    Program, ScalarFunction, TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -69,6 +69,7 @@ fn fixture() -> Program {
                     vec![SchemaNode::scalar("Name", ScalarType::String)],
                 ),
                 SchemaNode::scalar("Condition", ScalarType::Bool),
+                SchemaNode::scalar("ExtraCondition", ScalarType::Bool),
                 SchemaNode::group(
                     "Orders",
                     vec![
@@ -279,6 +280,21 @@ fn fixture() -> Program {
                     index: 27,
                 },
             },
+            ExpressionNode {
+                id: 29,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["ExtraCondition".into()],
+                },
+            },
+            ExpressionNode {
+                id: 30,
+                expression: Expression::If {
+                    condition: 29,
+                    then: 5,
+                    else_: 13,
+                },
+            },
         ],
         root: TargetScope {
             target_field: String::new(),
@@ -311,6 +327,44 @@ fn fixture() -> Program {
                 children: Vec::new(),
             }],
         },
+        extra_targets: vec![
+            NamedTargetProgram {
+                name: "audit".into(),
+                target: SchemaNode::group(
+                    "audit target",
+                    vec![
+                        SchemaNode::scalar("AccountName", ScalarType::String),
+                        SchemaNode::scalar("Marker", ScalarType::String),
+                    ],
+                ),
+                root: TargetScope {
+                    target_field: String::new(),
+                    repeating: false,
+                    iteration: None,
+                    construction: Default::default(),
+                    bindings: vec![
+                        binding("AccountName", 1, ScalarType::String, false),
+                        binding("Marker", 5, ScalarType::String, false),
+                    ],
+                    children: Vec::new(),
+                },
+            },
+            NamedTargetProgram {
+                name: "archive".into(),
+                target: SchemaNode::group(
+                    "archive target",
+                    vec![SchemaNode::scalar("Status", ScalarType::String)],
+                ),
+                root: TargetScope {
+                    target_field: String::new(),
+                    repeating: false,
+                    iteration: None,
+                    construction: Default::default(),
+                    bindings: vec![binding("Status", 30, ScalarType::String, false)],
+                    children: Vec::new(),
+                },
+            },
+        ],
     }
 }
 
@@ -341,7 +395,7 @@ fn write_harness(root: &Path) {
         r#"using Ferrule.Generated;
 using Ferrule.Runtime;
 
-var source = Source(FerruleValue.FromBoolean(true));
+var source = Source(FerruleValue.FromBoolean(true), true);
 
 var outputRows = (FerruleRepeated)GeneratedMapping.Execute(source);
 Assert(outputRows.Items.Count == 1);
@@ -373,17 +427,36 @@ Assert(((FerruleScalar)lastNested.Fields[6].Value).Value == FerruleValue.FromStr
 Assert(((FerruleScalar)lastNested.Fields[7].Value).Value == FerruleValue.FromString("B-1"));
 Assert(((FerruleScalar)lastNested.Fields[8].Value).Value == FerruleValue.FromString("B"));
 
+var outputs = GeneratedMapping.ExecuteOutputs(source);
+Assert(outputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
+Assert(((FerruleRepeated)outputs.Primary).Items.Count == 1);
+var audit = (FerruleGroup)outputs.Extras[0].Instance;
+Assert(audit.Fields.Select(field => field.Name).SequenceEqual(new[] { "AccountName", "Marker" }));
+Assert(((FerruleScalar)audit.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
+Assert(((FerruleScalar)audit.Fields[1].Value).Value == FerruleValue.FromString("first"));
+var archive = (FerruleGroup)outputs.Extras[1].Instance;
+Assert(archive.Fields.Select(field => field.Name).SequenceEqual(new[] { "Status" }));
+Assert(((FerruleScalar)archive.Fields[0].Value).Value == FerruleValue.FromString("first"));
+
+var executionContext = new FerruleExecutionContext("mapping.ferrule");
+var contextualOutputs = GeneratedMapping.ExecuteOutputs(source, executionContext);
+Assert(contextualOutputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
+Assert(((FerruleRepeated)GeneratedMapping.Execute(source, executionContext)).Items.Count == 1);
+
 Error(
     FerruleRuntimeError.DivideByZero,
-    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(false))));
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(false), true)));
 var notBoolean = Error(
     FerruleRuntimeError.NotABool,
-    () => GeneratedMapping.Execute(Source(FerruleValue.FromString("true"))));
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromString("true"), true)));
 Assert(notBoolean.Node == 10U);
 Assert(notBoolean.FoundKind == FerruleValueKind.String);
+Error(
+    FerruleRuntimeError.DivideByZero,
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(true), false)));
 Console.WriteLine("generated mapping passed");
 
-static FerruleGroup Source(FerruleValue condition) =>
+static FerruleGroup Source(FerruleValue condition, bool extraCondition) =>
     new(new FerruleField[]
     {
         new("Account", new FerruleGroup(new FerruleField[]
@@ -391,6 +464,7 @@ static FerruleGroup Source(FerruleValue condition) =>
             new("Name", new FerruleScalar(FerruleValue.FromString("Ada"))),
         })),
         new("Condition", new FerruleScalar(condition)),
+        new("ExtraCondition", new FerruleScalar(FerruleValue.FromBoolean(extraCondition))),
         new("Orders", new FerruleRepeated(new FerruleInstance[]
         {
             new FerruleGroup(new FerruleField[]

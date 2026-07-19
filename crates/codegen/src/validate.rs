@@ -11,6 +11,9 @@ use crate::{
 mod graph_dependencies;
 mod lookup;
 mod recursive_sequence;
+mod targets;
+
+use targets::TargetOwner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SequenceExpressionRole {
@@ -30,7 +33,13 @@ pub enum RecursiveSequencePathRole {
 /// Lexical owner of one private generated-sequence item expression.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SequenceOwner {
+    /// A scope under the primary target.
     Scope(Vec<String>),
+    /// A scope under one named target.
+    NamedTargetScope {
+        target: String,
+        path: Vec<String>,
+    },
     Expression(NodeId),
 }
 
@@ -173,6 +182,10 @@ pub enum ProgramValidationError {
         binding: usize,
         child: usize,
     },
+    NamedTarget {
+        target: String,
+        error: Box<ProgramValidationError>,
+    },
 }
 
 /// Validates invariants relied on by every source-code emitter.
@@ -189,24 +202,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     let mut sequence_items = BTreeMap::new();
     collect_expression_sequence_items(&expressions, &mut sequence_items)?;
     validate_expression_sequence_paths(&program.source, &expressions)?;
-    collect_sequence_items(
-        &expressions,
-        &program.root,
-        &mut Vec::new(),
-        &mut sequence_items,
-    )?;
-    validate_scope(
-        &program.root,
-        &expressions,
-        ScopeSchemas {
-            source_root: &program.source,
-            current_source: Some(&program.source),
-            target_root: &program.target,
-        },
-        &mut Vec::new(),
-        &sequence_items.keys().copied().collect(),
-        &[],
-    )
+    targets::validate(program, &expressions, &mut sequence_items)
 }
 
 fn validate_expression_sequence_paths(
@@ -248,6 +244,7 @@ fn collect_sequence_items(
     expressions: &BTreeMap<NodeId, &Expression>,
     scope: &TargetScope,
     target_path: &mut Vec<String>,
+    target_owner: TargetOwner<'_>,
     owners: &mut BTreeMap<NodeId, SequenceOwner>,
 ) -> Result<(), ProgramValidationError> {
     if let Some(sequence) = scope
@@ -257,14 +254,14 @@ fn collect_sequence_items(
     {
         register_sequence_item(
             sequence,
-            SequenceOwner::Scope(target_path.clone()),
+            target_owner.sequence_owner(target_path),
             expressions,
             owners,
         )?;
     }
     for child in &scope.children {
         target_path.push(child.target_field.clone());
-        let result = collect_sequence_items(expressions, child, target_path, owners);
+        let result = collect_sequence_items(expressions, child, target_path, target_owner, owners);
         target_path.pop();
         result?;
     }
@@ -507,6 +504,7 @@ struct ScopeSchemas<'a> {
     source_root: &'a SchemaNode,
     current_source: Option<&'a SchemaNode>,
     target_root: &'a SchemaNode,
+    target_owner: TargetOwner<'a>,
 }
 
 fn validate_scope(
@@ -517,6 +515,7 @@ fn validate_scope(
     sequence_items: &BTreeSet<NodeId>,
     active_sequence_items: &[NodeId],
 ) -> Result<(), ProgramValidationError> {
+    let sequence_owner = schemas.target_owner.sequence_owner(target_path);
     let mut item_context = active_sequence_items.to_vec();
     let mut scope_source = schemas.current_source;
     let Some(target_node) =
@@ -553,7 +552,7 @@ fn validate_scope(
                 for (input, expression) in sequence.inputs().enumerate() {
                     if !expressions.contains_key(&expression) {
                         return Err(ProgramValidationError::MissingSequenceExpression {
-                            owner: SequenceOwner::Scope(target_path.clone()),
+                            owner: sequence_owner.clone(),
                             role: SequenceExpressionRole::Input(input),
                             expression,
                         });
@@ -563,14 +562,10 @@ fn validate_scope(
                         expressions,
                         sequence_items,
                         active_sequence_items,
-                        &SequenceOwner::Scope(target_path.clone()),
+                        &sequence_owner,
                     )?;
                 }
-                recursive_sequence::validate(
-                    schemas.source_root,
-                    sequence,
-                    &SequenceOwner::Scope(target_path.clone()),
-                )?;
+                recursive_sequence::validate(schemas.source_root, sequence, &sequence_owner)?;
                 item_context.push(sequence.item());
             }
         }
@@ -588,7 +583,7 @@ fn validate_scope(
                 expressions,
                 sequence_items,
                 &item_context,
-                &SequenceOwner::Scope(target_path.clone()),
+                &sequence_owner,
             )?;
         }
         if let Some(sort) = iteration.sort() {
@@ -605,7 +600,7 @@ fn validate_scope(
                     expressions,
                     sequence_items,
                     &item_context,
-                    &SequenceOwner::Scope(target_path.clone()),
+                    &sequence_owner,
                 )?;
             }
         }
@@ -624,7 +619,7 @@ fn validate_scope(
                     expressions,
                     sequence_items,
                     active_sequence_items,
-                    &SequenceOwner::Scope(target_path.clone()),
+                    &sequence_owner,
                 )?;
             }
         }
@@ -709,7 +704,7 @@ fn validate_scope(
                 expressions,
                 sequence_items,
                 &item_context,
-                &SequenceOwner::Scope(target_path.clone()),
+                &sequence_owner,
             )?;
         }
     }
@@ -728,7 +723,7 @@ fn validate_scope(
             expressions,
             sequence_items,
             &item_context,
-            &SequenceOwner::Scope(target_path.clone()),
+            &sequence_owner,
         )?;
         if let Some(&(first_binding, repeating, target_type)) =
             bindings.get(binding.target_field.as_str())
@@ -1138,11 +1133,21 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} binding {binding} and child {child} both construct field {target_field:?}",
                 display_path(target_path)
             ),
+            Self::NamedTarget { target, error } => {
+                write!(formatter, "named target `{target}`: {error}")
+            }
         }
     }
 }
 
-impl std::error::Error for ProgramValidationError {}
+impl std::error::Error for ProgramValidationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::NamedTarget { error, .. } => Some(error.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl fmt::Display for SequenceExpressionRole {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1164,6 +1169,9 @@ fn display_path(path: &[String]) -> String {
 fn display_owner(owner: &SequenceOwner) -> String {
     match owner {
         SequenceOwner::Scope(path) => format!("target scope {}", display_path(path)),
+        SequenceOwner::NamedTargetScope { target, path } => {
+            format!("named target `{target}` scope {}", display_path(path))
+        }
         SequenceOwner::Expression(node) => format!("compiled mapping expression {node}"),
     }
 }

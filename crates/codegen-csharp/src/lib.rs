@@ -14,8 +14,9 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// Emits a complete package-free .NET 10 class library.
 ///
 /// The artifact embeds the small Ferrule C# runtime and exposes
-/// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)`, plus an
-/// overload accepting host-supplied execution context.
+/// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)` and
+/// `ExecuteOutputs(FerruleInstance)`, plus overloads accepting host-supplied
+/// execution context.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     let generated_mapping = mapping::render(program)?;
@@ -37,7 +38,8 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 mod tests {
     use codegen::{
         Binding, Expression, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan,
-        Program, ProgramValidationError, ScalarFunction, SourceIteration, TargetScope,
+        NamedTargetProgram, Program, ProgramValidationError, ScalarFunction, SourceIteration,
+        TargetScope,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -90,6 +92,7 @@ mod tests {
                     children: Vec::new(),
                 }],
             },
+            extra_targets: Vec::new(),
         }
     }
 
@@ -131,6 +134,64 @@ mod tests {
         assert!(source.contains("Scope_1"));
         assert!(!source.contains("schema_source"));
         assert!(!source.contains("schema_target"));
+    }
+
+    #[test]
+    fn named_outputs_share_deterministic_scope_indices_and_evaluation_order() {
+        let mut program = program();
+        let named_target = |name: &str, expression| NamedTargetProgram {
+            name: name.into(),
+            target: SchemaNode::group(
+                format!("{name} schema"),
+                vec![SchemaNode::scalar("value", ScalarType::String)],
+            ),
+            root: TargetScope {
+                target_field: String::new(),
+                repeating: false,
+                iteration: None,
+                construction: Default::default(),
+                bindings: vec![Binding {
+                    target_field: "value".into(),
+                    expression,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                }],
+                children: Vec::new(),
+            },
+        };
+        program.extra_targets = vec![
+            named_target("audit \"trail\"", 9),
+            named_target("archive", 2),
+        ];
+
+        let artifacts = emit(&program).expect("named outputs emit");
+        let source = generated_source(&artifacts);
+        assert!(source.contains("public sealed record NamedOutput("));
+        assert!(source.contains("public sealed record ExecutionOutputs("));
+        assert!(source.contains("return ExecuteOutputs(source).Primary;"));
+        assert!(source.contains("return ExecuteOutputs(source, executionContext).Primary;"));
+        assert_eq!(
+            source
+                .matches("public static ExecutionOutputs ExecuteOutputs(")
+                .count(),
+            2
+        );
+
+        let primary = source
+            .find("var primary = Scope_0(context);")
+            .expect("primary evaluates first");
+        let audit = source
+            .find("var extra_0 = Scope_2(context);")
+            .expect("first extra follows the primary scope tree");
+        let archive = source
+            .find("var extra_1 = Scope_3(context);")
+            .expect("second extra follows the first extra tree");
+        let results = source
+            .find("return new ExecutionOutputs(")
+            .expect("result is assembled after evaluation");
+        assert!(primary < audit && audit < archive && archive < results);
+        assert!(source.contains("new(\"audit \\\"trail\\\"\", extra_0)"));
+        assert!(source.contains("new(\"archive\", extra_1)"));
     }
 
     #[test]

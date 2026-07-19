@@ -32,16 +32,48 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     }
 
     let mut scopes = Vec::new();
-    add_scope(&program.root, &mut scopes);
+    let primary_scope = add_scope(&program.root, &mut scopes);
+    let extra_scopes = program
+        .extra_targets
+        .iter()
+        .map(|target| (target.name.as_str(), add_scope(&target.root, &mut scopes)))
+        .collect::<Vec<_>>();
 
-    let mut output =
-        String::from("namespace Ferrule.Generated;\n\npublic static class GeneratedMapping\n{\n");
-    output.push_str(
-        "    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        return Scope_0(global::Ferrule.Runtime.ScopeContext.FromSource(source));\n    }\n",
+    let mut output = String::from(
+        "namespace Ferrule.Generated;\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
     );
     output.push_str(
-        "\n    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        return Scope_0(global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext));\n    }\n",
+        "    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        return ExecuteOutputs(source).Primary;\n    }\n",
     );
+    output.push_str(
+        "\n    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteOutputs(source, executionContext).Primary;\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        return ExecuteOutputs(global::Ferrule.Runtime.ScopeContext.FromSource(source));\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        return ExecuteOutputs(global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext));\n    }\n",
+    );
+    output.push_str(
+        "\n    private static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.ScopeContext context)\n    {\n",
+    );
+    output.push_str(&format!(
+        "        var primary = Scope_{primary_scope}(context);\n"
+    ));
+    for (index, (_, scope)) in extra_scopes.iter().enumerate() {
+        output.push_str(&format!(
+            "        var extra_{index} = Scope_{scope}(context);\n"
+        ));
+    }
+    output.push_str(
+        "        return new ExecutionOutputs(\n            primary,\n            new NamedOutput[]\n            {\n",
+    );
+    for (index, (name, _)) in extra_scopes.iter().enumerate() {
+        output.push_str("                new(");
+        output.push_str(&literal::string(name));
+        output.push_str(&format!(", extra_{index}),\n"));
+    }
+    output.push_str("            });\n    }\n");
 
     for (node, expression) in expressions {
         output.push('\n');

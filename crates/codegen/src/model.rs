@@ -249,6 +249,16 @@ pub struct Program {
     /// Reachable expressions ordered by node ID.
     pub expressions: Vec<ExpressionNode>,
     pub root: TargetScope,
+    /// Additional independently shaped outputs in declaration order.
+    pub extra_targets: Vec<NamedTargetProgram>,
+}
+
+/// One named output lowered against the program's shared source and graph.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedTargetProgram {
+    pub name: String,
+    pub target: SchemaNode,
+    pub root: TargetScope,
 }
 
 /// One graph expression retained with its project identity for diagnostics.

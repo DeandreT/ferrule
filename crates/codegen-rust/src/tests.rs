@@ -5,10 +5,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 use codegen::{
-    Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, ScalarFunction,
-    SourceIteration, TargetConstruction,
+    Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, NamedTargetProgram,
+    ScalarFunction, SourceIteration, TargetConstruction,
 };
-use ir::SchemaNode;
+use ir::{SchemaKind, SchemaNode};
+
+mod extra_targets;
 
 fn program() -> Program {
     Program {
@@ -253,6 +255,7 @@ fn program() -> Program {
                 },
             ],
         },
+        extra_targets: Vec::new(),
     }
 }
 
@@ -449,8 +452,62 @@ fn generated_project_builds_and_matches_the_static_mapping() {
         .map(|parent| parent.join("codegen-runtime"))
         .unwrap();
     let output = TempDir::new("rust_codegen");
+    let mut program = program();
+    let SchemaKind::Group { children, .. } = &mut program.source.kind else {
+        panic!("test program source must be a group")
+    };
+    children.push(SchemaNode::scalar("ExtraOnly", ScalarType::String));
+    program.expressions.push(ExpressionNode {
+        id: 17,
+        expression: Expression::SourceField {
+            frame: None,
+            path: vec!["ExtraOnly".into()],
+        },
+    });
+    program.extra_targets = vec![
+        NamedTargetProgram {
+            name: "audit".into(),
+            target: SchemaNode::group(
+                "Audit",
+                vec![SchemaNode::scalar("Name", ScalarType::String)],
+            ),
+            root: TargetScope {
+                target_field: String::new(),
+                repeating: false,
+                iteration: None,
+                construction: TargetConstruction::Group,
+                bindings: vec![Binding {
+                    target_field: "Name".into(),
+                    expression: 1,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                }],
+                children: Vec::new(),
+            },
+        },
+        NamedTargetProgram {
+            name: "delivery".into(),
+            target: SchemaNode::group(
+                "Delivery",
+                vec![SchemaNode::scalar("Status", ScalarType::String)],
+            ),
+            root: TargetScope {
+                target_field: String::new(),
+                repeating: false,
+                iteration: None,
+                construction: TargetConstruction::Group,
+                bindings: vec![Binding {
+                    target_field: "Status".into(),
+                    expression: 17,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                }],
+                children: Vec::new(),
+            },
+        },
+    ];
     let artifacts = emit(
-        &program(),
+        &program,
         &Options {
             package_name: "sample-map".to_string(),
             runtime_dependency: RuntimeDependency::Path(runtime.display().to_string()),
@@ -460,8 +517,11 @@ fn generated_project_builds_and_matches_the_static_mapping() {
     write_artifacts(output.path(), &artifacts);
     fs::write(
         output.path().join("src/main.rs"),
-        r#"use codegen_runtime::{
-FunctionError, Instance, RuntimeError, SourcePathError, Value, field, group, repeated, scalar,
+        r#"use std::path::Path;
+
+use codegen_runtime::{
+ExecutionContext, FunctionError, Instance, RuntimeError, SourcePathError, Value, field, group,
+repeated, scalar,
 };
 
 fn main() {
@@ -482,6 +542,37 @@ let expected = group([
     ])),
 ]);
 assert_eq!(actual, expected);
+
+let outputs = sample_map::execute_outputs(&happy_source).unwrap();
+assert_eq!(outputs.primary, expected);
+assert_eq!(outputs.extras.len(), 2);
+assert_eq!(outputs.extras[0].name, "audit");
+assert_eq!(
+    outputs.extras[0].instance,
+    group([field("Name", scalar(Value::String("Ada".into())))])
+);
+assert_eq!(outputs.extras[1].name, "delivery");
+assert_eq!(
+    outputs.extras[1].instance,
+    group([field("Status", scalar(Value::String("ready".into())))])
+);
+
+let execution = ExecutionContext::new(Path::new("mapping.ferrule.json"));
+let context_outputs =
+    sample_map::execute_outputs_with_context(&happy_source, &execution).unwrap();
+assert_eq!(context_outputs, outputs);
+
+let missing_extra = source_without_extra(Value::Int(8), Value::Int(2), Value::Bool(true));
+for error in [
+    sample_map::execute(&missing_extra),
+    sample_map::execute_with_context(&missing_extra, &execution),
+] {
+    assert!(matches!(
+        error,
+        Err(RuntimeError::SourcePath(SourcePathError::MissingField { field, .. }))
+            if field == "ExtraOnly"
+    ));
+}
 
 let arithmetic = sample_map::execute(&source(
     Value::Int(8),
@@ -518,7 +609,15 @@ assert!(matches!(
 }
 
 fn source(first: Value, second: Value, condition: Value) -> Instance {
-group([
+source_with_extra(first, second, condition, true)
+}
+
+fn source_without_extra(first: Value, second: Value, condition: Value) -> Instance {
+source_with_extra(first, second, condition, false)
+}
+
+fn source_with_extra(first: Value, second: Value, condition: Value, include_extra: bool) -> Instance {
+let mut fields = vec![
     field("Name", scalar(Value::String("Ada".to_string()))),
     field("First", scalar(first)),
     field("Second", scalar(second)),
@@ -527,7 +626,11 @@ group([
         parent(1, &["a", "b"]),
         parent(2, &["c", "d"]),
     ])),
-])
+];
+if include_extra {
+    fields.push(field("ExtraOnly", scalar(Value::String("ready".into()))));
+}
+group(fields)
 }
 
 fn parent(id: i64, children: &[&str]) -> Instance {
@@ -677,6 +780,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
                 children: Vec::new(),
             }],
         },
+        extra_targets: Vec::new(),
     };
     let artifacts = emit(
         &program,
@@ -907,6 +1011,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             ],
             children: Vec::new(),
         },
+        extra_targets: Vec::new(),
     };
     let artifacts = emit(
         &program,

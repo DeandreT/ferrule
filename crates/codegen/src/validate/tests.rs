@@ -3,7 +3,8 @@ use ir::{ScalarType, SchemaNode, Value};
 use super::*;
 use crate::{
     AggregateFunction, AggregateValue, Binding, ExpressionNode, GeneratedSequence, IterationPlan,
-    ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
+    NamedTargetProgram, ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
+    SourceIteration,
 };
 
 fn program() -> Program {
@@ -41,11 +42,128 @@ fn program() -> Program {
             }],
             children: Vec::new(),
         },
+        extra_targets: Vec::new(),
     }
 }
 
 fn set_target_fields(program: &mut Program, fields: Vec<SchemaNode>) {
     program.target = SchemaNode::group("Target", fields);
+}
+
+fn empty_target_scope() -> TargetScope {
+    TargetScope {
+        target_field: String::new(),
+        repeating: false,
+        iteration: None,
+        construction: TargetConstruction::Group,
+        bindings: Vec::new(),
+        children: Vec::new(),
+    }
+}
+
+#[test]
+fn validates_each_named_target_against_its_own_schema() {
+    let mut program = program();
+    program.extra_targets.push(NamedTargetProgram {
+        name: "Scalar".into(),
+        target: SchemaNode::scalar("Scalar", ScalarType::Int),
+        root: empty_target_scope(),
+    });
+
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::NamedTarget {
+            target: "Scalar".into(),
+            error: Box::new(
+                ProgramValidationError::GroupConstructionRequiresGroupTarget {
+                    target_path: Vec::new(),
+                }
+            ),
+        })
+    );
+}
+
+#[test]
+fn generated_sequence_ownership_is_global_across_named_targets() {
+    let generated = GeneratedSequence::Tokenize {
+        input: 1,
+        delimiter: 1,
+        item: 3,
+    };
+    let mut program = program();
+    program.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::SourceField {
+            frame: None,
+            path: Vec::new(),
+        },
+    });
+    program.root.iteration = Some(IterationPlan::generated(generated.clone()));
+    let mut named_root = empty_target_scope();
+    named_root.iteration = Some(IterationPlan::generated(generated));
+    program.extra_targets.push(NamedTargetProgram {
+        name: "Audit".into(),
+        target: SchemaNode::group("Audit", Vec::new()),
+        root: named_root,
+    });
+
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::DuplicateSequenceItem {
+            owner: SequenceOwner::NamedTargetScope {
+                target: "Audit".into(),
+                path: Vec::new(),
+            },
+            first_owner: SequenceOwner::Scope(Vec::new()),
+            expression: 3,
+        })
+    );
+}
+
+#[test]
+fn named_target_sequence_diagnostics_retain_the_target_name() {
+    let mut program = program();
+    program.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::SourceField {
+            frame: None,
+            path: Vec::new(),
+        },
+    });
+    let mut named_root = empty_target_scope();
+    named_root.iteration = Some(IterationPlan::generated(
+        GeneratedSequence::TokenizeByLength {
+            input: 99,
+            length: 1,
+            item: 3,
+        },
+    ));
+    program.extra_targets.push(NamedTargetProgram {
+        name: "Audit".into(),
+        target: SchemaNode::group("Audit", Vec::new()),
+        root: named_root,
+    });
+
+    let error = validate_program(&program).expect_err("the named input is missing");
+    assert_eq!(
+        error,
+        ProgramValidationError::NamedTarget {
+            target: "Audit".into(),
+            error: Box::new(ProgramValidationError::MissingSequenceExpression {
+                owner: SequenceOwner::NamedTargetScope {
+                    target: "Audit".into(),
+                    path: Vec::new(),
+                },
+                role: SequenceExpressionRole::Input(0),
+                expression: 99,
+            }),
+        }
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("named target `Audit` scope <root>")
+    );
 }
 
 #[test]
