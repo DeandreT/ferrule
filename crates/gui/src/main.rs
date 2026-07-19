@@ -13,6 +13,7 @@ mod layout_store;
 mod new_mapping;
 mod path_picker;
 mod preferences;
+mod run_report;
 mod schema_tree;
 mod scope_editor;
 mod theme;
