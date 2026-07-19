@@ -362,9 +362,10 @@ fn visit_expression(
 
 fn dependencies(expression: &Expression) -> Vec<NodeId> {
     match expression {
-        Expression::SourceField { .. } | Expression::Position { .. } | Expression::Const { .. } => {
-            Vec::new()
-        }
+        Expression::SourceField { .. }
+        | Expression::Position { .. }
+        | Expression::Const { .. }
+        | Expression::RuntimeValue { .. } => Vec::new(),
         Expression::Call { args, .. } => args.clone(),
         Expression::If {
             condition,

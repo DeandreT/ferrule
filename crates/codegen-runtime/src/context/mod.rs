@@ -4,7 +4,7 @@ mod walk;
 
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 
-use crate::{Instance, Value};
+use crate::{ExecutionContext, Instance, RuntimeError, RuntimeValue, Value};
 
 /// Owns scalar instances materialized by one generated sequence while its
 /// borrowed candidate contexts are evaluated.
@@ -29,6 +29,7 @@ impl GeneratedItems {
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
     frames: Vec<ScopeFrame<'a>>,
+    execution: Option<ExecutionContext<'a>>,
 }
 
 #[derive(Clone)]
@@ -73,7 +74,29 @@ impl<'a> ScopeContext<'a> {
                 instance: source,
                 collection: None,
             }],
+            execution: None,
         }
+    }
+
+    /// Creates the root context with host values available to runtime-value
+    /// expressions. The supplied metadata is copied while its path and text
+    /// values remain borrowed for the mapping execution.
+    pub fn with_execution_context(source: &'a Instance, execution: &ExecutionContext<'a>) -> Self {
+        Self {
+            frames: vec![ScopeFrame {
+                instance: source,
+                collection: None,
+            }],
+            execution: Some(*execution),
+        }
+    }
+
+    /// Resolves one host-supplied scalar or returns the same typed missing
+    /// value error as the interpreter.
+    pub fn runtime_value(&self, value: RuntimeValue) -> Result<Value, RuntimeError> {
+        self.execution
+            .and_then(|execution| execution.value(value))
+            .ok_or(RuntimeError::MissingRuntimeValue { value })
     }
 
     /// Clones the innermost source group for independent target ownership.
@@ -163,7 +186,10 @@ impl<'a> ScopeContext<'a> {
                     index: index + 1,
                 },
             ));
-            ScopeContext { frames }
+            ScopeContext {
+                frames,
+                execution: self.execution,
+            }
         })
     }
 
