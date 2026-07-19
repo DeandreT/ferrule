@@ -5,7 +5,6 @@ use codegen::{ArtifactPathError, ArtifactSetError, ProgramValidationError};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmitError {
     ProgramValidation(ProgramValidationError),
-    NonFiniteFloat { node: u32 },
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
 }
@@ -14,9 +13,6 @@ impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::ProgramValidation(error) => error.fmt(formatter),
-            Self::NonFiniteFloat { node } => {
-                write!(formatter, "graph node {node} contains a non-finite float")
-            }
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
         }
@@ -29,7 +25,6 @@ impl std::error::Error for EmitError {
             Self::ProgramValidation(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
-            Self::NonFiniteFloat { .. } => None,
         }
     }
 }

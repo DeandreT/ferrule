@@ -24,7 +24,7 @@ pub(crate) fn string(value: &str) -> String {
     output
 }
 
-pub(crate) fn value(node: u32, value: &Value) -> Result<String, EmitError> {
+pub(crate) fn value(_node: u32, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "global::Ferrule.Runtime.FerruleValue.Null".to_string(),
         Value::XmlNil(_) => "global::Ferrule.Runtime.FerruleValue.XmlNil".to_string(),
@@ -37,9 +37,6 @@ pub(crate) fn value(node: u32, value: &Value) -> Result<String, EmitError> {
             *value as u64
         ),
         Value::Float(value) => {
-            if !value.is_finite() {
-                return Err(EmitError::NonFiniteFloat { node });
-            }
             format!(
                 "global::Ferrule.Runtime.FerruleValue.FromDouble(global::System.BitConverter.Int64BitsToDouble(unchecked((long)0x{:016X}UL)))",
                 value.to_bits()
@@ -84,10 +81,10 @@ mod tests {
     }
 
     #[test]
-    fn nonfinite_float_is_a_typed_error() {
-        assert_eq!(
-            value(19, &Value::Float(f64::INFINITY)),
-            Err(EmitError::NonFiniteFloat { node: 19 })
+    fn nonfinite_float_preserves_exact_bits() {
+        assert!(
+            value(19, &Value::Float(f64::INFINITY))
+                .is_ok_and(|value| value.contains("7FF0000000000000"))
         );
     }
 }

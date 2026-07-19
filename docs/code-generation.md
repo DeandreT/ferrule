@@ -38,9 +38,12 @@ links that local runtime until the runtime is published as a versioned package.
 
 The current portable model includes:
 
-- constants, source fields, frame-pinned fields, and 1-based positions
+- exact-bit scalar constants, source fields, frame-pinned fields, and 1-based
+  positions
 - lazy conditionals and a closed set of boolean, string-predicate, arithmetic,
   and comparison functions
+- ordered value maps with optional declared-input coercion, first-match wins,
+  and explicit or Null fallback
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings
@@ -56,7 +59,8 @@ The current portable model includes:
 The generated source contains static expression and scope functions rather than
 a serialized project plus the general-purpose interpreter. Arguments retain the
 engine's left-to-right evaluation and lazy-branch behavior, while aggregate and
-sequence size failures remain structured.
+sequence size failures remain structured. Floating-point constants preserve
+their complete IEEE-754 bit patterns, including infinities and NaN payloads.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. Regex

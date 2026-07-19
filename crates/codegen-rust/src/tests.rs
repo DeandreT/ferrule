@@ -298,7 +298,7 @@ fn emits_deterministic_rust_project() {
 }
 
 #[test]
-fn rejects_invalid_package_names_and_non_finite_literals() {
+fn rejects_invalid_package_names_and_preserves_non_finite_literals() {
     let options = Options {
         package_name: "not/a/package".to_string(),
         runtime_dependency: RuntimeDependency::Version("0.1.0".to_string()),
@@ -312,16 +312,21 @@ fn rejects_invalid_package_names_and_non_finite_literals() {
     invalid.expressions[1].expression = Expression::Const {
         value: Value::Float(f64::NAN),
     };
-    assert!(matches!(
-        emit(
-            &invalid,
-            &Options {
-                package_name: "sample-map".to_string(),
-                runtime_dependency: RuntimeDependency::Version("0.1.0".to_string()),
-            }
-        ),
-        Err(EmitError::NonFiniteFloat { node: 2 })
-    ));
+    let artifacts = emit(
+        &invalid,
+        &Options {
+            package_name: "sample-map".to_string(),
+            runtime_dependency: RuntimeDependency::Version("0.1.0".to_string()),
+        },
+    )
+    .expect("IEEE-754 literals emit by exact bits");
+    let source = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+        .and_then(|file| std::str::from_utf8(&file.contents).ok())
+        .expect("generated Rust source artifact");
+    assert!(source.contains("f64::from_bits(0x7ff8000000000000_u64)"));
 }
 
 #[test]
