@@ -22,6 +22,9 @@ The result is a standalone, package-free .NET 10 library. Its generated artifact
 tree includes the C# runtime sources required by the mapping. The generated
 class retains `Execute(source)` and adds `Execute(source, executionContext)` for
 host-supplied mapping paths and the run's stable current date-time text.
+`ExecuteOutputs` returns the primary instance plus every named target in project
+order. The legacy `Execute` overloads still evaluate all named targets before
+returning the primary instance, so later target failures are not hidden.
 
 ## Rust
 
@@ -36,6 +39,9 @@ cargo +nightly run -p cli -- generate \
 Rust generation currently requires `--rust-runtime-path`. The generated crate
 links that local runtime until the runtime is published as a versioned package.
 It exposes both `execute(source)` and `execute_with_context(source, execution)`.
+The corresponding `execute_outputs` functions return the primary instance and
+ordered named targets; the legacy functions evaluate that complete result and
+then move out its primary instance.
 
 ## Portable Subset
 
@@ -56,6 +62,8 @@ The current portable model includes:
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings
+- one primary target plus ordered, independently shaped named targets evaluated
+  from the same source context and graph
 - source-backed empty, nested, and multi-hop iteration
 - filters, stable multi-key sorting, ordered sequence windows, and mapped output
 - literal tokenization, Unicode-scalar fixed-length tokenization, bounded
@@ -72,6 +80,8 @@ sequence size failures remain structured. Floating-point constants preserve
 their complete IEEE-754 bit patterns, including infinities and NaN payloads.
 The legacy no-context entry points remain valid and produce a typed missing
 runtime-value error only when a reachable host value is actually evaluated.
+Stored output paths and format options remain host metadata: generated libraries
+return instances and do not write files.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable

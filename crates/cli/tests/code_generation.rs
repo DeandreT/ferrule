@@ -11,6 +11,8 @@ use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 mod aggregates;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
+#[path = "code_generation/extra_targets.rs"]
+mod extra_targets;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
 #[path = "code_generation/iteration_controls.rs"]

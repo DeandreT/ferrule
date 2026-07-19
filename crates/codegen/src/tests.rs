@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
-    Binding as MappingBinding, Graph, NamedSource, Node, Project, Scope, ScopeConstruction,
-    ScopeIteration,
+    Binding as MappingBinding, Graph, NamedSource, NamedTarget, Node, Project, Scope,
+    ScopeConstruction, ScopeIteration,
 };
 
 use crate::{
@@ -130,6 +130,85 @@ fn lowers_static_constructed_scopes_in_declaration_order() {
             value: Value::Int(7)
         }
     ));
+}
+
+#[test]
+fn lowers_named_targets_in_order_with_one_reachable_expression_set() {
+    let mut project = supported_project();
+    project.graph.nodes.extend([
+        (
+            40,
+            Node::Const {
+                value: Value::String(" suffix".into()),
+            },
+        ),
+        (
+            50,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![20, 40],
+            },
+        ),
+        (
+            90,
+            Node::Const {
+                value: Value::String("unreachable".into()),
+            },
+        ),
+    ]);
+    project.extra_targets = vec![
+        NamedTarget {
+            name: "Audit".into(),
+            path: None,
+            schema: SchemaNode::group("Audit", vec![scalar("Label")]),
+            options: Default::default(),
+            root: Scope {
+                bindings: vec![MappingBinding {
+                    target_field: "Label".into(),
+                    node: 50,
+                }],
+                ..Scope::default()
+            },
+        },
+        NamedTarget {
+            name: "Summary".into(),
+            path: None,
+            schema: SchemaNode::group("Summary", vec![typed_scalar("Count", ScalarType::Int)]),
+            options: Default::default(),
+            root: Scope {
+                bindings: vec![MappingBinding {
+                    target_field: "Count".into(),
+                    node: 10,
+                }],
+                ..Scope::default()
+            },
+        },
+    ];
+
+    let program = lower(&project).expect("named targets are part of the neutral program");
+
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|expression| expression.id)
+            .collect::<Vec<_>>(),
+        vec![10, 20, 30, 40, 50]
+    );
+    assert_eq!(
+        program
+            .extra_targets
+            .iter()
+            .map(|target| target.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Audit", "Summary"]
+    );
+    assert_eq!(
+        program.extra_targets[0].target,
+        project.extra_targets[0].schema
+    );
+    assert_eq!(program.extra_targets[0].root.bindings[0].expression, 50);
+    assert_eq!(program.extra_targets[1].root.bindings[0].expression, 10);
 }
 
 #[test]

@@ -1,0 +1,90 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = GeneratedMapping.ExecuteOutputs(Source(false));
+AssertInstance(output.Primary, PrimaryExpected(), "primary");
+if (output.Extras.Count != 2 || output.Extras[0].Name != "audit" || output.Extras[1].Name != "late")
+{
+    throw new InvalidOperationException("Generated named output order differs from the project.");
+}
+AssertInstance(output.Extras[0].Instance, AuditExpected(), "audit");
+AssertInstance(output.Extras[1].Instance, LateExpected(), "late");
+AssertInstance(GeneratedMapping.Execute(Source(false)), PrimaryExpected(), "legacy primary");
+try
+{
+    GeneratedMapping.Execute(Source(true));
+}
+catch (FerruleRuntimeException error) when (
+    error.Error == FerruleRuntimeError.FunctionType &&
+    error.Function == "normalize_space" &&
+    error.FoundKind == FerruleValueKind.Int64)
+{
+    return;
+}
+throw new InvalidOperationException("Legacy Execute skipped the failing named target.");
+
+static FerruleGroup Source(bool failExtra) => new(new FerruleField[]
+{
+    new("Name", Scalar(FerruleValue.FromString("primary"))),
+    new("FailExtra", Scalar(FerruleValue.FromBoolean(failExtra))),
+    new("Rows", new FerruleRepeated(new FerruleInstance[]
+    {
+        Group("Value", FerruleValue.FromInt64(3)),
+        Group("Value", FerruleValue.FromInt64(5)),
+    })),
+});
+
+static FerruleGroup PrimaryExpected() =>
+    Group("PrimaryName", FerruleValue.FromString("primary"));
+
+static FerruleGroup AuditExpected() => new(new FerruleField[]
+{
+    new("AuditRow", new FerruleRepeated(new FerruleInstance[]
+    {
+        Group("Value", FerruleValue.FromInt64(3)),
+        Group("Value", FerruleValue.FromInt64(5)),
+    })),
+});
+
+static FerruleGroup LateExpected() =>
+    Group("Status", FerruleValue.FromString("safe-extra"));
+
+static FerruleGroup Group(string name, FerruleValue value) =>
+    new(new FerruleField[] { new(name, Scalar(value)) });
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static void AssertInstance(FerruleInstance actual, FerruleInstance expected, string output)
+{
+    switch (actual, expected)
+    {
+        case (FerruleScalar left, FerruleScalar right) when left.Value == right.Value:
+            return;
+        case (FerruleGroup left, FerruleGroup right) when left.Fields.Count == right.Fields.Count:
+            if (left.Fields.Count == 0)
+            {
+                return;
+            }
+            for (var index = 0; index < left.Fields.Count; index++)
+            {
+                if (left.Fields[index].Name != right.Fields[index].Name)
+                {
+                    break;
+                }
+                AssertInstance(left.Fields[index].Value, right.Fields[index].Value, output);
+                if (index + 1 == left.Fields.Count)
+                {
+                    return;
+                }
+            }
+            break;
+        case (FerruleRepeated left, FerruleRepeated right) when left.Items.Count == right.Items.Count:
+            for (var index = 0; index < left.Items.Count; index++)
+            {
+                AssertInstance(left.Items[index], right.Items[index], output);
+            }
+            return;
+    }
+
+    throw new InvalidOperationException($"Generated {output} output differs from the engine.");
+}
