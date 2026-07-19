@@ -38,11 +38,18 @@ pub enum ProjectFeature {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeFeature {
     Iteration,
+    GeneratedSequence(UnsupportedSequenceKind),
     Construction(ScopeConstructionKind),
     Grouping,
     DynamicBindings,
     DynamicChildren,
     DynamicFieldMerge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedSequenceKind {
+    TokenizeRegex,
+    RecursiveCollect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,12 +163,24 @@ impl fmt::Display for ScopeFeature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Iteration => formatter.write_str("scope iteration"),
+            Self::GeneratedSequence(kind) => {
+                write!(formatter, "{kind} generated-sequence iteration")
+            }
             Self::Construction(kind) => write!(formatter, "{kind} construction"),
             Self::Grouping => formatter.write_str("scope grouping"),
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
             Self::DynamicChildren => formatter.write_str("dynamic target child scopes"),
             Self::DynamicFieldMerge => formatter.write_str("dynamic-field merging"),
         }
+    }
+}
+
+impl fmt::Display for UnsupportedSequenceKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::TokenizeRegex => "regular-expression tokenize",
+            Self::RecursiveCollect => "recursive-collect",
+        })
     }
 }
 

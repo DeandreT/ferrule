@@ -301,6 +301,72 @@ pub enum SequenceWindow {
     Last { count: NodeId },
 }
 
+/// One scalar sequence evaluated once in an iterating scope's parent
+/// context. `item` owns the unframed empty-path source-field expression that
+/// becomes visible only while each generated candidate is evaluated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GeneratedSequence {
+    Tokenize {
+        input: NodeId,
+        delimiter: NodeId,
+        item: NodeId,
+    },
+    TokenizeByLength {
+        input: NodeId,
+        length: NodeId,
+        item: NodeId,
+    },
+    Range {
+        from: Option<NodeId>,
+        to: NodeId,
+        item: NodeId,
+    },
+}
+
+impl GeneratedSequence {
+    pub const fn item(&self) -> NodeId {
+        match self {
+            Self::Tokenize { item, .. }
+            | Self::TokenizeByLength { item, .. }
+            | Self::Range { item, .. } => *item,
+        }
+    }
+
+    pub fn inputs(&self) -> impl Iterator<Item = NodeId> + '_ {
+        let inputs = match self {
+            Self::Tokenize {
+                input, delimiter, ..
+            } => [Some(*input), Some(*delimiter)],
+            Self::TokenizeByLength { input, length, .. } => [Some(*input), Some(*length)],
+            Self::Range { from, to, .. } => [*from, Some(*to)],
+        };
+        inputs.into_iter().flatten()
+    }
+
+    pub fn roots(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.inputs().chain([self.item()])
+    }
+}
+
+/// Exactly one candidate source for an iterating scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IterationSource {
+    Source(SourceIteration),
+    Generated(GeneratedSequence),
+}
+
+impl From<SourceIteration> for IterationSource {
+    fn from(source: SourceIteration) -> Self {
+        Self::Source(source)
+    }
+}
+
+impl From<GeneratedSequence> for IterationSource {
+    fn from(sequence: GeneratedSequence) -> Self {
+        Self::Generated(sequence)
+    }
+}
+
 impl SequenceWindow {
     pub fn nodes(self) -> impl Iterator<Item = NodeId> {
         let nodes = match self {
@@ -334,19 +400,19 @@ pub struct TargetScope {
     /// Non-iterating scopes targeting a repeating group still produce one
     /// repeated item, matching the engine's target-boundary cardinality.
     pub repeating: bool,
-    /// Source-backed iteration evaluated relative to the parent scope's
-    /// current item. Absence means the scope runs exactly once.
+    /// Source-backed or generated iteration evaluated relative to the parent
+    /// scope's current item. Absence means the scope runs exactly once.
     pub iteration: Option<IterationPlan>,
     /// Declaration order is semantically significant and is preserved.
     pub bindings: Vec<Binding>,
     pub children: Vec<TargetScope>,
 }
 
-/// One source-backed candidate pipeline. Controls live inside the iteration,
-/// so a filter, sort, or window cannot exist on a non-iterating scope.
+/// One candidate pipeline. Controls live inside the iteration, so a filter,
+/// sort, or window cannot exist on a non-iterating scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IterationPlan {
-    source: SourceIteration,
+    input: IterationSource,
     filter: Option<NodeId>,
     sort: Option<SortPlan>,
     windows: Vec<SequenceWindow>,
@@ -364,15 +430,19 @@ impl IterationPlan {
         )
     }
 
+    pub fn generated(sequence: GeneratedSequence) -> Self {
+        Self::new(sequence, None, None, Vec::new(), IterationOutput::Repeated)
+    }
+
     pub fn new(
-        source: SourceIteration,
+        input: impl Into<IterationSource>,
         filter: Option<NodeId>,
         sort: Option<SortPlan>,
         windows: Vec<SequenceWindow>,
         output: IterationOutput,
     ) -> Self {
         Self {
-            source,
+            input: input.into(),
             filter,
             sort,
             windows,
@@ -380,8 +450,22 @@ impl IterationPlan {
         }
     }
 
-    pub const fn source_iteration(&self) -> &SourceIteration {
-        &self.source
+    pub const fn input(&self) -> &IterationSource {
+        &self.input
+    }
+
+    pub const fn source_iteration(&self) -> Option<&SourceIteration> {
+        match &self.input {
+            IterationSource::Source(source) => Some(source),
+            IterationSource::Generated(_) => None,
+        }
+    }
+
+    pub const fn generated_sequence(&self) -> Option<&GeneratedSequence> {
+        match &self.input {
+            IterationSource::Source(_) => None,
+            IterationSource::Generated(sequence) => Some(sequence),
+        }
     }
 
     pub const fn filter(&self) -> Option<NodeId> {
@@ -401,8 +485,10 @@ impl IterationPlan {
     }
 
     pub fn roots(&self) -> impl Iterator<Item = NodeId> + '_ {
-        self.filter
+        self.generated_sequence()
             .into_iter()
+            .flat_map(GeneratedSequence::roots)
+            .chain(self.filter)
             .chain(
                 self.sort
                     .iter()

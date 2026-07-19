@@ -3,7 +3,21 @@ mod walk;
 
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 
-use crate::Instance;
+use crate::{Instance, Value};
+
+/// Owns scalar instances materialized by one generated sequence while its
+/// borrowed candidate contexts are evaluated.
+pub struct GeneratedItems {
+    items: Vec<Instance>,
+}
+
+impl GeneratedItems {
+    pub fn new(values: Vec<Value>) -> Self {
+        Self {
+            items: values.into_iter().map(Instance::Scalar).collect(),
+        }
+    }
+}
 
 /// Ordered source frames visible to one generated target scope.
 ///
@@ -93,6 +107,37 @@ impl<'a> ScopeContext<'a> {
             collection.set_index(compact_index.max(1));
         }
         compact
+    }
+
+    /// Reborrows the parent frames and appends each generated scalar as an
+    /// empty-path collection frame with its raw one-based position.
+    pub fn generated_items<'b>(&'b self, items: &'b GeneratedItems) -> Vec<ScopeContext<'b>>
+    where
+        'a: 'b,
+    {
+        items
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let mut frames = self
+                    .frames
+                    .iter()
+                    .map(|frame| ScopeFrame {
+                        instance: frame.instance,
+                        collection: frame.collection.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                frames.push(collection_frame(
+                    item,
+                    CollectionIdentity::Repeated {
+                        path: Vec::new(),
+                        index: index + 1,
+                    },
+                ));
+                ScopeContext { frames }
+            })
+            .collect()
     }
 }
 
