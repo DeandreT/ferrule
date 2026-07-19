@@ -61,6 +61,7 @@ fn project(
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: nodes.into_iter().collect(),
         },
@@ -653,6 +654,7 @@ fn join_aggregates_reduce_naked_duplicate_tuples_and_empty_results() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![
@@ -877,6 +879,7 @@ fn validation_rejects_duplicate_join_ids_and_invalid_plan_paths() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph::default(),
         root: Scope {
             children: vec![row, other],
@@ -968,6 +971,7 @@ fn validation_scopes_join_aggregate_expression_but_not_argument() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: [
                 (

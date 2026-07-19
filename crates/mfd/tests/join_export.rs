@@ -119,6 +119,7 @@ fn two_way_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -318,6 +319,7 @@ fn exports_and_round_trips_a_three_way_join() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,
@@ -427,6 +429,7 @@ fn root_aggregate_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -759,6 +762,7 @@ fn mapped_join_sequence_round_trips_named_and_singleton_sources() {
             dynamic_path: None,
         }],
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

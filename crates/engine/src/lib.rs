@@ -17,6 +17,7 @@ mod context;
 mod dynamic_target;
 mod eval_expr;
 mod eval_scope;
+mod failure;
 mod grouping;
 mod iteration_output;
 mod join;
@@ -157,6 +158,16 @@ pub enum EngineError {
     MissingJoinContext { join: JoinId },
     #[error("inner-join iteration cannot be combined with grouping controls")]
     JoinGroupingUnsupported,
+    /// A user-authored failure rule selected at least one item. Rule numbers
+    /// are one-based and follow declaration order.
+    #[error(
+        "mapping failure rule {rule}: {text}",
+        text = message.as_deref().unwrap_or("mapping exception was raised")
+    )]
+    MappingFailure {
+        rule: usize,
+        message: Option<String>,
+    },
     #[error("{function:?} aggregate overflowed the integer range")]
     AggregateIntegerOverflow { function: mapping::AggregateOp },
     #[error("{function:?} aggregate encountered or produced a non-finite number")]
@@ -308,6 +319,7 @@ fn run_outputs_internal(
     );
     let extras_frame = Instance::Group(extras);
     let context = [&runtime_frame, &extras_frame, source];
+    failure::evaluate(&project.graph, &project.failure_rules, &context)?;
     let primary = eval_scope(
         &project.graph,
         &project.root,
@@ -359,6 +371,9 @@ mod dynamic_source_tests;
 #[cfg(test)]
 #[path = "tests/dynamic_target.rs"]
 mod dynamic_target_tests;
+#[cfg(test)]
+#[path = "tests/failure.rs"]
+mod failure_tests;
 #[cfg(test)]
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;

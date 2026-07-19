@@ -102,6 +102,7 @@ fn project(root: Option<(u32, Value)>) -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             construction: ScopeConstruction::AdjacencyTree {

@@ -79,6 +79,7 @@ fn nested_position_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -270,6 +271,7 @@ fn named_source_concatenation_project() -> Project {
             dynamic_path: None,
         }],
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

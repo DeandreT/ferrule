@@ -1,7 +1,49 @@
 use ir::SchemaNode;
 use serde::{Deserialize, Serialize};
 
-use crate::{FormatOptions, Graph, NodeId, Scope};
+use crate::{FormatOptions, Graph, NodeId, Scope, SequenceExpr};
+
+/// One ordered mapping failure evaluated before any target is produced.
+///
+/// The message is evaluated lazily in the first selected item's context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FailureRule {
+    pub iteration: FailureIteration,
+    pub selection: FailureSelection,
+    /// Optional graph-computed error text. Absence is preserved distinctly
+    /// from an expression that evaluates to an empty string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<NodeId>,
+}
+
+/// The item sequence inspected by a [`FailureRule`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FailureIteration {
+    /// Walk a framed runtime source path. An empty collection iterates flat
+    /// rows when the current source boundary is itself repeated.
+    Source { collection: Vec<String> },
+    /// Materialize a generated scalar sequence in the rule's parent context.
+    Sequence { sequence: SequenceExpr },
+}
+
+/// Selects which iterated items trigger a [`FailureRule`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FailureSelection {
+    All,
+    WhenTrue { predicate: NodeId },
+    WhenFalse { predicate: NodeId },
+}
+
+impl FailureSelection {
+    pub fn predicate(self) -> Option<NodeId> {
+        match self {
+            Self::All => None,
+            Self::WhenTrue { predicate } | Self::WhenFalse { predicate } => Some(predicate),
+        }
+    }
+}
 
 /// A complete mapping project: the source/target shapes, the graph, and the
 /// scope tree that maps one into the other.
@@ -31,6 +73,9 @@ pub struct Project {
     /// `root` for compatibility with single-output projects and hosts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_targets: Vec<NamedTarget>,
+    /// Ordered failure rules evaluated before any primary or named target.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failure_rules: Vec<FailureRule>,
     pub graph: Graph,
     pub root: Scope,
 }

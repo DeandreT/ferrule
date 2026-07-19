@@ -124,6 +124,7 @@ fn required_typed_const_json_alternatives_export_reimport_and_execute() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

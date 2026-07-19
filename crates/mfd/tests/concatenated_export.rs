@@ -141,6 +141,7 @@ fn xml_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: graph(),
         root: Scope {
             children: vec![item],
@@ -170,6 +171,7 @@ fn csv_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: graph(),
         root: Scope {
             iteration: ScopeIteration::Concatenate(ScopeSequence::new(
@@ -296,6 +298,7 @@ fn conditioned_xml_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -436,6 +439,7 @@ fn conditioned_plain_target_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -522,6 +526,7 @@ fn conditioned_repeating_filter_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {

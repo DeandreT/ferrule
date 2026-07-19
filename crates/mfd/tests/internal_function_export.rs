@@ -163,6 +163,7 @@ fn project() -> Result<Project, Box<dyn Error>> {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph { nodes },
         root: Scope {
             bindings: vec![

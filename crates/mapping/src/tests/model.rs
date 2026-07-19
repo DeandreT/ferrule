@@ -2,6 +2,48 @@ use super::*;
 use ir::ScalarType;
 
 #[test]
+fn failure_rules_roundtrip_in_declaration_order() {
+    let project = Project {
+        source: ir::SchemaNode::group("Source", Vec::new()),
+        target: ir::SchemaNode::group("Target", Vec::new()),
+        source_path: None,
+        target_path: None,
+        source_options: FormatOptions::default(),
+        target_options: FormatOptions::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: vec![
+            FailureRule {
+                iteration: FailureIteration::Source {
+                    collection: vec!["Rows".into()],
+                },
+                selection: FailureSelection::WhenFalse { predicate: 4 },
+                message: Some(5),
+            },
+            FailureRule {
+                iteration: FailureIteration::Sequence {
+                    sequence: SequenceExpr::Generate {
+                        from: None,
+                        to: 6,
+                        item: 7,
+                    },
+                },
+                selection: FailureSelection::All,
+                message: None,
+            },
+        ],
+        graph: Graph::default(),
+        root: Scope::default(),
+    };
+
+    let encoded = serde_json::to_string(&project).unwrap();
+    let decoded: Project = serde_json::from_str(&encoded).unwrap();
+
+    assert_eq!(encoded.matches("\"message\"").count(), 1);
+    assert_eq!(decoded.failure_rules, project.failure_rules);
+}
+
+#[test]
 fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
     assert!(!defaults.json_lines);

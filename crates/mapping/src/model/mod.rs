@@ -11,7 +11,10 @@ pub use graph::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, Node, NodeId, RuntimeValue,
     SequenceExpr, XmlMixedContentReplacement,
 };
-pub use project::{DynamicSourcePath, NamedSource, NamedTarget, Project};
+pub use project::{
+    DynamicSourcePath, FailureIteration, FailureRule, FailureSelection, NamedSource, NamedTarget,
+    Project,
+};
 pub use scope::{
     IterationOutput, Scope, ScopeConstruction, SequenceWindow, SortFilterOrder, SortKey,
     XmlMixedContentElement,

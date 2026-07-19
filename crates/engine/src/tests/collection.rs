@@ -71,6 +71,7 @@ fn group_by_partitions_iterated_items() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -199,6 +200,7 @@ fn filter_removes_candidates_before_grouping() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -329,6 +331,7 @@ fn grouped_nested_items_preserve_outer_iteration_frames() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -497,6 +500,7 @@ fn empty_path_child_iteration_selects_each_grouped_member_frame() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -655,6 +659,7 @@ fn aggregates_reduce_collections_in_context() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -823,6 +828,7 @@ fn generated_sequences_reuse_nested_scope_controls_and_positions() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -987,6 +993,7 @@ fn tokenizers_handle_empty_and_unicode_inputs() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Sequence(SequenceExpr::Tokenize {
@@ -1169,6 +1176,7 @@ fn generated_integer_ranges_use_parent_context_defaults_and_positions() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -1337,6 +1345,7 @@ fn filtered_positions_compact_across_intermediate_repeating_levels() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -1396,6 +1405,7 @@ fn uncontrolled_multi_hop_positions_remain_relative_to_their_source_parent() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -1464,6 +1474,7 @@ fn aggregate_flattens_nested_repeating_collection_paths() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![Binding {

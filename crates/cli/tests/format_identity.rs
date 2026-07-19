@@ -45,6 +45,7 @@ fn json_document_identity_overrides_neutral_instance_extensions() {
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -103,6 +104,7 @@ fn xml_document_identity_overrides_neutral_instance_extensions() {
         },
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -181,6 +183,7 @@ fn tabular_project(target_kind: TabularBoundaryKind) -> Project {
         },
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph,
         root: Scope {
             iteration: ScopeIteration::Source(Vec::new()),

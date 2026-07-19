@@ -70,6 +70,7 @@ fn runs_a_sorted_bounded_local_xml_file_set() -> Result<(), Box<dyn Error>> {
         },
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

@@ -48,11 +48,11 @@ pub use iteration::{
     ScopeIteration, ScopeSequence,
 };
 pub use model::{
-    AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, FormatOptions, Graph,
-    IterationOutput, NamedSource, NamedTarget, Node, NodeId, Project, RuntimeValue, Scope,
-    ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey, XlsxColumn,
-    XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout, XlsxRow, XlsxTableRegion,
-    XmlMixedContentElement, XmlMixedContentReplacement,
+    AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, FailureIteration,
+    FailureRule, FailureSelection, FormatOptions, Graph, IterationOutput, NamedSource, NamedTarget,
+    Node, NodeId, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr, SequenceWindow,
+    SortFilterOrder, SortKey, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord,
+    XlsxGridLayout, XlsxRow, XlsxTableRegion, XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use path_hierarchy::PathHierarchyPlan;
 pub use pdf::{

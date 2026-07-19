@@ -79,6 +79,7 @@ fn project_with_http_source() -> Result<Project, Box<dyn Error>> {
         target_options: FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,

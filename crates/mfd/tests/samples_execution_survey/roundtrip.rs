@@ -11,6 +11,14 @@ use super::{
 const JSON_REPORT_ENV: &str = "FERRULE_ROUNDTRIP_EXECUTION_SURVEY_JSON";
 const REPORT_SCHEMA_VERSION: u32 = 1;
 
+enum SemanticExecution {
+    Outputs(engine::ExecutionOutputs),
+    MappingFailure {
+        rule: usize,
+        message: Option<String>,
+    },
+}
+
 #[derive(Debug)]
 struct RoundtripOutcome {
     file: String,
@@ -136,6 +144,59 @@ fn validation_outcome(project: &mapping::Project) -> StageOutcome {
     }
 }
 
+fn mapping_failure_outcome(rule: usize, message: Option<&str>) -> StageOutcome {
+    StageOutcome {
+        status: Status::Passed,
+        message: Some(format!(
+            "controlled mapping failure rule {rule}: {}",
+            message.unwrap_or("mapping exception was raised")
+        )),
+    }
+}
+
+fn compare_semantic_executions(
+    original: &SemanticExecution,
+    roundtrip: &SemanticExecution,
+) -> Result<(), String> {
+    match (original, roundtrip) {
+        (SemanticExecution::Outputs(original), SemanticExecution::Outputs(roundtrip)) => {
+            compare_execution_outputs(original, roundtrip)
+        }
+        (
+            SemanticExecution::MappingFailure {
+                rule: original_rule,
+                message: original_message,
+            },
+            SemanticExecution::MappingFailure {
+                rule: roundtrip_rule,
+                message: roundtrip_message,
+            },
+        ) if original_rule == roundtrip_rule && original_message == roundtrip_message => Ok(()),
+        (
+            SemanticExecution::MappingFailure {
+                rule: original_rule,
+                message: original_message,
+            },
+            SemanticExecution::MappingFailure {
+                rule: roundtrip_rule,
+                message: roundtrip_message,
+            },
+        ) => Err(format!(
+            "controlled mapping failure changed from rule {original_rule} ({original_message:?}) to rule {roundtrip_rule} ({roundtrip_message:?})"
+        )),
+        (SemanticExecution::Outputs(_), SemanticExecution::MappingFailure { rule, message }) => {
+            Err(format!(
+                "round-trip introduced controlled mapping failure rule {rule} ({message:?})"
+            ))
+        }
+        (SemanticExecution::MappingFailure { rule, message }, SemanticExecution::Outputs(_)) => {
+            Err(format!(
+                "round-trip removed controlled mapping failure rule {rule} ({message:?})"
+            ))
+        }
+    }
+}
+
 fn survey_roundtrip_file(
     index: usize,
     mfd_path: &Path,
@@ -183,19 +244,25 @@ fn survey_roundtrip_file(
     let execution = engine::ExecutionContext::new(&runtime_mapping_path)
         .with_current_datetime(FIXED_CURRENT_DATETIME)
         .with_dynamic_source_loader(&dynamic_loader);
-    let original_outputs = match engine::run_outputs_with_sources_and_context(
+    let original_execution = match engine::run_outputs_with_sources_and_context(
         &imported.project,
         &sources.primary,
         sources.extras.clone(),
         &execution,
     ) {
-        Ok(outputs) => outputs,
+        Ok(outputs) => {
+            outcome.original_execution = StageOutcome::passed();
+            SemanticExecution::Outputs(outputs)
+        }
+        Err(engine::EngineError::MappingFailure { rule, message }) => {
+            outcome.original_execution = mapping_failure_outcome(rule, message.as_deref());
+            SemanticExecution::MappingFailure { rule, message }
+        }
         Err(error) => {
             outcome.original_execution = StageOutcome::failed(error.to_string());
             return outcome;
         }
     };
-    outcome.original_execution = StageOutcome::passed();
 
     let export_dir = match workspace.sample_dir(index) {
         Ok(path) => path,
@@ -229,23 +296,30 @@ fn survey_roundtrip_file(
         return outcome;
     }
 
-    let roundtrip_outputs = match engine::run_outputs_with_sources_and_context(
+    let roundtrip_execution = match engine::run_outputs_with_sources_and_context(
         &roundtripped.project,
         &sources.primary,
         sources.extras,
         &execution,
     ) {
-        Ok(outputs) => outputs,
+        Ok(outputs) => {
+            outcome.roundtrip_execution = StageOutcome::passed();
+            SemanticExecution::Outputs(outputs)
+        }
+        Err(engine::EngineError::MappingFailure { rule, message }) => {
+            outcome.roundtrip_execution = mapping_failure_outcome(rule, message.as_deref());
+            SemanticExecution::MappingFailure { rule, message }
+        }
         Err(error) => {
             outcome.roundtrip_execution = StageOutcome::failed(error.to_string());
             return outcome;
         }
     };
-    outcome.roundtrip_execution = StageOutcome::passed();
-    outcome.output_match = match compare_execution_outputs(&original_outputs, &roundtrip_outputs) {
-        Ok(()) => StageOutcome::passed(),
-        Err(reason) => StageOutcome::failed(reason),
-    };
+    outcome.output_match =
+        match compare_semantic_executions(&original_execution, &roundtrip_execution) {
+            Ok(()) => StageOutcome::passed(),
+            Err(reason) => StageOutcome::failed(reason),
+        };
     outcome
 }
 
@@ -374,6 +448,25 @@ impl Drop for TestDir {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+#[test]
+fn controlled_mapping_failures_are_compared_as_semantic_outcomes() {
+    let original = SemanticExecution::MappingFailure {
+        rule: 1,
+        message: Some("limit exceeded".into()),
+    };
+    let same = SemanticExecution::MappingFailure {
+        rule: 1,
+        message: Some("limit exceeded".into()),
+    };
+    let changed = SemanticExecution::MappingFailure {
+        rule: 2,
+        message: Some("different".into()),
+    };
+
+    assert!(compare_semantic_executions(&original, &same).is_ok());
+    assert!(compare_semantic_executions(&original, &changed).is_err());
 }
 
 #[test]

@@ -16,6 +16,7 @@ mod concatenation;
 mod database;
 mod dynamic_json;
 mod edi;
+mod exception;
 mod external_source;
 mod flextext;
 mod function;
@@ -329,6 +330,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
             &mut warnings,
         );
     }
+    let mut exception_branches = exception::Branches::new(project);
     for (target_index, target) in targets.iter().enumerate() {
         let prior_position_contexts = position_contexts.clone();
         let static_root = target
@@ -364,6 +366,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
                 mapped_scope_plans: &target.mapped_scope_plans,
                 joins: &joins,
                 target_branches: &target.branches,
+                exception_branches: &mut exception_branches,
             });
         }
         if let Some(plan) = &target.dynamic_json {
@@ -390,6 +393,15 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
             ));
         }
     }
+    exception_branches.render(exception::RenderArgs {
+        graph: &project.graph,
+        node_out_key: &node_out_key,
+        position_contexts: &position_contexts,
+        keys: &mut keys,
+        uid: &mut uid,
+        components: &mut scope_components,
+        edges: &mut edges,
+    })?;
     for (id, input) in &position_inputs {
         if !position_contexts.contains_key(id) {
             warnings.push(format!(

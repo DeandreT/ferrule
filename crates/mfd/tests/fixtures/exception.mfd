@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="31">
+  <component name="defaultmap1" uid="1">
+    <structure>
+      <children>
+        <component name="Expenses" library="xml" kind="14" uid="2">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Expenses"><entry name="Expense" outkey="10"><entry name="Allowed" outkey="11"/><entry name="Description" outkey="12"/></entry></entry></entry></entry></root>
+            <document schema="exception-source.xsd" inputinstance="expenses.xml" instanceroot="{}Expenses"/>
+          </data>
+        </component>
+        <component name="Accepted" library="xml" kind="14" uid="3">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Accepted"><entry name="Expense" inpkey="30"><entry name="Description" inpkey="31"/></entry></entry></entry></entry></root>
+            <document schema="exception-target.xsd" outputinstance="accepted.xml" instanceroot="{}Accepted"/>
+          </data>
+        </component>
+        <component name="filter" library="core" kind="3" uid="4">
+          <sources><datapoint pos="0" key="20"/><datapoint pos="1" key="21"/></sources>
+          <targets><datapoint pos="0" key="22"/><datapoint pos="1" key="23"/></targets>
+        </component>
+        <component name="reject-expense" library="core" kind="18" uid="5">
+          <sources><datapoint pos="0" key="40"/><datapoint pos="1" key="41"/></sources>
+          <data><exception/></data>
+        </component>
+      </children>
+    </structure>
+    <connections>
+      <edge from="10" to="20"/>
+      <edge from="11" to="21"/>
+      <edge from="22" to="30"/>
+      <edge from="12" to="31"/>
+      <edge from="23" to="40"/>
+      <edge from="12" to="41"/>
+    </connections>
+  </component>
+</mapping>

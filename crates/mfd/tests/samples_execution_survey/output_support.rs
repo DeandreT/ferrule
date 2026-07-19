@@ -638,6 +638,7 @@ mod tests {
                 options: FormatOptions::default(),
                 root: Scope::default(),
             }],
+            failure_rules: Vec::new(),
             graph: Graph::default(),
             root: Scope::default(),
         };

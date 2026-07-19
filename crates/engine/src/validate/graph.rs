@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD, XML_TYPE_FIELD};
-use mapping::{Graph, Node, NodeId, Project, Scope, ScopeConstruction};
+use mapping::{
+    FailureIteration, FailureRule, Graph, Node, NodeId, Project, Scope, ScopeConstruction,
+};
 
 use super::ValidationIssue;
 use super::schema::{
@@ -35,9 +37,20 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             );
         }
     }
+    for (index, rule) in project.failure_rules.iter().enumerate() {
+        if let FailureIteration::Sequence { sequence } = &rule.iteration {
+            claim_sequence_item(
+                sequence.item(),
+                format!("failure rule {}", index + 1),
+                &mut sequence_item_scopes,
+                issues,
+            );
+        }
+    }
     let sequence_items: BTreeSet<_> = sequence_item_scopes.keys().copied().collect();
     validate_sequence_exists_contexts(project, &sequence_items, issues);
     validate_sequence_item_at_contexts(project, &sequence_items, issues);
+    validate_failure_rules(project, &sequence_items, issues);
     for (&id, node) in &project.graph.nodes {
         let location = format!("graph node {id}");
         for (input, referenced) in node_inputs(node) {
@@ -222,6 +235,341 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             _ => {}
         }
     }
+}
+
+fn validate_failure_rules(
+    project: &Project,
+    sequence_items: &BTreeSet<NodeId>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    for (index, rule) in project.failure_rules.iter().enumerate() {
+        let location = format!("failure rule {}", index + 1);
+        if let Some(message) = rule.message
+            && !project.graph.nodes.contains_key(&message)
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!("message references missing node {message}"),
+            ));
+        }
+        if let Some(predicate) = rule.selection.predicate()
+            && !project.graph.nodes.contains_key(&predicate)
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!("selection predicate references missing node {predicate}"),
+            ));
+        }
+        super::join::validate_roots(
+            &project.graph,
+            rule_roots(rule).into_iter().chain(match &rule.iteration {
+                FailureIteration::Sequence { sequence } => sequence.inputs(),
+                FailureIteration::Source { .. } => Vec::new(),
+            }),
+            &[],
+            &location,
+            project,
+            issues,
+        );
+        validate_failure_dynamic_sources(project, &location, rule, issues);
+        match &rule.iteration {
+            FailureIteration::Source { collection } => {
+                if !collection.is_empty()
+                    && !source_path_matches(project, collection, |node| node.repeating)
+                {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        format!(
+                            "source collection `{}` matches no repeating source path",
+                            display_path(collection)
+                        ),
+                    ));
+                }
+            }
+            FailureIteration::Sequence { sequence } => {
+                match project.graph.nodes.get(&sequence.item()) {
+                    Some(Node::SourceField { path, frame: None }) if path.is_empty() => {}
+                    Some(_) => issues.push(ValidationIssue::new(
+                        &location,
+                        "sequence item must reference an unframed empty-path source field",
+                    )),
+                    None => issues.push(ValidationIssue::new(
+                        &location,
+                        format!("sequence item references missing node {}", sequence.item()),
+                    )),
+                }
+                for (argument, node) in sequence.inputs().into_iter().enumerate() {
+                    if !project.graph.nodes.contains_key(&node) {
+                        issues.push(ValidationIssue::new(
+                            &location,
+                            format!("sequence argument {argument} references missing node {node}"),
+                        ));
+                    }
+                }
+                validate_failure_sequence_context(project, index, rule, sequence_items, issues);
+            }
+        }
+    }
+}
+
+fn validate_failure_sequence_context(
+    project: &Project,
+    index: usize,
+    rule: &FailureRule,
+    sequence_items: &BTreeSet<NodeId>,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let FailureIteration::Sequence { sequence } = &rule.iteration else {
+        return;
+    };
+    let item = sequence.item();
+    let location = format!("failure rule {}", index + 1);
+    let roots = rule_roots(rule);
+    let allowed = context_dependencies(&project.graph, roots.iter().copied());
+    for foreign in allowed.intersection(sequence_items) {
+        if *foreign != item {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "selection or message references sequence item node {foreign} owned by another generated context"
+                ),
+            ));
+        }
+    }
+    for argument in sequence.inputs() {
+        let dependencies = context_dependencies(&project.graph, [argument]);
+        if dependencies.contains(&item) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "sequence argument depends on its own item node {item} before that item exists"
+                ),
+            ));
+        }
+        for foreign in dependencies.intersection(sequence_items) {
+            if *foreign != item {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "sequence argument references item node {foreign} owned by another generated context"
+                    ),
+                ));
+            }
+        }
+    }
+
+    let mut dependent: BTreeSet<_> = allowed
+        .iter()
+        .copied()
+        .filter(|&node| context_dependencies(&project.graph, [node]).contains(&item))
+        .collect();
+    // Ownership applies even when the rule itself does not read its item.
+    // Otherwise that private empty-path source node could leak into a target
+    // or another host-owned graph context unnoticed.
+    dependent.insert(item);
+    for (&consumer, node) in &project.graph.nodes {
+        for input in context_node_inputs(node) {
+            if dependent.contains(&input) && !allowed.contains(&consumer) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "item-dependent node {input} is also consumed by graph node {consumer} outside this failure rule"
+                    ),
+                ));
+            }
+        }
+        if let Node::SequenceExists { predicate, .. } = node
+            && dependent.contains(predicate)
+        {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "item-dependent node {predicate} is reused as graph node {consumer}'s sequence-exists predicate"
+                ),
+            ));
+        }
+    }
+    let mut scope_roots = BTreeSet::new();
+    collect_scope_graph_roots(&project.root, &mut scope_roots);
+    for target in &project.extra_targets {
+        collect_scope_graph_roots(&target.root, &mut scope_roots);
+    }
+    for root in scope_roots.intersection(&dependent) {
+        issues.push(ValidationIssue::new(
+            &location,
+            format!(
+                "item-dependent node {root} is also referenced by a scope outside this failure rule"
+            ),
+        ));
+    }
+    for source in &project.extra_sources {
+        let Some(dynamic) = &source.dynamic_path else {
+            continue;
+        };
+        if dependent.contains(&dynamic.node) {
+            issues.push(ValidationIssue::new(
+                &location,
+                format!(
+                    "item-dependent node {} is also referenced by dynamic extra source `{}`",
+                    dynamic.node, source.name
+                ),
+            ));
+        }
+    }
+    for (other_index, other) in project.failure_rules.iter().enumerate() {
+        if other_index == index {
+            continue;
+        }
+        for root in rule_roots(other) {
+            if dependent.contains(&root) {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "item-dependent node {root} is also referenced by failure rule {}",
+                        other_index + 1
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+fn rule_roots(rule: &FailureRule) -> Vec<NodeId> {
+    rule.message
+        .into_iter()
+        .chain(rule.selection.predicate())
+        .collect()
+}
+
+fn validate_failure_dynamic_sources(
+    project: &Project,
+    location: &str,
+    rule: &FailureRule,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let mut dynamic_sources = BTreeSet::new();
+    match &rule.iteration {
+        FailureIteration::Source { collection } => {
+            if let Some(source) = dynamic_source_for_path(project, collection) {
+                dynamic_sources.insert(source.to_string());
+            }
+        }
+        FailureIteration::Sequence { sequence } => {
+            if let Some(source) = sequence_dynamic_source(project, sequence) {
+                dynamic_sources.insert(source.to_string());
+            }
+        }
+    }
+
+    let roots = rule_roots(rule).into_iter().chain(match &rule.iteration {
+        FailureIteration::Sequence { sequence } => sequence.inputs(),
+        FailureIteration::Source { .. } => Vec::new(),
+    });
+    for node in all_dependencies(&project.graph, roots) {
+        let Some(expression) = project.graph.nodes.get(&node) else {
+            continue;
+        };
+        dynamic_sources.extend(node_dynamic_sources(project, expression).map(str::to_string));
+    }
+
+    for source in dynamic_sources {
+        issues.push(ValidationIssue::new(
+            location,
+            format!(
+                "depends on dynamic extra source `{source}`, which is unavailable before target evaluation"
+            ),
+        ));
+    }
+}
+
+fn all_dependencies(graph: &Graph, roots: impl IntoIterator<Item = NodeId>) -> BTreeSet<NodeId> {
+    let mut pending: Vec<_> = roots.into_iter().collect();
+    let mut visited = BTreeSet::new();
+    while let Some(node) = pending.pop() {
+        if !visited.insert(node) {
+            continue;
+        }
+        if let Some(expression) = graph.nodes.get(&node) {
+            pending.extend(node_inputs(expression).into_iter().map(|(_, input)| input));
+        }
+    }
+    visited
+}
+
+fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterator<Item = &'a str> {
+    let mut sources = BTreeSet::new();
+    let mut inspect = |path: &[String]| {
+        if let Some(source) = dynamic_source_for_path(project, path) {
+            sources.insert(source);
+        }
+    };
+    match node {
+        Node::SourceField { path, frame }
+        | Node::DynamicSourceField {
+            object: path,
+            frame,
+            ..
+        } => {
+            inspect(frame.as_deref().unwrap_or(path));
+        }
+        Node::Position { collection }
+        | Node::JoinField { collection, .. }
+        | Node::Lookup { collection, .. }
+        | Node::CollectionFind { collection, .. }
+        | Node::Aggregate { collection, .. } => inspect(collection),
+        Node::XmlMixedContent {
+            path,
+            frame,
+            replacements,
+        } => {
+            inspect(frame.as_deref().unwrap_or(path));
+            for replacement in replacements {
+                inspect(&replacement.collection);
+            }
+        }
+        Node::SequenceExists { sequence, .. } | Node::SequenceItemAt { sequence, .. } => {
+            if let Some(source) = sequence_dynamic_source(project, sequence) {
+                sources.insert(source);
+            }
+        }
+        Node::JoinAggregate { plan, .. } => {
+            for source in plan.sources() {
+                inspect(source.collection());
+            }
+        }
+        Node::SourceDocumentPath
+        | Node::JoinPosition { .. }
+        | Node::Const { .. }
+        | Node::RuntimeValue { .. }
+        | Node::Call { .. }
+        | Node::If { .. }
+        | Node::ValueMap { .. } => {}
+    }
+    sources.into_iter()
+}
+
+fn sequence_dynamic_source<'a>(
+    project: &'a Project,
+    sequence: &mapping::SequenceExpr,
+) -> Option<&'a str> {
+    match sequence {
+        mapping::SequenceExpr::RecursiveCollect { collection, .. } => {
+            dynamic_source_for_path(project, collection)
+        }
+        mapping::SequenceExpr::Tokenize { .. }
+        | mapping::SequenceExpr::TokenizeByLength { .. }
+        | mapping::SequenceExpr::TokenizeRegex { .. }
+        | mapping::SequenceExpr::Generate { .. } => None,
+    }
+}
+
+fn dynamic_source_for_path<'a>(project: &'a Project, path: &[String]) -> Option<&'a str> {
+    let first = path.first()?;
+    project
+        .extra_sources
+        .iter()
+        .find(|source| source.name == *first && source.dynamic_path.is_some())
+        .map(|source| source.name.as_str())
 }
 
 fn collect_sequence_items(
