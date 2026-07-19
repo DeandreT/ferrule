@@ -45,10 +45,17 @@ pub enum ThemePreference {
     Dark,
     Light,
     HighContrast,
+    Custom,
 }
 
 impl ThemePreference {
-    pub const ALL: [Self; 4] = [Self::System, Self::Dark, Self::Light, Self::HighContrast];
+    pub const ALL: [Self; 5] = [
+        Self::System,
+        Self::Dark,
+        Self::Light,
+        Self::HighContrast,
+        Self::Custom,
+    ];
 
     pub const fn label(self) -> &'static str {
         match self {
@@ -56,6 +63,7 @@ impl ThemePreference {
             Self::Dark => "Dark",
             Self::Light => "Light",
             Self::HighContrast => "High contrast",
+            Self::Custom => "Custom",
         }
     }
 }
@@ -65,6 +73,7 @@ impl ThemePreference {
 #[serde(default)]
 pub struct ThemeState {
     pub preference: ThemePreference,
+    pub custom: CustomTheme,
 }
 
 impl ThemeState {
@@ -91,6 +100,17 @@ impl ThemeState {
                 context.set_style_of(Theme::Dark, style(ResolvedTheme::HighContrast));
                 context.set_theme(Theme::Dark);
                 ResolvedTheme::HighContrast
+            }
+            ThemePreference::Custom => {
+                let colors = self.custom.palette();
+                let theme = if self.custom.dark_mode {
+                    Theme::Dark
+                } else {
+                    Theme::Light
+                };
+                context.set_style_of(theme, style_from_palette(colors, self.custom.dark_mode));
+                context.set_theme(theme);
+                return colors;
             }
         };
         palette(resolved)
@@ -137,6 +157,113 @@ pub struct Palette {
     pub error: Color32,
     pub canvas_grid: Color32,
     pub wire: Color32,
+}
+
+/// Serde-friendly color token used by user-authored themes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ThemeColor(pub [u8; 4]);
+
+impl ThemeColor {
+    pub fn color32(self) -> Color32 {
+        Color32::from_rgba_unmultiplied(self.0[0], self.0[1], self.0[2], self.0[3])
+    }
+
+    pub fn set_color32(&mut self, color: Color32) {
+        self.0 = color.to_srgba_unmultiplied();
+    }
+}
+
+impl From<Color32> for ThemeColor {
+    fn from(color: Color32) -> Self {
+        Self(color.to_srgba_unmultiplied())
+    }
+}
+
+/// Complete user-authored workbench palette.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomTheme {
+    pub dark_mode: bool,
+    pub background: ThemeColor,
+    pub panel: ThemeColor,
+    pub surface: ThemeColor,
+    pub elevated_surface: ThemeColor,
+    pub canvas: ThemeColor,
+    pub text: ThemeColor,
+    pub muted_text: ThemeColor,
+    pub border: ThemeColor,
+    pub strong_border: ThemeColor,
+    pub action: ThemeColor,
+    pub action_hover: ThemeColor,
+    pub on_action: ThemeColor,
+    pub selection: ThemeColor,
+    pub source: ThemeColor,
+    pub target: ThemeColor,
+    pub success: ThemeColor,
+    pub warning: ThemeColor,
+    pub error: ThemeColor,
+    pub canvas_grid: ThemeColor,
+    pub wire: ThemeColor,
+}
+
+impl CustomTheme {
+    pub fn from_palette(colors: Palette, dark_mode: bool) -> Self {
+        Self {
+            dark_mode,
+            background: colors.background.into(),
+            panel: colors.panel.into(),
+            surface: colors.surface.into(),
+            elevated_surface: colors.elevated_surface.into(),
+            canvas: colors.canvas.into(),
+            text: colors.text.into(),
+            muted_text: colors.muted_text.into(),
+            border: colors.border.into(),
+            strong_border: colors.strong_border.into(),
+            action: colors.action.into(),
+            action_hover: colors.action_hover.into(),
+            on_action: colors.on_action.into(),
+            selection: colors.selection.into(),
+            source: colors.source.into(),
+            target: colors.target.into(),
+            success: colors.success.into(),
+            warning: colors.warning.into(),
+            error: colors.error.into(),
+            canvas_grid: colors.canvas_grid.into(),
+            wire: colors.wire.into(),
+        }
+    }
+
+    pub fn palette(self) -> Palette {
+        Palette {
+            background: self.background.color32(),
+            panel: self.panel.color32(),
+            surface: self.surface.color32(),
+            elevated_surface: self.elevated_surface.color32(),
+            canvas: self.canvas.color32(),
+            text: self.text.color32(),
+            muted_text: self.muted_text.color32(),
+            border: self.border.color32(),
+            strong_border: self.strong_border.color32(),
+            action: self.action.color32(),
+            action_hover: self.action_hover.color32(),
+            on_action: self.on_action.color32(),
+            selection: self.selection.color32(),
+            source: self.source.color32(),
+            target: self.target.color32(),
+            success: self.success.color32(),
+            warning: self.warning.color32(),
+            error: self.error.color32(),
+            canvas_grid: self.canvas_grid.color32(),
+            wire: self.wire.color32(),
+        }
+    }
+}
+
+impl Default for CustomTheme {
+    fn default() -> Self {
+        Self::from_palette(palette(ResolvedTheme::Dark), true)
+    }
 }
 
 pub const fn palette(theme: ResolvedTheme) -> Palette {
@@ -212,9 +339,14 @@ pub const fn palette(theme: ResolvedTheme) -> Palette {
 
 pub fn style(theme: ResolvedTheme) -> Style {
     let colors = palette(theme);
-    let mut style = match theme {
-        ResolvedTheme::Light => Theme::Light.default_style(),
-        ResolvedTheme::Dark | ResolvedTheme::HighContrast => Theme::Dark.default_style(),
+    style_from_palette(colors, theme != ResolvedTheme::Light)
+}
+
+fn style_from_palette(colors: Palette, dark_mode: bool) -> Style {
+    let mut style = if dark_mode {
+        Theme::Dark.default_style()
+    } else {
+        Theme::Light.default_style()
     };
 
     style.text_styles = [
@@ -251,7 +383,7 @@ pub fn style(theme: ResolvedTheme) -> Style {
     style.explanation_tooltips = true;
     style.url_in_tooltip = true;
 
-    style.visuals = visuals(colors, theme != ResolvedTheme::Light);
+    style.visuals = visuals(colors, dark_mode);
     style
 }
 
@@ -369,6 +501,7 @@ mod tests {
         let context = egui::Context::default();
         let active = ThemeState {
             preference: ThemePreference::Light,
+            ..Default::default()
         }
         .apply(&context);
         assert_eq!(active, palette(ResolvedTheme::Light));
@@ -381,6 +514,7 @@ mod tests {
 
         ThemeState {
             preference: ThemePreference::HighContrast,
+            ..Default::default()
         }
         .apply(&context);
         assert_eq!(context.theme(), Theme::Dark);
@@ -388,6 +522,26 @@ mod tests {
             context.global_style().visuals.panel_fill,
             Color32::from_rgb(8, 8, 8)
         );
+    }
+
+    #[test]
+    fn custom_theme_roundtrips_and_applies_edited_colors() {
+        let mut state = ThemeState {
+            preference: ThemePreference::Custom,
+            ..Default::default()
+        };
+        state
+            .custom
+            .canvas
+            .set_color32(Color32::from_rgb(9, 17, 25));
+        let json = serde_json::to_string(&state).expect("custom theme serializes");
+        let decoded: ThemeState = serde_json::from_str(&json).expect("custom theme deserializes");
+        assert_eq!(decoded, state);
+
+        let context = egui::Context::default();
+        let colors = decoded.apply(&context);
+        assert_eq!(colors.canvas, Color32::from_rgb(9, 17, 25));
+        assert_eq!(context.theme(), Theme::Dark);
     }
 
     #[test]

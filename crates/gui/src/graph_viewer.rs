@@ -16,110 +16,20 @@ use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl}
 use ir::Value;
 use mapping::{AggregateOp, Binding, Graph, NamedTarget, Node, NodeId, Scope};
 
+use crate::appearance::SemanticThemeColors;
 use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 
 #[path = "graph_references.rs"]
 mod graph_references;
+#[path = "graph_sequence.rs"]
+mod graph_sequence;
+#[path = "node_palette.rs"]
+mod node_palette;
 
 use graph_references::node_inputs;
-
-fn sequence_input_at(sequence: &mapping::SequenceExpr, index: usize) -> Option<NodeId> {
-    sequence.inputs().get(index).copied()
-}
-
-fn set_sequence_input(sequence: &mut mapping::SequenceExpr, index: usize, node: NodeId) {
-    match sequence {
-        mapping::SequenceExpr::Tokenize {
-            input, delimiter, ..
-        } => match index {
-            0 => *input = node,
-            1 => *delimiter = node,
-            _ => {}
-        },
-        mapping::SequenceExpr::TokenizeByLength { input, length, .. } => match index {
-            0 => *input = node,
-            1 => *length = node,
-            _ => {}
-        },
-        mapping::SequenceExpr::TokenizeRegex {
-            input,
-            pattern,
-            flags,
-            ..
-        } => match index {
-            0 => *input = node,
-            1 => *pattern = node,
-            2 => *flags = Some(node),
-            _ => {}
-        },
-        mapping::SequenceExpr::Generate {
-            from: Some(from),
-            to,
-            ..
-        } => match index {
-            0 => *from = node,
-            1 => *to = node,
-            _ => {}
-        },
-        mapping::SequenceExpr::Generate { from: None, to, .. } => {
-            if index == 0 {
-                *to = node;
-            }
-        }
-        mapping::SequenceExpr::RecursiveCollect {
-            prefix, separator, ..
-        } => match index {
-            0 => *prefix = node,
-            1 => *separator = node,
-            _ => {}
-        },
-    }
-}
-
-fn sequence_label(sequence: &mapping::SequenceExpr) -> &'static str {
-    match sequence {
-        mapping::SequenceExpr::Tokenize { .. } => "tokenize",
-        mapping::SequenceExpr::TokenizeByLength { .. } => "tokenize-by-length",
-        mapping::SequenceExpr::TokenizeRegex { .. } => "tokenize-regexp",
-        mapping::SequenceExpr::Generate { .. } => "generate-sequence",
-        mapping::SequenceExpr::RecursiveCollect { .. } => "recursive-collect",
-    }
-}
-
-fn sequence_pin_label(sequence: &mapping::SequenceExpr, index: usize) -> &'static str {
-    if index == sequence.inputs().len() {
-        return "predicate";
-    }
-    match sequence {
-        mapping::SequenceExpr::Tokenize { .. } => ["input", "delimiter"]
-            .get(index)
-            .copied()
-            .unwrap_or("input"),
-        mapping::SequenceExpr::TokenizeByLength { .. } => {
-            ["input", "length"].get(index).copied().unwrap_or("input")
-        }
-        mapping::SequenceExpr::TokenizeRegex { flags, .. } => {
-            if flags.is_some() {
-                ["input", "pattern", "flags"]
-                    .get(index)
-                    .copied()
-                    .unwrap_or("input")
-            } else {
-                ["input", "pattern"].get(index).copied().unwrap_or("input")
-            }
-        }
-        mapping::SequenceExpr::Generate { from: Some(_), .. } => {
-            ["from", "to"].get(index).copied().unwrap_or("input")
-        }
-        mapping::SequenceExpr::Generate { from: None, .. } => "to",
-        mapping::SequenceExpr::RecursiveCollect { .. } => ["prefix", "separator"]
-            .get(index)
-            .copied()
-            .unwrap_or("input"),
-    }
-}
+use node_palette::NodeTemplate;
 
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
@@ -128,6 +38,7 @@ pub struct GraphViewer<'a> {
     pub source_leaves: &'a [SourceLeaf],
     pub target_leaves: &'a [TargetLeaf],
     pub source_paths: &'a SourcePathCatalog,
+    pub colors: SemanticThemeColors,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
     /// line.
@@ -135,16 +46,6 @@ pub struct GraphViewer<'a> {
 }
 
 impl GraphViewer<'_> {
-    const AGGREGATE_OPS: [(AggregateOp, &'static str); 7] = [
-        (AggregateOp::Count, "Count"),
-        (AggregateOp::Sum, "Sum"),
-        (AggregateOp::Avg, "Average"),
-        (AggregateOp::Min, "Minimum"),
-        (AggregateOp::Max, "Maximum"),
-        (AggregateOp::Join, "String join"),
-        (AggregateOp::ItemAt, "Item at"),
-    ];
-
     fn fresh_id(&self) -> NodeId {
         self.graph.nodes.keys().next_back().map_or(0, |max| max + 1)
     }
@@ -179,17 +80,71 @@ impl GraphViewer<'_> {
         (id, snarl_id)
     }
 
-    fn aggregate_needs_arg(function: AggregateOp) -> bool {
-        matches!(function, AggregateOp::Join | AggregateOp::ItemAt)
-    }
-
-    fn aggregate_node(function: AggregateOp, arg: Option<NodeId>) -> Node {
-        Node::Aggregate {
-            function,
-            collection: Vec::new(),
-            value: Vec::new(),
-            expression: None,
-            arg,
+    fn insert_palette_node(
+        &mut self,
+        snarl: &mut Snarl<CanvasNode>,
+        pos: egui::Pos2,
+        template: NodeTemplate,
+    ) -> (NodeId, SnarlNodeId) {
+        match template {
+            NodeTemplate::Constant => self.insert(snarl, pos, Node::Const { value: Value::Null }),
+            NodeTemplate::SourceField => self.insert(
+                snarl,
+                pos,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+            NodeTemplate::Position => self.insert(
+                snarl,
+                pos,
+                Node::Position {
+                    collection: Vec::new(),
+                },
+            ),
+            NodeTemplate::Call => self.insert(
+                snarl,
+                pos,
+                Node::Call {
+                    function: "concat".to_string(),
+                    args: Vec::new(),
+                },
+            ),
+            NodeTemplate::If => self.insert_with_placeholders(snarl, pos, 3, |inputs| Node::If {
+                condition: inputs[0],
+                then: inputs[1],
+                else_: inputs[2],
+            }),
+            NodeTemplate::ValueMap => {
+                self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::ValueMap {
+                    input: inputs[0],
+                    input_type: None,
+                    table: Vec::new(),
+                    default: None,
+                })
+            }
+            NodeTemplate::Lookup => {
+                self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::Lookup {
+                    collection: Vec::new(),
+                    key: Vec::new(),
+                    matches: inputs[0],
+                    value: Vec::new(),
+                })
+            }
+            NodeTemplate::CollectionFind => {
+                self.insert_with_placeholders(snarl, pos, 2, |inputs| Node::CollectionFind {
+                    collection: Vec::new(),
+                    predicate: inputs[0],
+                    value: inputs[1],
+                })
+            }
+            NodeTemplate::Aggregate(function) => {
+                let inputs = usize::from(node_palette::aggregate_needs_arg(function));
+                self.insert_with_placeholders(snarl, pos, inputs, |ids| {
+                    node_palette::aggregate_node(function, ids.first().copied())
+                })
+            }
         }
     }
 
@@ -287,7 +242,7 @@ impl GraphViewer<'_> {
             } => {
                 let sequence_inputs = sequence.inputs().len();
                 if idx < sequence_inputs {
-                    set_sequence_input(sequence, idx, from_id);
+                    graph_sequence::set_input(sequence, idx, from_id);
                 } else if idx == sequence_inputs {
                     *predicate = from_id;
                 }
@@ -295,7 +250,7 @@ impl GraphViewer<'_> {
             Node::SequenceItemAt { sequence, index } => {
                 let sequence_inputs = sequence.inputs().len();
                 if idx < sequence_inputs {
-                    set_sequence_input(sequence, idx, from_id);
+                    graph_sequence::set_input(sequence, idx, from_id);
                 } else if idx == sequence_inputs {
                     *index = from_id;
                 }
@@ -353,9 +308,9 @@ impl GraphViewer<'_> {
             Node::SequenceExists {
                 sequence,
                 predicate,
-            } => sequence_input_at(sequence, idx)
+            } => graph_sequence::input_at(sequence, idx)
                 .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
-            Node::SequenceItemAt { sequence, index } => sequence_input_at(sequence, idx)
+            Node::SequenceItemAt { sequence, index } => graph_sequence::input_at(sequence, idx)
                 .or_else(|| (idx == sequence.inputs().len()).then_some(*index)),
             Node::Aggregate {
                 expression, arg, ..
@@ -616,10 +571,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     format!("Find: {}", collection.join("/"))
                 }
                 Some(Node::SequenceExists { sequence, .. }) => {
-                    format!("Exists: {}", sequence_label(sequence))
+                    format!("Exists: {}", graph_sequence::label(sequence))
                 }
                 Some(Node::SequenceItemAt { sequence, .. }) => {
-                    format!("Item at: {}", sequence_label(sequence))
+                    format!("Item at: {}", graph_sequence::label(sequence))
                 }
                 Some(Node::Aggregate {
                     function,
@@ -676,6 +631,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     #[allow(refining_impl_trait)]
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let idx = pin.id.input;
+        let fill = match snarl[pin.id.node] {
+            CanvasNode::Source => self.colors.source,
+            CanvasNode::Target => self.colors.target,
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
+        };
         let label = match snarl[pin.id.node] {
             CanvasNode::Target => self
                 .target_leaves
@@ -691,13 +651,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::DynamicSourceField { .. }) => "property name".to_string(),
                     Some(Node::CollectionFind { .. }) => ["predicate", "value"][idx].to_string(),
                     Some(Node::SequenceExists { sequence, .. }) => {
-                        sequence_pin_label(sequence, idx).to_string()
+                        graph_sequence::pin_label(sequence, idx).to_string()
                     }
                     Some(Node::SequenceItemAt { sequence, .. }) => {
                         if idx == sequence.inputs().len() {
                             "index".to_string()
                         } else {
-                            sequence_pin_label(sequence, idx).to_string()
+                            graph_sequence::pin_label(sequence, idx).to_string()
                         }
                     }
                     Some(
@@ -710,17 +670,26 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         };
         ui.label(label);
         PinInfo::circle()
+            .with_fill(fill.to_egui())
+            .with_wire_color(self.colors.wire.to_egui())
     }
 
     #[allow(refining_impl_trait)]
     fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
+        let fill = match snarl[pin.id.node] {
+            CanvasNode::Source => self.colors.source,
+            CanvasNode::Target => self.colors.target,
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
+        };
         let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
             if let CanvasNode::Source = snarl[pin.id.node]
                 && let Some(leaf) = self.source_leaves.get(pin.id.output)
             {
                 ui.label(&leaf.label);
             }
-            return PinInfo::circle();
+            return PinInfo::circle()
+                .with_fill(fill.to_egui())
+                .with_wire_color(self.colors.wire.to_egui());
         };
         let mut new_call_arg_needed = false;
         let mut remove_call_wire = None;
@@ -864,10 +833,16 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     });
                 }
                 Node::SequenceExists { sequence, .. } => {
-                    ui.label(format!("any {} item matches", sequence_label(sequence)));
+                    ui.label(format!(
+                        "any {} item matches",
+                        graph_sequence::label(sequence)
+                    ));
                 }
                 Node::SequenceItemAt { sequence, .. } => {
-                    ui.label(format!("select one {} item", sequence_label(sequence)));
+                    ui.label(format!(
+                        "select one {} item",
+                        graph_sequence::label(sequence)
+                    ));
                 }
                 Node::Aggregate {
                     function,
@@ -893,13 +868,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             }
                             egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
                                 .selected_text(
-                                    Self::AGGREGATE_OPS
+                                    node_palette::AGGREGATE_OPS
                                         .iter()
                                         .find(|(op, _)| op == function)
                                         .map_or("Aggregate", |(_, label)| *label),
                                 )
                                 .show_ui(ui, |ui| {
-                                    for (op, label) in Self::AGGREGATE_OPS {
+                                    for (op, label) in node_palette::AGGREGATE_OPS {
                                         ui.selectable_value(function, op, label);
                                     }
                                 });
@@ -920,9 +895,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             }
                         });
                         if previous != *function {
-                            if Self::aggregate_needs_arg(*function) && arg.is_none() {
+                            if node_palette::aggregate_needs_arg(*function) && arg.is_none() {
                                 new_aggregate_arg_needed = true;
-                            } else if !Self::aggregate_needs_arg(*function) {
+                            } else if !node_palette::aggregate_needs_arg(*function) {
                                 remove_aggregate_wire = arg.take();
                             }
                         }
@@ -1018,6 +993,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             self.remove_orphaned_placeholder(removed, snarl);
         }
         PinInfo::circle()
+            .with_fill(fill.to_egui())
+            .with_wire_color(self.colors.wire.to_egui())
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {
@@ -1203,86 +1180,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn show_graph_menu(&mut self, pos: egui::Pos2, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) {
-        ui.label("Add node");
-        if ui.button("Const").clicked() {
-            self.insert(snarl, pos, Node::Const { value: Value::Null });
-            ui.close();
-        }
-        if ui.button("Position").clicked() {
-            self.insert(
-                snarl,
-                pos,
-                Node::Position {
-                    collection: Vec::new(),
-                },
-            );
-            ui.close();
-        }
-        if ui.button("Call").clicked() {
-            self.insert(
-                snarl,
-                pos,
-                Node::Call {
-                    function: "concat".to_string(),
-                    args: vec![],
-                },
-            );
-            ui.close();
-        }
-        if ui.button("If").clicked() {
-            self.insert_with_placeholders(snarl, pos, 3, |inputs| Node::If {
-                condition: inputs[0],
-                then: inputs[1],
-                else_: inputs[2],
-            });
-            ui.close();
-        }
-        if ui.button("Value map").clicked() {
-            self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::ValueMap {
-                input: inputs[0],
-                input_type: None,
-                table: vec![],
-                default: None,
-            });
-            ui.close();
-        }
-        if ui.button("Lookup").clicked() {
-            self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::Lookup {
-                collection: vec![],
-                key: vec![],
-                matches: inputs[0],
-                value: vec![],
-            });
-            ui.close();
-        }
-        if ui.button("Find in collection").clicked() {
-            self.insert_with_placeholders(snarl, pos, 2, |inputs| Node::CollectionFind {
-                collection: vec![],
-                predicate: inputs[0],
-                value: inputs[1],
-            });
-            ui.close();
-        }
-        ui.menu_button("Aggregate", |ui| {
-            for (function, label) in Self::AGGREGATE_OPS {
-                if ui.button(label).clicked() {
-                    let inputs = usize::from(Self::aggregate_needs_arg(function));
-                    self.insert_with_placeholders(snarl, pos, inputs, |ids| {
-                        Self::aggregate_node(function, ids.first().copied())
-                    });
-                    ui.close();
-                }
-            }
-        });
-        if ui.button("Source field (manual path)").clicked() {
-            self.insert(
-                snarl,
-                pos,
-                Node::SourceField {
-                    path: vec![],
-                    frame: None,
-                },
-            );
+        if let Some(template) = node_palette::show(ui) {
+            self.insert_palette_node(snarl, pos, template);
             ui.close();
         }
     }
