@@ -42,13 +42,14 @@ The current portable model includes:
 - lazy conditionals and a closed set of boolean, string-predicate, arithmetic,
   and comparison functions
 - collection aggregates over direct fields or computed per-item expressions
-- nested and repeating target construction with numeric target adaptation
+- nested, repeating-group, and repeating-scalar target construction with
+  numeric target adaptation for ordinary field bindings
 - source-backed empty, nested, and multi-hop iteration
 - filters, stable multi-key sorting, ordered sequence windows, and mapped output
-- literal tokenization, Unicode-scalar fixed-length tokenization, and bounded
-  inclusive integer generated sequences
-- short-circuiting existential predicates and 1-based scalar `item-at` over
-  those generated sequences
+- literal tokenization, Unicode-scalar fixed-length tokenization, bounded
+  inclusive integer ranges, and bounded recursive depth-first collection
+- existential predicates and 1-based scalar `item-at` over those generated
+  sequences; predicates short-circuit after the sequence has been materialized
 - active collection identity, outward source-field fallback, and compacted
   output positions
 
@@ -59,9 +60,12 @@ sequence size failures remain structured.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. Regex
-tokenization, recursive-collect sequences, and recursive target constructions
-remain interpreter-only. Code generation is expanding incrementally toward
-interpreter parity; see the [roadmap](../ROADMAP.md) for the broader direction.
+tokenization remains interpreter-only because Rust and .NET expose materially
+different regex dialects and Unicode behavior; exact cross-backend support needs
+a Ferrule-owned matcher. Recursive-filter, path-hierarchy, and adjacency-tree
+target construction remain interpreter-only. Code generation is expanding
+incrementally toward interpreter parity; see the [roadmap](../ROADMAP.md) for the
+broader direction.
 
 ## Output Safety
 

@@ -1,6 +1,46 @@
 use crate::{FunctionError, RuntimeError, Value};
 
 pub const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
+pub const MAX_RECURSIVE_SEQUENCE_DEPTH: usize = 256;
+
+#[derive(Clone, Copy)]
+pub struct RecursiveCollectPaths<'a> {
+    pub collection: &'a [&'a str],
+    pub children: &'a [&'a str],
+    pub descent_value: &'a [&'a str],
+    pub values: &'a [&'a str],
+    pub value: &'a [&'a str],
+}
+
+pub fn recursive_sequence_parameter(value: Value) -> Result<String, RuntimeError> {
+    match value {
+        Value::Null => Ok(String::new()),
+        value => recursive_scalar_text(&value),
+    }
+}
+
+pub fn recursive_collect(
+    context: &crate::ScopeContext<'_>,
+    paths: RecursiveCollectPaths<'_>,
+    prefix: &str,
+    separator: &str,
+) -> Result<Vec<Value>, RuntimeError> {
+    context.recursive_collect(paths, prefix, separator)
+}
+
+pub(crate) fn recursive_scalar_text(value: &Value) -> Result<String, RuntimeError> {
+    match value {
+        Value::Bool(value) => Ok(value.to_string()),
+        Value::Int(value) => Ok(value.to_string()),
+        Value::Float(value) if value.is_finite() => Ok(value.to_string()),
+        Value::String(value) => Ok(value.clone()),
+        Value::Null | Value::XmlNil(_) | Value::Float(_) => Err(FunctionError::TypeMismatch {
+            function: "recursive-collect",
+            got: value.type_name(),
+        }
+        .into()),
+    }
+}
 
 /// Splits a string around one literal delimiter while preserving empty items.
 pub fn tokenize(input: Value, delimiter: Value) -> Result<Vec<Value>, RuntimeError> {
@@ -103,6 +143,8 @@ fn exact_float_integer(value: f64) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Instance, ScopeContext, field, group, repeated, scalar};
+    use ir::XmlNil;
 
     #[test]
     fn literal_tokenize_preserves_empty_items_and_typed_failures() {
@@ -176,6 +218,103 @@ mod tests {
             Err(RuntimeError::GeneratedSequenceTooLarge {
                 requested: 1_u128 << 64,
                 max: MAX_GENERATED_SEQUENCE_ITEMS,
+            })
+        );
+    }
+
+    #[test]
+    fn recursive_collect_is_preorder_and_preserves_parent_prefixes() {
+        let directory =
+            |name: &str, files: &[&str], children: Vec<Instance>| {
+                group([
+                    field("name", scalar(Value::String(name.into()))),
+                    field(
+                        "file",
+                        repeated(files.iter().map(|file| {
+                            group([field("name", scalar(Value::String((*file).into())))])
+                        })),
+                    ),
+                    field("directory", repeated(children)),
+                ])
+            };
+        let source = directory(
+            "root",
+            &["top.txt", "second.txt"],
+            vec![directory("child", &["nested.txt"], Vec::new())],
+        );
+        let context = ScopeContext::new(&source);
+
+        assert_eq!(
+            recursive_collect(
+                &context,
+                RecursiveCollectPaths {
+                    collection: &[],
+                    children: &["directory"],
+                    descent_value: &["name"],
+                    values: &["file"],
+                    value: &["name"],
+                },
+                "",
+                "\\",
+            ),
+            Ok(vec![
+                Value::String("\\root\\top.txt".into()),
+                Value::String("\\root\\second.txt".into()),
+                Value::String("\\root\\child\\nested.txt".into()),
+            ])
+        );
+    }
+
+    #[test]
+    fn recursive_parameters_default_null_and_reject_non_scalars() {
+        assert_eq!(recursive_sequence_parameter(Value::Null), Ok(String::new()));
+        assert_eq!(
+            recursive_sequence_parameter(Value::Bool(false)),
+            Ok("false".into())
+        );
+        assert_eq!(
+            recursive_sequence_parameter(Value::Float(12.5)),
+            Ok("12.5".into())
+        );
+        assert!(matches!(
+            recursive_sequence_parameter(Value::XmlNil(XmlNil)),
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "recursive-collect",
+                got: "xml nil"
+            }))
+        ));
+    }
+
+    #[test]
+    fn recursive_collect_enforces_depth_before_pruning() {
+        let mut source = group([
+            field("name", scalar(Value::String("leaf".into()))),
+            field("file", repeated(Vec::<Instance>::new())),
+            field("directory", repeated(Vec::<Instance>::new())),
+        ]);
+        for depth in 0..MAX_RECURSIVE_SEQUENCE_DEPTH {
+            source = group([
+                field("name", scalar(Value::String(format!("level-{depth}")))),
+                field("file", repeated(Vec::<Instance>::new())),
+                field("directory", repeated([source])),
+            ]);
+        }
+        let context = ScopeContext::new(&source);
+        assert_eq!(
+            recursive_collect(
+                &context,
+                RecursiveCollectPaths {
+                    collection: &[],
+                    children: &["directory"],
+                    descent_value: &["name"],
+                    values: &["file"],
+                    value: &["name"],
+                },
+                "",
+                "/",
+            ),
+            Err(RuntimeError::RecursiveSequenceDepth {
+                limit: MAX_RECURSIVE_SEQUENCE_DEPTH,
             })
         );
     }

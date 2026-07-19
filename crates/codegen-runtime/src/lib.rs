@@ -19,7 +19,9 @@ pub use context::{
 };
 pub use functions::FunctionError;
 pub use generated_sequence::{
-    MAX_GENERATED_SEQUENCE_ITEMS, generate_sequence, tokenize, tokenize_by_length,
+    MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
+    generate_sequence, recursive_collect, recursive_sequence_parameter, tokenize,
+    tokenize_by_length,
 };
 pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
@@ -34,6 +36,8 @@ pub enum RuntimeError {
     AggregateIntegerOverflow { function: AggregateFunction },
     AggregateNonFinite { function: AggregateFunction },
     GeneratedSequenceTooLarge { requested: u128, max: u128 },
+    RecursiveSequenceDepth { limit: usize },
+    RecursiveSequenceTooLarge { max: u128 },
     NotABool { node: u32, found: &'static str },
     NotAnItemCount { node: u32, found: &'static str },
 }
@@ -57,6 +61,18 @@ impl fmt::Display for RuntimeError {
                 formatter,
                 "generate-sequence requested {requested} items; maximum is {max}"
             ),
+            Self::RecursiveSequenceDepth { limit } => {
+                write!(
+                    formatter,
+                    "recursive sequence exceeds the {limit}-group depth limit"
+                )
+            }
+            Self::RecursiveSequenceTooLarge { max } => {
+                write!(
+                    formatter,
+                    "recursive sequence produced more than {max} items"
+                )
+            }
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
             }
@@ -78,6 +94,8 @@ impl std::error::Error for RuntimeError {
             Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
             | Self::GeneratedSequenceTooLarge { .. }
+            | Self::RecursiveSequenceDepth { .. }
+            | Self::RecursiveSequenceTooLarge { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. } => None,
         }

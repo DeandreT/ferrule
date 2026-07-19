@@ -1,3 +1,4 @@
+mod recursive;
 mod resolve;
 mod walk;
 

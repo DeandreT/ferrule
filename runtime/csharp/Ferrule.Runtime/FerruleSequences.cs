@@ -58,6 +58,7 @@ public readonly struct FerruleSequenceWindow
 public static class FerruleSequences
 {
     public const ulong MaximumGeneratedSequenceItems = 1_000_000;
+    public const int MaximumRecursiveSequenceDepth = 256;
 
     /// <summary>Splits around a literal delimiter while preserving empty items.</summary>
     public static IReadOnlyList<FerruleValue> Tokenize(
@@ -161,6 +162,248 @@ public static class FerruleSequences
             current++;
         }
         return new ReadOnlyCollection<FerruleValue>(values);
+    }
+
+    /// <summary>Converts one recursive sequence prefix or separator.</summary>
+    public static string RecursiveCollectArgumentText(FerruleValue value) =>
+        value.Kind == FerruleValueKind.Null ? string.Empty : RecursiveScalarText(value);
+
+    /// <summary>Collects scalar leaves from a recursive source tree in preorder.</summary>
+    public static IReadOnlyList<FerruleValue> RecursiveCollect(
+        ScopeContext context,
+        IReadOnlyList<string> collection,
+        IReadOnlyList<string> children,
+        IReadOnlyList<string> descentValue,
+        IReadOnlyList<string> values,
+        IReadOnlyList<string> value,
+        string prefix,
+        string separator)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(collection);
+        ArgumentNullException.ThrowIfNull(children);
+        ArgumentNullException.ThrowIfNull(descentValue);
+        ArgumentNullException.ThrowIfNull(values);
+        ArgumentNullException.ThrowIfNull(value);
+        ArgumentNullException.ThrowIfNull(prefix);
+        ArgumentNullException.ThrowIfNull(separator);
+        ValidatePath(collection);
+        ValidatePath(children);
+        ValidatePath(descentValue);
+        ValidatePath(values);
+        ValidatePath(value);
+
+        FerruleInstance? root = null;
+        for (var index = context.Frames.Count - 1; index >= 0; index--)
+        {
+            var frame = context.Frames[index];
+            if (collection.Count == 0 || HasField(frame, collection[0]))
+            {
+                root = frame;
+                break;
+            }
+        }
+        if (root is null && context.Frames.Count > 0)
+        {
+            root = context.Frames[^1];
+        }
+        if (root is null)
+        {
+            return Array.Empty<FerruleValue>();
+        }
+
+        var roots = new List<FerruleInstance>();
+        CollectInstances(root, collection, 0, roots);
+        var output = new List<FerruleValue>();
+        foreach (var item in roots)
+        {
+            CollectRecursiveGroup(
+                item,
+                children,
+                descentValue,
+                values,
+                value,
+                prefix,
+                separator,
+                0,
+                output);
+        }
+        return new ReadOnlyCollection<FerruleValue>(output);
+    }
+
+    private static void ValidatePath(IReadOnlyList<string> path)
+    {
+        for (var index = 0; index < path.Count; index++)
+        {
+            ArgumentNullException.ThrowIfNull(path[index]);
+        }
+    }
+
+    private static void CollectRecursiveGroup(
+        FerruleInstance group,
+        IReadOnlyList<string> children,
+        IReadOnlyList<string> descentValue,
+        IReadOnlyList<string> values,
+        IReadOnlyList<string> value,
+        string prefix,
+        string separator,
+        int depth,
+        List<FerruleValue> output)
+    {
+        if (depth >= MaximumRecursiveSequenceDepth)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.RecursiveSequenceDepth,
+                $"recursive sequence exceeds the {MaximumRecursiveSequenceDepth}-group depth limit",
+                maximumDepth: MaximumRecursiveSequenceDepth);
+        }
+        if (!TryScalarAt(group, descentValue, 0, out var segment))
+        {
+            return;
+        }
+
+        var currentPrefix = prefix + separator + RecursiveScalarText(segment);
+        var leaves = new List<FerruleInstance>();
+        CollectInstances(group, values, 0, leaves);
+        foreach (var leaf in leaves)
+        {
+            if (!TryScalarAt(leaf, value, 0, out var leafValue))
+            {
+                continue;
+            }
+            if ((ulong)output.Count >= MaximumGeneratedSequenceItems)
+            {
+                throw new FerruleRuntimeException(
+                    FerruleRuntimeError.RecursiveSequenceTooLarge,
+                    $"recursive sequence produced more than {MaximumGeneratedSequenceItems} items",
+                    maximumItems: MaximumGeneratedSequenceItems);
+            }
+            output.Add(FerruleValue.FromString(
+                currentPrefix + separator + RecursiveScalarText(leafValue)));
+        }
+
+        var childGroups = new List<FerruleInstance>();
+        CollectInstances(group, children, 0, childGroups);
+        foreach (var child in childGroups)
+        {
+            CollectRecursiveGroup(
+                child,
+                children,
+                descentValue,
+                values,
+                value,
+                currentPrefix,
+                separator,
+                depth + 1,
+                output);
+        }
+    }
+
+    private static void CollectInstances(
+        FerruleInstance instance,
+        IReadOnlyList<string> path,
+        int pathIndex,
+        List<FerruleInstance> output)
+    {
+        if (pathIndex == path.Count)
+        {
+            switch (instance)
+            {
+                case FerruleRepeated repeated:
+                    output.AddRange(repeated.Items);
+                    break;
+                case FerruleMappedSequence mapped:
+                    output.AddRange(mapped.Items);
+                    break;
+                case FerruleDocumentSet documents:
+                    output.AddRange(documents.Documents.Select(document => document.Value));
+                    break;
+                default:
+                    output.Add(instance);
+                    break;
+            }
+            return;
+        }
+
+        switch (instance)
+        {
+            case FerruleGroup group when group.TryGetField(path[pathIndex], out var child):
+                CollectInstances(child, path, pathIndex + 1, output);
+                break;
+            case FerruleRepeated repeated:
+                foreach (var item in repeated.Items)
+                {
+                    CollectInstances(item, path, pathIndex, output);
+                }
+                break;
+            case FerruleMappedSequence mapped:
+                foreach (var item in mapped.Items)
+                {
+                    CollectInstances(item, path, pathIndex, output);
+                }
+                break;
+            case FerruleDocumentSet documents:
+                foreach (var document in documents.Documents)
+                {
+                    CollectInstances(document.Value, path, pathIndex, output);
+                }
+                break;
+        }
+    }
+
+    private static bool TryScalarAt(
+        FerruleInstance instance,
+        IReadOnlyList<string> path,
+        int pathIndex,
+        out FerruleValue value)
+    {
+        if (pathIndex == path.Count)
+        {
+            if (instance is FerruleScalar scalar)
+            {
+                value = scalar.Value;
+                return true;
+            }
+            value = default;
+            return false;
+        }
+
+        switch (instance)
+        {
+            case FerruleGroup group when group.TryGetField(path[pathIndex], out var child):
+                return TryScalarAt(child, path, pathIndex + 1, out value);
+            case FerruleRepeated { Items.Count: > 0 } repeated:
+                return TryScalarAt(repeated.Items[0], path, pathIndex, out value);
+            case FerruleMappedSequence { Items.Count: > 0 } mapped:
+                return TryScalarAt(mapped.Items[0], path, pathIndex, out value);
+            case FerruleDocumentSet { Documents.Count: > 0 } documents:
+                return TryScalarAt(documents.Documents[0].Value, path, pathIndex, out value);
+            default:
+                value = default;
+                return false;
+        }
+    }
+
+    private static bool HasField(FerruleInstance instance, string name) => instance switch
+    {
+        FerruleGroup group => group.TryGetField(name, out _),
+        FerruleDocumentSet { Documents.Count: > 0 } documents =>
+            HasField(documents.Documents[0].Value, name),
+        _ => false,
+    };
+
+    private static string RecursiveScalarText(FerruleValue value)
+    {
+        if (value.Kind is FerruleValueKind.Bool or FerruleValueKind.Int64 or FerruleValueKind.String ||
+            value.Kind == FerruleValueKind.Double && double.IsFinite(value.DoubleValue))
+        {
+            return FerruleFunctions.ScalarText(value);
+        }
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.FunctionType,
+            $"`recursive-collect` cannot accept a {ValueTypeName(value)} argument.",
+            function: "recursive-collect",
+            foundKind: value.Kind);
     }
 
     /// <summary>

@@ -49,13 +49,11 @@ pub enum ScopeFeature {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedSequenceKind {
     TokenizeRegex,
-    RecursiveCollect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeConstructionKind {
     CopyCurrentSource,
-    Scalar,
     XmlMixedContent,
     RecursiveFilter,
     PathHierarchy,
@@ -179,7 +177,6 @@ impl fmt::Display for UnsupportedSequenceKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::TokenizeRegex => "regular-expression tokenize",
-            Self::RecursiveCollect => "recursive-collect",
         })
     }
 }
@@ -188,7 +185,6 @@ impl fmt::Display for ScopeConstructionKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::CopyCurrentSource => "copy-current-source",
-            Self::Scalar => "scalar",
             Self::XmlMixedContent => "XML mixed-content",
             Self::RecursiveFilter => "recursive-filter",
             Self::PathHierarchy => "path-hierarchy",

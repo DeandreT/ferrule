@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::*;
 use codegen::{
     Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, ScalarFunction,
-    SourceIteration,
+    SourceIteration, TargetConstruction,
 };
 use ir::SchemaNode;
 
@@ -171,6 +171,7 @@ fn program() -> Program {
             target_field: String::new(),
             repeating: false,
             iteration: None,
+            construction: TargetConstruction::Group,
             bindings: vec![
                 Binding {
                     target_field: "Copied".to_string(),
@@ -208,6 +209,7 @@ fn program() -> Program {
                     target_field: "Nested".to_string(),
                     repeating: true,
                     iteration: None,
+                    construction: TargetConstruction::Group,
                     bindings: vec![Binding {
                         target_field: "Constant".to_string(),
                         expression: 4,
@@ -226,6 +228,7 @@ fn program() -> Program {
                         Vec::new(),
                         IterationOutput::Repeated,
                     )),
+                    construction: TargetConstruction::Group,
                     bindings: vec![
                         Binding {
                             target_field: "ParentId".to_string(),
@@ -635,6 +638,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
             target_field: String::new(),
             repeating: false,
             iteration: None,
+            construction: TargetConstruction::Group,
             bindings: Vec::new(),
             children: vec![TargetScope {
                 target_field: "Rows".into(),
@@ -644,6 +648,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
                     to: 2,
                     item: 3,
                 })),
+                construction: TargetConstruction::Group,
                 bindings: vec![
                     Binding {
                         target_field: "Value".into(),
@@ -880,6 +885,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             target_field: String::new(),
             repeating: false,
             iteration: None,
+            construction: TargetConstruction::Group,
             bindings: vec![
                 Binding {
                     target_field: "Selected".into(),

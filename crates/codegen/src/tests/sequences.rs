@@ -1,4 +1,6 @@
 use super::*;
+use crate::TargetConstruction;
+use mapping::ScopeConstruction;
 
 #[test]
 fn lowers_portable_generated_sequences_and_their_item_roots() {
@@ -120,6 +122,149 @@ fn lowers_portable_generated_sequences_and_their_item_roots() {
             to: 41,
             item: 42,
         }))
+    );
+
+    let recursive = project(
+        mapping::SequenceExpr::RecursiveCollect {
+            collection: vec!["directory".into()],
+            children: vec!["children".into()],
+            descent_value: vec!["name".into()],
+            values: vec!["files".into()],
+            value: vec!["name".into()],
+            prefix: 40,
+            separator: 41,
+            item: 42,
+        },
+        vec![
+            (
+                40,
+                Node::Const {
+                    value: Value::String(String::new()),
+                },
+            ),
+            (
+                41,
+                Node::Const {
+                    value: Value::String("/".into()),
+                },
+            ),
+            (42, item()),
+        ],
+    );
+    assert_eq!(
+        lower(&recursive)
+            .expect("recursive collect lowers")
+            .root
+            .children[0]
+            .iteration,
+        Some(IterationPlan::generated(
+            GeneratedSequence::RecursiveCollect {
+                collection: vec!["directory".into()],
+                children: vec!["children".into()],
+                descent_value: vec!["name".into()],
+                values: vec!["files".into()],
+                value: vec!["name".into()],
+                prefix: 40,
+                separator: 41,
+                item: 42,
+            }
+        ))
+    );
+}
+
+#[test]
+fn lowers_recursive_collect_into_a_repeating_scalar_scope() {
+    let source = SchemaNode::group(
+        "directory",
+        vec![
+            scalar("name"),
+            SchemaNode::group("file", vec![scalar("name")]).repeating(),
+            SchemaNode::recursive_group("directory", "directory").repeating(),
+        ],
+    );
+    let target = SchemaNode::group("Files", vec![scalar("File").repeating()]);
+    let graph = Graph {
+        nodes: BTreeMap::from([
+            (
+                1,
+                Node::Const {
+                    value: Value::String(String::new()),
+                },
+            ),
+            (
+                2,
+                Node::Const {
+                    value: Value::String("/".into()),
+                },
+            ),
+            (
+                3,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            ),
+            (
+                4,
+                Node::Const {
+                    value: Value::Bool(true),
+                },
+            ),
+            (
+                5,
+                Node::If {
+                    condition: 4,
+                    then: 3,
+                    else_: 3,
+                },
+            ),
+        ]),
+    };
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        graph,
+        root: Scope {
+            children: vec![Scope {
+                target_field: "File".into(),
+                iteration: ScopeIteration::Sequence(mapping::SequenceExpr::RecursiveCollect {
+                    collection: Vec::new(),
+                    children: vec!["directory".into()],
+                    descent_value: vec!["name".into()],
+                    values: vec!["file".into()],
+                    value: vec!["name".into()],
+                    prefix: 1,
+                    separator: 2,
+                    item: 3,
+                }),
+                construction: ScopeConstruction::Scalar { value: 5 },
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let program = lower(&project).expect("canonical recursive collect lowers");
+    let scope = &program.root.children[0];
+    assert_eq!(
+        scope.construction,
+        TargetConstruction::Scalar { expression: 5 }
+    );
+    assert!(matches!(scope.iteration, Some(IterationPlan { .. })));
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|expression| expression.id)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3, 4, 5]
     );
 }
 

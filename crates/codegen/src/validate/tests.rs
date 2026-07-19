@@ -32,6 +32,7 @@ fn program() -> Program {
             target_field: String::new(),
             repeating: false,
             iteration: None,
+            construction: TargetConstruction::Group,
             bindings: vec![Binding {
                 target_field: "Value".into(),
                 expression: 2,
@@ -41,6 +42,10 @@ fn program() -> Program {
             children: Vec::new(),
         },
     }
+}
+
+fn set_target_fields(program: &mut Program, fields: Vec<SchemaNode>) {
+    program.target = SchemaNode::group("Target", fields);
 }
 
 #[test]
@@ -121,6 +126,28 @@ fn validates_generated_sequence_references_and_item_shape() {
         })
     );
 
+    let mut missing_recursive_separator = valid.clone();
+    missing_recursive_separator.root.iteration = Some(IterationPlan::generated(
+        GeneratedSequence::RecursiveCollect {
+            collection: Vec::new(),
+            children: vec!["children".into()],
+            descent_value: vec!["name".into()],
+            values: vec!["values".into()],
+            value: vec!["name".into()],
+            prefix: 1,
+            separator: 99,
+            item: 3,
+        },
+    ));
+    assert_eq!(
+        validate_program(&missing_recursive_separator),
+        Err(ProgramValidationError::MissingSequenceExpression {
+            owner: SequenceOwner::Scope(Vec::new()),
+            role: SequenceExpressionRole::Input(1),
+            expression: 99,
+        })
+    );
+
     let mut missing_item = program();
     missing_item.root.iteration = Some(generated(99));
     assert_eq!(
@@ -144,6 +171,206 @@ fn validates_generated_sequence_references_and_item_shape() {
 }
 
 #[test]
+fn validates_every_recursive_sequence_schema_path() {
+    let sequence = || GeneratedSequence::RecursiveCollect {
+        collection: Vec::new(),
+        children: vec!["children".into()],
+        descent_value: vec!["name".into()],
+        values: vec!["files".into()],
+        value: vec!["name".into()],
+        prefix: 1,
+        separator: 2,
+        item: 3,
+    };
+    let mut valid = program();
+    valid.source = SchemaNode::group(
+        "Directory",
+        vec![
+            SchemaNode::scalar("name", ScalarType::String),
+            SchemaNode::group(
+                "files",
+                vec![SchemaNode::scalar("name", ScalarType::String)],
+            )
+            .repeating(),
+            SchemaNode::recursive_group("children", "Directory").repeating(),
+        ],
+    );
+    valid.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::SourceField {
+            frame: None,
+            path: Vec::new(),
+        },
+    });
+    valid.root.iteration = Some(IterationPlan::generated(sequence()));
+    assert_eq!(validate_program(&valid), Ok(()));
+
+    let assert_invalid =
+        |sequence: GeneratedSequence, role: RecursiveSequencePathRole, path: Vec<String>| {
+            let mut invalid = valid.clone();
+            invalid.root.iteration = Some(IterationPlan::generated(sequence));
+            assert_eq!(
+                validate_program(&invalid),
+                Err(ProgramValidationError::InvalidRecursiveSequencePath {
+                    owner: SequenceOwner::Scope(Vec::new()),
+                    role,
+                    path,
+                })
+            );
+        };
+
+    let mut invalid = sequence();
+    let GeneratedSequence::RecursiveCollect { collection, .. } = &mut invalid else {
+        unreachable!();
+    };
+    *collection = vec!["missing".into()];
+    assert_invalid(
+        invalid,
+        RecursiveSequencePathRole::Collection,
+        vec!["missing".into()],
+    );
+
+    let mut invalid = sequence();
+    let GeneratedSequence::RecursiveCollect { children, .. } = &mut invalid else {
+        unreachable!();
+    };
+    *children = vec!["missing".into()];
+    assert_invalid(
+        invalid,
+        RecursiveSequencePathRole::Children,
+        vec!["missing".into()],
+    );
+
+    let mut invalid = sequence();
+    let GeneratedSequence::RecursiveCollect { descent_value, .. } = &mut invalid else {
+        unreachable!();
+    };
+    *descent_value = vec!["missing".into()];
+    assert_invalid(
+        invalid,
+        RecursiveSequencePathRole::DescentValue,
+        vec!["missing".into()],
+    );
+
+    let mut invalid = sequence();
+    let GeneratedSequence::RecursiveCollect { values, .. } = &mut invalid else {
+        unreachable!();
+    };
+    *values = vec!["missing".into()];
+    assert_invalid(
+        invalid,
+        RecursiveSequencePathRole::Values,
+        vec!["missing".into()],
+    );
+
+    let mut invalid = sequence();
+    let GeneratedSequence::RecursiveCollect { value, .. } = &mut invalid else {
+        unreachable!();
+    };
+    *value = vec!["missing".into()];
+    assert_invalid(
+        invalid,
+        RecursiveSequencePathRole::Value,
+        vec!["missing".into()],
+    );
+}
+
+#[test]
+fn validates_scalar_scope_construction() {
+    let mut valid = program();
+    valid.target = SchemaNode::scalar("Target", ScalarType::Int);
+    valid.root.construction = TargetConstruction::Scalar { expression: 1 };
+    valid.root.bindings.clear();
+    assert_eq!(validate_program(&valid), Ok(()));
+
+    let mut missing = valid.clone();
+    missing.root.construction = TargetConstruction::Scalar { expression: 99 };
+    assert_eq!(
+        validate_program(&missing),
+        Err(ProgramValidationError::MissingScalarExpression {
+            target_path: Vec::new(),
+            expression: 99,
+        })
+    );
+
+    let mut wrong_target = valid.clone();
+    wrong_target.target = SchemaNode::group("Target", Vec::new());
+    assert_eq!(
+        validate_program(&wrong_target),
+        Err(
+            ProgramValidationError::ScalarConstructionRequiresScalarTarget {
+                target_path: Vec::new(),
+            }
+        )
+    );
+
+    let mut content = valid;
+    content.root.bindings.push(Binding {
+        target_field: "Value".into(),
+        expression: 1,
+        target_type: ScalarType::Int,
+        repeating: false,
+    });
+    assert_eq!(
+        validate_program(&content),
+        Err(ProgramValidationError::ScalarConstructionHasContent {
+            target_path: Vec::new(),
+        })
+    );
+}
+
+#[test]
+fn rejects_missing_target_scopes_and_cardinality_mismatches() {
+    let child = |repeating| TargetScope {
+        target_field: "Child".into(),
+        repeating,
+        iteration: None,
+        construction: TargetConstruction::Group,
+        bindings: Vec::new(),
+        children: Vec::new(),
+    };
+
+    let mut missing = program();
+    missing.root.children.push(child(false));
+    assert_eq!(
+        validate_program(&missing),
+        Err(ProgramValidationError::MissingTargetScope {
+            target_path: vec!["Child".into()],
+        })
+    );
+
+    let mut repeated_schema = program();
+    set_target_fields(
+        &mut repeated_schema,
+        vec![SchemaNode::group("Child", Vec::new()).repeating()],
+    );
+    repeated_schema.root.children.push(child(false));
+    assert_eq!(
+        validate_program(&repeated_schema),
+        Err(ProgramValidationError::TargetCardinalityMismatch {
+            target_path: vec!["Child".into()],
+            scope_repeating: false,
+            target_repeating: true,
+        })
+    );
+
+    let mut singular_schema = program();
+    set_target_fields(
+        &mut singular_schema,
+        vec![SchemaNode::group("Child", Vec::new())],
+    );
+    singular_schema.root.children.push(child(true));
+    assert_eq!(
+        validate_program(&singular_schema),
+        Err(ProgramValidationError::TargetCardinalityMismatch {
+            target_path: vec!["Child".into()],
+            scope_repeating: true,
+            target_repeating: false,
+        })
+    );
+}
+
+#[test]
 fn generated_items_are_unique_and_lexically_scoped() {
     let sequence = |input, item| {
         IterationPlan::generated(GeneratedSequence::Range {
@@ -156,6 +383,7 @@ fn generated_items_are_unique_and_lexically_scoped() {
         target_field: name.into(),
         repeating: true,
         iteration: Some(iteration),
+        construction: TargetConstruction::Group,
         bindings: binding
             .into_iter()
             .map(|expression| Binding {
@@ -176,6 +404,13 @@ fn generated_items_are_unique_and_lexically_scoped() {
     };
 
     let mut duplicate = program();
+    set_target_fields(
+        &mut duplicate,
+        vec![
+            SchemaNode::group("First", Vec::new()).repeating(),
+            SchemaNode::group("Second", Vec::new()).repeating(),
+        ],
+    );
     duplicate.expressions.push(item(3));
     duplicate.root.children = vec![
         child("First", sequence(1, 3), None),
@@ -191,6 +426,13 @@ fn generated_items_are_unique_and_lexically_scoped() {
     );
 
     let mut sibling_leak = program();
+    set_target_fields(
+        &mut sibling_leak,
+        vec![
+            SchemaNode::group("First", Vec::new()).repeating(),
+            SchemaNode::group("Second", Vec::new()).repeating(),
+        ],
+    );
     sibling_leak.expressions.extend([item(3), item(4)]);
     sibling_leak.root.children = vec![
         child("First", sequence(1, 3), Some(3)),
@@ -218,6 +460,10 @@ fn generated_items_are_unique_and_lexically_scoped() {
     );
 
     let mut nested = program();
+    set_target_fields(
+        &mut nested,
+        vec![SchemaNode::group("Nested", Vec::new()).repeating()],
+    );
     nested.expressions.extend([item(3), item(4)]);
     nested.root.iteration = Some(sequence(1, 3));
     nested.root.children = vec![child("Nested", sequence(3, 4), Some(4))];
@@ -489,11 +735,16 @@ fn rejects_invalid_filters_at_the_exact_target_path() {
             Vec::new(),
             IterationOutput::Repeated,
         )),
+        construction: TargetConstruction::Group,
         bindings: Vec::new(),
         children: Vec::new(),
     };
 
     let mut missing = program();
+    set_target_fields(
+        &mut missing,
+        vec![SchemaNode::group("Child", Vec::new()).repeating()],
+    );
     missing.root.children.push(child(Some(99)));
     assert_eq!(
         validate_program(&missing),
@@ -510,6 +761,7 @@ fn validates_sort_window_and_iteration_output_controls() {
         target_field: "Child".into(),
         repeating,
         iteration: Some(iteration),
+        construction: TargetConstruction::Group,
         bindings: Vec::new(),
         children: Vec::new(),
     };
@@ -525,6 +777,10 @@ fn validates_sort_window_and_iteration_output_controls() {
     };
 
     let mut missing_sort = program();
+    set_target_fields(
+        &mut missing_sort,
+        vec![SchemaNode::group("Child", Vec::new()).repeating()],
+    );
     missing_sort.root.children.push(child(
         IterationPlan::new(
             SourceIteration::new(vec!["Rows".into()]),
@@ -548,6 +804,10 @@ fn validates_sort_window_and_iteration_output_controls() {
     );
 
     let mut missing_window = program();
+    set_target_fields(
+        &mut missing_window,
+        vec![SchemaNode::group("Child", Vec::new()).repeating()],
+    );
     missing_window.root.children.push(child(
         IterationPlan::new(
             SourceIteration::new(vec!["Rows".into()]),
@@ -569,6 +829,10 @@ fn validates_sort_window_and_iteration_output_controls() {
     );
 
     let mut invalid_first = program();
+    set_target_fields(
+        &mut invalid_first,
+        vec![SchemaNode::group("Child", Vec::new()).repeating()],
+    );
     invalid_first.root.children.push(child(
         IterationPlan::new(
             SourceIteration::new(vec!["Rows".into()]),
@@ -804,6 +1068,7 @@ fn rejects_invalid_target_scope_states() {
         target_field: "Child".into(),
         repeating: false,
         iteration: None,
+        construction: TargetConstruction::Group,
         bindings: Vec::new(),
         children: Vec::new(),
     };

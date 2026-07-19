@@ -32,6 +32,7 @@ internal static class Program
             ("generated sequence contexts", GeneratedSequenceContexts),
             ("lazy generated sequence contexts", LazyGeneratedSequenceContexts),
             ("typed generated sequence errors", TypedGeneratedSequenceErrors),
+            ("recursive generated sequence", RecursiveGeneratedSequence),
         };
 
         foreach (var test in tests)
@@ -818,6 +819,59 @@ internal static class Program
         Equal((UInt128)FerruleSequences.MaximumGeneratedSequenceItems, tooLarge.MaximumItems);
     }
 
+    private static void RecursiveGeneratedSequence()
+    {
+        static FerruleInstance DirectoryNode(
+            string name,
+            IReadOnlyList<string> files,
+            IReadOnlyList<FerruleInstance> children) => Group(
+                Field("name", Scalar(Text(name))),
+                Field(
+                    "file",
+                    new FerruleRepeated(files.Select(file =>
+                        Group(Field("name", Scalar(Text(file))))))),
+                Field("directory", new FerruleRepeated(children)));
+
+        var source = DirectoryNode(
+            "root",
+            new[] { "top.txt", "second.txt" },
+            new[]
+            {
+                DirectoryNode(
+                    "child",
+                    new[] { "nested.txt" },
+                    Array.Empty<FerruleInstance>()),
+            });
+        var values = FerruleSequences.RecursiveCollect(
+            ScopeContext.FromSource(source),
+            Array.Empty<string>(),
+            new[] { "directory" },
+            new[] { "name" },
+            new[] { "file" },
+            new[] { "name" },
+            string.Empty,
+            "\\");
+
+        Equal(3, values.Count);
+        Equal(Text("\\root\\top.txt"), values[0]);
+        Equal(Text("\\root\\second.txt"), values[1]);
+        Equal(Text("\\root\\child\\nested.txt"), values[2]);
+        Equal(string.Empty, FerruleSequences.RecursiveCollectArgumentText(FerruleValue.Null));
+        Equal("false", FerruleSequences.RecursiveCollectArgumentText(Bool(false)));
+        Error(
+            FerruleRuntimeError.FunctionType,
+            () => FerruleSequences.RecursiveCollectArgumentText(FerruleValue.XmlNil));
+        Throws<ArgumentNullException>(() => FerruleSequences.RecursiveCollect(
+            ScopeContext.FromSource(source),
+            new string[] { null! },
+            new[] { "directory" },
+            new[] { "name" },
+            new[] { "file" },
+            new[] { "name" },
+            string.Empty,
+            "\\"));
+    }
+
     private static string ValueText(FerruleValue value) => value.ToString();
 
     private static void WindowEquals(
@@ -867,6 +921,21 @@ internal static class Program
         }
 
         throw new InvalidOperationException($"Expected Ferrule runtime error {expected}.");
+    }
+
+    private static void Throws<TException>(Action action)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }
 
     private static void Equal<T>(T expected, T actual)

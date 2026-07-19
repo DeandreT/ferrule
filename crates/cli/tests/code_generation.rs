@@ -15,6 +15,8 @@ mod generated_sequences;
 mod iteration_controls;
 #[path = "code_generation/iteration_metadata.rs"]
 mod iteration_metadata;
+#[path = "code_generation/recursive_sequences.rs"]
+mod recursive_sequences;
 #[path = "code_generation/sequence_reducers.rs"]
 mod sequence_reducers;
 
