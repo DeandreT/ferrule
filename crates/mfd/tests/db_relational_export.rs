@@ -38,6 +38,7 @@ fn empty_project(source: SchemaNode, target: SchemaNode) -> Project {
         target_options: FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::new(),
         },

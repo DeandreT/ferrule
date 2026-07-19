@@ -66,7 +66,7 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
     }
 }
 
-fn position_nodes_for_roots(
+pub(super) fn position_nodes_for_roots(
     roots: impl IntoIterator<Item = NodeId>,
     graph: &Graph,
 ) -> BTreeSet<NodeId> {

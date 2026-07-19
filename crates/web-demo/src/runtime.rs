@@ -323,6 +323,7 @@ mod tests {
             target_options: FormatOptions::default(),
             extra_sources: Vec::new(),
             extra_targets: Vec::new(),
+            failure_rules: Vec::new(),
             graph,
             root: Scope {
                 iteration: if iterate_rows {

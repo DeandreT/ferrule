@@ -153,6 +153,7 @@ fn delimiter_and_line_content_splits_roundtrip_losslessly() -> Result<(), Box<dy
         target_options: FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,

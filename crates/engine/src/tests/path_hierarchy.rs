@@ -39,6 +39,7 @@ fn project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph::default(),
         root: Scope {
             construction: ScopeConstruction::PathHierarchy { plan },

@@ -572,6 +572,20 @@ fn survey_file(
         &execution,
     ) {
         Ok(outputs) => outputs,
+        Err(engine::EngineError::MappingFailure { rule, message }) => {
+            outcome.execution = StageOutcome {
+                status: Status::Passed,
+                message: Some(format!(
+                    "controlled mapping failure rule {rule}: {}",
+                    message.as_deref().unwrap_or("mapping exception was raised")
+                )),
+            };
+            outcome.output_write =
+                StageOutcome::skipped("controlled mapping failure produced no output");
+            outcome.reference_match =
+                StageOutcome::skipped("controlled mapping failure has no output reference");
+            return outcome;
+        }
         Err(error) => {
             outcome.execution = StageOutcome::failed(error.to_string());
             return outcome;

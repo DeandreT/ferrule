@@ -20,6 +20,7 @@ mod db_query;
 mod db_where;
 mod dynamic_json;
 mod dynamic_xml_variable;
+mod exception;
 mod external_udf;
 mod feed;
 mod flextext_parser;
@@ -97,6 +98,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
     let mut udf_calls = Vec::new();
     let mut external_udf_candidates = Vec::new();
+    let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
     let mut skipped_libraries: Vec<String> = Vec::new();
     let source_node_functions = source_node_function::read(&mapping_el);
@@ -286,6 +288,9 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 }
                 "core" if component.attribute("kind") == Some("32") => {
                     pending_joins.read(component, &mut warnings);
+                }
+                "core" if component.attribute("kind") == Some("18") => {
+                    exception_recipes.push(exception::read(&component));
                 }
                 "core"
                     if component.attribute("kind") == Some("29")
@@ -613,6 +618,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .or_else(|| target.input_instance.clone())
         .or_else(|| builder.static_target_document_path(target))
         .or_else(|| default_pass_through_output_path(target));
+    let failure_rules = exception::lower(exception_recipes, &mut builder);
     warnings.extend(builder.warnings);
     let mut project = Project {
         source: primary.schema.clone(),
@@ -623,6 +629,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         target_options: target.options.clone(),
         extra_sources,
         extra_targets,
+        failure_rules,
         graph: builder.graph,
         root,
     };

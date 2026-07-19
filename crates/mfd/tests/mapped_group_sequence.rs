@@ -407,6 +407,7 @@ fn nested_source_group_project(copy_extra: bool) -> Project {
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph { nodes },
         root: Scope {
             children: vec![Scope {
@@ -589,6 +590,7 @@ fn computed_text_mapping_uses_a_distinct_occurrence_port() {
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,
@@ -674,6 +676,7 @@ fn nested_mapped_sequence_resolves_an_outward_source_collection() {
         target_options: mapping::FormatOptions::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
