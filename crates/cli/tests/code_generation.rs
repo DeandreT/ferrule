@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
-use mapping::{Binding, Graph, Node, Project, Scope};
+use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 type ArtifactFiles = Vec<(String, Vec<u8>)>;
@@ -231,6 +231,15 @@ fn write_project(directory: &Path) -> TestResult<PathBuf> {
     Ok(path)
 }
 
+fn write_nested_iteration_project(directory: &Path) -> TestResult<PathBuf> {
+    let path = directory.join("nested-iteration-project.json");
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&nested_iteration_project())?,
+    )?;
+    Ok(path)
+}
+
 fn source_instance() -> Instance {
     Instance::Group(vec![
         ("Name".into(), Instance::Scalar(Value::String("Ada".into()))),
@@ -267,6 +276,252 @@ fn expected_instance() -> Instance {
             )]),
         ),
     ])
+}
+
+fn nested_iteration_project() -> Project {
+    let source_line = SchemaNode::group("Lines", vec![string("Sku"), int("Quantity")]).repeating();
+    let source_order =
+        SchemaNode::group("Orders", vec![string("OrderId"), source_line]).repeating();
+    let target_line = SchemaNode::group(
+        "Lines",
+        vec![
+            string("Sku"),
+            string("OrderId"),
+            string("Batch"),
+            string("DefaultLabel"),
+            int("Adjusted"),
+        ],
+    )
+    .repeating();
+    let target_order =
+        SchemaNode::group("Orders", vec![string("OrderId"), target_line]).repeating();
+
+    Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                string("Batch"),
+                int("Bonus"),
+                SchemaNode::group("Defaults", vec![string("Label")]).repeating(),
+                source_order,
+            ],
+        ),
+        target: SchemaNode::group("Target", vec![target_order]),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    10,
+                    Node::SourceField {
+                        path: vec!["OrderId".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    20,
+                    Node::SourceField {
+                        path: vec!["Sku".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    30,
+                    Node::SourceField {
+                        path: vec!["Batch".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    40,
+                    Node::SourceField {
+                        path: vec!["Defaults".into(), "Label".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    50,
+                    Node::SourceField {
+                        path: vec!["Quantity".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    60,
+                    Node::SourceField {
+                        path: vec!["Bonus".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    70,
+                    Node::Call {
+                        function: "add".into(),
+                        args: vec![50, 60],
+                    },
+                ),
+                (
+                    80,
+                    Node::Const {
+                        value: Value::Int(0),
+                    },
+                ),
+                (
+                    90,
+                    Node::Call {
+                        function: "greater_than".into(),
+                        args: vec![50, 80],
+                    },
+                ),
+                (
+                    100,
+                    Node::Const {
+                        value: Value::Int(1),
+                    },
+                ),
+                (
+                    110,
+                    Node::Const {
+                        value: Value::Int(0),
+                    },
+                ),
+                (
+                    120,
+                    Node::Call {
+                        function: "divide".into(),
+                        args: vec![100, 110],
+                    },
+                ),
+                (
+                    130,
+                    Node::If {
+                        condition: 90,
+                        then: 70,
+                        else_: 120,
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Orders".into(),
+                iteration: ScopeIteration::Source(vec!["Orders".into()]),
+                bindings: vec![Binding {
+                    target_field: "OrderId".into(),
+                    node: 10,
+                }],
+                children: vec![Scope {
+                    target_field: "Lines".into(),
+                    iteration: ScopeIteration::Source(vec!["Lines".into()]),
+                    bindings: vec![
+                        Binding {
+                            target_field: "Sku".into(),
+                            node: 20,
+                        },
+                        Binding {
+                            target_field: "OrderId".into(),
+                            node: 10,
+                        },
+                        Binding {
+                            target_field: "Batch".into(),
+                            node: 30,
+                        },
+                        Binding {
+                            target_field: "DefaultLabel".into(),
+                            node: 40,
+                        },
+                        Binding {
+                            target_field: "Adjusted".into(),
+                            node: 130,
+                        },
+                    ],
+                    ..Scope::default()
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+fn nested_source_instance() -> Instance {
+    let line = |sku: &str, quantity: i64| {
+        Instance::Group(vec![
+            ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
+            ("Quantity".into(), Instance::Scalar(Value::Int(quantity))),
+        ])
+    };
+    let order = |id: &str, lines: Vec<Instance>| {
+        Instance::Group(vec![
+            ("OrderId".into(), Instance::Scalar(Value::String(id.into()))),
+            ("Lines".into(), Instance::Repeated(lines)),
+        ])
+    };
+    let default = |label: &str| {
+        Instance::Group(vec![(
+            "Label".into(),
+            Instance::Scalar(Value::String(label.into())),
+        )])
+    };
+
+    Instance::Group(vec![
+        (
+            "Batch".into(),
+            Instance::Scalar(Value::String("run-42".into())),
+        ),
+        ("Bonus".into(), Instance::Scalar(Value::Int(2))),
+        (
+            "Defaults".into(),
+            Instance::Repeated(vec![default("primary"), default("ignored")]),
+        ),
+        (
+            "Orders".into(),
+            Instance::Repeated(vec![
+                order("A", vec![line("red", 3), line("blue", 1)]),
+                order("B", vec![line("green", 2)]),
+            ]),
+        ),
+    ])
+}
+
+fn nested_expected_instance() -> Instance {
+    let line = |sku: &str, order_id: &str, adjusted: i64| {
+        Instance::Group(vec![
+            ("Sku".into(), Instance::Scalar(Value::String(sku.into()))),
+            (
+                "OrderId".into(),
+                Instance::Scalar(Value::String(order_id.into())),
+            ),
+            (
+                "Batch".into(),
+                Instance::Scalar(Value::String("run-42".into())),
+            ),
+            (
+                "DefaultLabel".into(),
+                Instance::Scalar(Value::String("primary".into())),
+            ),
+            ("Adjusted".into(), Instance::Scalar(Value::Int(adjusted))),
+        ])
+    };
+    let order = |id: &str, lines: Vec<Instance>| {
+        Instance::Group(vec![
+            ("OrderId".into(), Instance::Scalar(Value::String(id.into()))),
+            ("Lines".into(), Instance::Repeated(lines)),
+        ])
+    };
+
+    Instance::Group(vec![(
+        "Orders".into(),
+        Instance::Repeated(vec![
+            order("A", vec![line("red", "A", 5), line("blue", "A", 3)]),
+            order("B", vec![line("green", "B", 4)]),
+        ]),
+    )])
 }
 
 fn artifact_files(root: &Path) -> TestResult<ArtifactFiles> {
@@ -313,7 +568,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 8,
+            files_written: 9,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -328,6 +583,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleRuntimeException.cs",
             "Runtime/FerruleValue.cs",
             "Runtime/ScalarPathResolver.cs",
+            "Runtime/ScopeContext.cs",
         ]
     );
     assert_eq!(first_files, second_files);
@@ -574,6 +830,242 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert!(
         command.status.success(),
         "generated Rust project failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&command.stdout),
+        String::from_utf8_lossy(&command.stderr)
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_csharp_nested_source_iteration_matches_engine() -> TestResult<()> {
+    let directory = TempDir::new("csharp_nested_iteration")?;
+    let mapping = nested_iteration_project();
+    assert_eq!(
+        engine::run(&mapping, &nested_source_instance())?,
+        nested_expected_instance()
+    );
+    let project_path = write_nested_iteration_project(&directory.0)?;
+    let output = directory.0.join("generated");
+    generate_project(&project_path, &output, GenerateTarget::CSharp)?;
+
+    let harness = output.join("Harness");
+    std::fs::create_dir(&harness)?;
+    std::fs::write(
+        harness.join("Harness.csproj"),
+        r#"<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Ferrule.Generated.csproj" />
+  </ItemGroup>
+</Project>
+"#,
+    )?;
+    std::fs::write(
+        harness.join("Program.cs"),
+        r#"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var source = new FerruleGroup(new FerruleField[]
+{
+    new("Batch", Scalar(FerruleValue.FromString("run-42"))),
+    new("Bonus", Scalar(FerruleValue.FromInt64(2))),
+    new("Defaults", new FerruleRepeated(new FerruleInstance[]
+    {
+        Default("primary"),
+        Default("ignored"),
+    })),
+    new("Orders", new FerruleRepeated(new FerruleInstance[]
+    {
+        SourceOrder("A", SourceLine("red", 3), SourceLine("blue", 1)),
+        SourceOrder("B", SourceLine("green", 2)),
+    })),
+});
+
+var output = (FerruleGroup)GeneratedMapping.Execute(source);
+Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "Orders" }));
+var orders = (FerruleRepeated)output.Fields[0].Value;
+Assert(orders.Items.Count == 2);
+AssertOrder((FerruleGroup)orders.Items[0], "A", 2);
+AssertOrder((FerruleGroup)orders.Items[1], "B", 1);
+
+var firstLines = (FerruleRepeated)((FerruleGroup)orders.Items[0]).Fields[1].Value;
+AssertLine((FerruleGroup)firstLines.Items[0], "red", "A", 5);
+AssertLine((FerruleGroup)firstLines.Items[1], "blue", "A", 3);
+var secondLines = (FerruleRepeated)((FerruleGroup)orders.Items[1]).Fields[1].Value;
+AssertLine((FerruleGroup)secondLines.Items[0], "green", "B", 4);
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static FerruleGroup Default(string label) =>
+    new(new FerruleField[] { new("Label", Scalar(FerruleValue.FromString(label))) });
+
+static FerruleGroup SourceLine(string sku, long quantity) =>
+    new(new FerruleField[]
+    {
+        new("Sku", Scalar(FerruleValue.FromString(sku))),
+        new("Quantity", Scalar(FerruleValue.FromInt64(quantity))),
+    });
+
+static FerruleGroup SourceOrder(string id, params FerruleGroup[] lines) =>
+    new(new FerruleField[]
+    {
+        new("OrderId", Scalar(FerruleValue.FromString(id))),
+        new("Lines", new FerruleRepeated(lines)),
+    });
+
+static void AssertOrder(FerruleGroup order, string id, int lineCount)
+{
+    Assert(order.Fields.Select(field => field.Name).SequenceEqual(new[] { "OrderId", "Lines" }));
+    Assert(Value(order, 0) == FerruleValue.FromString(id));
+    Assert(((FerruleRepeated)order.Fields[1].Value).Items.Count == lineCount);
+}
+
+static void AssertLine(FerruleGroup line, string sku, string orderId, long adjusted)
+{
+    Assert(line.Fields.Select(field => field.Name).SequenceEqual(
+        new[] { "Sku", "OrderId", "Batch", "DefaultLabel", "Adjusted" }));
+    Assert(Value(line, 0) == FerruleValue.FromString(sku));
+    Assert(Value(line, 1) == FerruleValue.FromString(orderId));
+    Assert(Value(line, 2) == FerruleValue.FromString("run-42"));
+    Assert(Value(line, 3) == FerruleValue.FromString("primary"));
+    Assert(Value(line, 4) == FerruleValue.FromInt64(adjusted));
+}
+
+static FerruleValue Value(FerruleGroup group, int field) =>
+    ((FerruleScalar)group.Fields[field].Value).Value;
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("generated C# nested iteration differs from the engine");
+    }
+}
+"#,
+    )?;
+    let command = Command::new("dotnet")
+        .args([
+            "run",
+            "--project",
+            "Harness/Harness.csproj",
+            "--configuration",
+            "Release",
+        ])
+        .current_dir(&output)
+        .output()?;
+    assert!(
+        command.status.success(),
+        "generated C# nested iteration failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&command.stdout),
+        String::from_utf8_lossy(&command.stderr)
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_rust_nested_source_iteration_matches_engine() -> TestResult<()> {
+    let directory = TempDir::new("rust_nested_iteration")?;
+    let mapping = nested_iteration_project();
+    assert_eq!(
+        engine::run(&mapping, &nested_source_instance())?,
+        nested_expected_instance()
+    );
+    let project_path = write_nested_iteration_project(&directory.0)?;
+    let output = directory.0.join("generated");
+    let runtime = Path::new(env!("CARGO_MANIFEST_DIR")).join("../codegen-runtime");
+    generate_project(
+        &project_path,
+        &output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )?;
+
+    std::fs::write(
+        output.join("src/main.rs"),
+        r#"use codegen_runtime::{Instance, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = group([
+        field("Batch", scalar(Value::String("run-42".into()))),
+        field("Bonus", scalar(Value::Int(2))),
+        field("Defaults", repeated([default("primary"), default("ignored")])),
+        field(
+            "Orders",
+            repeated([
+                source_order("A", [source_line("red", 3), source_line("blue", 1)]),
+                source_order("B", [source_line("green", 2)]),
+            ]),
+        ),
+    ]);
+    let actual = execute(&source)?;
+    let expected = group([field(
+        "Orders",
+        repeated([
+            target_order(
+                "A",
+                [target_line("red", "A", 5), target_line("blue", "A", 3)],
+            ),
+            target_order("B", [target_line("green", "B", 4)]),
+        ]),
+    )]);
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+fn default(label: &str) -> Instance {
+    group([field("Label", scalar(Value::String(label.into())))])
+}
+
+fn source_line(sku: &str, quantity: i64) -> Instance {
+    group([
+        field("Sku", scalar(Value::String(sku.into()))),
+        field("Quantity", scalar(Value::Int(quantity))),
+    ])
+}
+
+fn source_order(id: &str, lines: impl IntoIterator<Item = Instance>) -> Instance {
+    group([
+        field("OrderId", scalar(Value::String(id.into()))),
+        field("Lines", repeated(lines)),
+    ])
+}
+
+fn target_line(sku: &str, order_id: &str, adjusted: i64) -> Instance {
+    group([
+        field("Sku", scalar(Value::String(sku.into()))),
+        field("OrderId", scalar(Value::String(order_id.into()))),
+        field("Batch", scalar(Value::String("run-42".into()))),
+        field("DefaultLabel", scalar(Value::String("primary".into()))),
+        field("Adjusted", scalar(Value::Int(adjusted))),
+    ])
+}
+
+fn target_order(id: &str, lines: impl IntoIterator<Item = Instance>) -> Instance {
+    group([
+        field("OrderId", scalar(Value::String(id.into()))),
+        field("Lines", repeated(lines)),
+    ])
+}
+"#,
+    )?;
+
+    let command = Command::new("cargo")
+        .args(["run", "--quiet"])
+        .current_dir(&output)
+        .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
+        .output()?;
+    assert!(
+        command.status.success(),
+        "generated Rust nested iteration failed:\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&command.stdout),
         String::from_utf8_lossy(&command.stderr)
     );

@@ -19,6 +19,7 @@ internal static class Program
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),
             ("typed function errors", TypedFunctionErrors),
+            ("scope source iteration", ScopeSourceIteration),
         };
 
         foreach (var test in tests)
@@ -229,6 +230,98 @@ internal static class Program
             () => FerruleFunctions.RequireBoolean(Text("true"), 1));
         Equal((uint)1, notBoolean.Node);
         Equal(FerruleValueKind.String, notBoolean.FoundKind);
+    }
+
+    private static void ScopeSourceIteration()
+    {
+        var item = (string sku) => Group(Field("Sku", Scalar(Text(sku))));
+        var order = (string customer, string code, FerruleInstance[] items) => Group(
+            Field("Customer", Scalar(Text(customer))),
+            Field("OrderCode", Scalar(Text(code))),
+            Field("Items", new FerruleRepeated(items)));
+        var row = (string name, FerruleInstance[] orders) => Group(
+            Field("RootName", Scalar(Text(name))),
+            Field("Orders", new FerruleRepeated(orders)));
+        var source = new FerruleRepeated(new FerruleInstance[]
+        {
+            row("first-root", new FerruleInstance[]
+            {
+                order("Ada", "A", new FerruleInstance[] { item("A-1"), item("A-2") }),
+                order("Lin", "B", new FerruleInstance[] { item("B-1") }),
+            }),
+            row("second-root", new FerruleInstance[]
+            {
+                order("Grace", "C", new FerruleInstance[] { item("C-1") }),
+            }),
+        });
+
+        var context = ScopeContext.FromSource(source);
+        var candidates = context.IterateSource("Orders", "Items");
+        Equal(4, candidates.Count);
+        Equal(Text("A-1"), candidates[0].ResolveScalar("Sku"));
+        Equal(Text("Ada"), candidates[1].ResolveScalar("Customer"));
+        Equal(Text("B"), candidates[2].ResolveScalar("Orders", "OrderCode"));
+        Equal(Text("B-1"), candidates[2].ResolveScalar("Orders", "Items", "Sku"));
+        Equal(Text("second-root"), candidates[3].ResolveScalar("RootName"));
+
+        var rows = context.IterateSource();
+        Equal(2, rows.Count);
+        Equal(Text("first-root"), rows[0].ResolveScalar("RootName"));
+        Equal(1, ScopeContext.FromSource(Group()).IterateSource().Count);
+        Equal(
+            1,
+            ScopeContext.FromSource(new FerruleMappedSequence(new[] { item("mapped") }))
+                .IterateSource()
+                .Count);
+
+        var terminal = ScopeContext
+            .FromSource(Group(Field("Value", Scalar(FerruleValue.FromInt64(7)))))
+            .IterateSource("Value");
+        Equal(1, terminal.Count);
+        Equal(FerruleValue.FromInt64(7), terminal[0].ResolveScalar());
+        var terminalGroup = ScopeContext
+            .FromSource(Group(Field("Address", Group(Field("City", Scalar(Text("Paris")))))))
+            .IterateSource("Address");
+        Equal(1, terminalGroup.Count);
+        Equal(Text("Paris"), terminalGroup[0].ResolveScalar("City"));
+        Equal(0, context.IterateSource("Missing").Count);
+        Equal(
+            0,
+            ScopeContext.FromSource(Group(Field("Empty", new FerruleRepeated([]))))
+                .IterateSource("Empty")
+                .Count);
+
+        var shadow = ScopeContext.FromSource(Group(
+            Field("Options", new FerruleRepeated(new[]
+            {
+                Group(Field("Name", Scalar(Text("outer")))),
+            })),
+            Field("Rows", new FerruleRepeated(new[]
+            {
+                Group(Field("Options", new FerruleRepeated([]))),
+            }))));
+        var shadowedItem = shadow.IterateSource("Rows")[0];
+        Equal(FerruleValue.Null, shadowedItem.ResolveScalar("Options", "Name"));
+        Error(
+            FerruleRuntimeError.MissingSourceField,
+            () => shadowedItem.ResolveScalar("Missing"));
+
+        var documents = ScopeContext.FromSource(new FerruleDocumentSet(new[]
+        {
+            new FerruleDocument(
+                "a.xml",
+                Group(
+                    Field("Document", Scalar(Text("a"))),
+                    Field("Rows", new FerruleRepeated(new[] { item("doc-a") })))),
+            new FerruleDocument(
+                "b.xml",
+                Group(
+                    Field("Document", Scalar(Text("b"))),
+                    Field("Rows", new FerruleRepeated(new[] { item("doc-b") })))),
+        })).IterateSource("Rows");
+        Equal(2, documents.Count);
+        Equal(Text("a"), documents[0].ResolveScalar("Document"));
+        Equal(Text("doc-b"), documents[1].ResolveScalar("Rows", "Sku"));
     }
 
     private static void CallEquals(

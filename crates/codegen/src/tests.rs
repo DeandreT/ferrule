@@ -8,7 +8,7 @@ use mapping::{
 use crate::{
     ArtifactPath, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError, Diagnostic, Expression,
     GeneratedFile, ProjectFeature, SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeFeature,
-    UnsupportedNodeKind, lower,
+    SourceIteration, UnsupportedNodeKind, lower,
 };
 
 fn scalar(name: &str) -> SchemaNode {
@@ -382,12 +382,37 @@ fn converts_engine_validation_failures_before_subset_analysis() {
 }
 
 #[test]
-fn reports_scope_features_at_the_static_target_path() {
+fn lowers_source_iteration_at_the_static_target_path() {
     let mut project = supported_project();
     project.root.children[0].iteration = ScopeIteration::Source(Vec::new());
 
+    let program = lower(&project).expect("source iteration is supported");
+
+    assert_eq!(
+        program.root.children[0].iteration,
+        Some(SourceIteration::new(Vec::new()))
+    );
+}
+
+#[test]
+fn reports_other_iteration_forms_at_the_static_target_path() {
+    let mut project = supported_project();
+    project.root.children[0].iteration =
+        ScopeIteration::Sequence(mapping::SequenceExpr::Generate {
+            item: 40,
+            from: Some(10),
+            to: 10,
+        });
+    project.graph.nodes.insert(
+        40,
+        Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        },
+    );
+
     let diagnostics = lower(&project)
-        .expect_err("iteration is outside the initial subset")
+        .expect_err("generated sequences remain outside the supported subset")
         .into_diagnostics();
 
     assert!(diagnostics.contains(&Diagnostic::UnsupportedScope {
