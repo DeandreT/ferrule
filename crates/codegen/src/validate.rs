@@ -4,12 +4,23 @@ use std::fmt;
 use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::NodeId;
 
-use crate::{Expression, IterationOutput, IterationSource, Program, TargetScope};
+use crate::{
+    Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SequenceExpressionRole {
     Input(usize),
     Item,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecursiveSequencePathRole {
+    Collection,
+    Children,
+    DescentValue,
+    Values,
+    Value,
 }
 
 /// Lexical owner of one private generated-sequence item expression.
@@ -45,6 +56,14 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         source_path: Vec<String>,
     },
+    MissingTargetScope {
+        target_path: Vec<String>,
+    },
+    TargetCardinalityMismatch {
+        target_path: Vec<String>,
+        scope_repeating: bool,
+        target_repeating: bool,
+    },
     MissingSequenceExpression {
         owner: SequenceOwner,
         role: SequenceExpressionRole,
@@ -53,6 +72,11 @@ pub enum ProgramValidationError {
     InvalidSequenceItem {
         owner: SequenceOwner,
         expression: NodeId,
+    },
+    InvalidRecursiveSequencePath {
+        owner: SequenceOwner,
+        role: RecursiveSequencePathRole,
+        path: Vec<String>,
     },
     DuplicateSequenceItem {
         owner: SequenceOwner,
@@ -68,6 +92,19 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         target_field: String,
         expression: NodeId,
+    },
+    MissingScalarExpression {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
+    ScalarConstructionRequiresScalarTarget {
+        target_path: Vec<String>,
+    },
+    GroupConstructionRequiresGroupTarget {
+        target_path: Vec<String>,
+    },
+    ScalarConstructionHasContent {
+        target_path: Vec<String>,
     },
     MissingFilterExpression {
         target_path: Vec<String>,
@@ -120,6 +157,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_aggregate_paths(&program.source, &expressions)?;
     let mut sequence_items = BTreeMap::new();
     collect_expression_sequence_items(&expressions, &mut sequence_items)?;
+    validate_expression_sequence_paths(&program.source, &expressions)?;
     collect_sequence_items(
         &expressions,
         &program.root,
@@ -135,6 +173,21 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
         &sequence_items.keys().copied().collect(),
         &[],
     )
+}
+
+fn validate_expression_sequence_paths(
+    source: &SchemaNode,
+    expressions: &BTreeMap<NodeId, &Expression>,
+) -> Result<(), ProgramValidationError> {
+    for (&node, expression) in expressions {
+        let sequence = match expression {
+            Expression::SequenceExists { sequence, .. }
+            | Expression::SequenceItemAt { sequence, .. } => sequence,
+            _ => continue,
+        };
+        validate_generated_sequence_paths(source, sequence, &SequenceOwner::Expression(node))?;
+    }
+    Ok(())
 }
 
 fn collect_expression_sequence_items(
@@ -377,6 +430,112 @@ fn schema_path_matches(
     visit(root, root, path, predicate)
 }
 
+fn schema_path_targets<'a>(root: &'a SchemaNode, path: &[String]) -> Vec<&'a SchemaNode> {
+    fn visit<'a>(
+        root: &'a SchemaNode,
+        current: &'a SchemaNode,
+        path: &[String],
+        targets: &mut Vec<&'a SchemaNode>,
+    ) {
+        if let Some(target) = follow_schema_from(root, current, path) {
+            targets.push(target);
+        }
+        if let SchemaKind::Group { children, .. } = &current.kind {
+            for child in children {
+                visit(root, child, path, targets);
+            }
+        }
+    }
+
+    let mut targets = Vec::new();
+    visit(root, root, path, &mut targets);
+    targets
+}
+
+fn resolved_schema_node<'a>(root: &'a SchemaNode, node: &'a SchemaNode) -> Option<&'a SchemaNode> {
+    node.recursive_ref
+        .as_deref()
+        .map(|anchor| find_concrete_schema_group(root, anchor))
+        .unwrap_or(Some(node))
+}
+
+fn validate_generated_sequence_paths(
+    source: &SchemaNode,
+    sequence: &crate::GeneratedSequence,
+    owner: &SequenceOwner,
+) -> Result<(), ProgramValidationError> {
+    let crate::GeneratedSequence::RecursiveCollect {
+        collection,
+        children,
+        descent_value,
+        values,
+        value,
+        ..
+    } = sequence
+    else {
+        return Ok(());
+    };
+
+    let mut groups = schema_path_targets(source, collection)
+        .into_iter()
+        .filter_map(|node| resolved_schema_node(source, node))
+        .filter(|node| matches!(node.kind, SchemaKind::Group { .. }))
+        .collect::<Vec<_>>();
+    if groups.is_empty() {
+        return invalid_recursive_path(owner, RecursiveSequencePathRole::Collection, collection);
+    }
+
+    groups.retain(|group| {
+        follow_schema_from(source, group, children).is_some_and(|child| {
+            child.repeating
+                && resolved_schema_node(source, child)
+                    .is_some_and(|resolved| std::ptr::eq(resolved, *group))
+        })
+    });
+    if groups.is_empty() {
+        return invalid_recursive_path(owner, RecursiveSequencePathRole::Children, children);
+    }
+
+    groups.retain(|group| {
+        follow_schema_from(source, group, descent_value)
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+    });
+    if groups.is_empty() {
+        return invalid_recursive_path(
+            owner,
+            RecursiveSequencePathRole::DescentValue,
+            descent_value,
+        );
+    }
+
+    let value_roots = groups
+        .into_iter()
+        .filter_map(|group| follow_schema_from(source, group, values))
+        .collect::<Vec<_>>();
+    if value_roots.is_empty() {
+        return invalid_recursive_path(owner, RecursiveSequencePathRole::Values, values);
+    }
+    if !value_roots.into_iter().any(|root| {
+        follow_schema_from(source, root, value)
+            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+    }) {
+        return invalid_recursive_path(owner, RecursiveSequencePathRole::Value, value);
+    }
+    Ok(())
+}
+
+fn invalid_recursive_path(
+    owner: &SequenceOwner,
+    role: RecursiveSequencePathRole,
+    path: &[String],
+) -> Result<(), ProgramValidationError> {
+    Err(ProgramValidationError::InvalidRecursiveSequencePath {
+        owner: owner.clone(),
+        role,
+        path: path.to_vec(),
+    })
+}
+
 fn follow_schema_from<'a>(
     root: &'a SchemaNode,
     current: &'a SchemaNode,
@@ -417,6 +576,18 @@ fn validate_scope(
     active_sequence_items: &[NodeId],
 ) -> Result<(), ProgramValidationError> {
     let mut item_context = active_sequence_items.to_vec();
+    let Some(target_node) = follow_schema_from(target, target, target_path) else {
+        return Err(ProgramValidationError::MissingTargetScope {
+            target_path: target_path.clone(),
+        });
+    };
+    if scope.repeating != target_node.repeating {
+        return Err(ProgramValidationError::TargetCardinalityMismatch {
+            target_path: target_path.clone(),
+            scope_repeating: scope.repeating,
+            target_repeating: target_node.repeating,
+        });
+    }
     if let Some(iteration) = &scope.iteration {
         match iteration.input() {
             IterationSource::Source(source_iteration) => {
@@ -444,6 +615,11 @@ fn validate_scope(
                         &SequenceOwner::Scope(target_path.clone()),
                     )?;
                 }
+                validate_generated_sequence_paths(
+                    source,
+                    sequence,
+                    &SequenceOwner::Scope(target_path.clone()),
+                )?;
                 item_context.push(sequence.item());
             }
         }
@@ -501,10 +677,8 @@ fn validate_scope(
                 )?;
             }
         }
-        let target_is_nonrepeating_group = follow_schema_from(target, target, target_path)
-            .is_some_and(|target| {
-                !target.repeating && matches!(target.kind, SchemaKind::Group { .. })
-            });
+        let target_is_nonrepeating_group =
+            !target_node.repeating && matches!(target_node.kind, SchemaKind::Group { .. });
         let invalid_output = match iteration.output() {
             IterationOutput::Repeated => false,
             IterationOutput::First => scope.repeating || !target_is_nonrepeating_group,
@@ -517,6 +691,45 @@ fn validate_scope(
                 target_path: target_path.clone(),
                 output: iteration.output(),
             });
+        }
+    }
+
+    match scope.construction {
+        TargetConstruction::Group => {
+            if !matches!(target_node.kind, SchemaKind::Group { .. }) {
+                return Err(
+                    ProgramValidationError::GroupConstructionRequiresGroupTarget {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+        }
+        TargetConstruction::Scalar { expression } => {
+            if !matches!(target_node.kind, SchemaKind::Scalar { .. }) {
+                return Err(
+                    ProgramValidationError::ScalarConstructionRequiresScalarTarget {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if !scope.bindings.is_empty() || !scope.children.is_empty() {
+                return Err(ProgramValidationError::ScalarConstructionHasContent {
+                    target_path: target_path.clone(),
+                });
+            }
+            if !expressions.contains_key(&expression) {
+                return Err(ProgramValidationError::MissingScalarExpression {
+                    target_path: target_path.clone(),
+                    expression,
+                });
+            }
+            validate_sequence_context(
+                expression,
+                expressions,
+                sequence_items,
+                &item_context,
+                &SequenceOwner::Scope(target_path.clone()),
+            )?;
         }
     }
 
@@ -742,6 +955,20 @@ impl fmt::Display for ProgramValidationError {
                 display_path(target_path),
                 display_path(source_path)
             ),
+            Self::MissingTargetScope { target_path } => write!(
+                formatter,
+                "target scope {} matches no target schema path",
+                display_path(target_path)
+            ),
+            Self::TargetCardinalityMismatch {
+                target_path,
+                scope_repeating,
+                target_repeating,
+            } => write!(
+                formatter,
+                "target scope {} repeating flag {scope_repeating} does not match target schema cardinality {target_repeating}",
+                display_path(target_path)
+            ),
             Self::MissingSequenceExpression {
                 owner,
                 role,
@@ -756,6 +983,13 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "{} generated sequence item expression {expression} is not an unframed empty-path source field",
                 display_owner(owner)
+            ),
+            Self::InvalidRecursiveSequencePath { owner, role, path } => write!(
+                formatter,
+                "{} recursive sequence {} path {} does not match its source schema",
+                display_owner(owner),
+                display_recursive_path_role(*role),
+                display_path(path)
             ),
             Self::DuplicateSequenceItem {
                 owner,
@@ -783,6 +1017,29 @@ impl fmt::Display for ProgramValidationError {
             } => write!(
                 formatter,
                 "target scope {} field {target_field:?} references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::MissingScalarExpression {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} scalar construction references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::ScalarConstructionRequiresScalarTarget { target_path } => write!(
+                formatter,
+                "target scope {} scalar construction requires a scalar target",
+                display_path(target_path)
+            ),
+            Self::GroupConstructionRequiresGroupTarget { target_path } => write!(
+                formatter,
+                "target scope {} group construction requires a group target",
+                display_path(target_path)
+            ),
+            Self::ScalarConstructionHasContent { target_path } => write!(
+                formatter,
+                "target scope {} scalar construction cannot contain bindings or child scopes",
                 display_path(target_path)
             ),
             Self::MissingFilterExpression {
@@ -880,6 +1137,16 @@ fn display_owner(owner: &SequenceOwner) -> String {
     match owner {
         SequenceOwner::Scope(path) => format!("target scope {}", display_path(path)),
         SequenceOwner::Expression(node) => format!("compiled mapping expression {node}"),
+    }
+}
+
+fn display_recursive_path_role(role: RecursiveSequencePathRole) -> &'static str {
+    match role {
+        RecursiveSequencePathRole::Collection => "collection",
+        RecursiveSequencePathRole::Children => "children",
+        RecursiveSequencePathRole::DescentValue => "descent-value",
+        RecursiveSequencePathRole::Values => "values",
+        RecursiveSequencePathRole::Value => "value",
     }
 }
 

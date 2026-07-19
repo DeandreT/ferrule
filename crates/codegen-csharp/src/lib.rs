@@ -45,7 +45,10 @@ mod tests {
     fn program() -> Program {
         Program {
             source: SchemaNode::group("schema source", Vec::new()),
-            target: SchemaNode::group("schema target", Vec::new()),
+            target: SchemaNode::group(
+                "schema target",
+                vec![SchemaNode::group("child group", Vec::new())],
+            ),
             expressions: vec![
                 ExpressionNode {
                     id: 9,
@@ -65,6 +68,7 @@ mod tests {
                 target_field: String::new(),
                 repeating: false,
                 iteration: None,
+                construction: Default::default(),
                 bindings: vec![Binding {
                     target_field: "root value".into(),
                     expression: 9,
@@ -75,6 +79,7 @@ mod tests {
                     target_field: "child group".into(),
                     repeating: false,
                     iteration: None,
+                    construction: Default::default(),
                     bindings: vec![Binding {
                         target_field: "copied value".into(),
                         expression: 2,
@@ -173,6 +178,11 @@ mod tests {
     #[test]
     fn repeating_scopes_wrap_the_constructed_group_once() {
         let mut program = program();
+        program.target = SchemaNode::group(
+            "schema target",
+            vec![SchemaNode::group("child group", Vec::new()).repeating()],
+        )
+        .repeating();
         program.root.repeating = true;
         program.root.children[0].repeating = true;
 
@@ -369,6 +379,7 @@ mod tests {
             target_field: "root value".into(),
             repeating: false,
             iteration: None,
+            construction: Default::default(),
             bindings: Vec::new(),
             children: Vec::new(),
         });
@@ -389,6 +400,7 @@ mod tests {
             target_field: "child group".into(),
             repeating: false,
             iteration: None,
+            construction: Default::default(),
             bindings: Vec::new(),
             children: Vec::new(),
         });

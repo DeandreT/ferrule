@@ -1,0 +1,72 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var source = DirectoryNode(
+    "root",
+    new[] { "top.txt", "second.txt" },
+    new[]
+    {
+        DirectoryNode("child", new[] { "nested.txt" }, Array.Empty<FerruleInstance>()),
+    });
+var output = (FerruleGroup)GeneratedMapping.Execute(source);
+var picked = (FerruleScalar)Field(output, "Picked");
+var found = (FerruleScalar)Field(output, "Found");
+var files = (FerruleRepeated)Field(output, "File");
+
+Assert(picked.Value == FerruleValue.FromString("\\root\\second.txt"));
+Assert(found.Value == FerruleValue.FromBoolean(true));
+Assert(files.Items.Count == 3);
+Assert(((FerruleScalar)files.Items[0]).Value == FerruleValue.FromString("\\root\\top.txt"));
+Assert(((FerruleScalar)files.Items[1]).Value == FerruleValue.FromString("\\root\\second.txt"));
+Assert(((FerruleScalar)files.Items[2]).Value == FerruleValue.FromString("\\root\\child\\nested.txt"));
+
+var deep = DirectoryNode("leaf", Array.Empty<string>(), Array.Empty<FerruleInstance>());
+for (var depth = 0; depth < 256; depth++)
+{
+    deep = DirectoryNode($"level-{depth}", Array.Empty<string>(), new[] { deep });
+}
+var depthError = Error(() => GeneratedMapping.Execute(deep));
+Assert(depthError.Error == FerruleRuntimeError.RecursiveSequenceDepth);
+Assert(depthError.MaximumDepth == 256);
+
+static FerruleInstance DirectoryNode(
+    string name,
+    IReadOnlyList<string> files,
+    IReadOnlyList<FerruleInstance> children) =>
+    new FerruleGroup(new FerruleField[]
+    {
+        new("name", new FerruleScalar(FerruleValue.FromString(name))),
+        new(
+            "file",
+            new FerruleRepeated(files.Select(file =>
+                new FerruleGroup(new FerruleField[]
+                {
+                    new("name", new FerruleScalar(FerruleValue.FromString(file))),
+                })))),
+        new("directory", new FerruleRepeated(children)),
+    });
+
+static FerruleInstance Field(FerruleGroup group, string name) =>
+    group.Fields.Single(field => field.Name == name).Value;
+
+static FerruleRuntimeException Error(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("expected recursive generated output to fail");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("recursive generated output differs from the engine");
+    }
+}
