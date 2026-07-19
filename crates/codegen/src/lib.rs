@@ -20,8 +20,9 @@ pub use diagnostic::{
 };
 pub use lower::lower;
 pub use model::{
-    AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, Program,
-    SUPPORTED_SCALAR_CALLS, ScalarFunction, SourceIteration, TargetScope,
+    AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, IterationOutput,
+    IterationPlan, Program, SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow,
+    SortFilterOrder, SortKey, SortPlan, SourceIteration, TargetScope,
 };
 pub use validate::{ProgramValidationError, validate_program};
 

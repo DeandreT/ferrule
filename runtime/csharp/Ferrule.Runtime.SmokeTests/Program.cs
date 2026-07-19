@@ -24,6 +24,10 @@ internal static class Program
             ("aggregate reductions", AggregateReductions),
             ("aggregate numeric precision", AggregateNumericPrecision),
             ("typed aggregate errors", TypedAggregateErrors),
+            ("sequence value ordering", SequenceValueOrdering),
+            ("stable multi-key sorting", StableMultiKeySorting),
+            ("typed item counts", TypedItemCounts),
+            ("ordered sequence windows", OrderedSequenceWindows),
         };
 
         foreach (var test in tests)
@@ -614,6 +618,134 @@ internal static class Program
         Equal(FerruleAggregateOperation.Avg, nan.AggregateOperation);
     }
 
+    private static void SequenceValueOrdering()
+    {
+        Equal(-1, FerruleSequences.CompareValues(FerruleValue.Null, Text("value")));
+        Equal(1, FerruleSequences.CompareValues(FerruleValue.XmlNil, FerruleValue.Null));
+        Equal(null, FerruleSequences.CompareValues(FerruleValue.XmlNil, FerruleValue.XmlNil));
+        Equal(null, FerruleSequences.CompareValues(FerruleValue.FromDouble(double.NaN), FerruleValue.FromDouble(1)));
+        Equal(0, FerruleSequences.CompareValues(FerruleValue.FromDouble(-0.0), FerruleValue.FromInt64(0)));
+        Equal(
+            1,
+            FerruleSequences.CompareValues(
+                FerruleValue.FromInt64(9_007_199_254_740_993),
+                FerruleValue.FromDouble(9_007_199_254_740_992.0)));
+        Equal(
+            -1,
+            FerruleSequences.CompareValues(
+                FerruleValue.FromInt64(long.MaxValue),
+                FerruleValue.FromDouble((double)long.MaxValue)));
+        Equal(-1, FerruleSequences.CompareValues(Text("\uE000"), Text("\U00010000")));
+        Equal(-1, FerruleSequences.CompareValues(Bool(false), Bool(true)));
+        Equal(null, FerruleSequences.CompareValues(Text("1"), FerruleValue.FromInt64(1)));
+    }
+
+    private static void StableMultiKeySorting()
+    {
+        var candidates = new[]
+        {
+            new SortCandidate("A", FerruleValue.Null, Text("unused")),
+            new SortCandidate("B", FerruleValue.FromInt64(5), Text("\uE000")),
+            new SortCandidate("C", FerruleValue.FromDouble(5.0), Text("a")),
+            new SortCandidate("D", FerruleValue.FromInt64(3), Text("unused")),
+            new SortCandidate("E", FerruleValue.FromInt64(5), Text("a")),
+            new SortCandidate("F", FerruleValue.FromInt64(5), Text("\U00010000")),
+        };
+        var evaluations = new List<string>();
+        var sorted = FerruleSequences.StableSort(
+            candidates,
+            new FerruleSortKey<SortCandidate>[]
+            {
+                new(candidate =>
+                {
+                    evaluations.Add($"{candidate.Name}:score");
+                    return candidate.Score;
+                }, Descending: true),
+                new(candidate =>
+                {
+                    evaluations.Add($"{candidate.Name}:tie");
+                    return candidate.Tie;
+                }),
+            });
+        Equal("C,E,B,F,D,A", string.Join(',', sorted.Select(candidate => candidate.Name)));
+        Equal(
+            "A:score,A:tie,B:score,B:tie,C:score,C:tie,D:score,D:tie,E:score,E:tie,F:score,F:tie",
+            string.Join(',', evaluations));
+
+        var incomparable = FerruleSequences.StableSort(
+            candidates.Take(3).ToArray(),
+            new[]
+            {
+                new FerruleSortKey<SortCandidate>(
+                    _ => FerruleValue.XmlNil),
+            });
+        Equal("A,B,C", string.Join(',', incomparable.Select(candidate => candidate.Name)));
+        Equal(0, FerruleSequences.StableSort(candidates, Array.Empty<FerruleSortKey<SortCandidate>>()).Count - candidates.Length);
+    }
+
+    private static void TypedItemCounts()
+    {
+        Equal(7UL, FerruleSequences.ItemCount(1, FerruleValue.FromInt64(7)));
+        Equal(0UL, FerruleSequences.ItemCount(2, FerruleValue.FromInt64(-7)));
+        Equal(2UL, FerruleSequences.ItemCount(3, FerruleValue.FromDouble(2.9)));
+        Equal(0UL, FerruleSequences.ItemCount(4, FerruleValue.FromDouble(-2.9)));
+        Equal((ulong)long.MaxValue, FerruleSequences.ItemCount(5, FerruleValue.FromDouble(double.MaxValue)));
+        Equal(42UL, FerruleSequences.ItemCount(6, Text("  +42 ")));
+
+        var boolean = Error(
+            FerruleRuntimeError.NotAnItemCount,
+            () => FerruleSequences.ItemCount(91, Bool(true)));
+        Equal((uint)91, boolean.Node);
+        Equal(FerruleValueKind.Bool, boolean.FoundKind);
+        foreach (var invalid in new[]
+        {
+            FerruleValue.Null,
+            FerruleValue.XmlNil,
+            FerruleValue.FromDouble(double.NaN),
+            FerruleValue.FromDouble(double.PositiveInfinity),
+            Text("2.0"),
+            Text(""),
+        })
+        {
+            var exception = Error(
+                FerruleRuntimeError.NotAnItemCount,
+                () => FerruleSequences.ItemCount(92, invalid));
+            Equal((uint)92, exception.Node);
+            Equal(invalid.Kind, exception.FoundKind);
+        }
+    }
+
+    private static void OrderedSequenceWindows()
+    {
+        var items = Enumerable.Range(1, 8).ToArray();
+        WindowEquals("3,4,5,6,7,8", items, FerruleSequenceWindow.SkipFirst(2));
+        WindowEquals("1,2", items, FerruleSequenceWindow.First(2));
+        WindowEquals("3,4,5,6,7,8", items, FerruleSequenceWindow.From(3));
+        WindowEquals("3,4", items, FerruleSequenceWindow.FromTo(3, 4));
+        WindowEquals("7,8", items, FerruleSequenceWindow.Last(2));
+        WindowEquals("1,2,3,4,5,6,7,8", items, FerruleSequenceWindow.From(0));
+        WindowEquals(string.Empty, items, FerruleSequenceWindow.FromTo(3, 1));
+        WindowEquals(string.Empty, items, FerruleSequenceWindow.SkipFirst(ulong.MaxValue));
+        WindowEquals("1,2,3,4,5,6,7,8", items, FerruleSequenceWindow.Last(ulong.MaxValue));
+        WindowEquals(
+            "3,4,5",
+            items,
+            FerruleSequenceWindow.SkipFirst(2),
+            FerruleSequenceWindow.First(3));
+        WindowEquals(
+            "3",
+            items,
+            FerruleSequenceWindow.First(3),
+            FerruleSequenceWindow.SkipFirst(2));
+        WindowEquals(string.Empty, Array.Empty<int>(), FerruleSequenceWindow.Last(2));
+    }
+
+    private static void WindowEquals(
+        string expected,
+        IReadOnlyList<int> items,
+        params FerruleSequenceWindow[] windows) =>
+        Equal(expected, string.Join(',', FerruleSequences.ApplyWindows(items, windows)));
+
     private static FerruleValue Aggregate(
         FerruleAggregateOperation operation,
         params FerruleValue[] values) =>
@@ -672,4 +804,9 @@ internal static class Program
             throw new InvalidOperationException($"Expected '{left}' and '{right}' to differ.");
         }
     }
+
+    private sealed record SortCandidate(
+        string Name,
+        FerruleValue Score,
+        FerruleValue Tie);
 }

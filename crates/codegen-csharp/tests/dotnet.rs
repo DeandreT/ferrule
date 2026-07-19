@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, Program, ScalarFunction, SourceIteration, TargetScope,
+    Binding, Expression, ExpressionNode, IterationPlan, Program, ScalarFunction, TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -60,7 +60,29 @@ fn fixture() -> Program {
         repeating,
     };
     Program {
-        source: SchemaNode::group("source schema", Vec::new()),
+        source: SchemaNode::group(
+            "source schema",
+            vec![
+                SchemaNode::group(
+                    "Account",
+                    vec![SchemaNode::scalar("Name", ScalarType::String)],
+                ),
+                SchemaNode::scalar("Condition", ScalarType::Bool),
+                SchemaNode::group(
+                    "Orders",
+                    vec![
+                        SchemaNode::scalar("Customer", ScalarType::String),
+                        SchemaNode::scalar("OrderCode", ScalarType::String),
+                        SchemaNode::group(
+                            "Items",
+                            vec![SchemaNode::scalar("Sku", ScalarType::String)],
+                        )
+                        .repeating(),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
         target: SchemaNode::group("target schema", Vec::new()),
         expressions: vec![
             ExpressionNode {
@@ -184,13 +206,11 @@ fn fixture() -> Program {
             target_field: String::new(),
             repeating: true,
             iteration: None,
-            filter: None,
             bindings: vec![binding("RootInt", 2, ScalarType::Int, false)],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
                 repeating: true,
-                iteration: Some(SourceIteration::new(vec!["Orders".into(), "Items".into()])),
-                filter: None,
+                iteration: Some(IterationPlan::source(vec!["Orders".into(), "Items".into()])),
                 bindings: vec![
                     binding("Copied", 1, ScalarType::String, false),
                     binding("Lines", 5, ScalarType::String, true),
