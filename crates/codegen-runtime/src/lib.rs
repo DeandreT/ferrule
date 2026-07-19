@@ -1,14 +1,73 @@
 //! Runtime primitives used by generated Rust mappings.
 //!
-//! This crate intentionally contains only construction and static source-path
-//! operations. Scope iteration and graph evaluation belong in generated code,
-//! not in a second mapping interpreter.
+//! This crate intentionally contains only construction, static source-path,
+//! and scalar builtin operations. Scope iteration and expression control flow
+//! belong in generated code, not in a second mapping interpreter.
 
 #![forbid(unsafe_code)]
 
 use std::fmt;
 
+pub use functions::FunctionError;
 pub use ir::{Instance, ScalarType, Value};
+
+/// Failure produced while executing generated mapping code.
+#[derive(Debug, PartialEq)]
+pub enum RuntimeError {
+    SourcePath(SourcePathError),
+    Function(FunctionError),
+    NotABool { node: u32, found: &'static str },
+}
+
+impl fmt::Display for RuntimeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SourcePath(error) => error.fmt(formatter),
+            Self::Function(error) => error.fmt(formatter),
+            Self::NotABool { node, found } => {
+                write!(formatter, "node {node}: expected a bool, got {found}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for RuntimeError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::SourcePath(error) => Some(error),
+            Self::Function(error) => Some(error),
+            Self::NotABool { .. } => None,
+        }
+    }
+}
+
+impl From<SourcePathError> for RuntimeError {
+    fn from(error: SourcePathError) -> Self {
+        Self::SourcePath(error)
+    }
+}
+
+impl From<FunctionError> for RuntimeError {
+    fn from(error: FunctionError) -> Self {
+        Self::Function(error)
+    }
+}
+
+/// Dispatches one scalar builtin while retaining its typed failure.
+pub fn call(function: &str, args: &[Value]) -> Result<Value, RuntimeError> {
+    functions::call(function, args).map_err(RuntimeError::from)
+}
+
+/// Extracts the boolean condition required by a generated conditional.
+pub fn require_bool(node: u32, value: Value) -> Result<bool, RuntimeError> {
+    match value {
+        Value::Bool(value) => Ok(value),
+        value => Err(RuntimeError::NotABool {
+            node,
+            found: value.type_name(),
+        }),
+    }
+}
 
 /// One ordered field supplied to [`group`].
 pub type GroupField = (String, Instance);
@@ -390,6 +449,30 @@ mod tests {
         assert_eq!(
             adapt_target_value(Value::Int(imprecise), ScalarType::Float),
             Value::Int(imprecise)
+        );
+    }
+
+    #[test]
+    fn scalar_calls_preserve_typed_function_failures() {
+        assert_eq!(
+            call("add", &[Value::Int(4), Value::Int(5)]),
+            Ok(Value::Int(9))
+        );
+        assert_eq!(
+            call("divide", &[Value::Int(1), Value::Int(0)]),
+            Err(RuntimeError::Function(FunctionError::DivideByZero))
+        );
+    }
+
+    #[test]
+    fn boolean_requirements_retain_the_condition_node() {
+        assert_eq!(require_bool(12, Value::Bool(true)), Ok(true));
+        assert_eq!(
+            require_bool(12, Value::String("not a bool".to_string())),
+            Err(RuntimeError::NotABool {
+                node: 12,
+                found: "string",
+            })
         );
     }
 }

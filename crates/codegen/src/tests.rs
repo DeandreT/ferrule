@@ -7,7 +7,8 @@ use mapping::{
 
 use crate::{
     ArtifactPath, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError, Diagnostic, Expression,
-    GeneratedFile, ProjectFeature, ScopeFeature, UnsupportedNodeKind, lower,
+    GeneratedFile, ProjectFeature, SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeFeature,
+    UnsupportedNodeKind, lower,
 };
 
 fn scalar(name: &str) -> SchemaNode {
@@ -160,7 +161,7 @@ fn unused_unsupported_nodes_do_not_block_lowering() {
 }
 
 #[test]
-fn reports_each_reachable_unsupported_node_with_its_id() {
+fn reports_each_reachable_unsupported_function_by_name() {
     let mut project = supported_project();
     project.graph.nodes.insert(
         40,
@@ -172,16 +173,173 @@ fn reports_each_reachable_unsupported_node_with_its_id() {
     project.root.bindings[0].node = 40;
 
     let diagnostics = lower(&project)
-        .expect_err("calls are outside the initial subset")
+        .expect_err("concat is outside the initial call whitelist")
         .into_diagnostics();
 
     assert_eq!(
         diagnostics,
-        vec![Diagnostic::UnsupportedNode {
+        vec![Diagnostic::UnsupportedFunction {
             node: 40,
-            kind: UnsupportedNodeKind::Call,
+            function: "concat".into(),
         }]
     );
+    assert_eq!(
+        diagnostics[0].to_string(),
+        "graph node 40: code generation does not support function `concat`"
+    );
+}
+
+#[test]
+fn scalar_call_whitelist_is_closed_and_name_addressable() {
+    let expected = [
+        "and",
+        "or",
+        "not",
+        "exists",
+        "is_empty",
+        "starts_with",
+        "contains",
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "equal",
+        "not_equal",
+        "less_than",
+        "greater_than",
+        "less_or_equal",
+        "greater_or_equal",
+    ];
+
+    assert_eq!(
+        SUPPORTED_SCALAR_CALLS
+            .iter()
+            .copied()
+            .map(ScalarFunction::as_str)
+            .collect::<Vec<_>>(),
+        expected
+    );
+    for (name, function) in expected.into_iter().zip(SUPPORTED_SCALAR_CALLS) {
+        assert_eq!(ScalarFunction::from_name(name), Some(*function));
+    }
+    assert_eq!(ScalarFunction::from_name("concat"), None);
+}
+
+#[test]
+fn lowers_direct_calls_with_ordered_arguments() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        40,
+        Node::Call {
+            function: "multiply".into(),
+            args: vec![20, 10, 20],
+        },
+    );
+    project.root.bindings[0].node = 40;
+
+    let program = lower(&project).expect("whitelisted calls lower");
+
+    assert_eq!(
+        program.expressions,
+        vec![
+            crate::ExpressionNode {
+                id: 10,
+                expression: Expression::Const {
+                    value: Value::Int(7),
+                },
+            },
+            crate::ExpressionNode {
+                id: 20,
+                expression: Expression::SourceField {
+                    path: vec!["First".into()],
+                },
+            },
+            crate::ExpressionNode {
+                id: 30,
+                expression: Expression::SourceField {
+                    path: vec!["NestedValue".into()],
+                },
+            },
+            crate::ExpressionNode {
+                id: 40,
+                expression: Expression::Call {
+                    function: ScalarFunction::Multiply,
+                    args: vec![20, 10, 20],
+                },
+            },
+        ]
+    );
+}
+
+#[test]
+fn nested_calls_and_if_retain_every_dependency_deterministically() {
+    let mut project = supported_project();
+    project.graph.nodes.extend([
+        (
+            40,
+            Node::Const {
+                value: Value::Int(5),
+            },
+        ),
+        (
+            50,
+            Node::Call {
+                function: "add".into(),
+                args: vec![10, 40],
+            },
+        ),
+        (
+            60,
+            Node::Call {
+                function: "greater_than".into(),
+                args: vec![10, 40],
+            },
+        ),
+        (
+            70,
+            Node::If {
+                condition: 60,
+                then: 50,
+                else_: 10,
+            },
+        ),
+    ]);
+    project.root.bindings[0].node = 70;
+
+    let first = lower(&project).expect("nested supported expressions lower");
+    let second = lower(&project).expect("lowering is deterministic");
+
+    assert_eq!(first, second);
+    assert_eq!(
+        first
+            .expressions
+            .iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![10, 20, 30, 40, 50, 60, 70]
+    );
+    assert!(matches!(
+        first.expressions[4].expression,
+        Expression::Call {
+            function: ScalarFunction::Add,
+            ref args,
+        } if args == &[10, 40]
+    ));
+    assert!(matches!(
+        first.expressions[5].expression,
+        Expression::Call {
+            function: ScalarFunction::GreaterThan,
+            ref args,
+        } if args == &[10, 40]
+    ));
+    assert!(matches!(
+        first.expressions[6].expression,
+        Expression::If {
+            condition: 60,
+            then: 50,
+            else_: 10,
+        }
+    ));
 }
 
 #[test]

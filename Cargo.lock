@@ -931,6 +931,7 @@ dependencies = [
  "mapping",
  "mfd",
  "rust_xlsxwriter",
+ "rustix 1.1.4",
  "serde_json",
  "ureq",
 ]
@@ -971,6 +972,7 @@ dependencies = [
 name = "codegen-runtime"
 version = "0.1.0"
 dependencies = [
+ "functions",
  "ir",
 ]
 

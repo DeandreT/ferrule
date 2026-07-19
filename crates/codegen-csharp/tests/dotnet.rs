@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use codegen::{Binding, Expression, ExpressionNode, Program, TargetScope};
+use codegen::{Binding, Expression, ExpressionNode, Program, ScalarFunction, TargetScope};
 use ir::{ScalarType, SchemaNode, Value};
 
 #[test]
@@ -95,6 +95,65 @@ fn fixture() -> Program {
                     value: Value::String("second".into()),
                 },
             },
+            ExpressionNode {
+                id: 7,
+                expression: Expression::Const {
+                    value: Value::Int(20),
+                },
+            },
+            ExpressionNode {
+                id: 8,
+                expression: Expression::Const {
+                    value: Value::String("22".into()),
+                },
+            },
+            ExpressionNode {
+                id: 9,
+                expression: Expression::Call {
+                    function: ScalarFunction::Add,
+                    args: vec![7, 8],
+                },
+            },
+            ExpressionNode {
+                id: 10,
+                expression: Expression::SourceField {
+                    path: vec!["Condition".into()],
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::Const {
+                    value: Value::Int(1),
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::Const {
+                    value: Value::Int(0),
+                },
+            },
+            ExpressionNode {
+                id: 13,
+                expression: Expression::Call {
+                    function: ScalarFunction::Divide,
+                    args: vec![11, 12],
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::If {
+                    condition: 10,
+                    then: 9,
+                    else_: 13,
+                },
+            },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::Call {
+                    function: ScalarFunction::GreaterThan,
+                    args: vec![14, 7],
+                },
+            },
         ],
         root: TargetScope {
             target_field: String::new(),
@@ -110,6 +169,8 @@ fn fixture() -> Program {
                     binding("Lines", 4, ScalarType::String, true),
                     binding("Lines", 6, ScalarType::String, true),
                     binding("ExactFloat", 3, ScalarType::Float, false),
+                    binding("LazyValue", 14, ScalarType::Int, false),
+                    binding("Compared", 15, ScalarType::Bool, false),
                 ],
                 children: Vec::new(),
             }],
@@ -144,13 +205,7 @@ fn write_harness(root: &Path) {
         r#"using Ferrule.Generated;
 using Ferrule.Runtime;
 
-var source = new FerruleGroup(new FerruleField[]
-{
-    new("Account", new FerruleGroup(new FerruleField[]
-    {
-        new("Name", new FerruleScalar(FerruleValue.FromString("Ada"))),
-    })),
-});
+var source = Source(FerruleValue.FromBoolean(true));
 
 var outputRows = (FerruleRepeated)GeneratedMapping.Execute(source);
 Assert(outputRows.Items.Count == 1);
@@ -162,7 +217,7 @@ var nestedRows = (FerruleRepeated)output.Fields[1].Value;
 Assert(nestedRows.Items.Count == 1);
 var nested = (FerruleGroup)nestedRows.Items[0];
 Assert(nested.Fields.Select(field => field.Name).SequenceEqual(
-    new[] { "Copied", "Lines", "Middle", "ExactFloat" }));
+    new[] { "Copied", "Lines", "Middle", "ExactFloat", "LazyValue", "Compared" }));
 Assert(((FerruleScalar)nested.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
 var lines = (FerruleRepeated)nested.Fields[1].Value;
 Assert(lines.Items.Count == 2);
@@ -170,7 +225,28 @@ Assert(((FerruleScalar)lines.Items[0]).Value == FerruleValue.FromString("first")
 Assert(((FerruleScalar)lines.Items[1]).Value == FerruleValue.FromString("second"));
 Assert(((FerruleScalar)nested.Fields[2].Value).Value == FerruleValue.FromInt64(7));
 Assert(((FerruleScalar)nested.Fields[3].Value).Value == FerruleValue.FromDouble(8.0));
+Assert(((FerruleScalar)nested.Fields[4].Value).Value == FerruleValue.FromInt64(42));
+Assert(((FerruleScalar)nested.Fields[5].Value).Value == FerruleValue.FromBoolean(true));
+
+Error(
+    FerruleRuntimeError.DivideByZero,
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(false))));
+var notBoolean = Error(
+    FerruleRuntimeError.NotABool,
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromString("true"))));
+Assert(notBoolean.Node == 10U);
+Assert(notBoolean.FoundKind == FerruleValueKind.String);
 Console.WriteLine("generated mapping passed");
+
+static FerruleGroup Source(FerruleValue condition) =>
+    new(new FerruleField[]
+    {
+        new("Account", new FerruleGroup(new FerruleField[]
+        {
+            new("Name", new FerruleScalar(FerruleValue.FromString("Ada"))),
+        })),
+        new("Condition", new FerruleScalar(condition)),
+    });
 
 static void Assert(bool condition)
 {
@@ -178,6 +254,21 @@ static void Assert(bool condition)
     {
         throw new InvalidOperationException("generated mapping assertion failed");
     }
+}
+
+static FerruleRuntimeException Error(FerruleRuntimeError expected, Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        Assert(exception.Error == expected);
+        return exception;
+    }
+
+    throw new InvalidOperationException($"Expected Ferrule runtime error {expected}.");
 }
 "#,
     )

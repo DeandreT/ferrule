@@ -120,9 +120,15 @@ MapForce is a trademark of its owner; ferrule is an independent project.
 ferrule can generate buildable Rust and C# mapping libraries. The initial
 code-generation subset covers constants, unframed source fields, and static
 constructed target scopes, including nested/repeating target groups, exact
-numeric target adaptation, and repeating scalar bindings. Projects using
-other graph or scope features receive actionable capability diagnostics before
-any output directory is created.
+numeric target adaptation and repeating scalar bindings. It also supports lazy
+`if` expressions plus scalar calls for boolean `and`/`or`/`not`, `exists` and
+the `is_empty`/`starts_with`/`contains` string predicates, arithmetic
+`add`/`subtract`/`multiply`/`divide`, and the `equal`/`not_equal`/`less_than`/
+`greater_than`/`less_or_equal`/`greater_or_equal` comparisons. Call arguments
+evaluate once in declared order, `if` evaluates only its selected branch, and
+runtime failures remain typed. Projects using other graph or scope features
+receive actionable capability diagnostics before any output directory is
+created.
 
 ```sh
 # Standalone, package-free .NET 10 library

@@ -22,6 +22,10 @@ pub enum Diagnostic {
         node: NodeId,
         kind: UnsupportedNodeKind,
     },
+    UnsupportedFunction {
+        node: NodeId,
+        function: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,8 +68,6 @@ pub enum UnsupportedNodeKind {
     JoinField,
     JoinPosition,
     RuntimeValue,
-    Call,
-    If,
     ValueMap,
     Lookup,
     DynamicSourceField,
@@ -131,6 +133,10 @@ impl fmt::Display for Diagnostic {
                 formatter,
                 "graph node {node}: code generation does not support {kind}"
             ),
+            Self::UnsupportedFunction { node, function } => write!(
+                formatter,
+                "graph node {node}: code generation does not support function `{function}`"
+            ),
         }
     }
 }
@@ -193,8 +199,6 @@ impl fmt::Display for UnsupportedNodeKind {
             Self::JoinField => "a join field",
             Self::JoinPosition => "join position",
             Self::RuntimeValue => "a runtime value",
-            Self::Call => "a function call",
-            Self::If => "conditional evaluation",
             Self::ValueMap => "a value map",
             Self::Lookup => "a lookup",
             Self::DynamicSourceField => "a dynamic source field",

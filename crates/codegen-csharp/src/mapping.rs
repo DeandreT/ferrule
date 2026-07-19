@@ -22,16 +22,11 @@ struct BindingPlan<'a> {
 pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     let mut expressions = BTreeMap::new();
     for node in &program.expressions {
-        if expressions.insert(node.id, &node.expression).is_some() {
-            return Err(EmitError::DuplicateNode { node: node.id });
-        }
-        if let Expression::Const { value } = &node.expression {
-            literal::value(node.id, value)?;
-        }
+        expressions.insert(node.id, &node.expression);
     }
 
     let mut scopes = Vec::new();
-    add_scope(&program.root, &expressions, &mut scopes)?;
+    add_scope(&program.root, &mut scopes);
 
     let mut output =
         String::from("namespace Ferrule.Generated;\n\npublic static class GeneratedMapping\n{\n");
@@ -42,17 +37,45 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     for (node, expression) in expressions {
         output.push('\n');
         output.push_str(&format!(
-            "    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        global::Ferrule.Runtime.FerruleInstance source) =>\n        ",
+            "    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        global::Ferrule.Runtime.FerruleInstance source)",
         ));
         match expression {
             Expression::SourceField { path } => {
+                output.push_str(" =>\n        ");
                 output.push_str("global::Ferrule.Runtime.ScalarPathResolver.Resolve(source, ");
                 render_path(path, &mut output);
                 output.push_str(");\n");
             }
             Expression::Const { value } => {
+                output.push_str(" =>\n        ");
                 output.push_str(&literal::value(node, value)?);
                 output.push_str(";\n");
+            }
+            Expression::Call { function, args } => {
+                output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+                output.push_str(&literal::string(function.as_str()));
+                output.push_str(", new global::Ferrule.Runtime.FerruleValue[] { ");
+                for (index, argument) in args.iter().enumerate() {
+                    if index != 0 {
+                        output.push_str(", ");
+                    }
+                    output.push_str(&format!("Node_{argument}(source)"));
+                }
+                output.push_str(" });\n");
+            }
+            Expression::If {
+                condition,
+                then,
+                else_,
+            } => {
+                output.push_str("\n    {\n");
+                output.push_str(&format!(
+                    "        var condition_{node} = Node_{condition}(source);\n"
+                ));
+                output.push_str(&format!(
+                    "        if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(condition_{node}, {condition}U))\n        {{\n            return Node_{then}(source);\n        }}\n"
+                ));
+                output.push_str(&format!("        return Node_{else_}(source);\n    }}\n"));
             }
         }
     }
@@ -115,11 +138,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     Ok(output)
 }
 
-fn add_scope<'a>(
-    scope: &'a TargetScope,
-    expressions: &BTreeMap<u32, &'a Expression>,
-    scopes: &mut Vec<ScopePlan<'a>>,
-) -> Result<usize, EmitError> {
+fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usize {
     let scope_index = scopes.len();
     scopes.push(ScopePlan {
         repeating: false,
@@ -136,20 +155,8 @@ fn add_scope<'a>(
         .collect();
     let mut first_binding = BTreeMap::<&str, usize>::new();
     for (binding_index, binding) in scope.bindings.iter().enumerate() {
-        if !expressions.contains_key(&binding.expression) {
-            return Err(EmitError::MissingExpression {
-                node: binding.expression,
-            });
-        }
         if let Some(&existing) = first_binding.get(binding.target_field.as_str()) {
-            let plan = &mut bindings[existing];
-            if !plan.repeating || !binding.repeating || plan.target_type != binding.target_type {
-                return Err(EmitError::InvalidDuplicateBinding {
-                    scope: scope_index,
-                    binding: binding_index,
-                });
-            }
-            plan.values.push(binding_index);
+            bindings[existing].values.push(binding_index);
         } else {
             first_binding.insert(binding.target_field.as_str(), bindings.len());
             bindings.push(binding_plan(binding, binding_index));
@@ -158,7 +165,7 @@ fn add_scope<'a>(
 
     let mut children = Vec::with_capacity(scope.children.len());
     for child in &scope.children {
-        let child_index = add_scope(child, expressions, scopes)?;
+        let child_index = add_scope(child, scopes);
         children.push((child.target_field.as_str(), child_index));
     }
     scopes[scope_index] = ScopePlan {
@@ -167,7 +174,7 @@ fn add_scope<'a>(
         bindings,
         children,
     };
-    Ok(scope_index)
+    scope_index
 }
 
 fn binding_plan(binding: &Binding, binding_index: usize) -> BindingPlan<'_> {

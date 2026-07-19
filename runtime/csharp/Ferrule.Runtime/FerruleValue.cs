@@ -37,17 +37,9 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
 
     public static FerruleValue FromInt64(long value) => new(FerruleValueKind.Int64, value);
 
-    public static FerruleValue FromDouble(double value)
-    {
-        if (!double.IsFinite(value))
-        {
-            throw new FerruleRuntimeException(
-                FerruleRuntimeError.NonFiniteDouble,
-                "Ferrule double values must be finite.");
-        }
-
-        return new FerruleValue(FerruleValueKind.Double, value);
-    }
+    /// <summary>Preserves the full IEEE-754 domain used by Rust <c>ir::Value</c>.</summary>
+    public static FerruleValue FromDouble(double value) =>
+        new(FerruleValueKind.Double, value);
 
     public static FerruleValue FromString(string value) =>
         new(FerruleValueKind.String, value ?? throw new ArgumentNullException(nameof(value)));
@@ -66,7 +58,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
             FerruleValueKind.Null or FerruleValueKind.XmlNil => true,
             FerruleValueKind.Bool => BooleanValue == other.BooleanValue,
             FerruleValueKind.Int64 => Int64Value == other.Int64Value,
-            FerruleValueKind.Double => DoubleValue.Equals(other.DoubleValue),
+            FerruleValueKind.Double => DoubleValue == other.DoubleValue,
             FerruleValueKind.String => string.Equals(StringValue, other.StringValue, StringComparison.Ordinal),
             _ => false,
         };
@@ -82,7 +74,9 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
                 FerruleValueKind.Null or FerruleValueKind.XmlNil => 0,
                 FerruleValueKind.Bool => BooleanValue ? 1 : 0,
                 FerruleValueKind.Int64 => Fold64(Int64Value),
-                FerruleValueKind.Double => Fold64(BitConverter.DoubleToInt64Bits(DoubleValue)),
+                FerruleValueKind.Double => DoubleValue == 0.0
+                    ? 0
+                    : Fold64(BitConverter.DoubleToInt64Bits(DoubleValue)),
                 FerruleValueKind.String => StableStringHash(StringValue),
                 _ => 0,
             };
