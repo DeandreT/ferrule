@@ -331,7 +331,7 @@ fn destructive_actions_wait_for_confirmation_when_dirty() {
         Some(DestructiveAction::NewProject)
     );
 
-    app.saved_editor = None;
+    app.history.mark_unsaved();
     assert_eq!(
         app.request_destructive_action(DestructiveAction::OpenProject),
         None
@@ -482,13 +482,13 @@ fn history_coalesces_keyboard_edits_and_roundtrips_undo_redo() {
     );
     app.observe_editor_history(start + std::time::Duration::from_millis(100), true);
 
-    assert!(app.undo_history.is_empty());
+    assert_eq!(app.history.undo_len(), 0);
     assert!(app.pending_history.is_some());
     app.observe_editor_history(
         start + HISTORY_COALESCE_DELAY + std::time::Duration::from_millis(100),
         true,
     );
-    assert_eq!(app.undo_history.len(), 1);
+    assert_eq!(app.history.undo_len(), 1);
 
     app.undo_project();
     assert!(app.project.graph.nodes.is_empty());
@@ -519,7 +519,7 @@ fn pointer_edits_are_distinct_history_steps() {
         },
     );
     app.observe_editor_history(start, false);
-    assert_eq!(app.undo_history.len(), 2);
+    assert_eq!(app.history.undo_len(), 2);
 
     app.undo_project();
     assert!(app.project.graph.nodes.contains_key(&0));
@@ -547,7 +547,7 @@ fn keyboard_edits_after_the_quiet_period_start_a_new_history_step() {
         },
     );
     app.observe_editor_history(start + HISTORY_COALESCE_DELAY, true);
-    assert_eq!(app.undo_history.len(), 1);
+    assert_eq!(app.history.undo_len(), 1);
 
     app.undo_project();
     assert!(matches!(
@@ -579,7 +579,7 @@ fn undo_and_redo_update_dirty_state_against_saved_baseline() {
 
     app.rebase_history();
     assert!(!app.can_undo());
-    assert!(app.redo_history.is_empty());
+    assert!(!app.history.can_redo());
 }
 
 /// Loading the orders-style project must recreate the whole picture:
@@ -822,6 +822,7 @@ fn new_mapping_stages_both_schemas_before_replacing_the_project() {
     .expect("target schema is written");
 
     let mut app = FerruleApp::default();
+    app.begin_new_mapping();
     app.stage_mapping_schema(SchemaSide::Source, source_path);
     assert_eq!(app.project.source.name, "root");
     app.stage_mapping_schema(SchemaSide::Target, target_path);

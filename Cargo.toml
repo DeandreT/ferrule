@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/editor-ui",
     "crates/ir",
     "crates/mapping",
     "crates/functions",
@@ -28,6 +29,7 @@ license = "GPL-3.0-only"
 repository = "https://github.com/DeandreT/ferrule"
 
 [workspace.dependencies]
+editor-ui = { path = "crates/editor-ui" }
 ir = { path = "crates/ir" }
 mapping = { path = "crates/mapping" }
 functions = { path = "crates/functions" }
@@ -59,6 +61,7 @@ quick-xml = "0.41"
 egui = "0.35"
 eframe = "0.35"
 egui-snarl = "0.11"
+lucide-icons = "1.24"
 rfd = "0.17"
 rusqlite = { version = "0.37", features = ["bundled"] }
 jiff = "0.2.32"

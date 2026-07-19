@@ -5,6 +5,7 @@ impl FerruleApp {
         &mut self,
         ui: &mut egui::Ui,
         editing_enabled: bool,
+        layout_class: LayoutClass,
         undo_shortcut: &egui::KeyboardShortcut,
         redo_shortcut: &egui::KeyboardShortcut,
     ) {
@@ -116,7 +117,7 @@ impl FerruleApp {
                     }
                     if ui
                         .add_enabled(
-                            !self.redo_history.is_empty(),
+                            self.history.can_redo(),
                             egui::Button::new("Redo")
                                 .shortcut_text(ui.ctx().format_shortcut(redo_shortcut)),
                         )
@@ -164,15 +165,20 @@ impl FerruleApp {
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_source_panel, "Source schema");
                     ui.checkbox(&mut self.show_inspector_panel, "Inspector");
+                    ui.separator();
+                    ui.menu_button("Theme", |ui| {
+                        for preference in crate::theme::ThemePreference::ALL {
+                            ui.selectable_value(
+                                &mut self.theme.preference,
+                                preference,
+                                preference.label(),
+                            );
+                        }
+                    });
                 });
             });
             ui.separator();
             ui.label(self.document.display_path());
-            if !self.status.is_empty() {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(&self.status);
-                });
-            }
         });
 
         if self.pending_dialog.is_some() {
@@ -188,45 +194,111 @@ impl FerruleApp {
             return;
         }
 
-        ui.add_enabled_ui(editing_enabled, |ui| {
-            let compact = ui.available_width() < 1050.0;
-            ui.horizontal_wrapped(|ui| {
-                if ui
-                    .add_enabled(self.can_undo(), egui::Button::new("Undo"))
-                    .on_hover_text(ui.ctx().format_shortcut(undo_shortcut))
-                    .clicked()
-                {
-                    self.undo_project();
-                }
-                if ui
-                    .add_enabled(!self.redo_history.is_empty(), egui::Button::new("Redo"))
-                    .on_hover_text(ui.ctx().format_shortcut(redo_shortcut))
-                    .clicked()
-                {
-                    self.redo_project();
-                }
-                ui.separator();
-                if ui.button("Validate").clicked() {
-                    self.validate_now();
-                }
-                if ui.button("Run").clicked() {
-                    self.run(ui.ctx());
-                }
-                if ui.button("Arrange").clicked() {
-                    self.arrange_canvas();
-                }
-                if ui.button("Fit").clicked() {
-                    self.fit_canvas();
-                }
-                if !compact {
-                    ui.separator();
-                    self.show_runtime_paths(ui);
-                }
-            });
-            if compact {
-                ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+        ui.horizontal_wrapped(|ui| {
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::FolderOpen,
+                format!("Open ({})", ui.ctx().format_shortcut(&open_shortcut)),
+            )
+            .clicked()
+                && let Some(action) =
+                    self.request_destructive_action(DestructiveAction::OpenProject)
+            {
+                self.perform_destructive_action(action, ui.ctx());
+            }
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::Save,
+                format!("Save ({})", ui.ctx().format_shortcut(&save_shortcut)),
+            )
+            .clicked()
+            {
+                self.save_with_continuation(None, ui.ctx());
+            }
+            ui.separator();
+            if crate::icons::button(
+                ui,
+                editing_enabled && self.can_undo(),
+                lucide_icons::Icon::Undo2,
+                format!("Undo ({})", ui.ctx().format_shortcut(undo_shortcut)),
+            )
+            .clicked()
+            {
+                self.undo_project();
+            }
+            if crate::icons::button(
+                ui,
+                editing_enabled && self.history.can_redo(),
+                lucide_icons::Icon::Redo2,
+                format!("Redo ({})", ui.ctx().format_shortcut(redo_shortcut)),
+            )
+            .clicked()
+            {
+                self.redo_project();
+            }
+            ui.separator();
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::CheckCircle2,
+                format!(
+                    "Validate ({})",
+                    ui.ctx().format_shortcut(&validate_shortcut)
+                ),
+            )
+            .clicked()
+            {
+                self.validate_now();
+            }
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::Play,
+                format!("Run ({})", ui.ctx().format_shortcut(&run_shortcut)),
+            )
+            .clicked()
+            {
+                self.run(ui.ctx());
+            }
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::Settings2,
+                "Run settings",
+            )
+            .clicked()
+            {
+                self.show_run_setup = !self.show_run_setup;
+            }
+            ui.separator();
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::LayoutGrid,
+                "Arrange canvas",
+            )
+            .clicked()
+            {
+                self.arrange_canvas();
+            }
+            if crate::icons::button(
+                ui,
+                editing_enabled,
+                lucide_icons::Icon::Maximize2,
+                "Fit canvas",
+            )
+            .clicked()
+            {
+                self.fit_canvas();
             }
         });
+        if self.show_run_setup {
+            ui.separator();
+            ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+        }
+        self.show_workspace_tabs(ui, layout_class);
     }
 
     fn show_runtime_paths(&mut self, ui: &mut egui::Ui) {
@@ -287,5 +359,173 @@ impl FerruleApp {
             self.status = format!("{} validation issue(s)", issues.len());
             self.diagnostics.validation(issues);
         }
+    }
+
+    pub(super) fn show_source_explorer(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        ui.horizontal(|ui| {
+            ui.strong("Source schema");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add_enabled(
+                        editing_enabled,
+                        egui::Button::new(crate::icons::text(
+                            lucide_icons::Icon::CirclePlus,
+                            crate::theme::METRICS.icon_size,
+                        )),
+                    )
+                    .on_hover_text("Add source")
+                    .clicked()
+                {
+                    self.begin_extra_source();
+                }
+            });
+        });
+        let mut remove = None;
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            show_schema_tree(ui, &self.project.source);
+            for (index, extra) in self.project.extra_sources.iter().enumerate() {
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.strong(format!("Extra: {}", extra.name));
+                    if ui
+                        .add_enabled(
+                            editing_enabled,
+                            egui::Button::new(crate::icons::text(
+                                lucide_icons::Icon::Trash2,
+                                crate::theme::METRICS.icon_size,
+                            ))
+                            .small(),
+                        )
+                        .on_hover_text("Remove source")
+                        .clicked()
+                    {
+                        remove = Some(index);
+                    }
+                });
+                show_schema_tree(ui, &extra.schema);
+            }
+        });
+        if let Some(index) = remove {
+            self.pending_extra_source_removal = Some(index);
+        }
+    }
+
+    pub(super) fn show_inspector(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let source_paths =
+            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+        ui.add_enabled_ui(editing_enabled, |ui| {
+            ui.strong("Target schema");
+            egui::ScrollArea::vertical()
+                .max_height(200.0)
+                .show(ui, |ui| show_schema_tree(ui, &self.project.target));
+
+            ui.separator();
+            ui.strong("Scopes");
+            egui::ScrollArea::vertical()
+                .id_salt("scope_tree_scroll")
+                .max_height(200.0)
+                .show(ui, |ui| {
+                    if let Some(new_selection) =
+                        show_scope_tree(ui, &self.project.root, &self.selected_scope)
+                    {
+                        self.selected_scope = new_selection;
+                    }
+                });
+            self.show_scope_controls(ui);
+
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .id_salt("scope_editor_scroll")
+                .show(ui, |ui| {
+                    let nested = !self.selected_scope.is_empty();
+                    let target_chain = scope_target_chain(&self.project.root, &self.selected_scope);
+                    let target_fields = binding_target_fields(&self.project.target, &target_chain);
+                    let scope = scope_at_mut(&mut self.project.root, &self.selected_scope);
+                    show_scope_editor(
+                        ui,
+                        scope,
+                        &self.project.graph,
+                        &source_paths,
+                        &target_fields,
+                        nested,
+                    );
+                });
+        });
+    }
+
+    pub(super) fn show_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let source_paths =
+            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+        ui.add_enabled_ui(editing_enabled, |ui| {
+            let source_pins: Vec<SourceLeaf> = source_leaves(&self.project.source);
+            let target_pins: Vec<TargetLeaf> = target_leaves(&self.project.target);
+            let mut viewer = GraphViewer {
+                graph: &mut self.project.graph,
+                root_scope: &mut self.project.root,
+                extra_targets: &self.project.extra_targets,
+                source_leaves: &source_pins,
+                target_leaves: &target_pins,
+                source_paths: &source_paths,
+                error: None,
+            };
+            crate::canvas_keyboard::show(
+                &mut self.snarl,
+                &mut viewer,
+                self.canvas_view_generation,
+                ui,
+            );
+            if let Some(error) = viewer.error {
+                self.status = "graph edit failed".to_string();
+                self.diagnostics.error("Graph edit failed", error);
+            }
+        });
+    }
+
+    pub(super) fn show_workspace_tabs(&mut self, ui: &mut egui::Ui, class: LayoutClass) {
+        match class {
+            LayoutClass::Wide => {}
+            LayoutClass::Compact => {
+                ui.horizontal(|ui| {
+                    ui.toggle_value(&mut self.compact_dock_open, "Dock");
+                    ui.add_enabled_ui(self.compact_dock_open, |ui| {
+                        for dock in SideDock::ALL {
+                            ui.selectable_value(&mut self.compact_dock, dock, dock.label());
+                        }
+                    });
+                });
+            }
+            LayoutClass::Narrow => {
+                ui.horizontal(|ui| {
+                    for pane in WorkspacePane::ALL {
+                        ui.selectable_value(&mut self.narrow_pane, pane, pane.label());
+                    }
+                });
+            }
+        }
+    }
+
+    pub(super) fn show_status_bar(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let (label, color) = if self.is_dirty() {
+                ("Unsaved", self.palette.warning)
+            } else {
+                ("Saved", self.palette.success)
+            };
+            ui.colored_label(color, label);
+            ui.separator();
+            ui.label(self.document.display_name());
+            if !self.diagnostics.is_empty() {
+                ui.separator();
+                ui.colored_label(
+                    self.palette.error,
+                    format!("{} issue(s)", self.diagnostics.len()),
+                );
+            }
+            if !self.status.is_empty() {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(&self.status);
+                });
+            }
+        });
     }
 }

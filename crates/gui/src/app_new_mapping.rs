@@ -137,7 +137,7 @@ impl FerruleApp {
         self.snarl = build_snarl(&self.project);
         self.reset_canvas_view();
         self.document = DocumentLocation::untitled("mapping.json");
-        self.saved_editor = None;
+        self.history.mark_unsaved();
         self.selected_scope.clear();
         self.rebase_history();
         self.diagnostics.clear();
