@@ -56,6 +56,7 @@ mod tests {
                 ExpressionNode {
                     id: 2,
                     expression: Expression::SourceField {
+                        frame: None,
                         path: vec!["input field".into()],
                     },
                 },
@@ -64,6 +65,7 @@ mod tests {
                 target_field: String::new(),
                 repeating: false,
                 iteration: None,
+                filter: None,
                 bindings: vec![Binding {
                     target_field: "root value".into(),
                     expression: 9,
@@ -74,6 +76,7 @@ mod tests {
                     target_field: "child group".into(),
                     repeating: false,
                     iteration: None,
+                    filter: None,
                     bindings: vec![Binding {
                         target_field: "copied value".into(),
                         expression: 2,
@@ -187,15 +190,53 @@ mod tests {
         let mut program = program();
         program.root.children[0].iteration =
             Some(SourceIteration::new(vec!["orders".into(), "items".into()]));
+        program.expressions.extend([
+            ExpressionNode {
+                id: 10,
+                expression: Expression::SourceField {
+                    frame: Some(vec!["orders".into(), "items".into()]),
+                    path: vec!["name".into()],
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::Position {
+                    collection: vec!["items".into()],
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::Const {
+                    value: Value::Bool(true),
+                },
+            },
+        ]);
+        program.root.children[0].filter = Some(12);
+        program.root.children[0].bindings[0].expression = 10;
+        program.root.children[0].bindings.push(Binding {
+            target_field: "position".into(),
+            expression: 11,
+            target_type: ScalarType::Int,
+            repeating: false,
+        });
 
         let artifacts = emit(&program).expect("source iteration emits");
         let source = generated_source(&artifacts);
         assert!(source.contains(
             "foreach (var item_context_1 in context.IterateSource(new string[] { \"orders\", \"items\" }))"
         ));
-        assert!(source.contains("items_1.Add(ScopeItem_1(item_context_1));"));
+        assert!(source.contains("Node_12(item_context_1)"));
+        assert!(source.contains("RequireBoolean(filter_1, 12U)"));
+        assert!(source.contains("item_context_1.WithCompactedPosition(items_1.Count + 1)"));
+        assert!(source.contains("items_1.Add(ScopeItem_1(output_context_1));"));
         assert!(source.contains("return new global::Ferrule.Runtime.FerruleRepeated(items_1);"));
         assert!(!source.contains("FerruleInstance[] { item_1 }"));
+        assert!(source.contains(
+            "context.ResolveScalarInFrame(new string[] { \"orders\", \"items\" }, new string[] { \"name\" })"
+        ));
+        assert!(
+            source.contains("FerruleValue.FromInt64(context.Position(new string[] { \"items\" }))")
+        );
     }
 
     #[test]
@@ -316,6 +357,7 @@ mod tests {
             target_field: "root value".into(),
             repeating: false,
             iteration: None,
+            filter: None,
             bindings: Vec::new(),
             children: Vec::new(),
         });
@@ -336,6 +378,7 @@ mod tests {
             target_field: "child group".into(),
             repeating: false,
             iteration: None,
+            filter: None,
             bindings: Vec::new(),
             children: Vec::new(),
         });
