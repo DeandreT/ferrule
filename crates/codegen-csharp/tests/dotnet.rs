@@ -84,7 +84,11 @@ fn fixture() -> Program {
                 .repeating(),
             ],
         ),
-        target: SchemaNode::group("target schema", Vec::new()),
+        target: SchemaNode::group(
+            "target schema",
+            vec![SchemaNode::group("Nested", Vec::new()).repeating()],
+        )
+        .repeating(),
         expressions: vec![
             ExpressionNode {
                 id: 1,
@@ -280,6 +284,7 @@ fn fixture() -> Program {
             target_field: String::new(),
             repeating: true,
             iteration: None,
+            construction: Default::default(),
             bindings: vec![
                 binding("RootInt", 2, ScalarType::Int, false),
                 binding("Exists", 24, ScalarType::Bool, false),
@@ -289,6 +294,7 @@ fn fixture() -> Program {
                 target_field: "Nested".into(),
                 repeating: true,
                 iteration: Some(IterationPlan::source(vec!["Orders".into(), "Items".into()])),
+                construction: Default::default(),
                 bindings: vec![
                     binding("Copied", 1, ScalarType::String, false),
                     binding("Lines", 5, ScalarType::String, true),

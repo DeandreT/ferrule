@@ -1,0 +1,45 @@
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = directory(
+        "root",
+        &["top.txt", "second.txt"],
+        vec![directory("child", &["nested.txt"], Vec::new())],
+    );
+    let expected = group([
+        field("Picked", scalar(Value::String("\\root\\second.txt".into()))),
+        field("Found", scalar(Value::Bool(true))),
+        field(
+            "File",
+            repeated([
+                scalar(Value::String("\\root\\top.txt".into())),
+                scalar(Value::String("\\root\\second.txt".into())),
+                scalar(Value::String("\\root\\child\\nested.txt".into())),
+            ]),
+        ),
+    ]);
+    assert_eq!(execute(&source)?, expected);
+    let mut deep = directory("leaf", &[], Vec::new());
+    for depth in 0..256 {
+        deep = directory(&format!("level-{depth}"), &[], vec![deep]);
+    }
+    assert_eq!(
+        execute(&deep),
+        Err(RuntimeError::RecursiveSequenceDepth { limit: 256 }),
+    );
+    Ok(())
+}
+
+fn directory(name: &str, files: &[&str], children: Vec<Instance>) -> Instance {
+    group([
+        field("name", scalar(Value::String(name.into()))),
+        field(
+            "file",
+            repeated(files.iter().map(|file| {
+                group([field("name", scalar(Value::String((*file).into())))])
+            })),
+        ),
+        field("directory", repeated(children)),
+    ])
+}

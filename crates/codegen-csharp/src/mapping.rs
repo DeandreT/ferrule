@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use codegen::{
     AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, IterationOutput,
-    IterationPlan, IterationSource, Program, SequenceWindow, SortFilterOrder, TargetScope,
+    IterationPlan, IterationSource, Program, SequenceWindow, SortFilterOrder, TargetConstruction,
+    TargetScope,
 };
 use ir::ScalarType;
 
@@ -11,6 +12,7 @@ use crate::{EmitError, literal};
 struct ScopePlan<'a> {
     repeating: bool,
     iteration: Option<&'a IterationPlan>,
+    construction: TargetConstruction,
     evaluations: Vec<u32>,
     bindings: Vec<BindingPlan<'a>>,
     children: Vec<(&'a str, usize)>,
@@ -178,8 +180,14 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         }
         output.push_str("    }\n\n");
         output.push_str(&format!(
-            "    private static global::Ferrule.Runtime.FerruleGroup ScopeItem_{scope_index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
+            "    private static global::Ferrule.Runtime.FerruleInstance ScopeItem_{scope_index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
         ));
+        if let TargetConstruction::Scalar { expression } = scope.construction {
+            output.push_str(&format!(
+                "        return new global::Ferrule.Runtime.FerruleScalar(Node_{expression}(context));\n    }}\n"
+            ));
+            continue;
+        }
         for (binding_index, expression) in scope.evaluations.iter().enumerate() {
             output.push_str(&format!(
                 "        var value_{scope_index}_{binding_index} = Node_{expression}(context);\n"
@@ -332,6 +340,32 @@ fn render_generated_values(identifier: &str, sequence: &GeneratedSequence, outpu
         GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
             "        var sequence_input_{identifier} = Node_{input}(context);\n        if (sequence_input_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_parameter_{identifier} = Node_{length}(context);\n            if (sequence_parameter_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.TokenizeByLength(sequence_input_{identifier}, sequence_parameter_{identifier});\n            }}\n        }}\n"
         )),
+        GeneratedSequence::RecursiveCollect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+            prefix,
+            separator,
+            ..
+        } => {
+            output.push_str(&format!(
+                "        var sequence_prefix_{identifier} = global::Ferrule.Runtime.FerruleSequences.RecursiveCollectArgumentText(Node_{prefix}(context));\n        var sequence_separator_{identifier} = global::Ferrule.Runtime.FerruleSequences.RecursiveCollectArgumentText(Node_{separator}(context));\n        sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.RecursiveCollect(\n            context,\n            "
+            ));
+            render_path(collection, output);
+            output.push_str(",\n            ");
+            render_path(children, output);
+            output.push_str(",\n            ");
+            render_path(descent_value, output);
+            output.push_str(",\n            ");
+            render_path(values, output);
+            output.push_str(",\n            ");
+            render_path(value, output);
+            output.push_str(&format!(
+                ",\n            sequence_prefix_{identifier},\n            sequence_separator_{identifier});\n"
+            ));
+        }
         GeneratedSequence::Range {
             from: Some(from),
             to,
@@ -425,6 +459,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
     scopes.push(ScopePlan {
         repeating: false,
         iteration: None,
+        construction: TargetConstruction::Group,
         evaluations: Vec::new(),
         bindings: Vec::new(),
         children: Vec::new(),
@@ -454,6 +489,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
     scopes[scope_index] = ScopePlan {
         repeating: scope.repeating,
         iteration: scope.iteration.as_ref(),
+        construction: scope.construction,
         evaluations,
         bindings,
         children,

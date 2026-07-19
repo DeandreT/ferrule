@@ -330,6 +330,16 @@ pub enum GeneratedSequence {
         length: NodeId,
         item: NodeId,
     },
+    RecursiveCollect {
+        collection: Vec<String>,
+        children: Vec<String>,
+        descent_value: Vec<String>,
+        values: Vec<String>,
+        value: Vec<String>,
+        prefix: NodeId,
+        separator: NodeId,
+        item: NodeId,
+    },
     Range {
         from: Option<NodeId>,
         to: NodeId,
@@ -342,6 +352,7 @@ impl GeneratedSequence {
         match self {
             Self::Tokenize { item, .. }
             | Self::TokenizeByLength { item, .. }
+            | Self::RecursiveCollect { item, .. }
             | Self::Range { item, .. } => *item,
         }
     }
@@ -352,6 +363,9 @@ impl GeneratedSequence {
                 input, delimiter, ..
             } => [Some(*input), Some(*delimiter)],
             Self::TokenizeByLength { input, length, .. } => [Some(*input), Some(*length)],
+            Self::RecursiveCollect {
+                prefix, separator, ..
+            } => [Some(*prefix), Some(*separator)],
             Self::Range { from, to, .. } => [*from, Some(*to)],
         };
         inputs.into_iter().flatten()
@@ -406,7 +420,17 @@ impl From<mapping::SequenceWindow> for SequenceWindow {
     }
 }
 
-/// One statically named constructed target group.
+/// The one target value constructed for each scope candidate.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TargetConstruction {
+    #[default]
+    Group,
+    Scalar {
+        expression: NodeId,
+    },
+}
+
+/// One statically named constructed target value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TargetScope {
     /// Empty only for the primary target's root scope.
@@ -417,6 +441,7 @@ pub struct TargetScope {
     /// Source-backed or generated iteration evaluated relative to the parent
     /// scope's current item. Absence means the scope runs exactly once.
     pub iteration: Option<IterationPlan>,
+    pub construction: TargetConstruction,
     /// Declaration order is semantically significant and is preserved.
     pub bindings: Vec<Binding>,
     pub children: Vec<TargetScope>,

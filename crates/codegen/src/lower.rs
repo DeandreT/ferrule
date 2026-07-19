@@ -94,6 +94,13 @@ fn lower_scope(
         roots.extend(sequence.inputs());
         roots.push(sequence.item());
     }
+    let construction = match scope.construction {
+        ScopeConstruction::Scalar { value } => {
+            roots.push(value);
+            crate::TargetConstruction::Scalar { expression: value }
+        }
+        _ => crate::TargetConstruction::Group,
+    };
 
     let bindings = scope
         .bindings
@@ -145,6 +152,7 @@ fn lower_scope(
         target_field: scope.target_field.clone(),
         repeating: target.repeating,
         iteration,
+        construction,
         bindings,
         children,
     }
@@ -207,13 +215,31 @@ fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> Option<Generate
             length: *length,
             item: *item,
         }),
+        mapping::SequenceExpr::RecursiveCollect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+            prefix,
+            separator,
+            item,
+        } => Some(GeneratedSequence::RecursiveCollect {
+            collection: collection.clone(),
+            children: children.clone(),
+            descent_value: descent_value.clone(),
+            values: values.clone(),
+            value: value.clone(),
+            prefix: *prefix,
+            separator: *separator,
+            item: *item,
+        }),
         mapping::SequenceExpr::Generate { from, to, item } => Some(GeneratedSequence::Range {
             from: *from,
             to: *to,
             item: *item,
         }),
-        mapping::SequenceExpr::TokenizeRegex { .. }
-        | mapping::SequenceExpr::RecursiveCollect { .. } => None,
+        mapping::SequenceExpr::TokenizeRegex { .. } => None,
     }
 }
 
@@ -250,13 +276,11 @@ fn inspect_scope_features(
         | ScopeIteration::Sequence(
             mapping::SequenceExpr::Tokenize { .. }
             | mapping::SequenceExpr::TokenizeByLength { .. }
+            | mapping::SequenceExpr::RecursiveCollect { .. }
             | mapping::SequenceExpr::Generate { .. },
         ) => {}
         ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeRegex { .. }) => report(
             ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex),
-        ),
-        ScopeIteration::Sequence(mapping::SequenceExpr::RecursiveCollect { .. }) => report(
-            ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::RecursiveCollect),
         ),
         ScopeIteration::DynamicDocuments { .. }
         | ScopeIteration::InnerJoin { .. }
@@ -286,7 +310,7 @@ fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructi
     match construction {
         ScopeConstruction::Constructed => None,
         ScopeConstruction::CopyCurrentSource => Some(ScopeConstructionKind::CopyCurrentSource),
-        ScopeConstruction::Scalar { .. } => Some(ScopeConstructionKind::Scalar),
+        ScopeConstruction::Scalar { .. } => None,
         ScopeConstruction::XmlMixedContent { .. } => Some(ScopeConstructionKind::XmlMixedContent),
         ScopeConstruction::RecursiveFilter { .. } => Some(ScopeConstructionKind::RecursiveFilter),
         ScopeConstruction::PathHierarchy { .. } => Some(ScopeConstructionKind::PathHierarchy),

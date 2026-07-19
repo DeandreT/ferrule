@@ -23,10 +23,11 @@ pub use model::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, GeneratedSequence,
     IterationOutput, IterationPlan, IterationSource, Program, SUPPORTED_SCALAR_CALLS,
     ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
-    TargetScope,
+    TargetConstruction, TargetScope,
 };
 pub use validate::{
-    ProgramValidationError, SequenceExpressionRole, SequenceOwner, validate_program,
+    ProgramValidationError, RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner,
+    validate_program,
 };
 
 #[cfg(test)]
