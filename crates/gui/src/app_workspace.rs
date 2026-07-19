@@ -334,9 +334,13 @@ impl FerruleApp {
     }
 
     fn arrange_canvas(&mut self) {
-        self.snarl = arrange_snarl(&self.project, &self.snarl);
+        arrange_snarl(
+            &mut self.snarl,
+            &self.canvas_node_sizes,
+            *self.appearance.wire(),
+        );
         self.reset_canvas_view();
-        self.status = "canvas arranged".to_string();
+        self.status = "canvas arranged with wire-aware spacing".to_string();
     }
 
     fn fit_canvas(&mut self) {
@@ -531,6 +535,7 @@ impl FerruleApp {
                 target_leaves: &target_pins,
                 source_paths: &source_paths,
                 colors: self.appearance.resolved_colors(self.palette),
+                node_sizes: Some(&mut self.canvas_node_sizes),
                 error: None,
             };
             crate::canvas_keyboard::show(
