@@ -3,7 +3,7 @@
 use std::fmt;
 
 use egui::{Color32, CornerRadius, Frame, Margin, Stroke, vec2};
-use egui_snarl::ui::{BackgroundPattern, Grid, SnarlStyle, WireStyle};
+use egui_snarl::ui::{BackgroundPattern, Grid, PinPlacement, SnarlStyle, WireStyle};
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub const MIN_WIRE_WIDTH: f32 = 0.5;
@@ -564,6 +564,7 @@ impl EditorAppearance {
         style.wire_style = Some(self.wire.geometry.to_snarl());
         style.pin_fill = Some(self.colors.wire.to_egui());
         style.pin_stroke = Some(Stroke::new(1.0, self.colors.node_border.to_egui()));
+        style.pin_placement = Some(PinPlacement::Edge);
 
         style.bg_frame = Some(Frame::new().fill(self.colors.canvas.to_egui()));
         style.bg_pattern = Some(match self.canvas.pattern {
@@ -679,6 +680,7 @@ mod tests {
         assert_eq!(style.upscale_wire_frame, Some(false));
         assert_eq!(style.downscale_wire_frame, Some(true));
         assert_eq!(style.wire_style, Some(WireStyle::Bezier5));
+        assert_eq!(style.pin_placement, Some(PinPlacement::Edge));
         assert_eq!(style.pin_fill, Some(appearance.colors().wire.to_egui()));
         assert_eq!(
             style.bg_frame.map(|frame| frame.fill),
