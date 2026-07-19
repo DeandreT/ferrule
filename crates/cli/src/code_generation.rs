@@ -47,12 +47,15 @@ pub fn generate_project(
                     runtime_path.display()
                 )
             })?;
+            let runtime_path = runtime_path
+                .to_str()
+                .context("Rust codegen runtime path must be valid UTF-8")?;
             codegen_rust::emit(
                 &program,
                 &codegen_rust::Options {
                     package_name: "ferrule-generated-mapping".to_string(),
                     runtime_dependency: codegen_rust::RuntimeDependency::Path(
-                        runtime_path.to_string_lossy().into_owned(),
+                        runtime_path.to_owned(),
                     ),
                 },
             )?
@@ -119,7 +122,7 @@ fn write_artifacts(output_directory: &Path, artifacts: &ArtifactSet) -> anyhow::
         fs::write(&path, &file.contents)
             .with_context(|| format!("writing generated artifact {}", path.display()))?;
     }
-    fs::rename(staging, output_directory).with_context(|| {
+    publish_directory(staging, output_directory).with_context(|| {
         format!(
             "publishing generated output directory {}",
             output_directory.display()
@@ -127,6 +130,47 @@ fn write_artifacts(output_directory: &Path, artifacts: &ArtifactSet) -> anyhow::
     })?;
     pending.commit();
     Ok(())
+}
+
+#[cfg(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "visionos",
+    target_os = "watchos",
+    target_os = "redox",
+))]
+fn publish_directory(staging: &Path, output_directory: &Path) -> std::io::Result<()> {
+    rustix::fs::renameat_with(
+        rustix::fs::CWD,
+        staging,
+        rustix::fs::CWD,
+        output_directory,
+        rustix::fs::RenameFlags::NOREPLACE,
+    )
+    .map_err(Into::into)
+}
+
+#[cfg(not(any(
+    target_os = "android",
+    target_os = "linux",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "tvos",
+    target_os = "visionos",
+    target_os = "watchos",
+    target_os = "redox",
+)))]
+fn publish_directory(staging: &Path, output_directory: &Path) -> std::io::Result<()> {
+    if output_directory.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "generated output destination already exists",
+        ));
+    }
+    fs::rename(staging, output_directory)
 }
 
 struct PendingDirectory(Option<PathBuf>);
@@ -146,5 +190,39 @@ impl Drop for PendingDirectory {
         if let Some(path) = &self.0 {
             let _ = fs::remove_dir_all(path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    #[test]
+    fn publish_never_replaces_an_existing_directory() -> anyhow::Result<()> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "ferrule_codegen_publish_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let staging = root.join("staging");
+        let destination = root.join("destination");
+        fs::create_dir_all(&staging)?;
+        fs::write(staging.join("generated.txt"), "generated")?;
+        fs::create_dir_all(&destination)?;
+
+        let error = publish_directory(&staging, &destination)
+            .expect_err("no-replace publication must reject an existing destination");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(fs::read_dir(&destination)?.next().is_none());
+        assert_eq!(
+            fs::read_to_string(staging.join("generated.txt"))?,
+            "generated"
+        );
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

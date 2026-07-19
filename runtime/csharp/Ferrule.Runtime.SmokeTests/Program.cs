@@ -14,9 +14,11 @@ internal static class Program
             ("mapped sequence remains non-scalar", MappedSequenceIsNotRepeated),
             ("typed resolver errors", TypedResolverErrors),
             ("null and XML nil", NullAndXmlNil),
-            ("finite doubles", FiniteDoubles),
+            ("double domain", DoubleDomain),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
+            ("scalar functions", ScalarFunctions),
+            ("typed function errors", TypedFunctionErrors),
         };
 
         foreach (var test in tests)
@@ -110,16 +112,20 @@ internal static class Program
         Equal(FerruleValue.XmlNil, ScalarPathResolver.Resolve(root, "PresentNil"));
     }
 
-    private static void FiniteDoubles()
+    private static void DoubleDomain()
     {
         Equal(FerruleValue.FromDouble(12.5), FerruleValue.FromDouble(12.5));
-        Error(FerruleRuntimeError.NonFiniteDouble, () => FerruleValue.FromDouble(double.NaN));
-        Error(
-            FerruleRuntimeError.NonFiniteDouble,
-            () => FerruleValue.FromDouble(double.PositiveInfinity));
-        Error(
-            FerruleRuntimeError.NonFiniteDouble,
-            () => FerruleValue.FromDouble(double.NegativeInfinity));
+        Equal(FerruleValue.FromDouble(0.0), FerruleValue.FromDouble(-0.0));
+        Equal(
+            FerruleValue.FromDouble(0.0).GetHashCode(),
+            FerruleValue.FromDouble(-0.0).GetHashCode());
+        Equal(true, double.IsNaN(FerruleValue.FromDouble(double.NaN).DoubleValue));
+        Equal(
+            double.PositiveInfinity,
+            FerruleValue.FromDouble(double.PositiveInfinity).DoubleValue);
+        Equal(
+            double.NegativeInfinity,
+            FerruleValue.FromDouble(double.NegativeInfinity).DoubleValue);
     }
 
     private static void FieldOrder()
@@ -138,13 +144,110 @@ internal static class Program
         Equal(FerruleValue.FromString("empty"), ScalarPathResolver.Resolve(root, string.Empty));
     }
 
+    private static void ScalarFunctions()
+    {
+        CallEquals(FerruleValue.FromBoolean(false), "and", Bool(true), Bool(false));
+        CallEquals(FerruleValue.FromBoolean(true), "or", Bool(false), Bool(true));
+        CallEquals(FerruleValue.FromBoolean(false), "not", Bool(true));
+        CallEquals(FerruleValue.FromBoolean(false), "exists", FerruleValue.Null);
+        CallEquals(FerruleValue.FromBoolean(true), "exists", FerruleValue.XmlNil);
+        CallEquals(FerruleValue.FromBoolean(true), "is_empty", Text(string.Empty));
+        CallEquals(FerruleValue.FromBoolean(true), "starts_with", Text("ferrule"), Text("fer"));
+        CallEquals(FerruleValue.FromBoolean(true), "contains", Text("ferrule"), Text("rul"));
+
+        CallEquals(
+            FerruleValue.FromInt64(42),
+            "add",
+            FerruleValue.FromInt64(20),
+            FerruleValue.FromInt64(10),
+            Text(" 12 "));
+        CallEquals(
+            FerruleValue.FromInt64(42),
+            "subtract",
+            FerruleValue.FromInt64(50),
+            FerruleValue.FromInt64(5),
+            FerruleValue.FromInt64(3));
+        CallEquals(
+            FerruleValue.FromDouble(1.35),
+            "multiply",
+            Text("0.09"),
+            FerruleValue.FromInt64(15));
+        CallEquals(
+            FerruleValue.FromDouble(2.5),
+            "divide",
+            FerruleValue.FromInt64(5),
+            FerruleValue.FromInt64(2));
+
+        CallEquals(FerruleValue.FromBoolean(true), "equal", FerruleValue.FromInt64(7), FerruleValue.FromDouble(7.0));
+        CallEquals(FerruleValue.FromBoolean(false), "not_equal", FerruleValue.Null, FerruleValue.Null);
+        CallEquals(FerruleValue.FromBoolean(true), "less_than", Text("2007"), FerruleValue.FromInt64(2008));
+        CallEquals(FerruleValue.FromBoolean(true), "greater_than", Bool(true), Bool(false));
+        CallEquals(FerruleValue.FromBoolean(true), "less_or_equal", FerruleValue.FromInt64(7), FerruleValue.FromInt64(7));
+        CallEquals(FerruleValue.FromBoolean(true), "greater_or_equal", FerruleValue.FromInt64(8), FerruleValue.FromInt64(7));
+        CallEquals(FerruleValue.FromBoolean(true), "less_than", Text("\uE000"), Text("\U00010000"));
+
+        var infinite = FerruleFunctions.Call(
+            "divide",
+            new[] { FerruleValue.FromDouble(double.MaxValue), FerruleValue.FromDouble(double.Epsilon) });
+        Equal(FerruleValueKind.Double, infinite.Kind);
+        Equal(true, double.IsPositiveInfinity(infinite.DoubleValue));
+    }
+
+    private static void TypedFunctionErrors()
+    {
+        var arity = Error(
+            FerruleRuntimeError.FunctionArity,
+            () => FerruleFunctions.Call("not", Array.Empty<FerruleValue>()));
+        Equal("not", arity.Function);
+        Equal(1, arity.ExpectedArity);
+        Equal(0, arity.ActualArity);
+
+        var type = Error(
+            FerruleRuntimeError.FunctionType,
+            () => FerruleFunctions.Call("not", new[] { FerruleValue.FromInt64(1) }));
+        Equal("not", type.Function);
+        Equal(FerruleValueKind.Int64, type.FoundKind);
+        Error(
+            FerruleRuntimeError.DivideByZero,
+            () => FerruleFunctions.Call(
+                "divide",
+                new[] { FerruleValue.FromInt64(1), FerruleValue.FromInt64(0) }));
+        var overflow = Error(
+            FerruleRuntimeError.IntegerOverflow,
+            () => FerruleFunctions.Call(
+                "add",
+                new[] { FerruleValue.FromInt64(long.MaxValue), FerruleValue.FromInt64(1) }));
+        Equal("add", overflow.Function);
+
+        var unknown = Error(
+            FerruleRuntimeError.UnknownFunction,
+            () => FerruleFunctions.Call("missing", Array.Empty<FerruleValue>()));
+        Equal("missing", unknown.Function);
+
+        var notBoolean = Error(
+            FerruleRuntimeError.NotABool,
+            () => FerruleFunctions.RequireBoolean(Text("true"), 1));
+        Equal((uint)1, notBoolean.Node);
+        Equal(FerruleValueKind.String, notBoolean.FoundKind);
+    }
+
+    private static void CallEquals(
+        FerruleValue expected,
+        string function,
+        params FerruleValue[] arguments) =>
+        Equal(expected, FerruleFunctions.Call(function, arguments));
+
+    private static FerruleValue Bool(bool value) => FerruleValue.FromBoolean(value);
+
+    private static FerruleValue Text(string value) => FerruleValue.FromString(value);
+
     private static FerruleScalar Scalar(FerruleValue value) => new(value);
 
     private static FerruleField Field(string name, FerruleInstance value) => new(name, value);
 
     private static FerruleGroup Group(params FerruleField[] fields) => new(fields);
 
-    private static void Error(FerruleRuntimeError expected, Action action)
+    private static FerruleRuntimeException Error(FerruleRuntimeError expected, Action action)
     {
         try
         {
@@ -153,7 +256,7 @@ internal static class Program
         catch (FerruleRuntimeException exception)
         {
             Equal(expected, exception.Error);
-            return;
+            return exception;
         }
 
         throw new InvalidOperationException($"Expected Ferrule runtime error {expected}.");
