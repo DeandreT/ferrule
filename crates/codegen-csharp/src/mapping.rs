@@ -138,6 +138,23 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(");\n    }\n");
             }
+            Expression::Lookup {
+                collection,
+                key,
+                matches,
+                value,
+            } => {
+                output.push_str("\n    {\n");
+                output.push_str(&format!(
+                    "        var lookup_match_{node} = Node_{matches}(context);\n        return context.Lookup("
+                ));
+                render_path(collection, &mut output);
+                output.push_str(", ");
+                render_path(key, &mut output);
+                output.push_str(&format!(", lookup_match_{node}, "));
+                render_path(value, &mut output);
+                output.push_str(");\n    }\n");
+            }
             Expression::Aggregate {
                 function,
                 collection,

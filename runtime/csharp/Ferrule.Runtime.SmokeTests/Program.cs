@@ -17,6 +17,7 @@ internal static partial class Program
             ("null and XML nil", NullAndXmlNil),
             ("double domain", DoubleDomain),
             ("value maps", ValueMaps),
+            ("lookup contexts", LookupContexts),
             ("runtime execution context", RuntimeExecutionContext),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),

@@ -537,6 +537,57 @@ fn lowers_ordered_value_maps_without_normalizing_rows_or_defaults() {
 }
 
 #[test]
+fn lowers_primary_source_lookups_with_only_the_match_dependency() {
+    let mut project = supported_project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            scalar("First"),
+            scalar("NestedValue"),
+            scalar("Needle"),
+            SchemaNode::group("Catalog", vec![scalar("Code"), scalar("Label")]).repeating(),
+        ],
+    );
+    project.graph.nodes.insert(
+        10,
+        Node::SourceField {
+            path: vec!["Needle".into()],
+            frame: None,
+        },
+    );
+    project.graph.nodes.insert(
+        40,
+        Node::Lookup {
+            collection: vec!["Catalog".into()],
+            key: vec!["Code".into()],
+            matches: 10,
+            value: vec!["Label".into()],
+        },
+    );
+    project.root.bindings[1].node = 40;
+
+    let program = lower(&project).expect("primary-source lookups are portable expressions");
+
+    assert!(matches!(
+        program.expressions.last().map(|node| &node.expression),
+        Some(Expression::Lookup {
+            collection,
+            key,
+            matches: 10,
+            value,
+        }) if collection == &["Catalog"] && key == &["Code"] && value == &["Label"]
+    ));
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![10, 30, 40]
+    );
+}
+
+#[test]
 fn preserves_non_finite_constant_bits_during_shared_lowering() {
     let mut project = supported_project();
     project.graph.nodes.insert(

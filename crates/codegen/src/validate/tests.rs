@@ -1015,6 +1015,21 @@ fn rejects_duplicate_and_missing_expressions() {
             dependency: 99,
         })
     );
+
+    let mut missing_lookup_match = program();
+    missing_lookup_match.expressions[1].expression = Expression::Lookup {
+        collection: vec!["Rows".into()],
+        key: Vec::new(),
+        matches: 99,
+        value: Vec::new(),
+    };
+    assert_eq!(
+        validate_program(&missing_lookup_match),
+        Err(ProgramValidationError::MissingDependency {
+            node: 2,
+            dependency: 99,
+        })
+    );
 }
 
 #[test]
@@ -1110,6 +1125,69 @@ fn validates_aggregate_collection_and_direct_value_paths() {
     // collection item is used directly and a structural item becomes Null.
     program.expressions[1].expression = aggregate(&["Rows"], &[]);
     assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
+fn validates_lookup_collection_key_and_value_paths() {
+    let mut program = program();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Rows",
+                vec![
+                    SchemaNode::scalar("Key", ScalarType::Int),
+                    SchemaNode::group(
+                        "Payload",
+                        vec![SchemaNode::scalar("Value", ScalarType::String)],
+                    ),
+                ],
+            )
+            .repeating(),
+            SchemaNode::scalar("Scalars", ScalarType::Int).repeating(),
+        ],
+    );
+    let lookup = |collection: &[&str], key: &[&str], value: &[&str]| Expression::Lookup {
+        collection: collection.iter().map(|segment| (*segment).into()).collect(),
+        key: key.iter().map(|segment| (*segment).into()).collect(),
+        matches: 1,
+        value: value.iter().map(|segment| (*segment).into()).collect(),
+    };
+
+    program.expressions[1].expression = lookup(&["Rows"], &["Key"], &["Payload", "Value"]);
+    assert_eq!(validate_program(&program), Ok(()));
+
+    program.expressions[1].expression = lookup(&["Scalars"], &[], &[]);
+    assert_eq!(validate_program(&program), Ok(()));
+
+    program.expressions[1].expression = lookup(&["Missing"], &["Key"], &["Payload", "Value"]);
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidLookupCollection {
+            node: 2,
+            collection: vec!["Missing".into()],
+        })
+    );
+
+    program.expressions[1].expression = lookup(&["Rows"], &["Missing"], &["Payload", "Value"]);
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidLookupKeyPath {
+            node: 2,
+            collection: vec!["Rows".into()],
+            key: vec!["Missing".into()],
+        })
+    );
+
+    program.expressions[1].expression = lookup(&["Rows"], &["Key"], &["Payload"]);
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidLookupValuePath {
+            node: 2,
+            collection: vec!["Rows".into()],
+            value: vec!["Payload".into()],
+        })
+    );
 }
 
 #[test]
