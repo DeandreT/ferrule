@@ -69,18 +69,27 @@ public sealed class ScopeContext
         var output = new ScopeContext[values.Count];
         for (var index = 0; index < values.Count; index++)
         {
-            var item = new FerruleScalar(values[index]);
-            var frames = new List<FerruleInstance>(_frames.Count + 1);
-            frames.AddRange(_frames);
-            frames.Add(item);
-            var collections = new List<CollectionIdentity>(_collections.Count + 1);
-            collections.AddRange(_collections);
-            collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index + 1));
-            output[index] = new ScopeContext(
-                new ReadOnlyCollection<FerruleInstance>(frames),
-                new ReadOnlyCollection<CollectionIdentity>(collections));
+            output[index] = GeneratedContext(values[index], index + 1);
         }
         return new ReadOnlyCollection<ScopeContext>(output);
+    }
+
+    /// <summary>
+    /// Lazily appends generated scalar items, allowing existential reducers to
+    /// stop without constructing contexts for later values.
+    /// </summary>
+    public IEnumerable<ScopeContext> EnumerateGenerated(IReadOnlyList<FerruleValue> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        return EnumerateGeneratedCore(values);
+    }
+
+    private IEnumerable<ScopeContext> EnumerateGeneratedCore(IReadOnlyList<FerruleValue> values)
+    {
+        for (var index = 0; index < values.Count; index++)
+        {
+            yield return GeneratedContext(values[index], index + 1);
+        }
     }
 
     /// <summary>
@@ -281,6 +290,20 @@ public sealed class ScopeContext
         }
 
         return _frames.Count == 0 ? null : _frames[^1];
+    }
+
+    private ScopeContext GeneratedContext(FerruleValue value, int index)
+    {
+        var item = new FerruleScalar(value);
+        var frames = new List<FerruleInstance>(_frames.Count + 1);
+        frames.AddRange(_frames);
+        frames.Add(item);
+        var collections = new List<CollectionIdentity>(_collections.Count + 1);
+        collections.AddRange(_collections);
+        collections.Add(new CollectionIdentity(Array.Empty<string>(), item, index));
+        return new ScopeContext(
+            new ReadOnlyCollection<FerruleInstance>(frames),
+            new ReadOnlyCollection<CollectionIdentity>(collections));
     }
 
     private FerruleInstance? FindAggregateBase(IReadOnlyList<string> path)

@@ -35,8 +35,8 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 #[cfg(test)]
 mod tests {
     use codegen::{
-        Binding, Expression, ExpressionNode, IterationOutput, IterationPlan, Program,
-        ProgramValidationError, ScalarFunction, SourceIteration, TargetScope,
+        Binding, Expression, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan,
+        Program, ProgramValidationError, ScalarFunction, SourceIteration, TargetScope,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -447,6 +447,161 @@ mod tests {
         assert!(source.contains("RequireBoolean(condition_12, 10U)"));
         assert!(source.contains("return Node_9(context);"));
         assert!(source.contains("return Node_2(context);"));
+    }
+
+    #[test]
+    fn generated_sequence_reducers_preserve_order_and_private_contexts() {
+        let mut program = program();
+        program.expressions.extend([
+            ExpressionNode {
+                id: 10,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::Const {
+                    value: Value::String("alpha,beta".into()),
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::Const {
+                    value: Value::String(",".into()),
+                },
+            },
+            ExpressionNode {
+                id: 13,
+                expression: Expression::Const {
+                    value: Value::String("beta".into()),
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::Call {
+                    function: ScalarFunction::Equal,
+                    args: vec![10, 13],
+                },
+            },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::SequenceExists {
+                    sequence: GeneratedSequence::Tokenize {
+                        input: 11,
+                        delimiter: 12,
+                        item: 10,
+                    },
+                    predicate: 14,
+                },
+            },
+            ExpressionNode {
+                id: 20,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 21,
+                expression: Expression::Const {
+                    value: Value::Int(1),
+                },
+            },
+            ExpressionNode {
+                id: 22,
+                expression: Expression::Const {
+                    value: Value::Int(3),
+                },
+            },
+            ExpressionNode {
+                id: 23,
+                expression: Expression::Const {
+                    value: Value::Int(2),
+                },
+            },
+            ExpressionNode {
+                id: 24,
+                expression: Expression::SequenceItemAt {
+                    sequence: GeneratedSequence::Range {
+                        from: Some(21),
+                        to: 22,
+                        item: 20,
+                    },
+                    index: 23,
+                },
+            },
+            ExpressionNode {
+                id: 30,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+        ]);
+        program.root.bindings[0].expression = 15;
+        program.root.bindings[0].target_type = ScalarType::Bool;
+        program.root.children[0].iteration =
+            Some(IterationPlan::generated(GeneratedSequence::Tokenize {
+                input: 11,
+                delimiter: 12,
+                item: 30,
+            }));
+        program.root.children[0].bindings[0].expression = 30;
+
+        let artifacts = emit(&program).expect("generated sequence reducers emit");
+        let source = generated_source(&artifacts);
+
+        let exists_start = source.find("Node_15(").expect("exists method");
+        let exists_end = source[exists_start..]
+            .find("Node_20(")
+            .map(|offset| exists_start + offset)
+            .expect("next method");
+        let exists = &source[exists_start..exists_end];
+        let exists_input = exists.find("Node_11(context)").expect("exists input");
+        let exists_parameter = exists.find("Node_12(context)").expect("exists parameter");
+        let exists_iteration = exists
+            .find("context.EnumerateGenerated(sequence_values_node_15)")
+            .expect("exists item contexts");
+        let exists_predicate = exists
+            .find("Node_14(sequence_context_node_15)")
+            .expect("exists predicate");
+        assert!(
+            exists_input < exists_parameter
+                && exists_parameter < exists_iteration
+                && exists_iteration < exists_predicate
+        );
+        assert!(exists.contains("RequireBoolean(sequence_predicate_node_15, 14U)"));
+        assert!(exists.contains("FerruleValue.FromBoolean(true)"));
+        assert!(exists.contains("FerruleValue.FromBoolean(false)"));
+
+        let item_at_start = source.find("Node_24(").expect("item-at method");
+        let item_at_end = source[item_at_start..]
+            .find("Node_30(")
+            .map(|offset| item_at_start + offset)
+            .expect("next method");
+        let item_at = &source[item_at_start..item_at_end];
+        let range_from = item_at.find("Node_21(context)").expect("range from");
+        let range_to = item_at.find("Node_22(context)").expect("range to");
+        let materialize = item_at
+            .find("FerruleSequences.GenerateRange")
+            .expect("range materialization");
+        let index = item_at.find("Node_23(context)").expect("item-at index");
+        let reduction = item_at
+            .find("FerruleAggregateOperation.ItemAt")
+            .expect("item-at reduction");
+        assert!(
+            range_from < range_to
+                && range_to < materialize
+                && materialize < index
+                && index < reduction
+        );
+        assert!(item_at.contains("sequence_values_node_24, sequence_index_node_24"));
+
+        assert!(source.contains("sequence_values_scope_1"));
+        assert!(source.contains("context.IterateGenerated(sequence_values_scope_1)"));
+        assert!(!source.contains("context.EnumerateGenerated(sequence_values_scope_1)"));
     }
 
     #[test]
