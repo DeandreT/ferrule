@@ -1,6 +1,6 @@
 # ferrule
 
-An open-source, Rust-native, any-to-any data mapping tool. Describe a source schema and a
+An open-source any-to-any data mapping tool. Describe a source schema and a
 target schema, wire them together with a mapping graph (functions, conditionals, lookup
 tables, filters, cross-source joins), then run the mapping headlessly from the CLI or
 interactively from the visual editor.
