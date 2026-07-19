@@ -1,6 +1,6 @@
 # Ferrule MapForce Workflow-Parity Roadmap
 
-Updated: 2026-07-18
+Updated: 2026-07-19
 
 ## Goal
 
@@ -62,7 +62,7 @@ clean-room interoperability, and extensible adapters.
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
 | `.mfd` | 120/120 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
-| Code generation | None | Optional XSLT 3 for XML-only mappings; portable Rust artifact first |
+| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, typed failures, source/generated iteration, controls, aggregates, and generated-sequence reducers | Broaden toward interpreter parity, publish the Rust runtime, and consider optional XML-specific XSLT |
 
 ## Workstreams
 
@@ -283,7 +283,7 @@ Five release journeys require no hand-edited project JSON:
 - Byte-identical `.mfd` output or execution of proprietary `.mfx` binaries.
 - Recreating the MapForce Windows UI, AI Server, FlowForce scheduler, or IDE
   integrations.
-- Near-term C++/C#/Java generator parity.
+- Near-term C++/Java or commercial generator-catalog parity.
 - Bundling every database driver, EDI release, XBRL taxonomy, Shopify
   specialization, or PDF/OCR engine.
 - Copying vendor sample content into this repository.
