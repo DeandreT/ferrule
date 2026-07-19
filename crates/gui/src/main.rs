@@ -18,6 +18,7 @@ mod schema_tree;
 mod scope_editor;
 mod theme;
 mod value_editor;
+mod wire_colors;
 mod workspace_layout;
 
 fn main() -> eframe::Result<()> {

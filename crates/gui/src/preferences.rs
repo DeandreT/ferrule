@@ -55,7 +55,7 @@ mod tests {
     use eframe::Storage as _;
 
     use super::*;
-    use crate::appearance::{AppearancePreset, WireGeometry};
+    use crate::appearance::{AppearancePreset, WireColorMode, WireGeometry};
     use crate::theme::ThemePreference;
 
     #[derive(Default)]
@@ -89,6 +89,7 @@ mod tests {
         let mut wire = *preferences.appearance.wire();
         wire.set_geometry(WireGeometry::Straight)
             .expect("straight wire geometry is valid");
+        wire.set_color_mode(WireColorMode::UniquePerWire);
         preferences.appearance.set_wire(wire);
 
         let mut storage = MemoryStorage::default();

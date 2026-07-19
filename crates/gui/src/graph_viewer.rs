@@ -16,7 +16,7 @@ use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl}
 use ir::Value;
 use mapping::{AggregateOp, Binding, Graph, NamedTarget, Node, NodeId, Scope};
 
-use crate::appearance::SemanticThemeColors;
+use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
@@ -103,6 +103,7 @@ pub struct GraphViewer<'a> {
     pub target_blocks: &'a [TargetBlock],
     pub source_paths: &'a SourcePathCatalog,
     pub colors: SemanticThemeColors,
+    pub wire_color_mode: WireColorMode,
     pub node_sizes: Option<&'a mut std::collections::BTreeMap<CanvasNode, egui::Vec2>>,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
@@ -814,9 +815,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         } else if let Some(label) = label {
             ui.label(label);
         }
-        PinInfo::circle()
-            .with_fill(fill.to_egui())
-            .with_wire_color(self.colors.wire.to_egui())
+        PinInfo::circle().with_fill(fill.to_egui()).with_wire_color(
+            crate::wire_colors::input_color(
+                self.wire_color_mode,
+                self.colors,
+                snarl[pin.id.node],
+                idx,
+            ),
+        )
     }
 
     #[allow(refining_impl_trait)]
@@ -847,9 +853,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 );
                 show_endpoint_label(ui, label, egui::Align::Max, context);
             }
-            return PinInfo::circle()
-                .with_fill(fill.to_egui())
-                .with_wire_color(self.colors.wire.to_egui());
+            return PinInfo::circle().with_fill(fill.to_egui()).with_wire_color(
+                crate::wire_colors::output_color(self.wire_color_mode, self.colors),
+            );
         };
         let mut new_call_arg_needed = false;
         let mut remove_call_wire = None;
@@ -1152,9 +1158,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
             self.remove_orphaned_placeholder(removed, snarl);
         }
-        PinInfo::circle()
-            .with_fill(fill.to_egui())
-            .with_wire_color(self.colors.wire.to_egui())
+        PinInfo::circle().with_fill(fill.to_egui()).with_wire_color(
+            crate::wire_colors::output_color(self.wire_color_mode, self.colors),
+        )
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {

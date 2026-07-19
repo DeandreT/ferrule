@@ -552,6 +552,7 @@ impl FerruleApp {
                 target_blocks: &target_blocks,
                 source_paths: &source_paths,
                 colors: self.appearance.resolved_colors(self.palette),
+                wire_color_mode: self.appearance.wire().color_mode(),
                 node_sizes: Some(&mut self.canvas_node_sizes),
                 error: None,
             };

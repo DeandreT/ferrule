@@ -78,6 +78,14 @@ pub enum WireFrameAdjustment {
     Adaptive,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WireColorMode {
+    #[default]
+    Theme,
+    UniquePerWire,
+}
+
 impl WireFrameAdjustment {
     const fn flags(self) -> (bool, bool) {
         match self {
@@ -95,6 +103,7 @@ pub struct WireAppearance {
     width: f32,
     frame_size: f32,
     frame_adjustment: WireFrameAdjustment,
+    color_mode: WireColorMode,
 }
 
 impl WireAppearance {
@@ -117,6 +126,7 @@ impl WireAppearance {
             width,
             frame_size,
             frame_adjustment,
+            color_mode: WireColorMode::Theme,
         })
     }
 
@@ -134,6 +144,10 @@ impl WireAppearance {
 
     pub const fn frame_adjustment(self) -> WireFrameAdjustment {
         self.frame_adjustment
+    }
+
+    pub const fn color_mode(self) -> WireColorMode {
+        self.color_mode
     }
 
     pub fn set_geometry(&mut self, geometry: WireGeometry) -> Result<(), AppearanceError> {
@@ -162,6 +176,10 @@ impl WireAppearance {
     pub fn set_frame_adjustment(&mut self, adjustment: WireFrameAdjustment) {
         self.frame_adjustment = adjustment;
     }
+
+    pub fn set_color_mode(&mut self, color_mode: WireColorMode) {
+        self.color_mode = color_mode;
+    }
 }
 
 impl Default for WireAppearance {
@@ -171,6 +189,7 @@ impl Default for WireAppearance {
             width: 2.0,
             frame_size: 80.0,
             frame_adjustment: WireFrameAdjustment::DownscaleNearby,
+            color_mode: WireColorMode::Theme,
         }
     }
 }
@@ -187,6 +206,7 @@ impl<'de> Deserialize<'de> for WireAppearance {
             width: f32,
             frame_size: f32,
             frame_adjustment: WireFrameAdjustment,
+            color_mode: WireColorMode,
         }
 
         impl Default for WireDocument {
@@ -197,18 +217,21 @@ impl<'de> Deserialize<'de> for WireAppearance {
                     width: wire.width,
                     frame_size: wire.frame_size,
                     frame_adjustment: wire.frame_adjustment,
+                    color_mode: wire.color_mode,
                 }
             }
         }
 
-        let wire = WireDocument::deserialize(deserializer)?;
-        Self::new(
-            wire.geometry,
-            wire.width,
-            wire.frame_size,
-            wire.frame_adjustment,
+        let document = WireDocument::deserialize(deserializer)?;
+        let mut wire = Self::new(
+            document.geometry,
+            document.width,
+            document.frame_size,
+            document.frame_adjustment,
         )
-        .map_err(serde::de::Error::custom)
+        .map_err(serde::de::Error::custom)?;
+        wire.set_color_mode(document.color_mode);
+        Ok(wire)
     }
 }
 
@@ -486,6 +509,7 @@ impl EditorAppearance {
                 width: 2.0,
                 frame_size: 80.0,
                 frame_adjustment: WireFrameAdjustment::DownscaleNearby,
+                color_mode: WireColorMode::Theme,
             },
             canvas: CanvasAppearance {
                 pattern: CanvasPattern::Grid,
@@ -740,6 +764,7 @@ mod tests {
             .expect("missing appearance fields receive defaults");
         assert_eq!(partial.wire().width(), 3.5);
         assert_eq!(partial.wire().frame_size(), 80.0);
+        assert_eq!(partial.wire().color_mode(), WireColorMode::Theme);
 
         let error =
             serde_json::from_str::<EditorAppearance>(r#"{"canvas":{"grid_spacing":500.0}}"#)
@@ -764,6 +789,23 @@ mod tests {
             decoded.colors().source.to_egui(),
             Color32::from_rgba_unmultiplied(64, 128, 192, 128)
         );
+    }
+
+    #[test]
+    fn unique_wire_colors_roundtrip_and_old_documents_keep_theme_color() {
+        let mut appearance = EditorAppearance::default();
+        let mut wire = *appearance.wire();
+        wire.set_color_mode(WireColorMode::UniquePerWire);
+        appearance.set_wire(wire);
+
+        let json = serde_json::to_string(&appearance).expect("appearance serializes");
+        let decoded: EditorAppearance =
+            serde_json::from_str(&json).expect("appearance deserializes");
+        let legacy: EditorAppearance = serde_json::from_str(r#"{"wire":{"width":2.5}}"#)
+            .expect("legacy appearance deserializes");
+
+        assert_eq!(decoded.wire().color_mode(), WireColorMode::UniquePerWire);
+        assert_eq!(legacy.wire().color_mode(), WireColorMode::Theme);
     }
 
     #[test]
