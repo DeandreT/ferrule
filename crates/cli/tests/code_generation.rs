@@ -7,6 +7,8 @@ use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
+#[path = "code_generation/aggregates.rs"]
+mod aggregates;
 #[path = "code_generation/iteration_metadata.rs"]
 mod iteration_metadata;
 
@@ -571,7 +573,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 9,
+            files_written: 10,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -581,6 +583,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Ferrule.Generated.csproj",
             "GeneratedMapping.cs",
             "GeneratedTargetBuilder.cs",
+            "Runtime/FerruleAggregates.cs",
             "Runtime/FerruleFunctions.cs",
             "Runtime/FerruleInstance.cs",
             "Runtime/FerruleRuntimeException.cs",

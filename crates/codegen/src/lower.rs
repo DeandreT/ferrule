@@ -280,6 +280,21 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             then: *then,
             else_: *else_,
         },
+        Node::Aggregate {
+            function,
+            collection,
+            value,
+            expression,
+            arg,
+        } => Expression::Aggregate {
+            function: (*function).into(),
+            collection: collection.clone(),
+            value: expression.map_or_else(
+                || crate::AggregateValue::Path(value.clone()),
+                crate::AggregateValue::Expression,
+            ),
+            arg: *arg,
+        },
         node => {
             return Err(Diagnostic::UnsupportedNode {
                 node: id,
@@ -303,15 +318,15 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::CollectionFind { .. } => UnsupportedNodeKind::CollectionFind,
         Node::SequenceExists { .. } => UnsupportedNodeKind::SequenceExists,
         Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
-        Node::Aggregate { .. } => UnsupportedNodeKind::Aggregate,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
         Node::SourceField { .. }
         | Node::Position { .. }
         | Node::Const { .. }
         | Node::Call { .. }
-        | Node::If { .. } => {
+        | Node::If { .. }
+        | Node::Aggregate { .. } => {
             unreachable!(
-                "source fields, positions, constants, calls, and conditionals are handled above"
+                "source fields, positions, constants, calls, conditionals, and aggregates are handled above"
             )
         }
     }

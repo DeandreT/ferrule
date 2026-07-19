@@ -72,7 +72,6 @@ pub enum UnsupportedNodeKind {
     CollectionFind,
     SequenceExists,
     SequenceItemAt,
-    Aggregate,
     JoinAggregate,
 }
 
@@ -200,7 +199,6 @@ impl fmt::Display for UnsupportedNodeKind {
             Self::CollectionFind => "collection-find",
             Self::SequenceExists => "sequence-exists",
             Self::SequenceItemAt => "sequence item-at",
-            Self::Aggregate => "an aggregate",
             Self::JoinAggregate => "a join aggregate",
         })
     }
