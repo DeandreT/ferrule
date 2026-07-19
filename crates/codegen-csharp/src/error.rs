@@ -1,13 +1,11 @@
 use std::fmt;
 
-use codegen::{ArtifactPathError, ArtifactSetError};
+use codegen::{ArtifactPathError, ArtifactSetError, ProgramValidationError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EmitError {
-    DuplicateNode { node: u32 },
-    MissingExpression { node: u32 },
+    ProgramValidation(ProgramValidationError),
     NonFiniteFloat { node: u32 },
-    InvalidDuplicateBinding { scope: usize, binding: usize },
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
 }
@@ -15,26 +13,32 @@ pub enum EmitError {
 impl fmt::Display for EmitError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DuplicateNode { node } => {
-                write!(formatter, "compiled mapping contains duplicate node {node}")
-            }
-            Self::MissingExpression { node } => {
-                write!(formatter, "target binding references missing node {node}")
-            }
+            Self::ProgramValidation(error) => error.fmt(formatter),
             Self::NonFiniteFloat { node } => {
                 write!(formatter, "graph node {node} contains a non-finite float")
             }
-            Self::InvalidDuplicateBinding { scope, binding } => write!(
-                formatter,
-                "scope {scope} binding {binding} duplicates a non-repeating or incompatible target"
-            ),
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
         }
     }
 }
 
-impl std::error::Error for EmitError {}
+impl std::error::Error for EmitError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::ProgramValidation(error) => Some(error),
+            Self::ArtifactPath(error) => Some(error),
+            Self::ArtifactSet(error) => Some(error),
+            Self::NonFiniteFloat { .. } => None,
+        }
+    }
+}
+
+impl From<ProgramValidationError> for EmitError {
+    fn from(error: ProgramValidationError) -> Self {
+        Self::ProgramValidation(error)
+    }
+}
 
 impl From<ArtifactPathError> for EmitError {
     fn from(error: ArtifactPathError) -> Self {

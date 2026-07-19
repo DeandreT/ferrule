@@ -8,7 +8,7 @@ use mapping::{
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, LowerError, Program, ProjectFeature,
-    ScopeConstructionKind, ScopeFeature, TargetScope, UnsupportedNodeKind,
+    ScalarFunction, ScopeConstructionKind, ScopeFeature, TargetScope, UnsupportedNodeKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -242,6 +242,27 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         Node::Const { value } => Expression::Const {
             value: value.clone(),
         },
+        Node::Call { function, args } => {
+            let Some(function) = ScalarFunction::from_name(function) else {
+                return Err(Diagnostic::UnsupportedFunction {
+                    node: id,
+                    function: function.clone(),
+                });
+            };
+            Expression::Call {
+                function,
+                args: args.clone(),
+            }
+        }
+        Node::If {
+            condition,
+            then,
+            else_,
+        } => Expression::If {
+            condition: *condition,
+            then: *then,
+            else_: *else_,
+        },
         node => {
             return Err(Diagnostic::UnsupportedNode {
                 node: id,
@@ -260,8 +281,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::JoinField { .. } => UnsupportedNodeKind::JoinField,
         Node::JoinPosition { .. } => UnsupportedNodeKind::JoinPosition,
         Node::RuntimeValue { .. } => UnsupportedNodeKind::RuntimeValue,
-        Node::Call { .. } => UnsupportedNodeKind::Call,
-        Node::If { .. } => UnsupportedNodeKind::If,
         Node::ValueMap { .. } => UnsupportedNodeKind::ValueMap,
         Node::Lookup { .. } => UnsupportedNodeKind::Lookup,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
@@ -271,7 +290,9 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
         Node::Aggregate { .. } => UnsupportedNodeKind::Aggregate,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
-        Node::Const { .. } => unreachable!("constants are supported"),
+        Node::Const { .. } | Node::Call { .. } | Node::If { .. } => {
+            unreachable!("constants, whitelisted calls, and conditionals are handled above")
+        }
     }
 }
 

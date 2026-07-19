@@ -36,14 +36,34 @@ fn string(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
 }
 
+fn int(name: &str) -> SchemaNode {
+    SchemaNode::scalar(name, ScalarType::Int)
+}
+
+fn bool_(name: &str) -> SchemaNode {
+    SchemaNode::scalar(name, ScalarType::Bool)
+}
+
 fn project() -> Project {
     Project {
-        source: SchemaNode::group("Source", vec![string("Name")]),
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                string("Name"),
+                int("Score"),
+                bool_("Enabled"),
+                string("Danger"),
+            ],
+        ),
         target: SchemaNode::group(
             "Target",
             vec![
                 string("Copied"),
                 string("Fixed"),
+                int("Adjusted"),
+                string("Bucket"),
+                bool_("Enabled"),
+                string("Lazy"),
                 SchemaNode::group("Details", vec![string("NestedCopied")]),
             ],
         ),
@@ -69,6 +89,100 @@ fn project() -> Project {
                         frame: None,
                     },
                 ),
+                (
+                    30,
+                    Node::SourceField {
+                        path: vec!["Score".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    40,
+                    Node::Const {
+                        value: Value::Int(5),
+                    },
+                ),
+                (
+                    50,
+                    Node::Call {
+                        function: "add".into(),
+                        args: vec![30, 40],
+                    },
+                ),
+                (
+                    60,
+                    Node::Const {
+                        value: Value::Int(10),
+                    },
+                ),
+                (
+                    70,
+                    Node::Call {
+                        function: "greater_than".into(),
+                        args: vec![50, 60],
+                    },
+                ),
+                (
+                    80,
+                    Node::Const {
+                        value: Value::String("large".into()),
+                    },
+                ),
+                (
+                    90,
+                    Node::Const {
+                        value: Value::String("small".into()),
+                    },
+                ),
+                (
+                    100,
+                    Node::If {
+                        condition: 70,
+                        then: 80,
+                        else_: 90,
+                    },
+                ),
+                (
+                    110,
+                    Node::SourceField {
+                        path: vec!["Enabled".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    120,
+                    Node::Const {
+                        value: Value::Bool(false),
+                    },
+                ),
+                (
+                    130,
+                    Node::Call {
+                        function: "or".into(),
+                        args: vec![110, 120],
+                    },
+                ),
+                (
+                    140,
+                    Node::Const {
+                        value: Value::Bool(true),
+                    },
+                ),
+                (
+                    150,
+                    Node::SourceField {
+                        path: vec!["Danger".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    160,
+                    Node::If {
+                        condition: 140,
+                        then: 10,
+                        else_: 150,
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -80,6 +194,22 @@ fn project() -> Project {
                 Binding {
                     target_field: "Fixed".into(),
                     node: 10,
+                },
+                Binding {
+                    target_field: "Adjusted".into(),
+                    node: 50,
+                },
+                Binding {
+                    target_field: "Bucket".into(),
+                    node: 100,
+                },
+                Binding {
+                    target_field: "Enabled".into(),
+                    node: 130,
+                },
+                Binding {
+                    target_field: "Lazy".into(),
+                    node: 160,
                 },
             ],
             children: vec![Scope {
@@ -102,10 +232,11 @@ fn write_project(directory: &Path) -> TestResult<PathBuf> {
 }
 
 fn source_instance() -> Instance {
-    Instance::Group(vec![(
-        "Name".into(),
-        Instance::Scalar(Value::String("Ada".into())),
-    )])
+    Instance::Group(vec![
+        ("Name".into(), Instance::Scalar(Value::String("Ada".into()))),
+        ("Score".into(), Instance::Scalar(Value::Int(8))),
+        ("Enabled".into(), Instance::Scalar(Value::Bool(true))),
+    ])
 }
 
 fn expected_instance() -> Instance {
@@ -116,6 +247,16 @@ fn expected_instance() -> Instance {
         ),
         (
             "Fixed".into(),
+            Instance::Scalar(Value::String("fixed".into())),
+        ),
+        ("Adjusted".into(), Instance::Scalar(Value::Int(13))),
+        (
+            "Bucket".into(),
+            Instance::Scalar(Value::String("large".into())),
+        ),
+        ("Enabled".into(), Instance::Scalar(Value::Bool(true))),
+        (
+            "Lazy".into(),
             Instance::Scalar(Value::String("fixed".into())),
         ),
         (
@@ -172,7 +313,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 7,
+            files_written: 8,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -182,6 +323,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Ferrule.Generated.csproj",
             "GeneratedMapping.cs",
             "GeneratedTargetBuilder.cs",
+            "Runtime/FerruleFunctions.cs",
             "Runtime/FerruleInstance.cs",
             "Runtime/FerruleRuntimeException.cs",
             "Runtime/FerruleValue.cs",
@@ -212,6 +354,34 @@ fn csharp_generation_preserves_an_existing_destination() -> TestResult<()> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn rust_generation_rejects_a_non_utf8_runtime_path() -> TestResult<()> {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let directory = TempDir::new("rust_non_utf8_runtime")?;
+    let project_path = write_project(&directory.0)?;
+    let runtime = directory
+        .0
+        .join(OsString::from_vec(b"runtime-\xff".to_vec()));
+    std::fs::create_dir(&runtime)?;
+    let output = directory.0.join("generated");
+
+    let error = generate_project(
+        &project_path,
+        &output,
+        GenerateTarget::Rust {
+            runtime_path: runtime,
+        },
+    )
+    .expect_err("a non-UTF-8 Cargo dependency path must be rejected");
+
+    assert!(error.to_string().contains("must be valid UTF-8"));
+    assert!(!output.exists());
+    Ok(())
+}
+
 #[test]
 fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
     let directory = TempDir::new("unsupported")?;
@@ -232,6 +402,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
         .expect_err("unsupported nodes must fail capability analysis");
 
     assert!(error.to_string().contains("graph node 30"));
+    assert!(error.to_string().contains("concat"));
     assert!(!output.exists());
     assert!(
         std::fs::read_dir(&directory.0)?
@@ -283,13 +454,19 @@ using Ferrule.Runtime;
 var source = new FerruleGroup(new FerruleField[]
 {
     new("Name", new FerruleScalar(FerruleValue.FromString("Ada"))),
+    new("Score", new FerruleScalar(FerruleValue.FromInt64(8))),
+    new("Enabled", new FerruleScalar(FerruleValue.FromBoolean(true))),
 });
 var output = (FerruleGroup)GeneratedMapping.Execute(source);
 Assert(output.Fields.Select(field => field.Name).SequenceEqual(
-    new[] { "Copied", "Fixed", "Details" }));
+    new[] { "Copied", "Fixed", "Adjusted", "Bucket", "Enabled", "Lazy", "Details" }));
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
 Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.FromString("fixed"));
-var details = (FerruleGroup)output.Fields[2].Value;
+Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.FromInt64(13));
+Assert(((FerruleScalar)output.Fields[3].Value).Value == FerruleValue.FromString("large"));
+Assert(((FerruleScalar)output.Fields[4].Value).Value == FerruleValue.FromBoolean(true));
+Assert(((FerruleScalar)output.Fields[5].Value).Value == FerruleValue.FromString("fixed"));
+var details = (FerruleGroup)output.Fields[6].Value;
 Assert(details.Fields.Count == 1 && details.Fields[0].Name == "NestedCopied");
 Assert(((FerruleScalar)details.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
 
@@ -362,11 +539,19 @@ fn generated_rust_project_executes_the_mapping() -> TestResult<()> {
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let source = group([field("Name", scalar(Value::String("Ada".into())))]);
+    let source = group([
+        field("Name", scalar(Value::String("Ada".into()))),
+        field("Score", scalar(Value::Int(8))),
+        field("Enabled", scalar(Value::Bool(true))),
+    ]);
     let actual = execute(&source)?;
     let expected = group([
         field("Copied", scalar(Value::String("Ada".into()))),
         field("Fixed", scalar(Value::String("fixed".into()))),
+        field("Adjusted", scalar(Value::Int(13))),
+        field("Bucket", scalar(Value::String("large".into()))),
+        field("Enabled", scalar(Value::Bool(true))),
+        field("Lazy", scalar(Value::String("fixed".into()))),
         field(
             "Details",
             group([field(

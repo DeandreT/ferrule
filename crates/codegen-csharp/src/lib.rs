@@ -9,13 +9,14 @@ mod runtime;
 
 pub use error::EmitError;
 
-use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program};
+use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_program};
 
 /// Emits a complete package-free .NET 10 class library.
 ///
 /// The artifact embeds the small Ferrule C# runtime and exposes
 /// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)`.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
+    validate_program(program)?;
     let generated_mapping = mapping::render(program)?;
     let mut files = Vec::with_capacity(runtime::SOURCES.len() + 3);
     files.push(file("Ferrule.Generated.csproj", runtime::PROJECT)?);
@@ -33,7 +34,10 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 
 #[cfg(test)]
 mod tests {
-    use codegen::{Binding, Expression, ExpressionNode, Program, TargetScope};
+    use codegen::{
+        Binding, Expression, ExpressionNode, Program, ProgramValidationError, ScalarFunction,
+        TargetScope,
+    };
     use ir::{ScalarType, SchemaNode, Value};
 
     use super::*;
@@ -93,6 +97,12 @@ mod tests {
                 .all(|files| files[0].path < files[1].path)
         );
         assert!(first.files().iter().all(|file| file.contents.is_ascii()));
+        assert!(
+            first
+                .files()
+                .iter()
+                .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.cs")
+        );
     }
 
     #[test]
@@ -165,12 +175,18 @@ mod tests {
     }
 
     #[test]
-    fn malformed_program_references_are_typed_errors() {
+    fn malformed_program_references_use_shared_validation_errors() {
         let mut missing = program();
         missing.root.bindings[0].expression = 404;
         assert_eq!(
             emit(&missing),
-            Err(EmitError::MissingExpression { node: 404 })
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::MissingBindingExpression {
+                    target_path: Vec::new(),
+                    target_field: "root value".into(),
+                    expression: 404,
+                }
+            ))
         );
 
         let mut duplicate = program();
@@ -178,7 +194,180 @@ mod tests {
             id: 9,
             expression: Expression::Const { value: Value::Null },
         });
-        assert_eq!(emit(&duplicate), Err(EmitError::DuplicateNode { node: 9 }));
+        assert_eq!(
+            emit(&duplicate),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::DuplicateExpression { node: 9 }
+            ))
+        );
+
+        let mut missing_call_argument = program();
+        missing_call_argument.expressions.push(ExpressionNode {
+            id: 10,
+            expression: Expression::Call {
+                function: ScalarFunction::Add,
+                args: vec![9, 404],
+            },
+        });
+        assert_eq!(
+            emit(&missing_call_argument),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::MissingDependency {
+                    node: 10,
+                    dependency: 404,
+                }
+            ))
+        );
+
+        let mut missing_if_branch = program();
+        missing_if_branch.expressions.push(ExpressionNode {
+            id: 10,
+            expression: Expression::If {
+                condition: 9,
+                then: 2,
+                else_: 404,
+            },
+        });
+        assert_eq!(
+            emit(&missing_if_branch),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::MissingDependency {
+                    node: 10,
+                    dependency: 404,
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn expression_cycles_abort_before_artifact_creation() {
+        let mut self_cycle = program();
+        self_cycle.expressions.push(ExpressionNode {
+            id: 10,
+            expression: Expression::Call {
+                function: ScalarFunction::Not,
+                args: vec![10],
+            },
+        });
+        assert_eq!(
+            emit(&self_cycle),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::ExpressionCycle {
+                    cycle: vec![10, 10],
+                }
+            ))
+        );
+
+        let mut multi_cycle = program();
+        multi_cycle.expressions.extend([
+            ExpressionNode {
+                id: 10,
+                expression: Expression::Call {
+                    function: ScalarFunction::Not,
+                    args: vec![11],
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::Call {
+                    function: ScalarFunction::Not,
+                    args: vec![10],
+                },
+            },
+        ]);
+        assert_eq!(
+            emit(&multi_cycle),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::ExpressionCycle {
+                    cycle: vec![10, 11, 10],
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn target_name_collisions_abort_before_artifact_creation() {
+        let mut binding_child = program();
+        binding_child.root.children.push(TargetScope {
+            target_field: "root value".into(),
+            repeating: false,
+            bindings: Vec::new(),
+            children: Vec::new(),
+        });
+        assert_eq!(
+            emit(&binding_child),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::BindingChildCollision {
+                    target_path: Vec::new(),
+                    target_field: "root value".into(),
+                    binding: 0,
+                    child: 1,
+                }
+            ))
+        );
+
+        let mut duplicate_child = program();
+        duplicate_child.root.children.push(TargetScope {
+            target_field: "child group".into(),
+            repeating: false,
+            bindings: Vec::new(),
+            children: Vec::new(),
+        });
+        assert_eq!(
+            emit(&duplicate_child),
+            Err(EmitError::ProgramValidation(
+                ProgramValidationError::DuplicateChildTarget {
+                    target_path: Vec::new(),
+                    target_field: "child group".into(),
+                    first_child: 0,
+                    duplicate_child: 1,
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn calls_and_conditionals_preserve_evaluation_semantics() {
+        let mut program = program();
+        program.expressions.extend([
+            ExpressionNode {
+                id: 10,
+                expression: Expression::Const {
+                    value: Value::Bool(true),
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::Call {
+                    function: ScalarFunction::Not,
+                    args: vec![10],
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::If {
+                    condition: 10,
+                    then: 9,
+                    else_: 2,
+                },
+            },
+        ]);
+        program.root.bindings[0].expression = 12;
+
+        let artifacts = emit(&program).expect("calls and conditionals emit");
+        let source = generated_source(&artifacts);
+        assert!(source.contains(
+            "FerruleFunctions.Call(\"not\", new global::Ferrule.Runtime.FerruleValue[] { Node_10(source) })"
+        ));
+        assert_eq!(
+            source
+                .matches("var condition_12 = Node_10(source);")
+                .count(),
+            1
+        );
+        assert!(source.contains("RequireBoolean(condition_12, 10U)"));
+        assert!(source.contains("return Node_9(source);"));
+        assert!(source.contains("return Node_2(source);"));
     }
 
     #[test]

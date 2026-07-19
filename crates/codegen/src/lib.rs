@@ -8,6 +8,7 @@ mod artifact;
 mod diagnostic;
 mod lower;
 mod model;
+mod validate;
 
 pub use artifact::{
     ArtifactPath, ArtifactPathError, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError,
@@ -18,7 +19,11 @@ pub use diagnostic::{
     UnsupportedNodeKind,
 };
 pub use lower::lower;
-pub use model::{Binding, Expression, ExpressionNode, Program, TargetScope};
+pub use model::{
+    Binding, Expression, ExpressionNode, Program, SUPPORTED_SCALAR_CALLS, ScalarFunction,
+    TargetScope,
+};
+pub use validate::{ProgramValidationError, validate_program};
 
 #[cfg(test)]
 mod tests;
