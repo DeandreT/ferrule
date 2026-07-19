@@ -8,6 +8,7 @@
 
 use std::path::PathBuf;
 
+use editor_ui::{DocumentOrigin, SnapshotHistory};
 use egui_snarl::{InPinId, OutPinId, Snarl};
 use mapping::{Graph, Node, NodeId, Project, Scope};
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,8 @@ use crate::scope_editor::{
     ScopePath, available_static_child_scopes, binding_target_fields, create_static_child_scope,
     remove_child_scope, scope_at_mut, scope_target_chain, show_scope_editor, show_scope_tree,
 };
+use crate::theme::{Palette, ThemeState};
+use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVisibility};
 
 #[path = "app_extra_sources.rs"]
 mod extra_source_ui;
@@ -37,7 +40,6 @@ mod scope_ui;
 #[path = "app_workspace.rs"]
 mod workspace_ui;
 
-const HISTORY_LIMIT: usize = 100;
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 1;
 
@@ -76,27 +78,37 @@ impl From<CanvasNode> for PersistedCanvasNode {
     }
 }
 
-#[derive(Serialize)]
-struct EditorSnapshotRef<'a> {
-    project: &'a Project,
+#[derive(Clone)]
+struct EditorSnapshot {
+    project: Project,
+    state: EditorState,
+}
+
+#[derive(Clone, PartialEq)]
+struct EditorState {
+    serialized_project: String,
     layout: CanvasLayout,
 }
 
-#[derive(Deserialize)]
-struct EditorSnapshot {
-    project: Project,
-    layout: CanvasLayout,
+impl PartialEq for EditorSnapshot {
+    fn eq(&self, other: &Self) -> bool {
+        self.state == other.state
+    }
 }
 
 pub struct FerruleApp {
     project: Project,
-    /// Serialized editor state at the last successful load/save. `None` marks
-    /// imported projects that have never been saved as ferrule JSON.
-    saved_editor: Option<String>,
     snarl: Snarl<CanvasNode>,
     canvas_view_generation: u64,
     show_source_panel: bool,
     show_inspector_panel: bool,
+    compact_dock_open: bool,
+    compact_dock: SideDock,
+    narrow_pane: WorkspacePane,
+    last_layout_class: Option<LayoutClass>,
+    show_run_setup: bool,
+    theme: ThemeState,
+    palette: Palette,
     document: DocumentLocation,
     input_path: String,
     output_path: String,
@@ -111,14 +123,13 @@ pub struct FerruleApp {
     pending_destructive_action: Option<DestructiveAction>,
     pending_save_continuation: Option<SaveContinuation>,
     allow_close: bool,
-    history_editor: String,
-    undo_history: Vec<String>,
-    redo_history: Vec<String>,
+    observed_editor: EditorSnapshot,
+    history: SnapshotHistory<EditorSnapshot>,
     pending_history: Option<PendingHistory>,
 }
 
 struct PendingHistory {
-    before: String,
+    before: EditorSnapshot,
     last_change: std::time::Instant,
 }
 
@@ -155,40 +166,53 @@ impl Default for FerruleApp {
         let project = blank_project();
         let snarl = build_snarl(&project);
         let snapshot = editor_snapshot(&project, &snarl);
+        let history = SnapshotHistory::new(snapshot.clone(), DocumentOrigin::Saved);
         Self {
             project,
-            saved_editor: Some(snapshot.clone()),
             snarl,
             canvas_view_generation: 0,
             show_source_panel: true,
             show_inspector_panel: true,
+            compact_dock_open: true,
+            compact_dock: SideDock::Inspector,
+            narrow_pane: WorkspacePane::Canvas,
+            last_layout_class: None,
+            show_run_setup: false,
+            theme: ThemeState::default(),
+            palette: crate::theme::palette(crate::theme::ResolvedTheme::Dark),
             document: DocumentLocation::untitled("project.json"),
             input_path: String::new(),
             output_path: String::new(),
             selected_scope: Vec::new(),
             status: String::new(),
             diagnostics: Diagnostics::default(),
-            new_mapping_setup: Some(NewMappingSetup::default()),
+            new_mapping_setup: None,
             extra_source_draft: None,
             pending_extra_source_removal: None,
             pending_dialog: None,
             pending_destructive_action: None,
             pending_save_continuation: None,
             allow_close: false,
-            history_editor: snapshot,
-            undo_history: Vec::new(),
-            redo_history: Vec::new(),
+            observed_editor: snapshot,
+            history,
             pending_history: None,
         }
     }
 }
 
-fn editor_snapshot(project: &Project, snarl: &Snarl<CanvasNode>) -> String {
-    serde_json::to_string(&EditorSnapshotRef {
-        project,
+fn editor_snapshot(project: &Project, snarl: &Snarl<CanvasNode>) -> EditorSnapshot {
+    EditorSnapshot {
+        project: project.clone(),
+        state: editor_state(project, snarl),
+    }
+}
+
+fn editor_state(project: &Project, snarl: &Snarl<CanvasNode>) -> EditorState {
+    EditorState {
+        serialized_project: serde_json::to_string(project)
+            .expect("Project serialization cannot fail"),
         layout: CanvasLayout::capture(project, snarl),
-    })
-    .expect("Editor state serialization cannot fail")
+    }
 }
 
 impl CanvasLayout {
@@ -520,34 +544,32 @@ fn save_file(
 
 impl FerruleApp {
     fn is_dirty(&self) -> bool {
-        self.saved_editor
-            .as_ref()
-            .is_none_or(|saved| *saved != editor_snapshot(&self.project, &self.snarl))
+        let state = editor_state(&self.project, &self.snarl);
+        self.history.is_dirty_by(&state, |snapshot| &snapshot.state)
     }
 
     fn mark_clean(&mut self) {
-        self.saved_editor = Some(editor_snapshot(&self.project, &self.snarl));
+        self.history
+            .mark_saved(&editor_snapshot(&self.project, &self.snarl));
     }
 
     fn rebase_history(&mut self) {
-        self.history_editor = editor_snapshot(&self.project, &self.snarl);
-        self.undo_history.clear();
-        self.redo_history.clear();
+        let snapshot = editor_snapshot(&self.project, &self.snarl);
+        let origin = if self.history.is_dirty(&snapshot) {
+            DocumentOrigin::Unsaved
+        } else {
+            DocumentOrigin::Saved
+        };
+        self.history.rebase(snapshot.clone(), origin);
+        self.observed_editor = snapshot;
         self.pending_history = None;
-    }
-
-    fn push_undo(&mut self, snapshot: String) {
-        if self.undo_history.len() == HISTORY_LIMIT {
-            self.undo_history.remove(0);
-        }
-        self.undo_history.push(snapshot);
     }
 
     fn commit_pending_history(&mut self) {
         if let Some(pending) = self.pending_history.take()
-            && pending.before != self.history_editor
+            && pending.before != self.observed_editor
         {
-            self.push_undo(pending.before);
+            self.history.record(pending.before, "Edit mapping");
         }
     }
 
@@ -559,8 +581,12 @@ impl FerruleApp {
         now: std::time::Instant,
         coalesce_change: bool,
     ) -> Option<std::time::Duration> {
-        let current = editor_snapshot(&self.project, &self.snarl);
-        if current != self.history_editor {
+        let current_state = editor_state(&self.project, &self.snarl);
+        if current_state != self.observed_editor.state {
+            let current = EditorSnapshot {
+                project: self.project.clone(),
+                state: current_state,
+            };
             if coalesce_change {
                 if self.pending_history.as_ref().is_some_and(|pending| {
                     now.saturating_duration_since(pending.last_change) >= HISTORY_COALESCE_DELAY
@@ -571,18 +597,18 @@ impl FerruleApp {
                     Some(pending) => pending.last_change = now,
                     None => {
                         self.pending_history = Some(PendingHistory {
-                            before: self.history_editor.clone(),
+                            before: self.observed_editor.clone(),
                             last_change: now,
                         });
-                        self.redo_history.clear();
+                        self.history.clear_redo();
                     }
                 }
-                self.history_editor = current;
+                self.observed_editor = current;
             } else {
                 self.commit_pending_history();
-                self.redo_history.clear();
-                self.push_undo(self.history_editor.clone());
-                self.history_editor = current;
+                self.history
+                    .record(self.observed_editor.clone(), "Edit mapping");
+                self.observed_editor = current;
                 return None;
             }
         }
@@ -600,37 +626,35 @@ impl FerruleApp {
     fn can_undo(&self) -> bool {
         self.pending_history
             .as_ref()
-            .is_some_and(|pending| pending.before != self.history_editor)
-            || !self.undo_history.is_empty()
+            .is_some_and(|pending| pending.before != self.observed_editor)
+            || self.history.can_undo()
     }
 
-    fn restore_history_snapshot(&mut self, snapshot: String) {
-        let state: EditorSnapshot =
-            serde_json::from_str(&snapshot).expect("history contains valid editor JSON");
-        self.project = state.project;
-        self.snarl = build_snarl_with_layout(&self.project, Some(&state.layout));
+    fn restore_history_snapshot(&mut self, snapshot: EditorSnapshot) {
+        self.project = snapshot.project.clone();
+        self.snarl = build_snarl_with_layout(&self.project, Some(&snapshot.state.layout));
         self.selected_scope.clear();
-        self.history_editor = snapshot;
+        self.observed_editor = snapshot;
         self.pending_history = None;
     }
 
     fn undo_project(&mut self) {
         self.commit_pending_history();
-        let Some(previous) = self.undo_history.pop() else {
+        let Some(previous) = self.history.undo(self.observed_editor.clone()) else {
             return;
         };
-        self.redo_history.push(self.history_editor.clone());
-        self.restore_history_snapshot(previous);
-        self.status = "undid edit".to_string();
+        let label = previous.label().to_string();
+        self.restore_history_snapshot(previous.into_snapshot());
+        self.status = format!("undid {label}");
     }
 
     fn redo_project(&mut self) {
-        let Some(next) = self.redo_history.pop() else {
+        let Some(next) = self.history.redo(self.observed_editor.clone()) else {
             return;
         };
-        self.push_undo(self.history_editor.clone());
-        self.restore_history_snapshot(next);
-        self.status = "redid edit".to_string();
+        let label = next.label().to_string();
+        self.restore_history_snapshot(next.into_snapshot());
+        self.status = format!("redid {label}");
     }
 
     /// Returns the action when it can run immediately. Dirty projects queue
@@ -897,7 +921,7 @@ impl FerruleApp {
                     self.snarl = build_snarl(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
-                    self.saved_editor = None;
+                    self.history.mark_unsaved();
                     self.selected_scope.clear();
                     self.rebase_history();
                     self.document = DocumentLocation::untitled(
@@ -1003,6 +1027,12 @@ fn nonempty_path(value: &str) -> Option<PathBuf> {
 
 impl eframe::App for FerruleApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.palette = self.theme.apply(ui.ctx());
+        let layout_class = LayoutClass::from_width(ui.available_width());
+        if self.last_layout_class != Some(layout_class) {
+            self.last_layout_class = Some(layout_class);
+            self.reset_canvas_view();
+        }
         self.poll_dialog(ui.ctx());
         let close_requested = ui.ctx().input(|input| input.viewport().close_requested());
         if close_requested && !self.allow_close && self.is_dirty() {
@@ -1051,17 +1081,24 @@ impl eframe::App for FerruleApp {
         {
             self.redo_project();
         }
-        let source_paths =
-            SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         if self.pending_dialog.is_some() {
             // Keep polling even without input events.
             ui.ctx()
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         egui::Panel::top("top_panel").show(ui, |ui| {
-            self.show_command_bar(ui, project_editing_enabled, &undo_shortcut, &redo_shortcut);
+            self.show_command_bar(
+                ui,
+                project_editing_enabled,
+                layout_class,
+                &undo_shortcut,
+                &redo_shortcut,
+            );
         });
 
+        egui::Panel::bottom("status_bar")
+            .exact_size(28.0)
+            .show(ui, |ui| self.show_status_bar(ui));
         if !self.diagnostics.is_empty() {
             egui::Panel::bottom("diagnostics_panel")
                 .resizable(true)
@@ -1069,123 +1106,38 @@ impl eframe::App for FerruleApp {
                 .show(ui, |ui| self.diagnostics.show(ui));
         }
 
-        if self.show_source_panel {
+        let visibility = WorkspaceVisibility::resolve(
+            layout_class,
+            self.show_source_panel,
+            self.show_inspector_panel,
+            self.compact_dock_open,
+            self.compact_dock,
+            self.narrow_pane,
+        );
+        if visibility.source_dock {
             egui::Panel::left("source_schema")
                 .default_size(220.0)
                 .min_size(150.0)
                 .max_size(420.0)
                 .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.strong("Source schema");
-                        if ui
-                            .add_enabled(project_editing_enabled, egui::Button::new("Add source"))
-                            .clicked()
-                        {
-                            self.begin_extra_source();
-                        }
-                    });
-                    let mut remove = None;
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        show_schema_tree(ui, &self.project.source);
-                        for (index, extra) in self.project.extra_sources.iter().enumerate() {
-                            ui.separator();
-                            ui.horizontal(|ui| {
-                                ui.strong(format!("Extra: {}", extra.name));
-                                if ui
-                                    .add_enabled(
-                                        project_editing_enabled,
-                                        egui::Button::new("Remove").small(),
-                                    )
-                                    .clicked()
-                                {
-                                    remove = Some(index);
-                                }
-                            });
-                            show_schema_tree(ui, &extra.schema);
-                        }
-                    });
-                    if let Some(index) = remove {
-                        self.pending_extra_source_removal = Some(index);
-                    }
+                    self.show_source_explorer(ui, project_editing_enabled)
                 });
         }
 
-        if self.show_inspector_panel {
+        if visibility.inspector_dock {
             egui::Panel::right("target_schema_and_scopes")
                 .default_size(300.0)
                 .min_size(220.0)
                 .max_size(480.0)
-                .show(ui, |ui| {
-                    ui.add_enabled_ui(project_editing_enabled, |ui| {
-                        ui.strong("Target schema");
-                        egui::ScrollArea::vertical()
-                            .max_height(200.0)
-                            .show(ui, |ui| {
-                                show_schema_tree(ui, &self.project.target);
-                            });
-
-                        ui.separator();
-                        ui.strong("Scopes");
-                        egui::ScrollArea::vertical()
-                            .id_salt("scope_tree_scroll")
-                            .max_height(200.0)
-                            .show(ui, |ui| {
-                                if let Some(new_selection) =
-                                    show_scope_tree(ui, &self.project.root, &self.selected_scope)
-                                {
-                                    self.selected_scope = new_selection;
-                                }
-                            });
-                        self.show_scope_controls(ui);
-
-                        ui.separator();
-                        egui::ScrollArea::vertical()
-                            .id_salt("scope_editor_scroll")
-                            .show(ui, |ui| {
-                                let nested = !self.selected_scope.is_empty();
-                                let target_chain =
-                                    scope_target_chain(&self.project.root, &self.selected_scope);
-                                let target_fields =
-                                    binding_target_fields(&self.project.target, &target_chain);
-                                let scope =
-                                    scope_at_mut(&mut self.project.root, &self.selected_scope);
-                                show_scope_editor(
-                                    ui,
-                                    scope,
-                                    &self.project.graph,
-                                    &source_paths,
-                                    &target_fields,
-                                    nested,
-                                );
-                            });
-                    });
-                });
+                .show(ui, |ui| self.show_inspector(ui, project_editing_enabled));
         }
 
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.add_enabled_ui(project_editing_enabled, |ui| {
-                let source_pins: Vec<SourceLeaf> = source_leaves(&self.project.source);
-                let target_pins: Vec<TargetLeaf> = target_leaves(&self.project.target);
-                let mut viewer = GraphViewer {
-                    graph: &mut self.project.graph,
-                    root_scope: &mut self.project.root,
-                    extra_targets: &self.project.extra_targets,
-                    source_leaves: &source_pins,
-                    target_leaves: &target_pins,
-                    source_paths: &source_paths,
-                    error: None,
-                };
-                crate::canvas_keyboard::show(
-                    &mut self.snarl,
-                    &mut viewer,
-                    self.canvas_view_generation,
-                    ui,
-                );
-                if let Some(error) = viewer.error {
-                    self.status = "graph edit failed".to_string();
-                    self.diagnostics.error("Graph edit failed", error);
-                }
-            });
+        egui::CentralPanel::default().show(ui, |ui| match visibility.center {
+            WorkspacePane::Source => {
+                self.show_source_explorer(ui, project_editing_enabled);
+            }
+            WorkspacePane::Canvas => self.show_canvas(ui, project_editing_enabled),
+            WorkspacePane::Inspector => self.show_inspector(ui, project_editing_enabled),
         });
 
         self.show_unsaved_confirmation(ui.ctx());

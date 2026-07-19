@@ -5,12 +5,15 @@ mod diagnostics;
 mod document;
 mod extra_sources;
 mod graph_viewer;
+mod icons;
 mod layout_store;
 mod new_mapping;
 mod path_picker;
 mod schema_tree;
 mod scope_editor;
+mod theme;
 mod value_editor;
+mod workspace_layout;
 
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
@@ -20,6 +23,9 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "ferrule",
         native_options,
-        Box::new(|_cx| Ok(Box::new(app::FerruleApp::default()))),
+        Box::new(|creation| {
+            icons::install(&creation.egui_ctx);
+            Ok(Box::new(app::FerruleApp::default()))
+        }),
     )
 }

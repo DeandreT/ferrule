@@ -11,6 +11,7 @@ name = "ferrule-gui"
 path = "src/main.rs"
 
 [dependencies]
+editor-ui = { workspace = true }
 ir = { workspace = true }
 mapping = { workspace = true }
 functions = { workspace = true }
@@ -22,4 +23,5 @@ anyhow = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }
 egui-snarl = { workspace = true }
+lucide-icons = { workspace = true }
 rfd = { workspace = true }

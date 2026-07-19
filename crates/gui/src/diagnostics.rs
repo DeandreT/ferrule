@@ -69,6 +69,10 @@ impl Diagnostics {
         self.items.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
     #[cfg(test)]
     pub fn items(&self) -> &[Diagnostic] {
         &self.items
