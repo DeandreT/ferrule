@@ -21,6 +21,8 @@ mod iteration_metadata;
 mod recursive_sequences;
 #[path = "code_generation/runtime_values.rs"]
 mod runtime_values;
+#[path = "code_generation/scalar_functions.rs"]
+mod scalar_functions;
 #[path = "code_generation/sequence_reducers.rs"]
 mod sequence_reducers;
 #[path = "code_generation/value_maps.rs"]
@@ -668,7 +670,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
     unsupported.graph.nodes.insert(
         30,
         Node::Call {
-            function: "concat".into(),
+            function: "upper".into(),
             args: vec![10, 20],
         },
     );
@@ -681,7 +683,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
         .expect_err("unsupported nodes must fail capability analysis");
 
     assert!(error.to_string().contains("graph node 30"));
-    assert!(error.to_string().contains("concat"));
+    assert!(error.to_string().contains("upper"));
     assert!(!output.exists());
     assert!(
         std::fs::read_dir(&directory.0)?

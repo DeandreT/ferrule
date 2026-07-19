@@ -406,7 +406,7 @@ fn reports_other_iteration_forms_at_the_static_target_path() {
     project.graph.nodes.insert(
         41,
         Node::Call {
-            function: "concat".into(),
+            function: "upper".into(),
             args: vec![20, 20],
         },
     );
@@ -422,7 +422,7 @@ fn reports_other_iteration_forms_at_the_static_target_path() {
     }));
     assert!(diagnostics.contains(&Diagnostic::UnsupportedFunction {
         node: 41,
-        function: "concat".into(),
+        function: "upper".into(),
     }));
 }
 

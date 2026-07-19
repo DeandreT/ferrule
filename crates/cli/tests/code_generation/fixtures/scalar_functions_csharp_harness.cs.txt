@@ -1,0 +1,103 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false));
+foreach (var (group, name, expected) in ExpectedValues())
+{
+    AssertValue(output, group, name, expected);
+}
+AssertError(
+    () => GeneratedMapping.Execute(Source(true, false)),
+    FerruleRuntimeError.FunctionType,
+    "normalize_space",
+    found: FerruleValueKind.Int64);
+AssertError(
+    () => GeneratedMapping.Execute(Source(false, true)),
+    FerruleRuntimeError.FunctionArity,
+    "resolve_filepath",
+    expectedArity: 2,
+    actualArity: 1);
+
+static FerruleGroup Source(bool failType, bool failArity) => new(new FerruleField[]
+{
+    new("FailType", new FerruleScalar(FerruleValue.FromBoolean(failType))),
+    new("FailArity", new FerruleScalar(FerruleValue.FromBoolean(failArity))),
+});
+
+static void AssertValue(FerruleGroup output, string group, string name, FerruleValue expected)
+{
+    var nested = (FerruleGroup)output.Fields.Single(field => field.Name == group).Value;
+    var value = (FerruleScalar)nested.Fields.Single(field => field.Name == name).Value;
+    if (value.Value != expected)
+    {
+        throw new InvalidOperationException($"Scalar function output {group}/{name} differs.");
+    }
+}
+
+static void AssertError(
+    Action action,
+    FerruleRuntimeError expected,
+    string function,
+    int? expectedArity = null,
+    int? actualArity = null,
+    FerruleValueKind? found = null)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (
+        error.Error == expected &&
+        error.Function == function &&
+        error.ExpectedArity == expectedArity &&
+        error.ActualArity == actualArity &&
+        error.FoundKind == found)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected {expected} from {function}.");
+}
+
+static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValues()
+{
+    yield return ("Concat", "Empty", Text(""));
+    yield return ("Concat", "Mixed", Text("false-71.25|done"));
+    yield return ("Whitespace", "Normalized", Text("alpha beta\vgamma\u00A0 delta"));
+    yield return ("Whitespace", "Left", Text("\v\u00A0left \t"));
+    yield return ("Whitespace", "Right", Text(" \t right\u00A0\v"));
+    yield return ("Length", "Unicode", FerruleValue.FromInt64(5));
+    yield return ("Length", "Null", FerruleValue.FromInt64(0));
+    yield return ("Length", "Nil", FerruleValue.FromInt64(0));
+    yield return ("Split", "BeforeEmpty", Text(""));
+    yield return ("Split", "AfterEmpty", Text("alpha"));
+    yield return ("Split", "BeforeMiss", Text(""));
+    yield return ("Split", "AfterMiss", Text(""));
+    yield return ("Split", "BeforeUnicode", Text("head"));
+    yield return ("Split", "AfterUnicode", Text("tail\U0001F642end"));
+    yield return ("String", "Null", Text(""));
+    yield return ("String", "Nil", Text(""));
+    yield return ("String", "Bool", Text("false"));
+    yield return ("String", "Int", Text("-42"));
+    yield return ("Missing", "Null", Text("fallback-null"));
+    yield return ("Missing", "Nil", Text("fallback-nil"));
+    yield return ("Missing", "Empty", Text(""));
+    yield return ("Missing", "Int", FerruleValue.FromInt64(0));
+    yield return ("Nil", "Nil", FerruleValue.FromBoolean(true));
+    yield return ("Nil", "Null", FerruleValue.FromBoolean(false));
+    yield return ("Nil", "Empty", FerruleValue.FromBoolean(false));
+    yield return ("Paths", "MixedFolder", Text("one/two\\"));
+    yield return ("Paths", "MixedName", Text("file.xml"));
+    yield return ("Paths", "UrlFolder", Text("https://example.test/a/"));
+    yield return ("Paths", "DriveFolder", Text("C:\\work\\data\\"));
+    yield return ("Paths", "MixedBase", Text("C:/work\\data/reports/out.xml"));
+    yield return ("Paths", "MixedPath", Text("/var/data\\reports\\out.xml"));
+    yield return ("Paths", "Windows", Text("C:\\work\\reports/out.xml"));
+    yield return ("Paths", "Url", Text("https://example.test/config.xml"));
+    yield return ("Paths", "Drive", Text("D:\\data\\config.xml"));
+    yield return ("Paths", "Parent", Text("C:\\work\\out.xml"));
+    yield return ("Errors", "Type", Text("safe-type"));
+    yield return ("Errors", "Arity", Text("safe-arity"));
+}
+
+static FerruleValue Text(string value) => FerruleValue.FromString(value);
