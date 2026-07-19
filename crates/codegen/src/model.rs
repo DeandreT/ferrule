@@ -113,7 +113,11 @@ pub struct ExpressionNode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     SourceField {
+        frame: Option<Vec<String>>,
         path: Vec<String>,
+    },
+    Position {
+        collection: Vec<String>,
     },
     Const {
         value: Value,
@@ -142,6 +146,9 @@ pub struct TargetScope {
     /// Source-backed iteration evaluated relative to the parent scope's
     /// current item. Absence means the scope runs exactly once.
     pub iteration: Option<SourceIteration>,
+    /// Per-candidate boolean expression evaluated before output positions are
+    /// compacted and the target item is constructed.
+    pub filter: Option<NodeId>,
     /// Declaration order is semantically significant and is preserved.
     pub bindings: Vec<Binding>,
     pub children: Vec<TargetScope>,

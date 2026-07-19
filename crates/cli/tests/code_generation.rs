@@ -7,6 +7,9 @@ use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
+#[path = "code_generation/iteration_metadata.rs"]
+mod iteration_metadata;
+
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 type ArtifactFiles = Vec<(String, Vec<u8>)>;
 

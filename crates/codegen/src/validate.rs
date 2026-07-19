@@ -24,6 +24,13 @@ pub enum ProgramValidationError {
         target_field: String,
         expression: NodeId,
     },
+    MissingFilterExpression {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
+    FilterWithoutIteration {
+        target_path: Vec<String>,
+    },
     InvalidDuplicateBinding {
         target_path: Vec<String>,
         target_field: String,
@@ -128,7 +135,9 @@ fn visit_expression(
 
 fn dependencies(expression: &Expression) -> Vec<NodeId> {
     match expression {
-        Expression::SourceField { .. } | Expression::Const { .. } => Vec::new(),
+        Expression::SourceField { .. } | Expression::Position { .. } | Expression::Const { .. } => {
+            Vec::new()
+        }
         Expression::Call { args, .. } => args.clone(),
         Expression::If {
             condition,
@@ -143,6 +152,20 @@ fn validate_scope(
     expressions: &BTreeMap<NodeId, &Expression>,
     target_path: &mut Vec<String>,
 ) -> Result<(), ProgramValidationError> {
+    if let Some(expression) = scope.filter {
+        if scope.iteration.is_none() {
+            return Err(ProgramValidationError::FilterWithoutIteration {
+                target_path: target_path.clone(),
+            });
+        }
+        if !expressions.contains_key(&expression) {
+            return Err(ProgramValidationError::MissingFilterExpression {
+                target_path: target_path.clone(),
+                expression,
+            });
+        }
+    }
+
     let mut bindings = BTreeMap::<&str, (usize, bool, ScalarType)>::new();
     for (binding_index, binding) in scope.bindings.iter().enumerate() {
         if !expressions.contains_key(&binding.expression) {
@@ -228,6 +251,19 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} field {target_field:?} references missing expression {expression}",
                 display_path(target_path)
             ),
+            Self::MissingFilterExpression {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} filter references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::FilterWithoutIteration { target_path } => write!(
+                formatter,
+                "target scope {} has a filter without source iteration",
+                display_path(target_path)
+            ),
             Self::InvalidDuplicateBinding {
                 target_path,
                 target_field,
@@ -310,6 +346,7 @@ mod tests {
                 target_field: String::new(),
                 repeating: false,
                 iteration: None,
+                filter: None,
                 bindings: vec![Binding {
                     target_field: "Value".into(),
                     expression: 2,
@@ -350,6 +387,76 @@ mod tests {
 
         program.root.iteration = Some(SourceIteration::new(vec!["Rows".into()]));
         assert_eq!(validate_program(&program), Ok(()));
+    }
+
+    #[test]
+    fn accepts_framed_fields_positions_and_source_filters() {
+        let mut program = program();
+        program.expressions.extend([
+            ExpressionNode {
+                id: 3,
+                expression: Expression::SourceField {
+                    frame: Some(Vec::new()),
+                    path: vec!["Value".into()],
+                },
+            },
+            ExpressionNode {
+                id: 4,
+                expression: Expression::Position {
+                    collection: vec!["Rows".into()],
+                },
+            },
+            ExpressionNode {
+                id: 5,
+                expression: Expression::Position {
+                    collection: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 6,
+                expression: Expression::Const {
+                    value: Value::Bool(true),
+                },
+            },
+        ]);
+        program.root.iteration = Some(SourceIteration::new(vec!["Rows".into()]));
+        program.root.filter = Some(6);
+
+        assert_eq!(validate_program(&program), Ok(()));
+    }
+
+    #[test]
+    fn rejects_invalid_filters_at_the_exact_target_path() {
+        let child = |iteration, filter| TargetScope {
+            target_field: "Child".into(),
+            repeating: true,
+            iteration,
+            filter,
+            bindings: Vec::new(),
+            children: Vec::new(),
+        };
+
+        let mut missing = program();
+        missing.root.children.push(child(
+            Some(SourceIteration::new(vec!["Rows".into()])),
+            Some(99),
+        ));
+        assert_eq!(
+            validate_program(&missing),
+            Err(ProgramValidationError::MissingFilterExpression {
+                target_path: vec!["Child".into()],
+                expression: 99,
+            })
+        );
+
+        let mut uniterated = program();
+        uniterated.root.children.push(child(None, Some(1)));
+        assert_eq!(
+            validate_program(&uniterated),
+            Err(ProgramValidationError::FilterWithoutIteration {
+                target_path: vec!["Child".into()],
+            })
+        );
     }
 
     #[test]
@@ -430,6 +537,7 @@ mod tests {
             target_field: "Child".into(),
             repeating: false,
             iteration: None,
+            filter: None,
             bindings: Vec::new(),
             children: Vec::new(),
         };

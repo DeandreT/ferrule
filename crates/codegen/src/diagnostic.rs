@@ -39,7 +39,6 @@ pub enum ProjectFeature {
 pub enum ScopeFeature {
     Iteration,
     Construction(ScopeConstructionKind),
-    Filter,
     Grouping,
     Sorting,
     SequenceWindows,
@@ -61,10 +60,8 @@ pub enum ScopeConstructionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
-    FramedSourceField,
     NonFiniteFloatLiteral,
     SourceDocumentPath,
-    Position,
     JoinField,
     JoinPosition,
     RuntimeValue,
@@ -164,7 +161,6 @@ impl fmt::Display for ScopeFeature {
         match self {
             Self::Iteration => formatter.write_str("scope iteration"),
             Self::Construction(kind) => write!(formatter, "{kind} construction"),
-            Self::Filter => formatter.write_str("scope filters"),
             Self::Grouping => formatter.write_str("scope grouping"),
             Self::Sorting => formatter.write_str("scope sorting"),
             Self::SequenceWindows => formatter.write_str("scope sequence windows"),
@@ -192,10 +188,8 @@ impl fmt::Display for ScopeConstructionKind {
 impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::FramedSourceField => "a frame-pinned source field",
             Self::NonFiniteFloatLiteral => "a non-finite float literal",
             Self::SourceDocumentPath => "current-document-path",
-            Self::Position => "position",
             Self::JoinField => "a join field",
             Self::JoinPosition => "join position",
             Self::RuntimeValue => "a runtime value",

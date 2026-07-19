@@ -251,12 +251,14 @@ fn lowers_direct_calls_with_ordered_arguments() {
             crate::ExpressionNode {
                 id: 20,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["First".into()],
                 },
             },
             crate::ExpressionNode {
                 id: 30,
                 expression: Expression::SourceField {
+                    frame: None,
                     path: vec!["NestedValue".into()],
                 },
             },
@@ -391,6 +393,180 @@ fn lowers_source_iteration_at_the_static_target_path() {
     assert_eq!(
         program.root.children[0].iteration,
         Some(SourceIteration::new(Vec::new()))
+    );
+}
+
+#[test]
+fn lowers_framed_fields_positions_and_filter_dependencies() {
+    let mut project = supported_project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            scalar("First"),
+            scalar("Second"),
+            scalar("NestedValue"),
+            SchemaNode::group(
+                "Rows",
+                vec![scalar("Name"), typed_scalar("Keep", ScalarType::Bool)],
+            )
+            .repeating(),
+        ],
+    );
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            typed_scalar("SecondOut", ScalarType::Int).repeating(),
+            scalar("FirstOut"),
+            SchemaNode::group(
+                "Details",
+                vec![
+                    scalar("Value"),
+                    typed_scalar("Position", ScalarType::Int),
+                    typed_scalar("InnerPosition", ScalarType::Int),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    project.graph.nodes.extend([
+        (
+            40,
+            Node::SourceField {
+                path: vec!["Name".into()],
+                frame: Some(vec!["Rows".into()]),
+            },
+        ),
+        (
+            41,
+            Node::Position {
+                collection: vec!["Rows".into()],
+            },
+        ),
+        (
+            42,
+            Node::SourceField {
+                path: vec!["Keep".into()],
+                frame: Some(vec!["Rows".into()]),
+            },
+        ),
+        (
+            43,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        ),
+        (
+            44,
+            Node::Call {
+                function: "equal".into(),
+                args: vec![42, 43],
+            },
+        ),
+        (
+            45,
+            Node::Position {
+                collection: Vec::new(),
+            },
+        ),
+    ]);
+    project.root.children[0] = Scope {
+        target_field: "Details".into(),
+        iteration: ScopeIteration::Source(vec!["Rows".into()]),
+        filter: Some(44),
+        bindings: vec![
+            MappingBinding {
+                target_field: "Value".into(),
+                node: 40,
+            },
+            MappingBinding {
+                target_field: "Position".into(),
+                node: 41,
+            },
+            MappingBinding {
+                target_field: "InnerPosition".into(),
+                node: 45,
+            },
+        ],
+        ..Scope::default()
+    };
+
+    let program = lower(&project).expect("framed fields, positions, and source filters lower");
+    let details = &program.root.children[0];
+
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![10, 20, 40, 41, 42, 43, 44, 45]
+    );
+    assert_eq!(
+        details.iteration,
+        Some(SourceIteration::new(vec!["Rows".into()]))
+    );
+    assert_eq!(details.filter, Some(44));
+    assert_eq!(
+        program.expressions[2],
+        crate::ExpressionNode {
+            id: 40,
+            expression: Expression::SourceField {
+                frame: Some(vec!["Rows".into()]),
+                path: vec!["Name".into()],
+            },
+        }
+    );
+    assert_eq!(
+        program.expressions[3],
+        crate::ExpressionNode {
+            id: 41,
+            expression: Expression::Position {
+                collection: vec!["Rows".into()],
+            },
+        }
+    );
+    assert_eq!(
+        program.expressions[6],
+        crate::ExpressionNode {
+            id: 44,
+            expression: Expression::Call {
+                function: ScalarFunction::Equal,
+                args: vec![42, 43],
+            },
+        }
+    );
+    assert_eq!(
+        program.expressions[7],
+        crate::ExpressionNode {
+            id: 45,
+            expression: Expression::Position {
+                collection: Vec::new(),
+            },
+        }
+    );
+}
+
+#[test]
+fn rejects_filters_without_iteration_before_subset_lowering() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        40,
+        Node::Const {
+            value: Value::Bool(true),
+        },
+    );
+    project.root.filter = Some(40);
+
+    let diagnostics = lower(&project)
+        .expect_err("filters require engine-valid iteration")
+        .into_diagnostics();
+
+    assert_eq!(
+        diagnostics,
+        vec![Diagnostic::Validation {
+            location: "root scope".into(),
+            message: "filter has no iterated source".into(),
+        }]
     );
 }
 

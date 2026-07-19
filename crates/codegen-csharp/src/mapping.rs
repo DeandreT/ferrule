@@ -8,6 +8,7 @@ use crate::{EmitError, literal};
 struct ScopePlan<'a> {
     repeating: bool,
     iteration: Option<&'a [String]>,
+    filter: Option<u32>,
     evaluations: Vec<u32>,
     bindings: Vec<BindingPlan<'a>>,
     children: Vec<(&'a str, usize)>,
@@ -41,11 +42,25 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             "    private static global::Ferrule.Runtime.FerruleValue Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context)",
         ));
         match expression {
-            Expression::SourceField { path } => {
+            Expression::SourceField { frame, path } => {
                 output.push_str(" =>\n        ");
-                output.push_str("context.ResolveScalar(");
-                render_path(path, &mut output);
+                if let Some(frame) = frame {
+                    output.push_str("context.ResolveScalarInFrame(");
+                    render_path(frame, &mut output);
+                    output.push_str(", ");
+                    render_path(path, &mut output);
+                } else {
+                    output.push_str("context.ResolveScalar(");
+                    render_path(path, &mut output);
+                }
                 output.push_str(");\n");
+            }
+            Expression::Position { collection } => {
+                output.push_str(
+                    " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.Position(",
+                );
+                render_path(collection, &mut output);
+                output.push_str("));\n");
             }
             Expression::Const { value } => {
                 output.push_str(" =>\n        ");
@@ -91,8 +106,18 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 "        var items_{scope_index} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n        foreach (var item_context_{scope_index} in context.IterateSource("
             ));
             render_path(path, &mut output);
+            output.push_str("))\n        {\n");
+            if let Some(filter) = scope.filter {
+                output.push_str(&format!(
+                    "            var filter_{scope_index} = Node_{filter}(item_context_{scope_index});\n            if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(filter_{scope_index}, {filter}U))\n            {{\n                continue;\n            }}\n            var output_context_{scope_index} = item_context_{scope_index}.WithCompactedPosition(items_{scope_index}.Count + 1);\n            items_{scope_index}.Add(ScopeItem_{scope_index}(output_context_{scope_index}));\n"
+                ));
+            } else {
+                output.push_str(&format!(
+                    "            items_{scope_index}.Add(ScopeItem_{scope_index}(item_context_{scope_index}));\n"
+                ));
+            }
             output.push_str(&format!(
-                "))\n        {{\n            items_{scope_index}.Add(ScopeItem_{scope_index}(item_context_{scope_index}));\n        }}\n        return new global::Ferrule.Runtime.FerruleRepeated(items_{scope_index});\n"
+                "        }}\n        return new global::Ferrule.Runtime.FerruleRepeated(items_{scope_index});\n"
             ));
         } else {
             output.push_str(&format!(
@@ -162,6 +187,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
     scopes.push(ScopePlan {
         repeating: false,
         iteration: None,
+        filter: None,
         evaluations: Vec::new(),
         bindings: Vec::new(),
         children: Vec::new(),
@@ -191,6 +217,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
     scopes[scope_index] = ScopePlan {
         repeating: scope.repeating,
         iteration: scope.iteration.as_ref().map(codegen::SourceIteration::path),
+        filter: scope.filter,
         evaluations,
         bindings,
         children,

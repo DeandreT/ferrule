@@ -200,14 +200,28 @@ struct ScopeFrame<'a> {
 
 #[derive(Clone)]
 enum CollectionIdentity {
-    Repeated(Vec<String>),
-    Document(Vec<String>),
+    Repeated { path: Vec<String>, index: usize },
+    Document { path: Vec<String>, index: usize },
 }
 
 impl CollectionIdentity {
     fn path(&self) -> &[String] {
         match self {
-            Self::Repeated(path) | Self::Document(path) => path,
+            Self::Repeated { path, .. } | Self::Document { path, .. } => path,
+        }
+    }
+
+    const fn index(&self) -> usize {
+        match self {
+            Self::Repeated { index, .. } | Self::Document { index, .. } => *index,
+        }
+    }
+
+    const fn set_index(&mut self, compact_index: usize) {
+        match self {
+            Self::Repeated { index, .. } | Self::Document { index, .. } => {
+                *index = compact_index;
+            }
         }
     }
 }
@@ -294,6 +308,69 @@ impl<'a> ScopeContext<'a> {
             found: InstanceKind::Group,
         }))
     }
+
+    /// Resolves `path` only against the innermost active collection matching
+    /// the absolute `frame` path.
+    ///
+    /// Nested scopes can retain collection paths relative to their parent, so
+    /// an absolute frame also matches a non-empty active suffix. Unlike
+    /// [`Self::resolve_scalar`], a pinned lookup never falls back to another
+    /// source frame.
+    pub fn resolve_scalar_in_frame(
+        &self,
+        frame: &[&str],
+        path: &[&str],
+    ) -> Result<Value, SourcePathError> {
+        let mut absolute_path = owned_path(frame);
+        absolute_path.extend(path.iter().map(|segment| (*segment).to_string()));
+        let Some(owner) = self.frames.iter().rev().find(|scope_frame| {
+            scope_frame.collection.as_ref().is_some_and(|collection| {
+                same_path(frame, collection.path())
+                    || !collection.path().is_empty() && has_suffix(frame, collection.path())
+            })
+        }) else {
+            return Err(SourcePathError::MissingFrame {
+                frame: owned_path(frame),
+                path: owned_path(path),
+            });
+        };
+
+        resolve_scalar_in(owner.instance, path, &absolute_path, frame.len())
+    }
+
+    /// Returns the 1-based position of the innermost active collection whose
+    /// path ends with `collection`. An empty path selects the innermost active
+    /// collection. Missing collection context has the engine's default value
+    /// of `1`.
+    pub fn position(&self, collection: &[&str]) -> usize {
+        self.frames
+            .iter()
+            .rev()
+            .filter_map(|frame| frame.collection.as_ref())
+            .find(|identity| {
+                collection.is_empty() || string_path_has_suffix(identity.path(), collection)
+            })
+            .map(CollectionIdentity::index)
+            .unwrap_or(1)
+    }
+
+    /// Clones this context and replaces only its innermost collection's
+    /// position. Source instances remain borrowed and unchanged.
+    ///
+    /// Generated filtered scopes use this view for output expressions after
+    /// evaluating the predicate against the original candidate context.
+    pub fn with_compact_last_position(&self, compact_index: usize) -> Self {
+        let mut compact = self.clone();
+        if let Some(collection) = compact
+            .frames
+            .iter_mut()
+            .rev()
+            .find_map(|frame| frame.collection.as_mut())
+        {
+            collection.set_index(compact_index.max(1));
+        }
+        compact
+    }
 }
 
 fn walk_source_frames<'a>(
@@ -306,11 +383,15 @@ fn walk_source_frames<'a>(
         Instance::Repeated(items) if !path.is_empty() => {
             return items
                 .iter()
-                .flat_map(|item| {
+                .enumerate()
+                .flat_map(|(index, item)| {
                     let mut next = acc.to_vec();
                     next.push(collection_frame(
                         item,
-                        CollectionIdentity::Repeated(prefix.to_vec()),
+                        CollectionIdentity::Repeated {
+                            path: prefix.to_vec(),
+                            index: index + 1,
+                        },
                     ));
                     walk_source_frames(item, path, prefix, &next)
                 })
@@ -323,22 +404,30 @@ fn walk_source_frames<'a>(
         None => match base {
             Instance::DocumentSet(documents) => documents
                 .iter()
-                .map(|document| {
+                .enumerate()
+                .map(|(index, document)| {
                     let mut next = acc.to_vec();
                     next.push(collection_frame(
                         document.value(),
-                        CollectionIdentity::Document(prefix.to_vec()),
+                        CollectionIdentity::Document {
+                            path: prefix.to_vec(),
+                            index: index + 1,
+                        },
                     ));
                     next
                 })
                 .collect(),
             Instance::Repeated(items) => items
                 .iter()
-                .map(|item| {
+                .enumerate()
+                .map(|(index, item)| {
                     let mut next = acc.to_vec();
                     next.push(collection_frame(
                         item,
-                        CollectionIdentity::Repeated(prefix.to_vec()),
+                        CollectionIdentity::Repeated {
+                            path: prefix.to_vec(),
+                            index: index + 1,
+                        },
                     ));
                     next
                 })
@@ -356,11 +445,15 @@ fn walk_source_frames<'a>(
             if let Instance::DocumentSet(documents) = base {
                 return documents
                     .iter()
-                    .flat_map(|document| {
+                    .enumerate()
+                    .flat_map(|(index, document)| {
                         let mut next = acc.to_vec();
                         next.push(collection_frame(
                             document.value(),
-                            CollectionIdentity::Document(prefix.to_vec()),
+                            CollectionIdentity::Document {
+                                path: prefix.to_vec(),
+                                index: index + 1,
+                            },
                         ));
                         walk_source_frames(document.value(), path, prefix, &next)
                     })
@@ -373,11 +466,15 @@ fn walk_source_frames<'a>(
                 None => Vec::new(),
                 Some(Instance::Repeated(items)) => items
                     .iter()
-                    .flat_map(|item| {
+                    .enumerate()
+                    .flat_map(|(index, item)| {
                         let mut next = acc.to_vec();
                         next.push(collection_frame(
                             item,
-                            CollectionIdentity::Repeated(collection_path.clone()),
+                            CollectionIdentity::Repeated {
+                                path: collection_path.clone(),
+                                index: index + 1,
+                            },
                         ));
                         if rest.is_empty() {
                             vec![next]
@@ -407,9 +504,38 @@ fn has_prefix(path: &[&str], prefix: &[String]) -> bool {
             .all(|(segment, expected)| *segment == expected)
 }
 
+fn has_suffix(path: &[&str], suffix: &[String]) -> bool {
+    path.len() >= suffix.len()
+        && path[path.len() - suffix.len()..]
+            .iter()
+            .zip(suffix)
+            .all(|(segment, expected)| *segment == expected)
+}
+
+fn same_path(path: &[&str], expected: &[String]) -> bool {
+    path.len() == expected.len()
+        && path
+            .iter()
+            .zip(expected)
+            .all(|(segment, expected)| *segment == expected)
+}
+
+fn string_path_has_suffix(path: &[String], suffix: &[&str]) -> bool {
+    path.len() >= suffix.len()
+        && path[path.len() - suffix.len()..]
+            .iter()
+            .zip(suffix)
+            .all(|(segment, expected)| segment == expected)
+}
+
 /// Failure to resolve a generated mapping's static scalar source path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourcePathError {
+    /// A frame-pinned source field was evaluated without its collection active.
+    MissingFrame {
+        frame: Vec<String>,
+        path: Vec<String>,
+    },
     /// A named field was absent from the current group or first document.
     MissingField {
         path: Vec<String>,
@@ -432,6 +558,12 @@ pub enum SourcePathError {
 impl fmt::Display for SourcePathError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MissingFrame { frame, path } => write!(
+                formatter,
+                "source frame {} is not active while resolving {}",
+                display_path(frame),
+                display_path(path)
+            ),
             Self::MissingField {
                 path,
                 segment,
@@ -638,6 +770,54 @@ mod tests {
         assert_eq!(
             contexts[2].resolve_scalar(&["Parents", "Id"]),
             Ok(integer(2))
+        );
+    }
+
+    #[test]
+    fn pinned_fields_positions_and_compact_views_select_exact_collection_frames() {
+        let child = |name: &str| group([field("Name", scalar(string(name)))]);
+        let parent = |id: i64, children: Vec<Instance>| {
+            group([
+                field("Id", scalar(integer(id))),
+                field("Children", repeated(children)),
+            ])
+        };
+        let source = group([field(
+            "Parents",
+            repeated([
+                parent(1, vec![child("a"), child("b")]),
+                parent(2, vec![child("c")]),
+            ]),
+        )]);
+
+        let parents = ScopeContext::new(&source).walk_source(&["Parents"]);
+        let children = parents[0].walk_source(&["Children"]);
+        let second = &children[1];
+
+        assert_eq!(
+            second.resolve_scalar_in_frame(&["Parents"], &["Id"]),
+            Ok(integer(1))
+        );
+        assert_eq!(
+            second.resolve_scalar_in_frame(&["Parents", "Children"], &["Name"]),
+            Ok(string("b"))
+        );
+        assert_eq!(second.position(&["Parents"]), 1);
+        assert_eq!(second.position(&["Children"]), 2);
+        assert_eq!(second.position(&[]), 2);
+        assert_eq!(second.position(&["Inactive"]), 1);
+
+        let compact = second.with_compact_last_position(7);
+        assert_eq!(second.position(&["Children"]), 2);
+        assert_eq!(compact.position(&["Children"]), 7);
+        assert_eq!(compact.position(&["Parents"]), 1);
+
+        assert_eq!(
+            second.resolve_scalar_in_frame(&["Inactive"], &["Name"]),
+            Err(SourcePathError::MissingFrame {
+                frame: vec!["Inactive".to_string()],
+                path: vec!["Name".to_string()],
+            })
         );
     }
 

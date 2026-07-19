@@ -82,6 +82,7 @@ fn lower_scope(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> TargetScope {
     inspect_scope_features(scope, target_path, diagnostics);
+    roots.extend(scope.filter);
 
     let bindings = scope
         .bindings
@@ -140,6 +141,7 @@ fn lower_scope(
             | ScopeIteration::InnerJoin { .. }
             | ScopeIteration::Concatenate(_) => None,
         },
+        filter: scope.filter,
         bindings,
         children,
     }
@@ -180,9 +182,6 @@ fn inspect_scope_features(
     }
     if let Some(kind) = construction_kind(&scope.construction) {
         report(ScopeFeature::Construction(kind));
-    }
-    if scope.filter.is_some() {
-        report(ScopeFeature::Filter);
     }
     if scope.group_by.is_some()
         || scope.group_starting_with.is_some()
@@ -242,7 +241,13 @@ fn reachable_nodes(project: &Project, roots: Vec<NodeId>) -> BTreeSet<NodeId> {
 
 fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnostic> {
     let expression = match node {
-        Node::SourceField { path, frame: None } => Expression::SourceField { path: path.clone() },
+        Node::SourceField { path, frame } => Expression::SourceField {
+            frame: frame.clone(),
+            path: path.clone(),
+        },
+        Node::Position { collection } => Expression::Position {
+            collection: collection.clone(),
+        },
         Node::Const {
             value: Value::Float(value),
         } if !value.is_finite() => {
@@ -287,9 +292,7 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
 
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
     match node {
-        Node::SourceField { .. } => UnsupportedNodeKind::FramedSourceField,
         Node::SourceDocumentPath => UnsupportedNodeKind::SourceDocumentPath,
-        Node::Position { .. } => UnsupportedNodeKind::Position,
         Node::JoinField { .. } => UnsupportedNodeKind::JoinField,
         Node::JoinPosition { .. } => UnsupportedNodeKind::JoinPosition,
         Node::RuntimeValue { .. } => UnsupportedNodeKind::RuntimeValue,
@@ -302,8 +305,14 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
         Node::Aggregate { .. } => UnsupportedNodeKind::Aggregate,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
-        Node::Const { .. } | Node::Call { .. } | Node::If { .. } => {
-            unreachable!("constants, whitelisted calls, and conditionals are handled above")
+        Node::SourceField { .. }
+        | Node::Position { .. }
+        | Node::Const { .. }
+        | Node::Call { .. }
+        | Node::If { .. } => {
+            unreachable!(
+                "source fields, positions, constants, calls, and conditionals are handled above"
+            )
         }
     }
 }
