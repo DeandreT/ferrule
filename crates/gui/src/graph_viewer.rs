@@ -17,7 +17,7 @@ use ir::Value;
 use mapping::{AggregateOp, Binding, Graph, NamedTarget, Node, NodeId, Scope};
 
 use crate::appearance::SemanticThemeColors;
-use crate::canvas::{CanvasNode, SourceLeaf, TargetLeaf};
+use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 
@@ -31,7 +31,6 @@ mod node_palette;
 use graph_references::node_inputs;
 use node_palette::NodeTemplate;
 
-const ENDPOINT_LABEL_WIDTH: f32 = 190.0;
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
 
 fn compact_endpoint_label(path: &str) -> String {
@@ -68,21 +67,40 @@ fn show_endpoint_label(
     align: egui::Align,
     hover_text: impl Into<egui::WidgetText>,
 ) {
-    ui.add_sized(
-        [ENDPOINT_LABEL_WIDTH, crate::theme::METRICS.node_row_height],
-        egui::Label::new(compact_endpoint_label(path))
-            .truncate()
-            .halign(align),
-    )
-    .on_hover_text(hover_text);
+    let clip_rect = ui.clip_rect();
+    let row_height = ui.spacing().interact_size.y;
+    let row_rect = egui::Rect::from_min_max(
+        egui::pos2(clip_rect.left(), ui.max_rect().top()),
+        egui::pos2(clip_rect.right(), ui.max_rect().top() + row_height),
+    );
+    let (anchor, text_align) = match align {
+        egui::Align::Min => (
+            egui::pos2(row_rect.left() + row_height, row_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+        ),
+        egui::Align::Center => (row_rect.center(), egui::Align2::CENTER_CENTER),
+        egui::Align::Max => (
+            egui::pos2(row_rect.right() - row_height, row_rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+        ),
+    };
+    ui.painter().text(
+        anchor,
+        text_align,
+        compact_endpoint_label(path),
+        egui::TextStyle::Body.resolve(ui.style()),
+        ui.visuals().text_color(),
+    );
+    ui.interact(row_rect, ui.next_auto_id(), egui::Sense::hover())
+        .on_hover_text(hover_text);
 }
 
 pub struct GraphViewer<'a> {
     pub graph: &'a mut Graph,
     pub root_scope: &'a mut Scope,
     pub extra_targets: &'a [NamedTarget],
-    pub source_leaves: &'a [SourceLeaf],
-    pub target_leaves: &'a [TargetLeaf],
+    pub source_blocks: &'a [SourceBlock],
+    pub target_blocks: &'a [TargetBlock],
     pub source_paths: &'a SourcePathCatalog,
     pub colors: SemanticThemeColors,
     pub node_sizes: Option<&'a mut std::collections::BTreeMap<CanvasNode, egui::Vec2>>,
@@ -108,8 +126,16 @@ impl GraphViewer<'_> {
     fn mapping_id(node: CanvasNode) -> Option<NodeId> {
         match node {
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => Some(id),
-            CanvasNode::Source | CanvasNode::Target => None,
+            CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_) => None,
         }
+    }
+
+    fn source_leaf(&self, block: usize, pin: usize) -> Option<&SourceLeaf> {
+        self.source_blocks.get(block)?.leaves.get(pin)
+    }
+
+    fn target_leaf(&self, block: usize, pin: usize) -> Option<&TargetLeaf> {
+        self.target_blocks.get(block)?.leaves.get(pin)
     }
 
     fn placeholder_position(owner: egui::Pos2, input: usize, inputs: usize) -> egui::Pos2 {
@@ -568,8 +594,14 @@ impl GraphViewer<'_> {
 impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn title(&mut self, node: &CanvasNode) -> String {
         match node {
-            CanvasNode::Source => "Source".to_string(),
-            CanvasNode::Target => "Target".to_string(),
+            CanvasNode::SourceBlock(block) => self
+                .source_blocks
+                .get(*block)
+                .map_or_else(|| "Source".to_string(), |section| section.title.clone()),
+            CanvasNode::TargetBlock(block) => self
+                .target_blocks
+                .get(*block)
+                .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => match self.graph.nodes.get(id) {
                 Some(Node::SourceField { path, frame }) => {
                     let owner = frame
@@ -657,6 +689,32 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         }
     }
 
+    fn show_header(
+        &mut self,
+        node: SnarlNodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        ui: &mut Ui,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let canvas_node = snarl[node];
+        let endpoint_width = match canvas_node {
+            CanvasNode::SourceBlock(block) => self.source_blocks.get(block).map(|section| {
+                crate::app::endpoint_block_size(&section.title, &section.pin_labels).x
+            }),
+            CanvasNode::TargetBlock(block) => self.target_blocks.get(block).map(|section| {
+                crate::app::endpoint_block_size(&section.title, &section.pin_labels).x
+            }),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => None,
+        };
+        if let Some(width) = endpoint_width {
+            // Account for the nested node/header frame margins. Pin labels are
+            // painted independently so right-to-left rows cannot grow sideways.
+            ui.set_min_width((width - 32.0).max(0.0));
+        }
+        ui.label(self.title(&canvas_node));
+    }
+
     fn final_node_rect(
         &mut self,
         node: SnarlNodeId,
@@ -677,8 +735,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 
     fn inputs(&mut self, node: &CanvasNode) -> usize {
         match node {
-            CanvasNode::Source => 0,
-            CanvasNode::Target => self.target_leaves.len(),
+            CanvasNode::SourceBlock(_) => 0,
+            CanvasNode::TargetBlock(block) => self
+                .target_blocks
+                .get(*block)
+                .map_or(0, |section| section.leaves.len()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 self.graph.nodes.get(id).map_or(0, Self::input_count)
             }
@@ -687,8 +748,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 
     fn outputs(&mut self, node: &CanvasNode) -> usize {
         match node {
-            CanvasNode::Source => self.source_leaves.len(),
-            CanvasNode::Target => 0,
+            CanvasNode::SourceBlock(block) => self
+                .source_blocks
+                .get(*block)
+                .map_or(0, |section| section.leaves.len()),
+            CanvasNode::TargetBlock(_) => 0,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 1,
         }
     }
@@ -697,13 +761,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let idx = pin.id.input;
         let fill = match snarl[pin.id.node] {
-            CanvasNode::Source => self.colors.source,
-            CanvasNode::Target => self.colors.target,
+            CanvasNode::SourceBlock(_) => self.colors.source,
+            CanvasNode::TargetBlock(_) => self.colors.target,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
         };
         let label = match snarl[pin.id.node] {
-            CanvasNode::Target => None,
-            CanvasNode::Source => Some(String::new()),
+            CanvasNode::TargetBlock(_) => None,
+            CanvasNode::SourceBlock(_) => Some(String::new()),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 Some(match self.graph.nodes.get(&id) {
                     Some(Node::Call { .. }) => format!("arg {idx}"),
@@ -730,8 +794,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 })
             }
         };
-        if let CanvasNode::Target = snarl[pin.id.node] {
-            if let Some(leaf) = self.target_leaves.get(idx) {
+        if let CanvasNode::TargetBlock(block) = snarl[pin.id.node] {
+            if let Some(section) = self.target_blocks.get(block)
+                && let (Some(leaf), Some(label)) =
+                    (section.leaves.get(idx), section.pin_labels.get(idx))
+            {
                 let state = if pin.remotes.is_empty() {
                     "Unmapped target"
                 } else {
@@ -739,8 +806,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 };
                 show_endpoint_label(
                     ui,
-                    &leaf.label,
-                    egui::Align::LEFT,
+                    label,
+                    egui::Align::Min,
                     format!("{state}: {}", leaf.label),
                 );
             }
@@ -755,13 +822,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     #[allow(refining_impl_trait)]
     fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let fill = match snarl[pin.id.node] {
-            CanvasNode::Source => self.colors.source,
-            CanvasNode::Target => self.colors.target,
+            CanvasNode::SourceBlock(_) => self.colors.source,
+            CanvasNode::TargetBlock(_) => self.colors.target,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
         };
         let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
-            if let CanvasNode::Source = snarl[pin.id.node]
-                && let Some(leaf) = self.source_leaves.get(pin.id.output)
+            if let CanvasNode::SourceBlock(block) = snarl[pin.id.node]
+                && let Some(section) = self.source_blocks.get(block)
+                && let (Some(leaf), Some(label)) = (
+                    section.leaves.get(pin.id.output),
+                    section.pin_labels.get(pin.id.output),
+                )
             {
                 let context = leaf.frame.as_ref().map_or_else(
                     || format!("Source: {}", leaf.label),
@@ -774,7 +845,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         format!("Source: {}\nRepeating context: {frame}", leaf.label)
                     },
                 );
-                show_endpoint_label(ui, &leaf.label, egui::Align::RIGHT, context);
+                show_endpoint_label(ui, label, egui::Align::Max, context);
             }
             return PinInfo::circle()
                 .with_fill(fill.to_egui())
@@ -1092,10 +1163,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let to_node = snarl[to.id.node];
         let mutation = (|| -> Result<Option<NodeId>, String> {
             match (from_node, to_node) {
-                (CanvasNode::Source, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
+                (
+                    CanvasNode::SourceBlock(source_block),
+                    CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id),
+                ) => {
                     let source_leaf = self
-                        .source_leaves
-                        .get(from.id.output)
+                        .source_leaf(source_block, from.id.output)
+                        .cloned()
                         .ok_or_else(|| format!("source pin {} does not exist", from.id.output))?;
                     let to_node = self
                         .graph
@@ -1122,14 +1196,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Ok(displaced)
                 }
-                (CanvasNode::Source, CanvasNode::Target) => {
+                (CanvasNode::SourceBlock(source_block), CanvasNode::TargetBlock(target_block)) => {
                     let source_leaf = self
-                        .source_leaves
-                        .get(from.id.output)
+                        .source_leaf(source_block, from.id.output)
+                        .cloned()
                         .ok_or_else(|| format!("source pin {} does not exist", from.id.output))?;
                     let target_leaf = self
-                        .target_leaves
-                        .get(to.id.input)
+                        .target_leaf(target_block, to.id.input)
                         .cloned()
                         .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
                     let displaced = self.binding_node(&target_leaf);
@@ -1140,7 +1213,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 (
                     CanvasNode::Graph(from_id) | CanvasNode::Placeholder(from_id),
-                    CanvasNode::Target,
+                    CanvasNode::TargetBlock(target_block),
                 ) => {
                     if from.id.output != 0 || !self.graph.nodes.contains_key(&from_id) {
                         return Err(format!(
@@ -1149,8 +1222,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         ));
                     }
                     let target_leaf = self
-                        .target_leaves
-                        .get(to.id.input)
+                        .target_leaf(target_block, to.id.input)
                         .cloned()
                         .ok_or_else(|| format!("target pin {} does not exist", to.id.input))?;
                     let displaced = self.binding_node(&target_leaf);
@@ -1217,16 +1289,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id) => {
                 self.input_at(to_id, to.id.input)
             }
-            CanvasNode::Target => self
-                .target_leaves
-                .get(to.id.input)
+            CanvasNode::TargetBlock(block) => self
+                .target_leaf(block, to.id.input)
                 .cloned()
                 .and_then(|leaf| self.binding_node(&leaf)),
-            CanvasNode::Source => None,
+            CanvasNode::SourceBlock(_) => None,
         };
         match (snarl[from.id.node], snarl[to.id.node]) {
-            (_, CanvasNode::Target) => {
-                if let Some(leaf) = self.target_leaves.get(to.id.input).cloned() {
+            (_, CanvasNode::TargetBlock(block)) => {
+                if let Some(leaf) = self.target_leaf(block, to.id.input).cloned() {
                     self.remove_binding(&leaf);
                 }
             }

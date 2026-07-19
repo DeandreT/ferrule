@@ -30,6 +30,21 @@ fn temporary_project_path(test_name: &str) -> PathBuf {
 }
 
 #[test]
+fn legacy_endpoint_layout_entries_migrate_to_the_first_block() {
+    let source: PersistedCanvasNode =
+        serde_json::from_str(r#"{"kind":"source"}"#).expect("legacy source entry parses");
+    let target: PersistedCanvasNode =
+        serde_json::from_str(r#"{"kind":"target"}"#).expect("legacy target entry parses");
+
+    assert_eq!(source, PersistedCanvasNode::Source { block: 0 });
+    assert_eq!(target, PersistedCanvasNode::Target { block: 0 });
+    assert_eq!(
+        PersistedCanvasNode::from(CanvasNode::SourceBlock(3)),
+        PersistedCanvasNode::Source { block: 3 }
+    );
+}
+
+#[test]
 fn canvas_layout_saves_alongside_backward_compatible_project_json() {
     let project_path = temporary_project_path("layout-roundtrip");
     let mut app = FerruleApp::default();
@@ -40,7 +55,11 @@ fn canvas_layout_saves_alongside_backward_compatible_project_json() {
         },
     );
     app.snarl = build_snarl(&app.project);
-    move_canvas_node(&mut app.snarl, CanvasNode::Source, egui::pos2(73.0, 91.0));
+    move_canvas_node(
+        &mut app.snarl,
+        CanvasNode::SourceBlock(0),
+        egui::pos2(73.0, 91.0),
+    );
     move_canvas_node(
         &mut app.snarl,
         CanvasNode::Graph(7),
@@ -61,7 +80,7 @@ fn canvas_layout_saves_alongside_backward_compatible_project_json() {
     };
     loaded.load_project_from(&project_path);
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::Source),
+        canvas_position(&loaded.snarl, CanvasNode::SourceBlock(0)),
         egui::pos2(73.0, 91.0)
     );
     assert_eq!(
@@ -92,10 +111,10 @@ fn layout_sidecar_restores_placeholder_identity_and_wiring() {
         },
     );
     let mut snarl = Snarl::new();
-    snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
+    snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::SourceBlock(0));
     let placeholder = snarl.insert_node(egui::pos2(180.0, 210.0), CanvasNode::Placeholder(0));
     let call = snarl.insert_node(egui::pos2(480.0, 210.0), CanvasNode::Graph(1));
-    snarl.insert_node(egui::pos2(780.0, 0.0), CanvasNode::Target);
+    snarl.insert_node(egui::pos2(780.0, 0.0), CanvasNode::TargetBlock(0));
     snarl.connect(
         OutPinId {
             node: placeholder,
@@ -156,7 +175,11 @@ fn stale_layout_cannot_reclassify_or_reposition_nodes() {
             *node = CanvasNode::Placeholder(0);
         }
     }
-    move_canvas_node(&mut app.snarl, CanvasNode::Source, egui::pos2(901.0, 733.0));
+    move_canvas_node(
+        &mut app.snarl,
+        CanvasNode::SourceBlock(0),
+        egui::pos2(901.0, 733.0),
+    );
     move_canvas_node(
         &mut app.snarl,
         CanvasNode::Graph(1),
@@ -179,7 +202,7 @@ fn stale_layout_cannot_reclassify_or_reposition_nodes() {
         },
     );
     let default_layout = build_snarl(&app.project);
-    let expected_source = canvas_position(&default_layout, CanvasNode::Source);
+    let expected_source = canvas_position(&default_layout, CanvasNode::SourceBlock(0));
     let expected_graph = canvas_position(&default_layout, CanvasNode::Graph(1));
     std::fs::write(
         &project_path,
@@ -205,7 +228,7 @@ fn stale_layout_cannot_reclassify_or_reposition_nodes() {
             .any(|node| *node == CanvasNode::Placeholder(0))
     );
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::Source),
+        canvas_position(&loaded.snarl, CanvasNode::SourceBlock(0)),
         expected_source
     );
     assert_eq!(
@@ -233,7 +256,7 @@ fn project_without_layout_sidecar_uses_default_layout() {
     };
     app.load_project_from(&project_path);
     assert_eq!(
-        canvas_position(&app.snarl, CanvasNode::Source),
+        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
         egui::pos2(0.0, 0.0)
     );
     assert_eq!(app.status, format!("loaded {}", project_path.display()));
@@ -246,9 +269,9 @@ fn project_without_layout_sidecar_uses_default_layout() {
 #[test]
 fn canvas_moves_and_arrange_roundtrip_through_history() {
     let mut app = FerruleApp::default();
-    let arranged = canvas_position(&app.snarl, CanvasNode::Source);
+    let arranged = canvas_position(&app.snarl, CanvasNode::SourceBlock(0));
     let custom = egui::pos2(123.0, 456.0);
-    move_canvas_node(&mut app.snarl, CanvasNode::Source, custom);
+    move_canvas_node(&mut app.snarl, CanvasNode::SourceBlock(0), custom);
     app.mark_clean();
     app.rebase_history();
 
@@ -258,14 +281,23 @@ fn canvas_moves_and_arrange_roundtrip_through_history() {
         crate::appearance::WireAppearance::default(),
     );
     app.observe_editor_history(std::time::Instant::now(), false);
-    assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
+    assert_eq!(
+        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        arranged
+    );
     assert!(app.is_dirty());
 
     app.undo_project();
-    assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), custom);
+    assert_eq!(
+        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        custom
+    );
     assert!(!app.is_dirty());
     app.redo_project();
-    assert_eq!(canvas_position(&app.snarl, CanvasNode::Source), arranged);
+    assert_eq!(
+        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        arranged
+    );
     assert!(app.is_dirty());
 }
 
@@ -679,8 +711,8 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
     // Only Source, Target, and the Call node should be on the canvas.
     let kinds: Vec<CanvasNode> = snarl.nodes().copied().collect();
     assert_eq!(kinds.len(), 3);
-    assert!(kinds.contains(&CanvasNode::Source));
-    assert!(kinds.contains(&CanvasNode::Target));
+    assert!(kinds.contains(&CanvasNode::SourceBlock(0)));
+    assert!(kinds.contains(&CanvasNode::TargetBlock(0)));
     assert!(kinds.contains(&CanvasNode::Graph(1)));
 
     // Wires: Source(name)->Call arg0, Call->Target(loud_name),
@@ -692,9 +724,9 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
     // Wire iteration order is not deterministic; compare as a set.
     wires.sort_by_key(|w| format!("{w:?}"));
     let mut expected = vec![
-        (CanvasNode::Source, 0, CanvasNode::Graph(1), 0),
-        (CanvasNode::Graph(1), 0, CanvasNode::Target, 0),
-        (CanvasNode::Source, 1, CanvasNode::Target, 1),
+        (CanvasNode::SourceBlock(0), 0, CanvasNode::Graph(1), 0),
+        (CanvasNode::Graph(1), 0, CanvasNode::TargetBlock(0), 0),
+        (CanvasNode::SourceBlock(0), 1, CanvasNode::TargetBlock(0), 1),
     ];
     expected.sort_by_key(|w| format!("{w:?}"));
     assert_eq!(wires, expected);
@@ -758,13 +790,19 @@ fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
     };
 
     let snarl = build_snarl(&project);
-    assert_eq!(snarl.nodes().count(), 2, "both source fields stay hidden");
+    assert_eq!(snarl.nodes().count(), 3, "both source fields stay hidden");
     let mut wires: Vec<_> = snarl
         .wires()
-        .map(|(output, input)| (output.output, input.input))
+        .map(|(output, input)| (snarl[output.node], output.output, input.input))
         .collect();
-    wires.sort_unstable();
-    assert_eq!(wires, vec![(0, 0), (1, 1)]);
+    wires.sort_by_key(|wire| format!("{wire:?}"));
+    assert_eq!(
+        wires,
+        vec![
+            (CanvasNode::SourceBlock(0), 0, 0),
+            (CanvasNode::SourceBlock(1), 0, 1),
+        ]
+    );
 }
 
 #[test]

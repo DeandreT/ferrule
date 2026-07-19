@@ -1,5 +1,5 @@
 use super::*;
-use crate::canvas::{source_leaves, target_leaves};
+use crate::canvas::{SourceBlock, TargetBlock, source_blocks, target_blocks};
 use egui_snarl::ui::SnarlWidget;
 use egui_snarl::{InPinId, OutPinId};
 use ir::{ScalarType, SchemaNode};
@@ -7,8 +7,8 @@ use ir::{ScalarType, SchemaNode};
 struct Fixture {
     graph: Graph,
     root_scope: Scope,
-    source_leaves: Vec<SourceLeaf>,
-    target_leaves: Vec<TargetLeaf>,
+    source_blocks: Vec<SourceBlock>,
+    target_blocks: Vec<TargetBlock>,
     source_paths: SourcePathCatalog,
     snarl: Snarl<CanvasNode>,
     source: SnarlNodeId,
@@ -38,14 +38,14 @@ fn fixture() -> Fixture {
         },
     );
     let mut snarl = Snarl::new();
-    let source = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
-    let target = snarl.insert_node(egui::pos2(400.0, 0.0), CanvasNode::Target);
+    let source = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::SourceBlock(0));
+    let target = snarl.insert_node(egui::pos2(400.0, 0.0), CanvasNode::TargetBlock(0));
     let call = snarl.insert_node(egui::pos2(200.0, 0.0), CanvasNode::Graph(0));
     Fixture {
         graph,
         root_scope: Scope::default(),
-        source_leaves: source_leaves(&source_schema),
-        target_leaves: target_leaves(&target_schema),
+        source_blocks: source_blocks(&source_schema),
+        target_blocks: target_blocks(&target_schema),
         source_paths,
         snarl,
         source,
@@ -60,8 +60,8 @@ impl Fixture {
             graph: &mut self.graph,
             root_scope: &mut self.root_scope,
             extra_targets: &[],
-            source_leaves: &self.source_leaves,
-            target_leaves: &self.target_leaves,
+            source_blocks: &self.source_blocks,
+            target_blocks: &self.target_blocks,
             source_paths: &self.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
             node_sizes: None,
@@ -87,7 +87,7 @@ fn endpoint_labels_keep_short_paths_unchanged() {
 #[test]
 fn long_endpoint_paths_do_not_expand_the_source_node() {
     let mut fx = fixture();
-    fx.source_leaves[0].label =
+    fx.source_blocks[0].leaves[0].label =
         "Workbook/Worksheets/Regional Offices/Departments/People/PrimaryKey".into();
     let mut snarl = std::mem::take(&mut fx.snarl);
     let mut node_sizes = std::collections::BTreeMap::new();
@@ -98,8 +98,8 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
             graph: &mut fx.graph,
             root_scope: &mut fx.root_scope,
             extra_targets: &[],
-            source_leaves: &fx.source_leaves,
-            target_leaves: &fx.target_leaves,
+            source_blocks: &fx.source_blocks,
+            target_blocks: &fx.target_blocks,
             source_paths: &fx.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
             node_sizes: Some(&mut node_sizes),
@@ -109,10 +109,10 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
     });
 
     let source_width = node_sizes
-        .get(&CanvasNode::Source)
+        .get(&CanvasNode::SourceBlock(0))
         .map_or(f32::INFINITY, |size| size.x);
     assert!(
-        source_width <= ENDPOINT_LABEL_WIDTH + 55.0,
+        source_width <= 250.0,
         "source endpoint widened to {source_width}"
     );
 }
@@ -204,8 +204,8 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
     );
     let target_schema =
         SchemaNode::group("root", vec![SchemaNode::scalar("out", ScalarType::String)]);
-    let source_leaves = source_leaves(&source_schema);
-    let target_leaves = target_leaves(&target_schema);
+    let source_blocks = source_blocks(&source_schema);
+    let target_blocks = target_blocks(&target_schema);
     let source_paths = SourcePathCatalog::new(&source_schema, &[]);
     let mut graph = Graph::default();
     graph.nodes.insert(
@@ -217,24 +217,27 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
     );
     let mut root_scope = Scope::default();
     let mut snarl = Snarl::new();
-    let source = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::Source);
+    let sources = [
+        snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::SourceBlock(0)),
+        snarl.insert_node(egui::pos2(0.0, 160.0), CanvasNode::SourceBlock(1)),
+    ];
     let call = snarl.insert_node(egui::pos2(200.0, 0.0), CanvasNode::Graph(0));
     let mut viewer = GraphViewer {
         graph: &mut graph,
         root_scope: &mut root_scope,
         extra_targets: &[],
-        source_leaves: &source_leaves,
-        target_leaves: &target_leaves,
+        source_blocks: &source_blocks,
+        target_blocks: &target_blocks,
         source_paths: &source_paths,
         colors: crate::appearance::SemanticThemeColors::default(),
         node_sizes: None,
         error: None,
     };
 
-    for pin in 0..2 {
+    for (pin, source) in sources.into_iter().enumerate() {
         let from = snarl.out_pin(OutPinId {
             node: source,
-            output: pin,
+            output: 0,
         });
         let to = snarl.in_pin(InPinId {
             node: call,
@@ -420,11 +423,16 @@ fn disconnecting_a_target_pin_removes_the_binding() {
 #[test]
 fn binding_into_a_nested_target_creates_non_iterating_scope_chain() {
     let mut fx = fixture();
-    fx.target_leaves = vec![TargetLeaf {
-        label: "Order/Address/b".into(),
-        chain: vec!["Order".into(), "Address".into()],
-        field: "b".into(),
-    }];
+    fx.target_blocks = target_blocks(&SchemaNode::group(
+        "root",
+        vec![SchemaNode::group(
+            "Order",
+            vec![SchemaNode::group(
+                "Address",
+                vec![SchemaNode::scalar("b", ScalarType::Int)],
+            )],
+        )],
+    ));
     let mut snarl = std::mem::take(&mut fx.snarl);
     let from = snarl.out_pin(OutPinId {
         node: fx.source,
@@ -509,11 +517,10 @@ fn batch_removal_deletes_selected_dependency_chains_in_reference_order() {
 
     assert_eq!(removed, 2);
     assert!(fx.graph.nodes.is_empty());
-    assert!(
-        snarl
-            .nodes()
-            .all(|node| matches!(node, CanvasNode::Source | CanvasNode::Target))
-    );
+    assert!(snarl.nodes().all(|node| matches!(
+        node,
+        CanvasNode::SourceBlock(0) | CanvasNode::TargetBlock(0)
+    )));
 }
 
 #[test]

@@ -542,14 +542,14 @@ impl FerruleApp {
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         ui.add_enabled_ui(editing_enabled, |ui| {
-            let source_pins: Vec<SourceLeaf> = source_leaves(&self.project.source);
-            let target_pins: Vec<TargetLeaf> = target_leaves(&self.project.target);
+            let source_blocks = source_blocks(&self.project.source);
+            let target_blocks = target_blocks(&self.project.target);
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,
                 root_scope: &mut self.project.root,
                 extra_targets: &self.project.extra_targets,
-                source_leaves: &source_pins,
-                target_leaves: &target_pins,
+                source_blocks: &source_blocks,
+                target_blocks: &target_blocks,
                 source_paths: &source_paths,
                 colors: self.appearance.resolved_colors(self.palette),
                 node_sizes: Some(&mut self.canvas_node_sizes),
