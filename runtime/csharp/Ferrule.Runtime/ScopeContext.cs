@@ -274,6 +274,46 @@ public sealed class ScopeContext
         return new ScopeContext(_frames, new ReadOnlyCollection<CollectionIdentity>(collections));
     }
 
+    /// <summary>Clones the innermost source group for independent target ownership.</summary>
+    public FerruleGroup CopyCurrentGroup()
+    {
+        if (_frames.Count == 0)
+        {
+            throw CopyCurrentGroupError("missing context");
+        }
+
+        return _frames[^1] switch
+        {
+            FerruleGroup group => (FerruleGroup)CloneInstance(group),
+            FerruleScalar => throw CopyCurrentGroupError("scalar"),
+            FerruleRepeated => throw CopyCurrentGroupError("repeated collection"),
+            FerruleMappedSequence => throw CopyCurrentGroupError("mapped sequence"),
+            FerruleDocumentSet => throw CopyCurrentGroupError("document set"),
+            _ => throw CopyCurrentGroupError("unknown instance"),
+        };
+    }
+
+    private static FerruleRuntimeException CopyCurrentGroupError(string found) =>
+        new(
+            FerruleRuntimeError.CopyCurrentSourceRequiresGroup,
+            $"copy-current-source construction requires a group item, got {found}",
+            detail: found);
+
+    private static FerruleInstance CloneInstance(FerruleInstance instance) => instance switch
+    {
+        FerruleScalar scalar => new FerruleScalar(scalar.Value),
+        FerruleGroup group => new FerruleGroup(group.Fields.Select(field =>
+            new FerruleField(field.Name, CloneInstance(field.Value)))),
+        FerruleRepeated repeated => new FerruleRepeated(repeated.Items.Select(CloneInstance)),
+        FerruleMappedSequence mapped => new FerruleMappedSequence(mapped.Items.Select(CloneInstance)),
+        FerruleDocumentSet documents => new FerruleDocumentSet(documents.Documents.Select(document =>
+            new FerruleDocument(
+                document.Path,
+                CloneInstance(document.Value),
+                document.ResolvedSourcePath))),
+        _ => throw new InvalidOperationException("unknown Ferrule instance type"),
+    };
+
     private FerruleInstance? FindIterationBase(IReadOnlyList<string> path)
     {
         if (path.Count == 0)

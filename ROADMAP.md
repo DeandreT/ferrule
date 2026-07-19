@@ -62,7 +62,7 @@ clean-room interoperability, and extensible adapters.
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
 | `.mfd` | 120/120 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
-| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, typed failures, scalar/group targets, source/generated iteration, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers | Broaden toward interpreter parity, publish the Rust runtime, and consider optional XML-specific XSLT |
+| Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, typed failures, scalar/group targets, exact whole-group copies, source/generated iteration, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers | Broaden toward interpreter parity, publish the Rust runtime, and consider optional XML-specific XSLT |
 
 ## Workstreams
 

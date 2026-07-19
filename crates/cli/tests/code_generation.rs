@@ -9,6 +9,8 @@ use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/copy_current_source.rs"]
+mod copy_current_source;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
 #[path = "code_generation/iteration_controls.rs"]

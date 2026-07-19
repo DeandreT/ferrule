@@ -8,6 +8,8 @@ use crate::{
     Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
 };
 
+mod recursive_sequence;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SequenceExpressionRole {
     Input(usize),
@@ -103,6 +105,18 @@ pub enum ProgramValidationError {
     GroupConstructionRequiresGroupTarget {
         target_path: Vec<String>,
     },
+    CopyConstructionRequiresGroupSource {
+        target_path: Vec<String>,
+    },
+    CopyConstructionRequiresGroupTarget {
+        target_path: Vec<String>,
+    },
+    CopyConstructionRequiresMatchingGroups {
+        target_path: Vec<String>,
+    },
+    CopyConstructionHasContent {
+        target_path: Vec<String>,
+    },
     ScalarConstructionHasContent {
         target_path: Vec<String>,
     },
@@ -167,8 +181,11 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_scope(
         &program.root,
         &expressions,
-        &program.source,
-        &program.target,
+        ScopeSchemas {
+            source_root: &program.source,
+            current_source: Some(&program.source),
+            target_root: &program.target,
+        },
         &mut Vec::new(),
         &sequence_items.keys().copied().collect(),
         &[],
@@ -185,7 +202,7 @@ fn validate_expression_sequence_paths(
             | Expression::SequenceItemAt { sequence, .. } => sequence,
             _ => continue,
         };
-        validate_generated_sequence_paths(source, sequence, &SequenceOwner::Expression(node))?;
+        recursive_sequence::validate(source, sequence, &SequenceOwner::Expression(node))?;
     }
     Ok(())
 }
@@ -452,88 +469,14 @@ fn schema_path_targets<'a>(root: &'a SchemaNode, path: &[String]) -> Vec<&'a Sch
     targets
 }
 
-fn resolved_schema_node<'a>(root: &'a SchemaNode, node: &'a SchemaNode) -> Option<&'a SchemaNode> {
-    node.recursive_ref
-        .as_deref()
-        .map(|anchor| find_concrete_schema_group(root, anchor))
-        .unwrap_or(Some(node))
-}
-
-fn validate_generated_sequence_paths(
-    source: &SchemaNode,
-    sequence: &crate::GeneratedSequence,
-    owner: &SequenceOwner,
-) -> Result<(), ProgramValidationError> {
-    let crate::GeneratedSequence::RecursiveCollect {
-        collection,
-        children,
-        descent_value,
-        values,
-        value,
-        ..
-    } = sequence
-    else {
-        return Ok(());
-    };
-
-    let mut groups = schema_path_targets(source, collection)
-        .into_iter()
-        .filter_map(|node| resolved_schema_node(source, node))
-        .filter(|node| matches!(node.kind, SchemaKind::Group { .. }))
-        .collect::<Vec<_>>();
-    if groups.is_empty() {
-        return invalid_recursive_path(owner, RecursiveSequencePathRole::Collection, collection);
-    }
-
-    groups.retain(|group| {
-        follow_schema_from(source, group, children).is_some_and(|child| {
-            child.repeating
-                && resolved_schema_node(source, child)
-                    .is_some_and(|resolved| std::ptr::eq(resolved, *group))
-        })
-    });
-    if groups.is_empty() {
-        return invalid_recursive_path(owner, RecursiveSequencePathRole::Children, children);
-    }
-
-    groups.retain(|group| {
-        follow_schema_from(source, group, descent_value)
-            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
-    });
-    if groups.is_empty() {
-        return invalid_recursive_path(
-            owner,
-            RecursiveSequencePathRole::DescentValue,
-            descent_value,
-        );
-    }
-
-    let value_roots = groups
-        .into_iter()
-        .filter_map(|group| follow_schema_from(source, group, values))
-        .collect::<Vec<_>>();
-    if value_roots.is_empty() {
-        return invalid_recursive_path(owner, RecursiveSequencePathRole::Values, values);
-    }
-    if !value_roots.into_iter().any(|root| {
-        follow_schema_from(source, root, value)
-            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
-    }) {
-        return invalid_recursive_path(owner, RecursiveSequencePathRole::Value, value);
-    }
-    Ok(())
-}
-
-fn invalid_recursive_path(
-    owner: &SequenceOwner,
-    role: RecursiveSequencePathRole,
+fn source_schema_at<'a>(
+    root: &'a SchemaNode,
+    parent: Option<&'a SchemaNode>,
     path: &[String],
-) -> Result<(), ProgramValidationError> {
-    Err(ProgramValidationError::InvalidRecursiveSequencePath {
-        owner: owner.clone(),
-        role,
-        path: path.to_vec(),
-    })
+) -> Option<&'a SchemaNode> {
+    parent
+        .and_then(|current| follow_schema_from(root, current, path))
+        .or_else(|| schema_path_targets(root, path).into_iter().next())
 }
 
 fn follow_schema_from<'a>(
@@ -566,17 +509,26 @@ fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Opti
         .find_map(|child| find_concrete_schema_group(child, anchor))
 }
 
+#[derive(Clone, Copy)]
+struct ScopeSchemas<'a> {
+    source_root: &'a SchemaNode,
+    current_source: Option<&'a SchemaNode>,
+    target_root: &'a SchemaNode,
+}
+
 fn validate_scope(
     scope: &TargetScope,
     expressions: &BTreeMap<NodeId, &Expression>,
-    source: &SchemaNode,
-    target: &SchemaNode,
+    schemas: ScopeSchemas<'_>,
     target_path: &mut Vec<String>,
     sequence_items: &BTreeSet<NodeId>,
     active_sequence_items: &[NodeId],
 ) -> Result<(), ProgramValidationError> {
     let mut item_context = active_sequence_items.to_vec();
-    let Some(target_node) = follow_schema_from(target, target, target_path) else {
+    let mut scope_source = schemas.current_source;
+    let Some(target_node) =
+        follow_schema_from(schemas.target_root, schemas.target_root, target_path)
+    else {
         return Err(ProgramValidationError::MissingTargetScope {
             target_path: target_path.clone(),
         });
@@ -591,14 +543,20 @@ fn validate_scope(
     if let Some(iteration) = &scope.iteration {
         match iteration.input() {
             IterationSource::Source(source_iteration) => {
-                if !schema_path_matches(source, source_iteration.path(), |_| true) {
+                if !schema_path_matches(schemas.source_root, source_iteration.path(), |_| true) {
                     return Err(ProgramValidationError::InvalidSourceIteration {
                         target_path: target_path.clone(),
                         source_path: source_iteration.path().to_vec(),
                     });
                 }
+                scope_source = source_schema_at(
+                    schemas.source_root,
+                    schemas.current_source,
+                    source_iteration.path(),
+                );
             }
             IterationSource::Generated(sequence) => {
+                scope_source = None;
                 for (input, expression) in sequence.inputs().enumerate() {
                     if !expressions.contains_key(&expression) {
                         return Err(ProgramValidationError::MissingSequenceExpression {
@@ -615,8 +573,8 @@ fn validate_scope(
                         &SequenceOwner::Scope(target_path.clone()),
                     )?;
                 }
-                validate_generated_sequence_paths(
-                    source,
+                recursive_sequence::validate(
+                    schemas.source_root,
                     sequence,
                     &SequenceOwner::Scope(target_path.clone()),
                 )?;
@@ -702,6 +660,36 @@ fn validate_scope(
                         target_path: target_path.clone(),
                     },
                 );
+            }
+        }
+        TargetConstruction::CopyCurrentSource => {
+            let Some(scope_source) =
+                scope_source.filter(|source| matches!(source.kind, SchemaKind::Group { .. }))
+            else {
+                return Err(
+                    ProgramValidationError::CopyConstructionRequiresGroupSource {
+                        target_path: target_path.clone(),
+                    },
+                );
+            };
+            if !matches!(target_node.kind, SchemaKind::Group { .. }) {
+                return Err(
+                    ProgramValidationError::CopyConstructionRequiresGroupTarget {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if scope_source.kind != target_node.kind {
+                return Err(
+                    ProgramValidationError::CopyConstructionRequiresMatchingGroups {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if !scope.bindings.is_empty() || !scope.children.is_empty() {
+                return Err(ProgramValidationError::CopyConstructionHasContent {
+                    target_path: target_path.clone(),
+                });
             }
         }
         TargetConstruction::Scalar { expression } => {
@@ -794,8 +782,10 @@ fn validate_scope(
         let result = validate_scope(
             child,
             expressions,
-            source,
-            target,
+            ScopeSchemas {
+                current_source: scope_source,
+                ..schemas
+            },
             target_path,
             sequence_items,
             &item_context,
@@ -1035,6 +1025,26 @@ impl fmt::Display for ProgramValidationError {
             Self::GroupConstructionRequiresGroupTarget { target_path } => write!(
                 formatter,
                 "target scope {} group construction requires a group target",
+                display_path(target_path)
+            ),
+            Self::CopyConstructionRequiresGroupSource { target_path } => write!(
+                formatter,
+                "target scope {} copy-current-source construction requires a group source item",
+                display_path(target_path)
+            ),
+            Self::CopyConstructionRequiresGroupTarget { target_path } => write!(
+                formatter,
+                "target scope {} copy-current-source construction requires a group target",
+                display_path(target_path)
+            ),
+            Self::CopyConstructionRequiresMatchingGroups { target_path } => write!(
+                formatter,
+                "target scope {} copy-current-source construction requires matching source and target group fields",
+                display_path(target_path)
+            ),
+            Self::CopyConstructionHasContent { target_path } => write!(
+                formatter,
+                "target scope {} copy-current-source construction cannot contain bindings or child scopes",
                 display_path(target_path)
             ),
             Self::ScalarConstructionHasContent { target_path } => write!(
