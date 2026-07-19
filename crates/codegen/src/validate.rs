@@ -371,6 +371,7 @@ fn dependencies(expression: &Expression) -> Vec<NodeId> {
             then,
             else_,
         } => vec![*condition, *then, *else_],
+        Expression::ValueMap { input, .. } => vec![*input],
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
         }

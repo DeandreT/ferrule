@@ -1,0 +1,23 @@
+use codegen_runtime::{Instance, Value, field, group, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let output = execute(&group(Vec::new()))?;
+    assert_eq!(output, expected());
+    Ok(())
+}
+
+fn expected() -> Instance {
+    group([
+        field("Duplicate", scalar(Value::String("first".into()))),
+        field("Default", scalar(Value::String("fallback".into()))),
+        field("NoDefault", scalar(Value::Null)),
+        field("FloatString", scalar(Value::String("float-string".into()))),
+        field("Int", scalar(Value::String("int".into()))),
+        field("Float", scalar(Value::String("float".into()))),
+        field("Bool", scalar(Value::String("bool".into()))),
+        field("Failed", scalar(Value::String("retained".into()))),
+        field("Null", scalar(Value::String("null".into()))),
+        field("XmlNil", scalar(Value::String("xml-nil".into()))),
+    ])
+}
