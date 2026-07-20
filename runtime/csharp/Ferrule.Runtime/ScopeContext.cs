@@ -86,12 +86,17 @@ public sealed partial class ScopeContext
             return Array.Empty<ScopeContext>();
         }
 
+        var prefix = path.Count == 0 && _collections.Count != 0 &&
+            _collections[^1].Grouped &&
+            ReferenceEquals(_collections[^1].Item, baseInstance)
+                ? new List<string>(_collections[^1].Path)
+                : new List<string>();
         var output = new List<ScopeContext>();
         Walk(
             baseInstance,
             path,
             0,
-            new List<string>(),
+            prefix,
             new List<FerruleInstance>(),
             new List<CollectionIdentity>(),
             output);
@@ -750,7 +755,8 @@ public sealed partial class ScopeContext
         FerruleInstance Item,
         int Index,
         ulong? Join = null,
-        int? JoinPosition = null);
+        int? JoinPosition = null,
+        bool Grouped = false);
 
     private readonly record struct ScalarResolution(bool Found, FerruleValue Value)
     {

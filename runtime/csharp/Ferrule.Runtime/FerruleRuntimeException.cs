@@ -21,6 +21,7 @@ public enum FerruleRuntimeError
     IntegerOverflow,
     NotABool,
     NotAnItemCount,
+    InvalidBlockSize,
     AggregateIntegerOverflow,
     AggregateNonFinite,
     CopyCurrentSourceRequiresGroup,

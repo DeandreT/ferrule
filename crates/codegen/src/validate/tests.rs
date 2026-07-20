@@ -10,6 +10,7 @@ use crate::{
 mod collection_find;
 mod collections;
 mod failures;
+mod grouping;
 mod invariants;
 mod joins;
 mod sources;

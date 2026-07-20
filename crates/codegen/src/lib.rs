@@ -26,14 +26,14 @@ pub use join::{
 pub use lower::lower;
 pub use model::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, FailureIteration,
-    FailureRule, FailureSelection, GeneratedSequence, IterationOutput, IterationPlan,
+    FailureRule, FailureSelection, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
     IterationSource, NamedSourceProgram, NamedTargetProgram, Program, RuntimeValue,
     SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
     SourceIteration, TargetConstruction, TargetScope,
 };
 pub use validate::{
-    JoinKeySide, ProgramValidationError, RecursiveSequencePathRole, SequenceExpressionRole,
-    SequenceOwner, validate_program,
+    GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,
+    SequenceExpressionRole, SequenceOwner, validate_program,
 };
 
 #[cfg(test)]
