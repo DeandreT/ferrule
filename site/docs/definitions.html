@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Definitions - ferrule docs</title>
+  <meta name="description" content="Definitions for the mapping, runtime, format, interoperability, and code-generation terms used by ferrule." />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../"><svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/><rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/><rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/></svg>ferrule</a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
+        <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html">Architecture</a><a href="formats.html">Supported formats</a></div>
+        <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html">Rust and C# codegen</a></div>
+        <div class="nav-section"><div class="nav-title">Reference</div><a href="definitions.html" aria-current="page">Definitions</a></div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar"><a href="../demo/">Live demo</a><a href="https://github.com/DeandreT/ferrule">GitHub</a></div>
+      <article class="content">
+        <div class="chapter">Chapter 7</div>
+        <h1>Definitions</h1>
+        <p class="lead">
+          A concise glossary for the mapping model, execution engine, format
+          boundaries, interoperability layer, and generated-code pipeline.
+        </p>
+
+        <nav class="term-index" aria-label="Definition index">
+          <a href="#aggregate">Aggregate</a>
+          <a href="#binding">Binding</a>
+          <a href="#cardinality">Cardinality</a>
+          <a href="#collection">Collection</a>
+          <a href="#context">Context</a>
+          <a href="#diagnostic">Diagnostic</a>
+          <a href="#document-set">Document set</a>
+          <a href="#dynamic-field">Dynamic field</a>
+          <a href="#endpoint">Endpoint</a>
+          <a href="#format-adapter">Format adapter</a>
+          <a href="#frame">Frame</a>
+          <a href="#generated-sequence">Generated sequence</a>
+          <a href="#graph">Graph</a>
+          <a href="#group">Group</a>
+          <a href="#instance">Instance</a>
+          <a href="#ir">IR</a>
+          <a href="#iteration">Iteration</a>
+          <a href="#join">Join</a>
+          <a href="#lookup">Lookup</a>
+          <a href="#lowering">Lowering</a>
+          <a href="#mfd">MFD</a>
+          <a href="#node">Node</a>
+          <a href="#null">Null and XML nil</a>
+          <a href="#portable-subset">Portable subset</a>
+          <a href="#qname">QName</a>
+          <a href="#scalar">Scalar</a>
+          <a href="#schema">Schema</a>
+          <a href="#scope">Scope</a>
+          <a href="#source-field">Source field</a>
+          <a href="#value-map">Value map</a>
+          <a href="#window">Window</a>
+        </nav>
+
+        <h2>Mapping model</h2>
+        <dl class="glossary">
+          <div class="glossary-entry" id="binding">
+            <dt><a href="#binding">Binding</a></dt>
+            <dd>A connection from one scalar graph node to a named field in the target group currently being constructed by a scope.</dd>
+          </div>
+          <div class="glossary-entry" id="cardinality">
+            <dt><a href="#cardinality">Cardinality</a></dt>
+            <dd>Whether a schema node or scope produces one value, an optional value, or a repeated sequence. In ferrule, repetition is explicit in the schema and instance tree.</dd>
+          </div>
+          <div class="glossary-entry" id="dynamic-field">
+            <dt><a href="#dynamic-field">Dynamic field</a></dt>
+            <dd>A source or target property whose name is determined at runtime. This is primarily used for open JSON objects and generic XML elements.</dd>
+          </div>
+          <div class="glossary-entry" id="graph">
+            <dt><a href="#graph">Graph</a></dt>
+            <dd>The set of typed computation nodes in a project. Graph nodes calculate scalar values; scopes decide where and how often those values are placed in the target.</dd>
+          </div>
+          <div class="glossary-entry" id="node">
+            <dt><a href="#node">Node</a></dt>
+            <dd>One graph operation, such as a source field, constant, function call, conditional, lookup, aggregate, runtime value, or join-owned field.</dd>
+          </div>
+          <div class="glossary-entry" id="schema">
+            <dt><a href="#schema">Schema</a></dt>
+            <dd>A format-independent tree describing named scalar and group fields, their scalar types, repetition, attributes, nullability, and fixed values.</dd>
+          </div>
+          <div class="glossary-entry" id="scope">
+            <dt><a href="#scope">Scope</a></dt>
+            <dd>A target-construction unit. A scope may iterate a collection or generated sequence, apply controls such as filtering and sorting, bind scalar fields, and invoke child scopes.</dd>
+          </div>
+          <div class="glossary-entry" id="value-map">
+            <dt><a href="#value-map">Value map</a></dt>
+            <dd>An ordered table that converts one scalar value to another. The first matching row wins, with an optional explicit default when no row matches.</dd>
+          </div>
+        </dl>
+
+        <h2>Runtime data</h2>
+        <dl class="glossary">
+          <div class="glossary-entry" id="collection">
+            <dt><a href="#collection">Collection</a></dt>
+            <dd>A repeated instance value addressed by a source path. Collections are the inputs to scope iteration, grouping, aggregates, lookups, and joins.</dd>
+          </div>
+          <div class="glossary-entry" id="context">
+            <dt><a href="#context">Context</a></dt>
+            <dd>The active stack of source frames visible while an expression is evaluated. It also carries iteration positions, join tuples, named inputs, and host runtime values.</dd>
+          </div>
+          <div class="glossary-entry" id="document-set">
+            <dt><a href="#document-set">Document set</a></dt>
+            <dd>An ordered collection of typed documents that retains each member's boundary-relative path. It is used for wildcard and per-document mappings without flattening document identity.</dd>
+          </div>
+          <div class="glossary-entry" id="frame">
+            <dt><a href="#frame">Frame</a></dt>
+            <dd>One active source item in the execution context. A frame-pinned field selects a specific repeating ancestor instead of relying on ordinary innermost-first fallback.</dd>
+          </div>
+          <div class="glossary-entry" id="group">
+            <dt><a href="#group">Group</a></dt>
+            <dd>An ordered set of named child instances, comparable to an object, record, XML element, or database row depending on the format boundary.</dd>
+          </div>
+          <div class="glossary-entry" id="instance">
+            <dt><a href="#instance">Instance</a></dt>
+            <dd>The runtime data tree consumed and produced by mappings. Its principal shapes are scalar, group, repeated value, and document set.</dd>
+          </div>
+          <div class="glossary-entry" id="null">
+            <dt><a href="#null">Null and XML nil</a></dt>
+            <dd><code>Null</code> means absent data. XML nil is a distinct present value originating from <code>xsi:nil="true"</code>; keeping them separate prevents presence information from being lost.</dd>
+          </div>
+          <div class="glossary-entry" id="scalar">
+            <dt><a href="#scalar">Scalar</a></dt>
+            <dd>One atomic value: string, signed integer, floating-point number, boolean, Null, or XML nil. Scalar functions never directly return groups or collections.</dd>
+          </div>
+        </dl>
+
+        <h2>Sequence operations</h2>
+        <dl class="glossary">
+          <div class="glossary-entry" id="aggregate">
+            <dt><a href="#aggregate">Aggregate</a></dt>
+            <dd>A reduction over a collection, such as count, sum, average, minimum, maximum, join, or item-at. A computed aggregate evaluates its value expression once per item.</dd>
+          </div>
+          <div class="glossary-entry" id="generated-sequence">
+            <dt><a href="#generated-sequence">Generated sequence</a></dt>
+            <dd>A bounded scalar collection created by literal, length, or regular-expression tokenization, or by an inclusive integer range. It has its own item and position context.</dd>
+          </div>
+          <div class="glossary-entry" id="iteration">
+            <dt><a href="#iteration">Iteration</a></dt>
+            <dd>Repeated evaluation of a scope for each source item, generated scalar, document, or join tuple. Filtering and compaction can make output positions differ from raw source positions.</dd>
+          </div>
+          <div class="glossary-entry" id="join">
+            <dt><a href="#join">Join</a></dt>
+            <dd>A duplicate-preserving inner equijoin across two or more repeating collections. A join tuple exposes fields and raw positions from each participating source.</dd>
+          </div>
+          <div class="glossary-entry" id="lookup">
+            <dt><a href="#lookup">Lookup</a></dt>
+            <dd>A first-match scan of a collection using a key expression. A miss produces Null rather than failing the mapping.</dd>
+          </div>
+          <div class="glossary-entry" id="window">
+            <dt><a href="#window">Window</a></dt>
+            <dd>An ordered sequence limit applied after filtering, sorting, and grouping, including skip-first, first, from, inclusive range, and last.</dd>
+          </div>
+        </dl>
+
+        <h2>Boundaries and interoperability</h2>
+        <dl class="glossary">
+          <div class="glossary-entry" id="diagnostic">
+            <dt><a href="#diagnostic">Diagnostic</a></dt>
+            <dd>A structured validation, import, generation, or runtime report that identifies the responsible node, scope, endpoint, or unsupported capability.</dd>
+          </div>
+          <div class="glossary-entry" id="endpoint">
+            <dt><a href="#endpoint">Endpoint</a></dt>
+            <dd>A typed input or output boundary. A project has one primary source and target and may declare additional named sources and targets.</dd>
+          </div>
+          <div class="glossary-entry" id="format-adapter">
+            <dt><a href="#format-adapter">Format adapter</a></dt>
+            <dd>A reader or writer that converts between an external representation and ferrule's instance tree. Mapping logic remains independent of this conversion.</dd>
+          </div>
+          <div class="glossary-entry" id="mfd">
+            <dt><a href="#mfd">MFD</a></dt>
+            <dd>The project-file extension used by MapForce. ferrule imports and exports a documented, clean-room interoperable subset while warning about unsupported constructs.</dd>
+          </div>
+          <div class="glossary-entry" id="qname">
+            <dt><a href="#qname">QName</a></dt>
+            <dd>A namespace-qualified XML name. Expanded form, such as <code>{namespace}local</code>, avoids ambiguity when different namespaces use the same local name.</dd>
+          </div>
+        </dl>
+
+        <h2>Code generation</h2>
+        <dl class="glossary">
+          <div class="glossary-entry" id="ir">
+            <dt><a href="#ir">Intermediate representation (IR)</a></dt>
+            <dd>A representation between external formats and execution. ferrule has shared schema and instance IR plus a validated, backend-neutral program used by code generation.</dd>
+          </div>
+          <div class="glossary-entry" id="lowering">
+            <dt><a href="#lowering">Lowering</a></dt>
+            <dd>Conversion of a validated mapping project into the smaller backend-neutral code-generation program. Unsupported reachable features become capability diagnostics at this stage.</dd>
+          </div>
+          <div class="glossary-entry" id="portable-subset">
+            <dt><a href="#portable-subset">Portable subset</a></dt>
+            <dd>The mapping features with intentionally equivalent semantics in the interpreter, generated Rust, and generated C#. Unreachable unsupported nodes do not block generation.</dd>
+          </div>
+          <div class="glossary-entry" id="source-field">
+            <dt><a href="#source-field">Source field</a></dt>
+            <dd>A graph node that reads a scalar path from the current context. Unpinned reads search from the innermost frame outward, enabling parent values to broadcast into nested iterations.</dd>
+          </div>
+        </dl>
+
+        <div class="callout">
+          <strong>Terms describe executable behavior.</strong>
+          The <a href="architecture.html">architecture chapter</a> explains how
+          these pieces fit together, while the
+          <a href="codegen.html">code-generation chapter</a> identifies the
+          currently portable execution surface.
+        </div>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <a href="codegen.html"><- Code generation</a>
+          <span></span>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

@@ -145,6 +145,7 @@ th {
 }
 
 .nav-section {
+  align-content: start;
   display: grid;
   gap: 0.25rem;
 }
@@ -313,25 +314,444 @@ li + li {
   color: var(--accent-dark);
 }
 
-.flow {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
-  gap: 0.7rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 1.7rem 0;
-  padding: 1rem;
+.diagram-figure {
+  margin: 1.7rem 0 2rem;
 }
 
-.flow span {
-  background: #f0ece3;
+.diagram-figure figcaption {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-top: 0.7rem;
+}
+
+.tone-boundary {
+  --tone: #3f86a7;
+}
+
+.tone-instance {
+  --tone: #5b8f50;
+}
+
+.tone-model {
+  --tone: #bd672d;
+}
+
+.tone-runtime {
+  --tone: #b38936;
+}
+
+.tone-codegen {
+  --tone: #407e82;
+}
+
+.tone-rust {
+  --tone: #4875a8;
+}
+
+.tone-csharp {
+  --tone: #63834e;
+}
+
+.pipeline {
+  align-items: stretch;
+  display: flex;
+}
+
+.pipeline-stage,
+.diagram-stage {
+  background: var(--paper);
   border: 1px solid var(--line);
+  border-top: 4px solid var(--tone, var(--blue));
   border-radius: 6px;
-  color: #3f382f;
+  min-width: 0;
+}
+
+.pipeline-stage {
+  display: grid;
+  flex: 1 1 0;
+  gap: 0.12rem;
+  padding: 0.8rem;
+}
+
+.pipeline-stage span,
+.diagram-stage span {
+  color: var(--accent-dark);
   font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.pipeline-stage strong,
+.diagram-stage strong {
+  font-size: 0.96rem;
+  line-height: 1.3;
+}
+
+.pipeline-stage small,
+.diagram-stage small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.pipeline-arrow {
+  align-self: center;
+  background: var(--line-strong);
+  flex: 0 0 1.8rem;
+  height: 1px;
+  position: relative;
+}
+
+.pipeline-arrow::after {
+  border-bottom: 4px solid transparent;
+  border-left: 7px solid var(--line-strong);
+  border-top: 4px solid transparent;
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -4px;
+}
+
+.topology-map {
+  --map-line: #91aaa4;
+  align-items: center;
+  background-color: #172020;
+  background-image:
+    linear-gradient(#263735 1px, transparent 1px),
+    linear-gradient(90deg, #263735 1px, transparent 1px);
+  background-size: 2rem 2rem;
+  border: 1px solid #364443;
+  border-radius: 8px;
+  display: grid;
+  grid-template-areas:
+    "input wire-input source wire-source model wire-runtime engine wire-engine target wire-output output"
+    ". . . . wire-codegen . . . . . ."
+    ". . . . lowering wire-lowering backends backends backends backends backends";
+  grid-template-columns:
+    minmax(6rem, 1fr) 1.2rem minmax(6rem, 1fr) 1.2rem minmax(6rem, 1fr)
+    1.2rem minmax(6rem, 1fr) 1.2rem minmax(6rem, 1fr) 1.2rem minmax(6rem, 1fr);
+  grid-template-rows: auto 2rem auto;
+  overflow: hidden;
+  padding: 3rem 2rem;
+}
+
+.topology-node {
+  align-content: center;
+  background: #24302f;
+  border: 1px solid #526361;
+  border-radius: 5px;
+  border-top: 4px solid var(--tone);
+  box-shadow: 0 5px 0 rgba(3, 12, 12, 0.32);
+  color: #f8f5ed;
+  display: grid;
+  gap: 0.15rem;
+  min-height: 4.5rem;
+  min-width: 0;
+  padding: 0.6rem;
+  position: relative;
+  text-align: center;
+  z-index: 1;
+}
+
+.topology-node small {
+  color: #b8c7c3;
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  line-height: 1.25;
+}
+
+.topology-node strong {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.topology-input {
+  grid-area: input;
+}
+
+.topology-source {
+  grid-area: source;
+}
+
+.topology-model {
+  grid-area: model;
+}
+
+.topology-engine {
+  grid-area: engine;
+}
+
+.topology-target {
+  grid-area: target;
+}
+
+.topology-output {
+  grid-area: output;
+}
+
+.topology-lowering {
+  grid-area: lowering;
+}
+
+.topology-backends {
+  display: grid;
+  gap: 0.65rem;
+  grid-area: backends;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.topology-wire,
+.topology-fork {
+  --wire: var(--map-line);
+  --wire-packet: #e8f0ed;
+  position: relative;
+}
+
+.topology-wire {
+  align-self: center;
+  background: var(--wire);
+  height: 1px;
+  width: 100%;
+}
+
+.topology-wire::before,
+.topology-fork::before {
+  border-bottom: 4px solid transparent;
+  border-left: 7px solid var(--wire);
+  border-top: 4px solid transparent;
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -4px;
+}
+
+.topology-wire::after,
+.topology-fork > i:first-child {
+  animation: topology-packet-x 2.5s linear infinite;
+  background: var(--wire-packet);
+  content: "";
+  height: 0.18rem;
+  left: 0;
+  position: absolute;
+  top: -0.075rem;
+  width: 0.36rem;
+}
+
+.wire-input-source {
+  grid-area: wire-input;
+}
+
+.wire-source-model {
+  grid-area: wire-source;
+}
+
+.wire-source-model::after {
+  animation-delay: -0.5s;
+}
+
+.wire-model-runtime {
+  align-self: center;
+  background: var(--wire);
+  grid-area: wire-runtime;
+  height: 1px;
+  --wire: #d99a67;
+  --wire-packet: #f2c79e;
+}
+
+.wire-model-runtime > i:last-child {
+  display: none;
+}
+
+.wire-engine-target {
+  grid-area: wire-engine;
+}
+
+.wire-engine-target::after {
+  animation-delay: -1s;
+}
+
+.wire-target-output {
+  grid-area: wire-output;
+}
+
+.wire-target-output::after {
+  animation-delay: -1.5s;
+}
+
+.wire-model-codegen,
+.wire-lowering-backends {
+  --wire: #72afb1;
+  --wire-packet: #b9e1e0;
+}
+
+.wire-model-codegen {
+  align-self: stretch;
+  grid-area: wire-codegen;
+  justify-self: center;
+  width: 1px;
+}
+
+.wire-model-codegen::before {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 7px solid var(--wire);
+  border-bottom: 0;
+  bottom: 0;
+  left: -4px;
+  right: auto;
+  top: auto;
+}
+
+.wire-model-codegen::after {
+  animation: topology-packet-y 2.5s -0.75s linear infinite;
+  left: -0.075rem;
+  top: 0;
+  height: 0.36rem;
+  width: 0.18rem;
+}
+
+.wire-lowering-backends {
+  grid-area: wire-lowering;
+}
+
+.wire-lowering-backends::after {
+  animation-delay: -1.25s;
+}
+
+@keyframes topology-packet-x {
+  from {
+    left: 0;
+  }
+
+  to {
+    left: calc(100% - 0.36rem);
+  }
+}
+
+@keyframes topology-packet-y {
+  from {
+    top: 0;
+  }
+
+  to {
+    top: calc(100% - 0.36rem);
+  }
+}
+
+.topology-key {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 1rem 0 0;
+}
+
+.topology-key li {
+  border-top: 3px solid var(--tone);
+  display: grid;
+  gap: 0.05rem;
+  padding-top: 0.45rem;
+}
+
+.topology-key strong {
   font-size: 0.86rem;
-  padding: 0.65rem 0.75rem;
+}
+
+.topology-key span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.branch-diagram {
+  align-items: center;
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(13rem, 1fr) 5rem minmax(14rem, 1fr);
+}
+
+.branch-source,
+.branch-targets {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.diagram-stage {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.vertical-arrow {
+  background: var(--line-strong);
+  height: 1.4rem;
+  justify-self: center;
+  margin-block: -0.8rem;
+  position: relative;
+  width: 1px;
+  z-index: -1;
+}
+
+.vertical-arrow::after {
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 7px solid var(--line-strong);
+  bottom: 0;
+  content: "";
+  left: -4px;
+  position: absolute;
+}
+
+.branch-lines {
+  height: 8rem;
+  position: relative;
+}
+
+.branch-lines::before,
+.branch-lines::after,
+.branch-lines i {
+  background: var(--line-strong);
+  content: "";
+  position: absolute;
+}
+
+.branch-lines::before {
+  height: 1px;
+  left: 0;
+  top: 50%;
+  width: 50%;
+}
+
+.branch-lines::after {
+  bottom: 25%;
+  left: 50%;
+  top: 25%;
+  width: 1px;
+}
+
+.branch-lines i {
+  height: 1px;
+  left: 50%;
+  right: 0;
+}
+
+.branch-lines i:first-child {
+  top: 25%;
+}
+
+.branch-lines i:last-child {
+  top: 75%;
+}
+
+.branch-lines i::after {
+  border-bottom: 4px solid transparent;
+  border-left: 7px solid var(--line-strong);
+  border-top: 4px solid transparent;
+  content: "";
+  position: absolute;
+  right: 0;
+  top: -4px;
 }
 
 .page-nav {
@@ -349,6 +769,56 @@ li + li {
 
 .muted {
   color: var(--muted);
+}
+
+.term-index {
+  border-block: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin: 1.8rem 0 2.4rem;
+  padding: 1rem 0;
+}
+
+.term-index a {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.glossary {
+  margin: 0;
+}
+
+.glossary-entry {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(9rem, 0.34fr) minmax(0, 1fr);
+  padding: 1rem 0;
+  scroll-margin-top: 5rem;
+}
+
+.glossary-entry:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.glossary-entry dt {
+  font-weight: 800;
+}
+
+.glossary-entry dt a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.glossary-entry dt a:hover {
+  color: var(--accent-dark);
+}
+
+.glossary-entry dd {
+  color: var(--muted);
+  margin: 0;
 }
 
 @media (max-width: 900px) {
@@ -376,8 +846,215 @@ li + li {
     padding: 2.2rem 1.1rem 3.5rem;
   }
 
-  .quick-grid,
-  .flow {
+  .quick-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pipeline {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pipeline-arrow {
+    align-self: center;
+    flex-basis: 1.5rem;
+    height: auto;
+    width: 1px;
+  }
+
+  .pipeline-arrow::after {
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 7px solid var(--line-strong);
+    bottom: 0;
+    left: -4px;
+    right: auto;
+    top: auto;
+  }
+
+  .topology-map {
+    background-size: 1.5rem 1.5rem;
+    grid-template-areas:
+      "input . ."
+      "wire-input . ."
+      "source wire-source model"
+      "wire-runtime wire-runtime wire-runtime"
+      "engine . lowering"
+      "wire-engine . wire-lowering"
+      "target . backends"
+      "wire-output . ."
+      "output . .";
+    grid-template-columns: minmax(0, 1fr) 2rem minmax(0, 1fr);
+    grid-template-rows: auto 1.5rem auto 2.5rem auto 1.5rem auto 1.5rem auto;
+    padding: 1.5rem 1rem;
+  }
+
+  .topology-node {
+    min-height: 4.2rem;
+  }
+
+  .topology-backends {
+    grid-template-columns: 1fr;
+  }
+
+  .topology-backends .topology-node {
+    min-height: 3.5rem;
+  }
+
+  .wire-input-source,
+  .wire-engine-target,
+  .wire-target-output,
+  .wire-lowering-backends {
+    align-self: stretch;
+    justify-self: center;
+    height: auto;
+    width: 1px;
+  }
+
+  .wire-input-source::before,
+  .wire-engine-target::before,
+  .wire-target-output::before,
+  .wire-lowering-backends::before {
+    border-bottom: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 7px solid var(--wire);
+    bottom: 0;
+    left: -4px;
+    right: auto;
+    top: auto;
+  }
+
+  .wire-input-source::after,
+  .wire-engine-target::after,
+  .wire-target-output::after,
+  .wire-lowering-backends::after {
+    animation-name: topology-packet-y;
+    height: 0.36rem;
+    left: -0.075rem;
+    top: 0;
+    width: 0.18rem;
+  }
+
+  .wire-model-codegen {
+    grid-column: 3;
+    grid-row: 4;
+  }
+
+  .wire-model-runtime {
+    align-self: stretch;
+    background: transparent;
+  }
+
+  .wire-model-runtime::before {
+    background: var(--wire);
+    border: 0;
+    height: 1px;
+    left: 25%;
+    right: 25%;
+    top: 50%;
+  }
+
+  .wire-model-runtime > i:first-child,
+  .wire-model-runtime > i:last-child {
+    animation: none;
+    background: var(--wire);
+    display: block;
+    height: 50%;
+    position: absolute;
+    width: 1px;
+  }
+
+  .wire-model-runtime > i:first-child {
+    left: 75%;
+    top: 0;
+  }
+
+  .wire-model-runtime > i:last-child {
+    bottom: 0;
+    left: 25%;
+  }
+
+  .wire-model-runtime > i:last-child::after {
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 7px solid var(--wire);
+    bottom: 0;
+    content: "";
+    left: -4px;
+    position: absolute;
+  }
+
+  .branch-diagram {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-lines {
+    height: 4rem;
+  }
+
+  .branch-lines::before {
+    height: 50%;
+    left: 50%;
+    top: 0;
+    width: 1px;
+  }
+
+  .branch-lines::after {
+    bottom: auto;
+    height: 1px;
+    left: 25%;
+    right: 25%;
+    top: 50%;
+    width: auto;
+  }
+
+  .branch-lines i {
+    bottom: 0;
+    height: 50%;
+    left: auto;
+    right: auto;
+    top: 50%;
+    width: 1px;
+  }
+
+  .branch-lines i:first-child {
+    left: 25%;
+    top: 50%;
+  }
+
+  .branch-lines i:last-child {
+    left: 75%;
+    top: 50%;
+  }
+
+  .branch-lines i::after {
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 7px solid var(--line-strong);
+    bottom: 0;
+    left: -4px;
+    right: auto;
+    top: auto;
+  }
+
+  .branch-targets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .glossary-entry {
+    gap: 0.25rem;
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .topology-wire::after,
+  .topology-fork > i:first-child {
+    animation-play-state: paused;
   }
 }

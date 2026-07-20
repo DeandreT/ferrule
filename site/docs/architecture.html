@@ -15,6 +15,7 @@
         <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
         <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html" aria-current="page">Architecture</a><a href="formats.html">Supported formats</a></div>
         <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html">Rust and C# codegen</a></div>
+        <div class="nav-section"><div class="nav-title">Reference</div><a href="definitions.html">Definitions</a></div>
       </nav>
     </aside>
     <main class="page">
@@ -27,6 +28,43 @@
           instance tree. The interpreter and generated libraries both evaluate
           that model with the same scope and scalar semantics.
         </p>
+
+        <h2>System map</h2>
+        <p>
+          Format adapters isolate external representations from the shared
+          instance tree. A validated graph and scope model can then take either
+          the interpreter path or the portable code-generation path.
+        </p>
+        <figure class="diagram-figure topology-figure">
+          <div class="topology-map" role="group" aria-label="Input formats become a source instance evaluated by graph and scope rules. The interpreter produces a target instance and output formats, while portable lowering produces Rust and C# libraries.">
+            <div class="topology-node topology-input tone-boundary"><small>Boundary</small><strong>Input formats</strong></div>
+            <i class="topology-wire wire-input-source" aria-hidden="true"></i>
+            <div class="topology-node topology-source tone-instance"><small>Shared IR</small><strong>Source instance</strong></div>
+            <i class="topology-wire wire-source-model" aria-hidden="true"></i>
+            <div class="topology-node topology-model tone-model"><small>Validated project</small><strong>Graph + scopes</strong></div>
+            <div class="topology-fork wire-model-runtime" aria-hidden="true"><i></i><i></i></div>
+            <div class="topology-node topology-engine tone-runtime"><small>Runtime path</small><strong>Interpreter</strong></div>
+            <i class="topology-wire wire-engine-target" aria-hidden="true"></i>
+            <div class="topology-node topology-target tone-instance"><small>Shared IR</small><strong>Target instance</strong></div>
+            <i class="topology-wire wire-target-output" aria-hidden="true"></i>
+            <div class="topology-node topology-output tone-boundary"><small>Boundary</small><strong>Output formats</strong></div>
+            <i class="topology-wire wire-model-codegen" aria-hidden="true"></i>
+            <div class="topology-node topology-lowering tone-codegen"><small>Generation path</small><strong>Portable lowering</strong></div>
+            <i class="topology-wire wire-lowering-backends" aria-hidden="true"></i>
+            <div class="topology-backends">
+              <div class="topology-node tone-rust"><small>Rust backend</small><strong>Rust library</strong></div>
+              <div class="topology-node tone-csharp"><small>C# backend</small><strong>C# library</strong></div>
+            </div>
+          </div>
+          <ul class="topology-key" aria-label="System map legend">
+            <li class="tone-boundary"><strong>Boundaries</strong><span>Input and output adapters</span></li>
+            <li class="tone-instance"><strong>Instance IR</strong><span>Format-independent data</span></li>
+            <li class="tone-model"><strong>Mapping model</strong><span>Graph and target scopes</span></li>
+            <li class="tone-runtime"><strong>Interpreter</strong><span>Direct project execution</span></li>
+            <li class="tone-codegen"><strong>Codegen</strong><span>Static Rust and C# libraries</span></li>
+          </ul>
+          <figcaption>Both execution paths start from the same validated mapping semantics; format conversion stays at the boundary.</figcaption>
+        </figure>
 
         <h2>Project model</h2>
         <ol>
