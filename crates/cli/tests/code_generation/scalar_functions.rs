@@ -303,6 +303,46 @@ fn scalar_function_project() -> Project {
         ],
     );
 
+    let year = graph.call_values(
+        "year_from_datetime",
+        vec![Value::String("-0001-12-31T24:00:00.0Z".into())],
+    );
+    let month = graph.call_values(
+        "month_from_datetime",
+        vec![Value::String("2000-02-29T24:00:00".into())],
+    );
+    let day = graph.call_values(
+        "day_from_datetime",
+        vec![Value::String("1999-12-31T24:00:00".into())],
+    );
+    let hour = graph.call_values(
+        "hours_from_datetime",
+        vec![Value::String("1999-12-31T24:00:00.000-05:00".into())],
+    );
+    let minute = graph.call_values(
+        "minutes_from_datetime",
+        vec![Value::String("-0004-02-29T23:59:59.5+14:00".into())],
+    );
+    let time = graph.call_values(
+        "time_from_datetime",
+        vec![Value::String("2001-12-17T09:30:02.5+05:00".into())],
+    );
+    let null = graph.call_values("month_from_datetime", vec![Value::Null]);
+    add_group(
+        &mut target,
+        &mut scopes,
+        "Temporal",
+        vec![
+            ("Year", ScalarType::Int, year),
+            ("Month", ScalarType::Int, month),
+            ("Day", ScalarType::Int, day),
+            ("Hour", ScalarType::Int, hour),
+            ("Minute", ScalarType::Int, minute),
+            ("Time", ScalarType::String, time),
+            ("Null", ScalarType::String, null),
+        ],
+    );
+
     let fail_type = graph.source("FailType");
     let fail_arity = graph.source("FailArity");
     let bad_type = graph.call_values("normalize_space", vec![Value::Int(9)]);
@@ -448,6 +488,18 @@ fn expected() -> Instance {
                 ),
                 ("Drive", Value::String("D:\\data\\config.xml".into())),
                 ("Parent", Value::String("C:\\work\\out.xml".into())),
+            ]),
+        ),
+        (
+            "Temporal".into(),
+            values(vec![
+                ("Year", Value::Int(1)),
+                ("Month", Value::Int(3)),
+                ("Day", Value::Int(1)),
+                ("Hour", Value::Int(0)),
+                ("Minute", Value::Int(59)),
+                ("Time", Value::String("09:30:02.5+05:00".into())),
+                ("Null", Value::Null),
             ]),
         ),
         (
