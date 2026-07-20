@@ -654,8 +654,14 @@ fn render_grouping(
         GroupingPlan::By { key } => output.push_str(&format!(
             "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n        grouping_candidates.push((candidate, key));\n    }}\n    let grouped_items = GroupedItems::by(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
         )),
+        GroupingPlan::AdjacentBy { key } => output.push_str(&format!(
+            "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n        grouping_candidates.push((candidate, key));\n    }}\n    let grouped_items = GroupedItems::adjacent_by(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
+        )),
         GroupingPlan::StartingWith { predicate } => output.push_str(&format!(
             "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let starts = expression_{predicate}(&candidate)?;\n        let starts = require_bool({predicate}, starts)?;\n        grouping_candidates.push((candidate, starts));\n    }}\n    let grouped_items = GroupedItems::starting_with(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
+        )),
+        GroupingPlan::EndingWith { predicate } => output.push_str(&format!(
+            "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let ends = expression_{predicate}(&candidate)?;\n        let ends = require_bool({predicate}, ends)?;\n        grouping_candidates.push((candidate, ends));\n    }}\n    let grouped_items = GroupedItems::ending_with(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
         )),
         GroupingPlan::IntoBlocks { size } => output.push_str(&format!(
             "    let group_size = item_count({size}, expression_{size}(context)?)?;\n    let grouped_items = GroupedItems::into_blocks(candidates, {wrapper}, group_size, {size})?;\n    {binding} = grouped_items.contexts();\n"

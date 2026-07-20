@@ -65,6 +65,13 @@ internal static partial class Program
         Equal(2L, childMembers[1].Position(path));
         Equal(FerruleValue.FromInt64(30), childMembers[1].ResolveScalar("Value"));
 
+        var adjacent = root.GroupAdjacentBy(candidates, path, item => item.ResolveScalar("Key"));
+        Equal(4, adjacent.Count);
+        Equal("10", MemberValues(adjacent[0]));
+        Equal("20", MemberValues(adjacent[1]));
+        Equal("30", MemberValues(adjacent[2]));
+        Equal("40", MemberValues(adjacent[3]));
+
         var predicateCalls = 0;
         var starting = root.GroupStartingWith(
             candidates,
@@ -79,6 +86,20 @@ internal static partial class Program
         Equal("10", MemberValues(starting[0]));
         Equal("20,30", MemberValues(starting[1]));
         Equal("40", MemberValues(starting[2]));
+
+        var endingCalls = 0;
+        var ending = root.GroupEndingWith(
+            candidates,
+            path,
+            item =>
+            {
+                endingCalls++;
+                return item.ResolveScalar("Value").Int64Value == 20;
+            });
+        Equal(candidates.Count, endingCalls);
+        Equal(2, ending.Count);
+        Equal("10,20", MemberValues(ending[0]));
+        Equal("30,40", MemberValues(ending[1]));
 
         var blocks = root.GroupIntoBlocks(candidates, path, 3);
         Equal(2, blocks.Count);

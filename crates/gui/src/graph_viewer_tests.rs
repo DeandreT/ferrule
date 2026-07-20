@@ -926,7 +926,9 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
         node: 1,
     });
     fx.root_scope.group_by = Some(1);
+    fx.root_scope.group_adjacent_by = Some(1);
     fx.root_scope.group_starting_with = Some(1);
+    fx.root_scope.group_ending_with = Some(1);
     fx.root_scope.group_into_blocks = Some(1);
     fx.root_scope.sort_by = Some(1);
     fx.root_scope.windows = vec![mapping::SequenceWindow::First { count: 1 }];
@@ -937,7 +939,9 @@ fn referenced_nodes_report_graph_and_scope_consumers() {
             "graph node 0",
             "root scope binding out",
             "root scope group block size",
+            "root scope group-adjacent key",
             "root scope group-by key",
+            "root scope group-ending predicate",
             "root scope group-starting predicate",
             "root scope sequence window 1",
             "root scope sort key",

@@ -113,6 +113,43 @@ fn contiguous_and_fixed_block_groups_retain_nested_outer_frames() {
         Ok(text("three"))
     );
 
+    let adjacent_keys = rows
+        .iter()
+        .map(|row| row.resolve_scalar(&["Key"]))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("adjacent keys resolve");
+    let adjacent = GroupedItems::adjacent_by(
+        rows.clone().into_iter().zip(adjacent_keys).collect(),
+        Some("Row"),
+    );
+    assert_eq!(
+        adjacent
+            .contexts()
+            .iter()
+            .map(|context| context.aggregate_items(&["Row"]).len())
+            .collect::<Vec<_>>(),
+        [2, 2, 1]
+    );
+
+    let ends = rows
+        .iter()
+        .map(|row| {
+            row.resolve_scalar(&["Label"])
+                .map(|label| label == text("two") || label == text("four"))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .expect("ending predicates resolve");
+    let ending =
+        GroupedItems::ending_with(rows.clone().into_iter().zip(ends).collect(), Some("Row"));
+    assert_eq!(
+        ending
+            .contexts()
+            .iter()
+            .map(|context| context.aggregate_items(&["Row"]).len())
+            .collect::<Vec<_>>(),
+        [2, 2, 1]
+    );
+
     let blocks =
         GroupedItems::into_blocks(rows, Some("Row"), 2, 42).expect("a positive block size groups");
     assert_eq!(

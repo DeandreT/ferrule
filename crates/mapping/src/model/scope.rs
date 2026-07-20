@@ -135,10 +135,18 @@ pub struct Scope {
     /// reduce the members, and nested scopes iterate them. Only meaningful
     /// for a source-backed or generated iteration.
     pub group_by: Option<NodeId>,
+    /// Partitions iterated items into contiguous runs with equal key values.
+    /// Unlike `group_by`, a later run with a previously seen key remains a
+    /// separate group. Mutually exclusive with the other grouping modes.
+    pub group_adjacent_by: Option<NodeId>,
     /// Partitions items into contiguous groups whenever this per-item
     /// predicate is true. Items before its first true result form an initial
     /// group. Mutually exclusive with the other grouping modes.
     pub group_starting_with: Option<NodeId>,
+    /// Partitions items into contiguous groups that end whenever this
+    /// per-item predicate is true. Items after the final true result form a
+    /// trailing group. Mutually exclusive with the other grouping modes.
+    pub group_ending_with: Option<NodeId>,
     /// Partitions iterated items into contiguous groups of this many members.
     /// The expression is evaluated once in the parent context and must produce
     /// a positive item count. Mutually exclusive with the other grouping
@@ -173,6 +181,27 @@ pub struct Scope {
 }
 
 impl Scope {
+    /// Graph nodes owned by grouping controls, in stable mode order.
+    pub fn grouping_nodes(&self) -> impl Iterator<Item = NodeId> {
+        [
+            self.group_by,
+            self.group_adjacent_by,
+            self.group_starting_with,
+            self.group_ending_with,
+            self.group_into_blocks,
+        ]
+        .into_iter()
+        .flatten()
+    }
+
+    pub fn has_grouping(&self) -> bool {
+        self.grouping_nodes().next().is_some()
+    }
+
+    pub fn has_conflicting_grouping(&self) -> bool {
+        self.grouping_nodes().nth(1).is_some()
+    }
+
     pub fn sort_keys(&self) -> impl Iterator<Item = SortKey> + '_ {
         self.sort_by
             .map(|node| SortKey {

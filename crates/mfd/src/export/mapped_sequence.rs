@@ -441,6 +441,8 @@ fn first_outputs_are_exportable(
             && scope.filter.is_none()
             && scope.group_by.is_none()
             && scope.group_starting_with.is_none()
+            && scope.group_adjacent_by.is_none()
+            && scope.group_ending_with.is_none()
             && scope.group_into_blocks.is_none()
             && scope.sort_by.is_none()
             && scope.windows.is_empty();
@@ -451,6 +453,8 @@ fn first_outputs_are_exportable(
             && matches!(target.kind, SchemaKind::Group { .. })
             && scope.group_by.is_none()
             && scope.group_starting_with.is_none()
+            && scope.group_adjacent_by.is_none()
+            && scope.group_ending_with.is_none()
             && scope.group_into_blocks.is_none()
             && matches!(scope.windows.as_slice(), [mapping::SequenceWindow::First { count }] if matches!(
                 graph.nodes.get(count),
@@ -511,6 +515,8 @@ fn collect_mapped_bindings(
         || scope.filter.is_some() && !relative.is_empty()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
+        || scope.group_adjacent_by.is_some()
+        || scope.group_ending_with.is_some()
         || scope.group_into_blocks.is_some()
         || scope.sort_by.is_some() && !relative.is_empty()
         || !scope.windows.is_empty() && !relative.is_empty()

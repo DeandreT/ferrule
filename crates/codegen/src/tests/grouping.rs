@@ -101,15 +101,21 @@ fn source_project() -> Project {
 fn lowers_each_grouping_mode_inside_the_candidate_pipeline() {
     for expected in [
         GroupingPlan::By { key: 1 },
+        GroupingPlan::AdjacentBy { key: 1 },
         GroupingPlan::StartingWith { predicate: 2 },
+        GroupingPlan::EndingWith { predicate: 2 },
         GroupingPlan::IntoBlocks { size: 3 },
     ] {
         let mut project = source_project();
         let scope = &mut project.root.children[0];
         match expected {
             GroupingPlan::By { key } => scope.group_by = Some(key),
+            GroupingPlan::AdjacentBy { key } => scope.group_adjacent_by = Some(key),
             GroupingPlan::StartingWith { predicate } => {
                 scope.group_starting_with = Some(predicate);
+            }
+            GroupingPlan::EndingWith { predicate } => {
+                scope.group_ending_with = Some(predicate);
             }
             GroupingPlan::IntoBlocks { size } => scope.group_into_blocks = Some(size),
         }

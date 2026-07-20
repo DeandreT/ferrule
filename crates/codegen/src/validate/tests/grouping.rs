@@ -39,7 +39,9 @@ fn grouped_program(grouping: GroupingPlan) -> Program {
 fn accepts_each_grouping_mode_over_source_iteration() {
     for grouping in [
         GroupingPlan::By { key: 3 },
+        GroupingPlan::AdjacentBy { key: 3 },
         GroupingPlan::StartingWith { predicate: 1 },
+        GroupingPlan::EndingWith { predicate: 1 },
         GroupingPlan::IntoBlocks { size: 1 },
     ] {
         assert_eq!(validate_program(&grouped_program(grouping)), Ok(()));
@@ -51,8 +53,16 @@ fn reports_the_missing_expression_role_for_each_grouping_mode() {
     for (grouping, role) in [
         (GroupingPlan::By { key: 99 }, GroupingExpressionRole::Key),
         (
+            GroupingPlan::AdjacentBy { key: 99 },
+            GroupingExpressionRole::AdjacentKey,
+        ),
+        (
             GroupingPlan::StartingWith { predicate: 99 },
             GroupingExpressionRole::StartingPredicate,
+        ),
+        (
+            GroupingPlan::EndingWith { predicate: 99 },
+            GroupingExpressionRole::EndingPredicate,
         ),
         (
             GroupingPlan::IntoBlocks { size: 99 },

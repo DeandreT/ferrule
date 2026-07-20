@@ -143,6 +143,90 @@ fn group_starting_with_imports_executes_and_roundtrips() {
 }
 
 #[test]
+fn group_adjacent_imports_executes_and_roundtrips() {
+    let imported = mfd::import(&fixture("grouping/adjacent.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let group = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Group")
+        .unwrap();
+    assert!(group.group_adjacent_by.is_some());
+    assert!(group.group_by.is_none());
+
+    let source =
+        format_xml::read(&fixture("grouping/source.xml"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let groups = output
+        .field("Group")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(groups.len(), 3);
+    for (group, key, first, count) in [
+        (&groups[0], "A", "one", 2),
+        (&groups[1], "B", "three", 2),
+        (&groups[2], "A", "five", 1),
+    ] {
+        assert_eq!(scalar(group, "Key"), Value::String(key.into()));
+        assert_eq!(scalar(group, "First"), Value::String(first.into()));
+        assert_eq!(scalar(group, "Count"), Value::Int(count));
+    }
+
+    let dir = TempDir::new("group_adjacent");
+    let out = dir.0.join("group-adjacent.mfd");
+    let warnings = mfd::export(&imported.project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"group-adjacent\"").count(), 1);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
+}
+
+#[test]
+fn group_ending_with_imports_executes_and_roundtrips() {
+    let imported = mfd::import(&fixture("grouping/ending.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let group = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Group")
+        .unwrap();
+    assert!(group.group_ending_with.is_some());
+
+    let source =
+        format_xml::read(&fixture("grouping/source.xml"), &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let groups = output
+        .field("Group")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(groups.len(), 2);
+    assert_eq!(scalar(&groups[0], "First"), Value::String("one".into()));
+    assert_eq!(scalar(&groups[0], "Count"), Value::Int(2));
+    assert_eq!(scalar(&groups[1], "First"), Value::String("three".into()));
+    assert_eq!(scalar(&groups[1], "Count"), Value::Int(3));
+
+    let dir = TempDir::new("group_ending");
+    let out = dir.0.join("group-ending.mfd");
+    let warnings = mfd::export(&imported.project, &out).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported = std::fs::read_to_string(&out).unwrap();
+    assert_eq!(exported.matches("name=\"group-ending-with\"").count(), 1);
+    let reimported = mfd::import(&out).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_eq!(engine::run(&reimported.project, &source).unwrap(), output);
+}
+
+#[test]
 fn malformed_group_starting_predicates_skip_the_affected_iteration() {
     let original = std::fs::read_to_string(fixture("group-starting.mfd")).unwrap();
     let variants = [
