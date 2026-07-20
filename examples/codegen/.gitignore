@@ -1,0 +1,5 @@
+/generated/
+/output.json
+/rust/target/
+/csharp/bin/
+/csharp/obj/
