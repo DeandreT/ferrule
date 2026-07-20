@@ -6,6 +6,8 @@ use super::*;
 fn lowers_exact_numeric_and_delay_scalar_calls() {
     let cases = [
         ("trim", ScalarFunction::Trim, vec![20]),
+        ("upper", ScalarFunction::Upper, vec![20]),
+        ("lower", ScalarFunction::Lower, vec![20]),
         ("is_numeric", ScalarFunction::IsNumeric, vec![20]),
         ("to_number", ScalarFunction::ToNumber, vec![20]),
         (
@@ -47,6 +49,8 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
 fn newly_supported_names_are_closed_and_canonical() {
     for (name, expected) in [
         ("trim", ScalarFunction::Trim),
+        ("upper", ScalarFunction::Upper),
+        ("lower", ScalarFunction::Lower),
         ("is_numeric", ScalarFunction::IsNumeric),
         ("to_number", ScalarFunction::ToNumber),
         ("delay_passthrough", ScalarFunction::DelayPassthrough),
