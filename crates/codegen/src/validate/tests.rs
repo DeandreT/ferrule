@@ -11,6 +11,7 @@ mod collection_find;
 mod collections;
 mod failures;
 mod invariants;
+mod joins;
 mod sources;
 
 fn program() -> Program {

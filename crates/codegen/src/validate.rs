@@ -11,6 +11,7 @@ use crate::{
 mod collection_find;
 mod failures;
 mod graph_dependencies;
+mod joins;
 mod lookup;
 mod recursive_sequence;
 mod sequences;
@@ -33,6 +34,12 @@ pub enum RecursiveSequencePathRole {
     DescentValue,
     Values,
     Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinKeySide {
+    Left,
+    Right,
 }
 
 /// Lexical owner of one private generated-sequence item expression.
@@ -97,6 +104,39 @@ pub enum ProgramValidationError {
         node: NodeId,
         collection: Vec<String>,
         value: Vec<String>,
+    },
+    DuplicateJoinOwner {
+        join: crate::JoinId,
+    },
+    JoinRequiresRootContext {
+        target_path: Vec<String>,
+        join: crate::JoinId,
+    },
+    InvalidJoinSource {
+        join: crate::JoinId,
+        collection: Vec<String>,
+        cardinality: crate::JoinSourceCardinality,
+    },
+    InvalidJoinKey {
+        join: crate::JoinId,
+        side: JoinKeySide,
+        collection: Vec<String>,
+        path: Vec<String>,
+    },
+    InactiveJoinExpression {
+        node: NodeId,
+        join: crate::JoinId,
+    },
+    InvalidJoinFieldCollection {
+        node: NodeId,
+        join: crate::JoinId,
+        collection: Vec<String>,
+    },
+    InvalidJoinFieldPath {
+        node: NodeId,
+        join: crate::JoinId,
+        collection: Vec<String>,
+        path: Vec<String>,
     },
     InvalidSourceIteration {
         target_path: Vec<String>,
@@ -233,6 +273,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_aggregate_paths(sources, &expressions)?;
     collection_find::validate(sources, &expressions)?;
     lookup::validate(sources, &expressions)?;
+    joins::validate_owners(program)?;
     let mut sequence_items = BTreeMap::new();
     sequences::collect_expression_items(&expressions, &mut sequence_items)?;
     targets::collect_sequence_items(program, &expressions, &mut sequence_items)?;
@@ -404,6 +445,27 @@ struct ScopeSchemas<'a> {
     target_owner: TargetOwner<'a>,
 }
 
+#[allow(clippy::too_many_arguments)]
+fn validate_expression_context(
+    expression: NodeId,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    schemas: ScopeSchemas<'_>,
+    sequence_items: &BTreeSet<NodeId>,
+    active_sequence_items: &[NodeId],
+    active_joins: &[joins::ActiveJoin],
+    owner: &SequenceOwner,
+) -> Result<(), ProgramValidationError> {
+    sequences::validate_context(
+        expression,
+        expressions,
+        sequence_items,
+        active_sequence_items,
+        owner,
+    )?;
+    joins::validate_expression(expression, expressions, schemas.sources, active_joins)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn validate_scope(
     scope: &TargetScope,
     expressions: &BTreeMap<NodeId, &Expression>,
@@ -411,9 +473,12 @@ fn validate_scope(
     target_path: &mut Vec<String>,
     sequence_items: &BTreeSet<NodeId>,
     active_sequence_items: &[NodeId],
+    active_joins: &[joins::ActiveJoin],
+    root_context: bool,
 ) -> Result<(), ProgramValidationError> {
     let sequence_owner = schemas.target_owner.sequence_owner(target_path);
     let mut item_context = active_sequence_items.to_vec();
+    let mut scope_joins = active_joins.to_vec();
     let mut scope_source = schemas.current_source;
     let Some(target_node) =
         follow_schema_from(schemas.target_root, schemas.target_root, target_path)
@@ -455,16 +520,29 @@ fn validate_scope(
                             expression,
                         });
                     }
-                    sequences::validate_context(
+                    validate_expression_context(
                         expression,
                         expressions,
+                        schemas,
                         sequence_items,
                         active_sequence_items,
+                        active_joins,
                         &sequence_owner,
                     )?;
                 }
                 recursive_sequence::validate(schemas.sources, sequence, &sequence_owner)?;
                 item_context.push(sequence.item());
+            }
+            IterationSource::InnerJoin(join) => {
+                if !root_context {
+                    return Err(ProgramValidationError::JoinRequiresRootContext {
+                        target_path: target_path.clone(),
+                        join: join.id(),
+                    });
+                }
+                joins::validate_plan(schemas.sources, join)?;
+                scope_source = None;
+                scope_joins.push(joins::ActiveJoin::new(join));
             }
         }
         if let Some(expression) = iteration.filter()
@@ -476,11 +554,13 @@ fn validate_scope(
             });
         }
         if let Some(expression) = iteration.filter() {
-            sequences::validate_context(
+            validate_expression_context(
                 expression,
                 expressions,
+                schemas,
                 sequence_items,
                 &item_context,
+                &scope_joins,
                 &sequence_owner,
             )?;
         }
@@ -493,11 +573,13 @@ fn validate_scope(
                         expression: sort_key.expression,
                     });
                 }
-                sequences::validate_context(
+                validate_expression_context(
                     sort_key.expression,
                     expressions,
+                    schemas,
                     sequence_items,
                     &item_context,
+                    &scope_joins,
                     &sequence_owner,
                 )?;
             }
@@ -512,11 +594,13 @@ fn validate_scope(
                         expression,
                     });
                 }
-                sequences::validate_context(
+                validate_expression_context(
                     expression,
                     expressions,
+                    schemas,
                     sequence_items,
                     active_sequence_items,
+                    active_joins,
                     &sequence_owner,
                 )?;
             }
@@ -597,11 +681,13 @@ fn validate_scope(
                     expression,
                 });
             }
-            sequences::validate_context(
+            validate_expression_context(
                 expression,
                 expressions,
+                schemas,
                 sequence_items,
                 &item_context,
+                &scope_joins,
                 &sequence_owner,
             )?;
         }
@@ -616,11 +702,13 @@ fn validate_scope(
                 expression: binding.expression,
             });
         }
-        sequences::validate_context(
+        validate_expression_context(
             binding.expression,
             expressions,
+            schemas,
             sequence_items,
             &item_context,
+            &scope_joins,
             &sequence_owner,
         )?;
         if let Some(&(first_binding, repeating, target_type)) =
@@ -663,6 +751,7 @@ fn validate_scope(
         children.insert(child.target_field.as_str(), child_index);
     }
 
+    let child_root_context = root_context && scope.iteration.is_none();
     for child in &scope.children {
         target_path.push(child.target_field.clone());
         let result = validate_scope(
@@ -675,6 +764,8 @@ fn validate_scope(
             target_path,
             sequence_items,
             &item_context,
+            &scope_joins,
+            child_root_context,
         );
         target_path.pop();
         result?;
@@ -758,6 +849,66 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "compiled mapping lookup expression {node} value {} is not a scalar under collection {}",
                 display_path(value),
+                display_path(collection)
+            ),
+            Self::DuplicateJoinOwner { join } => write!(
+                formatter,
+                "compiled mapping join id {} has more than one owning scope",
+                join.get()
+            ),
+            Self::JoinRequiresRootContext { target_path, join } => write!(
+                formatter,
+                "target scope {} join {} requires a root source context",
+                display_path(target_path),
+                join.get()
+            ),
+            Self::InvalidJoinSource {
+                join,
+                collection,
+                cardinality,
+            } => write!(
+                formatter,
+                "compiled mapping join {} source {} is not a valid {cardinality:?} source",
+                join.get(),
+                display_path(collection)
+            ),
+            Self::InvalidJoinKey {
+                join,
+                side,
+                collection,
+                path,
+            } => write!(
+                formatter,
+                "compiled mapping join {} {side} key {} is not a scalar under source {}",
+                join.get(),
+                display_path(path),
+                display_path(collection)
+            ),
+            Self::InactiveJoinExpression { node, join } => write!(
+                formatter,
+                "compiled mapping expression {node} references inactive join {}",
+                join.get()
+            ),
+            Self::InvalidJoinFieldCollection {
+                node,
+                join,
+                collection,
+            } => write!(
+                formatter,
+                "compiled mapping join-field expression {node} collection {} does not belong to join {}",
+                display_path(collection),
+                join.get()
+            ),
+            Self::InvalidJoinFieldPath {
+                node,
+                join,
+                collection,
+                path,
+            } => write!(
+                formatter,
+                "compiled mapping join-field expression {node} path {} is not a scalar under join {} source {}",
+                display_path(path),
+                join.get(),
                 display_path(collection)
             ),
             Self::InvalidSourceIteration {
@@ -979,6 +1130,15 @@ impl fmt::Display for SequenceExpressionRole {
             Self::Input(index) => write!(formatter, "input {}", index + 1),
             Self::Item => formatter.write_str("item"),
         }
+    }
+}
+
+impl fmt::Display for JoinKeySide {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::Left => "left",
+            Self::Right => "right",
+        })
     }
 }
 

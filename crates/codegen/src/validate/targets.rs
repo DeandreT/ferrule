@@ -98,6 +98,8 @@ pub(super) fn validate(
         &mut Vec::new(),
         sequence_items,
         &[],
+        &[],
+        true,
     )?;
     for target in &program.extra_targets {
         validate_scope(
@@ -112,6 +114,8 @@ pub(super) fn validate(
             &mut Vec::new(),
             sequence_items,
             &[],
+            &[],
+            true,
         )
         .map_err(|error| ProgramValidationError::NamedTarget {
             target: target.name.clone(),

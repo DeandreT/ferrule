@@ -37,6 +37,7 @@ pub enum Diagnostic {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeFeature {
     Iteration,
+    CorrelatedInnerJoin,
     GeneratedSequence(UnsupportedSequenceKind),
     Construction(ScopeConstructionKind),
     Grouping,
@@ -66,8 +67,6 @@ pub enum ScopeConstructionKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
     SourceDocumentPath,
-    JoinField,
-    JoinPosition,
     DynamicSourceField,
     XmlMixedContent,
     SequenceExists,
@@ -174,6 +173,9 @@ impl fmt::Display for ScopeFeature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Iteration => formatter.write_str("scope iteration"),
+            Self::CorrelatedInnerJoin => {
+                formatter.write_str("an inner join below an active iteration")
+            }
             Self::GeneratedSequence(kind) => {
                 write!(formatter, "{kind} generated-sequence iteration")
             }
@@ -209,8 +211,6 @@ impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::SourceDocumentPath => "current-document-path",
-            Self::JoinField => "a join field",
-            Self::JoinPosition => "join position",
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",
             Self::SequenceExists => "sequence-exists",

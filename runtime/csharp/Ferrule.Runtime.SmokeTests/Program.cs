@@ -19,6 +19,7 @@ internal static partial class Program
             ("value maps", ValueMaps),
             ("lookup contexts", LookupContexts),
             ("collection-find contexts", CollectionFindContexts),
+            ("inner join contexts", InnerJoinContexts),
             ("named source contexts", NamedSourceContexts),
             ("mapping failures", MappingFailures),
             ("runtime execution context", RuntimeExecutionContext),

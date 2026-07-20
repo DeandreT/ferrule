@@ -5,10 +5,10 @@ use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
-    FailureRuleFeature, FailureSelection, GeneratedSequence, IterationPlan, IterationSource,
-    LowerError, NamedSourceProgram, NamedTargetProgram, Program, ScalarFunction,
-    ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration,
-    TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
+    FailureRuleFeature, FailureSelection, GeneratedSequence, InnerJoin, IterationPlan,
+    IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
+    ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan,
+    SourceIteration, TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -51,6 +51,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         &mut target_path,
         &mut roots,
         &mut diagnostics,
+        true,
     );
     let mut extra_targets = Vec::with_capacity(project.extra_targets.len());
     for target in &project.extra_targets {
@@ -60,6 +61,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             &mut Vec::new(),
             &mut roots,
             &mut diagnostics,
+            true,
         );
         extra_targets.push(NamedTargetProgram {
             name: target.name.clone(),
@@ -153,8 +155,9 @@ fn lower_scope(
     target_path: &mut Vec<String>,
     roots: &mut Vec<NodeId>,
     diagnostics: &mut Vec<Diagnostic>,
+    root_context: bool,
 ) -> TargetScope {
-    inspect_scope_features(scope, target_path, diagnostics);
+    inspect_scope_features(scope, target_path, diagnostics, root_context);
     let iteration = lower_iteration(scope);
     roots.extend(scope.filter);
     roots.extend(scope.sort_keys().map(|key| key.node));
@@ -205,6 +208,7 @@ fn lower_scope(
             })
         })
         .collect();
+    let child_root_context = root_context && matches!(scope.iteration, ScopeIteration::None);
     let children = scope
         .children
         .iter()
@@ -218,7 +222,14 @@ fn lower_scope(
                 target_path.pop();
                 return None;
             };
-            let lowered = lower_scope(child, child_target, target_path, roots, diagnostics);
+            let lowered = lower_scope(
+                child,
+                child_target,
+                target_path,
+                roots,
+                diagnostics,
+                child_root_context,
+            );
             target_path.pop();
             Some(lowered)
         })
@@ -238,9 +249,11 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
     let input: IterationSource = match &scope.iteration {
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
         ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence)?.into(),
+        ScopeIteration::InnerJoin { id, plan } => {
+            InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
+        }
         ScopeIteration::None
         | ScopeIteration::DynamicDocuments { .. }
-        | ScopeIteration::InnerJoin { .. }
         | ScopeIteration::Concatenate(_) => return None,
     };
     Some(IterationPlan::new(
@@ -339,6 +352,7 @@ fn inspect_scope_features(
     scope: &Scope,
     target_path: &[String],
     diagnostics: &mut Vec<Diagnostic>,
+    root_context: bool,
 ) {
     let mut report = |feature| {
         diagnostics.push(Diagnostic::UnsupportedScope {
@@ -358,9 +372,11 @@ fn inspect_scope_features(
         ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeRegex { .. }) => report(
             ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex),
         ),
-        ScopeIteration::DynamicDocuments { .. }
-        | ScopeIteration::InnerJoin { .. }
-        | ScopeIteration::Concatenate(_) => report(ScopeFeature::Iteration),
+        ScopeIteration::InnerJoin { .. } if root_context => {}
+        ScopeIteration::InnerJoin { .. } => report(ScopeFeature::CorrelatedInnerJoin),
+        ScopeIteration::DynamicDocuments { .. } | ScopeIteration::Concatenate(_) => {
+            report(ScopeFeature::Iteration);
+        }
     }
     if let Some(kind) = construction_kind(&scope.construction) {
         report(ScopeFeature::Construction(kind));
@@ -417,6 +433,18 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         },
         Node::Position { collection } => Expression::Position {
             collection: collection.clone(),
+        },
+        Node::JoinField {
+            join,
+            collection,
+            path,
+        } => Expression::JoinField {
+            join: JoinId::from(*join),
+            collection: collection.clone(),
+            path: path.clone(),
+        },
+        Node::JoinPosition { join } => Expression::JoinPosition {
+            join: JoinId::from(*join),
         },
         Node::Const { value } => Expression::Const {
             value: value.clone(),
@@ -521,8 +549,6 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
     match node {
         Node::SourceDocumentPath => UnsupportedNodeKind::SourceDocumentPath,
-        Node::JoinField { .. } => UnsupportedNodeKind::JoinField,
-        Node::JoinPosition { .. } => UnsupportedNodeKind::JoinPosition,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
         Node::SequenceExists { .. } => UnsupportedNodeKind::SequenceExists,
@@ -530,6 +556,8 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
         Node::SourceField { .. }
         | Node::Position { .. }
+        | Node::JoinField { .. }
+        | Node::JoinPosition { .. }
         | Node::Const { .. }
         | Node::RuntimeValue { .. }
         | Node::Call { .. }

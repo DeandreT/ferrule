@@ -1,0 +1,129 @@
+use codegen_runtime::{Instance, NamedInput, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute_with_sources;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let catalog = catalog_source();
+    let inputs = [NamedInput {
+        name: "catalog",
+        instance: &catalog,
+    }];
+    assert_eq!(execute_with_sources(&primary_source(), &inputs)?, expected());
+    Ok(())
+}
+
+fn primary_source() -> Instance {
+    group([
+        field(
+            "A",
+            repeated([
+                record(&[
+                    ("Id", Value::Int(1)),
+                    ("Region", Value::String("west".into())),
+                    ("Label", Value::String("A1".into())),
+                ]),
+                record(&[
+                    ("Id", Value::Int(1)),
+                    ("Region", Value::String("west".into())),
+                    ("Label", Value::String("A2".into())),
+                ]),
+                record(&[
+                    ("Id", Value::Null),
+                    ("Region", Value::String("west".into())),
+                    ("Label", Value::String("AN".into())),
+                ]),
+            ]),
+        ),
+        field(
+            "C",
+            repeated([
+                record(&[
+                    ("Code", Value::String("X".into())),
+                    ("Region", Value::String("west".into())),
+                    ("Value", Value::String("CX1".into())),
+                ]),
+                record(&[
+                    ("Code", Value::String("X".into())),
+                    ("Region", Value::String("west".into())),
+                    ("Value", Value::String("CX2".into())),
+                ]),
+                record(&[
+                    ("Code", Value::String("Y".into())),
+                    ("Region", Value::String("west".into())),
+                    ("Value", Value::String("CY".into())),
+                ]),
+                record(&[
+                    ("Code", Value::String("X".into())),
+                    ("Region", Value::String("east".into())),
+                    ("Value", Value::String("CE".into())),
+                ]),
+            ]),
+        ),
+    ])
+}
+
+fn catalog_source() -> Instance {
+    group([field(
+        "B",
+        repeated([
+            b_row(Value::String("1".into()), "west", "X", "low", 10),
+            b_row(Value::Int(1), "west", "X", "high", 30),
+            b_row(Value::Int(1), "west", "Y", "mid", 20),
+            b_row(Value::xml_nil(), "west", "X", "nil", 40),
+            b_row(Value::Int(1), "east", "X", "east", 50),
+        ]),
+    )])
+}
+
+fn b_row(aid: Value, region: &str, code: &str, tag: &str, rank: i64) -> Instance {
+    record(&[
+        ("Aid", aid),
+        ("Region", Value::String(region.into())),
+        ("Code", Value::String(code.into())),
+        ("Tag", Value::String(tag.into())),
+        ("Rank", Value::Int(rank)),
+    ])
+}
+
+fn record(fields: &[(&str, Value)]) -> Instance {
+    group(fields.iter().map(|(name, value)| {
+        field(*name, scalar(value.clone()))
+    }))
+}
+
+fn expected() -> Instance {
+    group([field(
+        "Row",
+        repeated([
+            target_row("A1", "CX1", 1, 1, 1),
+            target_row("A1", "CX2", 2, 1, 2),
+            target_row("A2", "CX1", 1, 2, 3),
+            target_row("A2", "CX2", 2, 2, 4),
+        ]),
+    )])
+}
+
+fn target_row(
+    label: &str,
+    c_value: &str,
+    c_position: i64,
+    a_position: i64,
+    join_position: i64,
+) -> Instance {
+    group([
+        field("ALabel", scalar(Value::String(label.into()))),
+        field("BTag", scalar(Value::String("high".into()))),
+        field("CValue", scalar(Value::String(c_value.into()))),
+        field("JoinPosition", scalar(Value::Int(join_position))),
+        field("APosition", scalar(Value::Int(a_position))),
+        field("BPosition", scalar(Value::Int(2))),
+        field("CPosition", scalar(Value::Int(c_position))),
+        field("Rank", scalar(Value::Int(30))),
+        field(
+            "Details",
+            group([field(
+                "Summary",
+                scalar(Value::String(format!("{label}:{c_value}"))),
+            )]),
+        ),
+    ])
+}

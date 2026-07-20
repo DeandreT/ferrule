@@ -1,0 +1,135 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var catalog = CatalogSource();
+var output = GeneratedMapping.ExecuteWithSources(
+    PrimarySource(),
+    new NamedInput[] { new("catalog", catalog) });
+AssertInstance(output, Expected());
+
+static FerruleGroup PrimarySource() => new(new FerruleField[]
+{
+    new("A", new FerruleRepeated(new FerruleInstance[]
+    {
+        Record(
+            Field("Id", FerruleValue.FromInt64(1)),
+            Field("Region", FerruleValue.FromString("west")),
+            Field("Label", FerruleValue.FromString("A1"))),
+        Record(
+            Field("Id", FerruleValue.FromInt64(1)),
+            Field("Region", FerruleValue.FromString("west")),
+            Field("Label", FerruleValue.FromString("A2"))),
+        Record(
+            Field("Id", FerruleValue.Null),
+            Field("Region", FerruleValue.FromString("west")),
+            Field("Label", FerruleValue.FromString("AN"))),
+    })),
+    new("C", new FerruleRepeated(new FerruleInstance[]
+    {
+        Record(
+            Field("Code", FerruleValue.FromString("X")),
+            Field("Region", FerruleValue.FromString("west")),
+            Field("Value", FerruleValue.FromString("CX1"))),
+        Record(
+            Field("Code", FerruleValue.FromString("X")),
+            Field("Region", FerruleValue.FromString("west")),
+            Field("Value", FerruleValue.FromString("CX2"))),
+        Record(
+            Field("Code", FerruleValue.FromString("Y")),
+            Field("Region", FerruleValue.FromString("west")),
+            Field("Value", FerruleValue.FromString("CY"))),
+        Record(
+            Field("Code", FerruleValue.FromString("X")),
+            Field("Region", FerruleValue.FromString("east")),
+            Field("Value", FerruleValue.FromString("CE"))),
+    })),
+});
+
+static FerruleGroup CatalogSource() => new(new FerruleField[]
+{
+    new("B", new FerruleRepeated(new FerruleInstance[]
+    {
+        BRow(FerruleValue.FromString("1"), "west", "X", "low", 10),
+        BRow(FerruleValue.FromInt64(1), "west", "X", "high", 30),
+        BRow(FerruleValue.FromInt64(1), "west", "Y", "mid", 20),
+        BRow(FerruleValue.XmlNil, "west", "X", "nil", 40),
+        BRow(FerruleValue.FromInt64(1), "east", "X", "east", 50),
+    })),
+});
+
+static FerruleGroup BRow(
+    FerruleValue aid,
+    string region,
+    string code,
+    string tag,
+    long rank) => Record(
+        Field("Aid", aid),
+        Field("Region", FerruleValue.FromString(region)),
+        Field("Code", FerruleValue.FromString(code)),
+        Field("Tag", FerruleValue.FromString(tag)),
+        Field("Rank", FerruleValue.FromInt64(rank)));
+
+static FerruleGroup Expected() => new(new FerruleField[]
+{
+    new("Row", new FerruleRepeated(new FerruleInstance[]
+    {
+        TargetRow("A1", "CX1", 1, 1, 1),
+        TargetRow("A1", "CX2", 2, 1, 2),
+        TargetRow("A2", "CX1", 1, 2, 3),
+        TargetRow("A2", "CX2", 2, 2, 4),
+    })),
+});
+
+static FerruleGroup TargetRow(
+    string label,
+    string cValue,
+    long cPosition,
+    long aPosition,
+    long joinPosition) => new(new FerruleField[]
+{
+    Field("ALabel", FerruleValue.FromString(label)),
+    Field("BTag", FerruleValue.FromString("high")),
+    Field("CValue", FerruleValue.FromString(cValue)),
+    Field("JoinPosition", FerruleValue.FromInt64(joinPosition)),
+    Field("APosition", FerruleValue.FromInt64(aPosition)),
+    Field("BPosition", FerruleValue.FromInt64(2)),
+    Field("CPosition", FerruleValue.FromInt64(cPosition)),
+    Field("Rank", FerruleValue.FromInt64(30)),
+    new("Details", Record(
+        Field("Summary", FerruleValue.FromString($"{label}:{cValue}")))),
+});
+
+static FerruleGroup Record(params FerruleField[] fields) => new(fields);
+
+static FerruleField Field(string name, FerruleValue value) => new(name, new FerruleScalar(value));
+
+static void AssertInstance(FerruleInstance actual, FerruleInstance expected)
+{
+    switch (actual, expected)
+    {
+        case (FerruleScalar left, FerruleScalar right) when left.Value == right.Value:
+            return;
+        case (FerruleGroup left, FerruleGroup right) when left.Fields.Count == right.Fields.Count:
+            for (var index = 0; index < left.Fields.Count; index++)
+            {
+                if (left.Fields[index].Name != right.Fields[index].Name)
+                {
+                    break;
+                }
+                AssertInstance(left.Fields[index].Value, right.Fields[index].Value);
+                if (index + 1 == left.Fields.Count)
+                {
+                    return;
+                }
+            }
+            break;
+        case (FerruleRepeated left, FerruleRepeated right) when left.Items.Count == right.Items.Count:
+            for (var index = 0; index < left.Items.Count; index++)
+            {
+                AssertInstance(left.Items[index], right.Items[index]);
+            }
+            return;
+    }
+
+    throw new InvalidOperationException("Generated join output differs from the engine.");
+}

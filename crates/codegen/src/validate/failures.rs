@@ -6,7 +6,8 @@ use crate::{Expression, FailureIteration, Program};
 
 use super::sources::SourceCatalog;
 use super::{
-    ProgramValidationError, SequenceExpressionRole, SequenceOwner, recursive_sequence, sequences,
+    ProgramValidationError, SequenceExpressionRole, SequenceOwner, joins, recursive_sequence,
+    sequences,
 };
 
 pub(super) fn collect_sequence_items(
@@ -65,6 +66,7 @@ pub(super) fn validate(
                         &[],
                         &owner,
                     )?;
+                    joins::validate_expression(expression, expressions, sources, &[])?;
                 }
                 recursive_sequence::validate(sources, sequence, &owner)?;
                 Some(sequence.item())
@@ -85,6 +87,7 @@ pub(super) fn validate(
                 active_items,
                 &owner,
             )?;
+            joins::validate_expression(predicate, expressions, sources, &[])?;
         }
         if let Some(message) = rule.message {
             if !expressions.contains_key(&message) {
@@ -100,6 +103,7 @@ pub(super) fn validate(
                 active_items,
                 &owner,
             )?;
+            joins::validate_expression(message, expressions, sources, &[])?;
         }
     }
     Ok(())

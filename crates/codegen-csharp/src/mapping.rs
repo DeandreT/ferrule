@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use codegen::{
-    AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, IterationOutput,
-    IterationPlan, IterationSource, Program, SequenceWindow, SortFilterOrder, TargetConstruction,
-    TargetScope,
+    AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, InnerJoin,
+    IterationOutput, IterationPlan, IterationSource, JoinSource, JoinSourceCardinality, Program,
+    SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
 };
 use ir::ScalarType;
 
@@ -72,6 +72,26 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 );
                 render_path(collection, &mut output);
                 output.push_str("));\n");
+            }
+            Expression::JoinField {
+                join,
+                collection,
+                path,
+            } => {
+                output.push_str(&format!(
+                    " =>\n        context.ResolveJoinScalar({}UL, ",
+                    join.get()
+                ));
+                render_path(collection, &mut output);
+                output.push_str(", ");
+                render_path(path, &mut output);
+                output.push_str(");\n");
+            }
+            Expression::JoinPosition { join } => {
+                output.push_str(&format!(
+                    " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.JoinPosition({}UL));\n",
+                    join.get()
+                ));
             }
             Expression::Const { value } => {
                 output.push_str(" =>\n        ");
@@ -506,7 +526,50 @@ fn render_iteration_candidates(scope: usize, input: &IterationSource, output: &m
                 "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.IterateGenerated(sequence_values_{identifier}));\n"
             ));
         }
+        IterationSource::InnerJoin(join) => render_inner_join(scope, join, output),
     }
+}
+
+fn render_inner_join(scope: usize, join: &InnerJoin, output: &mut String) {
+    let mut sources = join.plan().sources();
+    let Some(first) = sources.next() else {
+        unreachable!("validated inner joins contain a first source");
+    };
+    output.push_str(&format!(
+        "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.InnerJoin({}UL,\n            new global::Ferrule.Runtime.FerruleJoinPlan(\n                ",
+        join.id().get()
+    ));
+    render_join_source(first, output);
+    output.push_str(
+        ",\n                new global::Ferrule.Runtime.FerruleJoinStage[]\n                {\n",
+    );
+    for (source, conditions) in join.plan().stages() {
+        output.push_str("                    new(\n                        ");
+        render_join_source(source, output);
+        output.push_str(",\n                        new global::Ferrule.Runtime.FerruleJoinKey[]\n                        {\n");
+        for condition in conditions.iter() {
+            output.push_str("                            new(");
+            render_path(condition.left_collection(), output);
+            output.push_str(", ");
+            render_path(condition.left_path(), output);
+            output.push_str(", ");
+            render_path(condition.right_path(), output);
+            output.push_str("),\n");
+        }
+        output.push_str("                        }),\n");
+    }
+    output.push_str("                })));\n");
+}
+
+fn render_join_source(source: &JoinSource, output: &mut String) {
+    output.push_str("new global::Ferrule.Runtime.FerruleJoinSource(");
+    render_path(source.collection(), output);
+    output.push_str(", global::Ferrule.Runtime.FerruleJoinSourceCardinality.");
+    output.push_str(match source.cardinality() {
+        JoinSourceCardinality::Repeating => "Repeating",
+        JoinSourceCardinality::Singleton => "Singleton",
+    });
+    output.push(')');
 }
 
 fn render_generated_values(identifier: &str, sequence: &GeneratedSequence, output: &mut String) {

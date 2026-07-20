@@ -1,6 +1,8 @@
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{AggregateOp, NodeId};
 
+use crate::{InnerJoin, JoinId};
+
 /// Host-supplied values available to generated mappings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RuntimeValue {
@@ -319,6 +321,16 @@ pub enum Expression {
     Position {
         collection: Vec<String>,
     },
+    /// Reads one exact scalar from a source tuple owned by `join`.
+    JoinField {
+        join: JoinId,
+        collection: Vec<String>,
+        path: Vec<String>,
+    },
+    /// Returns the compacted one-based output position of an active join.
+    JoinPosition {
+        join: JoinId,
+    },
     Const {
         value: Value,
     },
@@ -559,6 +571,7 @@ impl GeneratedSequence {
 pub enum IterationSource {
     Source(SourceIteration),
     Generated(GeneratedSequence),
+    InnerJoin(InnerJoin),
 }
 
 impl From<SourceIteration> for IterationSource {
@@ -570,6 +583,12 @@ impl From<SourceIteration> for IterationSource {
 impl From<GeneratedSequence> for IterationSource {
     fn from(sequence: GeneratedSequence) -> Self {
         Self::Generated(sequence)
+    }
+}
+
+impl From<InnerJoin> for IterationSource {
+    fn from(join: InnerJoin) -> Self {
+        Self::InnerJoin(join)
     }
 }
 
@@ -652,6 +671,10 @@ impl IterationPlan {
         Self::new(sequence, None, None, Vec::new(), IterationOutput::Repeated)
     }
 
+    pub fn join(join: InnerJoin) -> Self {
+        Self::new(join, None, None, Vec::new(), IterationOutput::Repeated)
+    }
+
     pub fn new(
         input: impl Into<IterationSource>,
         filter: Option<NodeId>,
@@ -675,7 +698,7 @@ impl IterationPlan {
     pub const fn source_iteration(&self) -> Option<&SourceIteration> {
         match &self.input {
             IterationSource::Source(source) => Some(source),
-            IterationSource::Generated(_) => None,
+            IterationSource::Generated(_) | IterationSource::InnerJoin(_) => None,
         }
     }
 
@@ -683,6 +706,14 @@ impl IterationPlan {
         match &self.input {
             IterationSource::Source(_) => None,
             IterationSource::Generated(sequence) => Some(sequence),
+            IterationSource::InnerJoin(_) => None,
+        }
+    }
+
+    pub const fn inner_join(&self) -> Option<&InnerJoin> {
+        match &self.input {
+            IterationSource::InnerJoin(join) => Some(join),
+            IterationSource::Source(_) | IterationSource::Generated(_) => None,
         }
     }
 

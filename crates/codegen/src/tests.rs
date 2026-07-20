@@ -15,6 +15,7 @@ mod artifacts;
 mod collection_find;
 mod extra_sources;
 mod failures;
+mod joins;
 mod sequences;
 
 fn scalar(name: &str) -> SchemaNode {

@@ -23,6 +23,8 @@ mod generated_sequences;
 mod iteration_controls;
 #[path = "code_generation/iteration_metadata.rs"]
 mod iteration_metadata;
+#[path = "code_generation/joins.rs"]
+mod joins;
 #[path = "code_generation/lookups.rs"]
 mod lookups;
 #[path = "code_generation/recursive_sequences.rs"]
@@ -601,7 +603,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 15,
+            files_written: 16,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -616,6 +618,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleFailures.cs",
             "Runtime/FerruleFunctions.cs",
             "Runtime/FerruleInstance.cs",
+            "Runtime/FerruleJoins.cs",
             "Runtime/FerruleRuntimeException.cs",
             "Runtime/FerruleSequences.cs",
             "Runtime/FerruleValue.cs",

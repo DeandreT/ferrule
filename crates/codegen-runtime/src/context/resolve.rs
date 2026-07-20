@@ -43,6 +43,14 @@ impl fmt::Display for InstanceKind {
 pub enum SourcePathError {
     /// A lookup collection path was absent or did not end in a repetition.
     MissingCollection { path: Vec<String> },
+    /// A join-owned scalar field was evaluated outside its exact tuple frame.
+    MissingJoinField {
+        join: u64,
+        collection: Vec<String>,
+        path: Vec<String>,
+    },
+    /// A flattened join position was evaluated outside its owning tuple.
+    MissingJoinPosition { join: u64 },
     /// A frame-pinned source field was evaluated without its collection active.
     MissingFrame {
         frame: Vec<String>,
@@ -75,6 +83,19 @@ impl fmt::Display for SourcePathError {
                 "source collection {} does not exist in the active scope context",
                 display_path(path)
             ),
+            Self::MissingJoinField {
+                join,
+                collection,
+                path,
+            } => write!(
+                formatter,
+                "join {join} has no active field {}/{}",
+                display_path(collection),
+                display_path(path)
+            ),
+            Self::MissingJoinPosition { join } => {
+                write!(formatter, "join {join} has no active tuple position")
+            }
             Self::MissingFrame { frame, path } => write!(
                 formatter,
                 "source frame {} is not active while resolving {}",
