@@ -5,13 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 use codegen::{
-    Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram,
-    NamedTargetProgram, ScalarFunction, SourceIteration, TargetConstruction,
+    Binding, ExpressionNode, FailureIteration, FailureRule, FailureSelection, GeneratedSequence,
+    IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram, ScalarFunction,
+    SourceIteration, TargetConstruction,
 };
 use ir::{SchemaKind, SchemaNode};
 
 mod extra_sources;
 mod extra_targets;
+mod failure_rules;
 
 fn program() -> Program {
     Program {
@@ -171,6 +173,7 @@ fn program() -> Program {
                 },
             },
         ],
+        failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
             repeating: false,
@@ -758,6 +761,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
                 },
             },
         ],
+        failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
             repeating: false,
@@ -1007,6 +1011,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                 },
             },
         ],
+        failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
             repeating: false,

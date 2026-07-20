@@ -250,9 +250,42 @@ pub struct Program {
     pub target: SchemaNode,
     /// Reachable expressions ordered by node ID.
     pub expressions: Vec<ExpressionNode>,
+    /// Ordered pre-target failures evaluated against the shared source frames.
+    pub failure_rules: Vec<FailureRule>,
     pub root: TargetScope,
     /// Additional independently shaped outputs in declaration order.
     pub extra_targets: Vec<NamedTargetProgram>,
+}
+
+/// One ordered pre-target failure evaluated until its first selected item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailureRule {
+    pub iteration: FailureIteration,
+    pub selection: FailureSelection,
+    /// Absence remains distinct from an expression that evaluates to empty text.
+    pub message: Option<NodeId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FailureIteration {
+    Source(SourceIteration),
+    Generated(GeneratedSequence),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureSelection {
+    All,
+    WhenTrue(NodeId),
+    WhenFalse(NodeId),
+}
+
+impl FailureSelection {
+    pub const fn predicate(self) -> Option<NodeId> {
+        match self {
+            Self::All => None,
+            Self::WhenTrue(predicate) | Self::WhenFalse(predicate) => Some(predicate),
+        }
+    }
 }
 
 /// One named in-memory input consumed alongside the primary source.

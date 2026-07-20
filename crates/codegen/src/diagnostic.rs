@@ -9,14 +9,15 @@ pub enum Diagnostic {
         location: String,
         message: String,
     },
-    UnsupportedProject {
-        feature: ProjectFeature,
-        count: usize,
-    },
     UnsupportedDynamicSource {
         source: String,
         path_expression: NodeId,
         iteration: Vec<String>,
+    },
+    UnsupportedFailureRule {
+        /// One-based declaration index.
+        rule: usize,
+        feature: FailureRuleFeature,
     },
     UnsupportedScope {
         /// Static target-field path. Empty identifies the primary root.
@@ -34,11 +35,6 @@ pub enum Diagnostic {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProjectFeature {
-    FailureRules,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeFeature {
     Iteration,
     GeneratedSequence(UnsupportedSequenceKind),
@@ -52,6 +48,11 @@ pub enum ScopeFeature {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedSequenceKind {
     TokenizeRegex,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureRuleFeature {
+    GeneratedSequence(UnsupportedSequenceKind),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,10 +114,6 @@ impl fmt::Display for Diagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Validation { location, message } => write!(formatter, "{location}: {message}"),
-            Self::UnsupportedProject { feature, count } => write!(
-                formatter,
-                "project: code generation does not support {feature} ({count} configured)"
-            ),
             Self::UnsupportedDynamicSource {
                 source,
                 path_expression,
@@ -125,6 +122,10 @@ impl fmt::Display for Diagnostic {
                 formatter,
                 "extra source `{source}`: code generation does not support dynamic path expression {path_expression} over `{}`",
                 display_source_path(iteration)
+            ),
+            Self::UnsupportedFailureRule { rule, feature } => write!(
+                formatter,
+                "failure rule {rule}: code generation does not support {feature}"
             ),
             Self::UnsupportedScope {
                 target_path,
@@ -162,11 +163,11 @@ fn display_source_path(path: &[String]) -> String {
     }
 }
 
-impl fmt::Display for ProjectFeature {
+impl fmt::Display for FailureRuleFeature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::FailureRules => "failure rules; remove them before generation",
-        })
+        match self {
+            Self::GeneratedSequence(kind) => write!(formatter, "{kind} generated sequence"),
+        }
     }
 }
 

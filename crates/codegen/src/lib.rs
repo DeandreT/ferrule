@@ -15,15 +15,16 @@ pub use artifact::{
     GeneratedFile,
 };
 pub use diagnostic::{
-    Diagnostic, LowerError, ProjectFeature, ScopeConstructionKind, ScopeFeature,
+    Diagnostic, FailureRuleFeature, LowerError, ScopeConstructionKind, ScopeFeature,
     UnsupportedNodeKind, UnsupportedSequenceKind,
 };
 pub use lower::lower;
 pub use model::{
-    AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, GeneratedSequence,
-    IterationOutput, IterationPlan, IterationSource, NamedSourceProgram, NamedTargetProgram,
-    Program, RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow, SortFilterOrder,
-    SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
+    AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, FailureIteration,
+    FailureRule, FailureSelection, GeneratedSequence, IterationOutput, IterationPlan,
+    IterationSource, NamedSourceProgram, NamedTargetProgram, Program, RuntimeValue,
+    SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
+    SourceIteration, TargetConstruction, TargetScope,
 };
 pub use validate::{
     ProgramValidationError, RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner,

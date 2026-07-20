@@ -37,9 +37,9 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 #[cfg(test)]
 mod tests {
     use codegen::{
-        Binding, Expression, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan,
-        NamedSourceProgram, NamedTargetProgram, Program, ProgramValidationError, ScalarFunction,
-        SourceIteration, TargetScope,
+        Binding, Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
+        GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram,
+        Program, ProgramValidationError, ScalarFunction, SourceIteration, TargetScope,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -68,6 +68,7 @@ mod tests {
                     },
                 },
             ],
+            failure_rules: Vec::new(),
             root: TargetScope {
                 target_field: String::new(),
                 repeating: false,
@@ -272,6 +273,84 @@ mod tests {
         ] {
             assert!(source.contains(error));
         }
+    }
+
+    #[test]
+    fn failure_rules_emit_before_targets_with_ordered_lazy_selection() {
+        let mut program = program();
+        program.source = SchemaNode::group(
+            "source",
+            vec![
+                SchemaNode::group(
+                    "orders",
+                    vec![SchemaNode::scalar("allowed", ScalarType::Bool)],
+                )
+                .repeating(),
+            ],
+        );
+        program.expressions.extend([
+            ExpressionNode {
+                id: 10,
+                expression: Expression::SourceField {
+                    frame: Some(vec!["orders".into()]),
+                    path: vec!["allowed".into()],
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::Const {
+                    value: Value::Int(2),
+                },
+            },
+        ]);
+        program.failure_rules = vec![
+            FailureRule {
+                iteration: FailureIteration::Source(SourceIteration::new(vec!["orders".into()])),
+                selection: FailureSelection::WhenFalse(10),
+                message: Some(9),
+            },
+            FailureRule {
+                iteration: FailureIteration::Generated(GeneratedSequence::Range {
+                    from: None,
+                    to: 12,
+                    item: 11,
+                }),
+                selection: FailureSelection::All,
+                message: Some(11),
+            },
+        ];
+
+        let artifacts = emit(&program).expect("failure rules emit");
+        let source = generated_source(&artifacts);
+        let dispatch = source
+            .find("EvaluateFailureRules(context);")
+            .expect("failure dispatch");
+        let target = source
+            .find("var primary = Scope_0(context);")
+            .expect("target");
+        assert!(dispatch < target);
+        assert!(source.contains("FailureRule_0(context);\n        FailureRule_1(context);"));
+        assert!(source.contains("context.IterateSource(new string[] { \"orders\" })"));
+        assert!(source.contains(
+            "if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(selection_failure_0, 10U))"
+        ));
+        let selection = source
+            .find("RequireBoolean(selection_failure_0, 10U)")
+            .expect("selection");
+        let message = source
+            .find("Node_9(item_context_failure_0)")
+            .expect("lazy message");
+        assert!(selection < message);
+        assert!(source.contains("context.IterateGenerated(sequence_values_failure_1)"));
+        assert!(source.contains("FerruleFailures.MappingFailure(1, message_failure_0)"));
+        assert!(source.contains("FerruleFailures.MappingFailure(2, message_failure_1)"));
     }
 
     #[test]

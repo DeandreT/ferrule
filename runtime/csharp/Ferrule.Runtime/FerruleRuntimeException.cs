@@ -11,6 +11,7 @@ public enum FerruleRuntimeError
     MissingNamedSource,
     DuplicateNamedSource,
     UnexpectedNamedSource,
+    MappingFailure,
     UnknownFunction,
     FunctionArity,
     FunctionType,
@@ -44,7 +45,9 @@ public sealed class FerruleRuntimeException : Exception
         UInt128? requestedItems = null,
         UInt128? maximumItems = null,
         int? maximumDepth = null,
-        FerruleRuntimeValue? runtimeValue = null)
+        FerruleRuntimeValue? runtimeValue = null,
+        int? failureRule = null,
+        string? mappingFailureMessage = null)
         : base(message)
     {
         Error = error;
@@ -59,6 +62,8 @@ public sealed class FerruleRuntimeException : Exception
         MaximumItems = maximumItems;
         MaximumDepth = maximumDepth;
         RuntimeValue = runtimeValue;
+        FailureRule = failureRule;
+        MappingFailureMessage = mappingFailureMessage;
     }
 
     public FerruleRuntimeException(
@@ -75,7 +80,9 @@ public sealed class FerruleRuntimeException : Exception
         UInt128? requestedItems = null,
         UInt128? maximumItems = null,
         int? maximumDepth = null,
-        FerruleRuntimeValue? runtimeValue = null)
+        FerruleRuntimeValue? runtimeValue = null,
+        int? failureRule = null,
+        string? mappingFailureMessage = null)
         : base(message, innerException)
     {
         Error = error;
@@ -90,6 +97,8 @@ public sealed class FerruleRuntimeException : Exception
         MaximumItems = maximumItems;
         MaximumDepth = maximumDepth;
         RuntimeValue = runtimeValue;
+        FailureRule = failureRule;
+        MappingFailureMessage = mappingFailureMessage;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -115,4 +124,8 @@ public sealed class FerruleRuntimeException : Exception
     public int? MaximumDepth { get; }
 
     public FerruleRuntimeValue? RuntimeValue { get; }
+
+    public int? FailureRule { get; }
+
+    public string? MappingFailureMessage { get; }
 }

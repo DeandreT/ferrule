@@ -9,6 +9,8 @@ use ir::ScalarType;
 
 use crate::{EmitError, literal};
 
+mod failures;
+
 struct ScopePlan<'a> {
     repeating: bool,
     iteration: Option<&'a IterationPlan>,
@@ -43,6 +45,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
     );
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
+    failures::render(&program.failure_rules, &mut output);
 
     for (node, expression) in expressions {
         output.push('\n');
@@ -332,6 +335,9 @@ fn render_entry_points(
     output.push_str(
         "\n    private static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.ScopeContext context)\n    {\n",
     );
+    if !program.failure_rules.is_empty() {
+        output.push_str("        EvaluateFailureRules(context);\n");
+    }
     output.push_str(&format!(
         "        var primary = Scope_{primary_scope}(context);\n"
     ));
