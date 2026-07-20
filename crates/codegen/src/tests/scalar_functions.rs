@@ -64,3 +64,48 @@ fn newly_supported_names_are_closed_and_canonical() {
 
     assert_eq!(ScalarFunction::from_name("sleep"), None);
 }
+
+#[test]
+fn lowers_datetime_composition_calls_without_backend_specific_state() {
+    for (index, (name, expected, args)) in [
+        (
+            "datetime_from_date_and_time",
+            ScalarFunction::DatetimeFromDateAndTime,
+            vec![10, 20],
+        ),
+        (
+            "datetime_from_parts",
+            ScalarFunction::DatetimeFromParts,
+            vec![10, 20, 10],
+        ),
+        ("coerce_datetime", ScalarFunction::CoerceDatetime, vec![20]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let node = 60 + index as u32;
+        let mut project = supported_project();
+        project.graph.nodes.insert(
+            node,
+            Node::Call {
+                function: name.to_string(),
+                args: args.clone(),
+            },
+        );
+        project.root.bindings[0].node = node;
+
+        let program = lower(&project).expect("the datetime composition call is portable");
+        let expression = program
+            .expressions
+            .iter()
+            .find(|expression| expression.id == node)
+            .expect("reachable call is retained");
+        assert_eq!(
+            expression.expression,
+            Expression::Call {
+                function: expected,
+                args,
+            }
+        );
+    }
+}
