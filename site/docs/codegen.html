@@ -15,6 +15,7 @@
         <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
         <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html">Architecture</a><a href="formats.html">Supported formats</a></div>
         <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html" aria-current="page">Rust and C# codegen</a></div>
+        <div class="nav-section"><div class="nav-title">Reference</div><a href="definitions.html">Definitions</a></div>
       </nav>
     </aside>
     <main class="page">
@@ -28,6 +29,22 @@
           so successful generation preserves evaluation order, <code>Null</code> behavior,
           output shape, and typed failures.
         </p>
+
+        <figure class="diagram-figure branch-figure">
+          <div class="branch-diagram" aria-label="Code-generation pipeline">
+            <div class="branch-source">
+              <div class="diagram-stage tone-model"><span>Mapping project</span><strong>Validated graph and scopes</strong></div>
+              <i class="vertical-arrow" aria-hidden="true"></i>
+              <div class="diagram-stage tone-codegen"><span>Neutral program</span><strong>Portable lowering</strong></div>
+            </div>
+            <div class="branch-lines" aria-hidden="true"><i></i><i></i></div>
+            <div class="branch-targets">
+              <div class="diagram-stage tone-rust"><span>Rust backend</span><strong>Generated crate</strong><small>Typed runtime dependency</small></div>
+              <div class="diagram-stage tone-csharp"><span>C# backend</span><strong>Generated .NET library</strong><small>Vendored package-free runtime</small></div>
+            </div>
+          </div>
+          <figcaption>Backend emitters receive one validated neutral program, which keeps target-language behavior aligned.</figcaption>
+        </figure>
 
         <h2>C#</h2>
         <pre><code>cargo +nightly run -p cli -- generate \
@@ -152,7 +169,7 @@ dotnet run \
 
         <nav class="page-nav" aria-label="Page navigation">
           <a href="mapforce.html"><- MapForce interop</a>
-          <span></span>
+          <a href="definitions.html">Definitions -></a>
         </nav>
       </article>
     </main>

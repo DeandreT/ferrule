@@ -35,6 +35,10 @@
           <a href="mapforce.html">MapForce import/export</a>
           <a href="codegen.html">Rust and C# codegen</a>
         </div>
+        <div class="nav-section">
+          <div class="nav-title">Reference</div>
+          <a href="definitions.html">Definitions</a>
+        </div>
       </nav>
     </aside>
     <main class="page">
@@ -85,6 +89,8 @@
           formats. The later chapters explain interoperability and code
           generation boundaries so you can tell when a mapping will run through
           the interpreter, export to MapForce, or lower to generated Rust and C#.
+          Use the <a href="definitions.html">definitions chapter</a> when a
+          mapping or runtime term is unfamiliar.
         </p>
 
         <div class="callout">
@@ -94,13 +100,19 @@
           runner-only project formats.
         </div>
 
-        <h2>The core workflow</h2>
-        <div class="flow" aria-label="ferrule workflow">
-          <span>1. import schemas</span>
-          <span>2. wire a mapping</span>
-          <span>3. validate and run</span>
-          <span>4. generate or export</span>
-        </div>
+        <h2 id="core-workflow">The core workflow</h2>
+        <figure class="diagram-figure pipeline-figure">
+          <div class="pipeline" aria-label="ferrule workflow">
+            <div class="pipeline-stage"><span>1</span><strong>Import</strong><small>Schemas and endpoints</small></div>
+            <i class="pipeline-arrow" aria-hidden="true"></i>
+            <div class="pipeline-stage"><span>2</span><strong>Map</strong><small>Graph nodes and scopes</small></div>
+            <i class="pipeline-arrow" aria-hidden="true"></i>
+            <div class="pipeline-stage"><span>3</span><strong>Validate</strong><small>Shapes and capabilities</small></div>
+            <i class="pipeline-arrow" aria-hidden="true"></i>
+            <div class="pipeline-stage"><span>4</span><strong>Deliver</strong><small>Run, generate, or export</small></div>
+          </div>
+          <figcaption>Validation sits before every execution, generation, and interoperability boundary.</figcaption>
+        </figure>
         <p>
           ferrule normalizes inputs into a shared instance tree, evaluates the
           mapping graph and target scopes, then writes the result through a
