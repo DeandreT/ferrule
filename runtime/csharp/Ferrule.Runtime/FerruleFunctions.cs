@@ -17,6 +17,8 @@ public static partial class FerruleFunctions
                 arguments,
                 NormalizeXmlSpace),
             "trim" => UnaryString(function, arguments, TrimRustWhitespace),
+            "left" => EdgeCharacters(function, arguments, left: true),
+            "right" => EdgeCharacters(function, arguments, left: false),
             "left_trim" => UnaryString(
                 function,
                 arguments,

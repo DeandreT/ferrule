@@ -142,6 +142,7 @@ pub(super) fn read(
     let mut out_count = 0usize;
     let mut in_count = 0usize;
     let (input_keys, output_keys) = super::entry_key_sets(&root);
+    let input_ancestors = super::input_port_ancestors(&entry, &input_keys);
     super::record_entry_keys(&entry, &[], &mut ports, &mut out_count, &mut in_count);
     super::collect_entry_ports(
         &entry,
@@ -220,7 +221,7 @@ pub(super) fn read(
         ports,
         input_keys,
         output_keys,
-        input_ancestors: BTreeMap::new(),
+        input_ancestors,
         db_queries: Vec::new(),
         dynamic_json: None,
     })

@@ -55,6 +55,8 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "normalize_space",
     "is_empty",
     "trim",
+    "left",
+    "right",
     "left_trim",
     "right_trim",
     "length",

@@ -226,6 +226,131 @@ fn retains_nested_edifact_output_instance_through_export() {
 }
 
 #[test]
+fn cloned_edi_target_segments_keep_branch_local_bindings() {
+    let directory = TempDir::new("cloned_target_branches");
+    let x12 = directory.path().join("X12");
+    std::fs::create_dir_all(&x12).unwrap();
+    std::fs::write(
+        x12.join("Defs.Segment"),
+        r#"<Config><Elements>
+          <Data name="Text" type="string"/>
+          <Segment name="ISA"><Data ref="Text"/></Segment>
+          <Segment name="GS"><Data ref="Text"/></Segment>
+          <Segment name="ST"><Data ref="Text"/></Segment>
+          <Segment name="BAL"><Data ref="Text"/></Segment>
+          <Segment name="SE"><Data ref="Text"/></Segment>
+          <Segment name="GE"><Data ref="Text"/></Segment>
+          <Segment name="IEA"><Data ref="Text"/></Segment>
+        </Elements></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        x12.join("Envelope.Config"),
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Group name="Envelope"><Group name="Interchange" maxOccurs="unbounded">
+            <Segment ref="ISA"/><Group name="Group" maxOccurs="unbounded">
+              <Segment ref="GS"/><Select field="ST/Text"/><Segment ref="GE" minOccurs="0"/>
+            </Group><Segment ref="IEA" minOccurs="0"/>
+          </Group></Group></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        x12.join("850.Config"),
+        r#"<Config><Format standard="X12"/><Include href="Defs.Segment"/>
+          <Message><MessageType>850</MessageType><Group name="Message_850" maxOccurs="unbounded">
+            <Segment ref="ST"/><Segment ref="BAL" maxOccurs="unbounded"/><Segment ref="SE"/>
+          </Group></Message></Config>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        directory.path().join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Source"><xs:complexType><xs:sequence>
+            <xs:element name="Debit" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Text" type="xs:string"/></xs:sequence></xs:complexType></xs:element>
+            <xs:element name="Credit" maxOccurs="unbounded"><xs:complexType><xs:sequence><xs:element name="Text" type="xs:string"/></xs:sequence></xs:complexType></xs:element>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let design = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data>
+            <root><entry name="Source">
+              <entry name="Debit" outkey="10"><entry name="Text" outkey="11"/></entry>
+              <entry name="Credit" outkey="20"><entry name="Text" outkey="21"/></entry>
+            </entry></root><document schema="source.xsd" inputinstance="source.xml" instanceroot="{}Source"/>
+          </data></component>
+          <component name="target" library="text" kind="16"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Envelope"><entry name="Interchange"><entry name="Group"><entry name="Message">
+              <entry name="BAL" inpkey="30"><entry name="Text" inpkey="31"/></entry>
+              <entry name="BAL" clone="1" inpkey="40"><entry name="Text" inpkey="41"/></entry>
+            </entry></entry></entry></entry></entry></entry></root>
+            <text type="edi" kind="EDIX12" config="X12/850.Config"/>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="31"/></edges></vertex>
+          <vertex vertexkey="20"><edges><edge vertexkey="40"/></edges></vertex>
+          <vertex vertexkey="21"><edges><edge vertexkey="41"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let validation = engine::validate(&imported.project);
+    assert!(validation.is_empty(), "{validation:?}");
+    let balance = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Interchange")
+        .and_then(|scope| {
+            scope
+                .children
+                .iter()
+                .find(|scope| scope.target_field == "Group")
+        })
+        .and_then(|scope| {
+            scope
+                .children
+                .iter()
+                .find(|scope| scope.target_field == "Message")
+        })
+        .and_then(|scope| {
+            scope
+                .children
+                .iter()
+                .find(|scope| scope.target_field == "BAL")
+        })
+        .expect("cloned BAL target scope is imported");
+    let branches = balance
+        .concatenated()
+        .expect("cloned BAL branches are concatenated")
+        .iter()
+        .collect::<Vec<_>>();
+    assert_eq!(branches.len(), 2);
+    assert_eq!(branches[0].source(), Some(["Debit".to_string()].as_slice()));
+    assert_eq!(
+        branches[1].source(),
+        Some(["Credit".to_string()].as_slice())
+    );
+    assert_eq!(branches[0].bindings.len(), 1);
+    assert_eq!(branches[1].bindings.len(), 1);
+
+    let roundtrip_path = directory.path().join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &roundtrip_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let roundtrip = mfd::import(&roundtrip_path).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    let validation = engine::validate(&roundtrip.project);
+    assert!(validation.is_empty(), "{validation:?}");
+}
+
+#[test]
 fn compiles_relative_x12_configuration_into_an_executable_schema() {
     let directory = TempDir::new("x12_config");
     let config_directory = directory.path().join("X12");

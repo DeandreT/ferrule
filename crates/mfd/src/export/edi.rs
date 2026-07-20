@@ -6,6 +6,7 @@ use mapping::{EdiAutocomplete, EdiBoundaryKind, FormatOptions};
 
 use crate::MfdError;
 
+use super::concatenation::TargetBranches;
 use super::schema::{PortTree, RenderedSchemaComponent, Side, xml_escape};
 
 pub(super) struct RenderArgs<'a> {
@@ -14,6 +15,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) side: Side,
     pub(super) instance_path: Option<&'a str>,
     pub(super) options: &'a FormatOptions,
+    pub(super) target_branches: Option<&'a TargetBranches>,
     pub(super) component_name: &'a str,
     pub(super) component_uid: u32,
     pub(super) force_root_port: bool,
@@ -164,7 +166,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
             )
         })
         .unwrap_or_default();
-    let entries = entries_xml(args.schema, args.ports, attr, args.force_root_port)?;
+    let entries = entries_xml(
+        args.schema,
+        args.ports,
+        attr,
+        args.force_root_port,
+        args.target_branches,
+    )?;
     let retained_layout = retained_layout_xml(kind, args.options)?;
     let retained_settings = retained_settings_xml(kind, args.options);
     let mut out = String::new();
@@ -323,7 +331,9 @@ fn entries_xml(
     ports: &PortTree,
     attr: &str,
     force_root_port: bool,
+    target_branches: Option<&TargetBranches>,
 ) -> Result<String, MfdError> {
+    #[allow(clippy::too_many_arguments)]
     fn walk(
         node: &SchemaNode,
         path: &mut Vec<String>,
@@ -331,47 +341,94 @@ fn entries_xml(
         attr: &str,
         indent: usize,
         force_port: bool,
+        target_branches: Option<&TargetBranches>,
+        active_branch: Option<(&[String], usize)>,
         out: &mut String,
     ) -> Result<(), MfdError> {
-        let pad = "\t".repeat(indent);
-        let port = if force_port || !path.is_empty() {
-            let key = ports.required_key_for_abs(path, "EDI entry")?;
-            format!(" {attr}=\"{key}\"")
-        } else {
-            String::new()
-        };
-        let fixed = node
-            .fixed
-            .as_deref()
-            .map(|value| format!(" ferrule-fixed=\"{}\"", xml_escape(value)))
-            .unwrap_or_default();
-        let scalar_type = match &node.kind {
-            SchemaKind::Scalar { ty } => {
-                format!(" datatype=\"{}\"", scalar_type_name(*ty))
+        let count = active_branch
+            .is_none()
+            .then(|| target_branches.and_then(|branches| branches.count(path)))
+            .flatten()
+            .unwrap_or(1);
+        for index in 0..count {
+            let branch_root = path.clone();
+            let branch =
+                active_branch.or_else(|| (count > 1).then_some((branch_root.as_slice(), index)));
+            let pad = "\t".repeat(indent);
+            let port = if force_port || !path.is_empty() {
+                let key = match branch {
+                    Some((root, index)) => target_branches
+                        .and_then(|branches| branches.key_for(ports, root, index, path))
+                        .ok_or_else(|| {
+                            MfdError::Unsupported(format!(
+                                "internal EDI branch port `{}` was not allocated",
+                                path.join("/")
+                            ))
+                        })?,
+                    None => ports.required_key_for_abs(path, "EDI entry")?,
+                };
+                format!(" {attr}=\"{key}\"")
+            } else {
+                String::new()
+            };
+            let fixed = node
+                .fixed
+                .as_deref()
+                .map(|value| format!(" ferrule-fixed=\"{}\"", xml_escape(value)))
+                .unwrap_or_default();
+            let scalar_type = match &node.kind {
+                SchemaKind::Scalar { ty } => {
+                    format!(" datatype=\"{}\"", scalar_type_name(*ty))
+                }
+                SchemaKind::Group { .. } => String::new(),
+            };
+            let node_kind = match &node.kind {
+                SchemaKind::Scalar { .. } => "scalar",
+                SchemaKind::Group { .. } => "group",
+            };
+            let clone = if active_branch.is_none() && index > 0 {
+                " clone=\"1\""
+            } else {
+                ""
+            };
+            let _ = write!(
+                out,
+                "{pad}<entry name=\"{}\" ferrule-kind=\"{node_kind}\" ferrule-repeating=\"{}\"{fixed}{scalar_type}{port} expanded=\"1\"{clone}",
+                xml_escape(&node.name),
+                u8::from(node.repeating),
+            );
+            let SchemaKind::Group { children, .. } = &node.kind else {
+                out.push_str("/>\n");
+                if let Some(branches) = target_branches {
+                    for clone_key in branches.binding_clone_keys(branch, path) {
+                        let _ = writeln!(
+                            out,
+                            "{pad}<entry name=\"{}\" ferrule-kind=\"scalar\" ferrule-repeating=\"{}\"{fixed}{scalar_type} {attr}=\"{clone_key}\" expanded=\"1\" clone=\"1\"/>",
+                            xml_escape(&node.name),
+                            u8::from(node.repeating),
+                        );
+                    }
+                }
+                continue;
+            };
+            out.push_str(">\n");
+            for child in children {
+                path.push(child.name.clone());
+                walk(
+                    child,
+                    path,
+                    ports,
+                    attr,
+                    indent + 1,
+                    false,
+                    target_branches,
+                    branch,
+                    out,
+                )?;
+                path.pop();
             }
-            SchemaKind::Group { .. } => String::new(),
-        };
-        let node_kind = match &node.kind {
-            SchemaKind::Scalar { .. } => "scalar",
-            SchemaKind::Group { .. } => "group",
-        };
-        let _ = write!(
-            out,
-            "{pad}<entry name=\"{}\" ferrule-kind=\"{node_kind}\" ferrule-repeating=\"{}\"{fixed}{scalar_type}{port} expanded=\"1\"",
-            xml_escape(&node.name),
-            u8::from(node.repeating),
-        );
-        let SchemaKind::Group { children, .. } = &node.kind else {
-            out.push_str("/>\n");
-            return Ok(());
-        };
-        out.push_str(">\n");
-        for child in children {
-            path.push(child.name.clone());
-            walk(child, path, ports, attr, indent + 1, false, out)?;
-            path.pop();
+            let _ = writeln!(out, "{pad}</entry>");
         }
-        let _ = writeln!(out, "{pad}</entry>");
         Ok(())
     }
 
@@ -383,6 +440,8 @@ fn entries_xml(
         attr,
         9,
         force_root_port,
+        target_branches,
+        None,
         &mut out,
     )?;
     Ok(out)

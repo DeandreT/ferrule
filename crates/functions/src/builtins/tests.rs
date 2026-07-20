@@ -679,6 +679,37 @@ fn substring_family_follows_xpath_conventions() {
 }
 
 #[test]
+fn left_and_right_slice_unicode_characters_with_bounded_counts() {
+    let value = Value::String("A\u{1f642}BC".into());
+    assert_eq!(
+        call("left", &[value.clone(), Value::Int(2)]),
+        Ok(Value::String("A\u{1f642}".into()))
+    );
+    assert_eq!(
+        call("right", &[value.clone(), Value::Float(2.9)]),
+        Ok(Value::String("BC".into()))
+    );
+    assert_eq!(
+        call("left", &[value.clone(), Value::Int(0)]),
+        Ok(Value::String(String::new()))
+    );
+    assert_eq!(
+        call("right", &[value.clone(), Value::Int(i64::MAX)]),
+        Ok(value)
+    );
+    assert!(matches!(
+        call(
+            "left",
+            &[Value::String("value".into()), Value::Float(f64::INFINITY)]
+        ),
+        Err(FunctionError::InvalidArgument {
+            function: "left",
+            message: "requires a finite character count"
+        })
+    ));
+}
+
+#[test]
 fn exists_distinguishes_null() {
     assert_eq!(call("exists", &[Value::Null]).unwrap(), Value::Bool(false));
     assert_eq!(

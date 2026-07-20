@@ -156,6 +156,19 @@ fn validate_scope(
                     ));
                 }
             }
+            SideFormat::Edi if !path.is_empty() => {
+                let node = schema_node_at(target, path)
+                    .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
+                if !node.repeating
+                    || output != IterationOutput::Repeated
+                    || !matches!(node.kind, SchemaKind::Group { .. })
+                {
+                    return Err(unsupported(
+                        path,
+                        "EDI concatenation requires a repeating target group",
+                    ));
+                }
+            }
             SideFormat::Db if !path.is_empty() && (format != SideFormat::Db || path.len() == 1) => {
                 let node = schema_node_at(target, path)
                     .ok_or_else(|| unsupported(path, "target schema path is missing"))?;
@@ -177,7 +190,7 @@ fn validate_scope(
             _ => {
                 return Err(unsupported(
                     path,
-                    "only repeating XML/database groups and flat CSV roots are supported",
+                    "only repeating XML/EDI/database groups and flat CSV roots are supported",
                 ));
             }
         }

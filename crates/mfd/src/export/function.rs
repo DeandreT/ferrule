@@ -103,6 +103,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         return "ferrule";
     }
     match name {
+        "left" | "right" => "lang",
         "left_trim"
         | "right_trim"
         | "pad_string_left"
@@ -136,6 +137,10 @@ mod tests {
         assert_eq!(function_library("is_numeric"), "lang");
         assert_eq!(unmap_function_name("is_empty"), "empty");
         assert_eq!(function_library("is_empty"), "lang");
+        assert_eq!(unmap_function_name("left"), "left");
+        assert_eq!(function_library("left"), "lang");
+        assert_eq!(unmap_function_name("right"), "right");
+        assert_eq!(function_library("right"), "lang");
         assert_eq!(unmap_function_name("delay_passthrough"), "sleep");
         assert_eq!(function_library("delay_passthrough"), "lang");
         assert_eq!(function_library("to_number"), "ferrule");

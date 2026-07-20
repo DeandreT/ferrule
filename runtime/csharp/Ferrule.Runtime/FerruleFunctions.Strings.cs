@@ -39,6 +39,42 @@ public static partial class FerruleFunctions
         return FerruleValue.FromInt64(length);
     }
 
+    private static FerruleValue EdgeCharacters(
+        string function,
+        IReadOnlyList<FerruleValue> arguments,
+        bool left)
+    {
+        RequireArity(function, arguments, 2);
+        var value = RequireString(arguments[0], function);
+        var count = arguments[1].Kind switch
+        {
+            FerruleValueKind.Int64 => arguments[1].Int64Value,
+            FerruleValueKind.Double when double.IsFinite(arguments[1].DoubleValue) =>
+                SaturatingInt64(arguments[1].DoubleValue),
+            FerruleValueKind.Double => throw InvalidArgument(
+                function,
+                "requires a finite character count"),
+            _ => throw Type(function, arguments[1]),
+        };
+        if (count <= 0)
+        {
+            return FerruleValue.FromString(string.Empty);
+        }
+
+        var runes = Runes(value);
+        if (count >= runes.Count)
+        {
+            return FerruleValue.FromString(value);
+        }
+        var offset = left ? 0 : runes.Count - (int)count;
+        var result = new StringBuilder();
+        foreach (var rune in runes.Skip(offset).Take((int)count))
+        {
+            result.Append(rune.ToString());
+        }
+        return FerruleValue.FromString(result.ToString());
+    }
+
     private static FerruleValue Substring(IReadOnlyList<FerruleValue> arguments)
     {
         if (arguments.Count > 0 && arguments[0].Kind != FerruleValueKind.String)

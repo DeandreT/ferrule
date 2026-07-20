@@ -108,7 +108,7 @@ impl ComponentFormat {
     }
 
     pub(super) const fn supports_cloned_target_branches(self) -> bool {
-        matches!(self, Self::Xml | Self::Db | Self::Xbrl)
+        matches!(self, Self::Xml | Self::Edi | Self::Db | Self::Xbrl)
     }
 }
 

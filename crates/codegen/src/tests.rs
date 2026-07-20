@@ -369,6 +369,8 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "lower",
         "normalize_space",
         "trim",
+        "left",
+        "right",
         "left_trim",
         "right_trim",
         "length",
