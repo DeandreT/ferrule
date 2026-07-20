@@ -15,6 +15,7 @@ mod artifacts;
 mod collection_find;
 mod extra_sources;
 mod failures;
+mod grouping;
 mod joins;
 mod scalar_functions;
 mod sequences;

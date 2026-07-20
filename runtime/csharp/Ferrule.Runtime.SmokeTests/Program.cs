@@ -20,6 +20,7 @@ internal static partial class Program
             ("lookup contexts", LookupContexts),
             ("collection-find contexts", CollectionFindContexts),
             ("inner join contexts", InnerJoinContexts),
+            ("grouping contexts", GroupingContexts),
             ("named source contexts", NamedSourceContexts),
             ("mapping failures", MappingFailures),
             ("runtime execution context", RuntimeExecutionContext),

@@ -1,0 +1,119 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+Assert(Same(GeneratedMapping.Execute(Source(FerruleValue.FromString("2"))), Expected()));
+Error(
+    FerruleRuntimeError.InvalidBlockSize,
+    error => error.Node == 8,
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromInt64(0))));
+Error(
+    FerruleRuntimeError.NotAnItemCount,
+    error => error.Node == 8 && error.FoundKind == FerruleValueKind.Bool,
+    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(true))));
+
+static FerruleGroup Source(FerruleValue blockSize) =>
+    new(new FerruleField[]
+    {
+        new("BlockSize", Scalar(blockSize)),
+        new("Rows", new FerruleRepeated(new FerruleInstance[]
+        {
+            Row("A", "alpha", true, false, 4),
+            Row("B", "bravo", false, true, 7),
+            Row("A", "amber", true, false, 2),
+            Row("B", "beta", true, true, 5),
+            Row("A", "apex", true, true, 1),
+            Row("B", "birch", true, false, 3),
+            Row("C", "cedar", true, true, 6),
+        })),
+    });
+
+static FerruleGroup Row(string category, string label, bool keep, bool start, long priority) =>
+    new(new FerruleField[]
+    {
+        new("Category", Scalar(FerruleValue.FromString(category))),
+        new("Label", Scalar(FerruleValue.FromString(label))),
+        new("Keep", Scalar(FerruleValue.FromBoolean(keep))),
+        new("Start", Scalar(FerruleValue.FromBoolean(start))),
+        new("Priority", Scalar(FerruleValue.FromInt64(priority))),
+    });
+
+static FerruleGroup Expected() =>
+    new(new FerruleField[]
+    {
+        new("By", new FerruleRepeated(new FerruleInstance[]
+        {
+            OutputGroup("apex", "apex,amber,alpha", 1, "apex", "amber", "alpha"),
+            OutputGroup("birch", "birch,beta", 2, "birch", "beta"),
+        })),
+        new("Starting", new FerruleRepeated(new FerruleInstance[]
+        {
+            OutputGroup("beta", "beta", 1, "beta"),
+            OutputGroup("apex", "apex,birch", 2, "apex", "birch"),
+        })),
+        new("Block", new FerruleRepeated(new FerruleInstance[]
+        {
+            OutputGroup("beta", "beta,apex", 1, "beta", "apex"),
+            OutputGroup("birch", "birch,cedar", 2, "birch", "cedar"),
+        })),
+    });
+
+static FerruleGroup OutputGroup(
+    string first,
+    string joined,
+    long position,
+    params string[] members) =>
+    new(new FerruleField[]
+    {
+        new("First", Scalar(FerruleValue.FromString(first))),
+        new("Joined", Scalar(FerruleValue.FromString(joined))),
+        new("Position", Scalar(FerruleValue.FromInt64(position))),
+        new("Member", new FerruleRepeated(
+            members
+                .Select(label => (FerruleInstance)new FerruleGroup(new FerruleField[]
+                {
+                    new("Label", Scalar(FerruleValue.FromString(label))),
+                }))
+                .ToArray())),
+    });
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static bool Same(FerruleInstance actual, FerruleInstance expected) =>
+    (actual, expected) switch
+    {
+        (FerruleScalar left, FerruleScalar right) => left.Value == right.Value,
+        (FerruleGroup left, FerruleGroup right) =>
+            left.Fields.Count == right.Fields.Count &&
+            left.Fields.Zip(right.Fields).All(pair =>
+                pair.First.Name == pair.Second.Name &&
+                Same(pair.First.Value, pair.Second.Value)),
+        (FerruleRepeated left, FerruleRepeated right) =>
+            left.Items.Count == right.Items.Count &&
+            left.Items.Zip(right.Items).All(pair => Same(pair.First, pair.Second)),
+        _ => false,
+    };
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("generated grouping differs from the engine");
+    }
+}
+
+static void Error(
+    FerruleRuntimeError expected,
+    Func<FerruleRuntimeException, bool> inspect,
+    Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (error.Error == expected && inspect(error))
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"expected {expected}");
+}

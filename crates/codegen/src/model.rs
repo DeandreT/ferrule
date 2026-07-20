@@ -590,6 +590,44 @@ pub enum IterationSource {
     InnerJoin(InnerJoin),
 }
 
+/// One mutually exclusive grouping operation in an iteration pipeline.
+///
+/// Key and boundary expressions run once per surviving candidate. Block size
+/// runs once in the parent scope context before candidates are grouped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupingPlan {
+    By { key: NodeId },
+    StartingWith { predicate: NodeId },
+    IntoBlocks { size: NodeId },
+}
+
+impl GroupingPlan {
+    pub const fn expression(self) -> NodeId {
+        match self {
+            Self::By { key } => key,
+            Self::StartingWith { predicate } => predicate,
+            Self::IntoBlocks { size } => size,
+        }
+    }
+
+    /// An expression evaluated against each candidate item, if any.
+    pub const fn item_expression(self) -> Option<NodeId> {
+        match self {
+            Self::By { key } => Some(key),
+            Self::StartingWith { predicate } => Some(predicate),
+            Self::IntoBlocks { .. } => None,
+        }
+    }
+
+    /// An expression evaluated once against the parent context, if any.
+    pub const fn parent_expression(self) -> Option<NodeId> {
+        match self {
+            Self::IntoBlocks { size } => Some(size),
+            Self::By { .. } | Self::StartingWith { .. } => None,
+        }
+    }
+}
+
 impl From<SourceIteration> for IterationSource {
     fn from(source: SourceIteration) -> Self {
         Self::Source(source)
@@ -668,6 +706,7 @@ pub struct IterationPlan {
     input: IterationSource,
     filter: Option<NodeId>,
     sort: Option<SortPlan>,
+    grouping: Option<GroupingPlan>,
     windows: Vec<SequenceWindow>,
     output: IterationOutput,
 }
@@ -698,13 +737,30 @@ impl IterationPlan {
         windows: Vec<SequenceWindow>,
         output: IterationOutput,
     ) -> Self {
+        Self::new_grouped(input, filter, sort, None, windows, output)
+    }
+
+    pub fn new_grouped(
+        input: impl Into<IterationSource>,
+        filter: Option<NodeId>,
+        sort: Option<SortPlan>,
+        grouping: Option<GroupingPlan>,
+        windows: Vec<SequenceWindow>,
+        output: IterationOutput,
+    ) -> Self {
         Self {
             input: input.into(),
             filter,
             sort,
+            grouping,
             windows,
             output,
         }
+    }
+
+    pub fn with_grouping(mut self, grouping: GroupingPlan) -> Self {
+        self.grouping = Some(grouping);
+        self
     }
 
     pub const fn input(&self) -> &IterationSource {
@@ -741,6 +797,10 @@ impl IterationPlan {
         self.sort.as_ref()
     }
 
+    pub const fn grouping(&self) -> Option<GroupingPlan> {
+        self.grouping
+    }
+
     pub fn windows(&self) -> &[SequenceWindow] {
         &self.windows
     }
@@ -760,6 +820,7 @@ impl IterationPlan {
                     .flat_map(SortPlan::keys)
                     .map(|key| key.expression),
             )
+            .chain(self.grouping.map(GroupingPlan::expression))
             .chain(self.windows.iter().copied().flat_map(SequenceWindow::nodes))
     }
 }

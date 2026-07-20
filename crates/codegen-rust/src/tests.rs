@@ -15,6 +15,7 @@ mod collection_find;
 mod extra_sources;
 mod extra_targets;
 mod failure_rules;
+mod grouping;
 mod joins;
 mod scalar_functions;
 
