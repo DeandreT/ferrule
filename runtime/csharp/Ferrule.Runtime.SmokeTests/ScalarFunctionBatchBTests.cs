@@ -13,6 +13,7 @@ internal static partial class Program
         RoundFunction();
         DateFromDateTimeFunction();
         DateTimeExtractorFunctions();
+        DateTimeCompositionFunctions();
     }
 
     private static void SubstringFunctions()
@@ -323,6 +324,115 @@ internal static partial class Program
             "time_from_datetime",
             "requires a value matching a supported date/time picture",
             Text("2001-02-29T09:30:02"));
+    }
+
+    private static void DateTimeCompositionFunctions()
+    {
+        CallEquals(
+            Text("2024-02-29T09:08:07.125+05:30"),
+            "datetime_from_date_and_time",
+            Text("2024-02-29+05:30"),
+            Text("09:08:07.125+05:30"));
+        CallEquals(
+            Text("2024-02-29T09:08:07-04:00"),
+            "datetime_from_date_and_time",
+            Text("2024-02-29"),
+            Text("09:08:07-04:00"));
+        CallEquals(
+            Text("2024-01-02T00:00:00Z"),
+            "datetime_from_date_and_time",
+            Text("2024-01-02Z"));
+        CallEquals(
+            Text("-0001-01-02T00:00:00"),
+            "datetime_from_date_and_time",
+            Text("-0001-01-02"),
+            FerruleValue.Null);
+        AssertInvalidArgument(
+            "datetime_from_date_and_time",
+            "requires a value matching a supported date/time picture",
+            Text("2024-02-29+05:30"),
+            Text("09:08:07-04:00"));
+
+        CallEquals(
+            Text("2031-08-17T00:00:00"),
+            "coerce_datetime",
+            Text("2031-08-17"));
+        CallEquals(
+            Text("2031-08-17T00:00:00+05:45"),
+            "coerce_datetime",
+            Text("2031-08-17+05:45"));
+        CallEquals(
+            Text("2031-08-17T06:07:08.9Z"),
+            "coerce_datetime",
+            Text("2031-08-17T06:07:08.9Z"));
+        CallEquals(FerruleValue.Null, "coerce_datetime", FerruleValue.Null);
+        CallEquals(FerruleValue.XmlNil, "coerce_datetime", FerruleValue.XmlNil);
+
+        CallEquals(
+            Text("2024-02-29T09:08:07.1255+05:30"),
+            "datetime_from_parts",
+            Text("2024"),
+            FerruleValue.FromInt64(2),
+            FerruleValue.FromDouble(29.0),
+            FerruleValue.FromInt64(9),
+            FerruleValue.FromInt64(8),
+            FerruleValue.FromInt64(7),
+            FerruleValue.FromDouble(125.5),
+            FerruleValue.FromInt64(330));
+        CallEquals(
+            Text("2024-01-02T00:00:00"),
+            "datetime_from_parts",
+            Text("2024"),
+            Text("1"),
+            Text("2"));
+        CallEquals(
+            Text("-0001-01-02T00:00:00"),
+            "datetime_from_parts",
+            Text("-1"),
+            Text("1"),
+            Text("2"),
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.FromDouble(double.Epsilon));
+        CallEquals(
+            Text("2024-01-02T00:00:00"),
+            "datetime_from_parts",
+            Text("2024"),
+            Text("1"),
+            Text("2"),
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.FromInt64(-32_768));
+
+        AssertFunctionArity("datetime_from_date_and_time", 1, Array.Empty<FerruleValue>());
+        AssertFunctionType("datetime_from_date_and_time", FerruleValue.FromInt64(2024));
+        AssertFunctionArity("coerce_datetime", 1, Array.Empty<FerruleValue>());
+        AssertFunctionType("coerce_datetime", FerruleValue.FromInt64(1));
+        AssertFunctionArity(
+            "datetime_from_parts",
+            3,
+            Text("2024"),
+            Text("1"));
+        AssertInvalidArgument(
+            "datetime_from_parts",
+            "requires a value matching a supported date/time picture",
+            Text("2023"),
+            Text("2"),
+            Text("29"));
+        AssertInvalidArgument(
+            "datetime_from_parts",
+            "requires a value matching a supported date/time picture",
+            Text("2024"),
+            Text("1"),
+            Text("2"),
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.Null,
+            FerruleValue.FromInt64(841));
     }
 
     private static void AssertInvalidArgument(
