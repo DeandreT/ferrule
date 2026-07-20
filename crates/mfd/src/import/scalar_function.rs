@@ -124,6 +124,9 @@ impl GraphBuilder<'_> {
             ("now", _) => Node::RuntimeValue {
                 value: RuntimeValue::CurrentDateTime,
             },
+            ("current-dateTime", 5) if fc.library == "xpath2" => Node::RuntimeValue {
+                value: RuntimeValue::CurrentDateTime,
+            },
             ("set-empty", _) => Node::Const { value: Value::Null },
             ("set-xsi-nil", _) => Node::Const {
                 value: Value::xml_nil(),

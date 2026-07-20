@@ -26,16 +26,15 @@ impl Drop for TempDir {
     }
 }
 
-fn write_design(path: &Path) {
-    std::fs::write(
-        path,
+fn write_design(path: &Path, name: &str, library: &str) {
+    let design = format!(
         r#"<mapping version="26"><component name="map"><structure><children>
-          <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Value" outkey="10"/></entry></root><document inputinstance="source.xml" instanceroot="{}Source"/></data></component>
-          <component name="now" library="lang" kind="5"><targets><datapoint pos="0" key="20"/></targets></component>
-          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="First" inpkey="30"/><entry name="Second" inpkey="31"/></entry></root><document outputinstance="target.xml" instanceroot="{}Target"/></data></component>
-        </children><graph><vertices><vertex vertexkey="20"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
-    )
-    .unwrap();
+          <component name="source" library="xml" kind="14"><data><root><entry name="Source"><entry name="Value" outkey="10"/></entry></root><document inputinstance="source.xml" instanceroot="{{}}Source"/></data></component>
+          <component name="{name}" library="{library}" kind="5"><targets><datapoint pos="0" key="20"/></targets></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Target"><entry name="First" inpkey="30"/><entry name="Second" inpkey="31"/></entry></root><document outputinstance="target.xml" instanceroot="{{}}Target"/></data></component>
+        </children><graph><vertices><vertex vertexkey="20"><edges><edge vertexkey="30"/><edge vertexkey="31"/></edges></vertex></vertices></graph></structure></component></mapping>"#
+    );
+    std::fs::write(path, design).unwrap();
 }
 
 fn run(project: &mapping::Project) -> Instance {
@@ -57,7 +56,7 @@ fn assert_now(output: &Instance) {
 fn now_imports_as_one_stable_runtime_value_and_round_trips() {
     let dir = TempDir::new();
     let design = dir.0.join("now.mfd");
-    write_design(&design);
+    write_design(&design, "now", "lang");
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -87,4 +86,16 @@ fn now_imports_as_one_stable_runtime_value_and_round_trips() {
     let reimported = mfd::import(&exported).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert_now(&run(&reimported.project));
+}
+
+#[test]
+fn xpath2_current_datetime_uses_the_stable_execution_clock() {
+    let dir = TempDir::new();
+    let design = dir.0.join("current-datetime.mfd");
+    write_design(&design, "current-dateTime", "xpath2");
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    assert_now(&run(&imported.project));
 }

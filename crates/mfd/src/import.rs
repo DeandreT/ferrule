@@ -332,6 +332,11 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                 "xpath2" if map_function_name(&name).is_some() => {
                     fn_components.push(read_fn_component(&component));
                 }
+                "xpath2"
+                    if name == "current-dateTime" && component.attribute("kind") == Some("5") =>
+                {
+                    fn_components.push(read_fn_component(&component));
+                }
                 "IsbnConverterService" if is_isbn_converter_component(&component) => {
                     match read_isbn_converter_component(&component) {
                         Ok(function) => fn_components.push(function),
