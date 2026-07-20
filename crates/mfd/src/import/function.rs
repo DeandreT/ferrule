@@ -611,12 +611,14 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "remove-folder" => "remove_folder",
         "resolve-filepath" => "resolve_filepath",
         "is-xsi-nil" => "is_xml_nil",
+        "substitute-missing-with-xsi-nil" => "substitute_missing_with_xml_nil",
         "exists" => "exists",
         "round" | "round-precision" => "round",
         "date-from-datetime" => "date_from_datetime",
         "year-from-datetime" => "year_from_datetime",
         "month-from-datetime" => "month_from_datetime",
         "day-from-datetime" => "day_from_datetime",
+        "weekday" => "weekday",
         "hour-from-datetime" | "hours-from-datetime" => "hours_from_datetime",
         "minute-from-datetime" | "minutes-from-datetime" => "minutes_from_datetime",
         "time-from-datetime" => "time_from_datetime",
@@ -628,6 +630,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "parse-time" => "parse_time",
         "edifact-to-datetime" => "edifact_to_datetime",
         "substitute-missing" | "substitute-null" => "substitute_missing",
+        "get-fileext" => "get_fileext",
         "convertToISBN13" | "convertToEAN" => "isbn10_to_isbn13",
         "sleep" => "delay_passthrough",
         _ => return None,
@@ -656,6 +659,7 @@ mod tests {
         assert_eq!(map_name("year-from-datetime"), Some("year_from_datetime"));
         assert_eq!(map_name("month-from-datetime"), Some("month_from_datetime"));
         assert_eq!(map_name("day-from-datetime"), Some("day_from_datetime"));
+        assert_eq!(map_name("weekday"), Some("weekday"));
         assert_eq!(map_name("hours-from-datetime"), Some("hours_from_datetime"));
         assert_eq!(map_name("hour-from-datetime"), Some("hours_from_datetime"));
         assert_eq!(
@@ -677,6 +681,11 @@ mod tests {
         assert_eq!(map_name("edifact-to-datetime"), Some("edifact_to_datetime"));
         assert_eq!(map_name("substitute-missing"), Some("substitute_missing"));
         assert_eq!(map_name("substitute-null"), Some("substitute_missing"));
+        assert_eq!(
+            map_name("substitute-missing-with-xsi-nil"),
+            Some("substitute_missing_with_xml_nil")
+        );
+        assert_eq!(map_name("get-fileext"), Some("get_fileext"));
         assert_eq!(map_name("convertToISBN13"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("convertToEAN"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("sleep"), Some("delay_passthrough"));

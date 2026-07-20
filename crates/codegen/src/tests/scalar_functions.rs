@@ -14,6 +14,13 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
         ("to_number", ScalarFunction::ToNumber, vec![20]),
         ("format_number", ScalarFunction::FormatNumber, vec![10, 20]),
         (
+            "substitute_missing_with_xml_nil",
+            ScalarFunction::SubstituteMissingWithXmlNil,
+            vec![20],
+        ),
+        ("get_fileext", ScalarFunction::GetFileext, vec![20]),
+        ("weekday", ScalarFunction::Weekday, vec![20]),
+        (
             "delay_passthrough",
             ScalarFunction::DelayPassthrough,
             vec![20, 10],
@@ -59,6 +66,12 @@ fn newly_supported_names_are_closed_and_canonical() {
         ("is_numeric", ScalarFunction::IsNumeric),
         ("to_number", ScalarFunction::ToNumber),
         ("format_number", ScalarFunction::FormatNumber),
+        (
+            "substitute_missing_with_xml_nil",
+            ScalarFunction::SubstituteMissingWithXmlNil,
+        ),
+        ("get_fileext", ScalarFunction::GetFileext),
+        ("weekday", ScalarFunction::Weekday),
         ("delay_passthrough", ScalarFunction::DelayPassthrough),
     ] {
         assert_eq!(ScalarFunction::from_name(name), Some(expected));

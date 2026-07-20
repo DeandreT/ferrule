@@ -83,11 +83,13 @@ fn expected_values() -> Vec<(&'static str, &'static str, Value)> {
         ("Missing", "Nil", Value::String("fallback-nil".into())),
         ("Missing", "Empty", Value::String(String::new())),
         ("Missing", "Int", Value::Int(0)),
+        ("Missing", "XmlNil", Value::xml_nil()),
         ("Nil", "Nil", Value::Bool(true)),
         ("Nil", "Null", Value::Bool(false)),
         ("Nil", "Empty", Value::Bool(false)),
         ("Paths", "MixedFolder", Value::String("one/two\\".into())),
         ("Paths", "MixedName", Value::String("file.xml".into())),
+        ("Paths", "Extension", Value::String(".gz".into())),
         (
             "Paths",
             "UrlFolder",
@@ -131,6 +133,7 @@ fn expected_values() -> Vec<(&'static str, &'static str, Value)> {
         ("Temporal", "Year", Value::Int(1)),
         ("Temporal", "Month", Value::Int(3)),
         ("Temporal", "Day", Value::Int(1)),
+        ("Temporal", "Weekday", Value::Int(6)),
         ("Temporal", "Hour", Value::Int(0)),
         ("Temporal", "Minute", Value::Int(59)),
         (
