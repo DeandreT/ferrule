@@ -40,7 +40,6 @@ pub enum ScopeFeature {
     CorrelatedInnerJoin,
     GeneratedSequence(UnsupportedSequenceKind),
     Construction(ScopeConstructionKind),
-    Grouping,
     DynamicBindings,
     DynamicChildren,
     DynamicFieldMerge,
@@ -180,7 +179,6 @@ impl fmt::Display for ScopeFeature {
                 write!(formatter, "{kind} generated-sequence iteration")
             }
             Self::Construction(kind) => write!(formatter, "{kind} construction"),
-            Self::Grouping => formatter.write_str("scope grouping"),
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
             Self::DynamicChildren => formatter.write_str("dynamic target child scopes"),
             Self::DynamicFieldMerge => formatter.write_str("dynamic-field merging"),

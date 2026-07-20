@@ -18,8 +18,8 @@ use std::fmt;
 
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
-    GeneratedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput, ScopeContext,
-    SourcePathError, clone_scalar, resolve_scalar,
+    GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
+    ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
 };
 pub use failure::mapping_failure;
 pub use functions::FunctionError;
@@ -84,6 +84,9 @@ pub enum RuntimeError {
     NotAnItemCount {
         node: u32,
         found: &'static str,
+    },
+    InvalidBlockSize {
+        node: u32,
     },
 }
 
@@ -154,6 +157,9 @@ impl fmt::Display for RuntimeError {
                     "node {node}: expected an item count, got {found}"
                 )
             }
+            Self::InvalidBlockSize { node } => {
+                write!(formatter, "node {node}: group block size must be positive")
+            }
         }
     }
 }
@@ -175,7 +181,8 @@ impl std::error::Error for RuntimeError {
             | Self::UnexpectedNamedSource { .. }
             | Self::MappingFailure { .. }
             | Self::NotABool { .. }
-            | Self::NotAnItemCount { .. } => None,
+            | Self::NotAnItemCount { .. }
+            | Self::InvalidBlockSize { .. } => None,
         }
     }
 }

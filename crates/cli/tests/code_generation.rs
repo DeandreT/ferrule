@@ -19,6 +19,8 @@ mod extra_targets;
 mod failure_rules;
 #[path = "code_generation/generated_sequences.rs"]
 mod generated_sequences;
+#[path = "code_generation/grouping.rs"]
+mod grouping;
 #[path = "code_generation/iteration_controls.rs"]
 mod iteration_controls;
 #[path = "code_generation/iteration_metadata.rs"]
@@ -603,7 +605,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 18,
+            files_written: 19,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -619,6 +621,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleFunctions.Numeric.cs",
             "Runtime/FerruleFunctions.Strings.cs",
             "Runtime/FerruleFunctions.cs",
+            "Runtime/FerruleGrouping.cs",
             "Runtime/FerruleInstance.cs",
             "Runtime/FerruleJoins.cs",
             "Runtime/FerruleRuntimeException.cs",

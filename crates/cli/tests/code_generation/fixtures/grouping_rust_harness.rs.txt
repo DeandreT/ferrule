@@ -1,0 +1,91 @@
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    assert_eq!(execute(&source(Value::String("2".into())))?, expected());
+    assert_eq!(
+        execute(&source(Value::Int(0))),
+        Err(RuntimeError::InvalidBlockSize { node: 8 })
+    );
+    assert_eq!(
+        execute(&source(Value::Bool(true))),
+        Err(RuntimeError::NotAnItemCount {
+            node: 8,
+            found: "bool".into(),
+        })
+    );
+    Ok(())
+}
+
+fn source(block_size: Value) -> Instance {
+    group([
+        field("BlockSize", scalar(block_size)),
+        field(
+            "Rows",
+            repeated([
+                row("A", "alpha", true, false, 4),
+                row("B", "bravo", false, true, 7),
+                row("A", "amber", true, false, 2),
+                row("B", "beta", true, true, 5),
+                row("A", "apex", true, true, 1),
+                row("B", "birch", true, false, 3),
+                row("C", "cedar", true, true, 6),
+            ]),
+        ),
+    ])
+}
+
+fn row(category: &str, label: &str, keep: bool, start: bool, priority: i64) -> Instance {
+    group([
+        field("Category", scalar(Value::String(category.into()))),
+        field("Label", scalar(Value::String(label.into()))),
+        field("Keep", scalar(Value::Bool(keep))),
+        field("Start", scalar(Value::Bool(start))),
+        field("Priority", scalar(Value::Int(priority))),
+    ])
+}
+
+fn expected() -> Instance {
+    group([
+        field(
+            "By",
+            repeated([
+                output_group("apex", "apex,amber,alpha", 1, ["apex", "amber", "alpha"]),
+                output_group("birch", "birch,beta", 2, ["birch", "beta"]),
+            ]),
+        ),
+        field(
+            "Starting",
+            repeated([
+                output_group("beta", "beta", 1, ["beta"]),
+                output_group("apex", "apex,birch", 2, ["apex", "birch"]),
+            ]),
+        ),
+        field(
+            "Block",
+            repeated([
+                output_group("beta", "beta,apex", 1, ["beta", "apex"]),
+                output_group("birch", "birch,cedar", 2, ["birch", "cedar"]),
+            ]),
+        ),
+    ])
+}
+
+fn output_group<const N: usize>(
+    first: &str,
+    joined: &str,
+    position: i64,
+    members: [&str; N],
+) -> Instance {
+    group([
+        field("First", scalar(Value::String(first.into()))),
+        field("Joined", scalar(Value::String(joined.into()))),
+        field("Position", scalar(Value::Int(position))),
+        field(
+            "Member",
+            repeated(
+                members.map(|label| group([field("Label", scalar(Value::String(label.into())))])),
+            ),
+        ),
+    ])
+}

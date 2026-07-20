@@ -1,3 +1,4 @@
+mod grouping;
 mod join;
 mod recursive;
 mod resolve;
@@ -6,10 +7,13 @@ mod walk;
 #[cfg(test)]
 mod collection_find_tests;
 #[cfg(test)]
+mod grouping_tests;
+#[cfg(test)]
 mod join_tests;
 #[cfg(test)]
 mod named_tests;
 
+pub use grouping::GroupedItems;
 pub use join::{InnerJoinKey, InnerJoinStage};
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 
@@ -61,27 +65,38 @@ struct ScopeFrame<'a> {
 enum CollectionIdentity {
     Repeated { path: Vec<String>, index: usize },
     Document { path: Vec<String>, index: usize },
+    Grouped { path: Vec<String>, index: usize },
 }
 
 impl CollectionIdentity {
     fn path(&self) -> &[String] {
         match self {
-            Self::Repeated { path, .. } | Self::Document { path, .. } => path,
+            Self::Repeated { path, .. }
+            | Self::Document { path, .. }
+            | Self::Grouped { path, .. } => path,
         }
     }
 
     const fn index(&self) -> usize {
         match self {
-            Self::Repeated { index, .. } | Self::Document { index, .. } => *index,
+            Self::Repeated { index, .. }
+            | Self::Document { index, .. }
+            | Self::Grouped { index, .. } => *index,
         }
     }
 
     const fn set_index(&mut self, compact_index: usize) {
         match self {
-            Self::Repeated { index, .. } | Self::Document { index, .. } => {
+            Self::Repeated { index, .. }
+            | Self::Document { index, .. }
+            | Self::Grouped { index, .. } => {
                 *index = compact_index;
             }
         }
+    }
+
+    const fn is_grouped(&self) -> bool {
+        matches!(self, Self::Grouped { .. })
     }
 }
 

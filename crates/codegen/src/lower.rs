@@ -5,10 +5,11 @@ use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
-    FailureRuleFeature, FailureSelection, GeneratedSequence, InnerJoin, IterationPlan,
-    IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
-    ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan,
-    SourceIteration, TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
+    FailureRuleFeature, FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin,
+    IterationPlan, IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram,
+    NamedTargetProgram, Program, ScalarFunction, ScopeConstructionKind, ScopeFeature,
+    SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind,
+    UnsupportedSequenceKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -162,6 +163,15 @@ fn lower_scope(
     roots.extend(scope.filter);
     roots.extend(scope.sort_keys().map(|key| key.node));
     roots.extend(
+        [
+            scope.group_by,
+            scope.group_starting_with,
+            scope.group_into_blocks,
+        ]
+        .into_iter()
+        .flatten(),
+    );
+    roots.extend(
         scope
             .windows
             .iter()
@@ -256,7 +266,16 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
         | ScopeIteration::DynamicDocuments { .. }
         | ScopeIteration::Concatenate(_) => return None,
     };
-    Some(IterationPlan::new(
+    let grouping = if let Some(key) = scope.group_by {
+        Some(GroupingPlan::By { key })
+    } else if let Some(predicate) = scope.group_starting_with {
+        Some(GroupingPlan::StartingWith { predicate })
+    } else {
+        scope
+            .group_into_blocks
+            .map(|size| GroupingPlan::IntoBlocks { size })
+    };
+    Some(IterationPlan::new_grouped(
         input,
         scope.filter,
         scope.sort_by.map(|expression| {
@@ -274,6 +293,7 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
                 scope.sort_filter_order.into(),
             )
         }),
+        grouping,
         scope
             .windows
             .iter()
@@ -380,12 +400,6 @@ fn inspect_scope_features(
     }
     if let Some(kind) = construction_kind(&scope.construction) {
         report(ScopeFeature::Construction(kind));
-    }
-    if scope.group_by.is_some()
-        || scope.group_starting_with.is_some()
-        || scope.group_into_blocks.is_some()
-    {
-        report(ScopeFeature::Grouping);
     }
     if !scope.dynamic_bindings.is_empty() {
         report(ScopeFeature::DynamicBindings);

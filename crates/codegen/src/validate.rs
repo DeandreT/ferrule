@@ -9,8 +9,10 @@ use crate::{
 };
 
 mod collection_find;
+mod context;
 mod failures;
 mod graph_dependencies;
+mod grouping;
 mod joins;
 mod lookup;
 mod recursive_sequence;
@@ -18,44 +20,12 @@ mod sequences;
 mod sources;
 mod targets;
 
+pub use context::{
+    GroupingExpressionRole, JoinKeySide, RecursiveSequencePathRole, SequenceExpressionRole,
+    SequenceOwner,
+};
 use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SequenceExpressionRole {
-    Input(usize),
-    Item,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RecursiveSequencePathRole {
-    Collection,
-    Children,
-    DescentValue,
-    Values,
-    Value,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JoinKeySide {
-    Left,
-    Right,
-}
-
-/// Lexical owner of one private generated-sequence item expression.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum SequenceOwner {
-    /// A scope under the primary target.
-    Scope(Vec<String>),
-    /// A scope under one named target.
-    NamedTargetScope {
-        target: String,
-        path: Vec<String>,
-    },
-    /// A generated sequence owned by a one-based failure-rule index.
-    FailureRule(usize),
-    Expression(NodeId),
-}
 
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,6 +112,15 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         source_path: Vec<String>,
     },
+    MissingGroupingExpression {
+        target_path: Vec<String>,
+        role: GroupingExpressionRole,
+        expression: NodeId,
+    },
+    JoinGroupingUnsupported {
+        target_path: Vec<String>,
+        join: crate::JoinId,
+    },
     InvalidFailureSourceIteration {
         rule: usize,
         source_path: Vec<String>,
@@ -211,6 +190,9 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
     },
     CopyConstructionHasContent {
+        target_path: Vec<String>,
+    },
+    CopyConstructionHasGrouping {
         target_path: Vec<String>,
     },
     ScalarConstructionHasContent {
@@ -495,6 +477,8 @@ fn validate_scope(
         });
     }
     if let Some(iteration) = &scope.iteration {
+        let grouping_expression =
+            grouping::validate(iteration, expressions, target_path.as_slice())?;
         match iteration.input() {
             IterationSource::Source(source_iteration) => {
                 if !schemas
@@ -544,6 +528,27 @@ fn validate_scope(
                 scope_source = None;
                 scope_joins.push(joins::ActiveJoin::new(join));
             }
+        }
+        if let Some(grouping_expression) = grouping_expression {
+            let grouping_items = if grouping_expression.is_parent_context() {
+                active_sequence_items
+            } else {
+                &item_context
+            };
+            let grouping_joins = if grouping_expression.is_parent_context() {
+                active_joins
+            } else {
+                &scope_joins
+            };
+            validate_expression_context(
+                grouping_expression.node(),
+                expressions,
+                schemas,
+                sequence_items,
+                grouping_items,
+                grouping_joins,
+                &sequence_owner,
+            )?;
         }
         if let Some(expression) = iteration.filter()
             && !expressions.contains_key(&expression)
@@ -658,6 +663,15 @@ fn validate_scope(
             }
             if !scope.bindings.is_empty() || !scope.children.is_empty() {
                 return Err(ProgramValidationError::CopyConstructionHasContent {
+                    target_path: target_path.clone(),
+                });
+            }
+            if scope
+                .iteration
+                .as_ref()
+                .is_some_and(|iteration| iteration.grouping().is_some())
+            {
+                return Err(ProgramValidationError::CopyConstructionHasGrouping {
                     target_path: target_path.clone(),
                 });
             }
@@ -920,6 +934,21 @@ impl fmt::Display for ProgramValidationError {
                 display_path(target_path),
                 display_path(source_path)
             ),
+            Self::MissingGroupingExpression {
+                target_path,
+                role,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} grouping {role} references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::JoinGroupingUnsupported { target_path, join } => write!(
+                formatter,
+                "target scope {} join {} cannot use grouping",
+                display_path(target_path),
+                join.get()
+            ),
             Self::InvalidFailureSourceIteration { rule, source_path } => write!(
                 formatter,
                 "failure rule {rule} source iteration {} matches no repeating source path",
@@ -1035,6 +1064,11 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} copy-current-source construction cannot contain bindings or child scopes",
                 display_path(target_path)
             ),
+            Self::CopyConstructionHasGrouping { target_path } => write!(
+                formatter,
+                "target scope {} copy-current-source construction cannot use grouping",
+                display_path(target_path)
+            ),
             Self::ScalarConstructionHasContent { target_path } => write!(
                 formatter,
                 "target scope {} scalar construction cannot contain bindings or child scopes",
@@ -1121,24 +1155,6 @@ impl std::error::Error for ProgramValidationError {
             Self::NamedTarget { error, .. } => Some(error.as_ref()),
             _ => None,
         }
-    }
-}
-
-impl fmt::Display for SequenceExpressionRole {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Input(index) => write!(formatter, "input {}", index + 1),
-            Self::Item => formatter.write_str("item"),
-        }
-    }
-}
-
-impl fmt::Display for JoinKeySide {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Left => "left",
-            Self::Right => "right",
-        })
     }
 }
 

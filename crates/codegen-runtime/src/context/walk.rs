@@ -15,7 +15,20 @@ impl<'a> ScopeContext<'a> {
             None => true,
         });
         let extensions = if let Some(base) = base {
-            walk_source_frames(base.instance, path, &[], &[])
+            let prefix = if path.is_empty()
+                && base
+                    .collection
+                    .as_ref()
+                    .is_some_and(CollectionIdentity::is_grouped)
+            {
+                base.collection
+                    .as_ref()
+                    .map(CollectionIdentity::path)
+                    .unwrap_or_default()
+            } else {
+                &[]
+            };
+            walk_source_frames(base.instance, path, prefix, &[])
         } else if let Some((name, rest)) = path.split_first()
             && let Some(input) = self.named_input(name)
         {
@@ -54,7 +67,20 @@ impl<'a> ScopeContext<'a> {
             }),
         };
         let extensions = if let Some(base) = base {
-            walk_source_frames(base.instance, path, &[], &[])
+            let prefix = if path.is_empty()
+                && base
+                    .collection
+                    .as_ref()
+                    .is_some_and(CollectionIdentity::is_grouped)
+            {
+                base.collection
+                    .as_ref()
+                    .map(CollectionIdentity::path)
+                    .unwrap_or_default()
+            } else {
+                &[]
+            };
+            walk_source_frames(base.instance, path, prefix, &[])
         } else if let Some((name, rest)) = path.split_first()
             && let Some(input) = self.named_input(name)
         {

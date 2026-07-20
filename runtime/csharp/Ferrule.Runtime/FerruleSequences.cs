@@ -492,6 +492,20 @@ public static class FerruleSequences
         return count.Value <= 0 ? 0 : (ulong)count.Value;
     }
 
+    /// <summary>Coerces and validates one positive grouping block size.</summary>
+    public static ulong PositiveBlockSize(uint node, FerruleValue value)
+    {
+        var size = ItemCount(node, value);
+        if (size == 0)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.InvalidBlockSize,
+                $"Node {node}: grouping block size must be positive.",
+                node: node);
+        }
+        return size;
+    }
+
     /// <summary>Applies evaluated windows from left to right.</summary>
     public static IReadOnlyList<T> ApplyWindows<T>(
         IReadOnlyList<T> items,

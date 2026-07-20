@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use codegen::{
-    AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, InnerJoin,
-    IterationOutput, IterationPlan, IterationSource, JoinSource, JoinSourceCardinality, Program,
-    SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
+    AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, GroupingPlan,
+    InnerJoin, IterationOutput, IterationPlan, IterationSource, JoinSource, JoinSourceCardinality,
+    Program, SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
 };
 use ir::ScalarType;
 
@@ -445,7 +445,9 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
         && sort.is_some_and(|sort| sort.filter_order() == SortFilterOrder::FilterThenSort);
     let has_windows =
         !iteration.windows().is_empty() || iteration.output() == IterationOutput::First;
-    let renumber_output = iteration.filter().is_some() || sort.is_some() || has_windows;
+    let grouping = iteration.grouping();
+    let renumber_output =
+        grouping.is_some() || iteration.filter().is_some() || sort.is_some() || has_windows;
 
     if filter_before_sort {
         render_prefilter(scope, iteration.filter(), output);
@@ -467,8 +469,12 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
     }
 
     render_windows(scope, iteration, output);
-    if has_windows && !filter_before_sort {
+    render_grouping_setup(scope, grouping, output);
+    if !filter_before_sort && (has_windows || grouping.is_some()) {
         render_prefilter(scope, iteration.filter(), output);
+    }
+    if let Some(grouping) = grouping {
+        render_grouping(scope, iteration.input(), grouping, output);
     }
     if has_windows {
         output.push_str(&format!(
@@ -479,7 +485,8 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
     output.push_str(&format!(
         "        var items_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n        foreach (var item_context_{scope} in candidates_{scope})\n        {{\n"
     ));
-    if !filter_before_sort
+    if grouping.is_none()
+        && !filter_before_sort
         && !has_windows
         && let Some(filter) = iteration.filter()
     {
@@ -507,6 +514,58 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
         IterationOutput::First => output.push_str(&format!(
             "        return items_{scope}.Count == 0\n            ? new global::Ferrule.Runtime.FerruleGroup(global::System.Array.Empty<global::Ferrule.Runtime.FerruleField>())\n            : items_{scope}[0];\n"
         )),
+    }
+}
+
+fn render_grouping_setup(scope: usize, grouping: Option<GroupingPlan>, output: &mut String) {
+    let Some(GroupingPlan::IntoBlocks { size }) = grouping else {
+        return;
+    };
+    output.push_str(&format!(
+        "        var grouping_size_{scope} = global::Ferrule.Runtime.FerruleSequences.PositiveBlockSize({size}U, Node_{size}(context));\n"
+    ));
+}
+
+fn render_grouping(
+    scope: usize,
+    input: &IterationSource,
+    grouping: GroupingPlan,
+    output: &mut String,
+) {
+    output.push_str(&format!(
+        "        candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context."
+    ));
+    match grouping {
+        GroupingPlan::By { key } => {
+            output.push_str(&format!("GroupBy(candidates_{scope}, "));
+            render_grouping_path(input, output);
+            output.push_str(&format!(
+                ", candidate_{scope} => Node_{key}(candidate_{scope}))"
+            ));
+        }
+        GroupingPlan::StartingWith { predicate } => {
+            output.push_str(&format!("GroupStartingWith(candidates_{scope}, "));
+            render_grouping_path(input, output);
+            output.push_str(&format!(
+                ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U))"
+            ));
+        }
+        GroupingPlan::IntoBlocks { .. } => {
+            output.push_str(&format!("GroupIntoBlocks(candidates_{scope}, "));
+            render_grouping_path(input, output);
+            output.push_str(&format!(", grouping_size_{scope})"));
+        }
+    }
+    output.push_str(");\n");
+}
+
+fn render_grouping_path(input: &IterationSource, output: &mut String) {
+    match input {
+        IterationSource::Source(source) => render_path(source.path(), output),
+        IterationSource::Generated(_) => render_path(&[], output),
+        IterationSource::InnerJoin(_) => {
+            unreachable!("validated portable grouping cannot own an inner join")
+        }
     }
 }
 

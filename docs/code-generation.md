@@ -84,7 +84,12 @@ The current portable model includes:
 - ordered mapping failure rules over source or generated sequences, with exact
   true/false selection, first-item short-circuiting, and lazy optional messages
 - source-backed empty, nested, and multi-hop iteration
-- filters, stable multi-key sorting, ordered sequence windows, and mapped output
+- exact first-seen key grouping, contiguous starting-marker grouping, and
+  positive fixed-size block grouping over source or generated iteration;
+  grouped bindings read the first member while aggregates and empty-path child
+  scopes retain the complete member collection
+- filters, stable multi-key sorting, ordered sequence windows, and mapped output;
+  grouping runs after the declared filter/sort order and before windows
 - literal tokenization, Unicode-scalar fixed-length tokenization, bounded
   inclusive integer ranges, and bounded recursive depth-first collection
 - existential predicates and 1-based scalar `item-at` over those generated
