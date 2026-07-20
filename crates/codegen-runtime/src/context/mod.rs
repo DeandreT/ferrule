@@ -1,3 +1,4 @@
+mod join;
 mod recursive;
 mod resolve;
 mod walk;
@@ -5,8 +6,11 @@ mod walk;
 #[cfg(test)]
 mod collection_find_tests;
 #[cfg(test)]
+mod join_tests;
+#[cfg(test)]
 mod named_tests;
 
+pub use join::{InnerJoinKey, InnerJoinStage};
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 
 use crate::{ExecutionContext, Instance, RuntimeError, RuntimeValue, Value};
@@ -49,6 +53,8 @@ pub struct ScopeContext<'a> {
 struct ScopeFrame<'a> {
     instance: &'a Instance,
     collection: Option<CollectionIdentity>,
+    join: Option<u64>,
+    join_position: Option<(u64, usize)>,
 }
 
 #[derive(Clone)]
@@ -86,6 +92,8 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                join: None,
+                join_position: None,
             }],
             named_inputs: &[],
             execution: None,
@@ -99,6 +107,8 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                join: None,
+                join_position: None,
             }],
             named_inputs: inputs,
             execution: None,
@@ -113,6 +123,8 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                join: None,
+                join_position: None,
             }],
             named_inputs: &[],
             execution: Some(*execution),
@@ -129,6 +141,8 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                join: None,
+                join_position: None,
             }],
             named_inputs: inputs,
             execution: Some(*execution),
@@ -194,6 +208,15 @@ impl<'a> ScopeContext<'a> {
     /// evaluating the predicate against the original candidate context.
     pub fn with_compact_last_position(&self, compact_index: usize) -> Self {
         let mut compact = self.clone();
+        if let Some((_, position)) = compact
+            .frames
+            .iter_mut()
+            .rev()
+            .find_map(|frame| frame.join_position.as_mut())
+        {
+            *position = compact_index.max(1);
+            return compact;
+        }
         if let Some(collection) = compact
             .frames
             .iter_mut()
@@ -221,6 +244,8 @@ impl<'a> ScopeContext<'a> {
                 .map(|frame| ScopeFrame {
                     instance: frame.instance,
                     collection: frame.collection.clone(),
+                    join: frame.join,
+                    join_position: frame.join_position,
                 })
                 .collect::<Vec<_>>();
             frames.push(collection_frame(
@@ -259,6 +284,8 @@ fn collection_frame<'a>(instance: &'a Instance, collection: CollectionIdentity) 
     ScopeFrame {
         instance,
         collection: Some(collection),
+        join: None,
+        join_position: None,
     }
 }
 

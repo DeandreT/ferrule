@@ -351,7 +351,9 @@ public sealed partial class ScopeContext
         }
 
         var collections = _collections.ToArray();
-        collections[^1] = collections[^1] with { Index = index };
+        collections[^1] = collections[^1].JoinPosition.HasValue
+            ? collections[^1] with { JoinPosition = index }
+            : collections[^1] with { Index = index };
         return new ScopeContext(
             _frames,
             new ReadOnlyCollection<CollectionIdentity>(collections),
@@ -746,7 +748,9 @@ public sealed partial class ScopeContext
     private sealed record CollectionIdentity(
         IReadOnlyList<string> Path,
         FerruleInstance Item,
-        int Index);
+        int Index,
+        ulong? Join = null,
+        int? JoinPosition = null);
 
     private readonly record struct ScalarResolution(bool Found, FerruleValue Value)
     {
