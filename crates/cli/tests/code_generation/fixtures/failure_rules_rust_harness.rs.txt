@@ -1,0 +1,112 @@
+use codegen_runtime::{Instance, NamedInput, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::{execute_outputs_with_sources, execute_with_sources};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let happy = run(Case::None)?;
+    assert_eq!(happy.primary, expected_output());
+    assert_eq!(happy.extras.len(), 1);
+    assert_eq!(happy.extras[0].name, "audit");
+    assert_eq!(happy.extras[0].instance, expected_output());
+
+    failure(Case::Source, 1, Some("invalid:B"));
+    failure(Case::Generated, 2, Some("2"));
+    failure(Case::Named, 3, Some("blocked"));
+    failure(Case::EmptyMessage, 4, Some(""));
+
+    let primary = primary(Case::NonBoolean);
+    let rules = rules(Case::NonBoolean);
+    let inputs = [NamedInput {
+        name: "rules",
+        instance: &rules,
+    }];
+    assert_eq!(
+        execute_with_sources(&primary, &inputs),
+        Err(RuntimeError::NotABool {
+            node: 31,
+            found: "string",
+        })
+    );
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum Case {
+    None,
+    Source,
+    Generated,
+    Named,
+    EmptyMessage,
+    NonBoolean,
+}
+
+fn run(case: Case) -> Result<ferrule_generated_mapping::ExecutionOutputs, RuntimeError> {
+    let primary = primary(case);
+    let rules = rules(case);
+    execute_outputs_with_sources(
+        &primary,
+        &[NamedInput {
+            name: "rules",
+            instance: &rules,
+        }],
+    )
+}
+
+fn failure(case: Case, rule: usize, message: Option<&str>) {
+    assert_eq!(
+        run(case),
+        Err(RuntimeError::MappingFailure {
+            rule,
+            message: message.map(str::to_string),
+        })
+    );
+}
+
+fn primary(case: Case) -> Instance {
+    let rows = match case {
+        Case::Source => vec![row("A", true), row("B", false), row("C", false)],
+        _ => vec![row("A", true), row("B", true)],
+    };
+    let empty = matches!(case, Case::EmptyMessage)
+        .then(|| group(Vec::new()))
+        .into_iter();
+    let bad = matches!(case, Case::NonBoolean)
+        .then(|| group([field("Value", scalar(Value::String("not-bool".into())))]))
+        .into_iter();
+    group([
+        field("Name", scalar(Value::String("mapped".into()))),
+        field(
+            "FailGenerated",
+            scalar(Value::Bool(matches!(case, Case::Generated))),
+        ),
+        field("Row", repeated(rows)),
+        field("EmptyTrigger", repeated(empty)),
+        field("BadTrigger", repeated(bad)),
+    ])
+}
+
+fn row(code: &str, valid: bool) -> Instance {
+    group([
+        field("Code", scalar(Value::String(code.into()))),
+        field("Valid", scalar(Value::Bool(valid))),
+    ])
+}
+
+fn rules(case: Case) -> Instance {
+    let flag = |code: &str, reject| {
+        group([
+            field("Code", scalar(Value::String(code.into()))),
+            field("Reject", scalar(Value::Bool(reject))),
+        ])
+    };
+    group([field(
+        "Flag",
+        repeated([
+            flag("allowed", false),
+            flag("blocked", matches!(case, Case::Named)),
+        ]),
+    )])
+}
+
+fn expected_output() -> Instance {
+    group([field("Name", scalar(Value::String("mapped".into())))])
+}

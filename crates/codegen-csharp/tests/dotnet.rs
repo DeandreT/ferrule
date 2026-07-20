@@ -3,8 +3,9 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, GeneratedSequence, IterationPlan, NamedSourceProgram,
-    NamedTargetProgram, Program, ScalarFunction, TargetScope,
+    Binding, Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
+    GeneratedSequence, IterationPlan, NamedSourceProgram, NamedTargetProgram, Program,
+    RuntimeValue, ScalarFunction, SourceIteration, TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -70,11 +71,13 @@ fn fixture() -> Program {
                 ),
                 SchemaNode::scalar("Condition", ScalarType::Bool),
                 SchemaNode::scalar("ExtraCondition", ScalarType::Bool),
+                SchemaNode::scalar("GeneratedFailure", ScalarType::Bool),
                 SchemaNode::group(
                     "Orders",
                     vec![
                         SchemaNode::scalar("Customer", ScalarType::String),
                         SchemaNode::scalar("OrderCode", ScalarType::String),
+                        SchemaNode::scalar("Blocked", ScalarType::Bool),
                         SchemaNode::group(
                             "Items",
                             vec![SchemaNode::scalar("Sku", ScalarType::String)],
@@ -100,6 +103,7 @@ fn fixture() -> Program {
                             vec![
                                 SchemaNode::scalar("Code", ScalarType::String),
                                 SchemaNode::scalar("DisplayName", ScalarType::String),
+                                SchemaNode::scalar("Blocked", ScalarType::Bool),
                             ],
                         )
                         .repeating(),
@@ -347,6 +351,129 @@ fn fixture() -> Program {
                     path: vec!["catalog".into(), "Customers".into(), "DisplayName".into()],
                 },
             },
+            ExpressionNode {
+                id: 34,
+                expression: Expression::SourceField {
+                    frame: Some(vec!["Orders".into()]),
+                    path: vec!["Blocked".into()],
+                },
+            },
+            ExpressionNode {
+                id: 35,
+                expression: Expression::SourceField {
+                    frame: Some(vec!["Orders".into()]),
+                    path: vec!["OrderCode".into()],
+                },
+            },
+            ExpressionNode {
+                id: 36,
+                expression: Expression::Const {
+                    value: Value::String("blocked:".into()),
+                },
+            },
+            ExpressionNode {
+                id: 37,
+                expression: Expression::Call {
+                    function: ScalarFunction::Concat,
+                    args: vec![36, 35],
+                },
+            },
+            ExpressionNode {
+                id: 38,
+                expression: Expression::SourceField {
+                    frame: Some(vec!["catalog".into(), "Customers".into()]),
+                    path: vec!["Blocked".into()],
+                },
+            },
+            ExpressionNode {
+                id: 39,
+                expression: Expression::SourceField {
+                    frame: Some(vec!["catalog".into(), "Customers".into()]),
+                    path: vec!["DisplayName".into()],
+                },
+            },
+            ExpressionNode {
+                id: 40,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["GeneratedFailure".into()],
+                },
+            },
+            ExpressionNode {
+                id: 41,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 42,
+                expression: Expression::Call {
+                    function: ScalarFunction::Equal,
+                    args: vec![41, 27],
+                },
+            },
+            ExpressionNode {
+                id: 43,
+                expression: Expression::Call {
+                    function: ScalarFunction::And,
+                    args: vec![40, 42],
+                },
+            },
+            ExpressionNode {
+                id: 44,
+                expression: Expression::RuntimeValue {
+                    value: RuntimeValue::MappingFilePath,
+                },
+            },
+            ExpressionNode {
+                id: 45,
+                expression: Expression::Const {
+                    value: Value::String(":".into()),
+                },
+            },
+            ExpressionNode {
+                id: 46,
+                expression: Expression::Call {
+                    function: ScalarFunction::Concat,
+                    args: vec![41, 45, 44],
+                },
+            },
+            ExpressionNode {
+                id: 47,
+                expression: Expression::Const {
+                    value: Value::Bool(false),
+                },
+            },
+        ],
+        failure_rules: vec![
+            FailureRule {
+                iteration: FailureIteration::Source(SourceIteration::new(vec!["Orders".into()])),
+                selection: FailureSelection::WhenTrue(47),
+                message: Some(13),
+            },
+            FailureRule {
+                iteration: FailureIteration::Source(SourceIteration::new(vec!["Orders".into()])),
+                selection: FailureSelection::WhenTrue(34),
+                message: Some(37),
+            },
+            FailureRule {
+                iteration: FailureIteration::Source(SourceIteration::new(vec![
+                    "catalog".into(),
+                    "Customers".into(),
+                ])),
+                selection: FailureSelection::WhenTrue(38),
+                message: Some(39),
+            },
+            FailureRule {
+                iteration: FailureIteration::Generated(GeneratedSequence::Range {
+                    from: None,
+                    to: 26,
+                    item: 41,
+                }),
+                selection: FailureSelection::WhenTrue(43),
+                message: Some(46),
+            },
         ],
         root: TargetScope {
             target_field: String::new(),
@@ -529,6 +656,48 @@ Error(
         Source(FerruleValue.FromBoolean(true), false),
         extraSources));
 
+var sourceFailure = Error(
+    FerruleRuntimeError.MappingFailure,
+    () => GeneratedMapping.ExecuteWithSources(
+        Source(
+            FerruleValue.FromBoolean(false),
+            true,
+            secondOrderBlocked: FerruleValue.FromBoolean(true)),
+        extraSources));
+Assert(sourceFailure.FailureRule == 2);
+Assert(sourceFailure.MappingFailureMessage == "blocked:B");
+Assert(sourceFailure.Message == "mapping failure rule 2: blocked:B");
+var failureNotBoolean = Error(
+    FerruleRuntimeError.NotABool,
+    () => GeneratedMapping.ExecuteWithSources(
+        Source(
+            FerruleValue.FromBoolean(true),
+            true,
+            secondOrderBlocked: FerruleValue.FromString("no")),
+        extraSources));
+Assert(failureNotBoolean.Node == 34U);
+Assert(failureNotBoolean.FoundKind == FerruleValueKind.String);
+var namedSourceFailure = Error(
+    FerruleRuntimeError.MappingFailure,
+    () => GeneratedMapping.ExecuteWithSources(source, ExtraSources(true)));
+Assert(namedSourceFailure.FailureRule == 3);
+Assert(namedSourceFailure.MappingFailureMessage == "Lin Clark");
+var generatedFailureSource = Source(
+    FerruleValue.FromBoolean(true),
+    true,
+    generatedFailure: true);
+var generatedFailure = Error(
+    FerruleRuntimeError.MappingFailure,
+    () => GeneratedMapping.ExecuteWithSources(
+        generatedFailureSource,
+        extraSources,
+        executionContext));
+Assert(generatedFailure.FailureRule == 4);
+Assert(generatedFailure.MappingFailureMessage == "2:mapping.ferrule");
+Error(
+    FerruleRuntimeError.MissingRuntimeValue,
+    () => GeneratedMapping.ExecuteWithSources(generatedFailureSource, extraSources));
+
 NamedSourceError(FerruleRuntimeError.MissingNamedSource, "catalog", () => GeneratedMapping.Execute(source));
 NamedSourceError(
     FerruleRuntimeError.MissingNamedSource,
@@ -572,7 +741,9 @@ Console.WriteLine("generated mapping passed");
 static FerruleGroup Source(
     FerruleValue condition,
     bool extraCondition,
-    bool primarySettings = true)
+    bool primarySettings = true,
+    bool generatedFailure = false,
+    FerruleValue? secondOrderBlocked = null)
 {
     var fields = new List<FerruleField>
     {
@@ -582,12 +753,14 @@ static FerruleGroup Source(
         })),
         new("Condition", new FerruleScalar(condition)),
         new("ExtraCondition", new FerruleScalar(FerruleValue.FromBoolean(extraCondition))),
+        new("GeneratedFailure", new FerruleScalar(FerruleValue.FromBoolean(generatedFailure))),
         new("Orders", new FerruleRepeated(new FerruleInstance[]
         {
             new FerruleGroup(new FerruleField[]
             {
                 new("Customer", new FerruleScalar(FerruleValue.FromString("Ada"))),
                 new("OrderCode", new FerruleScalar(FerruleValue.FromString("A"))),
+                new("Blocked", new FerruleScalar(FerruleValue.FromBoolean(false))),
                 new("Items", new FerruleRepeated(new FerruleInstance[]
                 {
                     new FerruleGroup(new FerruleField[]
@@ -604,6 +777,8 @@ static FerruleGroup Source(
             {
                 new("Customer", new FerruleScalar(FerruleValue.FromString("Lin"))),
                 new("OrderCode", new FerruleScalar(FerruleValue.FromString("B"))),
+                new("Blocked", new FerruleScalar(
+                    secondOrderBlocked ?? FerruleValue.FromBoolean(false))),
                 new("Items", new FerruleRepeated(new FerruleInstance[]
                 {
                     new FerruleGroup(new FerruleField[]
@@ -624,7 +799,7 @@ static FerruleGroup Source(
     return new FerruleGroup(fields);
 }
 
-static NamedInput[] ExtraSources() =>
+static NamedInput[] ExtraSources(bool secondCustomerBlocked = false) =>
     new NamedInput[]
     {
         new(
@@ -639,17 +814,18 @@ static NamedInput[] ExtraSources() =>
             {
                 new("Customers", new FerruleRepeated(new FerruleInstance[]
                 {
-                    Customer("Ada", "Ada Lovelace"),
-                    Customer("Lin", "Lin Clark"),
+                    Customer("Ada", "Ada Lovelace", false),
+                    Customer("Lin", "Lin Clark", secondCustomerBlocked),
                 })),
             })),
     };
 
-static FerruleGroup Customer(string code, string displayName) =>
+static FerruleGroup Customer(string code, string displayName, bool blocked) =>
     new(new FerruleField[]
     {
         new("Code", new FerruleScalar(FerruleValue.FromString(code))),
         new("DisplayName", new FerruleScalar(FerruleValue.FromString(displayName))),
+        new("Blocked", new FerruleScalar(FerruleValue.FromBoolean(blocked))),
     });
 
 static void Assert(bool condition)

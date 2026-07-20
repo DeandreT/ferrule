@@ -14,6 +14,8 @@ use codegen::{
 use ir::{ScalarType, Value};
 use mapping::NodeId;
 
+mod failure;
+
 /// How a generated Cargo project locates ferrule's small Rust runtime.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeDependency {
@@ -241,7 +243,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     }
 
     source.push_str(
-        "fn execute_outputs_from_context(\n    context: &ScopeContext<'_>,\n) -> Result<ExecutionOutputs, RuntimeError> {\n    let primary = scope_root(context)?;\n",
+        "fn execute_outputs_from_context(\n    context: &ScopeContext<'_>,\n) -> Result<ExecutionOutputs, RuntimeError> {\n    evaluate_failure_rules(context)?;\n    let primary = scope_root(context)?;\n",
     );
     source.push_str(&format!(
         "    let mut extras = Vec::with_capacity({});\n",
@@ -258,6 +260,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     for node in &program.expressions {
         source.push_str(&render_expression(node.id, &node.expression)?);
     }
+    source.push_str(&failure::render(program));
 
     let mut scopes = Vec::new();
     collect_scopes(&program.root, "scope_root".to_string(), &mut scopes);

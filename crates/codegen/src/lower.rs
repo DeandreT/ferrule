@@ -4,10 +4,11 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
-    Binding, Diagnostic, Expression, ExpressionNode, GeneratedSequence, IterationPlan,
-    IterationSource, LowerError, NamedSourceProgram, NamedTargetProgram, Program, ProjectFeature,
-    ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan,
-    SourceIteration, TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
+    Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
+    FailureRuleFeature, FailureSelection, GeneratedSequence, IterationPlan, IterationSource,
+    LowerError, NamedSourceProgram, NamedTargetProgram, Program, ScalarFunction,
+    ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration,
+    TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -25,7 +26,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     }
 
     let mut diagnostics = Vec::new();
-    inspect_project_features(project, &mut diagnostics);
+    inspect_dynamic_sources(project, &mut diagnostics);
     let extra_sources = project
         .extra_sources
         .iter()
@@ -37,6 +38,12 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         .collect();
 
     let mut roots = Vec::new();
+    let failure_rules = project
+        .failure_rules
+        .iter()
+        .enumerate()
+        .filter_map(|(index, rule)| lower_failure_rule(index, rule, &mut roots, &mut diagnostics))
+        .collect();
     let mut target_path = Vec::new();
     let root = lower_scope(
         &project.root,
@@ -78,6 +85,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             extra_sources,
             target: project.target.clone(),
             expressions,
+            failure_rules,
             root,
             extra_targets,
         })
@@ -86,7 +94,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     }
 }
 
-fn inspect_project_features(project: &Project, diagnostics: &mut Vec<Diagnostic>) {
+fn inspect_dynamic_sources(project: &Project, diagnostics: &mut Vec<Diagnostic>) {
     for source in &project.extra_sources {
         if let Some(dynamic) = &source.dynamic_path {
             diagnostics.push(Diagnostic::UnsupportedDynamicSource {
@@ -96,12 +104,47 @@ fn inspect_project_features(project: &Project, diagnostics: &mut Vec<Diagnostic>
             });
         }
     }
-    if !project.failure_rules.is_empty() {
-        diagnostics.push(Diagnostic::UnsupportedProject {
-            feature: ProjectFeature::FailureRules,
-            count: project.failure_rules.len(),
-        });
-    }
+}
+
+fn lower_failure_rule(
+    index: usize,
+    rule: &mapping::FailureRule,
+    roots: &mut Vec<NodeId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<FailureRule> {
+    roots.extend(rule.selection.predicate());
+    roots.extend(rule.message);
+    let iteration = match &rule.iteration {
+        mapping::FailureIteration::Source { collection } => {
+            FailureIteration::Source(SourceIteration::new(collection.clone()))
+        }
+        mapping::FailureIteration::Sequence { sequence } => {
+            roots.extend(sequence.inputs());
+            roots.push(sequence.item());
+            let Some(sequence) = lower_generated_sequence(sequence) else {
+                diagnostics.push(Diagnostic::UnsupportedFailureRule {
+                    rule: index + 1,
+                    feature: FailureRuleFeature::GeneratedSequence(
+                        UnsupportedSequenceKind::TokenizeRegex,
+                    ),
+                });
+                return None;
+            };
+            FailureIteration::Generated(sequence)
+        }
+    };
+    let selection = match rule.selection {
+        mapping::FailureSelection::All => FailureSelection::All,
+        mapping::FailureSelection::WhenTrue { predicate } => FailureSelection::WhenTrue(predicate),
+        mapping::FailureSelection::WhenFalse { predicate } => {
+            FailureSelection::WhenFalse(predicate)
+        }
+    };
+    Some(FailureRule {
+        iteration,
+        selection,
+        message: rule.message,
+    })
 }
 
 fn lower_scope(

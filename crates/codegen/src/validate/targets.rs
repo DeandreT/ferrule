@@ -2,12 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mapping::NodeId;
 
-use crate::{Expression, Program};
+use crate::{Expression, Program, TargetScope};
 
+use super::sequences;
 use super::sources::SourceCatalog;
-use super::{
-    ProgramValidationError, ScopeSchemas, SequenceOwner, collect_sequence_items, validate_scope,
-};
+use super::{ProgramValidationError, ScopeSchemas, SequenceOwner, validate_scope};
 
 #[derive(Clone, Copy)]
 pub(super) enum TargetOwner<'a> {
@@ -27,12 +26,12 @@ impl TargetOwner<'_> {
     }
 }
 
-pub(super) fn validate(
+pub(super) fn collect_sequence_items(
     program: &Program,
     expressions: &BTreeMap<NodeId, &Expression>,
     sequence_items: &mut BTreeMap<NodeId, SequenceOwner>,
 ) -> Result<(), ProgramValidationError> {
-    collect_sequence_items(
+    collect_scope_sequence_items(
         expressions,
         &program.root,
         &mut Vec::new(),
@@ -40,7 +39,7 @@ pub(super) fn validate(
         sequence_items,
     )?;
     for target in &program.extra_targets {
-        collect_sequence_items(
+        collect_scope_sequence_items(
             expressions,
             &target.root,
             &mut Vec::new(),
@@ -49,7 +48,43 @@ pub(super) fn validate(
         )?;
     }
 
-    let sequence_items = sequence_items.keys().copied().collect::<BTreeSet<_>>();
+    Ok(())
+}
+
+fn collect_scope_sequence_items(
+    expressions: &BTreeMap<NodeId, &Expression>,
+    scope: &TargetScope,
+    target_path: &mut Vec<String>,
+    target_owner: TargetOwner<'_>,
+    owners: &mut BTreeMap<NodeId, SequenceOwner>,
+) -> Result<(), ProgramValidationError> {
+    if let Some(sequence) = scope
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.generated_sequence())
+    {
+        sequences::register_item(
+            sequence,
+            target_owner.sequence_owner(target_path),
+            expressions,
+            owners,
+        )?;
+    }
+    for child in &scope.children {
+        target_path.push(child.target_field.clone());
+        let result =
+            collect_scope_sequence_items(expressions, child, target_path, target_owner, owners);
+        target_path.pop();
+        result?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate(
+    program: &Program,
+    expressions: &BTreeMap<NodeId, &Expression>,
+    sequence_items: &BTreeSet<NodeId>,
+) -> Result<(), ProgramValidationError> {
     let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     validate_scope(
         &program.root,
@@ -61,7 +96,7 @@ pub(super) fn validate(
             target_owner: TargetOwner::Primary,
         },
         &mut Vec::new(),
-        &sequence_items,
+        sequence_items,
         &[],
     )?;
     for target in &program.extra_targets {
@@ -75,7 +110,7 @@ pub(super) fn validate(
                 target_owner: TargetOwner::Named(&target.name),
             },
             &mut Vec::new(),
-            &sequence_items,
+            sequence_items,
             &[],
         )
         .map_err(|error| ProgramValidationError::NamedTarget {

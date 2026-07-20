@@ -8,6 +8,7 @@ use crate::{
 };
 
 mod collections;
+mod failures;
 mod invariants;
 mod sources;
 
@@ -34,6 +35,7 @@ fn program() -> Program {
                 },
             },
         ],
+        failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
             repeating: false,
