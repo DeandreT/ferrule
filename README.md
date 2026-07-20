@@ -88,6 +88,7 @@ cargo +nightly run -p cli -- --diagnostics json validate --project project.json
 - [Supported formats](docs/formats.md)
 - [MFD interoperability](docs/mfd-interop.md)
 - [Rust and C# code generation](docs/code-generation.md)
+- [Runnable generated Rust and C# hosts](examples/codegen/)
 - [Workflow-parity roadmap](ROADMAP.md)
 
 The integration fixtures under `crates/cli/tests/fixtures/` are executable
