@@ -3,6 +3,8 @@ mod resolve;
 mod walk;
 
 #[cfg(test)]
+mod collection_find_tests;
+#[cfg(test)]
 mod named_tests;
 
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};

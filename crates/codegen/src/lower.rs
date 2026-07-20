@@ -467,6 +467,15 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             matches: *matches,
             value: value.clone(),
         },
+        Node::CollectionFind {
+            collection,
+            predicate,
+            value,
+        } => Expression::CollectionFind {
+            collection: collection.clone(),
+            predicate: *predicate,
+            value: *value,
+        },
         Node::Aggregate {
             function,
             collection,
@@ -516,7 +525,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::JoinPosition { .. } => UnsupportedNodeKind::JoinPosition,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
-        Node::CollectionFind { .. } => UnsupportedNodeKind::CollectionFind,
         Node::SequenceExists { .. } => UnsupportedNodeKind::SequenceExists,
         Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
@@ -528,6 +536,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::If { .. }
         | Node::ValueMap { .. }
         | Node::Lookup { .. }
+        | Node::CollectionFind { .. }
         | Node::Aggregate { .. } => {
             unreachable!("portable expressions are handled above")
         }

@@ -6,7 +6,7 @@ namespace Ferrule.Runtime;
 /// <summary>
 /// Immutable source frames and active collection identities for one scope item.
 /// </summary>
-public sealed class ScopeContext
+public sealed partial class ScopeContext
 {
     private readonly IReadOnlyList<FerruleInstance> _frames;
     private readonly IReadOnlyList<CollectionIdentity> _collections;

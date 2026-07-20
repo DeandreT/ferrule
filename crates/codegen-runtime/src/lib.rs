@@ -208,6 +208,21 @@ pub fn require_bool(node: u32, value: Value) -> Result<bool, RuntimeError> {
     }
 }
 
+/// Applies collection-find's nullable predicate rule.
+///
+/// `Null` and XML nil skip the current candidate, while any other non-boolean
+/// value retains the interpreter's typed predicate failure.
+pub fn collection_find_selected(node: u32, value: Value) -> Result<bool, RuntimeError> {
+    match value {
+        Value::Bool(value) => Ok(value),
+        Value::Null | Value::XmlNil(_) => Ok(false),
+        value => Err(RuntimeError::NotABool {
+            node,
+            found: value.type_name(),
+        }),
+    }
+}
+
 /// One ordered field supplied to [`group`].
 pub type GroupField = (String, Instance);
 
