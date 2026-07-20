@@ -1,33 +1,57 @@
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
-var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false, false));
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(false, false, false, false, false, false));
 foreach (var (group, name, expected) in ExpectedValues())
 {
     AssertValue(output, group, name, expected);
 }
 AssertError(
-    () => GeneratedMapping.Execute(Source(true, false, false)),
+    () => GeneratedMapping.Execute(Source(true, false, false, false, false, false)),
     FerruleRuntimeError.FunctionType,
     "substring",
     found: FerruleValueKind.Int64);
 AssertError(
-    () => GeneratedMapping.Execute(Source(false, true, false)),
+    () => GeneratedMapping.Execute(Source(false, true, false, false, false, false)),
     FerruleRuntimeError.FunctionInvalidArgument,
     "isbn10_to_isbn13",
     detail: "ISBN-10 check digit is invalid");
 AssertError(
-    () => GeneratedMapping.Execute(Source(false, false, true)),
+    () => GeneratedMapping.Execute(Source(false, false, true, false, false, false)),
     FerruleRuntimeError.FunctionArity,
     "date_from_datetime",
     expectedArity: 1,
     actualArity: 0);
+AssertError(
+    () => GeneratedMapping.Execute(Source(false, false, false, true, false, false)),
+    FerruleRuntimeError.FunctionInvalidArgument,
+    "to_number",
+    detail: "requires a finite numeric value");
+AssertError(
+    () => GeneratedMapping.Execute(Source(false, false, false, false, true, false)),
+    FerruleRuntimeError.FunctionType,
+    "delay_passthrough",
+    found: FerruleValueKind.Bool);
+AssertError(
+    () => GeneratedMapping.Execute(Source(false, false, false, false, false, true)),
+    FerruleRuntimeError.FunctionInvalidArgument,
+    "delay_passthrough",
+    detail: "requires a finite nonnegative duration");
 
-static FerruleGroup Source(bool failType, bool failInvalid, bool failArity) => new(new FerruleField[]
+static FerruleGroup Source(
+    bool failType,
+    bool failInvalid,
+    bool failArity,
+    bool failNumberInvalid,
+    bool failDelayType,
+    bool failDelayInvalid) => new(new FerruleField[]
 {
     new("FailType", new FerruleScalar(FerruleValue.FromBoolean(failType))),
     new("FailInvalid", new FerruleScalar(FerruleValue.FromBoolean(failInvalid))),
     new("FailArity", new FerruleScalar(FerruleValue.FromBoolean(failArity))),
+    new("FailNumberInvalid", new FerruleScalar(FerruleValue.FromBoolean(failNumberInvalid))),
+    new("FailDelayType", new FerruleScalar(FerruleValue.FromBoolean(failDelayType))),
+    new("FailDelayInvalid", new FerruleScalar(FerruleValue.FromBoolean(failDelayInvalid))),
     new("NaN", new FerruleScalar(FerruleValue.FromDouble(double.NaN))),
     new("Infinity", new FerruleScalar(FerruleValue.FromDouble(double.PositiveInfinity))),
 });
@@ -101,9 +125,28 @@ static IEnumerable<(string Group, string Name, FerruleValue Value)> ExpectedValu
     yield return ("Date", "DateTime", Text("2024-03-01"));
     yield return ("Date", "DateOnly", Text("2024-03-01Z"));
     yield return ("Date", "MultipleT", Text("alpha"));
+    yield return ("Conversions", "Trimmed", Text("value"));
+    yield return ("Conversions", "NumericInt", FerruleValue.FromBoolean(true));
+    yield return ("Conversions", "NumericDecimal", FerruleValue.FromBoolean(true));
+    yield return ("Conversions", "NumericOverflow", FerruleValue.FromBoolean(true));
+    yield return ("Conversions", "NumericInfinity", FerruleValue.FromBoolean(false));
+    yield return ("Conversions", "NumericNull", FerruleValue.FromBoolean(false));
+    yield return ("Conversions", "NumericXmlNil", FerruleValue.FromBoolean(false));
+    yield return ("Conversions", "NumericBool", FerruleValue.FromBoolean(false));
+    yield return ("Conversions", "NumberInt", FerruleValue.FromInt64(long.MaxValue));
+    yield return ("Conversions", "NumberMin", FerruleValue.FromInt64(long.MinValue));
+    yield return ("Conversions", "NumberFloat", FerruleValue.FromDouble(12.5));
+    yield return ("Conversions", "NumberExponent", FerruleValue.FromDouble(1000.0));
+    yield return ("Conversions", "NumberNegativeZero", FerruleValue.FromDouble(-0.0));
+    yield return ("Conversions", "NumberNull", FerruleValue.Null);
+    yield return ("Conversions", "DelayText", Text("ready"));
+    yield return ("Conversions", "DelayNil", FerruleValue.XmlNil);
     yield return ("Errors", "Type", Text("safe-type"));
     yield return ("Errors", "Invalid", Text("safe-invalid"));
     yield return ("Errors", "Arity", Text("safe-arity"));
+    yield return ("Errors", "NumberInvalid", Text("safe-number"));
+    yield return ("Errors", "DelayType", Text("safe-delay-type"));
+    yield return ("Errors", "DelayInvalid", Text("safe-delay-invalid"));
 }
 
 static FerruleValue Text(string value) => FerruleValue.FromString(value);
