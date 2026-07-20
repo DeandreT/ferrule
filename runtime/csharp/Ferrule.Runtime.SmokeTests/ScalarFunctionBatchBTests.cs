@@ -12,6 +12,7 @@ internal static partial class Program
         IsbnFunction();
         RoundFunction();
         DateFromDateTimeFunction();
+        DateTimeExtractorFunctions();
     }
 
     private static void SubstringFunctions()
@@ -238,6 +239,90 @@ internal static partial class Program
         CallEquals(Text(string.Empty), "date_from_datetime", Text("T10:30:00"));
         AssertFunctionArity("date_from_datetime", 1, Array.Empty<FerruleValue>());
         AssertFunctionType("date_from_datetime", FerruleValue.Null);
+    }
+
+    private static void DateTimeExtractorFunctions()
+    {
+        CallEquals(
+            FerruleValue.FromInt64(1999),
+            "year_from_datetime",
+            Text("1999-12-31T19:20:00-05:00"));
+        CallEquals(
+            FerruleValue.FromInt64(2000),
+            "year_from_datetime",
+            Text("1999-12-31T24:00:00"));
+        CallEquals(
+            FerruleValue.FromInt64(1),
+            "year_from_datetime",
+            Text("-0001-12-31T24:00:00.0Z"));
+        CallEquals(
+            FerruleValue.FromInt64(long.MinValue),
+            "year_from_datetime",
+            Text("-9223372036854775808-01-01"));
+        CallEquals(
+            FerruleValue.FromInt64(3),
+            "month_from_datetime",
+            Text("2000-02-29T24:00:00"));
+        CallEquals(
+            FerruleValue.FromInt64(1),
+            "month_from_datetime",
+            Text("1999-12-31T24:00:00"));
+        CallEquals(
+            FerruleValue.FromInt64(1),
+            "day_from_datetime",
+            Text("2000-02-29T24:00:00"));
+        CallEquals(
+            FerruleValue.FromInt64(8),
+            "day_from_datetime",
+            Text("2019-07-08-05:00"));
+        CallEquals(
+            FerruleValue.FromInt64(0),
+            "hours_from_datetime",
+            Text("1999-12-31T24:00:00.000-05:00"));
+        CallEquals(
+            FerruleValue.FromInt64(59),
+            "minutes_from_datetime",
+            Text("-0004-02-29T23:59:59.5+14:00"));
+        CallEquals(
+            Text("09:30:02.5+05:00"),
+            "time_from_datetime",
+            Text("2001-12-17T09:30:02.5+05:00"));
+
+        foreach (var function in new[]
+        {
+            "year_from_datetime",
+            "month_from_datetime",
+            "day_from_datetime",
+            "hours_from_datetime",
+            "minutes_from_datetime",
+        })
+        {
+            CallEquals(FerruleValue.Null, function, FerruleValue.Null);
+            AssertFunctionArity(function, 1, Array.Empty<FerruleValue>());
+            AssertFunctionType(function, FerruleValue.FromInt64(1));
+        }
+
+        AssertFunctionType("time_from_datetime", FerruleValue.Null);
+        AssertInvalidArgument(
+            "year_from_datetime",
+            "requires a valid ISO date or dateTime",
+            Text("9223372036854775807-12-31T24:00:00"));
+        AssertInvalidArgument(
+            "month_from_datetime",
+            "requires a valid ISO date or dateTime",
+            Text("2001-02-29T00:00:00"));
+        AssertInvalidArgument(
+            "hours_from_datetime",
+            "requires a valid ISO dateTime",
+            Text("2024-01-01"));
+        AssertInvalidArgument(
+            "minutes_from_datetime",
+            "requires a valid ISO dateTime",
+            Text("2024-01-01T00:00:00+15:00"));
+        AssertInvalidArgument(
+            "time_from_datetime",
+            "requires a value matching a supported date/time picture",
+            Text("2001-02-29T09:30:02"));
     }
 
     private static void AssertInvalidArgument(
