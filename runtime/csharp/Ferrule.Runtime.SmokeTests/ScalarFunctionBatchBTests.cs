@@ -316,6 +316,13 @@ internal static partial class Program
             FerruleValue.FromInt64(8),
             "day_from_datetime",
             Text("2019-07-08-05:00"));
+        CallEquals(FerruleValue.FromInt64(4), "weekday", Text("1970-01-01T00:00:00Z"));
+        CallEquals(FerruleValue.FromInt64(1), "weekday", Text("2024-03-04"));
+        CallEquals(FerruleValue.FromInt64(6), "weekday", Text("1999-12-31T24:00:00"));
+        CallEquals(
+            FerruleValue.FromInt64(6),
+            "weekday",
+            Text("1000000000000000000002400-01-01"));
         CallEquals(
             FerruleValue.FromInt64(0),
             "hours_from_datetime",
@@ -334,6 +341,7 @@ internal static partial class Program
             "year_from_datetime",
             "month_from_datetime",
             "day_from_datetime",
+            "weekday",
             "hours_from_datetime",
             "minutes_from_datetime",
         })

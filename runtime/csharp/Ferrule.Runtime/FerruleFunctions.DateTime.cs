@@ -95,6 +95,45 @@ public static partial class FerruleFunctions
         return FerruleValue.FromInt64(day);
     }
 
+    private static FerruleValue Weekday(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "weekday";
+        var value = NullableStringArgument(arguments, function);
+        if (value is null)
+        {
+            return FerruleValue.Null;
+        }
+
+        var date = ValidatedLocalDate(value, function);
+        var (month, day) = date.NormalizedMonthDay();
+        var year = YearModulo400(date.Year);
+        if (date.RollsYear)
+        {
+            year = (year + 1) % 400;
+        }
+        if (month < 3)
+        {
+            year = (year + 399) % 400;
+        }
+        ReadOnlySpan<uint> monthOffsets = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+        var sundayBased = (
+            year + year / 4 - year / 100 + year / 400 + monthOffsets[(int)month - 1] + day
+        ) % 7;
+        return FerruleValue.FromInt64(sundayBased == 0 ? 7 : sundayBased);
+    }
+
+    private static uint YearModulo400(string year)
+    {
+        var negative = year.StartsWith("-", StringComparison.Ordinal);
+        var digits = negative ? year.AsSpan(1) : year.AsSpan();
+        uint magnitude = 0;
+        foreach (var digit in digits)
+        {
+            magnitude = (magnitude * 10 + (uint)(digit - '0')) % 400;
+        }
+        return negative ? (401 - magnitude) % 400 : magnitude;
+    }
+
     private static FerruleValue HoursFromDateTime(IReadOnlyList<FerruleValue> arguments)
     {
         const string function = "hours_from_datetime";

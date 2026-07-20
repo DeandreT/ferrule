@@ -52,6 +52,8 @@ internal static partial class Program
         CallEquals(Text("replacement"), "substitute_missing", FerruleValue.Null, Text("replacement"));
         CallEquals(Text("replacement"), "substitute_missing", FerruleValue.XmlNil, Text("replacement"));
         CallEquals(Text("present"), "substitute_missing", Text("present"), Text("replacement"));
+        CallEquals(FerruleValue.XmlNil, "substitute_missing_with_xml_nil", FerruleValue.Null);
+        CallEquals(Text("present"), "substitute_missing_with_xml_nil", Text("present"));
         CallEquals(Bool(false), "is_xml_nil", FerruleValue.Null);
         CallEquals(Bool(true), "is_xml_nil", FerruleValue.XmlNil);
 
@@ -66,6 +68,17 @@ internal static partial class Program
         {
             CallEquals(Text(folder), "get_folder", Text(path));
             CallEquals(Text(filename), "remove_folder", Text(path));
+        }
+        foreach (var (path, extension) in new[]
+        {
+            ("/var/data/file.xml", ".xml"),
+            (@"C:\data\archive.tar.gz", ".gz"),
+            ("folder.name/file", string.Empty),
+            (".profile", ".profile"),
+            ("file.", "."),
+        })
+        {
+            CallEquals(Text(extension), "get_fileext", Text(path));
         }
 
         foreach (var (basePath, path, expected) in new[]
@@ -94,8 +107,10 @@ internal static partial class Program
         AssertFunctionType("substring_after", Text("value"), FerruleValue.FromInt64(1));
         AssertFunctionArity("string", 1, Text("one"), Text("two"));
         AssertFunctionArity("substitute_missing", 2, FerruleValue.Null);
+        AssertFunctionArity("substitute_missing_with_xml_nil", 1, Array.Empty<FerruleValue>());
         AssertFunctionArity("is_xml_nil", 1, FerruleValue.Null, FerruleValue.XmlNil);
         AssertFunctionType("get_folder", Bool(false));
+        AssertFunctionType("get_fileext", Bool(false));
         AssertFunctionArity("resolve_filepath", 2, Text("base"));
         AssertFunctionType("resolve_filepath", Text("base"), Bool(false));
     }

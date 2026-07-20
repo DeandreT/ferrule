@@ -58,6 +58,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "year_from_datetime" => year_from_datetime(args),
         "month_from_datetime" => month_from_datetime(args),
         "day_from_datetime" => day_from_datetime(args),
+        "weekday" => weekday(args),
         "hours_from_datetime" => hours_from_datetime(args),
         "minutes_from_datetime" => minutes_from_datetime(args),
         "time_from_datetime" => datetime::time_from_datetime(args),
@@ -70,8 +71,10 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "edifact_to_datetime" => datetime::edifact_to_datetime(args),
         "coerce_datetime" => datetime::coerce_datetime(args),
         "substitute_missing" => substitute_missing(args),
+        "substitute_missing_with_xml_nil" => substitute_missing_with_xml_nil(args),
         "get_folder" => filepath::get_folder(args),
         "remove_folder" => filepath::remove_folder(args),
+        "get_fileext" => filepath::get_fileext(args),
         "resolve_filepath" => filepath::resolve_filepath(args),
         "is_xml_nil" => is_xml_nil(args),
         "isbn10_to_isbn13" => isbn10_to_isbn13(args),
@@ -873,6 +876,45 @@ fn day_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     Ok(Value::Int(i64::from(day)))
 }
 
+/// The ISO weekday of the local date, where Monday is 1 and Sunday is 7.
+fn weekday(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "weekday";
+    let Some(value) = nullable_string_arg(args, FUNCTION)? else {
+        return Ok(Value::Null);
+    };
+    let date = validated_local_date(value, FUNCTION)?;
+    let (month, day) = date.normalized_month_day();
+    let mut year = year_mod_400(date.year);
+    if date.rolls_year() {
+        year = (year + 1) % 400;
+    }
+    if month < 3 {
+        year = (year + 399) % 400;
+    }
+    const MONTH_OFFSETS: [u32; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let sunday_based =
+        (year + year / 4 - year / 100 + year / 400 + MONTH_OFFSETS[month as usize - 1] + day) % 7;
+    Ok(Value::Int(i64::from(if sunday_based == 0 {
+        7
+    } else {
+        sunday_based
+    })))
+}
+
+fn year_mod_400(year: &str) -> u32 {
+    let (negative, digits) = year
+        .strip_prefix('-')
+        .map_or((false, year), |digits| (true, digits));
+    let magnitude = digits.bytes().fold(0, |value, digit| {
+        (value * 10 + u32::from(digit - b'0')) % 400
+    });
+    if negative {
+        (401 - magnitude) % 400
+    } else {
+        magnitude
+    }
+}
+
 /// The local hour component of an ISO dateTime, without timezone adjustment.
 fn hours_from_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     const FUNCTION: &str = "hours_from_datetime";
@@ -1071,6 +1113,18 @@ fn substitute_missing(args: &[Value]) -> Result<Value, FunctionError> {
         _ => Err(FunctionError::ArityMismatch {
             function: "substitute_missing",
             expected: 2,
+            got: args.len(),
+        }),
+    }
+}
+
+fn substitute_missing_with_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {
+    match args {
+        [Value::Null] => Ok(Value::xml_nil()),
+        [value] => Ok(value.clone()),
+        _ => Err(FunctionError::ArityMismatch {
+            function: "substitute_missing_with_xml_nil",
+            expected: 1,
             got: args.len(),
         }),
     }

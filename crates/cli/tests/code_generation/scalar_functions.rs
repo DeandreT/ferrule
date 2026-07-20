@@ -262,6 +262,7 @@ fn scalar_function_project() -> Project {
         ],
     );
     let missing_int = graph.call_values("substitute_missing", vec![Value::Int(0), Value::Int(9)]);
+    let missing_xml_nil = graph.call_values("substitute_missing_with_xml_nil", vec![Value::Null]);
     add_group(
         &mut target,
         &mut scopes,
@@ -271,6 +272,7 @@ fn scalar_function_project() -> Project {
             ("Nil", ScalarType::String, missing_nil),
             ("Empty", ScalarType::String, missing_empty),
             ("Int", ScalarType::Int, missing_int),
+            ("XmlNil", ScalarType::String, missing_xml_nil),
         ],
     );
 
@@ -299,6 +301,7 @@ fn scalar_function_project() -> Project {
     };
     let mixed_folder = path(&mut graph, "get_folder", &[r"one/two\file.xml"]);
     let mixed_name = path(&mut graph, "remove_folder", &[r"one/two\file.xml"]);
+    let extension = path(&mut graph, "get_fileext", &[r"one/two\archive.tar.gz"]);
     let url_folder = path(
         &mut graph,
         "get_folder",
@@ -342,6 +345,7 @@ fn scalar_function_project() -> Project {
         vec![
             ("MixedFolder", ScalarType::String, mixed_folder),
             ("MixedName", ScalarType::String, mixed_name),
+            ("Extension", ScalarType::String, extension),
             ("UrlFolder", ScalarType::String, url_folder),
             ("DriveFolder", ScalarType::String, drive_folder),
             ("MixedBase", ScalarType::String, mixed_base),
@@ -365,6 +369,7 @@ fn scalar_function_project() -> Project {
         "day_from_datetime",
         vec![Value::String("1999-12-31T24:00:00".into())],
     );
+    let weekday = graph.call_values("weekday", vec![Value::String("1999-12-31T24:00:00".into())]);
     let hour = graph.call_values(
         "hours_from_datetime",
         vec![Value::String("1999-12-31T24:00:00.000-05:00".into())],
@@ -442,6 +447,7 @@ fn scalar_function_project() -> Project {
             ("Year", ScalarType::Int, year),
             ("Month", ScalarType::Int, month),
             ("Day", ScalarType::Int, day),
+            ("Weekday", ScalarType::Int, weekday),
             ("Hour", ScalarType::Int, hour),
             ("Minute", ScalarType::Int, minute),
             ("Time", ScalarType::String, time),
@@ -590,6 +596,7 @@ fn expected() -> Instance {
                 ("Nil", Value::String("fallback-nil".into())),
                 ("Empty", Value::String(String::new())),
                 ("Int", Value::Int(0)),
+                ("XmlNil", Value::xml_nil()),
             ]),
         ),
         (
@@ -605,6 +612,7 @@ fn expected() -> Instance {
             values(vec![
                 ("MixedFolder", Value::String("one/two\\".into())),
                 ("MixedName", Value::String("file.xml".into())),
+                ("Extension", Value::String(".gz".into())),
                 ("UrlFolder", Value::String("https://example.test/a/".into())),
                 ("DriveFolder", Value::String("C:\\work\\data\\".into())),
                 (
@@ -630,6 +638,7 @@ fn expected() -> Instance {
                 ("Year", Value::Int(1)),
                 ("Month", Value::Int(3)),
                 ("Day", Value::Int(1)),
+                ("Weekday", Value::Int(6)),
                 ("Hour", Value::Int(0)),
                 ("Minute", Value::Int(59)),
                 ("Time", Value::String("09:30:02.5+05:00".into())),

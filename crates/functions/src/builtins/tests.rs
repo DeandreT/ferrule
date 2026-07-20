@@ -885,6 +885,36 @@ fn day_from_datetime_rejects_invalid_calls() {
 }
 
 #[test]
+fn weekday_uses_iso_monday_numbering_and_local_dates() {
+    for (value, weekday) in [
+        ("1970-01-01T00:00:00Z", 4),
+        ("2000-01-01T00:00:00-12:00", 6),
+        ("2024-02-29T23:59:59+14:00", 4),
+        ("2024-03-04", 1),
+        ("1999-12-31T24:00:00", 6),
+        ("2400-01-01", 6),
+        ("1000000000000000000002400-01-01", 6),
+    ] {
+        assert_eq!(
+            call("weekday", &[Value::String(value.into())]),
+            Ok(Value::Int(weekday))
+        );
+    }
+    assert_eq!(call("weekday", &[Value::Null]), Ok(Value::Null));
+    assert!(matches!(
+        call("weekday", &[Value::String("2023-02-29".into())]),
+        Err(FunctionError::InvalidArgument { .. })
+    ));
+    assert_eq!(
+        call("weekday", &[Value::Int(1)]),
+        Err(FunctionError::TypeMismatch {
+            function: "weekday",
+            got: "int",
+        })
+    );
+}
+
+#[test]
 fn time_component_extractors_return_local_values() {
     for (value, hour, minute) in [
         ("1999-12-31T19:20:00-05:00", 19, 20),
@@ -1001,6 +1031,33 @@ fn substitute_missing_replaces_absent_and_xml_nil_values() {
     assert_eq!(
         call("substitute_missing", &[Value::Int(0), Value::Int(9)]).unwrap(),
         Value::Int(0)
+    );
+}
+
+#[test]
+fn substitute_missing_with_xml_nil_preserves_present_values() {
+    assert_eq!(
+        call("substitute_missing_with_xml_nil", &[Value::Null]),
+        Ok(Value::xml_nil())
+    );
+    assert_eq!(
+        call("substitute_missing_with_xml_nil", &[Value::xml_nil()]),
+        Ok(Value::xml_nil())
+    );
+    assert_eq!(
+        call(
+            "substitute_missing_with_xml_nil",
+            &[Value::String(String::new())]
+        ),
+        Ok(Value::String(String::new()))
+    );
+    assert_eq!(
+        call("substitute_missing_with_xml_nil", &[]),
+        Err(FunctionError::ArityMismatch {
+            function: "substitute_missing_with_xml_nil",
+            expected: 1,
+            got: 0,
+        })
     );
 }
 

@@ -307,6 +307,15 @@ public static partial class FerruleFunctions
             : arguments[0];
     }
 
+    private static FerruleValue SubstituteMissingWithXmlNil(
+        IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("substitute_missing_with_xml_nil", arguments, 1);
+        return arguments[0].Kind == FerruleValueKind.Null
+            ? FerruleValue.XmlNil
+            : arguments[0];
+    }
+
     private static FerruleValue IsXmlNil(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("is_xml_nil", arguments, 1);
@@ -385,6 +394,13 @@ public static partial class FerruleFunctions
     {
         var separator = LastSeparator(path);
         return separator >= 0 ? path[(separator + 1)..] : path;
+    }
+
+    private static string GetFileExtension(string path)
+    {
+        var separator = LastSeparator(path);
+        var dot = path.LastIndexOf('.');
+        return dot > separator ? path[dot..] : string.Empty;
     }
 
     private static FerruleValue ResolveFilePath(IReadOnlyList<FerruleValue> arguments)

@@ -16,6 +16,18 @@ pub(super) fn remove_folder(args: &[Value]) -> Result<Value, FunctionError> {
     })
 }
 
+pub(super) fn get_fileext(args: &[Value]) -> Result<Value, FunctionError> {
+    unary_path(args, "get_fileext", |path| {
+        let separator = last_separator(path);
+        match path.rfind('.') {
+            Some(dot) if separator.is_none_or(|separator| dot > separator) => {
+                path[dot..].to_string()
+            }
+            _ => String::new(),
+        }
+    })
+}
+
 pub(super) fn resolve_filepath(args: &[Value]) -> Result<Value, FunctionError> {
     let [base, path] = args else {
         return Err(FunctionError::ArityMismatch {
@@ -161,6 +173,21 @@ mod tests {
     }
 
     #[test]
+    fn file_extension_keeps_the_dot_after_the_last_separator() {
+        for (path, extension) in [
+            ("/var/data/file.xml", ".xml"),
+            (r"C:\data\archive.tar.gz", ".gz"),
+            ("folder.name/file", ""),
+            (".profile", ".profile"),
+            ("file.", "."),
+            ("folder/.hidden", ".hidden"),
+            ("folder/", ""),
+        ] {
+            assert_eq!(call("get_fileext", &[string(path)]), Ok(string(extension)));
+        }
+    }
+
+    #[test]
     fn resolves_posix_and_windows_relative_paths_lexically() {
         for (base, path, expected) in [
             ("/var/data", "reports/out.xml", "/var/data/reports/out.xml"),
@@ -221,7 +248,7 @@ mod tests {
 
     #[test]
     fn path_functions_reject_invalid_arity() {
-        for (name, expected) in [("get_folder", 1), ("remove_folder", 1)] {
+        for (name, expected) in [("get_folder", 1), ("remove_folder", 1), ("get_fileext", 1)] {
             assert_eq!(
                 call(name, &[]),
                 Err(FunctionError::ArityMismatch {
