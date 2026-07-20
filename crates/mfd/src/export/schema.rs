@@ -191,6 +191,7 @@ pub(super) fn render_schema_component(
                 side,
                 instance_path,
                 options,
+                target_branches,
                 component_name,
                 component_uid,
                 force_root_port,

@@ -593,6 +593,8 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "numeric" => "is_numeric",
         "format-number" => "format_number",
         "trim" => "trim",
+        "left" => "left",
+        "right" => "right",
         "left-trim" => "left_trim",
         "right-trim" => "right_trim",
         "pad-string-left" => "pad_string_left",
@@ -644,6 +646,8 @@ mod tests {
         assert_eq!(map_name("numeric"), Some("is_numeric"));
         assert_eq!(map_name("format-number"), Some("format_number"));
         assert_eq!(map_name("normalize-space"), Some("normalize_space"));
+        assert_eq!(map_name("left"), Some("left"));
+        assert_eq!(map_name("right"), Some("right"));
         assert_eq!(map_name("empty"), Some("is_empty"));
         assert_eq!(map_name("time-from-datetime"), Some("time_from_datetime"));
         assert_eq!(map_name("year-from-datetime"), Some("year_from_datetime"));
