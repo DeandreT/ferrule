@@ -1,0 +1,22 @@
+{
+  "Invoices": [
+    {
+      "Sequence": 1,
+      "Customer": "Ada",
+      "Display": "ADA / 30.00 EUR",
+      "Amount": 30.0
+    },
+    {
+      "Sequence": 2,
+      "Customer": "Ada",
+      "Display": "ADA / 12.25 USD",
+      "Amount": 12.25
+    },
+    {
+      "Sequence": 3,
+      "Customer": "Lin",
+      "Display": "LIN / 19.50 USD",
+      "Amount": 19.5
+    }
+  ]
+}

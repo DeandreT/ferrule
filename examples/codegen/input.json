@@ -1,0 +1,8 @@
+{
+  "Orders": [
+    { "Customer": "Lin", "Amount": 19.5, "Currency": "USD" },
+    { "Customer": "Ada", "Amount": 12.25, "Currency": "USD" },
+    { "Customer": "Ignore", "Amount": 0, "Currency": "USD" },
+    { "Customer": "Ada", "Amount": 30, "Currency": "EUR" }
+  ]
+}

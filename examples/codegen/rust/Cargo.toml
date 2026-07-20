@@ -1,0 +1,12 @@
+[package]
+name = "ferrule-codegen-rust-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+codegen-runtime = { path = "../../../crates/codegen-runtime" }
+ferrule-generated-mapping = { path = "../generated/rust" }
+
+# Keep this host application independent from ferrule's workspace.
+[workspace]

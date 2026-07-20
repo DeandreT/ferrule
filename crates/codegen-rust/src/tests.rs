@@ -285,18 +285,25 @@ fn emits_deterministic_rust_project() {
             .collect::<Vec<_>>(),
         ["Cargo.toml", "src/lib.rs"]
     );
+    let manifest = first
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "Cargo.toml")
+        .and_then(|file| std::str::from_utf8(&file.contents).ok())
+        .unwrap();
+    assert!(manifest.ends_with("\n[workspace]\n"));
     let source = first
         .files()
         .iter()
         .find(|file| file.path.as_str() == "src/lib.rs")
         .and_then(|file| std::str::from_utf8(&file.contents).ok())
         .unwrap();
+    assert!(source.contains("#[allow(unused_imports)]\nuse codegen_runtime"));
+    assert!(source.contains("let extras = Vec::new();"));
     assert!(source.contains("adapt_target_value(expression_2(context)?, ScalarType::Int)"));
     assert!(source.contains("repeated_1.push(scalar(value_1))"));
     assert!(source.contains("scope_root_0(context)?"));
-    assert!(
-        source.contains("let mut candidates = context.walk_source(&[\"Parents\", \"Children\"]);")
-    );
+    assert!(source.contains("let candidates = context.walk_source(&[\"Parents\", \"Children\"]);"));
     assert!(source.contains("context.resolve_scalar_in_frame(&[\"Parents\"], &[\"Id\"])"));
     assert!(source.contains("Ok(Value::Int(context.position(&[\"Children\"]) as i64))"));
     assert!(source.contains("let filter_value = expression_16(&item_context)?;"));

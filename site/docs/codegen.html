@@ -25,7 +25,7 @@
         <p class="lead">
           ferrule lowers the portable subset of a validated project into a
           buildable mapping library. Rust and C# share the same neutral program
-          so successful generation preserves evaluation order, `Null` behavior,
+          so successful generation preserves evaluation order, <code>Null</code> behavior,
           output shape, and typed failures.
         </p>
 
@@ -47,10 +47,85 @@
   --out generated-rust \
   --rust-runtime-path crates/codegen-runtime</code></pre>
         <p>
-          Rust generation currently links the local `codegen-runtime` crate by
+          Rust generation currently links the local <code>codegen-runtime</code> crate by
           path. The generated crate exposes primary-output entry points plus
           output-set and named-source variants.
         </p>
+
+        <h2 id="examples">Run the examples</h2>
+        <p>
+          The repository includes one mapping project with matching Rust and
+          C# hosts. From the repository root, generate both libraries, build
+          both hosts, and verify both results with one command:
+        </p>
+        <pre><code>./examples/codegen/run.sh</code></pre>
+        <p>
+          The runner reads
+          <a href="https://github.com/DeandreT/ferrule/blob/main/examples/codegen/project.json"><code>examples/codegen/project.json</code></a>,
+          writes disposable artifacts below <code>examples/codegen/generated/</code>,
+          and then executes each host against the same input. This keeps the
+          example focused on the application boundary: construct an
+          <code>Instance</code>, call the generated mapping, and handle its
+          typed result.
+        </p>
+        <p>
+          The mapping removes zero-value orders, sorts the remaining rows,
+          assigns compact output positions, and formats invoice labels.
+          <a href="https://github.com/DeandreT/ferrule/blob/main/examples/codegen/input.json"><code>input.json</code></a>
+          and
+          <a href="https://github.com/DeandreT/ferrule/blob/main/examples/codegen/expected-output.json"><code>expected-output.json</code></a>
+          show the equivalent JSON boundary values.
+        </p>
+
+        <div class="quick-grid">
+          <section class="tile">
+            <h3>Rust host</h3>
+            <p>
+              A small Cargo application calls
+              <code>ferrule_generated_mapping::execute(&amp;source)</code> and
+              renders the returned target instance.
+            </p>
+            <a href="https://github.com/DeandreT/ferrule/tree/main/examples/codegen/rust">Browse the Rust example</a>
+          </section>
+          <section class="tile">
+            <h3>C# host</h3>
+            <p>
+              A package-free .NET application calls
+              <code>Ferrule.Generated.GeneratedMapping.Execute(source)</code>
+              through the generated project reference.
+            </p>
+            <a href="https://github.com/DeandreT/ferrule/tree/main/examples/codegen/csharp">Browse the C# example</a>
+          </section>
+        </div>
+
+        <h3>Generate and run Rust only</h3>
+        <pre><code>find examples/codegen/generated/rust -depth -delete 2&gt;/dev/null || true
+cargo +nightly run -p cli -- generate \
+  --project examples/codegen/project.json \
+  --language rust \
+  --out examples/codegen/generated/rust \
+  --rust-runtime-path crates/codegen-runtime
+
+cargo +nightly run \
+  --manifest-path examples/codegen/rust/Cargo.toml</code></pre>
+
+        <h3>Generate and run C# only</h3>
+        <pre><code>find examples/codegen/generated/csharp -depth -delete 2&gt;/dev/null || true
+cargo +nightly run -p cli -- generate \
+  --project examples/codegen/project.json \
+  --language csharp \
+  --out examples/codegen/generated/csharp
+
+dotnet run \
+  --project examples/codegen/csharp/Ferrule.CodegenExample.csproj \
+  --configuration Release</code></pre>
+
+        <div class="callout">
+          <strong>Generated trees are build artifacts.</strong>
+          Change the shared project or either host, then rerun the script. The
+          checked-in example owns the mapping and integration code; generation
+          recreates the language-specific libraries from that source.
+        </div>
 
         <h2>Portable subset</h2>
         <ul>

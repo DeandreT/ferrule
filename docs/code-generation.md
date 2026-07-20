@@ -51,6 +51,27 @@ For projects with static named sources, `execute_with_sources` and
 matching variants that also accept an execution context. No source instance is
 cloned while building the generated scope context.
 
+## Runnable Hosts
+
+[`examples/codegen/`](../examples/codegen/) contains one portable mapping with
+matching Rust and C# host applications. The mapping filters zero-value orders,
+sorts the remaining rows, assigns compact positions, and formats invoice labels.
+The checked-in input and expected output show the equivalent JSON boundaries;
+the hosts demonstrate constructing and inspecting typed instance trees directly.
+
+Generate both libraries and run both hosts from the repository root:
+
+```sh
+./examples/codegen/run.sh
+```
+
+Generated artifacts are recreated under `examples/codegen/generated/` and are
+not committed. The [Rust host](../examples/codegen/rust/) calls
+`ferrule_generated_mapping::execute`, while the
+[C# host](../examples/codegen/csharp/) calls
+`Ferrule.Generated.GeneratedMapping.Execute`. Both validate the complete
+filtered and sorted result before printing it.
+
 ## Portable Subset
 
 The current portable model includes:
