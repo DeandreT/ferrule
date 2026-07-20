@@ -441,11 +441,10 @@ fn filtered_cross_source_aggregate_does_not_broaden_an_enclosing_item_frame()
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn local_complete_po_keeps_root_join_aggregates_and_nested_article_values()
 -> Result<(), Box<dyn std::error::Error>> {
-    let samples =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("CompletePO.mfd");
     if !design.is_file() {
         return Ok(());

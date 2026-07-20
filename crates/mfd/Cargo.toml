@@ -19,6 +19,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+codegen = { workspace = true }
+codegen-csharp = { workspace = true }
+codegen-rust = { workspace = true }
 engine = { workspace = true }
 format-csv = { workspace = true }
 format-pdf = { workspace = true }

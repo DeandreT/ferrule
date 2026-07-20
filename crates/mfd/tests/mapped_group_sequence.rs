@@ -294,10 +294,10 @@ fn conditioned_descendant_structural_feed_filters_its_parent_occurrence() {
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn local_read_messages_filters_parent_orders_and_preserves_conditioned_addresses() {
-    let sample_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../samples/ReferenceSamples");
+    let sample_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let mapping = sample_dir.join("ReadMessages.mfd");
     if !mapping.is_file() {
         return;

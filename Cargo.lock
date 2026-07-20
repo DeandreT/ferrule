@@ -2855,6 +2855,9 @@ dependencies = [
 name = "mfd"
 version = "0.1.0"
 dependencies = [
+ "codegen",
+ "codegen-csharp",
+ "codegen-rust",
  "engine",
  "format-csv",
  "format-db",

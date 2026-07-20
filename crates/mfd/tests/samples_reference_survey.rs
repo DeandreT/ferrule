@@ -1,4 +1,4 @@
-//! Local-only MapForce reference-output generation.
+//! Local-only reference-output generation.
 //!
 //! This survey is ignored by default and never runs in CI. It launches the
 //! locally installed reference application under a dedicated Xvfb display,
@@ -6,8 +6,8 @@
 //! writes one manifest below a brand-new caller-supplied output root.
 //!
 //! ```text
-//! FERRULE_REFERENCE_SAMPLES_DIR=/tmp/ferrule-mapforce-references \
-//! FERRULE_REFERENCE_SAMPLES_FILTER=ReferenceSamples_Hierarchical_JSON,SuppressNAFields \
+//! FERRULE_REFERENCE_OUTPUT_DIR=/tmp/ferrule-reference-outputs \
+//! FERRULE_REFERENCE_OUTPUT_FILTER=Hierarchical_JSON,SuppressNAFields \
 //! cargo test -p mfd --test samples_reference_survey -- --ignored --nocapture
 //! ```
 
@@ -21,9 +21,9 @@ use std::process::{Child, Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const OUTPUT_DIR_ENV: &str = "FERRULE_REFERENCE_SAMPLES_DIR";
-const FILTER_ENV: &str = "FERRULE_REFERENCE_SAMPLES_FILTER";
-const LIMIT_ENV: &str = "FERRULE_REFERENCE_SAMPLES_LIMIT";
+const OUTPUT_DIR_ENV: &str = "FERRULE_REFERENCE_OUTPUT_DIR";
+const FILTER_ENV: &str = "FERRULE_REFERENCE_OUTPUT_FILTER";
+const LIMIT_ENV: &str = "FERRULE_REFERENCE_OUTPUT_LIMIT";
 const DEFAULT_LIMIT: usize = 3;
 const SAMPLE_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_STAGED_CONTEXT_BYTES: u64 = 256 * 1024 * 1024;
@@ -67,7 +67,7 @@ impl Drop for XvfbGuard {
 
 #[test]
 #[ignore = "requires the local MapForce reference app, Wine, xdotool, and Xvfb"]
-fn generate_reference_samples_outputs() -> Result<(), Box<dyn Error>> {
+fn generate_reference_outputs() -> Result<(), Box<dyn Error>> {
     let workspace = workspace_root();
     let samples_root = workspace.join("samples");
     let samples = samples_root.join("ReferenceSamples");
@@ -83,7 +83,7 @@ fn generate_reference_samples_outputs() -> Result<(), Box<dyn Error>> {
         .map(PathBuf::from)
         .ok_or_else(|| format!("{OUTPUT_DIR_ENV} must name a brand-new output directory"))?;
     create_safe_output_root(&workspace, &samples_root, &output_root)?;
-    let script_path = output_root.join(".mapforce-reference.vbs");
+    let script_path = output_root.join(".reference-output.vbs");
     fs::write(&script_path, automation_script())?;
 
     let filter = requested_filter();
@@ -205,7 +205,7 @@ fn generate_reference_samples_outputs() -> Result<(), Box<dyn Error>> {
     let skipped = records.len() - passed - failed;
     let manifest = serde_json::json!({
         "schema_version": 1,
-        "kind": "ferrule.reference_samples_outputs",
+        "kind": "ferrule.reference_outputs",
         "safety": {
             "display": display,
             "wayland_unset": true,
@@ -271,7 +271,7 @@ fn require_registered_server() -> Result<(), Box<dyn Error>> {
     let prefix = std::env::var_os("WINEPREFIX")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(home).join(".wine"));
-    let server = prefix.join("drive_c/Program Files/ReferenceSamples/ReferenceSamples/MapForce.exe");
+    let server = prefix.join("drive_c/Program Files/ReferenceApp/MapForce.exe");
     if !server.is_file() {
         return Err(format!(
             "the registered Wine COM server is unavailable at {}; link the local ref-app directory there without copying it",
@@ -1155,7 +1155,7 @@ struct TestDir(PathBuf);
 impl TestDir {
     fn new(label: &str) -> Self {
         let path = std::env::temp_dir().join(format!(
-            "ferrule_reference_samples_{label}_{}",
+            "ferrule_reference_output_{label}_{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&path);

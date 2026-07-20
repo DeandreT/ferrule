@@ -30,8 +30,8 @@
 //! captured result instance at run time.
 //!
 //! The format knowledge comes from reading real `.mfd` files; nothing here
-//! embeds or copies ReferenceSamples content. MapForce is a trademark of ReferenceSamples
-//! GmbH; ferrule is unaffiliated.
+//! embeds or copies proprietary reference content. MapForce is a trademark of
+//! its owner; ferrule is unaffiliated.
 
 mod canonical_function;
 mod export;
