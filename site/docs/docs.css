@@ -1,0 +1,383 @@
+:root {
+  color-scheme: light;
+  --page: #f7f5ef;
+  --paper: #fffdf8;
+  --ink: #25211b;
+  --muted: #675f54;
+  --faint: #8a8175;
+  --line: #ddd5c8;
+  --line-strong: #b9ad9c;
+  --accent: #b65f1d;
+  --accent-dark: #874412;
+  --accent-soft: #f3dfc7;
+  --blue: #276a8f;
+  --green: #577a3b;
+  --code: #201b16;
+  --code-line: #3b332a;
+  --shadow: 0 18px 45px rgba(48, 39, 27, 0.12);
+  --mono: ui-monospace, "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+  --sans: system-ui, "Inter", "Segoe UI", sans-serif;
+  --serif: Georgia, "Times New Roman", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    linear-gradient(90deg, rgba(39, 106, 143, 0.08), transparent 36rem),
+    var(--page);
+  color: var(--ink);
+  font-family: var(--sans);
+  line-height: 1.65;
+}
+
+a {
+  color: var(--accent-dark);
+  text-decoration-color: rgba(182, 95, 29, 0.35);
+  text-underline-offset: 0.17em;
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+code,
+pre {
+  font-family: var(--mono);
+}
+
+code {
+  background: #ece4d8;
+  border: 1px solid #ded4c6;
+  border-radius: 5px;
+  font-size: 0.91em;
+  padding: 0.08em 0.32em;
+}
+
+pre {
+  background: var(--code);
+  border: 1px solid var(--code-line);
+  border-radius: 8px;
+  color: #f4eadb;
+  margin: 1.1rem 0 1.5rem;
+  overflow-x: auto;
+  padding: 1rem 1.1rem;
+}
+
+pre code {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  padding: 0;
+}
+
+table {
+  border-collapse: collapse;
+  display: block;
+  margin: 1.4rem 0;
+  overflow-x: auto;
+  width: 100%;
+}
+
+th,
+td {
+  border: 1px solid var(--line);
+  padding: 0.58rem 0.72rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #eee6d9;
+  color: #3a332b;
+  font-size: 0.88rem;
+}
+
+.docs-shell {
+  display: grid;
+  grid-template-columns: 18rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #eee7dc;
+  border-right: 1px solid var(--line);
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.25rem 1.1rem;
+  position: sticky;
+  top: 0;
+}
+
+.brand {
+  align-items: center;
+  color: var(--ink);
+  display: flex;
+  font-family: var(--mono);
+  font-size: 1.1rem;
+  font-weight: 800;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+  text-decoration: none;
+}
+
+.brand svg {
+  flex: 0 0 auto;
+}
+
+.version {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  margin: -0.55rem 0 1.35rem 2.1rem;
+}
+
+.sidebar nav {
+  display: grid;
+  gap: 1.05rem;
+}
+
+.nav-section {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.nav-title {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar a {
+  border-radius: 6px;
+  color: #433a31;
+  display: block;
+  padding: 0.28rem 0.45rem;
+  text-decoration: none;
+}
+
+.sidebar a:hover,
+.sidebar a[aria-current="page"] {
+  background: var(--paper);
+  color: var(--accent-dark);
+}
+
+.page {
+  min-width: 0;
+}
+
+.topbar {
+  align-items: center;
+  background: rgba(247, 245, 239, 0.88);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  min-height: 3.4rem;
+  padding: 0.7rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.topbar a {
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-decoration: none;
+}
+
+.topbar a:hover {
+  color: var(--accent-dark);
+}
+
+.content {
+  margin: 0 auto;
+  max-width: 62rem;
+  padding: 3.2rem 2rem 5rem;
+}
+
+.chapter {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.55rem;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+}
+
+h1 {
+  font-family: var(--serif);
+  font-size: clamp(2.3rem, 6vw, 4.1rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 1rem;
+}
+
+h2 {
+  border-top: 1px solid var(--line);
+  font-size: 1.75rem;
+  margin: 2.8rem 0 0.8rem;
+  padding-top: 2rem;
+}
+
+h3 {
+  font-size: 1.2rem;
+  margin: 2rem 0 0.45rem;
+}
+
+p {
+  margin: 0.7rem 0 1rem;
+}
+
+ul,
+ol {
+  padding-left: 1.35rem;
+}
+
+li + li {
+  margin-top: 0.32rem;
+}
+
+.lead {
+  color: #3c352d;
+  font-size: 1.18rem;
+  max-width: 49rem;
+}
+
+.quick-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 1.8rem 0 2rem;
+}
+
+.tile,
+.callout {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.tile {
+  padding: 1rem;
+}
+
+.tile h3 {
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+}
+
+.tile p {
+  color: var(--muted);
+  font-size: 0.94rem;
+  margin: 0 0 0.7rem;
+}
+
+.tile a {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.callout {
+  border-left: 4px solid var(--blue);
+  margin: 1.5rem 0;
+  padding: 1rem 1.1rem;
+}
+
+.callout strong {
+  color: #174963;
+}
+
+.callout.warn {
+  border-left-color: var(--accent);
+}
+
+.callout.warn strong {
+  color: var(--accent-dark);
+}
+
+.flow {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.7rem 0;
+  padding: 1rem;
+}
+
+.flow span {
+  background: #f0ece3;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: #3f382f;
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.page-nav {
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3rem;
+  padding-top: 1.2rem;
+}
+
+.page-nav a {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .docs-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    height: auto;
+    position: relative;
+  }
+
+  .sidebar nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-inline: 1rem;
+    position: relative;
+  }
+
+  .content {
+    padding: 2.2rem 1.1rem 3.5rem;
+  }
+
+  .quick-grid,
+  .flow {
+    grid-template-columns: 1fr;
+  }
+}
