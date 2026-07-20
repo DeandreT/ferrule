@@ -411,6 +411,9 @@ pub(super) fn read_isbn_converter_component(
 
 pub(super) fn produces_scalar(component: &FnComponent) -> bool {
     component.name == "constant"
+        || component.library == "xpath2"
+            && component.kind == 5
+            && component.name == "current-dateTime"
         || matches!(
             component.name.as_str(),
             "if-else"
@@ -677,6 +680,20 @@ mod tests {
         assert_eq!(map_name("convertToISBN13"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("convertToEAN"), Some("isbn10_to_isbn13"));
         assert_eq!(map_name("sleep"), Some("delay_passthrough"));
+    }
+
+    #[test]
+    fn current_datetime_is_exactly_the_xpath2_scalar_component() {
+        for (library, name, kind, accepted) in [
+            ("xpath2", "current-dateTime", "5", true),
+            ("xpath2", "current-dateTime", "4", false),
+            ("xpath2", "current-datetime", "5", false),
+            ("vendor", "current-dateTime", "5", false),
+        ] {
+            let xml = format!(r#"<component library="{library}" name="{name}" kind="{kind}"/>"#);
+            let document = roxmltree::Document::parse(&xml).unwrap();
+            assert_eq!(produces_scalar(&read(&document.root_element())), accepted);
+        }
     }
 
     #[test]
