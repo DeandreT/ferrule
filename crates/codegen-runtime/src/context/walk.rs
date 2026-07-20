@@ -69,6 +69,45 @@ impl<'a> ScopeContext<'a> {
             .collect()
     }
 
+    /// Enumerates collection-find candidates with the interpreter's strict
+    /// root selection and repeated-only traversal semantics.
+    ///
+    /// Unlike aggregate traversal, a missing collection is an error and an
+    /// empty path can start only at an active [`Instance::Repeated`] frame.
+    /// Document sets remain ordinary values here; they are not expanded into
+    /// document candidates.
+    pub fn collection_find_items(&self, path: &[&str]) -> Result<Vec<Self>, SourcePathError> {
+        let base = match path.first() {
+            Some(first) => self
+                .frames
+                .iter()
+                .rev()
+                .find(|frame| frame.instance.field(first).is_some())
+                .map(|frame| (frame.instance, path, Vec::new())),
+            None => self
+                .frames
+                .iter()
+                .rev()
+                .find(|frame| matches!(frame.instance, Instance::Repeated(_)))
+                .map(|frame| (frame.instance, path, Vec::new())),
+        }
+        .or_else(|| {
+            let (name, rest) = path.split_first()?;
+            self.named_input(name)
+                .map(|input| (input, rest, vec![(*name).to_string()]))
+        })
+        .ok_or_else(|| SourcePathError::MissingCollection {
+            path: path.iter().map(|segment| (*segment).to_string()).collect(),
+        })?;
+
+        let mut extensions = Vec::new();
+        visit_collection_find_frames(base.0, base.1, &base.2, 0, &[], &mut extensions);
+        Ok(extensions
+            .into_iter()
+            .map(|extension| self.extend(extension))
+            .collect())
+    }
+
     /// Reads a direct aggregate value path from only the current terminal
     /// frame. Missing and structural values reduce as `Null`; enclosing frames
     /// are never consulted.
@@ -236,6 +275,45 @@ fn walk_source_frames<'a>(
             }
         }
     }
+}
+
+fn visit_collection_find_frames<'a>(
+    current: &'a Instance,
+    path: &[&str],
+    prefix: &[String],
+    consumed: usize,
+    acc: &[ScopeFrame<'a>],
+    output: &mut Vec<Vec<ScopeFrame<'a>>>,
+) {
+    if let Instance::Repeated(items) = current {
+        let mut collection_path = prefix.to_vec();
+        collection_path.extend(
+            path[..consumed]
+                .iter()
+                .map(|segment| (*segment).to_string()),
+        );
+        for (index, item) in items.iter().enumerate() {
+            let mut next = acc.to_vec();
+            next.push(collection_frame(
+                item,
+                CollectionIdentity::Repeated {
+                    path: collection_path.clone(),
+                    index: index + 1,
+                },
+            ));
+            visit_collection_find_frames(item, path, prefix, consumed, &next, output);
+        }
+        return;
+    }
+
+    if let Some(segment) = path.get(consumed) {
+        if let Some(next) = current.field(segment) {
+            visit_collection_find_frames(next, path, prefix, consumed + 1, acc, output);
+        }
+        return;
+    }
+
+    output.push(acc.to_vec());
 }
 
 fn direct_scalar<'a>(source: &'a Instance, path: &[&str]) -> Option<&'a Value> {

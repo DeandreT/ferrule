@@ -138,7 +138,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              RuntimeError, RuntimeValue,\n\
              ScalarType, ScopeContext,\n\
              SequenceWindow, SortDirection, Value, adapt_target_value, aggregate,\n\
-             apply_sequence_windows, call, field, generate_sequence, group, item_count, repeated,\n\
+             apply_sequence_windows, call, collection_find_selected, field, generate_sequence,\n\
+             group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
              sort_candidates, tokenize, tokenize_by_length, value_map,\n\
          };\n\n",
@@ -373,6 +374,16 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
             let value = render_string_path(value);
             format!(
                 "{{\n        let needle = expression_{matches}(context)?;\n        context.lookup(&[{collection}], &[{key}], &needle, &[{value}]).map_err(RuntimeError::from)\n    }}"
+            )
+        }
+        Expression::CollectionFind {
+            collection,
+            predicate,
+            value,
+        } => {
+            let collection = render_string_path(collection);
+            format!(
+                "{{\n        let candidates = context.collection_find_items(&[{collection}])?;\n        for item_context in candidates {{\n            let predicate = expression_{predicate}(&item_context)?;\n            if collection_find_selected({predicate}, predicate)? {{\n                return expression_{value}(&item_context);\n            }}\n        }}\n        Ok(Value::Null)\n    }}"
             )
         }
         Expression::Aggregate {

@@ -7,6 +7,7 @@ use crate::{
     SourceIteration,
 };
 
+mod collection_find;
 mod collections;
 mod failures;
 mod invariants;

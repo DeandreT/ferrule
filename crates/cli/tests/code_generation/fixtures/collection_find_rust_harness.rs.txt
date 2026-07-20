@@ -1,0 +1,133 @@
+use codegen_runtime::{
+    Instance, NamedInput, RuntimeError, SourcePathError, Value, field, group, repeated, scalar,
+};
+use ferrule_generated_mapping::execute_with_sources;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let catalog = catalog_source();
+    let inputs = [NamedInput {
+        name: "catalog",
+        instance: &catalog,
+    }];
+
+    assert_eq!(
+        execute_with_sources(&primary_source(false), &inputs)?,
+        expected()
+    );
+    assert_eq!(
+        execute_with_sources(&primary_source(true), &inputs),
+        Err(RuntimeError::NotABool {
+            node: 61,
+            found: "string",
+        })
+    );
+    assert_eq!(
+        execute_with_sources(&primary_without_departments(), &inputs),
+        Err(RuntimeError::SourcePath(
+            SourcePathError::MissingCollection {
+                path: vec!["Departments".into(), "People".into()],
+            }
+        ))
+    );
+    Ok(())
+}
+
+fn primary_source(fail_non_bool: bool) -> Instance {
+    group([
+        field("Needle", scalar(Value::String("Ada".into()))),
+        field("Suffix", scalar(Value::String("!".into()))),
+        field("FailNonBool", scalar(Value::Bool(fail_non_bool))),
+        field(
+            "Departments",
+            repeated([
+                department(
+                    "Remote",
+                    vec![
+                        person("Ada", "Wrong: ", "remote@example.test", Value::Null),
+                        person("Lin", "Lead: ", "lin@example.test", Value::xml_nil()),
+                    ],
+                ),
+                department(
+                    "HQ",
+                    vec![
+                        person(
+                            "Grace",
+                            "Director: ",
+                            "grace@example.test",
+                            Value::Bool(false),
+                        ),
+                        person(
+                            "Ada",
+                            "Engineer: ",
+                            "ada@example.test",
+                            Value::Bool(true),
+                        ),
+                    ],
+                ),
+            ]),
+        ),
+    ])
+}
+
+fn primary_without_departments() -> Instance {
+    group([
+        field("Needle", scalar(Value::String("Ada".into()))),
+        field("Suffix", scalar(Value::String("!".into()))),
+        field("FailNonBool", scalar(Value::Bool(false))),
+    ])
+}
+
+fn department(office: &str, people: Vec<Instance>) -> Instance {
+    group([
+        field("Office", scalar(Value::String(office.into()))),
+        field("People", repeated(people)),
+    ])
+}
+
+fn person(first: &str, title: &str, email: &str, decision: Value) -> Instance {
+    group([
+        field("First", scalar(Value::String(first.into()))),
+        field("Title", scalar(Value::String(title.into()))),
+        field("Email", scalar(Value::String(email.into()))),
+        field("Decision", scalar(decision)),
+    ])
+}
+
+fn catalog_source() -> Instance {
+    group([field(
+        "Items",
+        repeated([
+            catalog_item("Ada", "catalog-A"),
+            catalog_item("Ada", "catalog-second"),
+            catalog_item("Grace", "catalog-G"),
+        ]),
+    )])
+}
+
+fn catalog_item(key: &str, label: &str) -> Instance {
+    group([
+        field("Key", scalar(Value::String(key.into()))),
+        field("Label", scalar(Value::String(label.into()))),
+    ])
+}
+
+fn expected() -> Instance {
+    group([
+        field(
+            "Details",
+            scalar(Value::String("Engineer: ada@example.test!".into())),
+        ),
+        field("DepartmentPosition", scalar(Value::Int(2))),
+        field("PersonPosition", scalar(Value::Int(2))),
+        field(
+            "CatalogValue",
+            scalar(Value::String("catalog-A!".into())),
+        ),
+        field(
+            "NullableDecision",
+            scalar(Value::String("ada@example.test".into())),
+        ),
+        field("LazyMiss", scalar(Value::Null)),
+        field("NonBoolProbe", scalar(Value::String("safe".into()))),
+    ])
+}

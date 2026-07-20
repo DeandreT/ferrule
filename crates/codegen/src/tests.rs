@@ -12,6 +12,7 @@ use crate::{
 };
 
 mod artifacts;
+mod collection_find;
 mod extra_sources;
 mod failures;
 mod sequences;

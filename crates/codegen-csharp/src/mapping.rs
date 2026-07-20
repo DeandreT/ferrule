@@ -159,6 +159,20 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 render_path(value, &mut output);
                 output.push_str(");\n    }\n");
             }
+            Expression::CollectionFind {
+                collection,
+                predicate,
+                value,
+            } => {
+                output.push_str("\n    {\n");
+                output.push_str(&format!(
+                    "        var find_items_{node} = context.CollectionFindItems("
+                ));
+                render_path(collection, &mut output);
+                output.push_str(&format!(
+                    ");\n        foreach (var find_context_{node} in find_items_{node})\n        {{\n            var find_predicate_{node} = Node_{predicate}(find_context_{node});\n            if (find_predicate_{node}.Kind == global::Ferrule.Runtime.FerruleValueKind.Bool)\n            {{\n                if (find_predicate_{node}.BooleanValue)\n                {{\n                    return Node_{value}(find_context_{node});\n                }}\n                continue;\n            }}\n            if (find_predicate_{node}.Kind is global::Ferrule.Runtime.FerruleValueKind.Null or global::Ferrule.Runtime.FerruleValueKind.XmlNil)\n            {{\n                continue;\n            }}\n            _ = global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(find_predicate_{node}, {predicate}U);\n        }}\n        return global::Ferrule.Runtime.FerruleValue.Null;\n    }}\n"
+                ));
+            }
             Expression::Aggregate {
                 function,
                 collection,

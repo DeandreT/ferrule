@@ -9,6 +9,8 @@ use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
+#[path = "code_generation/collection_find.rs"]
+mod collection_find;
 #[path = "code_generation/copy_current_source.rs"]
 mod copy_current_source;
 #[path = "code_generation/extra_targets.rs"]
@@ -599,7 +601,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 14,
+            files_written: 15,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -619,6 +621,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleValue.cs",
             "Runtime/FerruleValueMaps.cs",
             "Runtime/ScalarPathResolver.cs",
+            "Runtime/ScopeContext.CollectionFind.cs",
             "Runtime/ScopeContext.cs",
         ]
     );

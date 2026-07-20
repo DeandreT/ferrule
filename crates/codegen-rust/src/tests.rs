@@ -11,6 +11,7 @@ use codegen::{
 };
 use ir::{SchemaKind, SchemaNode};
 
+mod collection_find;
 mod extra_sources;
 mod extra_targets;
 mod failure_rules;

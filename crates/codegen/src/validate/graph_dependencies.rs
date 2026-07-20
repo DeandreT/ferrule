@@ -16,6 +16,9 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         } => vec![*condition, *then, *else_],
         Expression::ValueMap { input, .. } => vec![*input],
         Expression::Lookup { matches, .. } => vec![*matches],
+        Expression::CollectionFind {
+            predicate, value, ..
+        } => vec![*predicate, *value],
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
         }
