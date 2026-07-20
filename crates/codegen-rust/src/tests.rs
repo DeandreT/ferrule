@@ -16,6 +16,7 @@ mod extra_sources;
 mod extra_targets;
 mod failure_rules;
 mod joins;
+mod scalar_functions;
 
 fn program() -> Program {
     Program {

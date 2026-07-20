@@ -6,6 +6,9 @@ enum ErrorMode {
     Type,
     Invalid,
     Arity,
+    NumberInvalid,
+    DelayType,
+    DelayInvalid,
 }
 
 struct GraphBuilder {
@@ -317,6 +320,82 @@ fn scalar_algorithm_project() -> Project {
         ],
     );
 
+    let trimmed = call(
+        &mut graph,
+        "trim",
+        vec![Value::String("\u{2003}\u{202f}value\u{a0}\u{3000}".into())],
+    );
+    let numeric_int = call(&mut graph, "is_numeric", vec![Value::Int(i64::MIN)]);
+    let numeric_decimal = call(
+        &mut graph,
+        "is_numeric",
+        vec![Value::String(" -1.25e2 ".into())],
+    );
+    let numeric_overflow = call(
+        &mut graph,
+        "is_numeric",
+        vec![Value::String("9223372036854775808".into())],
+    );
+    let numeric_infinity = call(
+        &mut graph,
+        "is_numeric",
+        vec![Value::String("1e9999".into())],
+    );
+    let numeric_null = call(&mut graph, "is_numeric", vec![Value::Null]);
+    let numeric_xml_nil = call(&mut graph, "is_numeric", vec![Value::xml_nil()]);
+    let numeric_bool = call(&mut graph, "is_numeric", vec![Value::Bool(true)]);
+    let number_int = call(
+        &mut graph,
+        "to_number",
+        vec![Value::String(i64::MAX.to_string())],
+    );
+    let number_min = call(
+        &mut graph,
+        "to_number",
+        vec![Value::String(i64::MIN.to_string())],
+    );
+    let number_float = call(&mut graph, "to_number", vec![Value::String("12.5".into())]);
+    let number_exponent = call(&mut graph, "to_number", vec![Value::String("1e3".into())]);
+    let number_negative_zero = call(&mut graph, "to_number", vec![Value::Float(-0.0)]);
+    let number_null = call(&mut graph, "to_number", vec![Value::Null]);
+    let delay_text = call(
+        &mut graph,
+        "delay_passthrough",
+        vec![Value::String("ready".into()), Value::Float(0.25)],
+    );
+    let delay_nil = call(
+        &mut graph,
+        "delay_passthrough",
+        vec![Value::xml_nil(), Value::Int(0)],
+    );
+    add_group(
+        &mut target,
+        &mut scopes,
+        "Conversions",
+        vec![
+            ("Trimmed", ScalarType::String, trimmed),
+            ("NumericInt", ScalarType::Bool, numeric_int),
+            ("NumericDecimal", ScalarType::Bool, numeric_decimal),
+            ("NumericOverflow", ScalarType::Bool, numeric_overflow),
+            ("NumericInfinity", ScalarType::Bool, numeric_infinity),
+            ("NumericNull", ScalarType::Bool, numeric_null),
+            ("NumericXmlNil", ScalarType::Bool, numeric_xml_nil),
+            ("NumericBool", ScalarType::Bool, numeric_bool),
+            ("NumberInt", ScalarType::Int, number_int),
+            ("NumberMin", ScalarType::Int, number_min),
+            ("NumberFloat", ScalarType::Float, number_float),
+            ("NumberExponent", ScalarType::Float, number_exponent),
+            (
+                "NumberNegativeZero",
+                ScalarType::Float,
+                number_negative_zero,
+            ),
+            ("NumberNull", ScalarType::Float, number_null),
+            ("DelayText", ScalarType::String, delay_text),
+            ("DelayNil", ScalarType::String, delay_nil),
+        ],
+    );
+
     let fail_type = graph.source("FailType");
     let bad_type_value = graph.literal(Value::Int(9));
     let bad_type_start = graph.literal(Value::Int(1));
@@ -332,6 +411,29 @@ fn scalar_algorithm_project() -> Project {
     let bad_arity = graph.call("date_from_datetime", Vec::new());
     let safe_arity = graph.literal(Value::String("safe-arity".into()));
     let arity_probe = graph.if_(fail_arity, bad_arity, safe_arity);
+    let fail_number_invalid = graph.source("FailNumberInvalid");
+    let bad_number_input = graph.literal(Value::Bool(true));
+    let bad_number = graph.call("to_number", vec![bad_number_input]);
+    let safe_number = graph.literal(Value::String("safe-number".into()));
+    let number_probe = graph.if_(fail_number_invalid, bad_number, safe_number);
+    let fail_delay_type = graph.source("FailDelayType");
+    let delay_type_value = graph.literal(Value::String("response".into()));
+    let delay_type_duration = graph.literal(Value::Bool(false));
+    let bad_delay_type = graph.call(
+        "delay_passthrough",
+        vec![delay_type_value, delay_type_duration],
+    );
+    let safe_delay_type = graph.literal(Value::String("safe-delay-type".into()));
+    let delay_type_probe = graph.if_(fail_delay_type, bad_delay_type, safe_delay_type);
+    let fail_delay_invalid = graph.source("FailDelayInvalid");
+    let delay_invalid_value = graph.literal(Value::String("response".into()));
+    let delay_invalid_duration = graph.literal(Value::Int(-1));
+    let bad_delay_invalid = graph.call(
+        "delay_passthrough",
+        vec![delay_invalid_value, delay_invalid_duration],
+    );
+    let safe_delay_invalid = graph.literal(Value::String("safe-delay-invalid".into()));
+    let delay_invalid_probe = graph.if_(fail_delay_invalid, bad_delay_invalid, safe_delay_invalid);
     add_group(
         &mut target,
         &mut scopes,
@@ -340,6 +442,9 @@ fn scalar_algorithm_project() -> Project {
             ("Type", ScalarType::String, type_probe),
             ("Invalid", ScalarType::String, invalid_probe),
             ("Arity", ScalarType::String, arity_probe),
+            ("NumberInvalid", ScalarType::String, number_probe),
+            ("DelayType", ScalarType::String, delay_type_probe),
+            ("DelayInvalid", ScalarType::String, delay_invalid_probe),
         ],
     );
 
@@ -350,6 +455,9 @@ fn scalar_algorithm_project() -> Project {
                 bool_("FailType"),
                 bool_("FailInvalid"),
                 bool_("FailArity"),
+                bool_("FailNumberInvalid"),
+                bool_("FailDelayType"),
+                bool_("FailDelayInvalid"),
                 SchemaNode::scalar("NaN", ScalarType::Float),
                 SchemaNode::scalar("Infinity", ScalarType::Float),
             ],
@@ -383,6 +491,18 @@ fn source(mode: ErrorMode) -> Instance {
         (
             "FailArity".into(),
             Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::Arity))),
+        ),
+        (
+            "FailNumberInvalid".into(),
+            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::NumberInvalid))),
+        ),
+        (
+            "FailDelayType".into(),
+            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::DelayType))),
+        ),
+        (
+            "FailDelayInvalid".into(),
+            Instance::Scalar(Value::Bool(matches!(mode, ErrorMode::DelayInvalid))),
         ),
         ("NaN".into(), Instance::Scalar(Value::Float(f64::NAN))),
         (
@@ -464,11 +584,35 @@ fn expected() -> Instance {
             ]),
         ),
         (
+            "Conversions".into(),
+            values(vec![
+                ("Trimmed", Value::String("value".into())),
+                ("NumericInt", Value::Bool(true)),
+                ("NumericDecimal", Value::Bool(true)),
+                ("NumericOverflow", Value::Bool(true)),
+                ("NumericInfinity", Value::Bool(false)),
+                ("NumericNull", Value::Bool(false)),
+                ("NumericXmlNil", Value::Bool(false)),
+                ("NumericBool", Value::Bool(false)),
+                ("NumberInt", Value::Int(i64::MAX)),
+                ("NumberMin", Value::Int(i64::MIN)),
+                ("NumberFloat", Value::Float(12.5)),
+                ("NumberExponent", Value::Float(1000.0)),
+                ("NumberNegativeZero", Value::Float(-0.0)),
+                ("NumberNull", Value::Null),
+                ("DelayText", Value::String("ready".into())),
+                ("DelayNil", Value::xml_nil()),
+            ]),
+        ),
+        (
             "Errors".into(),
             values(vec![
                 ("Type", Value::String("safe-type".into())),
                 ("Invalid", Value::String("safe-invalid".into())),
                 ("Arity", Value::String("safe-arity".into())),
+                ("NumberInvalid", Value::String("safe-number".into())),
+                ("DelayType", Value::String("safe-delay-type".into())),
+                ("DelayInvalid", Value::String("safe-delay-invalid".into())),
             ]),
         ),
     ])
@@ -488,6 +632,18 @@ fn scalar_algorithms_match_engine_and_generated_backends() -> TestResult<()> {
         (
             ErrorMode::Arity,
             "`date_from_datetime` expected 1 argument(s), got 0",
+        ),
+        (
+            ErrorMode::NumberInvalid,
+            "`to_number` requires a finite numeric value",
+        ),
+        (
+            ErrorMode::DelayType,
+            "`delay_passthrough` cannot accept a bool argument",
+        ),
+        (
+            ErrorMode::DelayInvalid,
+            "`delay_passthrough` requires a finite nonnegative duration",
         ),
     ] {
         let error = engine::run(&project, &source(mode))

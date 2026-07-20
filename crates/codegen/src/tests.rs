@@ -16,6 +16,7 @@ mod collection_find;
 mod extra_sources;
 mod failures;
 mod joins;
+mod scalar_functions;
 mod sequences;
 
 fn scalar(name: &str) -> SchemaNode {
@@ -364,12 +365,15 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "contains",
         "concat",
         "normalize_space",
+        "trim",
         "left_trim",
         "right_trim",
         "length",
         "substring_before",
         "substring_after",
         "string",
+        "is_numeric",
+        "to_number",
         "substitute_missing",
         "is_xml_nil",
         "get_folder",
@@ -381,6 +385,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "pad_string_right",
         "isbn10_to_isbn13",
         "round",
+        "delay_passthrough",
         "date_from_datetime",
         "add",
         "subtract",
