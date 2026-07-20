@@ -245,12 +245,21 @@ pub const SUPPORTED_SCALAR_CALLS: &[ScalarFunction] = ScalarFunction::ALL;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub source: SchemaNode,
+    /// Additional typed inputs available through outward source fallback.
+    pub extra_sources: Vec<NamedSourceProgram>,
     pub target: SchemaNode,
     /// Reachable expressions ordered by node ID.
     pub expressions: Vec<ExpressionNode>,
     pub root: TargetScope,
     /// Additional independently shaped outputs in declaration order.
     pub extra_targets: Vec<NamedTargetProgram>,
+}
+
+/// One named in-memory input consumed alongside the primary source.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedSourceProgram {
+    pub name: String,
+    pub source: SchemaNode,
 }
 
 /// One named output lowered against the program's shared source and graph.

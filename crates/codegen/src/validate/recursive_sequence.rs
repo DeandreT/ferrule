@@ -1,14 +1,13 @@
-use ir::{SchemaKind, SchemaNode};
+use ir::SchemaKind;
 
 use crate::GeneratedSequence;
 
 use super::{
-    ProgramValidationError, RecursiveSequencePathRole, SequenceOwner, find_concrete_schema_group,
-    follow_schema_from, schema_path_targets,
+    ProgramValidationError, RecursiveSequencePathRole, SequenceOwner, sources::SourceCatalog,
 };
 
 pub(super) fn validate(
-    source: &SchemaNode,
+    sources: SourceCatalog<'_>,
     sequence: &GeneratedSequence,
     owner: &SequenceOwner,
 ) -> Result<(), ProgramValidationError> {
@@ -24,20 +23,22 @@ pub(super) fn validate(
         return Ok(());
     };
 
-    let mut groups = schema_path_targets(source, collection)
+    let mut groups = sources
+        .path_targets(collection)
         .into_iter()
-        .filter_map(|node| resolved_schema_node(source, node))
-        .filter(|node| matches!(node.kind, SchemaKind::Group { .. }))
+        .filter_map(|node| node.resolved())
+        .filter(|node| matches!(node.node().kind, SchemaKind::Group { .. }))
         .collect::<Vec<_>>();
     if groups.is_empty() {
         return invalid_path(owner, RecursiveSequencePathRole::Collection, collection);
     }
 
     groups.retain(|group| {
-        follow_schema_from(source, group, children).is_some_and(|child| {
-            child.repeating
-                && resolved_schema_node(source, child)
-                    .is_some_and(|resolved| std::ptr::eq(resolved, *group))
+        group.follow(children).is_some_and(|child| {
+            child.node().repeating
+                && child
+                    .resolved()
+                    .is_some_and(|resolved| std::ptr::eq(resolved.node(), group.node()))
         })
     });
     if groups.is_empty() {
@@ -45,8 +46,9 @@ pub(super) fn validate(
     }
 
     groups.retain(|group| {
-        follow_schema_from(source, group, descent_value)
-            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+        group
+            .follow(descent_value)
+            .is_some_and(|node| matches!(node.node().kind, SchemaKind::Scalar { .. }))
     });
     if groups.is_empty() {
         return invalid_path(
@@ -58,25 +60,18 @@ pub(super) fn validate(
 
     let value_roots = groups
         .into_iter()
-        .filter_map(|group| follow_schema_from(source, group, values))
+        .filter_map(|group| group.follow(values))
         .collect::<Vec<_>>();
     if value_roots.is_empty() {
         return invalid_path(owner, RecursiveSequencePathRole::Values, values);
     }
     if !value_roots.into_iter().any(|root| {
-        follow_schema_from(source, root, value)
-            .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
+        root.follow(value)
+            .is_some_and(|node| matches!(node.node().kind, SchemaKind::Scalar { .. }))
     }) {
         return invalid_path(owner, RecursiveSequencePathRole::Value, value);
     }
     Ok(())
-}
-
-fn resolved_schema_node<'a>(root: &'a SchemaNode, node: &'a SchemaNode) -> Option<&'a SchemaNode> {
-    node.recursive_ref
-        .as_deref()
-        .map(|anchor| find_concrete_schema_group(root, anchor))
-        .unwrap_or(Some(node))
 }
 
 fn invalid_path(

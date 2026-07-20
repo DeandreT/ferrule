@@ -2,9 +2,19 @@ mod recursive;
 mod resolve;
 mod walk;
 
+#[cfg(test)]
+mod named_tests;
+
 pub use resolve::{InstanceKind, SourcePathError, clone_scalar, resolve_scalar};
 
 use crate::{ExecutionContext, Instance, RuntimeError, RuntimeValue, Value};
+
+/// One borrowed, statically declared secondary input.
+#[derive(Clone, Copy, Debug)]
+pub struct NamedInput<'a> {
+    pub name: &'a str,
+    pub instance: &'a Instance,
+}
 
 /// Owns scalar instances materialized by one generated sequence while its
 /// borrowed candidate contexts are evaluated.
@@ -29,6 +39,7 @@ impl GeneratedItems {
 #[derive(Clone)]
 pub struct ScopeContext<'a> {
     frames: Vec<ScopeFrame<'a>>,
+    named_inputs: &'a [NamedInput<'a>],
     execution: Option<ExecutionContext<'a>>,
 }
 
@@ -74,6 +85,20 @@ impl<'a> ScopeContext<'a> {
                 instance: source,
                 collection: None,
             }],
+            named_inputs: &[],
+            execution: None,
+        }
+    }
+
+    /// Creates a root context with borrowed secondary inputs available as
+    /// one outer named frame.
+    pub fn with_named_inputs(source: &'a Instance, inputs: &'a [NamedInput<'a>]) -> Self {
+        Self {
+            frames: vec![ScopeFrame {
+                instance: source,
+                collection: None,
+            }],
+            named_inputs: inputs,
             execution: None,
         }
     }
@@ -87,6 +112,23 @@ impl<'a> ScopeContext<'a> {
                 instance: source,
                 collection: None,
             }],
+            named_inputs: &[],
+            execution: Some(*execution),
+        }
+    }
+
+    /// Creates a root context with secondary inputs and host values.
+    pub fn with_named_inputs_and_execution_context(
+        source: &'a Instance,
+        inputs: &'a [NamedInput<'a>],
+        execution: &ExecutionContext<'a>,
+    ) -> Self {
+        Self {
+            frames: vec![ScopeFrame {
+                instance: source,
+                collection: None,
+            }],
+            named_inputs: inputs,
             execution: Some(*execution),
         }
     }
@@ -188,6 +230,7 @@ impl<'a> ScopeContext<'a> {
             ));
             ScopeContext {
                 frames,
+                named_inputs: self.named_inputs,
                 execution: self.execution,
             }
         })
@@ -200,6 +243,13 @@ impl<'a> ScopeContext<'a> {
         'a: 'b,
     {
         self.generated_item_contexts(items).collect()
+    }
+
+    fn named_input(&self, name: &str) -> Option<&'a Instance> {
+        self.named_inputs
+            .iter()
+            .find(|input| input.name == name)
+            .map(|input| input.instance)
     }
 }
 
