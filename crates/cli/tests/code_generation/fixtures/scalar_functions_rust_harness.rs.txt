@@ -128,6 +128,17 @@ fn expected_values() -> Vec<(&'static str, &'static str, Value)> {
             "Parent",
             Value::String("C:\\work\\out.xml".into()),
         ),
+        ("Temporal", "Year", Value::Int(1)),
+        ("Temporal", "Month", Value::Int(3)),
+        ("Temporal", "Day", Value::Int(1)),
+        ("Temporal", "Hour", Value::Int(0)),
+        ("Temporal", "Minute", Value::Int(59)),
+        (
+            "Temporal",
+            "Time",
+            Value::String("09:30:02.5+05:00".into()),
+        ),
+        ("Temporal", "Null", Value::Null),
         ("Errors", "Type", Value::String("safe-type".into())),
         ("Errors", "Arity", Value::String("safe-arity".into())),
     ]

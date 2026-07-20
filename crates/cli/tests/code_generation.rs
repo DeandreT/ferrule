@@ -605,7 +605,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 19,
+            files_written: 20,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -618,6 +618,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleAggregates.cs",
             "Runtime/FerruleExecutionContext.cs",
             "Runtime/FerruleFailures.cs",
+            "Runtime/FerruleFunctions.DateTime.cs",
             "Runtime/FerruleFunctions.Numeric.cs",
             "Runtime/FerruleFunctions.Strings.cs",
             "Runtime/FerruleFunctions.cs",
