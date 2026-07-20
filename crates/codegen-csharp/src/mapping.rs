@@ -40,40 +40,9 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
         .collect::<Vec<_>>();
 
     let mut output = String::from(
-        "namespace Ferrule.Generated;\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
+        "namespace Ferrule.Generated;\n\npublic sealed record NamedInput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record NamedOutput(\n    string Name,\n    global::Ferrule.Runtime.FerruleInstance Instance);\n\npublic sealed record ExecutionOutputs(\n    global::Ferrule.Runtime.FerruleInstance Primary,\n    global::System.Collections.Generic.IReadOnlyList<NamedOutput> Extras);\n\npublic static class GeneratedMapping\n{\n",
     );
-    output.push_str(
-        "    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        return ExecuteOutputs(source).Primary;\n    }\n",
-    );
-    output.push_str(
-        "\n    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteOutputs(source, executionContext).Primary;\n    }\n",
-    );
-    output.push_str(
-        "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        return ExecuteOutputs(global::Ferrule.Runtime.ScopeContext.FromSource(source));\n    }\n",
-    );
-    output.push_str(
-        "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        return ExecuteOutputs(global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext));\n    }\n",
-    );
-    output.push_str(
-        "\n    private static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.ScopeContext context)\n    {\n",
-    );
-    output.push_str(&format!(
-        "        var primary = Scope_{primary_scope}(context);\n"
-    ));
-    for (index, (_, scope)) in extra_scopes.iter().enumerate() {
-        output.push_str(&format!(
-            "        var extra_{index} = Scope_{scope}(context);\n"
-        ));
-    }
-    output.push_str(
-        "        return new ExecutionOutputs(\n            primary,\n            new NamedOutput[]\n            {\n",
-    );
-    for (index, (name, _)) in extra_scopes.iter().enumerate() {
-        output.push_str("                new(");
-        output.push_str(&literal::string(name));
-        output.push_str(&format!(", extra_{index}),\n"));
-    }
-    output.push_str("            });\n    }\n");
+    render_entry_points(program, primary_scope, &extra_scopes, &mut output);
 
     for (node, expression) in expressions {
         output.push('\n');
@@ -327,6 +296,105 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     }
     output.push_str("}\n");
     Ok(output)
+}
+
+fn render_entry_points(
+    program: &Program,
+    primary_scope: usize,
+    extra_scopes: &[(&str, usize)],
+    output: &mut String,
+) {
+    output.push_str(
+        "    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        return ExecuteWithSources(source, global::System.Array.Empty<NamedInput>());\n    }\n",
+    );
+    output.push_str(
+        "\n    public static global::Ferrule.Runtime.FerruleInstance Execute(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteWithSources(source, global::System.Array.Empty<NamedInput>(), executionContext);\n    }\n",
+    );
+    output.push_str(
+        "\n    public static global::Ferrule.Runtime.FerruleInstance ExecuteWithSources(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources)\n    {\n        return ExecuteOutputsWithSources(source, extraSources).Primary;\n    }\n",
+    );
+    output.push_str(
+        "\n    public static global::Ferrule.Runtime.FerruleInstance ExecuteWithSources(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteOutputsWithSources(source, extraSources, executionContext).Primary;\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source)\n    {\n        return ExecuteOutputsWithSources(source, global::System.Array.Empty<NamedInput>());\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        return ExecuteOutputsWithSources(source, global::System.Array.Empty<NamedInput>(), executionContext);\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputsWithSources(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources)\n    {\n        return ExecuteOutputs(CreateContext(source, extraSources, null));\n    }\n",
+    );
+    output.push_str(
+        "\n    public static ExecutionOutputs ExecuteOutputsWithSources(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(executionContext);\n        return ExecuteOutputs(CreateContext(source, extraSources, executionContext));\n    }\n",
+    );
+    render_source_context(program, output);
+    output.push_str(
+        "\n    private static ExecutionOutputs ExecuteOutputs(\n        global::Ferrule.Runtime.ScopeContext context)\n    {\n",
+    );
+    output.push_str(&format!(
+        "        var primary = Scope_{primary_scope}(context);\n"
+    ));
+    for (index, (_, scope)) in extra_scopes.iter().enumerate() {
+        output.push_str(&format!(
+            "        var extra_{index} = Scope_{scope}(context);\n"
+        ));
+    }
+    output.push_str(
+        "        return new ExecutionOutputs(\n            primary,\n            new NamedOutput[]\n            {\n",
+    );
+    for (index, (name, _)) in extra_scopes.iter().enumerate() {
+        output.push_str("                new(");
+        output.push_str(&literal::string(name));
+        output.push_str(&format!(", extra_{index}),\n"));
+    }
+    output.push_str("            });\n    }\n");
+}
+
+fn render_source_context(program: &Program, output: &mut String) {
+    output.push_str(
+        "\n    private static global::Ferrule.Runtime.ScopeContext CreateContext(\n        global::Ferrule.Runtime.FerruleInstance source,\n        global::System.Collections.Generic.IReadOnlyList<NamedInput> extraSources,\n        global::Ferrule.Runtime.FerruleExecutionContext? executionContext)\n    {\n        global::System.ArgumentNullException.ThrowIfNull(source);\n        global::System.ArgumentNullException.ThrowIfNull(extraSources);\n",
+    );
+    if program.extra_sources.is_empty() {
+        output.push_str(
+            "        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Instance);\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                detail: extraSource.Name);\n        }\n",
+        );
+    } else {
+        output.push_str(
+            "        var namedSources = new global::System.Collections.Generic.Dictionary<string, global::Ferrule.Runtime.FerruleInstance>(global::System.StringComparer.Ordinal);\n        foreach (var extraSource in extraSources)\n        {\n            global::System.ArgumentNullException.ThrowIfNull(extraSource);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Name);\n            global::System.ArgumentNullException.ThrowIfNull(extraSource.Instance);\n",
+        );
+        output.push_str("            if (extraSource.Name is not (");
+        for (index, source) in program.extra_sources.iter().enumerate() {
+            if index != 0 {
+                output.push_str(" or ");
+            }
+            output.push_str(&literal::string(&source.name));
+        }
+        output.push_str(
+            "))\n            {\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.UnexpectedNamedSource,\n                    $\"named source '{extraSource.Name}' is not declared by this mapping\",\n                    detail: extraSource.Name);\n            }\n            if (!namedSources.TryAdd(extraSource.Name, extraSource.Instance))\n            {\n                throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                    global::Ferrule.Runtime.FerruleRuntimeError.DuplicateNamedSource,\n                    $\"named source '{extraSource.Name}' was supplied more than once\",\n                    detail: extraSource.Name);\n            }\n        }\n",
+        );
+    }
+    for (index, source) in program.extra_sources.iter().enumerate() {
+        let name = literal::string(&source.name);
+        output.push_str(&format!(
+            "        if (!namedSources.TryGetValue({name}, out var namedSource_{index}))\n        {{\n            throw new global::Ferrule.Runtime.FerruleRuntimeException(\n                global::Ferrule.Runtime.FerruleRuntimeError.MissingNamedSource,\n                \"named source \" + {name} + \" is required by this mapping\",\n                detail: {name});\n        }}\n"
+        ));
+    }
+    if program.extra_sources.is_empty() {
+        output.push_str(
+            "        return global::Ferrule.Runtime.ScopeContext.FromSource(source, executionContext);\n    }\n",
+        );
+        return;
+    }
+    output.push_str(
+        "        return global::Ferrule.Runtime.ScopeContext.FromSources(\n            source,\n            new global::Ferrule.Runtime.FerruleField[]\n            {\n",
+    );
+    for (index, source) in program.extra_sources.iter().enumerate() {
+        output.push_str("                new(");
+        output.push_str(&literal::string(&source.name));
+        output.push_str(&format!(", namedSource_{index}),\n"));
+    }
+    output.push_str("            },\n            executionContext);\n    }\n");
 }
 
 fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut String) {

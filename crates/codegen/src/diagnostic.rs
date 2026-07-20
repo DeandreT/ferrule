@@ -13,6 +13,11 @@ pub enum Diagnostic {
         feature: ProjectFeature,
         count: usize,
     },
+    UnsupportedDynamicSource {
+        source: String,
+        path_expression: NodeId,
+        iteration: Vec<String>,
+    },
     UnsupportedScope {
         /// Static target-field path. Empty identifies the primary root.
         target_path: Vec<String>,
@@ -30,8 +35,6 @@ pub enum Diagnostic {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectFeature {
-    ExtraSources,
-    ExtraTargets,
     FailureRules,
 }
 
@@ -114,6 +117,15 @@ impl fmt::Display for Diagnostic {
                 formatter,
                 "project: code generation does not support {feature} ({count} configured)"
             ),
+            Self::UnsupportedDynamicSource {
+                source,
+                path_expression,
+                iteration,
+            } => write!(
+                formatter,
+                "extra source `{source}`: code generation does not support dynamic path expression {path_expression} over `{}`",
+                display_source_path(iteration)
+            ),
             Self::UnsupportedScope {
                 target_path,
                 feature,
@@ -142,11 +154,17 @@ fn display_target_path(path: &[String]) -> String {
     }
 }
 
+fn display_source_path(path: &[String]) -> String {
+    if path.is_empty() {
+        "<root>".into()
+    } else {
+        path.join("/")
+    }
+}
+
 impl fmt::Display for ProjectFeature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::ExtraSources => "extra sources; remove them or inline their values",
-            Self::ExtraTargets => "extra targets; generate one primary target at a time",
             Self::FailureRules => "failure rules; remove them before generation",
         })
     }

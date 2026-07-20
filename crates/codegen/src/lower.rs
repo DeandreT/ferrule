@@ -5,9 +5,9 @@ use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, GeneratedSequence, IterationPlan,
-    IterationSource, LowerError, NamedTargetProgram, Program, ProjectFeature, ScalarFunction,
-    ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration,
-    TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
+    IterationSource, LowerError, NamedSourceProgram, NamedTargetProgram, Program, ProjectFeature,
+    ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan,
+    SourceIteration, TargetScope, UnsupportedNodeKind, UnsupportedSequenceKind,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -26,6 +26,15 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
 
     let mut diagnostics = Vec::new();
     inspect_project_features(project, &mut diagnostics);
+    let extra_sources = project
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic_path.is_none())
+        .map(|source| NamedSourceProgram {
+            name: source.name.clone(),
+            source: source.schema.clone(),
+        })
+        .collect();
 
     let mut roots = Vec::new();
     let mut target_path = Vec::new();
@@ -66,6 +75,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     if diagnostics.is_empty() {
         Ok(Program {
             source: project.source.clone(),
+            extra_sources,
             target: project.target.clone(),
             expressions,
             root,
@@ -77,13 +87,20 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
 }
 
 fn inspect_project_features(project: &Project, diagnostics: &mut Vec<Diagnostic>) {
-    for (feature, count) in [
-        (ProjectFeature::ExtraSources, project.extra_sources.len()),
-        (ProjectFeature::FailureRules, project.failure_rules.len()),
-    ] {
-        if count != 0 {
-            diagnostics.push(Diagnostic::UnsupportedProject { feature, count });
+    for source in &project.extra_sources {
+        if let Some(dynamic) = &source.dynamic_path {
+            diagnostics.push(Diagnostic::UnsupportedDynamicSource {
+                source: source.name.clone(),
+                path_expression: dynamic.node,
+                iteration: dynamic.iteration.clone(),
+            });
         }
+    }
+    if !project.failure_rules.is_empty() {
+        diagnostics.push(Diagnostic::UnsupportedProject {
+            feature: ProjectFeature::FailureRules,
+            count: project.failure_rules.len(),
+        });
     }
 }
 

@@ -17,7 +17,8 @@ use std::fmt;
 
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
-    GeneratedItems, InstanceKind, ScopeContext, SourcePathError, clone_scalar, resolve_scalar,
+    GeneratedItems, InstanceKind, NamedInput, ScopeContext, SourcePathError, clone_scalar,
+    resolve_scalar,
 };
 pub use functions::FunctionError;
 pub use generated_sequence::{
@@ -44,6 +45,9 @@ pub enum RuntimeError {
     RecursiveSequenceDepth { limit: usize },
     RecursiveSequenceTooLarge { max: u128 },
     MissingRuntimeValue { value: RuntimeValue },
+    MissingNamedSource { name: &'static str },
+    DuplicateNamedSource { name: &'static str },
+    UnexpectedNamedSource { name: String },
     NotABool { node: u32, found: &'static str },
     NotAnItemCount { node: u32, found: &'static str },
 }
@@ -86,6 +90,21 @@ impl fmt::Display for RuntimeError {
             Self::MissingRuntimeValue { value } => {
                 write!(formatter, "execution context does not provide {value:?}")
             }
+            Self::MissingNamedSource { name } => {
+                write!(formatter, "required named source {name:?} was not supplied")
+            }
+            Self::DuplicateNamedSource { name } => {
+                write!(
+                    formatter,
+                    "named source {name:?} was supplied more than once"
+                )
+            }
+            Self::UnexpectedNamedSource { name } => {
+                write!(
+                    formatter,
+                    "named source {name:?} is not declared by this mapping"
+                )
+            }
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
             }
@@ -111,6 +130,9 @@ impl std::error::Error for RuntimeError {
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }
             | Self::MissingRuntimeValue { .. }
+            | Self::MissingNamedSource { .. }
+            | Self::DuplicateNamedSource { .. }
+            | Self::UnexpectedNamedSource { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. } => None,
         }

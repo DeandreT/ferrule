@@ -13,7 +13,7 @@ impl ScopeContext<'_> {
         prefix: &str,
         separator: &str,
     ) -> Result<Vec<Value>, RuntimeError> {
-        let Some(base) = self
+        let base = self
             .frames
             .iter()
             .rev()
@@ -23,13 +23,21 @@ impl ScopeContext<'_> {
                     .first()
                     .is_none_or(|first| frame.instance.field(first).is_some())
             })
-            .map(|frame| frame.instance)
-            .or_else(|| self.frames.last().map(|frame| frame.instance))
-        else {
+            .map(|frame| (frame.instance, paths.collection));
+        let named_base = || {
+            let (name, rest) = paths.collection.split_first()?;
+            Some((self.named_input(name)?, rest))
+        };
+        let fallback = || {
+            self.frames
+                .last()
+                .map(|frame| (frame.instance, paths.collection))
+        };
+        let Some((base, collection)) = base.or_else(named_base).or_else(fallback) else {
             return Ok(Vec::new());
         };
         let mut roots = Vec::new();
-        collect_instances(base, paths.collection, &mut roots);
+        collect_instances(base, collection, &mut roots);
         let mut output = Vec::new();
         for root in roots {
             collect_recursive_group(

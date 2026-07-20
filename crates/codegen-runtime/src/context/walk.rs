@@ -10,20 +10,23 @@ impl<'a> ScopeContext<'a> {
     /// current repeated/document value, or selects one ordinary current
     /// value. Repetition crossed at any depth branches in source order.
     pub fn walk_source(&self, path: &[&str]) -> Vec<Self> {
-        let Some(base) = self
-            .frames
-            .iter()
-            .rev()
-            .find(|frame| match path.first() {
-                Some(first) => frame.instance.field(first).is_some(),
-                None => true,
-            })
-            .or_else(|| self.frames.last())
-        else {
-            return Vec::new();
+        let base = self.frames.iter().rev().find(|frame| match path.first() {
+            Some(first) => frame.instance.field(first).is_some(),
+            None => true,
+        });
+        let extensions = if let Some(base) = base {
+            walk_source_frames(base.instance, path, &[], &[])
+        } else if let Some((name, rest)) = path.split_first()
+            && let Some(input) = self.named_input(name)
+        {
+            walk_source_frames(input, rest, &[(*name).to_string()], &[])
+        } else if let Some(base) = self.frames.last() {
+            walk_source_frames(base.instance, path, &[], &[])
+        } else {
+            Vec::new()
         };
 
-        walk_source_frames(base.instance, path, &[], &[])
+        extensions
             .into_iter()
             .map(|extension| self.extend(extension))
             .collect()
@@ -50,11 +53,17 @@ impl<'a> ScopeContext<'a> {
                 )
             }),
         };
-        let Some(base) = base else {
-            return Vec::new();
+        let extensions = if let Some(base) = base {
+            walk_source_frames(base.instance, path, &[], &[])
+        } else if let Some((name, rest)) = path.split_first()
+            && let Some(input) = self.named_input(name)
+        {
+            walk_source_frames(input, rest, &[(*name).to_string()], &[])
+        } else {
+            Vec::new()
         };
 
-        walk_source_frames(base.instance, path, &[], &[])
+        extensions
             .into_iter()
             .map(|extension| self.extend(extension))
             .collect()
@@ -86,6 +95,10 @@ impl<'a> ScopeContext<'a> {
             .iter()
             .rev()
             .find_map(|frame| direct_repeated(frame.instance, collection))
+            .or_else(|| {
+                let (name, rest) = collection.split_first()?;
+                direct_repeated(self.named_input(name)?, rest)
+            })
             .ok_or_else(|| SourcePathError::MissingCollection {
                 path: collection
                     .iter()
@@ -104,6 +117,7 @@ impl<'a> ScopeContext<'a> {
         frames.extend(extension);
         Self {
             frames,
+            named_inputs: self.named_inputs,
             execution: self.execution,
         }
     }

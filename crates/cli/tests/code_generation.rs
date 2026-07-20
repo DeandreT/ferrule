@@ -31,6 +31,8 @@ mod scalar_algorithms;
 mod scalar_functions;
 #[path = "code_generation/sequence_reducers.rs"]
 mod sequence_reducers;
+#[path = "code_generation/static_sources.rs"]
+mod static_sources;
 #[path = "code_generation/value_maps.rs"]
 mod value_maps;
 

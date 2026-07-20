@@ -1,0 +1,140 @@
+use codegen_runtime::{Instance, NamedInput, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::{execute, execute_outputs_with_sources, execute_with_sources};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let primary = primary_source();
+    let catalog = catalog_source();
+    let labels = labels_source();
+    let reversed = [
+        NamedInput {
+            name: "labels",
+            instance: &labels,
+        },
+        NamedInput {
+            name: "catalog",
+            instance: &catalog,
+        },
+    ];
+
+    let output = execute_outputs_with_sources(&primary, &reversed)?;
+    assert_eq!(output.primary, expected_primary());
+    assert_eq!(output.extras.len(), 1);
+    assert_eq!(output.extras[0].name, "audit");
+    assert_eq!(output.extras[0].instance, expected_audit());
+    assert_eq!(execute_with_sources(&primary, &reversed)?, expected_primary());
+
+    assert_eq!(
+        execute(&primary),
+        Err(RuntimeError::MissingNamedSource { name: "catalog" })
+    );
+    assert_eq!(
+        execute_with_sources(
+            &primary,
+            &[
+                NamedInput {
+                    name: "catalog",
+                    instance: &catalog,
+                },
+                NamedInput {
+                    name: "catalog",
+                    instance: &catalog,
+                },
+                NamedInput {
+                    name: "labels",
+                    instance: &labels,
+                },
+            ],
+        ),
+        Err(RuntimeError::DuplicateNamedSource { name: "catalog" })
+    );
+    assert_eq!(
+        execute_with_sources(
+            &primary,
+            &[
+                NamedInput {
+                    name: "other",
+                    instance: &catalog,
+                },
+                NamedInput {
+                    name: "catalog",
+                    instance: &catalog,
+                },
+                NamedInput {
+                    name: "labels",
+                    instance: &labels,
+                },
+            ],
+        ),
+        Err(RuntimeError::UnexpectedNamedSource {
+            name: "other".into(),
+        })
+    );
+    Ok(())
+}
+
+fn primary_source() -> Instance {
+    group([field(
+        "Order",
+        repeated([order("A"), order("missing"), order("B")]),
+    )])
+}
+
+fn order(sku: &str) -> Instance {
+    group([field("Sku", scalar(Value::String(sku.into())))])
+}
+
+fn catalog_source() -> Instance {
+    group([field(
+        "CatalogRow",
+        repeated([catalog_row("A", "Alpha"), catalog_row("B", "Beta")]),
+    )])
+}
+
+fn catalog_row(sku: &str, label: &str) -> Instance {
+    group([
+        field("Sku", scalar(Value::String(sku.into()))),
+        field("Label", scalar(Value::String(label.into()))),
+    ])
+}
+
+fn labels_source() -> Instance {
+    group([field(
+        "LabelRow",
+        repeated([label_row("first"), label_row("second")]),
+    )])
+}
+
+fn label_row(text: &str) -> Instance {
+    group([field("Text", scalar(Value::String(text.into())))])
+}
+
+fn expected_primary() -> Instance {
+    let result = |sku: &str, label: Value| {
+        group([
+            field("Sku", scalar(Value::String(sku.into()))),
+            field("CatalogLabel", scalar(label)),
+        ])
+    };
+    group([
+        field("CatalogCount", scalar(Value::Int(2))),
+        field(
+            "Result",
+            repeated([
+                result("A", Value::String("Alpha".into())),
+                result("missing", Value::Null),
+                result("B", Value::String("Beta".into())),
+            ]),
+        ),
+        field(
+            "ReferenceLabel",
+            repeated([label_row("first"), label_row("second")]),
+        ),
+    ])
+}
+
+fn expected_audit() -> Instance {
+    group([field(
+        "FirstCatalogLabel",
+        scalar(Value::String("Alpha".into())),
+    )])
+}

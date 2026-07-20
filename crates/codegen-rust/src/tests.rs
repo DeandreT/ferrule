@@ -5,11 +5,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 use codegen::{
-    Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, NamedTargetProgram,
-    ScalarFunction, SourceIteration, TargetConstruction,
+    Binding, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram,
+    NamedTargetProgram, ScalarFunction, SourceIteration, TargetConstruction,
 };
 use ir::{SchemaKind, SchemaNode};
 
+mod extra_sources;
 mod extra_targets;
 
 fn program() -> Program {
@@ -38,6 +39,7 @@ fn program() -> Program {
                 .repeating(),
             ],
         ),
+        extra_sources: Vec::new(),
         target: SchemaNode::group(
             "Target",
             vec![
@@ -543,6 +545,19 @@ let expected = group([
 ]);
 assert_eq!(actual, expected);
 
+assert_eq!(
+    sample_map::execute_with_sources(
+        &happy_source,
+        &[sample_map::NamedInput {
+            name: "unexpected",
+            instance: &happy_source,
+        }],
+    ),
+    Err(RuntimeError::UnexpectedNamedSource {
+        name: "unexpected".into(),
+    }),
+);
+
 let outputs = sample_map::execute_outputs(&happy_source).unwrap();
 assert_eq!(outputs.primary, expected);
 assert_eq!(outputs.extras.len(), 2);
@@ -692,6 +707,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
                 SchemaNode::scalar("To", ScalarType::Int),
             ],
         ),
+        extra_sources: Vec::new(),
         target: SchemaNode::group(
             "Target",
             vec![
@@ -869,6 +885,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                 SchemaNode::scalar("FailIndex", ScalarType::Bool),
             ],
         ),
+        extra_sources: Vec::new(),
         target: SchemaNode::group(
             "Target",
             vec![

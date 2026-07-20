@@ -35,6 +35,25 @@ public sealed class ScopeContext
             executionContext);
     }
 
+    /// <summary>
+    /// Creates a root context with one outer group of named inputs followed by
+    /// the primary source. Inner scope items and the primary source therefore
+    /// take precedence during ordinary outward fallback.
+    /// </summary>
+    public static ScopeContext FromSources(
+        FerruleInstance source,
+        IEnumerable<FerruleField> extraSources,
+        FerruleExecutionContext? executionContext = null)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(extraSources);
+        var extras = new FerruleGroup(extraSources);
+        return new ScopeContext(
+            new ReadOnlyCollection<FerruleInstance>(new FerruleInstance[] { extras, source }),
+            Array.Empty<CollectionIdentity>(),
+            executionContext);
+    }
+
     /// <summary>Returns one exact host value or a typed missing-context error.</summary>
     public FerruleValue ResolveRuntimeValue(FerruleRuntimeValue value)
     {

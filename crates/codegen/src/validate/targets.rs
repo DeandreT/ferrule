@@ -4,6 +4,7 @@ use mapping::NodeId;
 
 use crate::{Expression, Program};
 
+use super::sources::SourceCatalog;
 use super::{
     ProgramValidationError, ScopeSchemas, SequenceOwner, collect_sequence_items, validate_scope,
 };
@@ -49,12 +50,13 @@ pub(super) fn validate(
     }
 
     let sequence_items = sequence_items.keys().copied().collect::<BTreeSet<_>>();
+    let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     validate_scope(
         &program.root,
         expressions,
         ScopeSchemas {
-            source_root: &program.source,
-            current_source: Some(&program.source),
+            sources,
+            current_source: Some(sources.primary()),
             target_root: &program.target,
             target_owner: TargetOwner::Primary,
         },
@@ -67,8 +69,8 @@ pub(super) fn validate(
             &target.root,
             expressions,
             ScopeSchemas {
-                source_root: &program.source,
-                current_source: Some(&program.source),
+                sources,
+                current_source: Some(sources.primary()),
                 target_root: &target.target,
                 target_owner: TargetOwner::Named(&target.name),
             },

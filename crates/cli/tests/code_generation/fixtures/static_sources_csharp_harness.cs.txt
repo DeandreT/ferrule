@@ -1,0 +1,169 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var primary = PrimarySource();
+var catalog = CatalogSource();
+var labels = LabelsSource();
+var reversed = new NamedInput[]
+{
+    new("labels", labels),
+    new("catalog", catalog),
+};
+
+var output = GeneratedMapping.ExecuteOutputsWithSources(primary, reversed);
+AssertInstance(output.Primary, ExpectedPrimary(), "primary");
+if (output.Extras.Count != 1 || output.Extras[0].Name != "audit")
+{
+    throw new InvalidOperationException("Generated named output metadata differs from the engine.");
+}
+AssertInstance(output.Extras[0].Instance, ExpectedAudit(), "audit");
+AssertInstance(
+    GeneratedMapping.ExecuteWithSources(primary, reversed),
+    ExpectedPrimary(),
+    "source-aware primary");
+
+AssertError(
+    FerruleRuntimeError.MissingNamedSource,
+    "catalog",
+    () => GeneratedMapping.Execute(primary));
+AssertError(
+    FerruleRuntimeError.DuplicateNamedSource,
+    "catalog",
+    () => GeneratedMapping.ExecuteWithSources(
+        primary,
+        new NamedInput[]
+        {
+            new("catalog", catalog),
+            new("catalog", catalog),
+            new("labels", labels),
+        }));
+AssertError(
+    FerruleRuntimeError.UnexpectedNamedSource,
+    "other",
+    () => GeneratedMapping.ExecuteWithSources(
+        primary,
+        new NamedInput[]
+        {
+            new("other", catalog),
+            new("catalog", catalog),
+            new("labels", labels),
+        }));
+
+static FerruleGroup PrimarySource() => new(new FerruleField[]
+{
+    new("Order", new FerruleRepeated(new[]
+    {
+        Order("A"),
+        Order("missing"),
+        Order("B"),
+    })),
+});
+
+static FerruleGroup Order(string sku) =>
+    Group("Sku", FerruleValue.FromString(sku));
+
+static FerruleGroup CatalogSource() => new(new FerruleField[]
+{
+    new("CatalogRow", new FerruleRepeated(new[]
+    {
+        CatalogRow("A", "Alpha"),
+        CatalogRow("B", "Beta"),
+    })),
+});
+
+static FerruleGroup CatalogRow(string sku, string label) => new(new FerruleField[]
+{
+    new("Sku", Scalar(FerruleValue.FromString(sku))),
+    new("Label", Scalar(FerruleValue.FromString(label))),
+});
+
+static FerruleGroup LabelsSource() => new(new FerruleField[]
+{
+    new("LabelRow", new FerruleRepeated(new[]
+    {
+        LabelRow("first"),
+        LabelRow("second"),
+    })),
+});
+
+static FerruleGroup LabelRow(string text) =>
+    Group("Text", FerruleValue.FromString(text));
+
+static FerruleGroup ExpectedPrimary() => new(new FerruleField[]
+{
+    new("CatalogCount", Scalar(FerruleValue.FromInt64(2))),
+    new("Result", new FerruleRepeated(new FerruleInstance[]
+    {
+        Result("A", FerruleValue.FromString("Alpha")),
+        Result("missing", FerruleValue.Null),
+        Result("B", FerruleValue.FromString("Beta")),
+    })),
+    new("ReferenceLabel", new FerruleRepeated(new FerruleInstance[]
+    {
+        LabelRow("first"),
+        LabelRow("second"),
+    })),
+});
+
+static FerruleGroup Result(string sku, FerruleValue label) => new(new FerruleField[]
+{
+    new("Sku", Scalar(FerruleValue.FromString(sku))),
+    new("CatalogLabel", Scalar(label)),
+});
+
+static FerruleGroup ExpectedAudit() =>
+    Group("FirstCatalogLabel", FerruleValue.FromString("Alpha"));
+
+static FerruleGroup Group(string name, FerruleValue value) =>
+    new(new FerruleField[] { new(name, Scalar(value)) });
+
+static FerruleScalar Scalar(FerruleValue value) => new(value);
+
+static void AssertError(FerruleRuntimeError expected, string detail, Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (
+        error.Error == expected && error.Detail == detail)
+    {
+        return;
+    }
+    throw new InvalidOperationException($"Expected {expected} for named source '{detail}'.");
+}
+
+static void AssertInstance(FerruleInstance actual, FerruleInstance expected, string output)
+{
+    switch (actual, expected)
+    {
+        case (FerruleScalar left, FerruleScalar right) when left.Value == right.Value:
+            return;
+        case (FerruleGroup left, FerruleGroup right) when left.Fields.Count == right.Fields.Count:
+            if (left.Fields.Count == 0)
+            {
+                return;
+            }
+            for (var index = 0; index < left.Fields.Count; index++)
+            {
+                if (left.Fields[index].Name != right.Fields[index].Name)
+                {
+                    break;
+                }
+                AssertInstance(left.Fields[index].Value, right.Fields[index].Value, output);
+                if (index + 1 == left.Fields.Count)
+                {
+                    return;
+                }
+            }
+            break;
+        case (FerruleRepeated left, FerruleRepeated right) when left.Items.Count == right.Items.Count:
+            for (var index = 0; index < left.Items.Count; index++)
+            {
+                AssertInstance(left.Items[index], right.Items[index], output);
+            }
+            return;
+    }
+
+    throw new InvalidOperationException($"Generated {output} output differs from the engine.");
+}
