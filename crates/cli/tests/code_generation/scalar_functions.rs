@@ -115,6 +115,18 @@ fn scalar_function_project() -> Project {
         ],
     );
 
+    let upper = graph.call_values("upper", vec![Value::String("alpha Beta é".into())]);
+    let lower = graph.call_values("lower", vec![Value::String("MIXED É".into())]);
+    add_group(
+        &mut target,
+        &mut scopes,
+        "Case",
+        vec![
+            ("Upper", ScalarType::String, upper),
+            ("Lower", ScalarType::String, lower),
+        ],
+    );
+
     let normalized = graph.call_values(
         "normalize_space",
         vec![Value::String(
@@ -408,6 +420,13 @@ fn expected() -> Instance {
             values(vec![
                 ("Empty", Value::String(String::new())),
                 ("Mixed", Value::String("false-71.25|done".into())),
+            ]),
+        ),
+        (
+            "Case".into(),
+            values(vec![
+                ("Upper", Value::String("ALPHA BETA É".into())),
+                ("Lower", Value::String("mixed é".into())),
             ]),
         ),
         (

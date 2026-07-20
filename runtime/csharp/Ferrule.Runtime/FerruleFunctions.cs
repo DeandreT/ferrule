@@ -10,6 +10,8 @@ public static partial class FerruleFunctions
         return function switch
         {
             "concat" => Concat(arguments),
+            "upper" => UnaryString(function, arguments, static value => value.ToUpperInvariant()),
+            "lower" => UnaryString(function, arguments, static value => value.ToLowerInvariant()),
             "normalize_space" => UnaryString(
                 function,
                 arguments,

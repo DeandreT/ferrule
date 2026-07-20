@@ -307,7 +307,7 @@ fn unused_unsupported_nodes_do_not_block_lowering() {
         (
             99,
             Node::Call {
-                function: "upper".into(),
+                function: "format_number".into(),
                 args: vec![90],
             },
         ),
@@ -331,26 +331,26 @@ fn reports_each_reachable_unsupported_function_by_name() {
     project.graph.nodes.insert(
         40,
         Node::Call {
-            function: "upper".into(),
+            function: "format_number".into(),
             args: vec![10, 20],
         },
     );
     project.root.bindings[0].node = 40;
 
     let diagnostics = lower(&project)
-        .expect_err("upper is outside the portable call whitelist")
+        .expect_err("format_number is outside the portable call whitelist")
         .into_diagnostics();
 
     assert_eq!(
         diagnostics,
         vec![Diagnostic::UnsupportedFunction {
             node: 40,
-            function: "upper".into(),
+            function: "format_number".into(),
         }]
     );
     assert_eq!(
         diagnostics[0].to_string(),
-        "graph node 40: code generation does not support function `upper`"
+        "graph node 40: code generation does not support function `format_number`"
     );
 }
 
@@ -365,6 +365,8 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "starts_with",
         "contains",
         "concat",
+        "upper",
+        "lower",
         "normalize_space",
         "trim",
         "left_trim",
@@ -417,7 +419,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
     for (name, function) in expected.into_iter().zip(SUPPORTED_SCALAR_CALLS) {
         assert_eq!(ScalarFunction::from_name(name), Some(*function));
     }
-    assert_eq!(ScalarFunction::from_name("upper"), None);
+    assert_eq!(ScalarFunction::from_name("sleep"), None);
 }
 
 #[test]
