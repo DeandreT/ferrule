@@ -8,6 +8,7 @@ internal static partial class Program
     {
         TrimFunction();
         NumericConversionFunctions();
+        FormatNumberFunction();
         DelayPassthroughFunction();
     }
 
@@ -90,6 +91,151 @@ internal static partial class Program
                 "requires a finite numeric value",
                 value);
         }
+    }
+
+    private static void FormatNumberFunction()
+    {
+        CallEquals(
+            Text("1,234.50"),
+            "format_number",
+            FerruleValue.FromDouble(1234.5),
+            Text("#,##0.00"));
+        CallEquals(
+            Text("123.46"),
+            "format_number",
+            FerruleValue.FromDouble(123.456),
+            Text("#,##0.00"));
+        CallEquals(
+            Text("0.0003"),
+            "format_number",
+            FerruleValue.FromDouble(0.00025),
+            Text("###0.0###"));
+        CallEquals(
+            Text("00025.00"),
+            "format_number",
+            FerruleValue.FromInt64(25),
+            Text("00000.00"));
+        CallEquals(
+            Text("1.01"),
+            "format_number",
+            FerruleValue.FromDouble(1.005),
+            Text("0.00"));
+        CallEquals(
+            Text("(3.12)"),
+            "format_number",
+            FerruleValue.FromDouble(-3.12),
+            Text("#.00;(#.00)"));
+        CallEquals(
+            Text("74%"),
+            "format_number",
+            FerruleValue.FromDouble(0.736),
+            Text("#00%"));
+        CallEquals(
+            Text("736\u2030"),
+            "format_number",
+            FerruleValue.FromDouble(0.736),
+            Text("#00\u2030"));
+        CallEquals(
+            Text("1.234,50"),
+            "format_number",
+            FerruleValue.FromDouble(1234.5),
+            Text("#.##0,00"),
+            Text(","),
+            Text("."));
+        CallEquals(
+            Text("1\U0001F642234\u00B750"),
+            "format_number",
+            FerruleValue.FromDouble(1234.5),
+            Text("#\U0001F642##0\u00B700"),
+            Text("\u00B7"),
+            Text("\U0001F642"));
+        CallEquals(
+            Text("-9223372036854775808"),
+            "format_number",
+            FerruleValue.FromInt64(long.MinValue),
+            Text("0"));
+        CallEquals(
+            Text("9,007,199,254,740,993"),
+            "format_number",
+            FerruleValue.FromInt64(9_007_199_254_740_993),
+            Text("#,##0"));
+        CallEquals(
+            Text("0"),
+            "format_number",
+            FerruleValue.FromInt64(0),
+            Text("#.##"));
+        CallEquals(
+            Text("$0 USD"),
+            "format_number",
+            FerruleValue.FromInt64(0),
+            Text("$#.## USD"));
+
+        var precisionPicture = "0." + new string('0', 400);
+        CallEquals(
+            Text("1." + new string('0', 400)),
+            "format_number",
+            FerruleValue.FromDouble(1.0),
+            Text(precisionPicture));
+
+        var maximum = FerruleFunctions.Call(
+            "format_number",
+            new[] { FerruleValue.FromDouble(double.MaxValue), Text("0%") });
+        Equal(FerruleValueKind.String, maximum.Kind);
+        Equal(true, maximum.StringValue.EndsWith('%'));
+        Equal(false, maximum.StringValue.Contains("inf", StringComparison.Ordinal));
+
+        AssertFunctionArity("format_number", 2, FerruleValue.FromInt64(1));
+        AssertFunctionArity(
+            "format_number",
+            2,
+            FerruleValue.FromInt64(1),
+            Text("0"),
+            Text("."),
+            Text(","),
+            Text("extra"));
+        AssertFunctionTypeKind(
+            "format_number",
+            FerruleValueKind.Bool,
+            FerruleValue.FromInt64(1),
+            Bool(false));
+        AssertFunctionTypeKind(
+            "format_number",
+            FerruleValueKind.Bool,
+            Bool(false),
+            Text("0"));
+        AssertInvalidArgument(
+            "format_number",
+            "format contains placeholders in an invalid order",
+            FerruleValue.FromInt64(1),
+            Text("#0#"));
+        foreach (var picture in new[]
+        {
+            ".#0",
+            "0;0;0",
+            "0;;0",
+            "0%%",
+            "0%\u2030",
+            "#,,##0",
+        })
+        {
+            var error = Error(
+                FerruleRuntimeError.FunctionInvalidArgument,
+                () => FerruleFunctions.Call(
+                    "format_number",
+                    new[] { FerruleValue.FromInt64(1), Text(picture) }));
+            Equal("format_number", error.Function);
+        }
+        AssertInvalidArgument(
+            "format_number",
+            "separator collides with a picture character",
+            FerruleValue.FromInt64(1),
+            Text("0"),
+            Text("#"));
+        AssertInvalidArgument(
+            "format_number",
+            "requires a finite number",
+            FerruleValue.FromDouble(double.PositiveInfinity),
+            Text("0"));
     }
 
     private static void DelayPassthroughFunction()

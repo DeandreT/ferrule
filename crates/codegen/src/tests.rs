@@ -307,7 +307,7 @@ fn unused_unsupported_nodes_do_not_block_lowering() {
         (
             99,
             Node::Call {
-                function: "format_number".into(),
+                function: "parse_datetime".into(),
                 args: vec![90],
             },
         ),
@@ -331,26 +331,26 @@ fn reports_each_reachable_unsupported_function_by_name() {
     project.graph.nodes.insert(
         40,
         Node::Call {
-            function: "format_number".into(),
+            function: "parse_datetime".into(),
             args: vec![10, 20],
         },
     );
     project.root.bindings[0].node = 40;
 
     let diagnostics = lower(&project)
-        .expect_err("format_number is outside the portable call whitelist")
+        .expect_err("parse_datetime is outside the portable call whitelist")
         .into_diagnostics();
 
     assert_eq!(
         diagnostics,
         vec![Diagnostic::UnsupportedFunction {
             node: 40,
-            function: "format_number".into(),
+            function: "parse_datetime".into(),
         }]
     );
     assert_eq!(
         diagnostics[0].to_string(),
-        "graph node 40: code generation does not support function `format_number`"
+        "graph node 40: code generation does not support function `parse_datetime`"
     );
 }
 
@@ -377,6 +377,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "string",
         "is_numeric",
         "to_number",
+        "format_number",
         "substitute_missing",
         "is_xml_nil",
         "get_folder",

@@ -127,6 +127,44 @@ fn scalar_function_project() -> Project {
         ],
     );
 
+    let grouped = graph.call_values(
+        "format_number",
+        vec![Value::Float(12345.678), Value::String("#,##0.00".into())],
+    );
+    let negative = graph.call_values(
+        "format_number",
+        vec![Value::Float(-12.5), Value::String("0.0;[0.0]".into())],
+    );
+    let percent = graph.call_values(
+        "format_number",
+        vec![Value::Float(0.126), Value::String("0.0%".into())],
+    );
+    let custom = graph.call_values(
+        "format_number",
+        vec![
+            Value::Float(1234.5),
+            Value::String("#.##0,00".into()),
+            Value::String(",".into()),
+            Value::String(".".into()),
+        ],
+    );
+    let exact_integer = graph.call_values(
+        "format_number",
+        vec![Value::Int(i64::MIN), Value::String("#,##0".into())],
+    );
+    add_group(
+        &mut target,
+        &mut scopes,
+        "FormatNumber",
+        vec![
+            ("Grouped", ScalarType::String, grouped),
+            ("Negative", ScalarType::String, negative),
+            ("Percent", ScalarType::String, percent),
+            ("Custom", ScalarType::String, custom),
+            ("ExactInteger", ScalarType::String, exact_integer),
+        ],
+    );
+
     let normalized = graph.call_values(
         "normalize_space",
         vec![Value::String(
@@ -427,6 +465,19 @@ fn expected() -> Instance {
             values(vec![
                 ("Upper", Value::String("ALPHA BETA É".into())),
                 ("Lower", Value::String("mixed é".into())),
+            ]),
+        ),
+        (
+            "FormatNumber".into(),
+            values(vec![
+                ("Grouped", Value::String("12,345.68".into())),
+                ("Negative", Value::String("[12.5]".into())),
+                ("Percent", Value::String("12.6%".into())),
+                ("Custom", Value::String("1.234,50".into())),
+                (
+                    "ExactInteger",
+                    Value::String("-9,223,372,036,854,775,808".into()),
+                ),
             ]),
         ),
         (

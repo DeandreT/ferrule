@@ -10,6 +10,7 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
         ("lower", ScalarFunction::Lower, vec![20]),
         ("is_numeric", ScalarFunction::IsNumeric, vec![20]),
         ("to_number", ScalarFunction::ToNumber, vec![20]),
+        ("format_number", ScalarFunction::FormatNumber, vec![10, 20]),
         (
             "delay_passthrough",
             ScalarFunction::DelayPassthrough,
@@ -53,6 +54,7 @@ fn newly_supported_names_are_closed_and_canonical() {
         ("lower", ScalarFunction::Lower),
         ("is_numeric", ScalarFunction::IsNumeric),
         ("to_number", ScalarFunction::ToNumber),
+        ("format_number", ScalarFunction::FormatNumber),
         ("delay_passthrough", ScalarFunction::DelayPassthrough),
     ] {
         assert_eq!(ScalarFunction::from_name(name), Some(expected));

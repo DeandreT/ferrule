@@ -35,6 +35,7 @@ public static partial class FerruleFunctions
             "string" => StringValue(arguments),
             "is_numeric" => IsNumeric(arguments),
             "to_number" => ToNumber(arguments),
+            "format_number" => FormatNumber(arguments),
             "round" => Round(arguments),
             "delay_passthrough" => DelayPassthrough(arguments),
             "date_from_datetime" => UnaryString(

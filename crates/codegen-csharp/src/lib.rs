@@ -127,6 +127,12 @@ mod tests {
             first
                 .files()
                 .iter()
+                .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.FormatNumber.cs")
+        );
+        assert!(
+            first
+                .files()
+                .iter()
                 .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.DateTime.cs")
         );
         assert!(
