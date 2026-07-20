@@ -305,7 +305,7 @@ internal static partial class Program
         AssertFunctionType("time_from_datetime", FerruleValue.Null);
         AssertInvalidArgument(
             "year_from_datetime",
-            "requires a valid ISO date or dateTime",
+            "requires a year within the signed 64-bit integer range",
             Text("9223372036854775807-12-31T24:00:00"));
         AssertInvalidArgument(
             "month_from_datetime",
