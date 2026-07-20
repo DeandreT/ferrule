@@ -675,14 +675,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs the local MapForce sample set; informational only"]
+    #[ignore = "needs the local ReferenceSamples corpus; informational only"]
     fn survey_annual_temperature_primitives() -> Result<(), Box<dyn std::error::Error>> {
         let path = std::env::var_os("FERRULE_PDF_SURVEY")
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                Path::new(env!("CARGO_MANIFEST_DIR")).join(
-                    "../../samples/ReferenceSamples/Annual Average Temperature By Year.pdf",
-                )
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../samples/ReferenceSamples/Annual Average Temperature By Year.pdf")
             });
         if !path.is_file() {
             return Ok(());

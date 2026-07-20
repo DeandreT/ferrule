@@ -280,10 +280,9 @@ fn imports_open_page_collage_and_marker_delimited_groups() {
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn imports_and_executes_the_local_multiline_book_catalog() {
-    let samples =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("BookCatalogPDFToXML.mfd");
     let pdf = samples.join("BookCatalog.pdf");
     if !design.is_file() || !pdf.is_file() {
@@ -321,10 +320,9 @@ fn imports_and_executes_the_local_multiline_book_catalog() {
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn imports_and_executes_the_local_article_stock_pdf() {
-    let samples =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
+    let samples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../samples/ReferenceSamples");
     let design = samples.join("ArticlesInStock.mfd");
     let pdf = samples.join("ClothingStockData2024.pdf");
     if !design.is_file() || !pdf.is_file() {

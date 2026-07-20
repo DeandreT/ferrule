@@ -1,4 +1,4 @@
-//! Compatibility survey over the local (gitignored) MapForce sample set.
+//! Compatibility survey over the local gitignored ReferenceSamples corpus.
 //!
 //! Run with `cargo test -p mfd --test samples_survey -- --ignored --nocapture`.
 //! Set `FERRULE_SURVEY_JSON=/path/to/report.json` for a versioned machine-
@@ -398,7 +398,7 @@ fn summary_distinguishes_success_from_clean_success() {
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_samples() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
     if !samples_dir.is_dir() {

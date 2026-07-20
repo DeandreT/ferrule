@@ -52,5 +52,5 @@ behavior.
 
 ## Trademark
 
-MapForce is a trademark of its owner. ferrule is an independent project and
-is not affiliated with or endorsed by its owner.
+MapForce is a trademark of its owner. ferrule is an independent project and is
+not affiliated with or endorsed by that owner.

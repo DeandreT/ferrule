@@ -54,7 +54,7 @@ fn writer_emits_repeated_mixed_children_in_recorded_order() {
     let instance = Instance::Group(vec![
         (
             XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String("ReferenceSamples  2014 uses  and  data.".into())),
+            Instance::Scalar(Value::String("Example 2014 uses  and  data.".into())),
         ),
         (
             "Bold".into(),
@@ -70,7 +70,7 @@ fn writer_emits_repeated_mixed_children_in_recorded_order() {
         (
             XML_MIXED_CONTENT_FIELD.into(),
             Instance::Repeated(vec![
-                text_item("ReferenceSamples "),
+                text_item("Example "),
                 element_item("Bold", "XMLSpy"),
                 text_item(" 2014 uses "),
                 element_item("Italic", "XML"),
@@ -84,7 +84,7 @@ fn writer_emits_repeated_mixed_children_in_recorded_order() {
     let xml = to_string(&schema(), &instance).unwrap();
     assert!(
         xml.contains(
-            "ReferenceSamples <Bold>XMLSpy</Bold> 2014 uses <Italic>XML</Italic> and <Italic>EDI</Italic> data."
+            "Example <Bold>XMLSpy</Bold> 2014 uses <Italic>XML</Italic> and <Italic>EDI</Italic> data."
         ),
         "{xml}"
     );

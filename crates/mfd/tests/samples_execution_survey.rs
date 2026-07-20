@@ -1,11 +1,11 @@
-//! Read-only execution survey over the local (gitignored) MapForce samples.
+//! Read-only execution survey over the local gitignored ReferenceSamples corpus.
 //!
 //! Run with:
 //! `cargo test -p mfd --test samples_execution_survey -- --ignored --nocapture`.
 //! Set `FERRULE_EXECUTION_SURVEY_JSON=/path/to/report.json` for a versioned
 //! machine-readable report and `FERRULE_EXECUTION_SURVEY_DETAILS=1` for every
 //! per-file outcome. A manifest produced by `samples_reference_survey` can be
-//! supplied through `FERRULE_REFERENCE_SAMPLES_MANIFEST`; use the platform
+//! supplied through `FERRULE_REFERENCE_OUTPUT_MANIFEST`; use the platform
 //! path-list separator to combine independently generated manifests.
 //!
 //! The harness resolves every input beneath the sample directory, including
@@ -1195,7 +1195,7 @@ fn generated_reference_manifests_resolve_only_contained_outputs() -> Result<(), 
         &manifest,
         serde_json::to_vec(&serde_json::json!({
             "schema_version": 1,
-            "kind": "ferrule.reference_samples_outputs",
+            "kind": "ferrule.reference_outputs",
             "samples": [{
                 "file": "ReferenceSamples/example.mfd",
                 "directory": "000-example",
@@ -1216,7 +1216,7 @@ fn generated_reference_manifests_resolve_only_contained_outputs() -> Result<(), 
         &manifest,
         serde_json::to_vec(&serde_json::json!({
             "schema_version": 1,
-            "kind": "ferrule.reference_samples_outputs",
+            "kind": "ferrule.reference_outputs",
             "samples": [{
                 "file": "example.mfd",
                 "directory": "..",
@@ -1242,7 +1242,7 @@ fn dynamic_document_paths_reject_escape_duplicates_and_ancestor_overlap() {
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
     if !samples_root.is_dir() {

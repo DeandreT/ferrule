@@ -379,7 +379,7 @@ fn print_drifts(outcomes: &[RoundtripOutcome]) {
 }
 
 #[test]
-#[ignore = "needs the local MapForce sample set; informational only"]
+#[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_export_reimport_execution() -> Result<(), Box<dyn Error>> {
     let samples_root = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
     if !samples_root.is_dir() {
