@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use ir::Instance;
 
-const REFERENCE_MANIFEST_ENV: &str = "FERRULE_REFERENCE_SAMPLES_MANIFEST";
+const REFERENCE_MANIFEST_ENV: &str = "FERRULE_REFERENCE_OUTPUT_MANIFEST";
 
 #[derive(Debug)]
 pub(super) struct GeneratedReferences {
@@ -78,7 +78,7 @@ pub(super) fn load_generated_references(path: &Path) -> Result<GeneratedReferenc
         .map_err(|error| format!("reading reference manifest failed: {error}"))?;
     let manifest: serde_json::Value = serde_json::from_slice(&encoded)
         .map_err(|error| format!("parsing reference manifest failed: {error}"))?;
-    if manifest["schema_version"] != 1 || manifest["kind"] != "ferrule.reference_samples_outputs" {
+    if manifest["schema_version"] != 1 || manifest["kind"] != "ferrule.reference_outputs" {
         return Err("reference manifest has an unsupported schema or kind".into());
     }
     let records = manifest["samples"]
