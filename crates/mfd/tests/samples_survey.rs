@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 const SAMPLES_DIR: &str = "../../samples/ReferenceSamples";
 const JSON_REPORT_ENV: &str = "FERRULE_SURVEY_JSON";
 const REPORT_SCHEMA_VERSION: u32 = 1;
+const MAX_SAMPLE_DEPTH: usize = 32;
+const MAX_SAMPLE_FILES: usize = 10_000;
 
 /// Collapses a diagnostic to a stable category so the histogram groups
 /// per-component messages together.
@@ -245,11 +247,59 @@ fn validation_outcome(project: &mapping::Project) -> StageOutcome {
     }
 }
 
-fn survey_file(path: &Path, export_path: &Path) -> SampleOutcome {
-    let file = path
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.display().to_string());
+fn discover_sample_paths(samples_dir: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut directories = vec![(samples_dir.to_path_buf(), 0usize)];
+    let mut sample_paths = Vec::new();
+    while let Some((directory, depth)) = directories.pop() {
+        let mut entries = std::fs::read_dir(&directory)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in entries {
+            let file_type = entry.file_type()?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_dir() {
+                if depth >= MAX_SAMPLE_DEPTH {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "sample directory nesting exceeds {MAX_SAMPLE_DEPTH} levels at {}",
+                            path.display()
+                        ),
+                    ));
+                }
+                directories.push((path, depth + 1));
+                continue;
+            }
+            if file_type.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
+            {
+                sample_paths.push(path);
+                if sample_paths.len() > MAX_SAMPLE_FILES {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("sample corpus exceeds {MAX_SAMPLE_FILES} mapping files"),
+                    ));
+                }
+            }
+        }
+    }
+    sample_paths.sort();
+    Ok(sample_paths)
+}
+
+fn sample_name(samples_dir: &Path, path: &Path) -> String {
+    path.strip_prefix(samples_dir)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn survey_file(samples_dir: &Path, path: &Path, export_path: &Path) -> SampleOutcome {
+    let file = sample_name(samples_dir, path);
     let mut outcome = SampleOutcome::pending(file);
     let imported = match mfd::import(path) {
         Ok(imported) => imported,
@@ -398,6 +448,24 @@ fn summary_distinguishes_success_from_clean_success() {
 }
 
 #[test]
+fn sample_discovery_recurses_and_preserves_relative_identity() -> Result<(), Box<dyn Error>> {
+    let workspace = SurveyWorkspace::new()?;
+    let nested = workspace.0.join("tutorial/part-1");
+    std::fs::create_dir_all(&nested)?;
+    std::fs::write(workspace.0.join("root.mfd"), "")?;
+    std::fs::write(nested.join("root.mfd"), "")?;
+    std::fs::write(nested.join("ignored.txt"), "")?;
+
+    let paths = discover_sample_paths(&workspace.0)?;
+    let names = paths
+        .iter()
+        .map(|path| sample_name(&workspace.0, path))
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["root.mfd", "tutorial/part-1/root.mfd"]);
+    Ok(())
+}
+
+#[test]
 #[ignore = "needs the local ReferenceSamples corpus; informational only"]
 fn survey_samples() -> Result<(), Box<dyn Error>> {
     let samples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(SAMPLES_DIR);
@@ -409,23 +477,13 @@ fn survey_samples() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    let mut sample_paths = Vec::new();
-    for entry in std::fs::read_dir(&samples_dir)? {
-        let path = entry?.path();
-        if path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
-        {
-            sample_paths.push(path);
-        }
-    }
-    sample_paths.sort();
+    let sample_paths = discover_sample_paths(&samples_dir)?;
 
     let workspace = SurveyWorkspace::new()?;
     let outcomes = sample_paths
         .iter()
         .enumerate()
-        .map(|(index, path)| survey_file(path, &workspace.export_path(index)))
+        .map(|(index, path)| survey_file(&samples_dir, path, &workspace.export_path(index)))
         .collect::<Vec<_>>();
     let summary = SurveySummary::from_outcomes(&outcomes);
 
