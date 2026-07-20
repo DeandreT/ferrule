@@ -109,3 +109,42 @@ fn lowers_datetime_composition_calls_without_backend_specific_state() {
         );
     }
 }
+
+#[test]
+fn lowers_datetime_picture_calls_without_backend_specific_state() {
+    for (index, (name, expected)) in [
+        ("parse_date", ScalarFunction::ParseDate),
+        ("parse_datetime", ScalarFunction::ParseDatetime),
+        ("parse_time", ScalarFunction::ParseTime),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let node = 70 + index as u32;
+        let mut project = supported_project();
+        project.graph.nodes.insert(
+            node,
+            Node::Call {
+                function: name.to_string(),
+                args: vec![10, 20],
+            },
+        );
+        project.root.bindings[0].node = node;
+
+        let program = lower(&project).expect("the datetime picture call is portable");
+        let expression = program
+            .expressions
+            .iter()
+            .find(|expression| expression.id == node)
+            .expect("reachable call is retained");
+        assert_eq!(
+            expression.expression,
+            Expression::Call {
+                function: expected,
+                args: vec![10, 20],
+            }
+        );
+        assert_eq!(ScalarFunction::from_name(name), Some(expected));
+        assert_eq!(expected.as_str(), name);
+    }
+}

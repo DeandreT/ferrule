@@ -406,7 +406,7 @@ fn reports_other_iteration_forms_at_the_static_target_path() {
     project.graph.nodes.insert(
         41,
         Node::Call {
-            function: "parse_datetime".into(),
+            function: "edifact_to_datetime".into(),
             args: vec![20, 20],
         },
     );
@@ -422,7 +422,7 @@ fn reports_other_iteration_forms_at_the_static_target_path() {
     }));
     assert!(diagnostics.contains(&Diagnostic::UnsupportedFunction {
         node: 41,
-        function: "parse_datetime".into(),
+        function: "edifact_to_datetime".into(),
     }));
 }
 
