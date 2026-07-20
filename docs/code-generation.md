@@ -74,6 +74,8 @@ The current portable model includes:
   from the same source context and graph
 - ordered static named inputs shared by every target, including field access,
   source iteration, aggregates, lookups, and recursive collection generation
+- ordered mapping failure rules over source or generated sequences, with exact
+  true/false selection, first-item short-circuiting, and lazy optional messages
 - source-backed empty, nested, and multi-hop iteration
 - filters, stable multi-key sorting, ordered sequence windows, and mapped output
 - literal tokenization, Unicode-scalar fixed-length tokenization, bounded
@@ -94,6 +96,9 @@ When a project declares static named sources, those legacy entry points produce
 a typed missing-source error; callers must use a source-aware entry point and
 supply the exact declared set. Duplicate and unexpected names are also typed
 before any expression or target is evaluated.
+Failure rules run after the input boundary is validated but before the primary
+or any named target. Their structured error retains the one-based rule number
+and distinguishes an absent message from an evaluated empty message.
 Stored output paths and format options remain host metadata: generated libraries
 return instances and do not write files.
 

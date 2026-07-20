@@ -13,6 +13,7 @@ use crate::{
 
 mod artifacts;
 mod extra_sources;
+mod failures;
 mod sequences;
 
 fn scalar(name: &str) -> SchemaNode {

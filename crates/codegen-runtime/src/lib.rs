@@ -8,6 +8,7 @@
 
 mod aggregate;
 mod context;
+mod failure;
 mod generated_sequence;
 mod iteration;
 mod runtime_value;
@@ -20,6 +21,7 @@ pub use context::{
     GeneratedItems, InstanceKind, NamedInput, ScopeContext, SourcePathError, clone_scalar,
     resolve_scalar,
 };
+pub use failure::mapping_failure;
 pub use functions::FunctionError;
 pub use generated_sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
@@ -38,18 +40,51 @@ pub use value_map::value_map;
 pub enum RuntimeError {
     SourcePath(SourcePathError),
     Function(FunctionError),
-    AggregateIntegerOverflow { function: AggregateFunction },
-    AggregateNonFinite { function: AggregateFunction },
-    CopyCurrentSourceRequiresGroup { found: &'static str },
-    GeneratedSequenceTooLarge { requested: u128, max: u128 },
-    RecursiveSequenceDepth { limit: usize },
-    RecursiveSequenceTooLarge { max: u128 },
-    MissingRuntimeValue { value: RuntimeValue },
-    MissingNamedSource { name: &'static str },
-    DuplicateNamedSource { name: &'static str },
-    UnexpectedNamedSource { name: String },
-    NotABool { node: u32, found: &'static str },
-    NotAnItemCount { node: u32, found: &'static str },
+    AggregateIntegerOverflow {
+        function: AggregateFunction,
+    },
+    AggregateNonFinite {
+        function: AggregateFunction,
+    },
+    CopyCurrentSourceRequiresGroup {
+        found: &'static str,
+    },
+    GeneratedSequenceTooLarge {
+        requested: u128,
+        max: u128,
+    },
+    RecursiveSequenceDepth {
+        limit: usize,
+    },
+    RecursiveSequenceTooLarge {
+        max: u128,
+    },
+    MissingRuntimeValue {
+        value: RuntimeValue,
+    },
+    MissingNamedSource {
+        name: &'static str,
+    },
+    DuplicateNamedSource {
+        name: &'static str,
+    },
+    UnexpectedNamedSource {
+        name: String,
+    },
+    /// A generated mapping failure selected at least one item. Rule numbers
+    /// are one-based and follow declaration order.
+    MappingFailure {
+        rule: usize,
+        message: Option<String>,
+    },
+    NotABool {
+        node: u32,
+        found: &'static str,
+    },
+    NotAnItemCount {
+        node: u32,
+        found: &'static str,
+    },
 }
 
 impl fmt::Display for RuntimeError {
@@ -105,6 +140,11 @@ impl fmt::Display for RuntimeError {
                     "named source {name:?} is not declared by this mapping"
                 )
             }
+            Self::MappingFailure { rule, message } => write!(
+                formatter,
+                "mapping failure rule {rule}: {}",
+                message.as_deref().unwrap_or("mapping exception was raised")
+            ),
             Self::NotABool { node, found } => {
                 write!(formatter, "node {node}: expected a bool, got {found}")
             }
@@ -133,6 +173,7 @@ impl std::error::Error for RuntimeError {
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }
             | Self::UnexpectedNamedSource { .. }
+            | Self::MappingFailure { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. } => None,
         }
