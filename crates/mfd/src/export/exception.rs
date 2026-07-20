@@ -164,6 +164,8 @@ fn preserves_descendant_items(scope: &Scope) -> bool {
         && !scope.has_sort()
         && scope.group_by.is_none()
         && scope.group_starting_with.is_none()
+        && scope.group_adjacent_by.is_none()
+        && scope.group_ending_with.is_none()
         && scope.group_into_blocks.is_none()
         && scope.windows.is_empty()
         && scope.iteration_output == IterationOutput::Repeated

@@ -140,6 +140,28 @@ fn emits_each_grouping_mode_after_filtering_and_before_windows() {
             .is_ok_and(|source| source.contains("GroupedItems::starting_with"))
     }));
 
+    let mut adjacent = grouping_program();
+    adjacent.root.children[0].iteration = adjacent.root.children[0]
+        .iteration
+        .take()
+        .map(|iteration| iteration.with_grouping(GroupingPlan::AdjacentBy { key: 1 }));
+    let adjacent_source = emit(&adjacent, &options).expect("adjacent grouping emits");
+    assert!(adjacent_source.files().iter().any(|file| {
+        std::str::from_utf8(&file.contents)
+            .is_ok_and(|source| source.contains("GroupedItems::adjacent_by"))
+    }));
+
+    let mut ending = grouping_program();
+    ending.root.children[0].iteration = ending.root.children[0]
+        .iteration
+        .take()
+        .map(|iteration| iteration.with_grouping(GroupingPlan::EndingWith { predicate: 5 }));
+    let ending_source = emit(&ending, &options).expect("ending-with grouping emits");
+    assert!(ending_source.files().iter().any(|file| {
+        std::str::from_utf8(&file.contents)
+            .is_ok_and(|source| source.contains("GroupedItems::ending_with"))
+    }));
+
     let mut blocks = grouping_program();
     blocks.root.children[0].iteration = blocks.root.children[0]
         .iteration

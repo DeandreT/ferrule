@@ -548,6 +548,8 @@ fn build_one(
             || has_inherited_filter
             || feed.has_key_grouping
             || feed.has_start_grouping
+            || feed.has_adjacent_grouping
+            || feed.has_end_grouping
             || feed.has_block_grouping
             || feed.distinct_key.is_some()
             || feed.has_sort
@@ -574,6 +576,12 @@ fn build_one(
     let start_group = feed
         .group_starting_with
         .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
+    let adjacent_group = feed
+        .group_adjacent_by
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
+    let end_group = feed
+        .group_ending_with
+        .and_then(|key| builder.scalar_node_at_anchor(key, &iteration_anchor));
     if feed.has_start_grouping && start_group.is_none() {
         builder.warnings.push(format!(
             "group-starting-with feeding `{}` has a missing or unsupported predicate; iteration skipped",
@@ -590,7 +598,25 @@ fn build_one(
         skipped.push(target_path);
         return;
     }
-    let block = resolved_block.filter(|_| group.is_none() && start_group.is_none());
+    if feed.has_adjacent_grouping && adjacent_group.is_none() {
+        builder.warnings.push(format!(
+            "group-adjacent feeding `{}` has a missing or unsupported key; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
+        return;
+    }
+    if feed.has_end_grouping && end_group.is_none() {
+        builder.warnings.push(format!(
+            "group-ending-with feeding `{}` has a missing or unsupported predicate; iteration skipped",
+            target_path.join("/")
+        ));
+        skipped.push(target_path);
+        return;
+    }
+    let block = resolved_block.filter(|_| {
+        group.is_none() && start_group.is_none() && adjacent_group.is_none() && end_group.is_none()
+    });
     if let Some(distinct) = distinct {
         let exists = builder.alloc(Node::Call {
             function: "exists".into(),
@@ -683,6 +709,8 @@ fn build_one(
         filter,
         group_by: group,
         group_starting_with: start_group,
+        group_adjacent_by: adjacent_group,
+        group_ending_with: end_group,
         group_into_blocks: block,
         sort_by: primary_sort.map(|key| key.node),
         sort_descending: primary_sort.is_some_and(|key| key.descending),
@@ -985,6 +1013,8 @@ fn project_whole_group(
         && scope.filter.is_none()
         && scope.group_by.is_none()
         && scope.group_starting_with.is_none()
+        && scope.group_adjacent_by.is_none()
+        && scope.group_ending_with.is_none()
         && scope.group_into_blocks.is_none()
         && scope.sort_by.is_none()
         && scope.windows.is_empty()

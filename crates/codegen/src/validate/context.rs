@@ -26,7 +26,9 @@ pub enum JoinKeySide {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupingExpressionRole {
     Key,
+    AdjacentKey,
     StartingPredicate,
+    EndingPredicate,
     BlockSize,
 }
 
@@ -67,7 +69,9 @@ impl fmt::Display for GroupingExpressionRole {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::Key => "key",
+            Self::AdjacentKey => "adjacent key",
             Self::StartingPredicate => "starting predicate",
+            Self::EndingPredicate => "ending predicate",
             Self::BlockSize => "block size",
         })
     }

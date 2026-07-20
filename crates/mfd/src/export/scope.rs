@@ -332,6 +332,44 @@ fn append_scope_controls(
             )),
         }
     }
+    if let Some(group_adjacent_by) = scope.group_adjacent_by {
+        connect_scope_position_roots(
+            [group_adjacent_by],
+            source_stages,
+            source_collection,
+            join,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&group_adjacent_by) {
+            Some(&key_src) => {
+                let in_nodes = keys.next();
+                let in_key = keys.next();
+                let out_groups = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"group-adjacent\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_key}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/><datapoint/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((key_src, in_key));
+                from = out_groups;
+            }
+            None => warnings.push(format!(
+                "scope `{}` group-adjacent key references an unexported node; grouping dropped",
+                chain.join("/")
+            )),
+        }
+    }
     if let Some(predicate) = scope.group_starting_with {
         connect_scope_position_roots(
             [predicate],
@@ -366,6 +404,44 @@ fn append_scope_controls(
             }
             None => warnings.push(format!(
                 "scope `{}` group-starting predicate references an unexported node; grouping dropped",
+                chain.join("/")
+            )),
+        }
+    }
+    if let Some(predicate) = scope.group_ending_with {
+        connect_scope_position_roots(
+            [predicate],
+            source_stages,
+            source_collection,
+            join,
+            true,
+            from,
+            graph,
+            position_inputs,
+            position_contexts,
+            edges,
+            warnings,
+        );
+        match node_out_key.get(&predicate) {
+            Some(&predicate_src) => {
+                let in_nodes = keys.next();
+                let in_predicate = keys.next();
+                let out_groups = keys.next();
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"group-ending-with\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_predicate}\"/></sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_groups}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n"
+                );
+                edges.push((from, in_nodes));
+                edges.push((predicate_src, in_predicate));
+                from = out_groups;
+            }
+            None => warnings.push(format!(
+                "scope `{}` group-ending predicate references an unexported node; grouping dropped",
                 chain.join("/")
             )),
         }

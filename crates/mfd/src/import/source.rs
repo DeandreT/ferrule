@@ -5,9 +5,9 @@ use ir::{SchemaKind, SchemaNode, XML_TEXT_FIELD};
 use mapping::NodeId;
 
 use super::function::{
-    FnComponent, aggregate_op, is_db_where, is_distinct_values, is_filter, is_group_into_blocks,
-    is_group_starting_with, is_input, is_sequence_producer, is_sequence_window, is_sort,
-    produces_scalar,
+    FnComponent, aggregate_op, is_db_where, is_distinct_values, is_filter, is_group_adjacent,
+    is_group_ending_with, is_group_into_blocks, is_group_starting_with, is_input,
+    is_sequence_producer, is_sequence_window, is_sort, produces_scalar,
 };
 use super::graph::GraphBuilder;
 use super::iteration::{IterationFeed, split_at_innermost_repeating};
@@ -115,7 +115,7 @@ fn iteration_source_feed(
         };
         let is_group_output = component.library == "core"
             && component.kind == 5
-            && component.name == "group-by"
+            && matches!(component.name.as_str(), "group-by" | "group-adjacent")
             && component.output_pins.first().copied().flatten() == Some(feed);
         if !(is_filter(component)
             || is_db_where(component)
@@ -123,6 +123,7 @@ fn iteration_source_feed(
             || is_sequence_window(component)
             || is_group_into_blocks(component)
             || is_group_starting_with(component)
+            || is_group_ending_with(component)
             || is_distinct_values(component)
             || is_input(component)
             || is_group_output)
@@ -471,7 +472,8 @@ impl GraphBuilder<'_> {
                 || is_sequence_window(component)
                 || is_group_into_blocks(component)
                 || is_group_starting_with(component)
-                || component.name == "group-by"
+                || is_group_ending_with(component)
+                || matches!(component.name.as_str(), "group-by" | "group-adjacent")
                     && component.output_pins.first().copied().flatten() == Some(feed);
             if passes_nodes {
                 feed = self.input_feed(idx, 0)?;
@@ -540,6 +542,8 @@ fn is_plain_scalar_expression(component: &FnComponent) -> bool {
         && !is_sequence_window(component)
         && !is_group_into_blocks(component)
         && !is_group_starting_with(component)
+        && !is_group_adjacent(component)
+        && !is_group_ending_with(component)
         && !is_distinct_values(component)
         && !is_sequence_producer(component)
         && !matches!(component.name.as_str(), "exists" | "position")

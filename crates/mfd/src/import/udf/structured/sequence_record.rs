@@ -339,6 +339,8 @@ pub(super) fn build_target(
         || !control.udf_filters.is_empty()
         || control.has_key_grouping
         || control.has_start_grouping
+        || control.has_adjacent_grouping
+        || control.has_end_grouping
         || control.has_block_grouping
         || control.distinct_key.is_some()
         || control.order_issue.is_some()
@@ -415,6 +417,8 @@ pub(super) fn build_target(
             filter,
             group_by: None,
             group_starting_with: None,
+            group_adjacent_by: None,
+            group_ending_with: None,
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Rows>
+  <Row><Key>A</Key><Value>one</Value><End>false</End></Row>
+  <Row><Key>A</Key><Value>two</Value><End>true</End></Row>
+  <Row><Key>B</Key><Value>three</Value><End>false</End></Row>
+  <Row><Key>B</Key><Value>four</Value><End>false</End></Row>
+  <Row><Key>A</Key><Value>five</Value><End>true</End></Row>
+</Rows>
