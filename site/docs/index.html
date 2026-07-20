@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ferrule docs</title>
+  <meta name="description" content="Book-style documentation for ferrule, the open-source Rust data mapper." />
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../">
+        <svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true">
+          <rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/>
+          <rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/>
+          <rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/>
+        </svg>
+        ferrule
+      </a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section">
+          <div class="nav-title">Start</div>
+          <a href="index.html" aria-current="page">Introduction</a>
+          <a href="getting-started.html">Getting started</a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-title">Model</div>
+          <a href="architecture.html">Architecture</a>
+          <a href="formats.html">Supported formats</a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-title">Interop</div>
+          <a href="mapforce.html">MapForce import/export</a>
+          <a href="codegen.html">Rust and C# codegen</a>
+        </div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar">
+        <a href="../demo/">Live demo</a>
+        <a href="https://github.com/DeandreT/ferrule">GitHub</a>
+      </div>
+      <article class="content">
+        <div class="chapter">Chapter 1</div>
+        <h1>ferrule documentation</h1>
+        <p class="lead">
+          ferrule is a Rust-native graphical data mapper. It connects source and
+          target schemas with functions, filters, grouping, joins, lookups, and
+          format adapters while keeping the project file open and inspectable.
+        </p>
+
+        <div class="quick-grid">
+          <section class="tile">
+            <h3>Run your first mapping</h3>
+            <p>Install nightly Rust, run the checked-in XML to CSV fixture, and
+            launch the native editor.</p>
+            <a href="getting-started.html">Start here</a>
+          </section>
+          <section class="tile">
+            <h3>Understand the model</h3>
+            <p>Projects are schemas, scalar graph nodes, target scopes, and
+            endpoint metadata.</p>
+            <a href="architecture.html">Read the architecture</a>
+          </section>
+          <section class="tile">
+            <h3>Choose adapters</h3>
+            <p>Review the supported source and target formats, including XML,
+            JSON, EDI, XLSX, Protobuf, XBRL, and PDF extraction.</p>
+            <a href="formats.html">See the matrix</a>
+          </section>
+          <section class="tile">
+            <h3>Generate code</h3>
+            <p>Emit deterministic Rust or package-free C# mapping libraries for
+            the portable subset.</p>
+            <a href="codegen.html">Open codegen docs</a>
+          </section>
+        </div>
+
+        <h2>How to read this book</h2>
+        <p>
+          The early chapters cover the everyday workflow: building or importing
+          schemas, validating a project, running a mapping, and choosing runtime
+          formats. The later chapters explain interoperability and code
+          generation boundaries so you can tell when a mapping will run through
+          the interpreter, export to MapForce, or lower to generated Rust and C#.
+        </p>
+
+        <div class="callout">
+          <strong>Project files are ordinary JSON.</strong>
+          The GUI, CLI, interpreter, web demo, and code generators all work from
+          the same model instead of translating between editor-only and
+          runner-only project formats.
+        </div>
+
+        <h2>The core workflow</h2>
+        <div class="flow" aria-label="ferrule workflow">
+          <span>1. import schemas</span>
+          <span>2. wire a mapping</span>
+          <span>3. validate and run</span>
+          <span>4. generate or export</span>
+        </div>
+        <p>
+          ferrule normalizes inputs into a shared instance tree, evaluates the
+          mapping graph and target scopes, then writes the result through a
+          separate format adapter. That division is what lets one mapping cross
+          XML, JSON, tabular, database, EDI, binary, spreadsheet, and document
+          extraction boundaries.
+        </p>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <span></span>
+          <a href="getting-started.html">Getting started -></a>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

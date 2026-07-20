@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rust and C# codegen - ferrule docs</title>
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../"><svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/><rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/><rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/></svg>ferrule</a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
+        <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html">Architecture</a><a href="formats.html">Supported formats</a></div>
+        <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html" aria-current="page">Rust and C# codegen</a></div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar"><a href="../demo/">Live demo</a><a href="https://github.com/DeandreT/ferrule">GitHub</a></div>
+      <article class="content">
+        <div class="chapter">Chapter 6</div>
+        <h1>Rust and C# code generation</h1>
+        <p class="lead">
+          ferrule lowers the portable subset of a validated project into a
+          buildable mapping library. Rust and C# share the same neutral program
+          so successful generation preserves evaluation order, `Null` behavior,
+          output shape, and typed failures.
+        </p>
+
+        <h2>C#</h2>
+        <pre><code>cargo +nightly run -p cli -- generate \
+  --project project.json \
+  --language csharp \
+  --out generated-csharp</code></pre>
+        <p>
+          The result is a standalone, package-free .NET 10 library. Runtime
+          sources are vendored into the generated artifact tree, and named
+          inputs or outputs use typed boundary methods.
+        </p>
+
+        <h2>Rust</h2>
+        <pre><code>cargo +nightly run -p cli -- generate \
+  --project project.json \
+  --language rust \
+  --out generated-rust \
+  --rust-runtime-path crates/codegen-runtime</code></pre>
+        <p>
+          Rust generation currently links the local `codegen-runtime` crate by
+          path. The generated crate exposes primary-output entry points plus
+          output-set and named-source variants.
+        </p>
+
+        <h2>Portable subset</h2>
+        <ul>
+          <li>Scalar constants, ordinary and frame-pinned source fields, positions, lazy conditionals, value maps, lookups, aggregates, and a closed scalar function set.</li>
+          <li>Primary and static named sources, one primary target, and ordered named targets.</li>
+          <li>Nested source iteration, generated scalar sequences, filters, multi-key sorting, sequence windows, grouping, mapped output, and compact positions.</li>
+          <li>Root-context static inner joins with duplicate-preserving order and exact joined fields.</li>
+          <li>Typed runtime errors for arity, scalar types, functions, aggregate bounds, generated sequence limits, and unsupported reachable constructs.</li>
+        </ul>
+
+        <div class="callout">
+          <strong>Generation is conservative.</strong>
+          Unsupported reachable constructs are reported before artifacts are
+          created. Unreachable graph nodes do not block an otherwise portable
+          project.
+        </div>
+
+        <h2>Output safety</h2>
+        <p>
+          The CLI validates and stages a complete artifact tree before
+          publishing it. Generation requires a destination that does not already
+          exist, avoiding partial replacement of user-managed source trees.
+        </p>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <a href="mapforce.html"><- MapForce interop</a>
+          <span></span>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

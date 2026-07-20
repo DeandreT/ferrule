@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Getting started - ferrule docs</title>
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../">
+        <svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/><rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/><rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/></svg>
+        ferrule
+      </a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html" aria-current="page">Getting started</a></div>
+        <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html">Architecture</a><a href="formats.html">Supported formats</a></div>
+        <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html">Rust and C# codegen</a></div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar"><a href="../demo/">Live demo</a><a href="https://github.com/DeandreT/ferrule">GitHub</a></div>
+      <article class="content">
+        <div class="chapter">Chapter 2</div>
+        <h1>Getting started</h1>
+        <p class="lead">
+          The fastest path is to run the checked-in CLI fixture, then open the
+          native editor or browser demo once you understand the project shape.
+        </p>
+
+        <h2>Install the toolchain</h2>
+        <p>ferrule currently tracks Rust nightly.</p>
+        <pre><code>rustup toolchain install nightly</code></pre>
+
+        <h2>Run an existing mapping</h2>
+        <p>
+          This example reads XML orders and writes flat CSV rows. The CLI picks
+          input and output adapters by extension unless the project embeds more
+          specific format options.
+        </p>
+        <pre><code>cargo +nightly run -p cli -- run \
+  --project crates/cli/tests/fixtures/orders/project.json \
+  --input crates/cli/tests/fixtures/orders/Orders.xml \
+  --output order-lines.csv</code></pre>
+
+        <h2>Validate without executing</h2>
+        <p>
+          Validation checks graph reachability, schema compatibility, scope
+          controls, joins, generated sequences, and format options before any
+          input file is read.
+        </p>
+        <pre><code>cargo +nightly run -p cli -- validate \
+  --project crates/cli/tests/fixtures/orders/project.json</code></pre>
+
+        <h2>Open the editor</h2>
+        <p>
+          The GUI is an egui desktop app. It stores canvas layout data beside
+          the project so semantic project JSON stays readable.
+        </p>
+        <pre><code>cargo +nightly run -p gui</code></pre>
+
+        <h2>Import schemas</h2>
+        <p>
+          Schema importers are useful when you want to create a project from
+          existing contracts before wiring the mapping.
+        </p>
+        <pre><code>cargo +nightly run -p cli -- import-xsd --xsd Orders.xsd
+cargo +nightly run -p cli -- import-json-schema --schema customers.schema.json
+cargo +nightly run -p cli -- import-db --db warehouse.db --table orders</code></pre>
+
+        <div class="callout warn">
+          <strong>Use JSON diagnostics in automation.</strong>
+          `--diagnostics json` emits versioned JSON Lines on stderr for
+          validation, runtime, interop, and CLI usage failures.
+        </div>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <a href="index.html"><- Introduction</a>
+          <a href="architecture.html">Architecture -></a>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

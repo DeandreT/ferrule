@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MapForce interoperability - ferrule docs</title>
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../"><svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/><rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/><rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/></svg>ferrule</a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
+        <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html">Architecture</a><a href="formats.html">Supported formats</a></div>
+        <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html" aria-current="page">MapForce import/export</a><a href="codegen.html">Rust and C# codegen</a></div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar"><a href="../demo/">Live demo</a><a href="https://github.com/DeandreT/ferrule">GitHub</a></div>
+      <article class="content">
+        <div class="chapter">Chapter 5</div>
+        <h1>MapForce import/export</h1>
+        <p class="lead">
+          ferrule provides clean-room, best-effort import and export for
+          MapForce `.mfd` designs. Unsupported pieces become warnings
+          where possible, so recoverable mappings stay editable and executable.
+        </p>
+
+        <h2>Import a design</h2>
+        <pre><code>cargo +nightly run -p cli -- import-mfd \
+  --mfd design.mfd \
+  --out project.json</code></pre>
+        <p>
+          Import resolves supported document components, schemas, graph nodes,
+          target scopes, format options, paths, and warnings into a ferrule
+          project. A design is rejected only when no usable source or target can
+          be recovered.
+        </p>
+
+        <h2>Export a design</h2>
+        <pre><code>cargo +nightly run -p cli -- export-mfd \
+  --project project.json \
+  --out design.mfd</code></pre>
+        <p>
+          Export writes the representable project subset with generated schema,
+          layout, or metadata siblings. Shapes that cannot be represented safely
+          reject atomically instead of publishing partial wiring.
+        </p>
+
+        <h2>Representative coverage</h2>
+        <ul>
+          <li>XML, JSON, CSV, fixed-width, FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL, HTTP XML, and visual PDF source components.</li>
+          <li>Core scalar functions, aggregates, lookups, joins, exceptions, generated sequences, value maps, grouping, sorting, and windows.</li>
+          <li>Named static sources, dynamic XML paths, independent targets, schema-equal copy-all scopes, generic XML element sequences, and selected user-function shapes.</li>
+        </ul>
+
+        <div class="callout warn">
+          <strong>Interop is intentionally resilient.</strong>
+          The importer favors partial executable recovery with actionable
+          diagnostics over all-or-nothing conversion.
+        </div>
+
+        <p class="muted">
+          MapForce is a trademark of its owner. ferrule is an independent
+          project and is not affiliated with or endorsed by its owner.
+        </p>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <a href="formats.html"><- Supported formats</a>
+          <a href="codegen.html">Code generation -></a>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Supported formats - ferrule docs</title>
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../"><svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/><rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/><rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/></svg>ferrule</a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
+        <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html">Architecture</a><a href="formats.html" aria-current="page">Supported formats</a></div>
+        <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html">Rust and C# codegen</a></div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar"><a href="../demo/">Live demo</a><a href="https://github.com/DeandreT/ferrule">GitHub</a></div>
+      <article class="content">
+        <div class="chapter">Chapter 4</div>
+        <h1>Supported formats</h1>
+        <p class="lead">
+          Format adapters translate external documents into `ir::Instance` and
+          write target instances back out. Extension dispatch covers common
+          cases; embedded format options carry dialects, layouts, and schemas.
+        </p>
+
+        <table>
+          <thead><tr><th>Format</th><th>Source</th><th>Target</th><th>Current scope</th></tr></thead>
+          <tbody>
+            <tr><td>XML</td><td>Yes</td><td>Yes</td><td>Hierarchical I/O, XSD-lite, bounded DTD import, attributes, `xsi:nil`, generic elements, and mixed content.</td></tr>
+            <tr><td>JSON</td><td>Yes</td><td>Yes</td><td>Hierarchical I/O, JSON Lines, local schema references, selected object alternatives, and dynamic target properties.</td></tr>
+            <tr><td>CSV</td><td>Yes</td><td>Yes</td><td>Delimited flat rows with configurable delimiter and header handling.</td></tr>
+            <tr><td>Fixed-width</td><td>Yes</td><td>Yes</td><td>Validated Unicode-scalar column layouts, fill policy, record separators, and typed empty values.</td></tr>
+            <tr><td>XLSX</td><td>Yes</td><td>Yes</td><td>Typed worksheets, selected composite/grid source shapes, hierarchical targets, and update-existing writes.</td></tr>
+            <tr><td>SQLite</td><td>Yes</td><td>Yes</td><td>Table introspection, typed reads, imported relational query shapes, and idempotent full-replace writes.</td></tr>
+            <tr><td>EDI</td><td>Yes</td><td>Yes</td><td>X12, EDIFACT, HL7 v2, TRADACOMS, IDoc, and SWIFT MT through schema-guided or embedded layouts.</td></tr>
+            <tr><td>FlexText</td><td>Yes</td><td>Yes</td><td>Recursive split/store/switch layouts, fixed-width records, delimiter handling, and pruning rules.</td></tr>
+            <tr><td>Protocol Buffers</td><td>Yes</td><td>Yes</td><td>Bounded proto2/proto3 schemas and binary wire I/O, including nested messages, enums, and packed scalars.</td></tr>
+            <tr><td>XBRL</td><td>Yes</td><td>Yes</td><td>Typed facts, contexts, dimensions, units, namespaces, and table-shaped runtime boundaries.</td></tr>
+            <tr><td>PDF</td><td>Yes</td><td>No</td><td>Layout-driven visual extraction from text positions, anchors, painted edges, and table regions.</td></tr>
+          </tbody>
+        </table>
+
+        <h2>Boundaries</h2>
+        <ul>
+          <li>PDF output is intentionally unsupported.</li>
+          <li>XBRL taxonomy formula, presentation, calculation, and linkbase execution are not interpreted.</li>
+          <li>XML supports a practical schema subset rather than every namespace and `xsi:type` shape.</li>
+          <li>JSON Schema supports selected closed-object alternatives, not general nested union composition.</li>
+          <li>Database execution is SQLite-specific today.</li>
+        </ul>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <a href="architecture.html"><- Architecture</a>
+          <a href="mapforce.html">MapForce interop -></a>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>
