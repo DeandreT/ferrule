@@ -76,10 +76,12 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "remove_folder" => "remove-folder",
         "resolve_filepath" => "resolve-filepath",
         "is_xml_nil" => "is-xsi-nil",
+        "substitute_missing_with_xml_nil" => "substitute-missing-with-xsi-nil",
         "date_from_datetime" => "date-from-datetime",
         "year_from_datetime" => "year-from-datetime",
         "month_from_datetime" => "month-from-datetime",
         "day_from_datetime" => "day-from-datetime",
+        "weekday" => "weekday",
         "hours_from_datetime" => "hour-from-datetime",
         "minutes_from_datetime" => "minute-from-datetime",
         "time_from_datetime" => "time-from-datetime",
@@ -91,6 +93,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "parse_time" => "parse-time",
         "edifact_to_datetime" => "to-datetime",
         "substitute_missing" => "substitute-missing",
+        "get_fileext" => "get-fileext",
         "delay_passthrough" => "sleep",
         "format_number" => "format-number",
         other => other,
@@ -113,6 +116,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "year_from_datetime"
         | "month_from_datetime"
         | "day_from_datetime"
+        | "weekday"
         | "hours_from_datetime"
         | "minutes_from_datetime"
         | "time_from_datetime"
@@ -141,6 +145,15 @@ mod tests {
         assert_eq!(function_library("left"), "lang");
         assert_eq!(unmap_function_name("right"), "right");
         assert_eq!(function_library("right"), "lang");
+        assert_eq!(unmap_function_name("weekday"), "weekday");
+        assert_eq!(function_library("weekday"), "lang");
+        assert_eq!(
+            unmap_function_name("substitute_missing_with_xml_nil"),
+            "substitute-missing-with-xsi-nil"
+        );
+        assert_eq!(function_library("substitute_missing_with_xml_nil"), "core");
+        assert_eq!(unmap_function_name("get_fileext"), "get-fileext");
+        assert_eq!(function_library("get_fileext"), "core");
         assert_eq!(unmap_function_name("delay_passthrough"), "sleep");
         assert_eq!(function_library("delay_passthrough"), "lang");
         assert_eq!(function_library("to_number"), "ferrule");
