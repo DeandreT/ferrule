@@ -2,37 +2,74 @@ use codegen_runtime::{FunctionError, Instance, RuntimeError, Value, field, group
 use ferrule_generated_mapping::execute;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(execute(&source(false, false, false))?, expected());
+    assert_eq!(execute(&source(false, false, false, false, false, false))?, expected());
     assert_eq!(
-        execute(&source(true, false, false)),
+        execute(&source(true, false, false, false, false, false)),
         Err(RuntimeError::Function(FunctionError::TypeMismatch {
             function: "substring",
             got: "int",
         })),
     );
     assert_eq!(
-        execute(&source(false, true, false)),
+        execute(&source(false, true, false, false, false, false)),
         Err(RuntimeError::Function(FunctionError::InvalidArgument {
             function: "isbn10_to_isbn13",
             message: "ISBN-10 check digit is invalid".into(),
         })),
     );
     assert_eq!(
-        execute(&source(false, false, true)),
+        execute(&source(false, false, true, false, false, false)),
         Err(RuntimeError::Function(FunctionError::ArityMismatch {
             function: "date_from_datetime",
             expected: 1,
             got: 0,
         })),
     );
+    assert_eq!(
+        execute(&source(false, false, false, true, false, false)),
+        Err(RuntimeError::Function(FunctionError::InvalidArgument {
+            function: "to_number",
+            message: "requires a finite numeric value".into(),
+        })),
+    );
+    assert_eq!(
+        execute(&source(false, false, false, false, true, false)),
+        Err(RuntimeError::Function(FunctionError::TypeMismatch {
+            function: "delay_passthrough",
+            got: "bool",
+        })),
+    );
+    assert_eq!(
+        execute(&source(false, false, false, false, false, true)),
+        Err(RuntimeError::Function(FunctionError::InvalidArgument {
+            function: "delay_passthrough",
+            message: "requires a finite nonnegative duration".into(),
+        })),
+    );
     Ok(())
 }
 
-fn source(fail_type: bool, fail_invalid: bool, fail_arity: bool) -> Instance {
+fn source(
+    fail_type: bool,
+    fail_invalid: bool,
+    fail_arity: bool,
+    fail_number_invalid: bool,
+    fail_delay_type: bool,
+    fail_delay_invalid: bool,
+) -> Instance {
     group([
         field("FailType", scalar(Value::Bool(fail_type))),
         field("FailInvalid", scalar(Value::Bool(fail_invalid))),
         field("FailArity", scalar(Value::Bool(fail_arity))),
+        field(
+            "FailNumberInvalid",
+            scalar(Value::Bool(fail_number_invalid)),
+        ),
+        field("FailDelayType", scalar(Value::Bool(fail_delay_type))),
+        field(
+            "FailDelayInvalid",
+            scalar(Value::Bool(fail_delay_invalid)),
+        ),
         field("NaN", scalar(Value::Float(f64::NAN))),
         field("Infinity", scalar(Value::Float(f64::INFINITY))),
     ])
@@ -86,10 +123,31 @@ fn expected() -> Instance {
             ("DateOnly", Value::String("2024-03-01Z".into())),
             ("MultipleT", Value::String("alpha".into())),
         ])),
+        field("Conversions", values([
+            ("Trimmed", Value::String("value".into())),
+            ("NumericInt", Value::Bool(true)),
+            ("NumericDecimal", Value::Bool(true)),
+            ("NumericOverflow", Value::Bool(true)),
+            ("NumericInfinity", Value::Bool(false)),
+            ("NumericNull", Value::Bool(false)),
+            ("NumericXmlNil", Value::Bool(false)),
+            ("NumericBool", Value::Bool(false)),
+            ("NumberInt", Value::Int(i64::MAX)),
+            ("NumberMin", Value::Int(i64::MIN)),
+            ("NumberFloat", Value::Float(12.5)),
+            ("NumberExponent", Value::Float(1000.0)),
+            ("NumberNegativeZero", Value::Float(-0.0)),
+            ("NumberNull", Value::Null),
+            ("DelayText", Value::String("ready".into())),
+            ("DelayNil", Value::xml_nil()),
+        ])),
         field("Errors", values([
             ("Type", Value::String("safe-type".into())),
             ("Invalid", Value::String("safe-invalid".into())),
             ("Arity", Value::String("safe-arity".into())),
+            ("NumberInvalid", Value::String("safe-number".into())),
+            ("DelayType", Value::String("safe-delay-type".into())),
+            ("DelayInvalid", Value::String("safe-delay-invalid".into())),
         ])),
     ])
 }

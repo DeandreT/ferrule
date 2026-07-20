@@ -121,6 +121,18 @@ mod tests {
             first
                 .files()
                 .iter()
+                .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.Numeric.cs")
+        );
+        assert!(
+            first
+                .files()
+                .iter()
+                .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.Strings.cs")
+        );
+        assert!(
+            first
+                .files()
+                .iter()
                 .any(|file| file.path.as_str() == "Runtime/ScopeContext.cs")
         );
     }
