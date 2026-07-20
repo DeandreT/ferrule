@@ -18,8 +18,8 @@ use std::fmt;
 
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
-    GeneratedItems, InstanceKind, NamedInput, ScopeContext, SourcePathError, clone_scalar,
-    resolve_scalar,
+    GeneratedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput, ScopeContext,
+    SourcePathError, clone_scalar, resolve_scalar,
 };
 pub use failure::mapping_failure;
 pub use functions::FunctionError;

@@ -6,6 +6,7 @@
 
 mod artifact;
 mod diagnostic;
+mod join;
 mod lower;
 mod model;
 mod validate;
@@ -18,6 +19,10 @@ pub use diagnostic::{
     Diagnostic, FailureRuleFeature, LowerError, ScopeConstructionKind, ScopeFeature,
     UnsupportedNodeKind, UnsupportedSequenceKind,
 };
+pub use join::{
+    InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
+    JoinSourceCardinality,
+};
 pub use lower::lower;
 pub use model::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, FailureIteration,
@@ -27,8 +32,8 @@ pub use model::{
     SourceIteration, TargetConstruction, TargetScope,
 };
 pub use validate::{
-    ProgramValidationError, RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner,
-    validate_program,
+    JoinKeySide, ProgramValidationError, RecursiveSequencePathRole, SequenceExpressionRole,
+    SequenceOwner, validate_program,
 };
 
 #[cfg(test)]

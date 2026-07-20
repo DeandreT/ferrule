@@ -11,6 +11,7 @@ public enum FerruleRuntimeError
     MissingNamedSource,
     DuplicateNamedSource,
     UnexpectedNamedSource,
+    MissingJoinContext,
     MappingFailure,
     UnknownFunction,
     FunctionArity,
@@ -47,7 +48,8 @@ public sealed class FerruleRuntimeException : Exception
         int? maximumDepth = null,
         FerruleRuntimeValue? runtimeValue = null,
         int? failureRule = null,
-        string? mappingFailureMessage = null)
+        string? mappingFailureMessage = null,
+        ulong? join = null)
         : base(message)
     {
         Error = error;
@@ -64,6 +66,7 @@ public sealed class FerruleRuntimeException : Exception
         RuntimeValue = runtimeValue;
         FailureRule = failureRule;
         MappingFailureMessage = mappingFailureMessage;
+        Join = join;
     }
 
     public FerruleRuntimeException(
@@ -82,7 +85,8 @@ public sealed class FerruleRuntimeException : Exception
         int? maximumDepth = null,
         FerruleRuntimeValue? runtimeValue = null,
         int? failureRule = null,
-        string? mappingFailureMessage = null)
+        string? mappingFailureMessage = null,
+        ulong? join = null)
         : base(message, innerException)
     {
         Error = error;
@@ -99,6 +103,7 @@ public sealed class FerruleRuntimeException : Exception
         RuntimeValue = runtimeValue;
         FailureRule = failureRule;
         MappingFailureMessage = mappingFailureMessage;
+        Join = join;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -128,4 +133,6 @@ public sealed class FerruleRuntimeException : Exception
     public int? FailureRule { get; }
 
     public string? MappingFailureMessage { get; }
+
+    public ulong? Join { get; }
 }

@@ -6,6 +6,8 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
     match expression {
         Expression::SourceField { .. }
         | Expression::Position { .. }
+        | Expression::JoinField { .. }
+        | Expression::JoinPosition { .. }
         | Expression::Const { .. }
         | Expression::RuntimeValue { .. } => Vec::new(),
         Expression::Call { args, .. } => args.clone(),

@@ -69,6 +69,10 @@ The current portable model includes:
   static named source, with strict scalar-tag equality and Null on a miss
 - expression-driven collection search over flattened source paths, with
   nullable predicates, raw nested positions, lazy values, and first-match wins
+- root-context static inner joins across two or more primary or named-source
+  collections, with left-deep composite equality, scalar coercion, stable
+  duplicate-preserving order, Null/XML-nil exclusion, exact joined fields, raw
+  source positions, compacted tuple positions, and ordinary scope controls
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings
@@ -114,8 +118,10 @@ different regex dialects and Unicode behavior; exact cross-backend support needs
 a Ferrule-owned matcher. Recursive-filter, path-hierarchy, and adjacency-tree
 target construction remain interpreter-only. Per-item dynamic named sources
 remain interpreter-only because their graph-computed paths require a typed host
-loader contract during scope evaluation. Code generation is expanding
-incrementally toward interpreter parity; see the
+loader contract during scope evaluation. Correlated or nested join plans and
+joined-tuple aggregates also remain interpreter-only; their ownership and
+parent-context rules need a broader portable join model. Code generation is
+expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 
 ## Output Safety

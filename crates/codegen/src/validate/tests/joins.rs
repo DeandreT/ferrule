@@ -1,0 +1,348 @@
+use super::*;
+use crate::{
+    FailureIteration, FailureRule, FailureSelection, InnerJoin, JoinConditions, JoinId, JoinKey,
+    JoinKeySide, JoinPlan, JoinPlanError, JoinSource, NamedSourceProgram, NamedTargetProgram,
+};
+
+fn plan(left_path: &[&str], right_collection: &[&str], right_path: &[&str]) -> JoinPlan {
+    JoinPlan::new(
+        JoinSource::new(vec!["A".into()]),
+        JoinSource::new(
+            right_collection
+                .iter()
+                .map(|segment| (*segment).into())
+                .collect(),
+        ),
+        JoinConditions::new(JoinKey::new(
+            vec!["A".into()],
+            left_path.iter().map(|segment| (*segment).into()).collect(),
+            right_path.iter().map(|segment| (*segment).into()).collect(),
+        )),
+    )
+    .unwrap()
+}
+
+fn join_program() -> Program {
+    let mut program = program();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "A",
+                vec![
+                    SchemaNode::scalar("id", ScalarType::Int),
+                    SchemaNode::scalar("label", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    program.extra_sources.push(NamedSourceProgram {
+        name: "Catalog".into(),
+        source: SchemaNode::group(
+            "CatalogDocument",
+            vec![
+                SchemaNode::group(
+                    "B",
+                    vec![
+                        SchemaNode::scalar("aid", ScalarType::Int),
+                        SchemaNode::scalar("label", ScalarType::String),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+    });
+    program.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::group(
+                "Row",
+                vec![
+                    SchemaNode::scalar("Value", ScalarType::String),
+                    SchemaNode::scalar("Position", ScalarType::Int),
+                    SchemaNode::group(
+                        "Static",
+                        vec![SchemaNode::scalar("Echo", ScalarType::String)],
+                    ),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    program.expressions = vec![
+        ExpressionNode {
+            id: 1,
+            expression: Expression::JoinField {
+                join: JoinId::new(7),
+                collection: vec!["A".into()],
+                path: vec!["label".into()],
+            },
+        },
+        ExpressionNode {
+            id: 2,
+            expression: Expression::JoinPosition {
+                join: JoinId::new(7),
+            },
+        },
+        ExpressionNode {
+            id: 3,
+            expression: Expression::Const {
+                value: Value::Bool(true),
+            },
+        },
+        ExpressionNode {
+            id: 4,
+            expression: Expression::Const {
+                value: Value::Int(2),
+            },
+        },
+    ];
+    program.root = TargetScope {
+        target_field: String::new(),
+        repeating: false,
+        iteration: None,
+        construction: TargetConstruction::Group,
+        bindings: Vec::new(),
+        children: vec![TargetScope {
+            target_field: "Row".into(),
+            repeating: true,
+            iteration: Some(IterationPlan::new(
+                InnerJoin::new(JoinId::new(7), plan(&["id"], &["Catalog", "B"], &["aid"])),
+                Some(3),
+                Some(SortPlan::new(
+                    SortKey {
+                        expression: 1,
+                        descending: false,
+                    },
+                    Vec::new(),
+                    SortFilterOrder::SortThenFilter,
+                )),
+                vec![SequenceWindow::First { count: 4 }],
+                IterationOutput::Repeated,
+            )),
+            construction: TargetConstruction::Group,
+            bindings: vec![
+                Binding {
+                    target_field: "Value".into(),
+                    expression: 1,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                },
+                Binding {
+                    target_field: "Position".into(),
+                    expression: 2,
+                    target_type: ScalarType::Int,
+                    repeating: false,
+                },
+            ],
+            children: vec![TargetScope {
+                target_field: "Static".into(),
+                repeating: false,
+                iteration: None,
+                construction: TargetConstruction::Group,
+                bindings: vec![Binding {
+                    target_field: "Echo".into(),
+                    expression: 1,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                }],
+                children: Vec::new(),
+            }],
+        }],
+    };
+    program
+}
+
+fn set_join(program: &mut Program, join_plan: JoinPlan) {
+    program.root.children[0].iteration = Some(IterationPlan::join(InnerJoin::new(
+        JoinId::new(7),
+        join_plan,
+    )));
+}
+
+#[test]
+fn validates_root_join_controls_and_static_descendants() {
+    assert_eq!(validate_program(&join_program()), Ok(()));
+}
+
+#[test]
+fn validates_join_sources_and_both_key_sides() {
+    let mut program = join_program();
+    set_join(
+        &mut program,
+        plan(&["id"], &["Catalog", "Missing"], &["aid"]),
+    );
+    assert!(matches!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidJoinSource { join, .. })
+            if join == JoinId::new(7)
+    ));
+
+    set_join(
+        &mut program,
+        plan(&["missing"], &["Catalog", "B"], &["aid"]),
+    );
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidJoinKey {
+            join: JoinId::new(7),
+            side: JoinKeySide::Left,
+            collection: vec!["A".into()],
+            path: vec!["missing".into()],
+        })
+    );
+
+    set_join(&mut program, plan(&["id"], &["Catalog", "B"], &["missing"]));
+    assert!(matches!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidJoinKey {
+            side: JoinKeySide::Right,
+            ..
+        })
+    ));
+}
+
+#[test]
+fn validates_join_field_owner_collection_and_scalar_path() {
+    let mut program = join_program();
+    program.expressions[0].expression = Expression::JoinField {
+        join: JoinId::new(7),
+        collection: vec!["Missing".into()],
+        path: vec!["label".into()],
+    };
+    assert!(matches!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidJoinFieldCollection { node: 1, .. })
+    ));
+
+    program.expressions[0].expression = Expression::JoinField {
+        join: JoinId::new(7),
+        collection: vec!["A".into()],
+        path: vec!["missing".into()],
+    };
+    assert!(matches!(
+        validate_program(&program),
+        Err(ProgramValidationError::InvalidJoinFieldPath { node: 1, .. })
+    ));
+
+    program.expressions[0].expression = Expression::JoinField {
+        join: JoinId::new(99),
+        collection: vec!["A".into()],
+        path: vec!["label".into()],
+    };
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InactiveJoinExpression {
+            node: 1,
+            join: JoinId::new(99),
+        })
+    );
+}
+
+#[test]
+fn join_windows_and_failure_rules_use_the_parent_context() {
+    let mut program = join_program();
+    let iteration = program.root.children[0]
+        .iteration
+        .as_mut()
+        .expect("join iteration");
+    *iteration = IterationPlan::new(
+        iteration.inner_join().expect("join").clone(),
+        None,
+        None,
+        vec![SequenceWindow::First { count: 2 }],
+        IterationOutput::Repeated,
+    );
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InactiveJoinExpression {
+            node: 2,
+            join: JoinId::new(7),
+        })
+    );
+
+    let mut program = join_program();
+    program.failure_rules.push(FailureRule {
+        iteration: FailureIteration::Source(SourceIteration::new(Vec::new())),
+        selection: FailureSelection::WhenTrue(2),
+        message: None,
+    });
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::InactiveJoinExpression {
+            node: 2,
+            join: JoinId::new(7),
+        })
+    );
+}
+
+#[test]
+fn rejects_duplicate_and_nested_join_owners() {
+    let mut duplicate = join_program();
+    duplicate.extra_targets.push(NamedTargetProgram {
+        name: "Audit".into(),
+        target: duplicate.target.clone(),
+        root: duplicate.root.clone(),
+    });
+    assert_eq!(
+        validate_program(&duplicate),
+        Err(ProgramValidationError::DuplicateJoinOwner {
+            join: JoinId::new(7),
+        })
+    );
+
+    let mut nested = join_program();
+    let row = nested.root.children.remove(0);
+    let row_schema = nested.target.child("Row").expect("row").clone();
+    nested.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::group("Outer", vec![row_schema]).repeating()],
+    );
+    nested.root.children.push(TargetScope {
+        target_field: "Outer".into(),
+        repeating: true,
+        iteration: Some(IterationPlan::source(vec!["A".into()])),
+        construction: TargetConstruction::Group,
+        bindings: Vec::new(),
+        children: vec![row],
+    });
+    assert_eq!(
+        validate_program(&nested),
+        Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: vec!["Outer".into(), "Row".into()],
+            join: JoinId::new(7),
+        })
+    );
+}
+
+#[test]
+fn join_plan_constructors_reject_duplicate_and_forward_sources() {
+    let duplicate = JoinPlan::new(
+        JoinSource::new(vec!["A".into()]),
+        JoinSource::new(vec!["A".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["A".into()],
+            vec!["id".into()],
+            vec!["id".into()],
+        )),
+    );
+    assert!(matches!(
+        duplicate,
+        Err(JoinPlanError::DuplicateCollection(_))
+    ));
+
+    let forward = JoinPlan::new(
+        JoinSource::new(vec!["A".into()]),
+        JoinSource::new(vec!["B".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["C".into()],
+            vec!["id".into()],
+            vec!["id".into()],
+        )),
+    );
+    assert!(matches!(
+        forward,
+        Err(JoinPlanError::UnknownLeftCollection(_))
+    ));
+}

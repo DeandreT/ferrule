@@ -225,6 +225,8 @@ fn walk_source_frames<'a>(
                 next.push(ScopeFrame {
                     instance: base,
                     collection: None,
+                    join: None,
+                    join_position: None,
                 });
                 vec![next]
             }
