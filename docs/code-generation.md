@@ -67,6 +67,8 @@ The current portable model includes:
   and explicit or Null fallback
 - first-match lookups over exact repeating collections in the primary or a
   static named source, with strict scalar-tag equality and Null on a miss
+- expression-driven collection search over flattened source paths, with
+  nullable predicates, raw nested positions, lazy values, and first-match wins
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings

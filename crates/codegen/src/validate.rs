@@ -8,6 +8,7 @@ use crate::{
     Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
 };
 
+mod collection_find;
 mod failures;
 mod graph_dependencies;
 mod lookup;
@@ -78,6 +79,10 @@ pub enum ProgramValidationError {
         node: NodeId,
         collection: Vec<String>,
         value: Vec<String>,
+    },
+    InvalidCollectionFindCollection {
+        node: NodeId,
+        collection: Vec<String>,
     },
     InvalidLookupCollection {
         node: NodeId,
@@ -226,6 +231,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
     validate_aggregate_paths(sources, &expressions)?;
+    collection_find::validate(sources, &expressions)?;
     lookup::validate(sources, &expressions)?;
     let mut sequence_items = BTreeMap::new();
     sequences::collect_expression_items(&expressions, &mut sequence_items)?;
@@ -722,6 +728,11 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "compiled mapping aggregate expression {node} value {} is not a scalar under collection {}",
                 display_path(value),
+                display_path(collection)
+            ),
+            Self::InvalidCollectionFindCollection { node, collection } => write!(
+                formatter,
+                "compiled mapping collection-find expression {node} collection {} matches no source path",
                 display_path(collection)
             ),
             Self::InvalidLookupCollection { node, collection } => write!(
