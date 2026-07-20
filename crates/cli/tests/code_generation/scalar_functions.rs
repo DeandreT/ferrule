@@ -377,6 +377,30 @@ fn scalar_function_project() -> Project {
         "time_from_datetime",
         vec![Value::String("2001-12-17T09:30:02.5+05:00".into())],
     );
+    let composed = graph.call_values(
+        "datetime_from_date_and_time",
+        vec![
+            Value::String("2024-02-29+05:30".into()),
+            Value::String("09:08:07.125+05:30".into()),
+        ],
+    );
+    let parts = graph.call_values(
+        "datetime_from_parts",
+        vec![
+            Value::String("2024".into()),
+            Value::Int(2),
+            Value::Float(29.0),
+            Value::Int(9),
+            Value::Int(8),
+            Value::Int(7),
+            Value::Float(125.5),
+            Value::Int(330),
+        ],
+    );
+    let coerced = graph.call_values(
+        "coerce_datetime",
+        vec![Value::String("2031-08-17+05:45".into())],
+    );
     let null = graph.call_values("month_from_datetime", vec![Value::Null]);
     add_group(
         &mut target,
@@ -389,6 +413,9 @@ fn scalar_function_project() -> Project {
             ("Hour", ScalarType::Int, hour),
             ("Minute", ScalarType::Int, minute),
             ("Time", ScalarType::String, time),
+            ("Composed", ScalarType::String, composed),
+            ("Parts", ScalarType::String, parts),
+            ("Coerced", ScalarType::String, coerced),
             ("Null", ScalarType::String, null),
         ],
     );
@@ -569,6 +596,15 @@ fn expected() -> Instance {
                 ("Hour", Value::Int(0)),
                 ("Minute", Value::Int(59)),
                 ("Time", Value::String("09:30:02.5+05:00".into())),
+                (
+                    "Composed",
+                    Value::String("2024-02-29T09:08:07.125+05:30".into()),
+                ),
+                (
+                    "Parts",
+                    Value::String("2024-02-29T09:08:07.1255+05:30".into()),
+                ),
+                ("Coerced", Value::String("2031-08-17T00:00:00+05:45".into())),
                 ("Null", Value::Null),
             ]),
         ),

@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Numerics;
+
 namespace Ferrule.Runtime;
 
 public static partial class FerruleFunctions
@@ -134,6 +137,229 @@ public static partial class FerruleFunctions
         ValidateIsoDate(date, function, SupportedPictureDetail);
         ValidateIsoTime(time, function, SupportedPictureDetail);
         return FerruleValue.FromString(time);
+    }
+
+    private static FerruleValue DateTimeFromDateAndTime(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "datetime_from_date_and_time";
+        string date;
+        string time;
+        if (arguments.Count == 1)
+        {
+            date = RequireString(arguments[0], function);
+            time = "00:00:00";
+        }
+        else if (arguments.Count == 2)
+        {
+            if (arguments[0].Kind != FerruleValueKind.String)
+            {
+                throw Type(function, arguments[0]);
+            }
+            date = arguments[0].StringValue;
+            time = arguments[1].Kind switch
+            {
+                FerruleValueKind.String => arguments[1].StringValue,
+                FerruleValueKind.Null => "00:00:00",
+                _ => throw Type(function, arguments[1]),
+            };
+        }
+        else
+        {
+            throw Arity(function, 1, arguments.Count);
+        }
+
+        var (dateValue, dateZone) = SplitIsoTimezone(date, function, SupportedPictureDetail);
+        var (timeValue, timeZone) = SplitIsoTimezone(time, function, SupportedPictureDetail);
+        ValidateIsoDate(dateValue, function, SupportedPictureDetail);
+        ValidateIsoTime(timeValue, function, SupportedPictureDetail);
+        if (dateZone is not null &&
+            timeZone is not null &&
+            DateTimeTimezoneOffset(dateZone) != DateTimeTimezoneOffset(timeZone))
+        {
+            throw InvalidArgument(function, SupportedPictureDetail);
+        }
+
+        var zone = dateZone ?? timeZone;
+        return FerruleValue.FromString($"{dateValue}T{timeValue}{zone}");
+    }
+
+    private static FerruleValue CoerceDateTime(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "coerce_datetime";
+        RequireArity(function, arguments, 1);
+        if (arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil)
+        {
+            return arguments[0];
+        }
+        var value = RequireString(arguments[0], function);
+        var separator = value.IndexOf('T', StringComparison.Ordinal);
+        if (separator >= 0)
+        {
+            ValidateIsoDate(value[..separator], function, SupportedPictureDetail);
+            ValidateIsoTime(value[(separator + 1)..], function, SupportedPictureDetail);
+            return arguments[0];
+        }
+
+        var (date, timezone) = SplitIsoTimezone(value, function, SupportedPictureDetail);
+        ValidateIsoDate(date, function, SupportedPictureDetail);
+        return FerruleValue.FromString($"{date}T00:00:00{timezone}");
+    }
+
+    private static FerruleValue DateTimeFromParts(IReadOnlyList<FerruleValue> arguments)
+    {
+        const string function = "datetime_from_parts";
+        if (arguments.Count is < 3 or > 8)
+        {
+            throw Arity(function, 3, arguments.Count);
+        }
+
+        var year = DateTimeIntegerPart(arguments[0], function);
+        var month = DateTimeIntegerPart(arguments[1], function);
+        var day = DateTimeIntegerPart(arguments[2], function);
+        long OptionalInteger(int index) => index >= arguments.Count ||
+            arguments[index].Kind == FerruleValueKind.Null
+                ? 0
+                : DateTimeIntegerPart(arguments[index], function);
+        var hour = OptionalInteger(3);
+        var minute = OptionalInteger(4);
+        var second = OptionalInteger(5);
+        var millisecond = arguments.Count <= 6 || arguments[6].Kind == FerruleValueKind.Null
+            ? 0.0
+            : DateTimeDecimalPart(arguments[6], function);
+        long? timezone = arguments.Count <= 7 || arguments[7].Kind == FerruleValueKind.Null
+            ? null
+            : DateTimeIntegerPart(arguments[7], function);
+
+        if (month is < 0 or > uint.MaxValue ||
+            day is < 0 or > uint.MaxValue ||
+            hour is < 0 or > 23 ||
+            minute is < 0 or > 59 ||
+            second is < 0 or > 59 ||
+            !double.IsFinite(millisecond) ||
+            millisecond is < 0.0 or >= 1000.0)
+        {
+            throw InvalidArgument(function, SupportedPictureDetail);
+        }
+
+        var yearText = FormatDateTimeYear(year);
+        var date = $"{yearText}-{month:00}-{day:00}";
+        ValidateIsoDate(date, function, SupportedPictureDetail);
+        var output = $"{date}T{hour:00}:{minute:00}:{second:00}";
+        if (millisecond != 0.0)
+        {
+            var fraction = (millisecond / 1000.0)
+                .ToString("F15", CultureInfo.InvariantCulture)
+                .TrimStart('0')
+                .TrimEnd('0');
+            if (fraction != ".")
+            {
+                output += fraction;
+            }
+        }
+
+        if (timezone is not null && timezone != -32_768)
+        {
+            if (timezone is < -840 or > 840)
+            {
+                throw InvalidArgument(function, SupportedPictureDetail);
+            }
+            if (timezone == 0)
+            {
+                output += "Z";
+            }
+            else
+            {
+                var sign = timezone < 0 ? '-' : '+';
+                var absolute = Math.Abs(timezone.Value);
+                output += $"{sign}{absolute / 60:00}:{absolute % 60:00}";
+            }
+        }
+        return FerruleValue.FromString(output);
+    }
+
+    private static long DateTimeIntegerPart(FerruleValue value, string function)
+    {
+        if (value.Kind == FerruleValueKind.Int64)
+        {
+            return value.Int64Value;
+        }
+        if (value.Kind == FerruleValueKind.Double)
+        {
+            var number = value.DoubleValue;
+            if (double.IsFinite(number) &&
+                Math.Truncate(number) == number &&
+                number >= long.MinValue &&
+                number < -(double)long.MinValue)
+            {
+                return (long)number;
+            }
+            throw Type(function, value);
+        }
+        if (value.Kind == FerruleValueKind.String &&
+            long.TryParse(
+                TrimRustWhitespace(value.StringValue),
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return parsed;
+        }
+        throw Type(function, value);
+    }
+
+    private static double DateTimeDecimalPart(FerruleValue value, string function)
+    {
+        if (value.Kind == FerruleValueKind.Int64)
+        {
+            return value.Int64Value;
+        }
+        if (value.Kind == FerruleValueKind.Double)
+        {
+            return value.DoubleValue;
+        }
+        if (value.Kind == FerruleValueKind.String)
+        {
+            var text = TrimRustWhitespace(value.StringValue);
+            if (text is "inf" or "+inf")
+            {
+                return double.PositiveInfinity;
+            }
+            if (text == "-inf")
+            {
+                return double.NegativeInfinity;
+            }
+            if (text == "NaN")
+            {
+                return double.NaN;
+            }
+            if (double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var parsed))
+            {
+                return parsed;
+            }
+        }
+        throw Type(function, value);
+    }
+
+    private static string FormatDateTimeYear(long year)
+    {
+        var magnitude = BigInteger.Abs(new BigInteger(year))
+            .ToString(CultureInfo.InvariantCulture)
+            .PadLeft(4, '0');
+        return year < 0 ? "-" + magnitude : magnitude;
+    }
+
+    private static int DateTimeTimezoneOffset(string timezone)
+    {
+        if (timezone == "Z")
+        {
+            return 0;
+        }
+        var sign = timezone[0] == '-' ? -1 : 1;
+        return sign * ((int)ParseUInt(timezone[1..3]) * 60 + (int)ParseUInt(timezone[4..]));
     }
 
     private static string? NullableStringArgument(
