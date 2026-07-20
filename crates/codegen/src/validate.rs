@@ -11,8 +11,10 @@ use crate::{
 mod graph_dependencies;
 mod lookup;
 mod recursive_sequence;
+mod sources;
 mod targets;
 
+use sources::{SchemaCursor, SourceCatalog};
 use targets::TargetOwner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +48,14 @@ pub enum SequenceOwner {
 /// A malformed backend-neutral program that an emitter must not publish.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProgramValidationError {
+    EmptyExtraSourceName {
+        index: usize,
+    },
+    DuplicateExtraSourceName {
+        name: String,
+        first: usize,
+        duplicate: usize,
+    },
     DuplicateExpression {
         node: NodeId,
     },
@@ -194,19 +204,21 @@ pub enum ProgramValidationError {
 /// This check protects the public programmatic API from emitting recursive or
 /// backend-dependent source when callers construct a [`Program`] directly.
 pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError> {
+    sources::validate_names(&program.extra_sources)?;
+    let sources = SourceCatalog::new(&program.source, &program.extra_sources);
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
-    validate_aggregate_paths(&program.source, &expressions)?;
-    lookup::validate(&program.source, &expressions)?;
+    validate_aggregate_paths(sources, &expressions)?;
+    lookup::validate(sources, &expressions)?;
     let mut sequence_items = BTreeMap::new();
     collect_expression_sequence_items(&expressions, &mut sequence_items)?;
-    validate_expression_sequence_paths(&program.source, &expressions)?;
+    validate_expression_sequence_paths(sources, &expressions)?;
     targets::validate(program, &expressions, &mut sequence_items)
 }
 
 fn validate_expression_sequence_paths(
-    source: &SchemaNode,
+    sources: SourceCatalog<'_>,
     expressions: &BTreeMap<NodeId, &Expression>,
 ) -> Result<(), ProgramValidationError> {
     for (&node, expression) in expressions {
@@ -215,7 +227,7 @@ fn validate_expression_sequence_paths(
             | Expression::SequenceItemAt { sequence, .. } => sequence,
             _ => continue,
         };
-        recursive_sequence::validate(source, sequence, &SequenceOwner::Expression(node))?;
+        recursive_sequence::validate(sources, sequence, &SequenceOwner::Expression(node))?;
     }
     Ok(())
 }
@@ -375,7 +387,7 @@ fn visit_expression(
 }
 
 fn validate_aggregate_paths(
-    source: &SchemaNode,
+    sources: SourceCatalog<'_>,
     expressions: &BTreeMap<NodeId, &Expression>,
 ) -> Result<(), ProgramValidationError> {
     for (&node, expression) in expressions {
@@ -385,7 +397,8 @@ fn validate_aggregate_paths(
         else {
             continue;
         };
-        if !schema_path_matches(source, collection, |_| true) {
+        let candidates = sources.path_targets(collection);
+        if candidates.is_empty() {
             return Err(ProgramValidationError::InvalidAggregateCollection {
                 node,
                 collection: collection.clone(),
@@ -395,9 +408,10 @@ fn validate_aggregate_paths(
             continue;
         };
         if !value.is_empty()
-            && !schema_path_matches(source, collection, |collection| {
-                follow_schema_from(source, collection, value)
-                    .is_some_and(|leaf| matches!(leaf.kind, SchemaKind::Scalar { .. }))
+            && !candidates.into_iter().any(|collection| {
+                collection
+                    .follow(value)
+                    .is_some_and(|leaf| matches!(leaf.node().kind, SchemaKind::Scalar { .. }))
             })
         {
             return Err(ProgramValidationError::InvalidAggregateValuePath {
@@ -408,65 +422,6 @@ fn validate_aggregate_paths(
         }
     }
     Ok(())
-}
-
-/// Expression paths are relative to the active source frame, so a valid path
-/// can begin at any group in the source schema rather than only at its root.
-fn schema_path_matches(
-    root: &SchemaNode,
-    path: &[String],
-    predicate: impl Fn(&SchemaNode) -> bool + Copy,
-) -> bool {
-    fn visit(
-        root: &SchemaNode,
-        current: &SchemaNode,
-        path: &[String],
-        predicate: impl Fn(&SchemaNode) -> bool + Copy,
-    ) -> bool {
-        if follow_schema_from(root, current, path).is_some_and(predicate) {
-            return true;
-        }
-        match &current.kind {
-            SchemaKind::Group { children, .. } => children
-                .iter()
-                .any(|child| visit(root, child, path, predicate)),
-            SchemaKind::Scalar { .. } => false,
-        }
-    }
-
-    visit(root, root, path, predicate)
-}
-
-fn schema_path_targets<'a>(root: &'a SchemaNode, path: &[String]) -> Vec<&'a SchemaNode> {
-    fn visit<'a>(
-        root: &'a SchemaNode,
-        current: &'a SchemaNode,
-        path: &[String],
-        targets: &mut Vec<&'a SchemaNode>,
-    ) {
-        if let Some(target) = follow_schema_from(root, current, path) {
-            targets.push(target);
-        }
-        if let SchemaKind::Group { children, .. } = &current.kind {
-            for child in children {
-                visit(root, child, path, targets);
-            }
-        }
-    }
-
-    let mut targets = Vec::new();
-    visit(root, root, path, &mut targets);
-    targets
-}
-
-fn source_schema_at<'a>(
-    root: &'a SchemaNode,
-    parent: Option<&'a SchemaNode>,
-    path: &[String],
-) -> Option<&'a SchemaNode> {
-    parent
-        .and_then(|current| follow_schema_from(root, current, path))
-        .or_else(|| schema_path_targets(root, path).into_iter().next())
 }
 
 fn follow_schema_from<'a>(
@@ -501,8 +456,8 @@ fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Opti
 
 #[derive(Clone, Copy)]
 struct ScopeSchemas<'a> {
-    source_root: &'a SchemaNode,
-    current_source: Option<&'a SchemaNode>,
+    sources: SourceCatalog<'a>,
+    current_source: Option<SchemaCursor<'a>>,
     target_root: &'a SchemaNode,
     target_owner: TargetOwner<'a>,
 }
@@ -535,17 +490,18 @@ fn validate_scope(
     if let Some(iteration) = &scope.iteration {
         match iteration.input() {
             IterationSource::Source(source_iteration) => {
-                if !schema_path_matches(schemas.source_root, source_iteration.path(), |_| true) {
+                if !schemas
+                    .sources
+                    .path_matches(source_iteration.path(), |_| true)
+                {
                     return Err(ProgramValidationError::InvalidSourceIteration {
                         target_path: target_path.clone(),
                         source_path: source_iteration.path().to_vec(),
                     });
                 }
-                scope_source = source_schema_at(
-                    schemas.source_root,
-                    schemas.current_source,
-                    source_iteration.path(),
-                );
+                scope_source = schemas
+                    .sources
+                    .schema_at(schemas.current_source, source_iteration.path());
             }
             IterationSource::Generated(sequence) => {
                 scope_source = None;
@@ -565,7 +521,7 @@ fn validate_scope(
                         &sequence_owner,
                     )?;
                 }
-                recursive_sequence::validate(schemas.source_root, sequence, &sequence_owner)?;
+                recursive_sequence::validate(schemas.sources, sequence, &sequence_owner)?;
                 item_context.push(sequence.item());
             }
         }
@@ -651,8 +607,8 @@ fn validate_scope(
             }
         }
         TargetConstruction::CopyCurrentSource => {
-            let Some(scope_source) =
-                scope_source.filter(|source| matches!(source.kind, SchemaKind::Group { .. }))
+            let Some(scope_source) = scope_source
+                .filter(|source| matches!(source.node().kind, SchemaKind::Group { .. }))
             else {
                 return Err(
                     ProgramValidationError::CopyConstructionRequiresGroupSource {
@@ -667,7 +623,7 @@ fn validate_scope(
                     },
                 );
             }
-            if scope_source.kind != target_node.kind {
+            if scope_source.node().kind != target_node.kind {
                 return Err(
                     ProgramValidationError::CopyConstructionRequiresMatchingGroups {
                         target_path: target_path.clone(),
@@ -894,6 +850,21 @@ fn visit_sequence_context(
 impl fmt::Display for ProgramValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::EmptyExtraSourceName { index } => write!(
+                formatter,
+                "compiled mapping extra source {} has an empty name",
+                index + 1
+            ),
+            Self::DuplicateExtraSourceName {
+                name,
+                first,
+                duplicate,
+            } => write!(
+                formatter,
+                "compiled mapping extra sources {} and {} share name {name:?}",
+                first + 1,
+                duplicate + 1
+            ),
             Self::DuplicateExpression { node } => {
                 write!(
                     formatter,

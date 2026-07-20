@@ -3,8 +3,8 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, GeneratedSequence, IterationPlan, NamedTargetProgram,
-    Program, ScalarFunction, TargetScope,
+    Binding, Expression, ExpressionNode, GeneratedSequence, IterationPlan, NamedSourceProgram,
+    NamedTargetProgram, Program, ScalarFunction, TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -83,8 +83,37 @@ fn fixture() -> Program {
                     ],
                 )
                 .repeating(),
+                SchemaNode::group(
+                    "settings",
+                    vec![SchemaNode::scalar("Prefix", ScalarType::String)],
+                ),
             ],
         ),
+        extra_sources: vec![
+            NamedSourceProgram {
+                name: "catalog".into(),
+                source: SchemaNode::group(
+                    "catalog source",
+                    vec![
+                        SchemaNode::group(
+                            "Customers",
+                            vec![
+                                SchemaNode::scalar("Code", ScalarType::String),
+                                SchemaNode::scalar("DisplayName", ScalarType::String),
+                            ],
+                        )
+                        .repeating(),
+                    ],
+                ),
+            },
+            NamedSourceProgram {
+                name: "settings".into(),
+                source: SchemaNode::group(
+                    "settings source",
+                    vec![SchemaNode::scalar("Prefix", ScalarType::String)],
+                ),
+            },
+        ],
         target: SchemaNode::group(
             "target schema",
             vec![SchemaNode::group("Nested", Vec::new()).repeating()],
@@ -295,6 +324,29 @@ fn fixture() -> Program {
                     else_: 13,
                 },
             },
+            ExpressionNode {
+                id: 31,
+                expression: Expression::Lookup {
+                    collection: vec!["catalog".into(), "Customers".into()],
+                    key: vec!["Code".into()],
+                    matches: 16,
+                    value: vec!["DisplayName".into()],
+                },
+            },
+            ExpressionNode {
+                id: 32,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["settings".into(), "Prefix".into()],
+                },
+            },
+            ExpressionNode {
+                id: 33,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["catalog".into(), "Customers".into(), "DisplayName".into()],
+                },
+            },
         ],
         root: TargetScope {
             target_field: String::new(),
@@ -323,6 +375,8 @@ fn fixture() -> Program {
                     binding("Customer", 16, ScalarType::String, false),
                     binding("Sku", 17, ScalarType::String, false),
                     binding("OrderCode", 18, ScalarType::String, false),
+                    binding("CatalogName", 31, ScalarType::String, false),
+                    binding("Prefix", 32, ScalarType::String, false),
                 ],
                 children: Vec::new(),
             }],
@@ -335,6 +389,7 @@ fn fixture() -> Program {
                     vec![
                         SchemaNode::scalar("AccountName", ScalarType::String),
                         SchemaNode::scalar("Marker", ScalarType::String),
+                        SchemaNode::scalar("FirstCatalogName", ScalarType::String),
                     ],
                 ),
                 root: TargetScope {
@@ -345,6 +400,7 @@ fn fixture() -> Program {
                     bindings: vec![
                         binding("AccountName", 1, ScalarType::String, false),
                         binding("Marker", 5, ScalarType::String, false),
+                        binding("FirstCatalogName", 33, ScalarType::String, false),
                     ],
                     children: Vec::new(),
                 },
@@ -396,8 +452,9 @@ fn write_harness(root: &Path) {
 using Ferrule.Runtime;
 
 var source = Source(FerruleValue.FromBoolean(true), true);
+var extraSources = ExtraSources();
 
-var outputRows = (FerruleRepeated)GeneratedMapping.Execute(source);
+var outputRows = (FerruleRepeated)GeneratedMapping.ExecuteWithSources(source, extraSources);
 Assert(outputRows.Items.Count == 1);
 var output = (FerruleGroup)outputRows.Items[0];
 Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "Nested" }));
@@ -409,7 +466,7 @@ var nestedRows = (FerruleRepeated)output.Fields[3].Value;
 Assert(nestedRows.Items.Count == 3);
 var nested = (FerruleGroup)nestedRows.Items[0];
 Assert(nested.Fields.Select(field => field.Name).SequenceEqual(
-    new[] { "Copied", "Lines", "Middle", "ExactFloat", "LazyValue", "Compared", "Customer", "Sku", "OrderCode" }));
+    new[] { "Copied", "Lines", "Middle", "ExactFloat", "LazyValue", "Compared", "Customer", "Sku", "OrderCode", "CatalogName", "Prefix" }));
 Assert(((FerruleScalar)nested.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
 var lines = (FerruleRepeated)nested.Fields[1].Value;
 Assert(lines.Items.Count == 2);
@@ -422,42 +479,102 @@ Assert(((FerruleScalar)nested.Fields[5].Value).Value == FerruleValue.FromBoolean
 Assert(((FerruleScalar)nested.Fields[6].Value).Value == FerruleValue.FromString("Ada"));
 Assert(((FerruleScalar)nested.Fields[7].Value).Value == FerruleValue.FromString("A-1"));
 Assert(((FerruleScalar)nested.Fields[8].Value).Value == FerruleValue.FromString("A"));
+Assert(((FerruleScalar)nested.Fields[9].Value).Value == FerruleValue.FromString("Ada Lovelace"));
+Assert(((FerruleScalar)nested.Fields[10].Value).Value == FerruleValue.FromString("primary"));
 var lastNested = (FerruleGroup)nestedRows.Items[2];
 Assert(((FerruleScalar)lastNested.Fields[6].Value).Value == FerruleValue.FromString("Lin"));
 Assert(((FerruleScalar)lastNested.Fields[7].Value).Value == FerruleValue.FromString("B-1"));
 Assert(((FerruleScalar)lastNested.Fields[8].Value).Value == FerruleValue.FromString("B"));
+Assert(((FerruleScalar)lastNested.Fields[9].Value).Value == FerruleValue.FromString("Lin Clark"));
+Assert(((FerruleScalar)lastNested.Fields[10].Value).Value == FerruleValue.FromString("primary"));
 
-var outputs = GeneratedMapping.ExecuteOutputs(source);
+var outputs = GeneratedMapping.ExecuteOutputsWithSources(source, extraSources);
 Assert(outputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
 Assert(((FerruleRepeated)outputs.Primary).Items.Count == 1);
 var audit = (FerruleGroup)outputs.Extras[0].Instance;
-Assert(audit.Fields.Select(field => field.Name).SequenceEqual(new[] { "AccountName", "Marker" }));
+Assert(audit.Fields.Select(field => field.Name).SequenceEqual(new[] { "AccountName", "Marker", "FirstCatalogName" }));
 Assert(((FerruleScalar)audit.Fields[0].Value).Value == FerruleValue.FromString("Ada"));
 Assert(((FerruleScalar)audit.Fields[1].Value).Value == FerruleValue.FromString("first"));
+Assert(((FerruleScalar)audit.Fields[2].Value).Value == FerruleValue.FromString("Ada Lovelace"));
 var archive = (FerruleGroup)outputs.Extras[1].Instance;
 Assert(archive.Fields.Select(field => field.Name).SequenceEqual(new[] { "Status" }));
 Assert(((FerruleScalar)archive.Fields[0].Value).Value == FerruleValue.FromString("first"));
 
 var executionContext = new FerruleExecutionContext("mapping.ferrule");
-var contextualOutputs = GeneratedMapping.ExecuteOutputs(source, executionContext);
+var contextualOutputs = GeneratedMapping.ExecuteOutputsWithSources(source, extraSources, executionContext);
 Assert(contextualOutputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
-Assert(((FerruleRepeated)GeneratedMapping.Execute(source, executionContext)).Items.Count == 1);
+Assert(((FerruleRepeated)GeneratedMapping.ExecuteWithSources(source, extraSources, executionContext)).Items.Count == 1);
+
+var fallback = (FerruleRepeated)GeneratedMapping.ExecuteWithSources(
+    Source(FerruleValue.FromBoolean(true), true, false),
+    extraSources);
+var fallbackNested = (FerruleRepeated)((FerruleGroup)fallback.Items[0]).Fields[3].Value;
+Assert(((FerruleScalar)((FerruleGroup)fallbackNested.Items[0]).Fields[10].Value).Value == FerruleValue.FromString("extra"));
 
 Error(
     FerruleRuntimeError.DivideByZero,
-    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(false), true)));
+    () => GeneratedMapping.ExecuteWithSources(
+        Source(FerruleValue.FromBoolean(false), true),
+        extraSources));
 var notBoolean = Error(
     FerruleRuntimeError.NotABool,
-    () => GeneratedMapping.Execute(Source(FerruleValue.FromString("true"), true)));
+    () => GeneratedMapping.ExecuteWithSources(
+        Source(FerruleValue.FromString("true"), true),
+        extraSources));
 Assert(notBoolean.Node == 10U);
 Assert(notBoolean.FoundKind == FerruleValueKind.String);
 Error(
     FerruleRuntimeError.DivideByZero,
-    () => GeneratedMapping.Execute(Source(FerruleValue.FromBoolean(true), false)));
+    () => GeneratedMapping.ExecuteWithSources(
+        Source(FerruleValue.FromBoolean(true), false),
+        extraSources));
+
+NamedSourceError(FerruleRuntimeError.MissingNamedSource, "catalog", () => GeneratedMapping.Execute(source));
+NamedSourceError(
+    FerruleRuntimeError.MissingNamedSource,
+    "settings",
+    () => GeneratedMapping.ExecuteWithSources(source, new[] { extraSources[1] }));
+NamedSourceError(
+    FerruleRuntimeError.DuplicateNamedSource,
+    "catalog",
+    () => GeneratedMapping.ExecuteWithSources(
+        source,
+        new[] { extraSources[1], extraSources[1], extraSources[0] }));
+NamedSourceError(
+    FerruleRuntimeError.UnexpectedNamedSource,
+    "typo",
+    () => GeneratedMapping.ExecuteWithSources(
+        source,
+        new[] { new NamedInput("typo", new FerruleGroup(Array.Empty<FerruleField>())) }));
+NamedSourceError(
+    FerruleRuntimeError.UnexpectedNamedSource,
+    "Catalog",
+    () => GeneratedMapping.ExecuteWithSources(
+        source,
+        new[] { new NamedInput("Catalog", extraSources[1].Instance) }));
+Throws<ArgumentNullException>(() => GeneratedMapping.ExecuteWithSources(null!, extraSources));
+Throws<ArgumentNullException>(() => GeneratedMapping.ExecuteWithSources(source, null!));
+Throws<ArgumentNullException>(() => GeneratedMapping.ExecuteWithSources(
+    source,
+    new NamedInput[] { null! }));
+Throws<ArgumentNullException>(() => GeneratedMapping.ExecuteWithSources(
+    source,
+    new[] { new NamedInput(null!, extraSources[1].Instance) }));
+Throws<ArgumentNullException>(() => GeneratedMapping.ExecuteWithSources(
+    source,
+    new[] { new NamedInput("catalog", null!) }));
+Throws<ArgumentNullException>(() => GeneratedMapping.ExecuteWithSources(
+    source,
+    extraSources,
+    null!));
 Console.WriteLine("generated mapping passed");
 
-static FerruleGroup Source(FerruleValue condition, bool extraCondition) =>
-    new(new FerruleField[]
+static FerruleGroup Source(
+    FerruleValue condition,
+    bool extraCondition,
+    bool primarySettings = true)
+{
+    var fields = new List<FerruleField>
     {
         new("Account", new FerruleGroup(new FerruleField[]
         {
@@ -496,6 +613,43 @@ static FerruleGroup Source(FerruleValue condition, bool extraCondition) =>
                 })),
             }),
         })),
+    };
+    if (primarySettings)
+    {
+        fields.Add(new("settings", new FerruleGroup(new FerruleField[]
+        {
+            new("Prefix", new FerruleScalar(FerruleValue.FromString("primary"))),
+        })));
+    }
+    return new FerruleGroup(fields);
+}
+
+static NamedInput[] ExtraSources() =>
+    new NamedInput[]
+    {
+        new(
+            "settings",
+            new FerruleGroup(new FerruleField[]
+            {
+                new("Prefix", new FerruleScalar(FerruleValue.FromString("extra"))),
+            })),
+        new(
+            "catalog",
+            new FerruleGroup(new FerruleField[]
+            {
+                new("Customers", new FerruleRepeated(new FerruleInstance[]
+                {
+                    Customer("Ada", "Ada Lovelace"),
+                    Customer("Lin", "Lin Clark"),
+                })),
+            })),
+    };
+
+static FerruleGroup Customer(string code, string displayName) =>
+    new(new FerruleField[]
+    {
+        new("Code", new FerruleScalar(FerruleValue.FromString(code))),
+        new("DisplayName", new FerruleScalar(FerruleValue.FromString(displayName))),
     });
 
 static void Assert(bool condition)
@@ -519,6 +673,27 @@ static FerruleRuntimeException Error(FerruleRuntimeError expected, Action action
     }
 
     throw new InvalidOperationException($"Expected Ferrule runtime error {expected}.");
+}
+
+static void NamedSourceError(FerruleRuntimeError expected, string name, Action action)
+{
+    var error = Error(expected, action);
+    Assert(error.Detail == name);
+}
+
+static void Throws<TException>(Action action)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
 }
 "#,
     )

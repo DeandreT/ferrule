@@ -16,7 +16,7 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// The artifact embeds the small Ferrule C# runtime and exposes
 /// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)` and
 /// `ExecuteOutputs(FerruleInstance)`, plus overloads accepting host-supplied
-/// execution context.
+/// execution context and named static inputs.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     let generated_mapping = mapping::render(program)?;
@@ -38,8 +38,8 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 mod tests {
     use codegen::{
         Binding, Expression, ExpressionNode, GeneratedSequence, IterationOutput, IterationPlan,
-        NamedTargetProgram, Program, ProgramValidationError, ScalarFunction, SourceIteration,
-        TargetScope,
+        NamedSourceProgram, NamedTargetProgram, Program, ProgramValidationError, ScalarFunction,
+        SourceIteration, TargetScope,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -48,6 +48,7 @@ mod tests {
     fn program() -> Program {
         Program {
             source: SchemaNode::group("schema source", Vec::new()),
+            extra_sources: Vec::new(),
             target: SchemaNode::group(
                 "schema target",
                 vec![SchemaNode::group("child group", Vec::new())],
@@ -168,8 +169,13 @@ mod tests {
         let source = generated_source(&artifacts);
         assert!(source.contains("public sealed record NamedOutput("));
         assert!(source.contains("public sealed record ExecutionOutputs("));
-        assert!(source.contains("return ExecuteOutputs(source).Primary;"));
-        assert!(source.contains("return ExecuteOutputs(source, executionContext).Primary;"));
+        assert!(source.contains(
+            "return ExecuteWithSources(source, global::System.Array.Empty<NamedInput>());"
+        ));
+        assert!(source.contains("return ExecuteOutputsWithSources(source, extraSources).Primary;"));
+        assert!(source.contains(
+            "return ExecuteOutputsWithSources(source, extraSources, executionContext).Primary;"
+        ));
         assert_eq!(
             source
                 .matches("public static ExecutionOutputs ExecuteOutputs(")
@@ -192,6 +198,80 @@ mod tests {
         assert!(primary < audit && audit < archive && archive < results);
         assert!(source.contains("new(\"audit \\\"trail\\\"\", extra_0)"));
         assert!(source.contains("new(\"archive\", extra_1)"));
+    }
+
+    #[test]
+    fn named_inputs_are_validated_then_normalized_in_declaration_order() {
+        let mut program = program();
+        program.extra_sources = vec![
+            NamedSourceProgram {
+                name: "catalog \"west\"".into(),
+                source: SchemaNode::group("catalog", Vec::new()),
+            },
+            NamedSourceProgram {
+                name: "settings".into(),
+                source: SchemaNode::group("settings", Vec::new()),
+            },
+        ];
+
+        let artifacts = emit(&program).expect("named inputs emit");
+        let source = generated_source(&artifacts);
+        assert!(source.contains("public sealed record NamedInput("));
+        assert_eq!(
+            source
+                .matches(
+                    "public static global::Ferrule.Runtime.FerruleInstance ExecuteWithSources("
+                )
+                .count(),
+            2
+        );
+        assert_eq!(
+            source
+                .matches("public static ExecutionOutputs ExecuteOutputsWithSources(")
+                .count(),
+            2
+        );
+        assert!(source.contains("global::System.StringComparer.Ordinal"));
+        assert!(
+            source.contains("extraSource.Name is not (\"catalog \\\"west\\\"\" or \"settings\")")
+        );
+
+        let validation = source
+            .find("foreach (var extraSource in extraSources)")
+            .expect("supplied names validate first");
+        let first_missing = source
+            .find("out var namedSource_0")
+            .expect("first declaration is required");
+        let second_missing = source
+            .find("out var namedSource_1")
+            .expect("second declaration is required");
+        let context = source
+            .find("ScopeContext.FromSources(")
+            .expect("validated inputs create one context");
+        let first_field = source
+            .find("new(\"catalog \\\"west\\\"\", namedSource_0)")
+            .expect("first declaration leads the outer frame");
+        let second_field = source
+            .find("new(\"settings\", namedSource_1)")
+            .expect("second declaration follows it");
+        let primary = source
+            .find("var primary = Scope_0(context);")
+            .expect("scope execution follows input validation");
+        assert!(
+            validation < first_missing
+                && first_missing < second_missing
+                && second_missing < context
+                && context < first_field
+                && first_field < second_field
+                && second_field < primary
+        );
+        for error in [
+            "UnexpectedNamedSource",
+            "DuplicateNamedSource",
+            "MissingNamedSource",
+        ] {
+            assert!(source.contains(error));
+        }
     }
 
     #[test]

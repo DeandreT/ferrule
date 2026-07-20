@@ -2,16 +2,17 @@ use std::collections::BTreeMap;
 
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{
-    Binding as MappingBinding, Graph, NamedSource, NamedTarget, Node, Project, Scope,
-    ScopeConstruction, ScopeIteration,
+    Binding as MappingBinding, Graph, NamedTarget, Node, Project, Scope, ScopeConstruction,
+    ScopeIteration,
 };
 
 use crate::{
-    ArtifactPath, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError, Diagnostic, Expression,
-    GeneratedFile, GeneratedSequence, IterationPlan, ProjectFeature, SUPPORTED_SCALAR_CALLS,
+    Diagnostic, Expression, GeneratedSequence, IterationPlan, SUPPORTED_SCALAR_CALLS,
     ScalarFunction, ScopeFeature, UnsupportedNodeKind, UnsupportedSequenceKind, lower,
 };
 
+mod artifacts;
+mod extra_sources;
 mod sequences;
 
 fn scalar(name: &str) -> SchemaNode {
@@ -1174,87 +1175,5 @@ fn rejects_filters_without_iteration_before_subset_lowering() {
             location: "root scope".into(),
             message: "filter has no iterated source".into(),
         }]
-    );
-}
-
-#[test]
-fn reports_unsupported_project_boundaries_with_counts() {
-    let mut project = supported_project();
-    project.extra_sources.push(NamedSource {
-        name: "Catalog".into(),
-        path: "catalog.json".into(),
-        schema: SchemaNode::group("Catalog", Vec::new()),
-        options: Default::default(),
-        dynamic_path: None,
-    });
-
-    let diagnostics = lower(&project)
-        .expect_err("extra sources are outside the initial subset")
-        .into_diagnostics();
-
-    assert_eq!(
-        diagnostics[0],
-        Diagnostic::UnsupportedProject {
-            feature: ProjectFeature::ExtraSources,
-            count: 1,
-        }
-    );
-}
-
-#[test]
-fn artifact_paths_are_portable_relative_and_canonical() {
-    let valid = ArtifactPath::new("src/generated/Grüße.rs").expect("UTF-8 paths are supported");
-    assert_eq!(valid.as_str(), "src/generated/Grüße.rs");
-
-    for (path, kind) in [
-        ("", ArtifactPathErrorKind::Empty),
-        ("/tmp/output.rs", ArtifactPathErrorKind::Absolute),
-        ("C:/output.rs", ArtifactPathErrorKind::Absolute),
-        ("../output.rs", ArtifactPathErrorKind::ParentComponent),
-        ("src/../output.rs", ArtifactPathErrorKind::ParentComponent),
-        ("./output.rs", ArtifactPathErrorKind::NonCanonicalComponent),
-        (
-            "src//output.rs",
-            ArtifactPathErrorKind::NonCanonicalComponent,
-        ),
-        ("src\\output.rs", ArtifactPathErrorKind::Backslash),
-        ("bad\0name", ArtifactPathErrorKind::NulByte),
-    ] {
-        assert_eq!(ArtifactPath::new(path).expect_err(path).kind, kind);
-    }
-}
-
-#[test]
-fn artifact_sets_sort_files_and_reject_duplicates() {
-    let file = |path: &str, contents: &[u8]| {
-        GeneratedFile::new(
-            ArtifactPath::new(path).expect("test path is valid"),
-            contents,
-        )
-    };
-    let artifacts = ArtifactSet::new([
-        file("z.txt", b"last"),
-        file("nested/a.txt", b"middle"),
-        file("a.txt", b"first"),
-    ])
-    .expect("paths are unique");
-
-    assert_eq!(
-        artifacts
-            .files()
-            .iter()
-            .map(|file| file.path.as_str())
-            .collect::<Vec<_>>(),
-        vec!["a.txt", "nested/a.txt", "z.txt"]
-    );
-    assert_eq!(artifacts.len(), 3);
-
-    let duplicate = ArtifactPath::new("same.txt").expect("test path is valid");
-    assert_eq!(
-        ArtifactSet::new([
-            GeneratedFile::new(duplicate.clone(), b"first"),
-            GeneratedFile::new(duplicate.clone(), b"second"),
-        ]),
-        Err(ArtifactSetError::DuplicatePath(duplicate))
     );
 }

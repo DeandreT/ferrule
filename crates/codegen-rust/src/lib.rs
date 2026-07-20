@@ -141,6 +141,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              sort_candidates, tokenize, tokenize_by_length, value_map,\n\
          };\n\n",
     );
+    source.push_str("pub use codegen_runtime::NamedInput;\n\n");
     source.push_str(
         "#[derive(Clone, Debug, PartialEq)]\n\
          pub struct NamedOutput {\n\
@@ -163,16 +164,81 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
          ) -> Result<Instance, RuntimeError> {\n\
              Ok(execute_outputs_with_context(source, execution)?.primary)\n\
          }\n\n\
+         pub fn execute_with_sources(\n\
+             source: &Instance,\n\
+             inputs: &[NamedInput<'_>],\n\
+         ) -> Result<Instance, RuntimeError> {\n\
+             Ok(execute_outputs_with_sources(source, inputs)?.primary)\n\
+         }\n\n\
+         pub fn execute_with_sources_and_context(\n\
+             source: &Instance,\n\
+             inputs: &[NamedInput<'_>],\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<Instance, RuntimeError> {\n\
+             Ok(execute_outputs_with_sources_and_context(source, inputs, execution)?.primary)\n\
+         }\n\n\
          pub fn execute_outputs(source: &Instance) -> Result<ExecutionOutputs, RuntimeError> {\n\
-             execute_outputs_from_context(&ScopeContext::new(source))\n\
+             execute_outputs_with_sources(source, &[])\n\
          }\n\n\
          pub fn execute_outputs_with_context(\n\
              source: &Instance,\n\
              execution: &ExecutionContext<'_>,\n\
          ) -> Result<ExecutionOutputs, RuntimeError> {\n\
-             execute_outputs_from_context(&ScopeContext::with_execution_context(source, execution))\n\
+             execute_outputs_with_sources_and_context(source, &[], execution)\n\
+         }\n\n\
+         pub fn execute_outputs_with_sources(\n\
+             source: &Instance,\n\
+             inputs: &[NamedInput<'_>],\n\
+         ) -> Result<ExecutionOutputs, RuntimeError> {\n\
+             let inputs = validate_named_inputs(inputs)?;\n\
+             execute_outputs_from_context(&ScopeContext::with_named_inputs(source, &inputs))\n\
+         }\n\n\
+         pub fn execute_outputs_with_sources_and_context(\n\
+             source: &Instance,\n\
+             inputs: &[NamedInput<'_>],\n\
+             execution: &ExecutionContext<'_>,\n\
+         ) -> Result<ExecutionOutputs, RuntimeError> {\n\
+             let inputs = validate_named_inputs(inputs)?;\n\
+             execute_outputs_from_context(&ScopeContext::with_named_inputs_and_execution_context(\n\
+                 source,\n\
+                 &inputs,\n\
+                 execution,\n\
+             ))\n\
          }\n\n",
     );
+
+    let input_names = program
+        .extra_sources
+        .iter()
+        .map(|input| rust_string(&input.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    source.push_str(&format!(
+        "pub const EXTRA_SOURCE_NAMES: &[&str] = &[{input_names}];\n\n"
+    ));
+    source.push_str(
+        "fn validate_named_inputs<'a>(\n    inputs: &[NamedInput<'a>],\n) -> Result<Vec<NamedInput<'a>>, RuntimeError> {\n",
+    );
+    if program.extra_sources.is_empty() {
+        source.push_str(
+            "    if let Some(input) = inputs.first() {\n        return Err(RuntimeError::UnexpectedNamedSource {\n            name: input.name.to_string(),\n        });\n    }\n    Ok(Vec::new())\n}\n\n",
+        );
+    } else {
+        source.push_str(&format!(
+            "    let mut matched: Vec<Option<NamedInput<'a>>> = vec![None; {}];\n",
+            program.extra_sources.len()
+        ));
+        source.push_str("    for input in inputs {\n        let index = match input.name {\n");
+        for (index, input) in program.extra_sources.iter().enumerate() {
+            source.push_str(&format!(
+                "            {} => {index},\n",
+                rust_string(&input.name)
+            ));
+        }
+        source.push_str(
+            "            _ => return Err(RuntimeError::UnexpectedNamedSource { name: input.name.to_string() }),\n        };\n        if matched[index].is_some() {\n            return Err(RuntimeError::DuplicateNamedSource {\n                name: EXTRA_SOURCE_NAMES[index],\n            });\n        }\n        matched[index] = Some(*input);\n    }\n    let mut ordered = Vec::with_capacity(EXTRA_SOURCE_NAMES.len());\n    for (index, name) in EXTRA_SOURCE_NAMES.iter().copied().enumerate() {\n        let Some(input) = matched[index].take() else {\n            return Err(RuntimeError::MissingNamedSource { name });\n        };\n        ordered.push(input);\n    }\n    Ok(ordered)\n}\n\n",
+        );
+    }
 
     source.push_str(
         "fn execute_outputs_from_context(\n    context: &ScopeContext<'_>,\n) -> Result<ExecutionOutputs, RuntimeError> {\n    let primary = scope_root(context)?;\n",

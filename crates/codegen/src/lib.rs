@@ -21,9 +21,9 @@ pub use diagnostic::{
 pub use lower::lower;
 pub use model::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, GeneratedSequence,
-    IterationOutput, IterationPlan, IterationSource, NamedTargetProgram, Program, RuntimeValue,
-    SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
-    SourceIteration, TargetConstruction, TargetScope,
+    IterationOutput, IterationPlan, IterationSource, NamedSourceProgram, NamedTargetProgram,
+    Program, RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow, SortFilterOrder,
+    SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope,
 };
 pub use validate::{
     ProgramValidationError, RecursiveSequencePathRole, SequenceExpressionRole, SequenceOwner,

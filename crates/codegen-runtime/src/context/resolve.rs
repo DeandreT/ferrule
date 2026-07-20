@@ -147,6 +147,15 @@ impl ScopeContext<'_> {
             };
         }
 
+        if let Some((name, rest)) = path.split_first()
+            && let Some(input) = self.named_input(name)
+        {
+            match resolve_scalar_in(input, rest, &owned_path, 1) {
+                Ok(value) => return Ok(value),
+                Err(error) => first_error.get_or_insert(error),
+            };
+        }
+
         Err(first_error.unwrap_or(SourcePathError::ExpectedScalar {
             path: owned_path,
             found: InstanceKind::Group,

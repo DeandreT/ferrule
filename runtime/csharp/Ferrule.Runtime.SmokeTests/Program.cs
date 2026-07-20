@@ -18,6 +18,7 @@ internal static partial class Program
             ("double domain", DoubleDomain),
             ("value maps", ValueMaps),
             ("lookup contexts", LookupContexts),
+            ("named source contexts", NamedSourceContexts),
             ("runtime execution context", RuntimeExecutionContext),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
