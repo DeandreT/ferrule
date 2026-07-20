@@ -307,7 +307,7 @@ fn unused_unsupported_nodes_do_not_block_lowering() {
         (
             99,
             Node::Call {
-                function: "edifact_to_datetime".into(),
+                function: "json_parse_field".into(),
                 args: vec![90],
             },
         ),
@@ -331,26 +331,26 @@ fn reports_each_reachable_unsupported_function_by_name() {
     project.graph.nodes.insert(
         40,
         Node::Call {
-            function: "edifact_to_datetime".into(),
+            function: "json_parse_field".into(),
             args: vec![10, 20],
         },
     );
     project.root.bindings[0].node = 40;
 
     let diagnostics = lower(&project)
-        .expect_err("edifact_to_datetime is outside the portable call whitelist")
+        .expect_err("json_parse_field is outside the portable call whitelist")
         .into_diagnostics();
 
     assert_eq!(
         diagnostics,
         vec![Diagnostic::UnsupportedFunction {
             node: 40,
-            function: "edifact_to_datetime".into(),
+            function: "json_parse_field".into(),
         }]
     );
     assert_eq!(
         diagnostics[0].to_string(),
-        "graph node 40: code generation does not support function `edifact_to_datetime`"
+        "graph node 40: code generation does not support function `json_parse_field`"
     );
 }
 
@@ -403,6 +403,8 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "parse_date",
         "parse_datetime",
         "parse_time",
+        "datetime_add",
+        "edifact_to_datetime",
         "add",
         "subtract",
         "multiply",

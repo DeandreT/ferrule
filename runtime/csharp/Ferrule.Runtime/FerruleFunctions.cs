@@ -54,6 +54,8 @@ public static partial class FerruleFunctions
             "parse_date" => ParseDate(arguments),
             "parse_datetime" => ParseDateTime(arguments),
             "parse_time" => ParseTime(arguments),
+            "datetime_add" => DateTimeAdd(arguments),
+            "edifact_to_datetime" => EdifactToDateTime(arguments),
             "substitute_missing" => SubstituteMissing(arguments),
             "is_xml_nil" => IsXmlNil(arguments),
             "get_folder" => UnaryString(function, arguments, GetFolder),

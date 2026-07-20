@@ -148,3 +148,49 @@ fn lowers_datetime_picture_calls_without_backend_specific_state() {
         assert_eq!(expected.as_str(), name);
     }
 }
+
+#[test]
+fn lowers_datetime_arithmetic_and_edifact_calls_without_backend_specific_state() {
+    for (index, (name, expected, args)) in [
+        (
+            "datetime_add",
+            ScalarFunction::DatetimeAdd,
+            vec![10, 20, 10],
+        ),
+        (
+            "edifact_to_datetime",
+            ScalarFunction::EdifactToDatetime,
+            vec![10, 20],
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let node = 80 + index as u32;
+        let mut project = supported_project();
+        project.graph.nodes.insert(
+            node,
+            Node::Call {
+                function: name.to_string(),
+                args: args.clone(),
+            },
+        );
+        project.root.bindings[0].node = node;
+
+        let program = lower(&project).expect("the date-time scalar call is portable");
+        let expression = program
+            .expressions
+            .iter()
+            .find(|expression| expression.id == node)
+            .expect("reachable call is retained");
+        assert_eq!(
+            expression.expression,
+            Expression::Call {
+                function: expected,
+                args,
+            }
+        );
+        assert_eq!(ScalarFunction::from_name(name), Some(expected));
+        assert_eq!(expected.as_str(), name);
+    }
+}

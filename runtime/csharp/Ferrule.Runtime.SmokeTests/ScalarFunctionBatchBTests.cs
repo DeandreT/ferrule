@@ -15,6 +15,8 @@ internal static partial class Program
         DateTimeExtractorFunctions();
         DateTimeCompositionFunctions();
         DateTimePictureFunctions();
+        DateTimeArithmeticFunctions();
+        EdifactDateTimeFunction();
     }
 
     private static void SubstringFunctions()
@@ -505,6 +507,96 @@ internal static partial class Program
             "requires a value matching a supported date/time picture",
             Text("2014-01-02 24:00:00"),
             Text("[Y]-[M]-[D] [H]:[m]:[s]"));
+    }
+
+    private static void DateTimeArithmeticFunctions()
+    {
+        CallEquals(
+            Text("2024-03-02T01:00:01Z"),
+            "datetime_add",
+            Text("2024-01-31T23:30:00.25Z"),
+            Text("P1M1DT1H30M0.75S"));
+        CallEquals(
+            Text("2023-01-28T00:00:00"),
+            "datetime_add",
+            Text("2023-01-31T00:00:00"),
+            Text("P1M"),
+            FerruleValue.Null,
+            Text("-P1M"));
+        CallEquals(
+            Text("-0001-12-31T00:00:00"),
+            "datetime_add",
+            Text("0001-01-01T00:00:00"),
+            Text("-P1D"));
+        CallEquals(
+            Text("2024-03-01T00:00:00.999999999999999999+05:30"),
+            "datetime_add",
+            Text("2024-03-01T00:00:00.000000000000000001+05:30"),
+            Text("-PT0.000000000000000002S"),
+            Text("PT1S"));
+        CallEquals(
+            Text("2024-02-01T00:00:00Z"),
+            "datetime_add",
+            Text("2024-01-31T24:00:00.000Z"),
+            Text("P0D"));
+
+        AssertFunctionArity("datetime_add", 2, Text("2024-01-01"));
+        AssertFunctionType(
+            "datetime_add",
+            Text("2024-01-01"),
+            FerruleValue.FromInt64(1));
+        AssertInvalidArgument(
+            "datetime_add",
+            "requires an xs:date or xs:dateTime followed by one or more xs:duration values",
+            Text("2024-01-01"),
+            FerruleValue.Null);
+        AssertInvalidArgument(
+            "datetime_add",
+            "requires an xs:date or xs:dateTime followed by one or more xs:duration values",
+            Text("2024-01-01T24:00:00.1"),
+            Text("P0D"));
+        AssertInvalidArgument(
+            "datetime_add",
+            "requires an xs:date or xs:dateTime followed by one or more xs:duration values",
+            Text("2024-01-01T00:00:00"),
+            Text("PT0.0000000000000000001S"));
+    }
+
+    private static void EdifactDateTimeFunction()
+    {
+        foreach (var (value, code, expected) in new[]
+        {
+            ("20240229", "102", "2024-02-29T00:00:00"),
+            ("202402291305", "203", "2024-02-29T13:05:00"),
+            ("20240229130547", "204", "2024-02-29T13:05:47"),
+            ("202402291305-0000", "205", "2024-02-29T13:05:00Z"),
+            ("202402291305PDT", "303", "2024-02-29T13:05:00-09:00"),
+            ("20240229130547UTC", "304", "2024-02-29T13:05:47Z"),
+        })
+        {
+            CallEquals(Text(expected), "edifact_to_datetime", Text(value), Text(code));
+        }
+
+        AssertFunctionArity("edifact_to_datetime", 2, Text("20240229"));
+        AssertFunctionType(
+            "edifact_to_datetime",
+            FerruleValue.FromInt64(20240229),
+            Text("102"));
+        AssertInvalidArgument(
+            "edifact_to_datetime",
+            "supports UN/EDIFACT 2379 codes 102, 203, 204, 205, 303, and 304",
+            Text("2402291305"),
+            Text("201"));
+        AssertInvalidArgument(
+            "edifact_to_datetime",
+            "requires a value matching its UN/EDIFACT 2379 date/time format code",
+            Text("202302291305"),
+            Text("203"));
+        AssertInvalidArgument(
+            "edifact_to_datetime",
+            "supports UTC, GMT, EST, EDT, CST, CDT, MST, MDT, PST, and PDT named zones",
+            Text("202402291305XYZ"),
+            Text("303"));
     }
 
     private static void AssertInvalidArgument(
