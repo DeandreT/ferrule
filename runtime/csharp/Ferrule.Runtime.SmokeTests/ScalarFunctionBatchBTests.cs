@@ -7,6 +7,7 @@ internal static partial class Program
     private static void ScalarFunctionBatchB()
     {
         SubstringFunctions();
+        EdgeCharacterFunctions();
         SqlLikeFunction();
         PaddingFunctions();
         IsbnFunction();
@@ -17,6 +18,42 @@ internal static partial class Program
         DateTimePictureFunctions();
         DateTimeArithmeticFunctions();
         EdifactDateTimeFunction();
+    }
+
+    private static void EdgeCharacterFunctions()
+    {
+        CallEquals(
+            Text("A\U0001F642"),
+            "left",
+            Text("A\U0001F642BC"),
+            FerruleValue.FromInt64(2));
+        CallEquals(
+            Text("BC"),
+            "right",
+            Text("A\U0001F642BC"),
+            FerruleValue.FromDouble(2.9));
+        CallEquals(
+            Text(string.Empty),
+            "left",
+            Text("value"),
+            FerruleValue.FromInt64(0));
+        CallEquals(
+            Text("value"),
+            "right",
+            Text("value"),
+            FerruleValue.FromInt64(long.MaxValue));
+        AssertFunctionArity("left", 2, Text("value"));
+        AssertFunctionType("right", FerruleValue.FromInt64(1), FerruleValue.FromInt64(1));
+        AssertFunctionTypeKind(
+            "left",
+            FerruleValueKind.String,
+            Text("value"),
+            Text("2"));
+        AssertInvalidArgument(
+            "right",
+            "requires a finite character count",
+            Text("value"),
+            FerruleValue.FromDouble(double.PositiveInfinity));
     }
 
     private static void SubstringFunctions()

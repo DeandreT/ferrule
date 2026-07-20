@@ -15,6 +15,8 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "normalize_space" => unary_string(args, "normalize_space", normalize_space),
         "is_empty" => unary_string_predicate(args, "is_empty", str::is_empty),
         "trim" => unary_string(args, "trim", |s| s.trim().to_string()),
+        "left" => edge_chars(args, "left", true),
+        "right" => edge_chars(args, "right", false),
         "left_trim" => unary_string(args, "left_trim", |s| {
             s.trim_start_matches([' ', '\t', '\r', '\n']).to_string()
         }),
@@ -440,6 +442,59 @@ fn pad_string(args: &[Value], name: &'static str, left: bool) -> Result<Value, F
     } else {
         value + &padding
     }))
+}
+
+fn edge_chars(args: &[Value], name: &'static str, left: bool) -> Result<Value, FunctionError> {
+    let [Value::String(value), count] = args else {
+        return match args {
+            [other, _] if !matches!(other, Value::String(_)) => Err(FunctionError::TypeMismatch {
+                function: name,
+                got: other.type_name(),
+            }),
+            [_, other] => Err(FunctionError::TypeMismatch {
+                function: name,
+                got: other.type_name(),
+            }),
+            _ => Err(FunctionError::ArityMismatch {
+                function: name,
+                expected: 2,
+                got: args.len(),
+            }),
+        };
+    };
+    let count = match count {
+        Value::Int(count) => *count,
+        Value::Float(count) if count.is_finite() => *count as i64,
+        Value::Float(_) => {
+            return Err(FunctionError::InvalidArgument {
+                function: name,
+                message: "requires a finite character count",
+            });
+        }
+        other => {
+            return Err(FunctionError::TypeMismatch {
+                function: name,
+                got: other.type_name(),
+            });
+        }
+    };
+    if count <= 0 {
+        return Ok(Value::String(String::new()));
+    }
+
+    let length = value.chars().count();
+    let Ok(count) = usize::try_from(count) else {
+        return Ok(Value::String(value.clone()));
+    };
+    if count >= length {
+        return Ok(Value::String(value.clone()));
+    }
+    let result = if left {
+        value.chars().take(count).collect()
+    } else {
+        value.chars().skip(length - count).collect()
+    };
+    Ok(Value::String(result))
 }
 
 fn numeric(
