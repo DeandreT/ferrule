@@ -176,3 +176,26 @@ footer {
   .hero-grid { grid-template-columns: 1fr; }
   .nav nav { gap: 12px; font-size: 0.85rem; }
 }
+
+@media (max-width: 620px) {
+  .nav-inner {
+    align-items: flex-start;
+    flex-direction: column;
+    height: auto;
+    padding-bottom: 12px;
+    padding-top: 12px;
+  }
+
+  .brand {
+    margin-bottom: 8px;
+  }
+
+  .nav nav {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+
+  .hero {
+    padding-top: 42px;
+  }
+}

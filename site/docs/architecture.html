@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Architecture - ferrule docs</title>
+  <link rel="stylesheet" href="docs.css" />
+</head>
+<body>
+  <div class="docs-shell">
+    <aside class="sidebar">
+      <a class="brand" href="../"><svg viewBox="0 0 32 32" width="25" height="25" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="3" fill="#b65f1d"/><rect x="8" y="10" width="3" height="12" fill="#f7f5ef"/><rect x="21" y="10" width="3" height="12" fill="#f7f5ef"/></svg>ferrule</a>
+      <p class="version">documentation</p>
+      <nav aria-label="Documentation">
+        <div class="nav-section"><div class="nav-title">Start</div><a href="index.html">Introduction</a><a href="getting-started.html">Getting started</a></div>
+        <div class="nav-section"><div class="nav-title">Model</div><a href="architecture.html" aria-current="page">Architecture</a><a href="formats.html">Supported formats</a></div>
+        <div class="nav-section"><div class="nav-title">Interop</div><a href="mapforce.html">MapForce import/export</a><a href="codegen.html">Rust and C# codegen</a></div>
+      </nav>
+    </aside>
+    <main class="page">
+      <div class="topbar"><a href="../demo/">Live demo</a><a href="https://github.com/DeandreT/ferrule">GitHub</a></div>
+      <article class="content">
+        <div class="chapter">Chapter 3</div>
+        <h1>Architecture</h1>
+        <p class="lead">
+          A ferrule project is a small mapping model over a format-independent
+          instance tree. The interpreter and generated libraries both evaluate
+          that model with the same scope and scalar semantics.
+        </p>
+
+        <h2>Project model</h2>
+        <ol>
+          <li><strong>Schemas</strong> describe source and target trees as named scalars and groups, with repetition, attributes, nullability, fixed values, and dynamic names where target formats allow them.</li>
+          <li><strong>Graph nodes</strong> compute scalar values from source fields, constants, positions, functions, conditionals, value maps, lookups, joins, aggregates, runtime values, and XML mixed content.</li>
+          <li><strong>Scopes</strong> construct target groups by iterating source collections, generated scalar sequences, document sets, or joins, then applying filters, grouping, sorting, windows, bindings, and child scopes.</li>
+          <li><strong>Endpoints</strong> identify the primary input and output plus optional named sources and targets. Stored paths can be overridden by the CLI or host application.</li>
+        </ol>
+
+        <h2>Execution context</h2>
+        <p>
+          Source frames form a stack. Field resolution starts at the innermost
+          frame and falls outward, which lets parent values broadcast into nested
+          target rows. Repeating paths can cross several collection levels;
+          generated sequences and joins carry their own typed item and position
+          contexts. Missing data remains explicit as `Null` instead of aborting
+          the run.
+        </p>
+
+        <h2>Workspace crates</h2>
+        <table>
+          <thead><tr><th>Area</th><th>Crates</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td>Core</td><td><code>ir</code>, <code>mapping</code>, <code>functions</code>, <code>engine</code></td><td>Shared data model, scalar functions, validation, and interpreter execution.</td></tr>
+            <tr><td>Code generation</td><td><code>codegen</code>, <code>codegen-runtime</code>, <code>codegen-rust</code>, <code>codegen-csharp</code></td><td>Portable lowering, runtime primitives, and deterministic Rust/C# emitters.</td></tr>
+            <tr><td>Formats</td><td><code>format-xml</code>, <code>format-json</code>, <code>format-csv</code>, <code>format-xlsx</code>, <code>format-db</code>, <code>format-edi</code>, <code>format-flextext</code>, <code>format-protobuf</code>, <code>format-pdf</code>, <code>format-xbrl</code></td><td>Adapters between external data and the shared instance tree.</td></tr>
+            <tr><td>Interfaces</td><td><code>cli</code>, <code>gui</code>, <code>web-demo</code>, <code>mfd</code></td><td>Headless execution, native editing, browser demo, and MapForce import/export.</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <strong>Generated mappings are static programs.</strong>
+          They contain expression and scope functions for the portable model
+          instead of embedding the whole interpreter and serialized project.
+        </div>
+
+        <nav class="page-nav" aria-label="Page navigation">
+          <a href="getting-started.html"><- Getting started</a>
+          <a href="formats.html">Supported formats -></a>
+        </nav>
+      </article>
+    </main>
+  </div>
+</body>
+</html>
