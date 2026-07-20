@@ -14,6 +14,7 @@ internal static partial class Program
         DateFromDateTimeFunction();
         DateTimeExtractorFunctions();
         DateTimeCompositionFunctions();
+        DateTimePictureFunctions();
     }
 
     private static void SubstringFunctions()
@@ -433,6 +434,77 @@ internal static partial class Program
             FerruleValue.Null,
             FerruleValue.Null,
             FerruleValue.FromInt64(841));
+    }
+
+    private static void DateTimePictureFunctions()
+    {
+        CallEquals(
+            Text("2014-12-09"),
+            "parse_date",
+            Text("09-12-2014"),
+            Text("[D]-[M]-[Y]"));
+        CallEquals(
+            Text("2015-04-01"),
+            "parse_date",
+            Text("01 Apr 2015"),
+            Text("[D01] [MNn,3-3] [Y]"));
+        CallEquals(
+            Text("2004-11-10+01:00"),
+            "parse_date",
+            Text("315 2004 +01:00"),
+            Text("[d] [Y] [Z]"));
+
+        CallEquals(
+            Text("2014-09-12T13:56:24"),
+            "parse_datetime",
+            Text("09-12-2014 13:56:24"),
+            Text("[M]-[D]-[Y] [H]:[m]:[s]"));
+        CallEquals(
+            Text("2010-12-01T15:02:39+01:00"),
+            "parse_datetime",
+            Text("1.December.10 03:2:39 p.m. +01:00"),
+            Text("[D].[MNn].[Y,2-2] [h]:[m]:[s] [P] [Z]"));
+        CallEquals(
+            Text("2011-06-20T00:00:00"),
+            "parse_datetime",
+            Text("20110620"),
+            Text("[Y,4-4][M,2-2][D,2-2]"));
+
+        CallEquals(
+            Text("15:02:39.25+01:00"),
+            "parse_time",
+            Text("03:2:39.25 p.m. GMT+01:00"),
+            Text("[h]:[m]:[s].[f] [P] [z]"));
+        CallEquals(
+            Text("09:53:00"),
+            "parse_time",
+            FerruleValue.FromDouble(953.0),
+            Text("[H,1-1][m,2-2]"));
+        CallEquals(
+            Text("17:03:00"),
+            "parse_time",
+            FerruleValue.FromInt64(1703),
+            Text("[H,2-2][m,2-2]"));
+
+        AssertFunctionArity("parse_date", 2, Text("2014-01-02"));
+        AssertFunctionType(
+            "parse_datetime",
+            FerruleValue.FromInt64(2014),
+            Text("[Y]"));
+        AssertFunctionType(
+            "parse_time",
+            Text("09:30"),
+            FerruleValue.FromInt64(1));
+        AssertInvalidArgument(
+            "parse_date",
+            "requires a value matching a supported date/time picture",
+            Text("2014-02-29"),
+            Text("[Y]-[M]-[D]"));
+        AssertInvalidArgument(
+            "parse_datetime",
+            "requires a value matching a supported date/time picture",
+            Text("2014-01-02 24:00:00"),
+            Text("[Y]-[M]-[D] [H]:[m]:[s]"));
     }
 
     private static void AssertInvalidArgument(

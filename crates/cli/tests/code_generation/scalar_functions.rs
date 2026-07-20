@@ -401,6 +401,24 @@ fn scalar_function_project() -> Project {
         "coerce_datetime",
         vec![Value::String("2031-08-17+05:45".into())],
     );
+    let parsed_date = graph.call_values(
+        "parse_date",
+        vec![
+            Value::String("315 2004 +01:00".into()),
+            Value::String("[d] [Y] [Z]".into()),
+        ],
+    );
+    let parsed_datetime = graph.call_values(
+        "parse_datetime",
+        vec![
+            Value::String("1.December.10 03:2:39 p.m. +01:00".into()),
+            Value::String("[D].[MNn].[Y,2-2] [h]:[m]:[s] [P] [Z]".into()),
+        ],
+    );
+    let parsed_time = graph.call_values(
+        "parse_time",
+        vec![Value::Float(953.0), Value::String("[H,1-1][m,2-2]".into())],
+    );
     let null = graph.call_values("month_from_datetime", vec![Value::Null]);
     add_group(
         &mut target,
@@ -416,6 +434,9 @@ fn scalar_function_project() -> Project {
             ("Composed", ScalarType::String, composed),
             ("Parts", ScalarType::String, parts),
             ("Coerced", ScalarType::String, coerced),
+            ("ParsedDate", ScalarType::String, parsed_date),
+            ("ParsedDatetime", ScalarType::String, parsed_datetime),
+            ("ParsedTime", ScalarType::String, parsed_time),
             ("Null", ScalarType::String, null),
         ],
     );
@@ -605,6 +626,12 @@ fn expected() -> Instance {
                     Value::String("2024-02-29T09:08:07.1255+05:30".into()),
                 ),
                 ("Coerced", Value::String("2031-08-17T00:00:00+05:45".into())),
+                ("ParsedDate", Value::String("2004-11-10+01:00".into())),
+                (
+                    "ParsedDatetime",
+                    Value::String("2010-12-01T15:02:39+01:00".into()),
+                ),
+                ("ParsedTime", Value::String("09:53:00".into())),
                 ("Null", Value::Null),
             ]),
         ),

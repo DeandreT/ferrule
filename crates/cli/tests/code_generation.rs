@@ -605,7 +605,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
         outcome,
         GenerateOutcome {
             output_directory: first,
-            files_written: 21,
+            files_written: 22,
         }
     );
     assert_eq!(repeated.files_written, outcome.files_written);
@@ -619,6 +619,7 @@ fn csharp_generation_has_a_deterministic_manifest() -> TestResult<()> {
             "Runtime/FerruleExecutionContext.cs",
             "Runtime/FerruleFailures.cs",
             "Runtime/FerruleFunctions.DateTime.cs",
+            "Runtime/FerruleFunctions.DateTimePictures.cs",
             "Runtime/FerruleFunctions.FormatNumber.cs",
             "Runtime/FerruleFunctions.Numeric.cs",
             "Runtime/FerruleFunctions.Strings.cs",
@@ -694,7 +695,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
     unsupported.graph.nodes.insert(
         30,
         Node::Call {
-            function: "parse_datetime".into(),
+            function: "edifact_to_datetime".into(),
             args: vec![10, 20],
         },
     );
@@ -707,7 +708,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
         .expect_err("unsupported nodes must fail capability analysis");
 
     assert!(error.to_string().contains("graph node 30"));
-    assert!(error.to_string().contains("parse_datetime"));
+    assert!(error.to_string().contains("edifact_to_datetime"));
     assert!(!output.exists());
     assert!(
         std::fs::read_dir(&directory.0)?
