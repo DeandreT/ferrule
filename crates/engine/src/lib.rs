@@ -378,6 +378,9 @@ mod failure_tests;
 #[path = "tests/group_blocks.rs"]
 mod group_blocks_tests;
 #[cfg(test)]
+#[path = "tests/group_boundaries.rs"]
+mod group_boundaries_tests;
+#[cfg(test)]
 #[path = "tests/group_starting.rs"]
 mod group_starting_tests;
 #[cfg(test)]

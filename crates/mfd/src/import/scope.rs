@@ -41,6 +41,8 @@ pub(super) struct IterationNodes {
     pub(super) filter: Option<NodeId>,
     pub(super) group_by: Option<NodeId>,
     pub(super) group_starting_with: Option<NodeId>,
+    pub(super) group_adjacent_by: Option<NodeId>,
+    pub(super) group_ending_with: Option<NodeId>,
     pub(super) group_into_blocks: Option<NodeId>,
     pub(super) sort_by: Option<NodeId>,
     pub(super) sort_descending: bool,
@@ -103,6 +105,8 @@ impl ScopeBuilder {
         scope.filter = nodes.filter;
         scope.group_by = nodes.group_by;
         scope.group_starting_with = nodes.group_starting_with;
+        scope.group_adjacent_by = nodes.group_adjacent_by;
+        scope.group_ending_with = nodes.group_ending_with;
         scope.group_into_blocks = nodes.group_into_blocks;
         scope.sort_by = nodes.sort_by;
         scope.sort_descending = nodes.sort_descending;
@@ -134,6 +138,8 @@ impl ScopeBuilder {
         scope.filter = nodes.filter;
         scope.group_by = nodes.group_by;
         scope.group_starting_with = nodes.group_starting_with;
+        scope.group_adjacent_by = nodes.group_adjacent_by;
+        scope.group_ending_with = nodes.group_ending_with;
         scope.group_into_blocks = nodes.group_into_blocks;
         scope.sort_by = nodes.sort_by;
         scope.sort_descending = nodes.sort_descending;

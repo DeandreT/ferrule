@@ -41,18 +41,10 @@ impl Project {
 }
 
 fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
-    roots.extend(
-        [
-            scope.filter,
-            scope.group_by,
-            scope.group_starting_with,
-            scope.group_into_blocks,
-            scope.sort_by,
-            scope.output_path(),
-        ]
-        .into_iter()
-        .flatten(),
-    );
+    roots.extend(scope.filter);
+    roots.extend(scope.grouping_nodes());
+    roots.extend(scope.sort_by);
+    roots.extend(scope.output_path());
     roots.extend(
         scope
             .windows
@@ -238,6 +230,18 @@ mod tests {
                             frame: None,
                         },
                     ),
+                    (
+                        9,
+                        Node::Const {
+                            value: Value::String("adjacent".into()),
+                        },
+                    ),
+                    (
+                        10,
+                        Node::Const {
+                            value: Value::Bool(false),
+                        },
+                    ),
                 ]
                 .into_iter()
                 .collect(),
@@ -247,6 +251,16 @@ mod tests {
                     target_field: "Value".into(),
                     node: 1,
                 }],
+                children: vec![
+                    Scope {
+                        group_adjacent_by: Some(9),
+                        ..Scope::default()
+                    },
+                    Scope {
+                        group_ending_with: Some(10),
+                        ..Scope::default()
+                    },
+                ],
                 ..Scope::default()
             },
         };
@@ -255,7 +269,7 @@ mod tests {
 
         assert_eq!(
             project.graph.nodes.keys().copied().collect::<Vec<_>>(),
-            vec![0, 1, 2, 3, 4, 5, 6, 7, 8]
+            vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         );
     }
 }

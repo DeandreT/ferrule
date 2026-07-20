@@ -343,6 +343,10 @@ impl RootDynamicJsonTarget {
             || feed.has_filter
             || feed.group_starting_with.is_some()
             || feed.has_start_grouping
+            || feed.group_adjacent_by.is_some()
+            || feed.has_adjacent_grouping
+            || feed.group_ending_with.is_some()
+            || feed.has_end_grouping
             || feed.block_size.is_some()
             || feed.has_block_grouping
             || feed.distinct_key.is_some()
@@ -400,6 +404,8 @@ impl DynamicObjectTarget {
             || control.has_filter
             || control.has_key_grouping
             || control.has_start_grouping
+            || control.has_adjacent_grouping
+            || control.has_end_grouping
             || control.has_block_grouping
             || control.distinct_key.is_some()
             || control.order_issue.is_some()
@@ -449,6 +455,8 @@ impl DynamicObjectTarget {
             filter: None,
             group_by: None,
             group_starting_with: None,
+            group_adjacent_by: None,
+            group_ending_with: None,
             group_into_blocks: None,
             sort_by: None,
             sort_descending: false,
@@ -524,6 +532,8 @@ fn scope_is_unconfigured(scope: &Scope) -> bool {
         && scope.filter.is_none()
         && scope.group_by.is_none()
         && scope.group_starting_with.is_none()
+        && scope.group_adjacent_by.is_none()
+        && scope.group_ending_with.is_none()
         && scope.group_into_blocks.is_none()
         && scope.sort_by.is_none()
         && !scope.sort_descending

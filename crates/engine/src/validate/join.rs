@@ -69,25 +69,21 @@ pub(super) fn validate_scope_nodes(
     project: &Project,
     issues: &mut Vec<ValidationIssue>,
 ) {
-    let roots = [
-        scope.filter,
-        scope.group_by,
-        scope.group_starting_with,
-        scope.group_into_blocks,
-        scope.sort_by,
-        scope.output_path(),
-    ]
-    .into_iter()
-    .flatten()
-    .chain(scope.sort_then_by.iter().map(|key| key.node))
-    .chain(scope.bindings.iter().map(|binding| binding.node))
-    .chain(
-        scope
-            .dynamic_bindings
-            .iter()
-            .flat_map(|binding| [binding.key, binding.value]),
-    )
-    .chain(scope.dynamic_children.iter().map(|child| child.key));
+    let roots = scope
+        .filter
+        .into_iter()
+        .chain(scope.grouping_nodes())
+        .chain(scope.sort_by)
+        .chain(scope.output_path())
+        .chain(scope.sort_then_by.iter().map(|key| key.node))
+        .chain(scope.bindings.iter().map(|binding| binding.node))
+        .chain(
+            scope
+                .dynamic_bindings
+                .iter()
+                .flat_map(|binding| [binding.key, binding.value]),
+        )
+        .chain(scope.dynamic_children.iter().map(|child| child.key));
     validate_roots(graph, roots, active_joins, location, project, issues);
 }
 

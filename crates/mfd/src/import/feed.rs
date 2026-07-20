@@ -6,8 +6,9 @@ use mapping::NodeId;
 use super::function::{
     SequenceWindowComponent, is_db_where as is_db_where_component,
     is_distinct_values as is_distinct_values_component, is_filter as is_filter_component,
-    is_group_into_blocks, is_group_starting_with, is_input as is_input_component,
-    is_sequence_producer, is_sort as is_sort_component, sequence_window_component,
+    is_group_adjacent, is_group_ending_with, is_group_into_blocks, is_group_starting_with,
+    is_input as is_input_component, is_sequence_producer, is_sort as is_sort_component,
+    sequence_window_component,
 };
 use super::graph::GraphBuilder;
 use super::iteration::{
@@ -270,6 +271,24 @@ impl GraphBuilder<'_> {
                 .input_feed(idx, 0)
                 .and_then(|feed| self.value_node(feed));
         }
+        if is_group_ending_with(&self.fn_components[idx]) {
+            return self
+                .input_feed(idx, 0)
+                .and_then(|feed| self.value_node(feed));
+        }
+        if is_group_adjacent(&self.fn_components[idx]) {
+            let pos = usize::from(
+                self.fn_components[idx]
+                    .output_pins
+                    .get(1)
+                    .copied()
+                    .flatten()
+                    == Some(key),
+            );
+            return self
+                .input_feed(idx, pos)
+                .and_then(|feed| self.value_node(feed));
+        }
         match self.fn_components[idx].name.as_str() {
             // A group-by's key output is the key expression itself
             // (re-evaluated in the group's context it reads the group's
@@ -348,6 +367,10 @@ impl GraphBuilder<'_> {
         let mut has_key_grouping = false;
         let mut group_starting_with = None;
         let mut has_start_grouping = false;
+        let mut group_adjacent_by = None;
+        let mut has_adjacent_grouping = false;
+        let mut group_ending_with = None;
+        let mut has_end_grouping = false;
         let mut block_size = None;
         let mut has_block_grouping = false;
         let mut distinct_key = None;
@@ -394,10 +417,14 @@ impl GraphBuilder<'_> {
                         group_key,
                         distinct_key,
                         group_starting_with,
+                        group_adjacent_by,
+                        group_ending_with,
                         block_size,
                         control.group_key,
                         control.distinct_key,
                         control.group_starting_with,
+                        control.group_adjacent_by,
+                        control.group_ending_with,
                         control.block_size,
                     ]
                     .into_iter()
@@ -412,6 +439,10 @@ impl GraphBuilder<'_> {
                     has_key_grouping |= control.has_key_grouping;
                     group_starting_with = group_starting_with.or(control.group_starting_with);
                     has_start_grouping |= control.has_start_grouping;
+                    group_adjacent_by = group_adjacent_by.or(control.group_adjacent_by);
+                    has_adjacent_grouping |= control.has_adjacent_grouping;
+                    group_ending_with = group_ending_with.or(control.group_ending_with);
+                    has_end_grouping |= control.has_end_grouping;
                     block_size = block_size.or(control.block_size);
                     has_block_grouping |= control.has_block_grouping;
                     distinct_key = distinct_key.or(control.distinct_key);
@@ -516,6 +547,8 @@ impl GraphBuilder<'_> {
                 let grouped_first_member = window == SequenceWindowComponent::First
                     && (group_key.is_some()
                         || group_starting_with.is_some()
+                        || group_adjacent_by.is_some()
+                        || group_ending_with.is_some()
                         || block_size.is_some());
                 if !grouped_first_member {
                     let feed = match window {
@@ -547,6 +580,8 @@ impl GraphBuilder<'_> {
                 note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
                 if group_key.is_some()
                     || group_starting_with.is_some()
+                    || group_adjacent_by.is_some()
+                    || group_ending_with.is_some()
                     || block_size.is_some()
                     || distinct_key.is_some()
                 {
@@ -557,6 +592,50 @@ impl GraphBuilder<'_> {
                     group_starting_with = group_starting_with.or_else(|| self.input_feed(idx, 1));
                 }
                 from = nodes_feed;
+            } else if is_group_adjacent(fc) && fc.outputs.first() == Some(&from) {
+                has_adjacent_grouping = true;
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
+                if distinct_key.is_some() {
+                    order_issue.get_or_insert(
+                        "applies group-adjacent before distinct-values, which cannot be represented exactly",
+                    );
+                }
+                if group_key.is_some()
+                    || block_size.is_some()
+                    || group_starting_with.is_some()
+                    || group_adjacent_by.is_some()
+                    || group_ending_with.is_some()
+                {
+                    order_issue.get_or_insert(
+                        "combines multiple grouping controls, which cannot be represented exactly",
+                    );
+                } else {
+                    group_adjacent_by = group_adjacent_by.or_else(|| self.input_feed(idx, 1));
+                }
+                from = nodes_feed;
+            } else if is_group_ending_with(fc) {
+                has_end_grouping = true;
+                let Some(nodes_feed) = self.input_feed(idx, 0) else {
+                    break;
+                };
+                note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
+                if group_key.is_some()
+                    || group_starting_with.is_some()
+                    || group_adjacent_by.is_some()
+                    || group_ending_with.is_some()
+                    || block_size.is_some()
+                    || distinct_key.is_some()
+                {
+                    order_issue.get_or_insert(
+                        "combines group-ending-with with another grouping control, which cannot be represented exactly",
+                    );
+                } else {
+                    group_ending_with = group_ending_with.or_else(|| self.input_feed(idx, 1));
+                }
+                from = nodes_feed;
             } else if is_group_into_blocks(fc) {
                 has_block_grouping = true;
                 let Some(nodes_feed) = self.input_feed(idx, 0) else {
@@ -565,6 +644,8 @@ impl GraphBuilder<'_> {
                 note_iteration_control_order(2, &mut nearest_control, &mut order_issue);
                 if group_key.is_some()
                     || group_starting_with.is_some()
+                    || group_adjacent_by.is_some()
+                    || group_ending_with.is_some()
                     || block_size.is_some()
                     || distinct_key.is_some()
                 {
@@ -587,6 +668,10 @@ impl GraphBuilder<'_> {
                     Some("group-by")
                 } else if group_starting_with.is_some() {
                     Some("group-starting-with")
+                } else if group_adjacent_by.is_some() {
+                    Some("group-adjacent")
+                } else if group_ending_with.is_some() {
+                    Some("group-ending-with")
                 } else if block_size.is_some() {
                     Some("group-into-blocks")
                 } else if distinct_key.is_some() {
@@ -600,6 +685,8 @@ impl GraphBuilder<'_> {
                         "filter" => "applies distinct-values before filter, which cannot be represented exactly",
                         "group-by" => "applies distinct-values before group-by, which cannot be represented exactly",
                         "group-starting-with" => "applies distinct-values before group-starting-with, which cannot be represented exactly",
+                        "group-adjacent" => "applies distinct-values before group-adjacent, which cannot be represented exactly",
+                        "group-ending-with" => "applies distinct-values before group-ending-with, which cannot be represented exactly",
                         "group-into-blocks" => "applies distinct-values before group-into-blocks, which cannot be represented exactly",
                         _ => "chains multiple distinct-values components, which cannot be represented exactly",
                     });
@@ -622,6 +709,8 @@ impl GraphBuilder<'_> {
                         if group_key.is_some()
                             || block_size.is_some()
                             || group_starting_with.is_some()
+                            || group_adjacent_by.is_some()
+                            || group_ending_with.is_some()
                         {
                             order_issue.get_or_insert(
                                 "combines multiple grouping controls, which cannot be represented exactly",
@@ -664,6 +753,10 @@ impl GraphBuilder<'_> {
             has_key_grouping,
             group_starting_with,
             has_start_grouping,
+            group_adjacent_by,
+            has_adjacent_grouping,
+            group_ending_with,
+            has_end_grouping,
             block_size,
             has_block_grouping,
             distinct_key,

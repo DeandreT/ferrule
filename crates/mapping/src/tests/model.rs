@@ -355,7 +355,9 @@ fn old_scopes_default_dynamic_target_metadata_off() {
     assert!(!scope.merge_dynamic_fields);
     assert_eq!(scope.iteration_output, IterationOutput::Repeated);
     assert_eq!(scope.construction, ScopeConstruction::Constructed);
+    assert!(scope.group_adjacent_by.is_none());
     assert!(scope.group_starting_with.is_none());
+    assert!(scope.group_ending_with.is_none());
     assert!(!scope.iterates());
 }
 
@@ -691,6 +693,37 @@ fn group_starting_predicate_roundtrips() {
     assert!(encoded.contains(r#""group_starting_with":7"#));
     let decoded: Scope = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded.group_starting_with, Some(7));
+}
+
+#[test]
+fn adjacent_and_ending_group_controls_roundtrip() {
+    let adjacent = Scope {
+        iteration: ScopeIteration::Source(vec!["items".into()]),
+        group_adjacent_by: Some(8),
+        ..Scope::default()
+    };
+    let encoded = serde_json::to_string(&adjacent).unwrap();
+    assert!(encoded.contains(r#""group_adjacent_by":8"#));
+    assert_eq!(
+        serde_json::from_str::<Scope>(&encoded)
+            .unwrap()
+            .group_adjacent_by,
+        Some(8)
+    );
+
+    let ending = Scope {
+        iteration: ScopeIteration::Source(vec!["items".into()]),
+        group_ending_with: Some(9),
+        ..Scope::default()
+    };
+    let encoded = serde_json::to_string(&ending).unwrap();
+    assert!(encoded.contains(r#""group_ending_with":9"#));
+    assert_eq!(
+        serde_json::from_str::<Scope>(&encoded)
+            .unwrap()
+            .group_ending_with,
+        Some(9)
+    );
 }
 
 #[test]

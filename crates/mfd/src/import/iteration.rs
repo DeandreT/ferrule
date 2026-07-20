@@ -60,6 +60,16 @@ pub(super) struct IterationFeed {
     /// Whether the chain contains group-starting-with, including a malformed
     /// component with a missing predicate.
     pub(super) has_start_grouping: bool,
+    /// Key expression for contiguous adjacent-key grouping.
+    pub(super) group_adjacent_by: Option<u32>,
+    /// Whether the chain contains group-adjacent, including a malformed
+    /// component with a missing key.
+    pub(super) has_adjacent_grouping: bool,
+    /// Boundary predicate for a contiguous group-ending-with operation.
+    pub(super) group_ending_with: Option<u32>,
+    /// Whether the chain contains group-ending-with, including a malformed
+    /// component with a missing predicate.
+    pub(super) has_end_grouping: bool,
     /// The block-size expression key, if group-into-blocks was crossed.
     pub(super) block_size: Option<u32>,
     /// Whether the chain contains group-into-blocks, including a component

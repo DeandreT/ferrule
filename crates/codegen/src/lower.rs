@@ -162,15 +162,7 @@ fn lower_scope(
     let iteration = lower_iteration(scope);
     roots.extend(scope.filter);
     roots.extend(scope.sort_keys().map(|key| key.node));
-    roots.extend(
-        [
-            scope.group_by,
-            scope.group_starting_with,
-            scope.group_into_blocks,
-        ]
-        .into_iter()
-        .flatten(),
-    );
+    roots.extend(scope.grouping_nodes());
     roots.extend(
         scope
             .windows
@@ -268,8 +260,12 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
     };
     let grouping = if let Some(key) = scope.group_by {
         Some(GroupingPlan::By { key })
+    } else if let Some(key) = scope.group_adjacent_by {
+        Some(GroupingPlan::AdjacentBy { key })
     } else if let Some(predicate) = scope.group_starting_with {
         Some(GroupingPlan::StartingWith { predicate })
+    } else if let Some(predicate) = scope.group_ending_with {
+        Some(GroupingPlan::EndingWith { predicate })
     } else {
         scope
             .group_into_blocks

@@ -176,9 +176,13 @@ fn unsupported_control(feed: &IterationFeed) -> Option<&'static str> {
         Some("chains multiple filters before the exception, which failure rules cannot represent")
     } else if feed.has_key_grouping
         || feed.has_start_grouping
+        || feed.has_adjacent_grouping
+        || feed.has_end_grouping
         || feed.has_block_grouping
         || feed.group_key.is_some()
         || feed.group_starting_with.is_some()
+        || feed.group_adjacent_by.is_some()
+        || feed.group_ending_with.is_some()
         || feed.block_size.is_some()
         || feed.distinct_key.is_some()
     {

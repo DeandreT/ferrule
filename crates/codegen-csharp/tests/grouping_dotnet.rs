@@ -53,6 +53,34 @@ fn generated_sequence_grouping_preserves_members_aggregates_and_positions() {
     );
 }
 
+#[test]
+fn emits_adjacent_and_ending_grouping_calls() {
+    for (grouping, expected) in [
+        (
+            GroupingPlan::AdjacentBy { key: 3 },
+            "GroupAdjacentBy(candidates_1",
+        ),
+        (
+            GroupingPlan::EndingWith { predicate: 3 },
+            "GroupEndingWith(candidates_1",
+        ),
+    ] {
+        let mut program = fixture();
+        program.root.children[0].iteration = program.root.children[0]
+            .iteration
+            .take()
+            .map(|iteration| iteration.with_grouping(grouping));
+        let artifacts = codegen_csharp::emit(&program).expect("grouping fixture emits");
+        let generated = artifacts
+            .files()
+            .iter()
+            .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+            .and_then(|file| std::str::from_utf8(&file.contents).ok())
+            .expect("generated mapping is UTF-8");
+        assert!(generated.contains(expected), "missing {expected}");
+    }
+}
+
 fn fixture() -> Program {
     let member = SchemaNode::group(
         "Member",

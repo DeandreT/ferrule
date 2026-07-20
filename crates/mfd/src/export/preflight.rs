@@ -458,6 +458,8 @@ fn validate_copy_scope_shape(
         || !scope.windows.is_empty()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
+        || scope.group_adjacent_by.is_some()
+        || scope.group_ending_with.is_some()
         || scope.group_into_blocks.is_some()
         || !scope.bindings.is_empty()
         || !scope.children.is_empty()

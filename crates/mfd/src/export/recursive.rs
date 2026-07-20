@@ -472,6 +472,8 @@ fn has_controls_or_content(scope: &Scope) -> bool {
         || scope.filter.is_some()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
+        || scope.group_adjacent_by.is_some()
+        || scope.group_ending_with.is_some()
         || scope.group_into_blocks.is_some()
         || scope.sort_by.is_some()
         || !scope.windows.is_empty()

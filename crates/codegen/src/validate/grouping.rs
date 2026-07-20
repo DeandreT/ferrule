@@ -44,8 +44,16 @@ pub(super) fn validate(
             GroupingExpressionRole::Key,
             GroupingExpressionContext::Item(key),
         ),
+        GroupingPlan::AdjacentBy { key } => (
+            GroupingExpressionRole::AdjacentKey,
+            GroupingExpressionContext::Item(key),
+        ),
         GroupingPlan::StartingWith { predicate } => (
             GroupingExpressionRole::StartingPredicate,
+            GroupingExpressionContext::Item(predicate),
+        ),
+        GroupingPlan::EndingWith { predicate } => (
+            GroupingExpressionRole::EndingPredicate,
             GroupingExpressionContext::Item(predicate),
         ),
         GroupingPlan::IntoBlocks { size } => (

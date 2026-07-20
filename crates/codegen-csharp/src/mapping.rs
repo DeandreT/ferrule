@@ -543,8 +543,22 @@ fn render_grouping(
                 ", candidate_{scope} => Node_{key}(candidate_{scope}))"
             ));
         }
+        GroupingPlan::AdjacentBy { key } => {
+            output.push_str(&format!("GroupAdjacentBy(candidates_{scope}, "));
+            render_grouping_path(input, output);
+            output.push_str(&format!(
+                ", candidate_{scope} => Node_{key}(candidate_{scope}))"
+            ));
+        }
         GroupingPlan::StartingWith { predicate } => {
             output.push_str(&format!("GroupStartingWith(candidates_{scope}, "));
+            render_grouping_path(input, output);
+            output.push_str(&format!(
+                ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U))"
+            ));
+        }
+        GroupingPlan::EndingWith { predicate } => {
+            output.push_str(&format!("GroupEndingWith(candidates_{scope}, "));
             render_grouping_path(input, output);
             output.push_str(&format!(
                 ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U))"

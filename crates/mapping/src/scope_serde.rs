@@ -34,7 +34,11 @@ struct ScopeRef<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     group_by: Option<NodeId>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    group_adjacent_by: Option<NodeId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     group_starting_with: Option<NodeId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    group_ending_with: Option<NodeId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     group_into_blocks: Option<NodeId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,7 +84,11 @@ struct ScopeOwned {
     #[serde(default)]
     group_by: Option<NodeId>,
     #[serde(default)]
+    group_adjacent_by: Option<NodeId>,
+    #[serde(default)]
     group_starting_with: Option<NodeId>,
+    #[serde(default)]
+    group_ending_with: Option<NodeId>,
     #[serde(default)]
     group_into_blocks: Option<NodeId>,
     #[serde(default)]
@@ -133,7 +141,9 @@ impl Serialize for Scope {
             segments,
             filter: self.filter,
             group_by: self.group_by,
+            group_adjacent_by: self.group_adjacent_by,
             group_starting_with: self.group_starting_with,
+            group_ending_with: self.group_ending_with,
             group_into_blocks: self.group_into_blocks,
             sort_by: self.sort_by,
             sort_descending: self.sort_descending,
@@ -200,7 +210,9 @@ impl<'de> Deserialize<'de> for Scope {
             construction: wire.construction,
             filter: wire.filter,
             group_by: wire.group_by,
+            group_adjacent_by: wire.group_adjacent_by,
             group_starting_with: wire.group_starting_with,
+            group_ending_with: wire.group_ending_with,
             group_into_blocks: wire.group_into_blocks,
             sort_by: wire.sort_by,
             sort_descending: wire.sort_descending,

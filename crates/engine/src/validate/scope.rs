@@ -86,9 +86,7 @@ pub(super) fn validate_scope(
         }
         if scope.construction != ScopeConstruction::Constructed
             || scope.filter.is_some()
-            || scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
+            || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
             || scope.iteration_output == IterationOutput::First
@@ -253,10 +251,7 @@ pub(super) fn validate_scope(
                 "copy-current-source construction cannot contain bindings, child scopes, or dynamic target content",
             ));
         }
-        if scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
-        {
+        if scope.has_grouping() {
             issues.push(ValidationIssue::new(
                 &location,
                 "copy-current-source construction cannot use grouping controls",
@@ -348,9 +343,7 @@ pub(super) fn validate_scope(
             ));
         }
         if scope.filter.is_some()
-            || scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
+            || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
         {
@@ -449,9 +442,7 @@ pub(super) fn validate_scope(
             ));
         }
         if scope.filter.is_some()
-            || scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
+            || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
         {
@@ -544,9 +535,7 @@ pub(super) fn validate_scope(
             ));
         }
         if scope.filter.is_some()
-            || scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
+            || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
         {
@@ -660,10 +649,7 @@ pub(super) fn validate_scope(
                 .map(|source| source.collection().to_vec())
                 .collect(),
         ));
-        if scope.group_by.is_some()
-            || scope.group_starting_with.is_some()
-            || scope.group_into_blocks.is_some()
-        {
+        if scope.has_grouping() {
             issues.push(ValidationIssue::new(
                 &location,
                 "inner join iteration cannot be combined with grouping controls",
@@ -681,7 +667,9 @@ pub(super) fn validate_scope(
     for (label, node) in [
         ("filter", scope.filter),
         ("group-by key", scope.group_by),
+        ("group-adjacent-by key", scope.group_adjacent_by),
         ("group-starting-with predicate", scope.group_starting_with),
+        ("group-ending-with predicate", scope.group_ending_with),
         ("group block size", scope.group_into_blocks),
         ("sort key", scope.sort_by),
         ("dynamic target path", scope.output_path()),
@@ -787,10 +775,22 @@ pub(super) fn validate_scope(
             "group-by key has no iterated source",
         ));
     }
+    if !iterates && scope.group_adjacent_by.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "group-adjacent-by key has no iterated source",
+        ));
+    }
     if !iterates && scope.group_starting_with.is_some() {
         issues.push(ValidationIssue::new(
             &location,
             "group-starting-with predicate has no iterated source",
+        ));
+    }
+    if !iterates && scope.group_ending_with.is_some() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "group-ending-with predicate has no iterated source",
         ));
     }
     if !iterates && scope.group_into_blocks.is_some() {
@@ -799,16 +799,7 @@ pub(super) fn validate_scope(
             "group block size has no iterated source",
         ));
     }
-    if [
-        scope.group_by,
-        scope.group_starting_with,
-        scope.group_into_blocks,
-    ]
-    .into_iter()
-    .flatten()
-    .count()
-        > 1
-    {
+    if scope.has_conflicting_grouping() {
         issues.push(ValidationIssue::new(
             &location,
             "scope grouping modes are mutually exclusive",

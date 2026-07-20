@@ -495,6 +495,14 @@ pub(super) fn is_group_starting_with(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "group-starting-with"
 }
 
+pub(super) fn is_group_adjacent(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 5 && component.name == "group-adjacent"
+}
+
+pub(super) fn is_group_ending_with(component: &FnComponent) -> bool {
+    component.library == "core" && component.kind == 5 && component.name == "group-ending-with"
+}
+
 pub(super) fn is_distinct_values(component: &FnComponent) -> bool {
     component.library == "core" && component.kind == 5 && component.name == "distinct-values"
 }

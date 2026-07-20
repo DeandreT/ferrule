@@ -403,6 +403,8 @@ impl GraphBuilder<'_> {
         };
         let grouped = resolved.has_key_grouping
             || resolved.has_start_grouping
+            || resolved.has_adjacent_grouping
+            || resolved.has_end_grouping
             || resolved.has_block_grouping
             || resolved.distinct_key.is_some();
         let controlled = resolved.sequence_component.is_some()

@@ -47,6 +47,30 @@ impl<'a> GroupedItems<'a> {
         Self::from_buckets(groups, wrapper_name)
     }
 
+    /// Partitions consecutive candidates with the same exact tagged scalar
+    /// key. A later occurrence of a previous key starts a new group.
+    pub fn adjacent_by(
+        candidates: Vec<(ScopeContext<'a>, Value)>,
+        wrapper_name: Option<&str>,
+    ) -> Self {
+        let mut groups: Vec<GroupBucket<'a, Value>> = Vec::new();
+        for (candidate, key) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if let Some(group) = groups.last_mut().filter(|group| group.key == key) {
+                group.members.push(member);
+            } else {
+                groups.push(GroupBucket {
+                    key,
+                    first: candidate,
+                    members: vec![member],
+                });
+            }
+        }
+        Self::from_buckets(groups, wrapper_name)
+    }
+
     /// Starts a new contiguous group whenever the candidate's predicate is
     /// true. A leading false candidate still creates the first group.
     pub fn starting_with(
@@ -67,6 +91,33 @@ impl<'a> GroupedItems<'a> {
                     members: vec![member],
                 });
             }
+        }
+        Self::from_buckets(groups, wrapper_name)
+    }
+
+    /// Ends the current contiguous group after every candidate whose
+    /// predicate is true. A trailing false candidate remains in the final
+    /// group.
+    pub fn ending_with(
+        candidates: Vec<(ScopeContext<'a>, bool)>,
+        wrapper_name: Option<&str>,
+    ) -> Self {
+        let mut groups: Vec<GroupBucket<'a, ()>> = Vec::new();
+        let mut previous_ended_group = true;
+        for (candidate, ends_group) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if previous_ended_group {
+                groups.push(GroupBucket {
+                    key: (),
+                    first: candidate,
+                    members: vec![member],
+                });
+            } else if let Some(group) = groups.last_mut() {
+                group.members.push(member);
+            }
+            previous_ended_group = ends_group;
         }
         Self::from_buckets(groups, wrapper_name)
     }

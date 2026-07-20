@@ -675,6 +675,8 @@ fn collect_scope_aggregate_contexts(
         scope.filter,
         scope.group_by,
         scope.group_starting_with,
+        scope.group_adjacent_by,
+        scope.group_ending_with,
         scope.group_into_blocks,
         scope.sort_by,
         scope.output_path(),

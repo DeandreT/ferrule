@@ -306,24 +306,20 @@ pub(crate) fn eval_scope(
     if scope.iteration_output == IterationOutput::First {
         windows.push(EvaluatedWindow::First(1));
     }
-    let grouping_count = [
-        scope.group_by,
-        scope.group_starting_with,
-        scope.group_into_blocks,
-    ]
-    .into_iter()
-    .flatten()
-    .count();
-    if scope.join().is_some() && grouping_count != 0 {
+    if scope.join().is_some() && scope.has_grouping() {
         return Err(EngineError::JoinGroupingUnsupported);
     }
-    if grouping_count > 1 {
+    if scope.has_conflicting_grouping() {
         return Err(EngineError::ConflictingGroupingModes);
     }
     let grouping = if let Some(node) = scope.group_by {
         Some(GroupingMode::By(node))
+    } else if let Some(node) = scope.group_adjacent_by {
+        Some(GroupingMode::AdjacentBy(node))
     } else if let Some(node) = scope.group_starting_with {
         Some(GroupingMode::StartingWith(node))
+    } else if let Some(node) = scope.group_ending_with {
+        Some(GroupingMode::EndingWith(node))
     } else if let Some(node) = scope.group_into_blocks {
         Some(GroupingMode::IntoBlocks(eval_block_size(
             graph, node, context, positions,
@@ -341,6 +337,7 @@ pub(crate) fn eval_scope(
     };
     if let Some(grouping) = grouping {
         let mut groups: Vec<GroupBucket> = Vec::new();
+        let mut ending_group_closed = true;
         for extension in &extensions {
             let mut item_context = context.to_vec();
             item_context.extend(extension.instances.iter().copied());
@@ -357,7 +354,7 @@ pub(crate) fn eval_scope(
                 .expect("extensions are never empty"))
             .clone();
             let key = match grouping {
-                GroupingMode::By(key_node) => {
+                GroupingMode::By(key_node) | GroupingMode::AdjacentBy(key_node) => {
                     let mut in_progress = HashSet::new();
                     Some(eval_expr(
                         graph,
@@ -367,18 +364,40 @@ pub(crate) fn eval_scope(
                         &mut in_progress,
                     )?)
                 }
-                GroupingMode::StartingWith(_) | GroupingMode::IntoBlocks(_) => None,
+                GroupingMode::StartingWith(_)
+                | GroupingMode::EndingWith(_)
+                | GroupingMode::IntoBlocks(_) => None,
             };
             let starts_group = match grouping {
                 GroupingMode::StartingWith(predicate) => {
                     passes_filter(graph, Some(predicate), &item_context, &item_positions)?
                 }
-                GroupingMode::By(_) | GroupingMode::IntoBlocks(_) => false,
+                GroupingMode::By(_)
+                | GroupingMode::AdjacentBy(_)
+                | GroupingMode::EndingWith(_)
+                | GroupingMode::IntoBlocks(_) => false,
+            };
+            let ends_group = match grouping {
+                GroupingMode::EndingWith(predicate) => {
+                    passes_filter(graph, Some(predicate), &item_context, &item_positions)?
+                }
+                GroupingMode::By(_)
+                | GroupingMode::AdjacentBy(_)
+                | GroupingMode::StartingWith(_)
+                | GroupingMode::IntoBlocks(_) => false,
             };
             let existing = match grouping {
                 GroupingMode::By(_) => groups.iter_mut().find(|group| group.key == key),
+                GroupingMode::AdjacentBy(_) => groups.last_mut().filter(|group| group.key == key),
                 GroupingMode::StartingWith(_) => {
                     if starts_group {
+                        None
+                    } else {
+                        groups.last_mut()
+                    }
+                }
+                GroupingMode::EndingWith(_) => {
+                    if ending_group_closed {
                         None
                     } else {
                         groups.last_mut()
@@ -400,6 +419,7 @@ pub(crate) fn eval_scope(
                     positions: item_positions,
                 }),
             }
+            ending_group_closed = ends_group;
         }
         // Position frames stay in order, with the named collection wrapper
         // immediately before the grouped members.

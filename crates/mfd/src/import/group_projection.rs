@@ -111,6 +111,8 @@ pub(super) fn classify_target_connection(
         && !resolved.has_filter
         && !resolved.has_key_grouping
         && !resolved.has_start_grouping
+        && !resolved.has_adjacent_grouping
+        && !resolved.has_end_grouping
         && !resolved.has_block_grouping
         && resolved.distinct_key.is_none()
         && resolved.order_issue.is_none()
@@ -477,6 +479,8 @@ fn connected_structural_feeds(
                 || resolved.has_filter
                 || resolved.has_key_grouping
                 || resolved.has_start_grouping
+                || resolved.has_adjacent_grouping
+                || resolved.has_end_grouping
                 || resolved.has_block_grouping
                 || resolved.distinct_key.is_some()
                 || resolved.has_sort

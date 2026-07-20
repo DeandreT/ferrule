@@ -35,6 +35,36 @@ public sealed partial class ScopeContext
     }
 
     /// <summary>
+    /// Partitions consecutive candidates with the same exact tagged scalar
+    /// key. A later occurrence of a previous key starts a new group.
+    /// </summary>
+    public IReadOnlyList<ScopeContext> GroupAdjacentBy(
+        IReadOnlyList<ScopeContext> candidates,
+        IReadOnlyList<string> sourcePath,
+        Func<ScopeContext, FerruleValue> keySelector)
+    {
+        ValidateGroupingArguments(candidates, sourcePath);
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        var groups = new List<GroupBucket>();
+        foreach (var candidate in candidates)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            var key = keySelector(candidate);
+            var current = groups.Count == 0 ? null : groups[^1];
+            if (current is null || !current.Key.HasValue || current.Key.Value != key)
+            {
+                groups.Add(new GroupBucket(key, CandidateMember(candidate, sourcePath)));
+            }
+            else
+            {
+                current.Add(CandidateMember(candidate, sourcePath));
+            }
+        }
+        return BuildGroupedContexts(groups, sourcePath);
+    }
+
+    /// <summary>
     /// Starts a contiguous group at every candidate whose predicate is true.
     /// A leading false candidate still creates the first group.
     /// </summary>
@@ -60,6 +90,37 @@ public sealed partial class ScopeContext
             {
                 groups[^1].Add(member);
             }
+        }
+        return BuildGroupedContexts(groups, sourcePath);
+    }
+
+    /// <summary>
+    /// Ends the current contiguous group after every candidate whose predicate
+    /// is true. A trailing false candidate remains in the final group.
+    /// </summary>
+    public IReadOnlyList<ScopeContext> GroupEndingWith(
+        IReadOnlyList<ScopeContext> candidates,
+        IReadOnlyList<string> sourcePath,
+        Func<ScopeContext, bool> endsGroup)
+    {
+        ValidateGroupingArguments(candidates, sourcePath);
+        ArgumentNullException.ThrowIfNull(endsGroup);
+
+        var groups = new List<GroupBucket>();
+        var previousEndedGroup = true;
+        foreach (var candidate in candidates)
+        {
+            ArgumentNullException.ThrowIfNull(candidate);
+            var member = CandidateMember(candidate, sourcePath);
+            if (previousEndedGroup)
+            {
+                groups.Add(new GroupBucket(null, member));
+            }
+            else
+            {
+                groups[^1].Add(member);
+            }
+            previousEndedGroup = endsGroup(candidate);
         }
         return BuildGroupedContexts(groups, sourcePath);
     }

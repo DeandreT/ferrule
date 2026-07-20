@@ -384,7 +384,9 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
     project.root.set_source(None);
     project.root.filter = Some(88);
     project.root.group_by = Some(89);
+    project.root.group_adjacent_by = Some(94);
     project.root.group_starting_with = Some(92);
+    project.root.group_ending_with = Some(95);
     project.root.group_into_blocks = Some(93);
     project.root.sort_by = Some(90);
     project.root.windows = vec![SequenceWindow::First { count: 91 }];
@@ -408,9 +410,13 @@ fn reports_dangling_references_paths_unknown_functions_and_cycles() {
         "source field `missing` matches no scalar",
         "filter references missing node 88",
         "group-by key references missing node 89",
+        "group-adjacent-by key references missing node 94",
         "group-starting-with predicate references missing node 92",
+        "group-ending-with predicate references missing node 95",
         "group block size references missing node 93",
+        "group-adjacent-by key has no iterated source",
         "group-starting-with predicate has no iterated source",
+        "group-ending-with predicate has no iterated source",
         "group block size has no iterated source",
         "scope grouping modes are mutually exclusive",
         "sort key references missing node 90",

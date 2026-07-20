@@ -93,11 +93,13 @@ impl std::fmt::Display for ScopeTreeError {
 
 impl std::error::Error for ScopeTreeError {}
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GroupingMode {
     None,
     ByKey,
+    AdjacentBy,
     StartingWith,
+    EndingWith,
     IntoBlocks,
 }
 
@@ -106,10 +108,37 @@ impl GroupingMode {
         match self {
             Self::None => "none",
             Self::ByKey => "key",
+            Self::AdjacentBy => "adjacent key",
             Self::StartingWith => "starting predicate",
+            Self::EndingWith => "ending predicate",
             Self::IntoBlocks => "fixed blocks",
         }
     }
+}
+
+fn grouping_mode(scope: &Scope) -> GroupingMode {
+    if scope.group_by.is_some() {
+        GroupingMode::ByKey
+    } else if scope.group_adjacent_by.is_some() {
+        GroupingMode::AdjacentBy
+    } else if scope.group_starting_with.is_some() {
+        GroupingMode::StartingWith
+    } else if scope.group_ending_with.is_some() {
+        GroupingMode::EndingWith
+    } else if scope.group_into_blocks.is_some() {
+        GroupingMode::IntoBlocks
+    } else {
+        GroupingMode::None
+    }
+}
+
+fn set_grouping_mode(scope: &mut Scope, mode: GroupingMode, first_node: Option<NodeId>) {
+    let node_for = |expected| (mode == expected).then_some(first_node).flatten();
+    scope.group_by = node_for(GroupingMode::ByKey);
+    scope.group_adjacent_by = node_for(GroupingMode::AdjacentBy);
+    scope.group_starting_with = node_for(GroupingMode::StartingWith);
+    scope.group_ending_with = node_for(GroupingMode::EndingWith);
+    scope.group_into_blocks = node_for(GroupingMode::IntoBlocks);
 }
 
 fn first_node_id(graph: &Graph) -> Option<NodeId> {
@@ -470,15 +499,7 @@ pub fn show_scope_editor(
         if scope.join().is_none() {
             ui.horizontal(|ui| {
                 ui.label("  grouping:");
-                let mut mode = if scope.group_by.is_some() {
-                    GroupingMode::ByKey
-                } else if scope.group_starting_with.is_some() {
-                    GroupingMode::StartingWith
-                } else if scope.group_into_blocks.is_some() {
-                    GroupingMode::IntoBlocks
-                } else {
-                    GroupingMode::None
-                };
+                let mut mode = grouping_mode(scope);
                 let previous = mode;
                 ui.add_enabled_ui(mode != GroupingMode::None || first_node.is_some(), |ui| {
                     egui::ComboBox::from_id_salt("scope_grouping_mode")
@@ -487,7 +508,9 @@ pub fn show_scope_editor(
                             for choice in [
                                 GroupingMode::None,
                                 GroupingMode::ByKey,
+                                GroupingMode::AdjacentBy,
                                 GroupingMode::StartingWith,
+                                GroupingMode::EndingWith,
                                 GroupingMode::IntoBlocks,
                             ] {
                                 ui.selectable_value(&mut mode, choice, choice.label());
@@ -497,21 +520,7 @@ pub fn show_scope_editor(
                 .response
                 .on_disabled_hover_text("Add a graph node before enabling grouping");
                 if mode != previous {
-                    scope.group_by = if mode == GroupingMode::ByKey {
-                        first_node
-                    } else {
-                        None
-                    };
-                    scope.group_starting_with = if mode == GroupingMode::StartingWith {
-                        first_node
-                    } else {
-                        None
-                    };
-                    scope.group_into_blocks = if mode == GroupingMode::IntoBlocks {
-                        first_node
-                    } else {
-                        None
-                    };
+                    set_grouping_mode(scope, mode, first_node);
                 }
                 match mode {
                     GroupingMode::None => {}
@@ -520,9 +529,19 @@ pub fn show_scope_editor(
                             node_picker(ui, "group_by_node", group_by, graph);
                         }
                     }
+                    GroupingMode::AdjacentBy => {
+                        if let Some(group_by) = &mut scope.group_adjacent_by {
+                            node_picker(ui, "group_adjacent_by_node", group_by, graph);
+                        }
+                    }
                     GroupingMode::StartingWith => {
                         if let Some(predicate) = &mut scope.group_starting_with {
                             node_picker(ui, "group_starting_node", predicate, graph);
+                        }
+                    }
+                    GroupingMode::EndingWith => {
+                        if let Some(predicate) = &mut scope.group_ending_with {
+                            node_picker(ui, "group_ending_node", predicate, graph);
                         }
                     }
                     GroupingMode::IntoBlocks => {
@@ -969,6 +988,39 @@ mod tests {
             .nodes
             .insert(7, mapping::Node::Const { value: Value::Null });
         assert_eq!(first_node_id(&graph), Some(7));
+    }
+
+    #[test]
+    fn grouping_mode_switches_clear_every_other_grouping_expression() {
+        let mut scope = Scope::default();
+
+        for mode in [
+            GroupingMode::ByKey,
+            GroupingMode::AdjacentBy,
+            GroupingMode::StartingWith,
+            GroupingMode::EndingWith,
+            GroupingMode::IntoBlocks,
+            GroupingMode::None,
+        ] {
+            set_grouping_mode(&mut scope, mode, Some(7));
+
+            assert_eq!(grouping_mode(&scope), mode);
+            let selected = [
+                scope.group_by,
+                scope.group_adjacent_by,
+                scope.group_starting_with,
+                scope.group_ending_with,
+                scope.group_into_blocks,
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+            if mode == GroupingMode::None {
+                assert!(selected.is_empty());
+            } else {
+                assert_eq!(selected, [7]);
+            }
+        }
     }
 
     #[test]

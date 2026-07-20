@@ -3,8 +3,9 @@ use std::collections::BTreeSet;
 use mapping::{Node, NodeId};
 
 use super::function::{
-    aggregate_op, is_db_where, is_distinct_values, is_filter, is_group_into_blocks,
-    is_group_starting_with, is_input, is_sequence_window,
+    aggregate_op, is_db_where, is_distinct_values, is_filter, is_group_adjacent,
+    is_group_ending_with, is_group_into_blocks, is_group_starting_with, is_input,
+    is_sequence_window,
 };
 use super::graph::GraphBuilder;
 
@@ -123,9 +124,10 @@ impl GraphBuilder<'_> {
                     || is_sequence_window(component)
                     || is_group_into_blocks(component)
                     || is_group_starting_with(component)
+                    || is_group_ending_with(component)
                 {
                     0
-                } else if component.name == "group-by" {
+                } else if component.name == "group-by" || is_group_adjacent(component) {
                     usize::from(component.output_pins.get(1).copied().flatten() == Some(key))
                 } else {
                     return None;

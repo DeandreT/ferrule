@@ -685,15 +685,17 @@ pub enum IterationSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupingPlan {
     By { key: NodeId },
+    AdjacentBy { key: NodeId },
     StartingWith { predicate: NodeId },
+    EndingWith { predicate: NodeId },
     IntoBlocks { size: NodeId },
 }
 
 impl GroupingPlan {
     pub const fn expression(self) -> NodeId {
         match self {
-            Self::By { key } => key,
-            Self::StartingWith { predicate } => predicate,
+            Self::By { key } | Self::AdjacentBy { key } => key,
+            Self::StartingWith { predicate } | Self::EndingWith { predicate } => predicate,
             Self::IntoBlocks { size } => size,
         }
     }
@@ -701,8 +703,8 @@ impl GroupingPlan {
     /// An expression evaluated against each candidate item, if any.
     pub const fn item_expression(self) -> Option<NodeId> {
         match self {
-            Self::By { key } => Some(key),
-            Self::StartingWith { predicate } => Some(predicate),
+            Self::By { key } | Self::AdjacentBy { key } => Some(key),
+            Self::StartingWith { predicate } | Self::EndingWith { predicate } => Some(predicate),
             Self::IntoBlocks { .. } => None,
         }
     }
@@ -711,7 +713,10 @@ impl GroupingPlan {
     pub const fn parent_expression(self) -> Option<NodeId> {
         match self {
             Self::IntoBlocks { size } => Some(size),
-            Self::By { .. } | Self::StartingWith { .. } => None,
+            Self::By { .. }
+            | Self::AdjacentBy { .. }
+            | Self::StartingWith { .. }
+            | Self::EndingWith { .. } => None,
         }
     }
 }
