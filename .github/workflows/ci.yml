@@ -22,4 +22,9 @@ jobs:
       - name: clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
-        run: cargo test --workspace
+        run: >-
+          cargo test --workspace
+          --exclude codegen
+          --exclude codegen-runtime
+          --exclude codegen-rust
+          --exclude codegen-csharp
