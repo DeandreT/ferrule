@@ -1,11 +1,11 @@
 //! The canvas node model: the mapping graph's nodes plus compact source and
 //! target endpoint blocks. Endpoint pins keep their complete schema identity,
-//! while blocks group nearby fields into nodes that remain readable.
+//! while blocks group fields by their owning repetition context.
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::NodeId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CanvasNode {
     SourceBlock(usize),
     TargetBlock(usize),
@@ -39,11 +39,8 @@ pub struct TargetLeaf {
     pub field: String,
 }
 
-/// Maximum number of schema leaves rendered by one endpoint node.
-pub const ENDPOINT_BLOCK_PIN_LIMIT: usize = 12;
-
-/// A compact source endpoint. `frame` is the exact repeating context shared
-/// by all leaves, while `pin_labels` are relative display labels only.
+/// A compact source endpoint. `frame` is populated when every leaf shares one
+/// repeating context; each leaf remains authoritative for mixed contexts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SourceBlock {
     pub title: String,
@@ -81,63 +78,37 @@ pub fn source_leaves(schema: &SchemaNode) -> Vec<SourceLeaf> {
     out
 }
 
-/// Groups source leaves by their exact repeating frame, then chunks large
-/// frames so a single endpoint cannot dominate the canvas. Group and leaf
-/// order follows schema declaration order and is therefore deterministic.
+/// Builds one source endpoint in schema declaration order. Each leaf retains
+/// its own exact repetition frame, so one visual component can safely expose
+/// fields from every nested X12/XML/JSON collection.
 pub fn source_blocks(schema: &SchemaNode) -> Vec<SourceBlock> {
-    let mut groups: Vec<(Option<Vec<String>>, Vec<SourceLeaf>)> = Vec::new();
-    for leaf in source_leaves(schema) {
-        if let Some((_, leaves)) = groups.iter_mut().find(|(frame, _)| frame == &leaf.frame) {
-            leaves.push(leaf);
-        } else {
-            groups.push((leaf.frame.clone(), vec![leaf]));
-        }
-    }
-
-    if groups.is_empty() {
-        groups.push((schema.repeating.then(Vec::new), Vec::new()));
-    }
-
-    let mut blocks = Vec::new();
-    for (frame, leaves) in groups {
-        let chunk_count = leaves.len().max(1).div_ceil(ENDPOINT_BLOCK_PIN_LIMIT);
-        if leaves.is_empty() {
-            blocks.push(source_block(schema, frame, Vec::new(), 0, chunk_count));
-            continue;
-        }
-        for (chunk_index, chunk) in leaves.chunks(ENDPOINT_BLOCK_PIN_LIMIT).enumerate() {
-            blocks.push(source_block(
-                schema,
-                frame.clone(),
-                chunk.to_vec(),
-                chunk_index,
-                chunk_count,
-            ));
-        }
-    }
-    blocks
+    let leaves = source_leaves(schema);
+    let common_frame = leaves
+        .first()
+        .map(|leaf| leaf.frame.clone())
+        .filter(|frame| leaves.iter().all(|leaf| &leaf.frame == frame))
+        .unwrap_or_else(|| schema.repeating.then(Vec::new));
+    vec![source_block(schema, common_frame, leaves)]
 }
 
 fn source_block(
     schema: &SchemaNode,
     frame: Option<Vec<String>>,
     leaves: Vec<SourceLeaf>,
-    chunk_index: usize,
-    chunk_count: usize,
 ) -> SourceBlock {
     let context = frame
         .as_ref()
         .filter(|frame| !frame.is_empty())
         .and_then(|frame| frame.last().cloned())
         .unwrap_or_else(|| schema.name.clone());
-    let title = chunked_title(format!("Source: {context}"), chunk_index, chunk_count);
+    let title = format!("Source: {context}");
     let pin_labels = leaves
         .iter()
         .map(|leaf| {
-            if leaf.path.is_empty() {
+            if leaf.label.is_empty() {
                 "<item>".to_string()
             } else {
-                leaf.path.join("/")
+                leaf.label.clone()
             }
         })
         .collect();
@@ -210,8 +181,7 @@ pub fn target_leaves(schema: &SchemaNode) -> Vec<TargetLeaf> {
     out
 }
 
-/// Groups target leaves by their exact owning scope chain, then chunks large
-/// groups so target endpoints remain readable without losing binding identity.
+/// Groups target leaves by their exact owning scope chain.
 pub fn target_blocks(schema: &SchemaNode) -> Vec<TargetBlock> {
     let mut groups: Vec<(Vec<String>, Vec<TargetLeaf>)> = Vec::new();
     for leaf in target_leaves(schema) {
@@ -226,49 +196,21 @@ pub fn target_blocks(schema: &SchemaNode) -> Vec<TargetBlock> {
         groups.push((Vec::new(), Vec::new()));
     }
 
-    let mut blocks = Vec::new();
-    for (chain, leaves) in groups {
-        let chunk_count = leaves.len().max(1).div_ceil(ENDPOINT_BLOCK_PIN_LIMIT);
-        if leaves.is_empty() {
-            blocks.push(target_block(schema, chain, Vec::new(), 0, chunk_count));
-            continue;
-        }
-        for (chunk_index, chunk) in leaves.chunks(ENDPOINT_BLOCK_PIN_LIMIT).enumerate() {
-            blocks.push(target_block(
-                schema,
-                chain.clone(),
-                chunk.to_vec(),
-                chunk_index,
-                chunk_count,
-            ));
-        }
-    }
-    blocks
+    groups
+        .into_iter()
+        .map(|(chain, leaves)| target_block(schema, chain, leaves))
+        .collect()
 }
 
-fn target_block(
-    schema: &SchemaNode,
-    chain: Vec<String>,
-    leaves: Vec<TargetLeaf>,
-    chunk_index: usize,
-    chunk_count: usize,
-) -> TargetBlock {
+fn target_block(schema: &SchemaNode, chain: Vec<String>, leaves: Vec<TargetLeaf>) -> TargetBlock {
     let context = chain.last().cloned().unwrap_or_else(|| schema.name.clone());
-    let title = chunked_title(format!("Target: {context}"), chunk_index, chunk_count);
+    let title = format!("Target: {context}");
     let pin_labels = leaves.iter().map(|leaf| leaf.field.clone()).collect();
     TargetBlock {
         title,
         chain,
         leaves,
         pin_labels,
-    }
-}
-
-fn chunked_title(base: String, chunk_index: usize, chunk_count: usize) -> String {
-    if chunk_count <= 1 {
-        base
-    } else {
-        format!("{base} ({}/{chunk_count})", chunk_index + 1)
     }
 }
 
@@ -374,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn source_blocks_group_repeating_contexts_and_keep_full_leaf_identity() {
+    fn source_block_unifies_repeating_contexts_and_keeps_leaf_identity() {
         let schema = SchemaNode::group(
             "Company",
             vec![
@@ -396,25 +338,23 @@ mod tests {
 
         let blocks = source_blocks(&schema);
 
-        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].title, "Source: Company");
         assert_eq!(blocks[0].frame, None);
-        assert_eq!(blocks[0].pin_labels, ["Name"]);
-        assert_eq!(blocks[1].title, "Source: Office");
-        assert_eq!(blocks[1].frame, Some(vec!["Office".into()]));
-        assert_eq!(blocks[1].pin_labels, ["City"]);
-        assert_eq!(blocks[1].leaves[0].label, "Office/City");
-        assert_eq!(blocks[1].leaves[0].path, ["City"]);
-        assert_eq!(blocks[2].title, "Source: Person");
-        assert_eq!(blocks[2].pin_labels, ["First"]);
         assert_eq!(
-            blocks[2].leaves[0].frame,
+            blocks[0].pin_labels,
+            ["Name", "Office/City", "Office/Person/First"]
+        );
+        assert_eq!(blocks[0].leaves[1].label, "Office/City");
+        assert_eq!(blocks[0].leaves[1].path, ["City"]);
+        assert_eq!(
+            blocks[0].leaves[2].frame,
             Some(vec!["Office".into(), "Person".into()])
         );
     }
 
     #[test]
-    fn source_blocks_chunk_large_frames_deterministically() {
+    fn source_blocks_keep_large_frames_in_one_context_node() {
         let fields = (0..25)
             .map(|index| SchemaNode::scalar(format!("Field{index:02}"), ScalarType::String))
             .collect();
@@ -422,20 +362,17 @@ mod tests {
 
         let blocks = source_blocks(&schema);
 
-        assert_eq!(
-            blocks
-                .iter()
-                .map(|block| block.leaves.len())
-                .collect::<Vec<_>>(),
-            [12, 12, 1]
-        );
-        assert_eq!(blocks[0].title, "Source: row (1/3)");
-        assert_eq!(blocks[2].title, "Source: row (3/3)");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].leaves.len(), 25);
+        assert_eq!(blocks[0].title, "Source: row");
         assert_eq!(
             blocks[0].pin_labels.first().map(String::as_str),
             Some("Field00")
         );
-        assert_eq!(blocks[2].pin_labels, ["Field24"]);
+        assert_eq!(
+            blocks[0].pin_labels.last().map(String::as_str),
+            Some("Field24")
+        );
         assert_eq!(blocks, source_blocks(&schema));
     }
 

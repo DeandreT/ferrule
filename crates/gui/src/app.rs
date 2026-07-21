@@ -49,8 +49,8 @@ mod scope_ui;
 #[path = "app_workspace.rs"]
 mod workspace_ui;
 
-pub(crate) use canvas_build::endpoint_block_size;
 use canvas_build::{build_snarl, build_snarl_with_layout};
+pub(crate) use canvas_build::{endpoint_block_size, sync_endpoint_wires};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
 pub(super) const LAYOUT_VERSION: u32 = 1;
@@ -122,9 +122,12 @@ pub struct FerruleApp {
     project: Project,
     snarl: Snarl<CanvasNode>,
     canvas_node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
+    endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
+    canvas_search: crate::canvas_search::CanvasSearchState,
     canvas_view_generation: u64,
     show_source_panel: bool,
     show_inspector_panel: bool,
+    show_minimap: bool,
     compact_dock_open: bool,
     compact_dock: SideDock,
     narrow_pane: WorkspacePane,
@@ -201,9 +204,12 @@ impl Default for FerruleApp {
             project,
             snarl,
             canvas_node_sizes: std::collections::BTreeMap::new(),
+            endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
+            canvas_search: crate::canvas_search::CanvasSearchState::default(),
             canvas_view_generation: 0,
             show_source_panel: true,
             show_inspector_panel: true,
+            show_minimap: true,
             compact_dock_open: true,
             compact_dock: SideDock::Inspector,
             narrow_pane: WorkspacePane::Canvas,
@@ -346,6 +352,7 @@ impl FerruleApp {
         Self {
             theme: preferences.theme,
             appearance: preferences.appearance,
+            show_minimap: preferences.show_minimap,
             ..Self::default()
         }
     }
@@ -796,7 +803,11 @@ impl eframe::App for FerruleApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         crate::preferences::store(
             storage,
-            crate::preferences::EditorPreferences::new(self.theme, self.appearance),
+            crate::preferences::EditorPreferences::new(
+                self.theme,
+                self.appearance,
+                self.show_minimap,
+            ),
         );
     }
 

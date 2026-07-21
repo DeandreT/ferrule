@@ -14,21 +14,23 @@ pub struct EditorPreferences {
     version: u32,
     pub theme: ThemeState,
     pub appearance: EditorAppearance,
+    pub show_minimap: bool,
 }
 
 impl EditorPreferences {
-    pub const fn new(theme: ThemeState, appearance: EditorAppearance) -> Self {
+    pub const fn new(theme: ThemeState, appearance: EditorAppearance, show_minimap: bool) -> Self {
         Self {
             version: CURRENT_VERSION,
             theme,
             appearance,
+            show_minimap,
         }
     }
 }
 
 impl Default for EditorPreferences {
     fn default() -> Self {
-        Self::new(ThemeState::default(), EditorAppearance::default())
+        Self::new(ThemeState::default(), EditorAppearance::default(), true)
     }
 }
 
@@ -85,6 +87,7 @@ mod tests {
                 ..Default::default()
             },
             EditorAppearance::preset(AppearancePreset::Light),
+            false,
         );
         let mut wire = *preferences.appearance.wire();
         wire.set_geometry(WireGeometry::Straight)
@@ -111,5 +114,13 @@ mod tests {
             r#"{"version":99,"theme":{"preference":"light"}}"#.to_string(),
         );
         assert_eq!(load(Some(&storage)), EditorPreferences::default());
+    }
+
+    #[test]
+    fn version_one_preferences_without_a_minimap_field_enable_it_by_default() {
+        let mut storage = MemoryStorage::default();
+        storage.set_string(STORAGE_KEY, r#"{"version":1}"#.to_string());
+
+        assert!(load(Some(&storage)).show_minimap);
     }
 }

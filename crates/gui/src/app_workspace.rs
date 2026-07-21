@@ -172,6 +172,7 @@ impl FerruleApp {
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.show_source_panel, "Source schema");
                     ui.checkbox(&mut self.show_inspector_panel, "Inspector");
+                    ui.checkbox(&mut self.show_minimap, "Canvas minimap");
                     ui.separator();
                     if ui.button("Appearance...").clicked() {
                         self.show_appearance_editor = true;
@@ -571,6 +572,14 @@ impl FerruleApp {
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = source_blocks(&self.project.source);
             let target_blocks = target_blocks(&self.project.target);
+            crate::app::sync_endpoint_wires(
+                &self.project.graph,
+                &self.project.root,
+                &source_blocks,
+                &target_blocks,
+                &self.endpoint_scroll,
+                &mut self.snarl,
+            );
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,
                 root_scope: &mut self.project.root,
@@ -582,16 +591,22 @@ impl FerruleApp {
                 source_paths: &source_paths,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
+                endpoint_scroll: &mut self.endpoint_scroll,
+                endpoint_search_match: None,
                 node_sizes: Some(&mut self.canvas_node_sizes),
                 hovered_node: None,
                 hovered_node_this_frame: None,
                 camera_pan: egui::Vec2::ZERO,
+                camera_focus: None,
+                canvas_transform: None,
                 pin_interaction_ids: Vec::new(),
                 error: None,
             };
             crate::canvas_keyboard::show(
                 &mut self.snarl,
                 &mut viewer,
+                &mut self.canvas_search,
+                self.show_minimap,
                 self.canvas_view_generation,
                 self.appearance.to_snarl_style_with_palette(self.palette),
                 ui,
