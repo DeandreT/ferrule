@@ -20,6 +20,7 @@ mod theme;
 mod value_editor;
 mod wire_colors;
 mod workspace_layout;
+mod x12_tooltips;
 
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {

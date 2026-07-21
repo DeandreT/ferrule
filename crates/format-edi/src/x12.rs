@@ -20,6 +20,11 @@ use crate::segments::{
 };
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
+#[path = "x12/segment_descriptions.rs"]
+mod segment_descriptions;
+
+pub use segment_descriptions::segment_description;
+
 const WRITE_OPTIONS: WriteOptions = WriteOptions {
     element: '*',
     component: ':',

@@ -5,6 +5,13 @@ use egui::{Color32, ecolor::Hsva};
 use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::CanvasNode;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WireEmphasis {
+    Normal,
+    Incident,
+    Unrelated,
+}
+
 pub fn output_color(mode: WireColorMode, colors: SemanticThemeColors) -> Color32 {
     match mode {
         WireColorMode::Theme => colors.wire.to_egui(),
@@ -36,6 +43,38 @@ pub fn connected_color(
         output_color(mode, colors),
         input_color(mode, colors, node, input),
     )
+}
+
+pub fn with_emphasis(color: Color32, canvas: Color32, emphasis: WireEmphasis) -> Color32 {
+    const INCIDENT_BLEND: u16 = 64;
+    const UNRELATED_ALPHA_PERCENT: u16 = 24;
+
+    let [red, green, blue, alpha] = color.to_srgba_unmultiplied();
+    match emphasis {
+        WireEmphasis::Normal => color,
+        WireEmphasis::Incident => {
+            let [anchor_red, anchor_green, anchor_blue, _] =
+                contrast_anchor(canvas).to_srgba_unmultiplied();
+            Color32::from_rgba_unmultiplied(
+                blend_channel(red, anchor_red, INCIDENT_BLEND),
+                blend_channel(green, anchor_green, INCIDENT_BLEND),
+                blend_channel(blue, anchor_blue, INCIDENT_BLEND),
+                alpha.max(224),
+            )
+        }
+        WireEmphasis::Unrelated => Color32::from_rgba_unmultiplied(
+            red,
+            green,
+            blue,
+            u8::try_from(u16::from(alpha) * UNRELATED_ALPHA_PERCENT / 100).unwrap_or_default(),
+        ),
+    }
+}
+
+fn blend_channel(color: u8, anchor: u8, anchor_weight: u16) -> u8 {
+    let color_weight = 256 - anchor_weight;
+    u8::try_from((u16::from(color) * color_weight + u16::from(anchor) * anchor_weight) / 256)
+        .unwrap_or_default()
 }
 
 fn unique_destination_color(canvas: Color32, node: CanvasNode, input: usize) -> Color32 {
@@ -143,5 +182,28 @@ mod tests {
             output_color(WireColorMode::UniquePerWire, light),
             Color32::from_gray(12)
         );
+    }
+
+    #[test]
+    fn hover_emphasis_is_transient_contrasting_and_alpha_bounded() {
+        let canvas = Color32::from_rgb(24, 28, 32);
+        let base = Color32::from_rgba_unmultiplied(80, 140, 200, 180);
+
+        assert_eq!(with_emphasis(base, canvas, WireEmphasis::Normal), base);
+
+        let incident = with_emphasis(base, canvas, WireEmphasis::Incident);
+        assert!(incident.r() > base.r());
+        assert!(incident.g() > base.g());
+        assert!(incident.b() > base.b());
+        assert_eq!(incident.a(), 224);
+
+        let unrelated = with_emphasis(base, canvas, WireEmphasis::Unrelated);
+        for (actual, expected) in unrelated.to_srgba_unmultiplied()[..3]
+            .iter()
+            .zip([80_u8, 140, 200])
+        {
+            assert!(actual.abs_diff(expected) <= 3);
+        }
+        assert_eq!(unrelated.a(), 43);
     }
 }
