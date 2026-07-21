@@ -8,11 +8,11 @@ use egui_snarl::{NodeId as SnarlNodeId, Snarl};
 use crate::appearance::{WireAppearance, WireFrameAdjustment, WireGeometry};
 use crate::canvas::CanvasNode;
 
-const PIN_TOP: f32 = 44.0;
-const PIN_PITCH: f32 = 28.0;
+const PIN_TOP: f32 = 36.0;
+const PIN_PITCH: f32 = 22.0;
 const ENDPOINT_PIN_PITCH: f32 = 22.0;
-const NODE_GAP: f32 = 52.0;
-const ENDPOINT_BLOCK_GAP: f32 = 16.0;
+const NODE_GAP: f32 = 24.0;
+const ENDPOINT_BLOCK_GAP: f32 = 8.0;
 const SWEEP_COUNT: usize = 6;
 
 #[derive(Clone, Copy)]
@@ -468,17 +468,17 @@ fn node_size(node: CanvasNode, measured_sizes: &BTreeMap<CanvasNode, Vec2>) -> V
         .filter(|size| size.x.is_finite() && size.y.is_finite() && size.x > 1.0 && size.y > 1.0)
         .unwrap_or_else(|| match node {
             CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_) => vec2(180.0, 140.0),
-            CanvasNode::Graph(_) => vec2(220.0, 120.0),
-            CanvasNode::Placeholder(_) => vec2(180.0, 90.0),
+            CanvasNode::Graph(_) => vec2(180.0, 88.0),
+            CanvasNode::Placeholder(_) => vec2(150.0, 64.0),
         })
 }
 
 fn routing_channel(wire: WireAppearance) -> f32 {
     let shape = match wire.geometry() {
-        WireGeometry::Straight => 72.0,
-        WireGeometry::Bezier3 | WireGeometry::Bezier5 => wire.frame_size() * 2.0 + 48.0,
+        WireGeometry::Straight => 48.0,
+        WireGeometry::Bezier3 | WireGeometry::Bezier5 => wire.frame_size() * 1.25 + 32.0,
         WireGeometry::Orthogonal { corner_radius } => {
-            (wire.frame_size() * 2.0).max(corner_radius * 4.0) + 48.0
+            (wire.frame_size() * 1.25).max(corner_radius * 3.0) + 32.0
         }
     };
     shape + wire.width() * 2.0

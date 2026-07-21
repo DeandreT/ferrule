@@ -4,6 +4,9 @@
 use egui::Ui;
 use ir::Value;
 
+const VALUE_EDIT_WIDTH: f32 = 150.0;
+const VALUE_MAP_CELL_WIDTH: f32 = 92.0;
+
 pub fn display_string(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
@@ -65,7 +68,10 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             ui.add(egui::DragValue::new(f));
         }
         Value::String(s) => {
-            ui.text_edit_singleline(s);
+            ui.add_sized(
+                [VALUE_EDIT_WIDTH, ui.spacing().interact_size.y],
+                egui::TextEdit::singleline(s),
+            );
         }
         Value::XmlNil(_) => {}
     }
@@ -85,11 +91,23 @@ pub fn show_value_map_editor(
         ui.horizontal(|ui| {
             let mut from_s = display_string(from);
             let mut to_s = display_string(to);
-            if ui.text_edit_singleline(&mut from_s).changed() {
+            if ui
+                .add_sized(
+                    [VALUE_MAP_CELL_WIDTH, ui.spacing().interact_size.y],
+                    egui::TextEdit::singleline(&mut from_s),
+                )
+                .changed()
+            {
                 *from = Value::String(from_s);
             }
             ui.label("->");
-            if ui.text_edit_singleline(&mut to_s).changed() {
+            if ui
+                .add_sized(
+                    [VALUE_MAP_CELL_WIDTH, ui.spacing().interact_size.y],
+                    egui::TextEdit::singleline(&mut to_s),
+                )
+                .changed()
+            {
                 *to = Value::String(to_s);
             }
             if ui.small_button("x").clicked() {
@@ -110,7 +128,13 @@ pub fn show_value_map_editor(
     }
     if let Some(d) = default {
         let mut d_s = display_string(d);
-        if ui.text_edit_singleline(&mut d_s).changed() {
+        if ui
+            .add_sized(
+                [VALUE_EDIT_WIDTH, ui.spacing().interact_size.y],
+                egui::TextEdit::singleline(&mut d_s),
+            )
+            .changed()
+        {
             *d = Value::String(d_s);
         }
     }
