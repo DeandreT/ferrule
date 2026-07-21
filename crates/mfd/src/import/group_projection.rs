@@ -332,7 +332,10 @@ fn cloned_branch_coverage(
         .iter()
         .map(|(_, role)| role.representative)
         .collect::<BTreeSet<_>>();
-    let mut covered = BTreeSet::new();
+    let mut covered = feeds
+        .iter()
+        .filter_map(|(_, role)| role.copy_all.then_some(role.representative))
+        .collect::<BTreeSet<_>>();
     for (input, path) in &target.ports {
         if path.len() <= target_path.len()
             || !path.starts_with(target_path)
