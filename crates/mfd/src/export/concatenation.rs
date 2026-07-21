@@ -255,7 +255,10 @@ fn validate_segment(
     output: IterationOutput,
 ) -> Result<(), MfdError> {
     if !scope.target_field.is_empty()
-        || scope.construction != ScopeConstruction::Constructed
+        || !matches!(
+            scope.construction,
+            ScopeConstruction::Constructed | ScopeConstruction::CopyCurrentSource
+        )
         || scope.iteration_output != output
         || matches!(
             scope.iteration,
@@ -267,7 +270,7 @@ fn validate_segment(
     {
         return Err(unsupported(
             path,
-            "segments require ordinary construction with matching output cardinality and without joins or dynamic fields",
+            "segments require ordinary or exact current-source construction with matching output cardinality and without joins or dynamic fields",
         ));
     }
     if format == SideFormat::Csv

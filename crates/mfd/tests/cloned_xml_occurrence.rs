@@ -153,6 +153,103 @@ fn cloned_occurrence_branches_keep_their_own_descendant_bindings()
 }
 
 #[test]
+fn copy_all_clone_completes_a_mixed_structural_sequence() -> Result<(), Box<dyn std::error::Error>>
+{
+    let dir = TempDir::new()?;
+    let design = write_fixture(&dir.0)?;
+    let mapping = std::fs::read_to_string(&design)?
+        .replace(
+            "</children><graph><vertices>",
+            r#"</children><graph><edges><edge edgekey="90"><data><dataconnection type="2"/></data></edge></edges><vertices>"#,
+        )
+        .replace(
+            r#"<vertex vertexkey="20"><edges><edge vertexkey="40"/></edges></vertex>"#,
+            r#"<vertex vertexkey="20"><edges><edge vertexkey="40" edgekey="90"/></edges></vertex>"#,
+        )
+        .replace(
+            r#"<vertex vertexkey="21"><edges><edge vertexkey="41"/></edges></vertex>"#,
+            "",
+        )
+        .replace(
+            r#"<vertex vertexkey="22"><edges><edge vertexkey="42"/></edges></vertex>"#,
+            "",
+        )
+        .replace(
+            r#"<vertex vertexkey="23"><edges><edge vertexkey="43"/></edges></vertex>"#,
+            "",
+        );
+    std::fs::write(&design, mapping)?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let balance_scope = imported
+        .project
+        .root
+        .children
+        .iter()
+        .find(|scope| scope.target_field == "Bal")
+        .ok_or("missing balance scope")?;
+    let segments = balance_scope
+        .concatenated()
+        .ok_or("balance branches were not concatenated")?
+        .iter()
+        .collect::<Vec<_>>();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(
+        segments[0].construction,
+        mapping::ScopeConstruction::Constructed
+    );
+    assert_eq!(
+        segments[1].construction,
+        mapping::ScopeConstruction::CopyCurrentSource
+    );
+
+    let source = format_xml::from_str(
+        r#"<Source><Debit><Amt Ccy="USD">10.5</Amt><Kind>D1</Kind></Debit><Credit><Amt Ccy="GBP">7</Amt><Kind>C1</Kind></Credit></Source>"#,
+        &imported.project.source,
+    )?;
+    let target = engine::run(&imported.project, &source)?;
+    let balances = target
+        .field("Bal")
+        .and_then(Instance::as_repeated)
+        .ok_or("target balances are not repeated")?;
+    assert_eq!(balances.len(), 2);
+    assert_eq!(
+        balances[0].field("Kind").and_then(Instance::as_scalar),
+        Some(&Value::String("D1".into()))
+    );
+    assert_eq!(
+        balances[1].field("Kind").and_then(Instance::as_scalar),
+        Some(&Value::String("C1".into()))
+    );
+
+    let exported = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &exported)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert!(std::fs::read_to_string(&exported)?.contains(r#"<dataconnection type="2"/>"#));
+    let roundtrip = mfd::import(&exported)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let source = format_xml::from_str(
+        r#"<Source><Debit><Amt Ccy="USD">10.5</Amt><Kind>D1</Kind></Debit><Credit><Amt Ccy="GBP">7</Amt><Kind>C1</Kind></Credit></Source>"#,
+        &roundtrip.project.source,
+    )?;
+    let target = engine::run(&roundtrip.project, &source)?;
+    let balances = target
+        .field("Bal")
+        .and_then(Instance::as_repeated)
+        .ok_or("round-trip target balances are not repeated")?;
+    assert_eq!(balances.len(), 2);
+    assert_eq!(
+        balances[1].field("Kind").and_then(Instance::as_scalar),
+        Some(&Value::String("C1".into()))
+    );
+    Ok(())
+}
+
+#[test]
 fn structural_branch_without_content_is_not_silently_concatenated()
 -> Result<(), Box<dyn std::error::Error>> {
     let dir = TempDir::new()?;
