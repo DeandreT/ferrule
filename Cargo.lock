@@ -2156,6 +2156,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui-snarl",
+ "format-edi",
  "functions",
  "ir",
  "lucide-icons",

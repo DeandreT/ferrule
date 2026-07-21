@@ -381,6 +381,11 @@ impl FerruleApp {
     }
 
     pub(super) fn show_source_explorer(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let source_x12 = crate::x12_tooltips::boundary_has_x12(
+            &self.project.source,
+            self.project.source_path.as_deref(),
+            &self.project.source_options,
+        );
         ui.horizontal(|ui| {
             ui.strong("Source schema");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -432,6 +437,7 @@ impl FerruleApp {
                     &self.project.source,
                     &self.source_schema_explorer,
                     "primary_source_schema",
+                    source_x12,
                 );
                 for (index, extra) in self.project.extra_sources.iter().enumerate() {
                     if self.source_schema_explorer.is_filtering()
@@ -464,6 +470,11 @@ impl FerruleApp {
                         &extra.schema,
                         &self.source_schema_explorer,
                         ("extra_source_schema", index),
+                        crate::x12_tooltips::boundary_has_x12(
+                            &extra.schema,
+                            Some(&extra.path),
+                            &extra.options,
+                        ),
                     );
                     section_shown = true;
                 }
@@ -475,6 +486,11 @@ impl FerruleApp {
     }
 
     pub(super) fn show_inspector(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let target_x12 = crate::x12_tooltips::boundary_has_x12(
+            &self.project.target,
+            self.project.target_path.as_deref(),
+            &self.project.target_options,
+        );
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         ui.add_enabled_ui(editing_enabled, |ui| {
@@ -500,6 +516,7 @@ impl FerruleApp {
                             &self.project.target,
                             &self.target_schema_explorer,
                             "target_schema",
+                            target_x12,
                         );
                     }
                 });
@@ -541,6 +558,16 @@ impl FerruleApp {
     pub(super) fn show_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
+        let source_x12 = crate::x12_tooltips::boundary_has_x12(
+            &self.project.source,
+            self.project.source_path.as_deref(),
+            &self.project.source_options,
+        );
+        let target_x12 = crate::x12_tooltips::boundary_has_x12(
+            &self.project.target,
+            self.project.target_path.as_deref(),
+            &self.project.target_options,
+        );
         ui.add_enabled_ui(editing_enabled, |ui| {
             let source_blocks = source_blocks(&self.project.source);
             let target_blocks = target_blocks(&self.project.target);
@@ -550,10 +577,16 @@ impl FerruleApp {
                 extra_targets: &self.project.extra_targets,
                 source_blocks: &source_blocks,
                 target_blocks: &target_blocks,
+                source_x12,
+                target_x12,
                 source_paths: &source_paths,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
                 node_sizes: Some(&mut self.canvas_node_sizes),
+                hovered_node: None,
+                hovered_node_this_frame: None,
+                camera_pan: egui::Vec2::ZERO,
+                pin_interaction_ids: Vec::new(),
                 error: None,
             };
             crate::canvas_keyboard::show(
