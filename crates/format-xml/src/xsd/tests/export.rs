@@ -374,6 +374,56 @@ fn export_rejects_conflicting_and_repeating_xml_roles() {
 }
 
 #[test]
+fn export_reuses_identical_recursive_anchors_at_multiple_paths() {
+    let description = || {
+        SchemaNode::group(
+            "description",
+            vec![
+                SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::recursive_group("strong", "description").repeating(),
+            ],
+        )
+    };
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::group("First", vec![description()]),
+            SchemaNode::group("Second", vec![description().repeating()]),
+        ],
+    );
+
+    let xsd = export(&schema).unwrap();
+
+    assert_eq!(xsd.matches(r#"name="descriptionType""#).count(), 1, "{xsd}");
+    assert_eq!(xsd.matches(r#"type="descriptionType""#).count(), 3, "{xsd}");
+}
+
+#[test]
+fn export_rejects_conflicting_recursive_anchor_definitions() {
+    let branch = |field| {
+        SchemaNode::group(
+            "Branch",
+            vec![
+                SchemaNode::scalar(field, ScalarType::String),
+                SchemaNode::recursive_group("Child", "Branch"),
+            ],
+        )
+    };
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::group("Left", vec![branch("Code")]),
+            SchemaNode::group("Right", vec![branch("Name")]),
+        ],
+    );
+
+    assert!(matches!(
+        export(&schema),
+        Err(XmlFormatError::UnsupportedRecursiveAnchor { anchor, .. }) if anchor == "Branch"
+    ));
+}
+
+#[test]
 fn nillable_elements_import_and_export() {
     let path =
         std::env::temp_dir().join(format!("ferrule_xsd_nillable_{}.xsd", std::process::id()));

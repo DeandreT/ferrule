@@ -1,4 +1,5 @@
-use mapping::{FormatOptions, XbrlBoundaryMode};
+use ir::{SchemaKind, SchemaNode};
+use mapping::{FormatOptions, WsdlMessageRole, XbrlBoundaryMode};
 
 use super::ValidationIssue;
 
@@ -88,6 +89,8 @@ fn has_xlsx_format_options(options: &FormatOptions) -> bool {
     options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
+        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
         || options.xlsx_grid.is_some()
@@ -133,6 +136,8 @@ fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
         || options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
+        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
         || options.xlsx_grid.is_some()
@@ -186,8 +191,128 @@ fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
         || options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
+        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
+}
+
+pub(super) fn validate_xlsx_options(
+    location: &str,
+    options: &FormatOptions,
+    schema: &SchemaNode,
+    source_side: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let non_flat_layout = !options.xlsx_rows.is_empty()
+        || options.xlsx_composite.is_some()
+        || options.xlsx_grid.is_some()
+        || options.xlsx_hierarchical.is_some();
+    if !options.xlsx_headers.is_empty() && non_flat_layout {
+        issues.push(ValidationIssue::new(
+            location,
+            "`xlsx_headers` can be used only with a flat XLSX table",
+        ));
+    }
+    if options.xlsx_update_existing && source_side {
+        issues.push(ValidationIssue::new(
+            location,
+            "`xlsx_update_existing` is valid only for mapping targets",
+        ));
+    }
+    if options.xlsx_update_existing && non_flat_layout {
+        issues.push(ValidationIssue::new(
+            location,
+            "`xlsx_update_existing` can be used only with a flat XLSX table",
+        ));
+    }
+    if !options.xlsx_headers.is_empty() {
+        let field_count = match &schema.kind {
+            SchemaKind::Group { children, .. }
+                if !schema.repeating
+                    && children.iter().all(|child| {
+                        !child.repeating
+                            && !child.attribute
+                            && !child.text
+                            && matches!(child.kind, SchemaKind::Scalar { .. })
+                    }) =>
+            {
+                Some(children.len())
+            }
+            SchemaKind::Scalar { .. } | SchemaKind::Group { .. } => None,
+        };
+        match field_count {
+            Some(count) if count != options.xlsx_headers.len() => {
+                issues.push(ValidationIssue::new(
+                    location,
+                    format!(
+                        "`xlsx_headers` has {} value(s) for {count} flat schema field(s)",
+                        options.xlsx_headers.len()
+                    ),
+                ));
+            }
+            None => issues.push(ValidationIssue::new(
+                location,
+                "`xlsx_headers` requires a non-repeating group of scalar fields",
+            )),
+            Some(_) => {}
+        }
+    }
+}
+
+pub(super) fn validate_wsdl_options(
+    location: &str,
+    options: &FormatOptions,
+    source_side: bool,
+    issues: &mut Vec<ValidationIssue>,
+) {
+    let Some(wsdl) = &options.wsdl else {
+        return;
+    };
+    let role_is_valid = if source_side {
+        wsdl.role() == WsdlMessageRole::Request
+    } else {
+        wsdl.role() != WsdlMessageRole::Request
+    };
+    if !role_is_valid {
+        issues.push(ValidationIssue::new(
+            location,
+            if source_side {
+                "a WSDL source must be a request message"
+            } else {
+                "a WSDL target must be a response or fault message"
+            },
+        ));
+    }
+    if !options.xml_document {
+        issues.push(ValidationIssue::new(
+            location,
+            "a WSDL message requires XML document identity",
+        ));
+    }
+    let conflict = options.edi_kind.is_some()
+        || options.idoc.is_some()
+        || options.swift_mt.is_some()
+        || options.local_xml_file_set
+        || options.json_document
+        || options.json_lines
+        || options.tabular_kind.is_some()
+        || options.delimiter.is_some()
+        || options.has_header_row.is_some()
+        || options.fixed_width.is_some()
+        || options.flextext.is_some()
+        || options.pdf.is_some()
+        || options.http_get.is_some()
+        || options.external_source.is_some()
+        || options.protobuf.is_some()
+        || options.xbrl.is_some()
+        || has_xlsx_format_options(options);
+    if conflict {
+        issues.push(ValidationIssue::new(
+            location,
+            "a WSDL message cannot be combined with another format identity",
+        ));
+    }
 }

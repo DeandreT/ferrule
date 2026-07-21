@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="26">
+  <resources/>
+  <component name="map" uid="1">
+    <structure>
+      <children>
+        <component name="Contacts" library="xlsx" uid="2" kind="26">
+          <data>
+            <root>
+              <entry name="FileInstance">
+                <entry name="document">
+                  <entry name="Workbook">
+                    <entry name="Worksheet">
+                      <condition>
+                        <function name="equal-ignorecase" library="xlsx">
+                          <attribute name="Name"/>
+                          <constant value="Contacts"/>
+                        </function>
+                      </condition>
+                      <ranges><range id="1" start="1"/></ranges>
+                      <entry name="Row" outkey="10" enabletitlerow="1">
+                        <condition><function name="is-range-id"><constant value="1"/></function></condition>
+                        <entry name="Cell" outkey="11" annotation="Phone" datatype="string">
+                          <condition><function name="equal"><attribute name="n"/><constant value="4"/></function></condition>
+                        </entry>
+                        <entry name="Cell" outkey="12" annotation="Phone" datatype="string">
+                          <condition><function name="equal"><attribute name="n"/><constant value="5"/></function></condition>
+                        </entry>
+                      </entry>
+                    </entry>
+                  </entry>
+                </entry>
+              </entry>
+            </root>
+            <excel inputinstance="contacts.xlsx"/>
+          </data>
+        </component>
+        <component name="Rows" library="text" uid="3" kind="16">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root>
+              <entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="20">
+                <entry name="PrimaryPhone" inpkey="21"/>
+                <entry name="SecondaryPhone" inpkey="22"/>
+              </entry></entry></entry>
+            </root>
+            <text type="csv" outputinstance="contacts.csv">
+              <settings separator="," quote="&quot;" firstrownames="true">
+                <names root="Contacts" block="Rows">
+                  <field0 name="PrimaryPhone" type="string"/>
+                  <field1 name="SecondaryPhone" type="string"/>
+                </names>
+              </settings>
+            </text>
+          </data>
+        </component>
+      </children>
+      <graph>
+        <vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+          <vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex>
+          <vertex vertexkey="12"><edges><edge vertexkey="22"/></edges></vertex>
+        </vertices>
+      </graph>
+    </structure>
+  </component>
+</mapping>

@@ -97,6 +97,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "time_from_datetime",
     "datetime_from_date_and_time",
     "datetime_from_parts",
+    "duration_from_parts",
     "datetime_add",
     "parse_date",
     "parse_datetime",
@@ -113,6 +114,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
 ];
 
 const INTERNAL_NAMES: &[&str] = &[
+    "sqlite_multiply",
     "json_serialize_object",
     "json_parse_field",
     "flextext_parse_field",

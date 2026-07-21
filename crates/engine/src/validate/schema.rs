@@ -22,6 +22,19 @@ pub(super) fn validate_schema(
             ),
         ));
     }
+    if !schema.xml_repeating_sequences_are_valid() {
+        let suffix = if path.is_empty() {
+            String::new()
+        } else {
+            format!(" at `{}`", path.join("/"))
+        };
+        issues.push(ValidationIssue::new(
+            root,
+            format!(
+                "XML repeating-sequence metadata{suffix} has duplicate, unknown, or non-repeating members"
+            ),
+        ));
+    }
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return;
     };

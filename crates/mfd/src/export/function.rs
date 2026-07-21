@@ -87,6 +87,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "time_from_datetime" => "time-from-datetime",
         "datetime_from_date_and_time" => "datetime-from-date-and-time",
         "datetime_from_parts" => "datetime-from-parts",
+        "duration_from_parts" => "duration-from-parts",
         "datetime_add" => "datetime-add",
         "parse_date" => "parse-date",
         "parse_datetime" => "parse-dateTime",
@@ -122,6 +123,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "time_from_datetime"
         | "datetime_from_date_and_time"
         | "datetime_from_parts"
+        | "duration_from_parts"
         | "datetime_add"
         | "delay_passthrough" => "lang",
         "edifact_to_datetime" => "edifact",

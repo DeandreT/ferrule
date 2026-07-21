@@ -4,7 +4,7 @@ use ir::{GroupAlternative, SchemaKind, SchemaNode};
 
 use crate::XmlFormatError;
 
-use super::{write_attribute, write_element_required};
+use super::{ElementOccurrence, write_attribute, write_element_required};
 
 pub(super) struct AlternativeExportPlan<'a> {
     namespace: Option<String>,
@@ -347,7 +347,11 @@ fn write_members(
         write_element_required(
             child,
             depth + 1,
-            definition.required.contains(&child.name),
+            if definition.required.contains(&child.name) {
+                ElementOccurrence::Required
+            } else {
+                ElementOccurrence::Optional
+            },
             root_name,
             recursive_anchors,
             alternatives,

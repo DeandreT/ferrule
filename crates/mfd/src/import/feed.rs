@@ -130,6 +130,9 @@ impl GraphBuilder<'_> {
         if let Some(node) = self.join_field_node(key) {
             return Some(node);
         }
+        if let Some(node) = self.db_computed_projection_node(key) {
+            return Some(node);
+        }
         if self
             .json_serializers
             .iter()

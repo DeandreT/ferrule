@@ -8,6 +8,7 @@ pub(crate) fn is_internal(name: &str) -> bool {
         name,
         "isbn10_to_isbn13"
             | "sql_like"
+            | "sqlite_multiply"
             | "to_number"
             | "json_serialize_object"
             | "json_parse_field"
@@ -23,6 +24,7 @@ mod tests {
     #[test]
     fn list_excludes_similarly_named_vendor_functions() {
         assert!(is_internal("to_number"));
+        assert!(is_internal("sqlite_multiply"));
         assert!(is_internal("coerce_datetime"));
         assert!(!is_internal("to-number"));
         assert!(!is_internal("convertToISBN13"));

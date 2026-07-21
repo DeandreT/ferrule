@@ -17,6 +17,7 @@ const MAX_WORKSHEET_COLUMN: u32 = 16_384;
 #[derive(Clone)]
 struct Column {
     name: String,
+    header: String,
     index: u32,
     ty: ScalarType,
     ports: Vec<u32>,
@@ -167,6 +168,11 @@ pub(super) fn read(
             }
             let mut fields = Vec::with_capacity(columns.len());
             let mut xlsx_columns = Vec::with_capacity(columns.len());
+            let xlsx_headers = if columns.iter().any(|column| column.name != column.header) {
+                columns.iter().map(|column| column.header.clone()).collect()
+            } else {
+                Vec::new()
+            };
             for column in columns {
                 for key in column.ports {
                     ports.insert(key, vec![column.name.clone()]);
@@ -182,6 +188,7 @@ pub(super) fn read(
                     xlsx_sheet: table.sheet,
                     xlsx_start_row: start_row,
                     xlsx_columns,
+                    xlsx_headers,
                     xlsx_update_existing: !is_source
                         && excel.attribute("updateexistingfile") == Some("1"),
                     ..FormatOptions::default()
@@ -513,7 +520,7 @@ fn inspect_worksheet(
             },
             None => None,
         };
-        let columns = read_columns(row, component_name, warnings);
+        let mut columns = read_columns(row, component_name, warnings);
         if columns.is_empty() {
             if subtree_has_ports(row) {
                 warnings.push(format!(
@@ -522,11 +529,14 @@ fn inspect_worksheet(
             }
             continue;
         }
-        if duplicate_column(&columns) {
+        if duplicate_column_index(&columns) {
             warnings.push(format!(
-                "xlsx component `{component_name}` range `{range_id}` maps a column index or field name more than once; table skipped"
+                "xlsx component `{component_name}` range `{range_id}` maps a physical column more than once; table skipped"
             ));
             continue;
+        }
+        if duplicate_column_name(&columns) {
+            disambiguate_column_names(&mut columns);
         }
         let row_ports = port_keys(row);
         tables.push(Table {
@@ -732,14 +742,22 @@ fn read_columns(
             ));
             continue;
         };
-        let Some(name) = cell.attribute("annotation").filter(|name| !name.is_empty()) else {
+        let semantic_name = cell
+            .attribute("ferrulefield")
+            .filter(|name| !name.is_empty());
+        let Some(header) = cell
+            .attribute("annotation")
+            .filter(|header| !header.is_empty() || semantic_name.is_some())
+        else {
             warnings.push(format!(
                 "xlsx component `{component_name}` column {index} has no annotation name; that cell was skipped"
             ));
             continue;
         };
+        let name = semantic_name.unwrap_or(header);
         columns.push(Column {
             name: name.to_string(),
+            header: header.to_string(),
             index,
             ty: scalar_type(cell.attribute("datatype")),
             ports,
@@ -893,12 +911,37 @@ fn subtree_has_ports(node: roxmltree::Node<'_, '_>) -> bool {
     node.descendants().any(|entry| !port_keys(entry).is_empty())
 }
 
-fn duplicate_column(columns: &[Column]) -> bool {
-    let mut names = BTreeSet::new();
+fn duplicate_column_index(columns: &[Column]) -> bool {
     let mut indexes = BTreeSet::new();
-    columns
+    columns.iter().any(|column| !indexes.insert(column.index))
+}
+
+fn duplicate_column_name(columns: &[Column]) -> bool {
+    let mut names = BTreeSet::new();
+    columns.iter().any(|column| !names.insert(&column.name))
+}
+
+fn disambiguate_column_names(columns: &mut [Column]) {
+    let mut available = columns
         .iter()
-        .any(|column| !names.insert(&column.name) || !indexes.insert(column.index))
+        .map(|column| column.name.clone())
+        .collect::<BTreeSet<_>>();
+    let mut seen = BTreeSet::new();
+    for column in columns {
+        if seen.insert(column.name.clone()) {
+            continue;
+        }
+        let base = format!("{}_{}", column.name, column.index);
+        let mut candidate = base.clone();
+        let mut suffix = 2_u32;
+        while available.contains(&candidate) {
+            candidate = format!("{base}_{suffix}");
+            suffix += 1;
+        }
+        available.insert(candidate.clone());
+        seen.insert(candidate.clone());
+        column.name = candidate;
+    }
 }
 
 fn duplicate_transposed_row(rows: &[TransposedRow]) -> bool {
@@ -1128,5 +1171,85 @@ mod tests {
         assert!(component.options.xlsx_update_existing);
         assert_eq!(component.options.xlsx_sheet.as_deref(), Some("Sales"));
         assert_eq!(component.options.xlsx_start_row, Some(5));
+    }
+
+    #[test]
+    fn flat_columns_keep_distinct_physical_indexes_when_annotations_repeat() {
+        let mut columns = vec![
+            Column {
+                name: "Phone".into(),
+                header: "Phone".into(),
+                index: 4,
+                ty: ScalarType::String,
+                ports: vec![10],
+            },
+            Column {
+                name: "Phone".into(),
+                header: "Phone".into(),
+                index: 5,
+                ty: ScalarType::String,
+                ports: vec![11],
+            },
+            Column {
+                name: "Phone_5".into(),
+                header: "Phone_5".into(),
+                index: 6,
+                ty: ScalarType::String,
+                ports: vec![12],
+            },
+        ];
+
+        assert!(!duplicate_column_index(&columns));
+        assert!(duplicate_column_name(&columns));
+        disambiguate_column_names(&mut columns);
+
+        assert_eq!(
+            columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Phone", "Phone_5_2", "Phone_5"]
+        );
+        assert!(!duplicate_column_name(&columns));
+        columns[2].index = 5;
+        assert!(duplicate_column_index(&columns));
+    }
+
+    #[test]
+    fn flat_target_retains_duplicate_headers_behind_unique_field_names() {
+        let document = roxmltree::Document::parse(
+            r#"
+            <component name="Report">
+              <data>
+                <root><entry name="Workbook"><entry name="Worksheet">
+                  <ranges><range id="1" start="1"/></ranges>
+                  <entry name="Row" inpkey="10" enabletitlerow="1">
+                    <condition><function name="is-range-id"><constant value="1"/></function></condition>
+                    <entry name="Cell" inpkey="11" annotation="Phone">
+                      <condition><function name="equal"><attribute name="n"/><constant value="4"/></function></condition>
+                    </entry>
+                    <entry name="Cell" inpkey="12" annotation="Phone">
+                      <condition><function name="equal"><attribute name="n"/><constant value="5"/></function></condition>
+                    </entry>
+                  </entry>
+                </entry></entry></root>
+                <excel outputinstance="report.xlsx"/>
+              </data>
+            </component>
+            "#,
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+
+        let component = read(&document.root_element(), &mut warnings)
+            .unwrap_or_else(|| panic!("duplicate-header target was skipped: {warnings:?}"));
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(component.options.xlsx_headers, ["Phone", "Phone"]);
+        let ir::SchemaKind::Group { children, .. } = component.schema.kind else {
+            panic!("expected flat XLSX group schema");
+        };
+        assert_eq!(children[0].name, "Phone");
+        assert_eq!(children[1].name, "Phone_5");
     }
 }
