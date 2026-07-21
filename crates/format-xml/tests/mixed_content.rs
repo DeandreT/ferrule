@@ -54,7 +54,7 @@ fn writer_emits_repeated_mixed_children_in_recorded_order() {
     let instance = Instance::Group(vec![
         (
             XML_TEXT_FIELD.into(),
-            Instance::Scalar(Value::String("Example 2014 uses  and  data.".into())),
+            Instance::Scalar(Value::String("Example  2014 uses  and  data.".into())),
         ),
         (
             "Bold".into(),
