@@ -204,7 +204,7 @@ fn extra_targets_match_engine_and_legacy_entry_points_evaluate_them() -> TestRes
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .output()?;
+        .isolated_output()?;
     assert!(
         rust.status.success(),
         "generated Rust extra targets failed:\nstdout:\n{}\nstderr:\n{}",
@@ -246,7 +246,7 @@ fn extra_targets_match_engine_and_legacy_entry_points_evaluate_them() -> TestRes
             "Release",
         ])
         .current_dir(&csharp_output)
-        .output()?;
+        .isolated_output()?;
     assert!(
         csharp.status.success(),
         "generated C# extra targets failed:\nstdout:\n{}\nstderr:\n{}",

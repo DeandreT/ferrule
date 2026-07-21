@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
+use std::ffi::OsStr;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use cli::{GenerateOutcome, GenerateTarget, generate_project};
@@ -46,6 +49,24 @@ mod value_maps;
 
 type TestResult<T> = Result<T, Box<dyn std::error::Error>>;
 type ArtifactFiles = Vec<(String, Vec<u8>)>;
+
+static DOTNET_RUN_LOCK: Mutex<()> = Mutex::new(());
+
+trait CommandOutputExt {
+    fn isolated_output(&mut self) -> io::Result<Output>;
+}
+
+impl CommandOutputExt for Command {
+    fn isolated_output(&mut self) -> io::Result<Output> {
+        if self.get_program() == OsStr::new("dotnet") {
+            let _guard = DOTNET_RUN_LOCK
+                .lock()
+                .map_err(|_| io::Error::other("dotnet command lock poisoned"))?;
+            return self.output();
+        }
+        self.output()
+    }
+}
 
 struct TempDir(PathBuf);
 
@@ -815,7 +836,7 @@ static void Assert(bool condition)
             "Release",
         ])
         .current_dir(&output)
-        .output()?;
+        .isolated_output()?;
     assert!(
         command.status.success(),
         "generated C# project failed:\nstdout:\n{}\nstderr:\n{}",
@@ -897,7 +918,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .args(["run", "--quiet"])
         .current_dir(&output)
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .output()?;
+        .isolated_output()?;
     assert!(
         command.status.success(),
         "generated Rust project failed:\nstdout:\n{}\nstderr:\n{}",
@@ -1030,7 +1051,7 @@ static void Assert(bool condition)
             "Release",
         ])
         .current_dir(&output)
-        .output()?;
+        .isolated_output()?;
     assert!(
         command.status.success(),
         "generated C# nested iteration failed:\nstdout:\n{}\nstderr:\n{}",
@@ -1133,7 +1154,7 @@ fn target_order(id: &str, lines: impl IntoIterator<Item = Instance>) -> Instance
         .args(["run", "--quiet"])
         .current_dir(&output)
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .output()?;
+        .isolated_output()?;
     assert!(
         command.status.success(),
         "generated Rust nested iteration failed:\nstdout:\n{}\nstderr:\n{}",
