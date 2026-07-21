@@ -2,6 +2,7 @@ use egui_snarl::ui::{SnarlStyle, SnarlWidget};
 use egui_snarl::{NodeId as SnarlNodeId, Snarl};
 
 use crate::canvas::CanvasNode;
+use crate::canvas_search::CanvasSearchState;
 use crate::graph_viewer::GraphViewer;
 
 const CANVAS_ID: &str = "mapping_canvas";
@@ -12,9 +13,14 @@ const EDGE_PAN_SPEED: f32 = 900.0;
 #[derive(Clone, Default)]
 struct PinInteractionIds(Vec<egui::Id>);
 
+#[derive(Clone, Copy, Default)]
+struct CanvasFocus(egui::Pos2);
+
 pub fn show(
     snarl: &mut Snarl<CanvasNode>,
     viewer: &mut GraphViewer<'_>,
+    search: &mut CanvasSearchState,
+    show_minimap: bool,
     view_generation: u64,
     style: SnarlStyle,
     ui: &mut egui::Ui,
@@ -41,6 +47,12 @@ pub fn show(
     viewer.pin_interaction_ids.clear();
     let fit_marker = canvas_id.with("initial_fit_complete");
     let hover_marker = canvas_id.with("hovered_node");
+    let focus_marker = canvas_id.with("minimap_focus");
+    viewer.camera_focus = ui
+        .ctx()
+        .data_mut(|data| data.remove_temp::<CanvasFocus>(focus_marker))
+        .map(|focus| (focus.0, viewport.center()));
+    viewer.canvas_transform = None;
     let initialize_fit = ui
         .ctx()
         .data(|data| !data.get_temp::<bool>(fit_marker).unwrap_or(false));
@@ -48,10 +60,53 @@ pub fn show(
         .ctx()
         .data(|data| data.get_temp::<Option<SnarlNodeId>>(hover_marker).flatten());
     viewer.begin_node_hover_frame(hovered_node);
+    if let Some(node) = hovered_node.and_then(|node| snarl.get_node(node)).copied() {
+        let total = match node {
+            CanvasNode::SourceBlock(block) => viewer
+                .source_blocks
+                .get(block)
+                .map_or(0, |section| section.leaves.len()),
+            CanvasNode::TargetBlock(block) => viewer
+                .target_blocks
+                .get(block)
+                .map_or(0, |section| section.leaves.len()),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 0,
+        };
+        let pan_delta = ui.ctx().input(|input| input.smooth_scroll_delta);
+        if !wire_dragging
+            && total > viewer.endpoint_scroll.visible_limit(node, total)
+            && pan_delta.y.abs() >= 1.0
+        {
+            let rows = scroll_rows(pan_delta.y);
+            if viewer.endpoint_scroll.scroll_rows(node, total, rows) {
+                crate::app::sync_endpoint_wires(
+                    viewer.graph,
+                    viewer.root_scope,
+                    viewer.source_blocks,
+                    viewer.target_blocks,
+                    viewer.endpoint_scroll,
+                    snarl,
+                );
+                ui.ctx().request_repaint();
+            }
+            // egui-snarl interprets the same wheel event as scene panning.
+            // Its transform is adjusted before `current_transform`, so this
+            // equal inverse delta keeps the canvas stationary.
+            viewer.camera_pan -= pan_delta;
+        }
+    }
     let selected = SnarlWidget::new()
         .id(canvas_id)
         .style(style)
         .get_selected_nodes(ui);
+    let find = !ui.ctx().egui_wants_keyboard_input()
+        && ui
+            .ctx()
+            .input_mut(|input| input.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
+    if find {
+        search.open_selected(&selected, snarl);
+    }
+    viewer.endpoint_search_match = search.active_match(viewer.source_blocks, viewer.target_blocks);
     let delete = !ui.ctx().egui_wants_keyboard_input()
         && ui.ctx().input_mut(|input| {
             input.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
@@ -67,6 +122,32 @@ pub fn show(
         .id(canvas_id)
         .style(style)
         .show(snarl, viewer, ui);
+    crate::canvas_search::show(
+        ui.ctx(),
+        canvas_id,
+        viewport,
+        search,
+        viewer.source_blocks,
+        viewer.target_blocks,
+        viewer.endpoint_scroll,
+    );
+    if show_minimap
+        && let (Some(transform), Some(node_sizes)) =
+            (viewer.canvas_transform, viewer.node_sizes.as_deref())
+        && let Some(focus) = crate::canvas_minimap::show(
+            ui,
+            canvas_id,
+            viewport,
+            snarl,
+            node_sizes,
+            transform,
+            viewer.colors,
+        )
+    {
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(focus_marker, CanvasFocus(focus)));
+        ui.ctx().request_repaint();
+    }
     let pin_interaction_ids = std::mem::take(&mut viewer.pin_interaction_ids);
     ui.ctx().data_mut(|data| {
         data.insert_temp(
@@ -98,6 +179,15 @@ fn pin_drag_active(
     pin_interaction_ids: &[egui::Id],
 ) -> bool {
     primary_down && dragged_id.is_some_and(|dragged| pin_interaction_ids.contains(&dragged))
+}
+
+fn scroll_rows(delta_y: f32) -> isize {
+    let rows = ((-delta_y / 18.0).round() as isize).clamp(-5, 5);
+    if rows == 0 {
+        -delta_y.signum() as isize
+    } else {
+        rows
+    }
 }
 
 fn edge_pan_delta(
@@ -203,5 +293,13 @@ mod tests {
         assert!(!pin_drag_active(true, Some(node), &[pin]));
         assert!(!pin_drag_active(false, Some(pin), &[pin]));
         assert!(!pin_drag_active(true, None, &[pin]));
+    }
+
+    #[test]
+    fn endpoint_wheel_delta_maps_to_bounded_field_rows() {
+        assert_eq!(scroll_rows(-18.0), 1);
+        assert_eq!(scroll_rows(36.0), -2);
+        assert_eq!(scroll_rows(-500.0), 5);
+        assert_eq!(scroll_rows(0.5), -1);
     }
 }
