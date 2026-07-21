@@ -672,7 +672,7 @@ fn scalar_algorithms_match_engine_and_generated_backends() -> TestResult<()> {
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .output()?;
+        .isolated_output()?;
     assert!(
         rust.status.success(),
         "generated Rust scalar algorithms failed:\nstdout:\n{}\nstderr:\n{}",
@@ -714,7 +714,7 @@ fn scalar_algorithms_match_engine_and_generated_backends() -> TestResult<()> {
             "Release",
         ])
         .current_dir(&csharp_output)
-        .output()?;
+        .isolated_output()?;
     assert!(
         csharp.status.success(),
         "generated C# scalar algorithms failed:\nstdout:\n{}\nstderr:\n{}",

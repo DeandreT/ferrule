@@ -182,7 +182,7 @@ fn runtime_values_match_engine_and_generated_backends() -> TestResult<()> {
         .args(["run", "--quiet"])
         .current_dir(&rust_output)
         .env("CARGO_TARGET_DIR", directory.0.join("cargo-target"))
-        .output()?;
+        .isolated_output()?;
     assert!(
         rust.status.success(),
         "generated Rust runtime values failed:\nstdout:\n{}\nstderr:\n{}",
@@ -224,7 +224,7 @@ fn runtime_values_match_engine_and_generated_backends() -> TestResult<()> {
             "Release",
         ])
         .current_dir(&csharp_output)
-        .output()?;
+        .isolated_output()?;
     assert!(
         csharp.status.success(),
         "generated C# runtime values failed:\nstdout:\n{}\nstderr:\n{}",
