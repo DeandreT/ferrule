@@ -5,6 +5,7 @@ use mapping::{Node, NodeId, Project, Scope};
 
 use super::{CanvasLayout, CanvasNode, PersistedCanvasNode};
 use crate::canvas::{SourceBlock, TargetBlock, source_blocks, target_blocks};
+use crate::canvas_endpoints::EndpointScrollState;
 use crate::canvas_layout::arrange_snarl;
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
@@ -130,11 +131,9 @@ pub(super) fn build_snarl_with_layout(
     let target_blocks = target_blocks(&project.target);
 
     let mut snarl = Snarl::new();
-    let source_nodes = source_blocks
-        .iter()
-        .enumerate()
-        .map(|(block, _)| snarl.insert_node(egui::Pos2::ZERO, CanvasNode::SourceBlock(block)))
-        .collect::<Vec<_>>();
+    for block in 0..source_blocks.len() {
+        snarl.insert_node(egui::Pos2::ZERO, CanvasNode::SourceBlock(block));
+    }
 
     // Exact frame identity distinguishes equal leaf paths in sibling collections.
     let hidden: std::collections::BTreeMap<NodeId, (usize, usize)> = project
@@ -149,13 +148,6 @@ pub(super) fn build_snarl_with_layout(
         })
         .collect();
 
-    let mut binding_order = Vec::new();
-    walk_scopes(
-        &project.root,
-        &mut Vec::new(),
-        &target_blocks,
-        &mut binding_order,
-    );
     let placeholders: std::collections::BTreeSet<NodeId> = saved_layout
         .into_iter()
         .flat_map(|layout| &layout.nodes)
@@ -190,22 +182,11 @@ pub(super) fn build_snarl_with_layout(
         );
         snarl_ids.insert(id, snarl_id);
     }
-    let target_nodes = target_blocks
-        .iter()
-        .enumerate()
-        .map(|(block, _)| snarl.insert_node(egui::Pos2::ZERO, CanvasNode::TargetBlock(block)))
-        .collect::<Vec<_>>();
+    for block in 0..target_blocks.len() {
+        snarl.insert_node(egui::Pos2::ZERO, CanvasNode::TargetBlock(block));
+    }
 
-    let out_pin_for = |id: NodeId| -> Option<OutPinId> {
-        if let Some(&(block, pin)) = hidden.get(&id) {
-            Some(OutPinId {
-                node: source_nodes[block],
-                output: pin,
-            })
-        } else {
-            snarl_ids.get(&id).map(|&node| OutPinId { node, output: 0 })
-        }
-    };
+    let out_pin_for = |id: NodeId| snarl_ids.get(&id).map(|&node| OutPinId { node, output: 0 });
 
     for (&id, node) in &project.graph.nodes {
         let Some(&to_node) = snarl_ids.get(&id) else {
@@ -224,17 +205,14 @@ pub(super) fn build_snarl_with_layout(
         }
     }
 
-    for &(node_id, block, pin) in &binding_order {
-        if let Some(from) = out_pin_for(node_id) {
-            snarl.connect(
-                from,
-                InPinId {
-                    node: target_nodes[block],
-                    input: pin,
-                },
-            );
-        }
-    }
+    sync_endpoint_wires(
+        &project.graph,
+        &project.root,
+        &source_blocks,
+        &target_blocks,
+        &EndpointScrollState::default(),
+        &mut snarl,
+    );
 
     let mut initial_sizes = std::collections::BTreeMap::new();
     for (block, section) in source_blocks.iter().enumerate() {
@@ -269,6 +247,131 @@ pub(crate) fn endpoint_block_size(title: &str, pin_labels: &[String]) -> egui::V
         .unwrap_or(0);
     egui::vec2(
         (label_chars as f32 * 7.0 + 40.0).clamp(110.0, 230.0),
-        (34.0 + pin_labels.len() as f32 * 20.0).max(58.0),
+        (34.0
+            + pin_labels
+                .len()
+                .min(crate::canvas_endpoints::VISIBLE_PIN_LIMIT) as f32
+                * 20.0)
+            .max(58.0),
     )
+}
+
+/// Reconciles the visual endpoint wires with the graph for the currently
+/// visible source and target field windows. Mapping nodes remain the source
+/// of truth, so scrolling never changes a binding.
+pub(crate) fn sync_endpoint_wires(
+    graph: &mapping::Graph,
+    root_scope: &Scope,
+    source_blocks: &[SourceBlock],
+    target_blocks: &[TargetBlock],
+    scroll: &EndpointScrollState,
+    snarl: &mut Snarl<CanvasNode>,
+) {
+    let mut source_nodes = std::collections::BTreeMap::new();
+    let mut target_nodes = std::collections::BTreeMap::new();
+    let mut graph_nodes = std::collections::BTreeMap::new();
+    for (id, _, node) in snarl.nodes_pos_ids() {
+        match *node {
+            CanvasNode::SourceBlock(block) => {
+                source_nodes.insert(block, id);
+            }
+            CanvasNode::TargetBlock(block) => {
+                target_nodes.insert(block, id);
+            }
+            CanvasNode::Graph(mapping) | CanvasNode::Placeholder(mapping) => {
+                graph_nodes.insert(mapping, id);
+            }
+        }
+    }
+
+    let source_fields = graph
+        .nodes
+        .iter()
+        .filter_map(|(&id, node)| match node {
+            Node::SourceField { path, frame } => {
+                source_pin_for_field(source_blocks, frame, path).map(|pin| (id, pin))
+            }
+            _ => None,
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let visible_output = |id: NodeId| -> Option<OutPinId> {
+        if let Some(&(block, semantic_pin)) = source_fields.get(&id) {
+            let section = source_blocks.get(block)?;
+            let output = scroll.displayed_pin(
+                CanvasNode::SourceBlock(block),
+                semantic_pin,
+                section.leaves.len(),
+            )?;
+            Some(OutPinId {
+                node: *source_nodes.get(&block)?,
+                output,
+            })
+        } else {
+            Some(OutPinId {
+                node: *graph_nodes.get(&id)?,
+                output: 0,
+            })
+        }
+    };
+
+    let mut expected = std::collections::BTreeSet::new();
+    for (&id, node) in &graph.nodes {
+        let Some(&to_node) = graph_nodes.get(&id) else {
+            continue;
+        };
+        for (input, argument) in node_inputs(node).into_iter().enumerate() {
+            if let Some(from) = visible_output(argument) {
+                expected.insert((
+                    from,
+                    InPinId {
+                        node: to_node,
+                        input,
+                    },
+                ));
+            }
+        }
+    }
+
+    let mut bindings = Vec::new();
+    walk_scopes(root_scope, &mut Vec::new(), target_blocks, &mut bindings);
+    for (node_id, block, semantic_pin) in bindings {
+        let Some(section) = target_blocks.get(block) else {
+            continue;
+        };
+        let Some(input) = scroll.displayed_pin(
+            CanvasNode::TargetBlock(block),
+            semantic_pin,
+            section.leaves.len(),
+        ) else {
+            continue;
+        };
+        if let (Some(from), Some(&to_node)) = (visible_output(node_id), target_nodes.get(&block)) {
+            expected.insert((
+                from,
+                InPinId {
+                    node: to_node,
+                    input,
+                },
+            ));
+        }
+    }
+
+    let endpoint_nodes = source_nodes
+        .values()
+        .chain(target_nodes.values())
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let existing = snarl.wires().collect::<std::collections::BTreeSet<_>>();
+    for &(from, to) in &existing {
+        if (endpoint_nodes.contains(&from.node) || endpoint_nodes.contains(&to.node))
+            && !expected.contains(&(from, to))
+        {
+            snarl.disconnect(from, to);
+        }
+    }
+    for (from, to) in expected {
+        if !existing.contains(&(from, to)) {
+            snarl.connect(from, to);
+        }
+    }
 }

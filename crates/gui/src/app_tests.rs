@@ -790,7 +790,7 @@ fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
     };
 
     let snarl = build_snarl(&project);
-    assert_eq!(snarl.nodes().count(), 3, "both source fields stay hidden");
+    assert_eq!(snarl.nodes().count(), 2, "both source fields stay hidden");
     let mut wires: Vec<_> = snarl
         .wires()
         .map(|(output, input)| (snarl[output.node], output.output, input.input))
@@ -800,7 +800,7 @@ fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
         wires,
         vec![
             (CanvasNode::SourceBlock(0), 0, 0),
-            (CanvasNode::SourceBlock(1), 0, 1),
+            (CanvasNode::SourceBlock(0), 1, 1),
         ]
     );
 }

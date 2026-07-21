@@ -10,6 +10,7 @@ struct Fixture {
     source_blocks: Vec<SourceBlock>,
     target_blocks: Vec<TargetBlock>,
     source_paths: SourcePathCatalog,
+    endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
     snarl: Snarl<CanvasNode>,
     source: SnarlNodeId,
     target: SnarlNodeId,
@@ -47,6 +48,7 @@ fn fixture() -> Fixture {
         source_blocks: source_blocks(&source_schema),
         target_blocks: target_blocks(&target_schema),
         source_paths,
+        endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
         snarl,
         source,
         target,
@@ -67,10 +69,14 @@ impl Fixture {
             source_paths: &self.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
             wire_color_mode: crate::appearance::WireColorMode::Theme,
+            endpoint_scroll: &mut self.endpoint_scroll,
+            endpoint_search_match: None,
             node_sizes: None,
             hovered_node: None,
             hovered_node_this_frame: None,
             camera_pan: egui::Vec2::ZERO,
+            camera_focus: None,
+            canvas_transform: None,
             pin_interaction_ids: Vec::new(),
             error: None,
         }
@@ -89,6 +95,17 @@ fn endpoint_labels_keep_the_field_name_when_compacting_deep_paths() {
 #[test]
 fn endpoint_labels_keep_short_paths_unchanged() {
     assert_eq!(compact_endpoint_label("Office/Name"), "Office/Name");
+}
+
+#[test]
+fn wider_endpoints_reveal_more_of_deep_field_paths() {
+    let path = "Interchange/Group/Message/LoopPO1/Product/PrimaryIdentifier";
+
+    let compact = compact_endpoint_label_to(path, 24);
+    let expanded = compact_endpoint_label_to(path, 52);
+
+    assert!(expanded.chars().count() > compact.chars().count());
+    assert!(path.ends_with(expanded.trim_start_matches("...")));
 }
 
 #[test]
@@ -177,6 +194,7 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
         "Workbook/Worksheets/Regional Offices/Departments/People/PrimaryKey".into();
     let mut snarl = std::mem::take(&mut fx.snarl);
     let mut node_sizes = std::collections::BTreeMap::new();
+    let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
 
     egui::__run_test_ui(|ui| {
         ui.set_min_size(egui::vec2(800.0, 600.0));
@@ -191,10 +209,14 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
             source_paths: &fx.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
             wire_color_mode: crate::appearance::WireColorMode::Theme,
+            endpoint_scroll: &mut endpoint_scroll,
+            endpoint_search_match: None,
             node_sizes: Some(&mut node_sizes),
             hovered_node: None,
             hovered_node_this_frame: None,
             camera_pan: egui::Vec2::ZERO,
+            camera_focus: None,
+            canvas_transform: None,
             pin_interaction_ids: Vec::new(),
             error: None,
         };
@@ -309,11 +331,9 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         },
     );
     let mut root_scope = Scope::default();
+    let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
     let mut snarl = Snarl::new();
-    let sources = [
-        snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::SourceBlock(0)),
-        snarl.insert_node(egui::pos2(0.0, 160.0), CanvasNode::SourceBlock(1)),
-    ];
+    let source = snarl.insert_node(egui::pos2(0.0, 0.0), CanvasNode::SourceBlock(0));
     let call = snarl.insert_node(egui::pos2(200.0, 0.0), CanvasNode::Graph(0));
     let mut viewer = GraphViewer {
         graph: &mut graph,
@@ -326,18 +346,22 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         source_paths: &source_paths,
         colors: crate::appearance::SemanticThemeColors::default(),
         wire_color_mode: crate::appearance::WireColorMode::Theme,
+        endpoint_scroll: &mut endpoint_scroll,
+        endpoint_search_match: None,
         node_sizes: None,
         hovered_node: None,
         hovered_node_this_frame: None,
         camera_pan: egui::Vec2::ZERO,
+        camera_focus: None,
+        canvas_transform: None,
         pin_interaction_ids: Vec::new(),
         error: None,
     };
 
-    for (pin, source) in sources.into_iter().enumerate() {
+    for pin in 0..2 {
         let from = snarl.out_pin(OutPinId {
             node: source,
-            output: 0,
+            output: pin,
         });
         let to = snarl.in_pin(InPinId {
             node: call,

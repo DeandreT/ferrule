@@ -32,12 +32,18 @@ mod node_palette;
 use graph_references::node_inputs;
 use node_palette::NodeTemplate;
 
+#[cfg(test)]
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
 const GRAPH_TITLE_CHAR_LIMIT: usize = 36;
 const SOURCE_FIELD_EDIT_WIDTH: f32 = 170.0;
 
+#[cfg(test)]
 fn compact_endpoint_label(path: &str) -> String {
-    if path.chars().count() <= ENDPOINT_LABEL_CHAR_LIMIT {
+    compact_endpoint_label_to(path, ENDPOINT_LABEL_CHAR_LIMIT)
+}
+
+fn compact_endpoint_label_to(path: &str, limit: usize) -> String {
+    if path.chars().count() <= limit {
         return path.to_string();
     }
 
@@ -48,7 +54,7 @@ fn compact_endpoint_label(path: &str) -> String {
             segments[segments.len() - 2],
             segments[segments.len() - 1]
         );
-        if tail.chars().count() <= ENDPOINT_LABEL_CHAR_LIMIT {
+        if tail.chars().count() <= limit {
             return tail;
         }
     }
@@ -56,7 +62,7 @@ fn compact_endpoint_label(path: &str) -> String {
     let suffix = path
         .chars()
         .rev()
-        .take(ENDPOINT_LABEL_CHAR_LIMIT - 3)
+        .take(limit.saturating_sub(3))
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
@@ -84,6 +90,7 @@ fn show_endpoint_label(
     path: &str,
     align: egui::Align,
     hover_text: impl Into<egui::WidgetText>,
+    highlighted: bool,
 ) {
     let clip_rect = ui.clip_rect();
     let row_height = ui.spacing().interact_size.y;
@@ -102,10 +109,20 @@ fn show_endpoint_label(
             egui::Align2::RIGHT_CENTER,
         ),
     };
+    let label_limit = ((row_rect.width() - row_height * 2.0) / 7.0)
+        .floor()
+        .clamp(12.0, 64.0) as usize;
+    if highlighted {
+        ui.painter().rect_filled(
+            row_rect.shrink2(egui::vec2(row_height, 1.0)),
+            2.0,
+            ui.visuals().selection.bg_fill,
+        );
+    }
     ui.painter().text(
         anchor,
         text_align,
-        compact_endpoint_label(path),
+        compact_endpoint_label_to(path, label_limit),
         egui::TextStyle::Body.resolve(ui.style()),
         ui.visuals().text_color(),
     );
@@ -124,10 +141,14 @@ pub struct GraphViewer<'a> {
     pub source_paths: &'a SourcePathCatalog,
     pub colors: SemanticThemeColors,
     pub wire_color_mode: WireColorMode,
+    pub endpoint_scroll: &'a mut crate::canvas_endpoints::EndpointScrollState,
+    pub endpoint_search_match: Option<(CanvasNode, usize)>,
     pub node_sizes: Option<&'a mut std::collections::BTreeMap<CanvasNode, egui::Vec2>>,
     pub hovered_node: Option<SnarlNodeId>,
     pub hovered_node_this_frame: Option<SnarlNodeId>,
     pub camera_pan: egui::Vec2,
+    pub camera_focus: Option<(egui::Pos2, egui::Pos2)>,
+    pub canvas_transform: Option<egui::emath::TSTransform>,
     pub pin_interaction_ids: Vec<egui::Id>,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
@@ -211,11 +232,33 @@ impl GraphViewer<'_> {
     }
 
     fn source_leaf(&self, block: usize, pin: usize) -> Option<&SourceLeaf> {
-        self.source_blocks.get(block)?.leaves.get(pin)
+        let section = self.source_blocks.get(block)?;
+        let semantic = self.endpoint_scroll.semantic_pin(
+            CanvasNode::SourceBlock(block),
+            pin,
+            section.leaves.len(),
+        )?;
+        section.leaves.get(semantic)
     }
 
     fn target_leaf(&self, block: usize, pin: usize) -> Option<&TargetLeaf> {
-        self.target_blocks.get(block)?.leaves.get(pin)
+        let section = self.target_blocks.get(block)?;
+        let semantic = self.endpoint_scroll.semantic_pin(
+            CanvasNode::TargetBlock(block),
+            pin,
+            section.leaves.len(),
+        )?;
+        section.leaves.get(semantic)
+    }
+
+    fn endpoint_semantic_pin(&self, node: CanvasNode, displayed_pin: usize) -> Option<usize> {
+        let total = match node {
+            CanvasNode::SourceBlock(block) => self.source_blocks.get(block)?.leaves.len(),
+            CanvasNode::TargetBlock(block) => self.target_blocks.get(block)?.leaves.len(),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => return Some(displayed_pin),
+        };
+        self.endpoint_scroll
+            .semantic_pin(node, displayed_pin, total)
     }
 
     fn placeholder_position(owner: egui::Pos2, input: usize, inputs: usize) -> egui::Pos2 {
@@ -677,7 +720,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         to_global: &mut egui::emath::TSTransform,
         _snarl: &mut Snarl<CanvasNode>,
     ) {
+        if let Some((graph_point, screen_point)) = self.camera_focus {
+            to_global.translation =
+                screen_point.to_vec2() - graph_point.to_vec2() * to_global.scaling;
+        }
         to_global.translation += self.camera_pan;
+        self.canvas_transform = Some(*to_global);
     }
 
     fn title(&mut self, node: &CanvasNode) -> String {
@@ -834,6 +882,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => (None, None),
         };
         if let Some(width) = endpoint_width {
+            let width = self.endpoint_scroll.width(canvas_node, width);
             // Account for the nested node/header frame margins. Pin labels are
             // painted independently so right-to-left rows cannot grow sideways.
             ui.set_min_width((width - 32.0).max(0.0));
@@ -854,6 +903,45 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         if ui.rect_contains_pointer(rect) {
             self.hovered_node_this_frame = Some(node);
         }
+        let canvas_node = snarl[node];
+        let endpoint = match canvas_node {
+            CanvasNode::SourceBlock(block) => self.source_blocks.get(block).map(|section| {
+                (
+                    section.leaves.len(),
+                    crate::app::endpoint_block_size(&section.title, &section.pin_labels).x,
+                    self.colors.source.to_egui(),
+                )
+            }),
+            CanvasNode::TargetBlock(block) => self.target_blocks.get(block).map(|section| {
+                (
+                    section.leaves.len(),
+                    crate::app::endpoint_block_size(&section.title, &section.pin_labels).x,
+                    self.colors.target.to_egui(),
+                )
+            }),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => None,
+        };
+        if let Some((total, natural_width, accent)) = endpoint {
+            let scrolled = crate::canvas_endpoints::show_scrollbar(
+                ui,
+                canvas_node,
+                rect,
+                total,
+                self.endpoint_scroll,
+                accent,
+            );
+            let resized = crate::canvas_endpoints::show_resize_handle(
+                ui,
+                canvas_node,
+                rect,
+                total,
+                natural_width,
+                self.endpoint_scroll,
+            );
+            if scrolled || resized {
+                ui.ctx().request_repaint();
+            }
+        }
         let size = rect.size();
         if size.x.is_finite()
             && size.y.is_finite()
@@ -861,17 +949,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             && size.y > 1.0
             && let Some(node_sizes) = self.node_sizes.as_deref_mut()
         {
-            node_sizes.insert(snarl[node], size);
+            node_sizes.insert(canvas_node, size);
         }
     }
 
     fn inputs(&mut self, node: &CanvasNode) -> usize {
         match node {
             CanvasNode::SourceBlock(_) => 0,
-            CanvasNode::TargetBlock(block) => self
-                .target_blocks
-                .get(*block)
-                .map_or(0, |section| section.leaves.len()),
+            CanvasNode::TargetBlock(block) => self.target_blocks.get(*block).map_or(0, |section| {
+                self.endpoint_scroll
+                    .visible_len(*node, section.leaves.len())
+            }),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 self.graph.nodes.get(id).map_or(0, Self::input_count)
             }
@@ -880,10 +968,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 
     fn outputs(&mut self, node: &CanvasNode) -> usize {
         match node {
-            CanvasNode::SourceBlock(block) => self
-                .source_blocks
-                .get(*block)
-                .map_or(0, |section| section.leaves.len()),
+            CanvasNode::SourceBlock(block) => self.source_blocks.get(*block).map_or(0, |section| {
+                self.endpoint_scroll
+                    .visible_len(*node, section.leaves.len())
+            }),
             CanvasNode::TargetBlock(_) => 0,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 1,
         }
@@ -892,7 +980,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     #[allow(refining_impl_trait)]
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let idx = pin.id.input;
-        let fill = match snarl[pin.id.node] {
+        let canvas_node = snarl[pin.id.node];
+        let semantic_idx = self.endpoint_semantic_pin(canvas_node, idx).unwrap_or(idx);
+        let fill = match canvas_node {
             CanvasNode::SourceBlock(_) => self.colors.source,
             CanvasNode::TargetBlock(_) => self.colors.target,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
@@ -928,8 +1018,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         };
         if let CanvasNode::TargetBlock(block) = snarl[pin.id.node] {
             if let Some(section) = self.target_blocks.get(block)
-                && let (Some(leaf), Some(label)) =
-                    (section.leaves.get(idx), section.pin_labels.get(idx))
+                && let (Some(leaf), Some(label)) = (
+                    section.leaves.get(semantic_idx),
+                    section.pin_labels.get(semantic_idx),
+                )
             {
                 let state = if pin.remotes.is_empty() {
                     "Unmapped target"
@@ -941,7 +1033,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     self.target_x12,
                     &leaf.label,
                 );
-                show_endpoint_label(ui, label, egui::Align::Min, hover);
+                show_endpoint_label(
+                    ui,
+                    label,
+                    egui::Align::Min,
+                    hover,
+                    self.endpoint_search_match == Some((canvas_node, semantic_idx)),
+                );
             }
         } else if let Some(label) = label {
             ui.label(label);
@@ -949,7 +1047,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         self.record_pin_interaction_id(ui);
         PinInfo::circle()
             .with_fill(fill.to_egui())
-            .with_wire_color(self.input_wire_color(pin, snarl[pin.id.node], idx))
+            .with_wire_color(self.input_wire_color(pin, canvas_node, semantic_idx))
     }
 
     #[allow(refining_impl_trait)]
@@ -962,9 +1060,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
             if let CanvasNode::SourceBlock(block) = snarl[pin.id.node]
                 && let Some(section) = self.source_blocks.get(block)
+                && let Some(semantic) = self.endpoint_scroll.semantic_pin(
+                    CanvasNode::SourceBlock(block),
+                    pin.id.output,
+                    section.leaves.len(),
+                )
                 && let (Some(leaf), Some(label)) = (
-                    section.leaves.get(pin.id.output),
-                    section.pin_labels.get(pin.id.output),
+                    section.leaves.get(semantic),
+                    section.pin_labels.get(semantic),
                 )
             {
                 let context = leaf.frame.as_ref().map_or_else(
@@ -983,7 +1086,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     self.source_x12,
                     &leaf.label,
                 );
-                show_endpoint_label(ui, label, egui::Align::Max, hover);
+                show_endpoint_label(
+                    ui,
+                    label,
+                    egui::Align::Max,
+                    hover,
+                    self.endpoint_search_match == Some((CanvasNode::SourceBlock(block), semantic)),
+                );
             }
             self.record_pin_interaction_id(ui);
             return PinInfo::circle()
