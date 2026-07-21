@@ -62,10 +62,16 @@ impl Fixture {
             extra_targets: &[],
             source_blocks: &self.source_blocks,
             target_blocks: &self.target_blocks,
+            source_x12: false,
+            target_x12: false,
             source_paths: &self.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
             wire_color_mode: crate::appearance::WireColorMode::Theme,
             node_sizes: None,
+            hovered_node: None,
+            hovered_node_this_frame: None,
+            camera_pan: egui::Vec2::ZERO,
+            pin_interaction_ids: Vec::new(),
             error: None,
         }
     }
@@ -86,6 +92,85 @@ fn endpoint_labels_keep_short_paths_unchanged() {
 }
 
 #[test]
+fn node_hover_emphasizes_incident_pins_without_spilling_across_fanout() {
+    let source = SnarlNodeId(1);
+    let hovered = SnarlNodeId(2);
+    let unrelated = SnarlNodeId(3);
+    let input = InPin {
+        id: InPinId {
+            node: hovered,
+            input: 0,
+        },
+        remotes: vec![OutPinId {
+            node: source,
+            output: 0,
+        }],
+    };
+    let single_output = OutPin {
+        id: OutPinId {
+            node: source,
+            output: 0,
+        },
+        remotes: vec![input.id],
+    };
+    let fanout = OutPin {
+        id: single_output.id,
+        remotes: vec![
+            input.id,
+            InPinId {
+                node: unrelated,
+                input: 0,
+            },
+        ],
+    };
+
+    assert_eq!(input_wire_emphasis(None, &input), WireEmphasis::Normal);
+    assert_eq!(
+        input_wire_emphasis(Some(hovered), &input),
+        WireEmphasis::Incident
+    );
+    assert_eq!(
+        input_wire_emphasis(Some(source), &input),
+        WireEmphasis::Incident
+    );
+    assert_eq!(
+        input_wire_emphasis(Some(unrelated), &input),
+        WireEmphasis::Unrelated
+    );
+    assert_eq!(
+        output_wire_emphasis(Some(hovered), &single_output),
+        WireEmphasis::Incident
+    );
+    assert_eq!(
+        output_wire_emphasis(Some(hovered), &fanout),
+        WireEmphasis::Unrelated
+    );
+    assert_eq!(
+        output_wire_emphasis(Some(source), &fanout),
+        WireEmphasis::Incident
+    );
+}
+
+#[test]
+fn recorded_pin_ids_match_snarl_drag_widgets() {
+    let mut fx = fixture();
+    let mut snarl = std::mem::take(&mut fx.snarl);
+
+    egui::__run_test_ui(|ui| {
+        ui.set_min_size(egui::vec2(800.0, 600.0));
+        let mut viewer = fx.viewer();
+        SnarlWidget::new().show(&mut snarl, &mut viewer, ui);
+
+        assert!(!viewer.pin_interaction_ids.is_empty());
+        assert!(viewer.pin_interaction_ids.iter().all(|id| {
+            ui.ctx()
+                .read_response(*id)
+                .is_some_and(|response| response.sense.senses_drag())
+        }));
+    });
+}
+
+#[test]
 fn long_endpoint_paths_do_not_expand_the_source_node() {
     let mut fx = fixture();
     fx.source_blocks[0].leaves[0].label =
@@ -101,10 +186,16 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
             extra_targets: &[],
             source_blocks: &fx.source_blocks,
             target_blocks: &fx.target_blocks,
+            source_x12: false,
+            target_x12: false,
             source_paths: &fx.source_paths,
             colors: crate::appearance::SemanticThemeColors::default(),
             wire_color_mode: crate::appearance::WireColorMode::Theme,
             node_sizes: Some(&mut node_sizes),
+            hovered_node: None,
+            hovered_node_this_frame: None,
+            camera_pan: egui::Vec2::ZERO,
+            pin_interaction_ids: Vec::new(),
             error: None,
         };
         SnarlWidget::new().show(&mut snarl, &mut viewer, ui);
@@ -230,10 +321,16 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         extra_targets: &[],
         source_blocks: &source_blocks,
         target_blocks: &target_blocks,
+        source_x12: false,
+        target_x12: false,
         source_paths: &source_paths,
         colors: crate::appearance::SemanticThemeColors::default(),
         wire_color_mode: crate::appearance::WireColorMode::Theme,
         node_sizes: None,
+        hovered_node: None,
+        hovered_node_this_frame: None,
+        camera_pan: egui::Vec2::ZERO,
+        pin_interaction_ids: Vec::new(),
         error: None,
     };
 

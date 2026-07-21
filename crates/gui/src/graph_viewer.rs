@@ -20,6 +20,7 @@ use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
+use crate::wire_colors::WireEmphasis;
 
 #[path = "graph_references.rs"]
 mod graph_references;
@@ -101,17 +102,80 @@ pub struct GraphViewer<'a> {
     pub extra_targets: &'a [NamedTarget],
     pub source_blocks: &'a [SourceBlock],
     pub target_blocks: &'a [TargetBlock],
+    pub source_x12: bool,
+    pub target_x12: bool,
     pub source_paths: &'a SourcePathCatalog,
     pub colors: SemanticThemeColors,
     pub wire_color_mode: WireColorMode,
     pub node_sizes: Option<&'a mut std::collections::BTreeMap<CanvasNode, egui::Vec2>>,
+    pub hovered_node: Option<SnarlNodeId>,
+    pub hovered_node_this_frame: Option<SnarlNodeId>,
+    pub camera_pan: egui::Vec2,
+    pub pin_interaction_ids: Vec<egui::Id>,
     /// Set when an interaction can't be completed (e.g. binding into a
     /// scope that doesn't exist yet); the app surfaces it in the status
     /// line.
     pub error: Option<String>,
 }
 
+fn input_wire_emphasis(hovered_node: Option<SnarlNodeId>, pin: &InPin) -> WireEmphasis {
+    let Some(hovered_node) = hovered_node else {
+        return WireEmphasis::Normal;
+    };
+    if pin.id.node == hovered_node || pin.remotes.iter().any(|remote| remote.node == hovered_node) {
+        WireEmphasis::Incident
+    } else {
+        WireEmphasis::Unrelated
+    }
+}
+
+fn output_wire_emphasis(hovered_node: Option<SnarlNodeId>, pin: &OutPin) -> WireEmphasis {
+    let Some(hovered_node) = hovered_node else {
+        return WireEmphasis::Normal;
+    };
+    if pin.id.node == hovered_node
+        || matches!(pin.remotes.as_slice(), [remote] if remote.node == hovered_node)
+    {
+        WireEmphasis::Incident
+    } else {
+        WireEmphasis::Unrelated
+    }
+}
+
 impl GraphViewer<'_> {
+    pub fn begin_node_hover_frame(&mut self, hovered_node: Option<SnarlNodeId>) {
+        self.hovered_node = hovered_node;
+        self.hovered_node_this_frame = None;
+    }
+
+    pub const fn end_node_hover_frame(&self) -> Option<SnarlNodeId> {
+        self.hovered_node_this_frame
+    }
+
+    fn input_wire_color(&self, pin: &InPin, node: CanvasNode, input: usize) -> egui::Color32 {
+        let base = crate::wire_colors::input_color(self.wire_color_mode, self.colors, node, input);
+        crate::wire_colors::with_emphasis(
+            base,
+            self.colors.canvas.to_egui(),
+            input_wire_emphasis(self.hovered_node, pin),
+        )
+    }
+
+    fn output_wire_color(&self, pin: &OutPin) -> egui::Color32 {
+        let base = crate::wire_colors::output_color(self.wire_color_mode, self.colors);
+        crate::wire_colors::with_emphasis(
+            base,
+            self.colors.canvas.to_egui(),
+            output_wire_emphasis(self.hovered_node, pin),
+        )
+    }
+
+    fn record_pin_interaction_id(&mut self, ui: &Ui) {
+        // egui-snarl 0.11 creates the pin's drag widget with this exact next
+        // auto ID immediately after `show_input`/`show_output` returns.
+        self.pin_interaction_ids.push(ui.next_auto_id());
+    }
+
     fn fresh_id(&self) -> NodeId {
         self.graph.nodes.keys().next_back().map_or(0, |max| max + 1)
     }
@@ -593,6 +657,14 @@ impl GraphViewer<'_> {
 }
 
 impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
+    fn current_transform(
+        &mut self,
+        to_global: &mut egui::emath::TSTransform,
+        _snarl: &mut Snarl<CanvasNode>,
+    ) {
+        to_global.translation += self.camera_pan;
+    }
+
     fn title(&mut self, node: &CanvasNode) -> String {
         match node {
             CanvasNode::SourceBlock(block) => self
@@ -699,30 +771,74 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         snarl: &mut Snarl<CanvasNode>,
     ) {
         let canvas_node = snarl[node];
-        let endpoint_width = match canvas_node {
-            CanvasNode::SourceBlock(block) => self.source_blocks.get(block).map(|section| {
-                crate::app::endpoint_block_size(&section.title, &section.pin_labels).x
-            }),
-            CanvasNode::TargetBlock(block) => self.target_blocks.get(block).map(|section| {
-                crate::app::endpoint_block_size(&section.title, &section.pin_labels).x
-            }),
-            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => None,
+        let (endpoint_width, endpoint_hint) = match canvas_node {
+            CanvasNode::SourceBlock(block) => {
+                self.source_blocks
+                    .get(block)
+                    .map_or((None, None), |section| {
+                        (
+                            Some(
+                                crate::app::endpoint_block_size(
+                                    &section.title,
+                                    &section.pin_labels,
+                                )
+                                .x,
+                            ),
+                            crate::x12_tooltips::endpoint_header_hint(
+                                self.source_x12,
+                                &section.title,
+                                section
+                                    .frame
+                                    .as_deref()
+                                    .and_then(|frame| frame.last())
+                                    .map(String::as_str),
+                            ),
+                        )
+                    })
+            }
+            CanvasNode::TargetBlock(block) => {
+                self.target_blocks
+                    .get(block)
+                    .map_or((None, None), |section| {
+                        (
+                            Some(
+                                crate::app::endpoint_block_size(
+                                    &section.title,
+                                    &section.pin_labels,
+                                )
+                                .x,
+                            ),
+                            crate::x12_tooltips::endpoint_header_hint(
+                                self.target_x12,
+                                &section.title,
+                                section.chain.last().map(String::as_str),
+                            ),
+                        )
+                    })
+            }
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => (None, None),
         };
         if let Some(width) = endpoint_width {
             // Account for the nested node/header frame margins. Pin labels are
             // painted independently so right-to-left rows cannot grow sideways.
             ui.set_min_width((width - 32.0).max(0.0));
         }
-        ui.label(self.title(&canvas_node));
+        let response = ui.label(self.title(&canvas_node));
+        if let Some(hint) = endpoint_hint {
+            response.on_hover_text(hint);
+        }
     }
 
     fn final_node_rect(
         &mut self,
         node: SnarlNodeId,
         rect: egui::Rect,
-        _ui: &mut Ui,
+        ui: &mut Ui,
         snarl: &mut Snarl<CanvasNode>,
     ) {
+        if ui.rect_contains_pointer(rect) {
+            self.hovered_node_this_frame = Some(node);
+        }
         let size = rect.size();
         if size.x.is_finite()
             && size.y.is_finite()
@@ -805,24 +921,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 } else {
                     "Mapped target"
                 };
-                show_endpoint_label(
-                    ui,
-                    label,
-                    egui::Align::Min,
+                let hover = crate::x12_tooltips::append_segment_for_path(
                     format!("{state}: {}", leaf.label),
+                    self.target_x12,
+                    &leaf.label,
                 );
+                show_endpoint_label(ui, label, egui::Align::Min, hover);
             }
         } else if let Some(label) = label {
             ui.label(label);
         }
-        PinInfo::circle().with_fill(fill.to_egui()).with_wire_color(
-            crate::wire_colors::input_color(
-                self.wire_color_mode,
-                self.colors,
-                snarl[pin.id.node],
-                idx,
-            ),
-        )
+        self.record_pin_interaction_id(ui);
+        PinInfo::circle()
+            .with_fill(fill.to_egui())
+            .with_wire_color(self.input_wire_color(pin, snarl[pin.id.node], idx))
     }
 
     #[allow(refining_impl_trait)]
@@ -851,11 +963,17 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         format!("Source: {}\nRepeating context: {frame}", leaf.label)
                     },
                 );
-                show_endpoint_label(ui, label, egui::Align::Max, context);
+                let hover = crate::x12_tooltips::append_segment_for_path(
+                    context,
+                    self.source_x12,
+                    &leaf.label,
+                );
+                show_endpoint_label(ui, label, egui::Align::Max, hover);
             }
-            return PinInfo::circle().with_fill(fill.to_egui()).with_wire_color(
-                crate::wire_colors::output_color(self.wire_color_mode, self.colors),
-            );
+            self.record_pin_interaction_id(ui);
+            return PinInfo::circle()
+                .with_fill(fill.to_egui())
+                .with_wire_color(self.output_wire_color(pin));
         };
         let mut new_call_arg_needed = false;
         let mut remove_call_wire = None;
@@ -1158,9 +1276,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
             self.remove_orphaned_placeholder(removed, snarl);
         }
-        PinInfo::circle().with_fill(fill.to_egui()).with_wire_color(
-            crate::wire_colors::output_color(self.wire_color_mode, self.colors),
-        )
+        self.record_pin_interaction_id(ui);
+        PinInfo::circle()
+            .with_fill(fill.to_egui())
+            .with_wire_color(self.output_wire_color(pin))
     }
 
     fn connect(&mut self, from: &OutPin, to: &InPin, snarl: &mut Snarl<CanvasNode>) {

@@ -38,6 +38,7 @@ pub fn show_schema_tree(
     schema: &SchemaNode,
     state: &SchemaExplorerState,
     id_salt: impl egui::AsIdSalt,
+    x12_descriptions: bool,
 ) -> bool {
     let query = SearchQuery::new(state.query());
     let plan = MatchPlan::build(schema, &query, &mut Vec::new());
@@ -45,7 +46,7 @@ pub fn show_schema_tree(
         return false;
     }
     ui.push_id(id_salt, |ui| {
-        show_node(ui, &plan, 0, state.is_filtering(), false)
+        show_node(ui, &plan, 0, state.is_filtering(), false, x12_descriptions)
     });
     true
 }
@@ -131,6 +132,7 @@ fn show_node(
     depth: usize,
     filtering: bool,
     reveal_subtree: bool,
+    x12_descriptions: bool,
 ) {
     if filtering && !reveal_subtree && plan.matches == 0 {
         return;
@@ -157,14 +159,30 @@ fn show_node(
                 .show(ui, |ui| {
                     let reveal_children = reveal_subtree || plan.self_matches;
                     for child in &plan.children {
-                        show_node(ui, child, depth + 1, filtering, reveal_children);
+                        show_node(
+                            ui,
+                            child,
+                            depth + 1,
+                            filtering,
+                            reveal_children,
+                            x12_descriptions,
+                        );
                     }
                 });
-            response
-                .header_response
-                .on_hover_text(format!("{leaves} scalar field(s)"));
+            response.header_response.on_hover_text(node_hover_text(
+                plan.node,
+                leaves,
+                x12_descriptions,
+            ));
         }
     }
+}
+
+fn node_hover_text(node: &SchemaNode, leaves: usize, x12_descriptions: bool) -> String {
+    crate::x12_tooltips::segment_description(x12_descriptions, &node.name).map_or_else(
+        || format!("{leaves} scalar field(s)"),
+        |description| format!("X12 {}: {description}\n{leaves} scalar field(s)", node.name),
+    )
 }
 
 fn node_label(node: &SchemaNode) -> String {
@@ -243,5 +261,17 @@ mod tests {
         assert!(state.is_filtering());
         state.clear();
         assert_eq!(state, SchemaExplorerState::default());
+    }
+
+    #[test]
+    fn x12_group_hover_adds_descriptions_only_when_enabled() {
+        let segment =
+            SchemaNode::group("BEG", vec![SchemaNode::scalar("BEG01", ScalarType::String)]);
+
+        assert_eq!(
+            node_hover_text(&segment, 1, true),
+            "X12 BEG: Beginning Segment for Purchase Order\n1 scalar field(s)"
+        );
+        assert_eq!(node_hover_text(&segment, 1, false), "1 scalar field(s)");
     }
 }
