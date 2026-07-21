@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use ir::{SchemaKind, Value};
-use mapping::{FlexTextLayout, Node, NodeId};
+use mapping::{FixedWidthRecordField, FlexCommand, FlexLineEnding, FlexTextLayout, Node, NodeId};
 
 use super::graph::GraphBuilder;
 use super::schema::{SchemaComponent, parse_u32, schema_node_at};
@@ -16,6 +17,91 @@ pub(super) fn read(
     component: &roxmltree::Node<'_, '_>,
     schema: SchemaComponent,
 ) -> Result<Recipe, String> {
+    let layout = schema
+        .options
+        .flextext
+        .clone()
+        .ok_or_else(|| "compiled configuration has no runtime layout".to_string())?;
+    build_recipe(component, &schema, layout, schema.ports.clone())
+}
+
+pub(super) fn read_fixed_width(
+    component: &roxmltree::Node<'_, '_>,
+    schema: SchemaComponent,
+) -> Result<Recipe, String> {
+    let fixed = schema
+        .options
+        .fixed_width
+        .as_ref()
+        .ok_or_else(|| "compiled fixed-length parser has no runtime layout".to_string())?;
+    let SchemaKind::Group { children, .. } = &schema.schema.kind else {
+        return Err("fixed-length parser row schema is not a group".to_string());
+    };
+    if children.len() != fixed.field_widths().len() {
+        return Err("fixed-length parser field declarations do not match its widths".to_string());
+    }
+    let fields = children
+        .iter()
+        .zip(fixed.field_widths())
+        .map(|(field, width)| {
+            let SchemaKind::Scalar { ty } = &field.kind else {
+                return Err(format!(
+                    "fixed-length parser field `{}` is not scalar",
+                    field.name
+                ));
+            };
+            let width = NonZeroU32::new(width.get()).ok_or_else(|| {
+                format!("fixed-length parser field `{}` has zero width", field.name)
+            })?;
+            FixedWidthRecordField::new(&field.name, *ty, width)
+                .map_err(|error| format!("invalid fixed-length parser field ({error})"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let block = schema
+        .ports
+        .iter()
+        .find(|(key, path)| schema.output_keys.contains(key) && path.is_empty())
+        .and_then(|(key, _)| {
+            component.descendants().find(|entry| {
+                entry.has_tag_name("entry") && parse_u32(entry.attribute("outkey")) == Some(*key)
+            })
+        })
+        .and_then(|entry| entry.attribute("name"))
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| "fixed-length string parser has no connected row output".to_string())?;
+    let layout = FlexTextLayout::new(
+        &schema.schema.name,
+        FlexCommand::FixedWidthRecords {
+            name: block.to_string(),
+            fields,
+            fill_char: fixed.fill_char(),
+            record_delimiters: fixed.record_delimiters(),
+            treat_empty_as_absent: fixed.treat_empty_as_absent(),
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .map_err(|error| format!("invalid fixed-length parser layout ({error})"))?;
+    let outputs = schema
+        .ports
+        .clone()
+        .into_iter()
+        .map(|(key, mut path)| {
+            if !path.is_empty() {
+                path.insert(0, block.to_string());
+            }
+            (key, path)
+        })
+        .collect();
+    build_recipe(component, &schema, layout, outputs)
+}
+
+fn build_recipe(
+    component: &roxmltree::Node<'_, '_>,
+    schema: &SchemaComponent,
+    layout: FlexTextLayout,
+    ports: BTreeMap<u32, Vec<String>>,
+) -> Result<Recipe, String> {
     let inputs = component
         .descendants()
         .filter(|node| node.has_tag_name("entry"))
@@ -24,12 +110,7 @@ pub(super) fn read(
     let [input] = inputs.as_slice() else {
         return Err("string parser requires exactly one run-time string input".to_string());
     };
-    let layout = schema
-        .options
-        .flextext
-        .ok_or_else(|| "compiled configuration has no runtime layout".to_string())?;
-    let outputs = schema
-        .ports
+    let outputs = ports
         .into_iter()
         .filter(|(key, _)| schema.output_keys.contains(key))
         .collect::<BTreeMap<_, _>>();
@@ -38,7 +119,7 @@ pub(super) fn read(
     }
     for (output, path) in &outputs {
         if !path.is_empty()
-            && !schema_node_at(&schema.schema, path)
+            && !schema_node_at(&layout.schema(), path)
                 .is_some_and(|node| matches!(node.kind, SchemaKind::Scalar { .. }))
         {
             return Err(format!(

@@ -74,6 +74,25 @@ fn source_layout_roundtrips_and_executes_identically() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn regex_switch_condition_roundtrips_losslessly() -> Result<(), Box<dyn Error>> {
+    let imported = mfd::import(&fixture("flextext-regex-switch.mfd"))?;
+    let temp = TempDir::new()?;
+    let design = temp.0.join("regex-map.mfd");
+
+    assert!(mfd::export(&imported.project, &design)?.is_empty());
+    let configuration = std::fs::read_to_string(temp.0.join("regex-map-source.mft"))?;
+    assert!(configuration.contains("Mode=\"ContentContainsRegex\""));
+    let roundtrip = mfd::import(&design)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert_eq!(
+        roundtrip.project.source_options.flextext,
+        imported.project.source_options.flextext
+    );
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    Ok(())
+}
+
+#[test]
 fn target_layout_roundtrips_and_renders_identically() -> Result<(), Box<dyn Error>> {
     let imported = mfd::import(&fixture("flextext-target.mfd"))?;
     let temp = TempDir::new()?;

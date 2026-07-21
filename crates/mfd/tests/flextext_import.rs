@@ -80,3 +80,41 @@ fn imports_external_target_and_renders_fixed_width_records() {
         "Quotes\nAda     1815Analytical  \nGrace   1906Compiler    "
     );
 }
+
+#[test]
+fn imports_and_executes_regex_switch_conditions() {
+    let imported = mfd::import(&fixture("flextext-regex-switch.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let layout = imported.project.source_options.flextext.as_ref().unwrap();
+    let parsed = format_flextext::from_str(
+        "prefix alert-42 suffix\nINFO ready\nplain\n",
+        &imported.project.source,
+        layout,
+    )
+    .unwrap();
+    let lines = parsed
+        .field("Lines")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(lines.len(), 3);
+    assert_eq!(
+        lines[0]
+            .field("Classified")
+            .and_then(|group| group.field("Alert"))
+            .and_then(Instance::as_scalar),
+        Some(&Value::String("prefix alert-42 suffix".into()))
+    );
+    assert!(
+        lines[1]
+            .field("Classified")
+            .and_then(|group| group.field("Info"))
+            .is_some()
+    );
+    assert!(
+        lines[2]
+            .field("Classified")
+            .and_then(|group| group.field("Other"))
+            .is_some()
+    );
+}

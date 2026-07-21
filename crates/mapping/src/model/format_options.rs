@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, ExternalSourceOptions,
     FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout, PdfLayout, ProtobufOptions,
-    SwiftMtLayout, TabularBoundaryKind, X12Separators, XbrlBoundaryOptions, XlsxHierarchicalLayout,
-    is_false,
+    SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators, XbrlBoundaryOptions,
+    XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -171,6 +171,10 @@ pub struct FormatOptions {
     /// to carry an `.xml` extension.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub xml_document: bool,
+    /// WSDL operation and message identity retained for canonical kind-17
+    /// request, response, or fault component export. Runtime I/O remains XML.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wsdl: Option<WsdlMessageOptions>,
     /// XML: the source path names a bounded local wildcard file set rather
     /// than one document. Hosts expand it beneath their declared input base
     /// and present the documents as one ordered source sequence.
@@ -233,6 +237,10 @@ pub struct FormatOptions {
     /// Empty means consecutive columns starting at A.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xlsx_columns: Vec<u32>,
+    /// XLSX: optional physical header text aligned with the schema fields.
+    /// This permits distinct field identifiers to address duplicate headers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xlsx_headers: Vec<String>,
     /// XLSX: replace the selected table in an existing workbook while
     /// preserving all cells and worksheets outside that table.
     #[serde(default, skip_serializing_if = "is_false")]

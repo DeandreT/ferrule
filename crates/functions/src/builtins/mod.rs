@@ -32,6 +32,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "add" => numeric(args, "add", i64::checked_add, |a, b| a + b),
         "subtract" => numeric(args, "subtract", i64::checked_sub, |a, b| a - b),
         "multiply" => multiply(args),
+        "sqlite_multiply" => sqlite_multiply(args),
         "divide" => divide(args),
         "equal" => comparison(args, "equal", |o| o == std::cmp::Ordering::Equal),
         "not_equal" => comparison(args, "not_equal", |o| o != std::cmp::Ordering::Equal),
@@ -64,6 +65,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "time_from_datetime" => datetime::time_from_datetime(args),
         "datetime_from_date_and_time" => datetime::datetime_from_date_and_time(args),
         "datetime_from_parts" => datetime::datetime_from_parts(args),
+        "duration_from_parts" => datetime::duration_from_parts(args),
         "datetime_add" => datetime_add::datetime_add(args),
         "parse_date" => datetime::parse_date(args),
         "parse_datetime" => datetime::parse_datetime(args),
@@ -551,6 +553,29 @@ fn multiply(args: &[Value]) -> Result<Value, FunctionError> {
         return Ok(binary);
     };
     Ok(Value::Float(decimal::product(args).unwrap_or(binary)))
+}
+
+fn sqlite_multiply(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "sqlite_multiply";
+    let [left, right] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: FUNCTION,
+            expected: 2,
+            got: args.len(),
+        });
+    };
+    if matches!(left, Value::Null) || matches!(right, Value::Null) {
+        return Ok(Value::Null);
+    }
+    match (
+        numeric_operand(left, FUNCTION)?,
+        numeric_operand(right, FUNCTION)?,
+    ) {
+        (NumericOperand::Int(left), NumericOperand::Int(right)) => Ok(left
+            .checked_mul(right)
+            .map_or_else(|| Value::Float(left as f64 * right as f64), Value::Int)),
+        (left, right) => Ok(Value::Float(left.as_f64() * right.as_f64())),
+    }
 }
 
 #[cfg(test)]

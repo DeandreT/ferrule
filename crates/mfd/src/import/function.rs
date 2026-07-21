@@ -57,6 +57,9 @@ pub(super) struct FnComponent {
     pub(super) output_pins: Vec<Option<u32>>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
     pub(super) input_type: Option<ScalarType>,
+    /// Design-time value used by an otherwise unconnected input parameter.
+    /// Database query parameters need this before the source is loaded.
+    pub(super) input_preview: Option<Value>,
     pub(super) constant: Option<(String, String)>,
     pub(super) valuemap: Option<ValueMapData>,
     /// Sort directions in key-index order; `Some` also identifies a sort
@@ -151,6 +154,23 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                 .map(parse_scalar_type)
         })
         .flatten();
+    let input_preview = (library == "core" && kind == 6)
+        .then(|| {
+            data.and_then(|data| data.descendants().find(|node| node.has_tag_name("input")))
+                .filter(|input| input.attribute("usepreviewvalue") == Some("1"))
+                .and_then(|input| {
+                    input.attribute("previewvalue").map(|value| {
+                        parse_constant(
+                            value,
+                            input
+                                .attribute("datatype")
+                                .or_else(|| input.attribute("type"))
+                                .unwrap_or_default(),
+                        )
+                    })
+                })
+        })
+        .flatten();
     let constant = data
         .and_then(|d| {
             d.children()
@@ -239,6 +259,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         outputs,
         output_pins,
         input_type,
+        input_preview,
         constant,
         valuemap,
         sort_directions,
@@ -632,6 +653,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "time-from-datetime" => "time_from_datetime",
         "datetime-from-date-and-time" => "datetime_from_date_and_time",
         "datetime-from-parts" => "datetime_from_parts",
+        "duration-from-parts" => "duration_from_parts",
         "datetime-add" => "datetime_add",
         "parse-date" => "parse_date",
         "parse-dateTime" => "parse_datetime",
@@ -683,6 +705,7 @@ mod tests {
             Some("datetime_from_date_and_time")
         );
         assert_eq!(map_name("datetime-from-parts"), Some("datetime_from_parts"));
+        assert_eq!(map_name("duration-from-parts"), Some("duration_from_parts"));
         assert_eq!(map_name("datetime-add"), Some("datetime_add"));
         assert_eq!(map_name("parse-date"), Some("parse_date"));
         assert_eq!(map_name("parse-dateTime"), Some("parse_datetime"));

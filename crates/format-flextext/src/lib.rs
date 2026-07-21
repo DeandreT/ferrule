@@ -6,7 +6,7 @@ use std::path::Path;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexTextLayout,
-    ManySplitter, OnceSplitter, StoreTrim, TrimSide,
+    MAX_FLEXTEXT_REGEX_COMPILED_BYTES, ManySplitter, OnceSplitter, StoreTrim, SwitchMode, TrimSide,
 };
 use thiserror::Error;
 
@@ -33,6 +33,8 @@ pub enum FlexTextError {
     TooManyNodes,
     #[error("record count exceeds the limit of {MAX_RECORDS}")]
     TooManyRecords,
+    #[error("switch regular expression at `{path}` could not be compiled: {message}")]
+    SwitchRegex { path: String, message: String },
     #[error("value at `{path}` exceeds the {MAX_VALUE_BYTES}-byte limit")]
     ValueTooLarge { path: String },
     #[error("invalid UTF-8 input: {0}")]
@@ -100,8 +102,9 @@ pub fn to_string(
         layout.command().output_name().into_iter(),
         layout.root_name(),
     )?;
-    let rendered = render_command(layout.command(), value, layout.root_name(), 1)?;
-    let rendered = normalize_line_endings(&rendered, layout.output_line_ending().as_str())?;
+    let line_ending = layout.output_line_ending().as_str();
+    let rendered = render_command(layout.command(), value, layout.root_name(), 1, line_ending)?;
+    let rendered = normalize_line_endings(&rendered, line_ending)?;
     let mut output = String::new();
     if layout.write_bom() {
         output.push('\u{feff}');
@@ -122,6 +125,7 @@ fn checked_schema(schema: &SchemaNode, layout: &FlexTextLayout) -> Result<(), Fl
 struct ParseState {
     nodes: usize,
     records: usize,
+    switch_regexes: HashMap<String, regex::Regex>,
 }
 
 impl ParseState {
@@ -207,15 +211,29 @@ fn parse_command(
             state.add_nodes(1)?;
             Ok(vec![(name.clone(), Instance::Repeated(items))])
         }
-        FlexCommand::FixedWidthRecords { name, fields } => {
+        FlexCommand::FixedWidthRecords {
+            name,
+            fields,
+            fill_char,
+            record_delimiters,
+            treat_empty_as_absent,
+        } => {
             let command_path = join_path(path, name);
-            let records = input_records(input)?;
+            let width = fields
+                .iter()
+                .try_fold(0_usize, |total, field| {
+                    total.checked_add(field.width().get() as usize)
+                })
+                .ok_or_else(|| data_error(&command_path, "fixed-width record width overflowed"))?;
+            let records = fixed_width_input_records(input, width, *record_delimiters)?;
             state.add_records(records.len())?;
             let mut items = Vec::with_capacity(records.len());
             for (index, record) in records.into_iter().enumerate() {
                 items.push(parse_fixed_record(
-                    record,
+                    &record,
                     fields,
+                    *fill_char,
+                    *treat_empty_as_absent,
                     &indexed_path(&command_path, index),
                     state,
                 )?);
@@ -245,6 +263,7 @@ fn parse_command(
         }
         FlexCommand::Switch {
             name,
+            mode,
             arms,
             default,
         } => {
@@ -252,7 +271,7 @@ fn parse_command(
             let mut fields = Vec::new();
             let mut matched = false;
             for arm in arms {
-                if input.starts_with(arm.prefix()) {
+                if switch_arm_matches(arm, input, &command_path, state)? {
                     matched = true;
                     fields.extend(parse_command(
                         arm.command(),
@@ -261,6 +280,9 @@ fn parse_command(
                         depth + 1,
                         state,
                     )?);
+                    if *mode == SwitchMode::FirstMatch {
+                        break;
+                    }
                 }
             }
             if !matched && let Some(default) = default {
@@ -279,6 +301,38 @@ fn parse_command(
             Ok(vec![(name.clone(), Instance::Group(fields))])
         }
     }
+}
+
+fn switch_arm_matches(
+    arm: &mapping::SwitchArm,
+    input: &str,
+    path: &str,
+    state: &mut ParseState,
+) -> Result<bool, FlexTextError> {
+    if !arm.contains_regex() {
+        return Ok(input.starts_with(arm.prefix()));
+    }
+    if !state.switch_regexes.contains_key(arm.prefix()) {
+        let pattern = compile_switch_regex(arm.prefix(), path)?;
+        state
+            .switch_regexes
+            .insert(arm.prefix().to_string(), pattern);
+    }
+    Ok(state
+        .switch_regexes
+        .get(arm.prefix())
+        .is_some_and(|pattern| pattern.is_match(input)))
+}
+
+fn compile_switch_regex(pattern: &str, path: &str) -> Result<regex::Regex, FlexTextError> {
+    regex::RegexBuilder::new(pattern)
+        .size_limit(MAX_FLEXTEXT_REGEX_COMPILED_BYTES)
+        .dfa_size_limit(MAX_FLEXTEXT_REGEX_COMPILED_BYTES)
+        .build()
+        .map_err(|error| FlexTextError::SwitchRegex {
+            path: path.to_string(),
+            message: error.to_string(),
+        })
 }
 
 fn parse_stored(
@@ -369,6 +423,20 @@ fn split_many<'a>(input: &'a str, splitter: &ManySplitter) -> Result<Vec<&'a str
             }
             Ok(chunks)
         }
+        ManySplitter::Delimiter(delimiter) => {
+            let mut chunks = Vec::new();
+            let mut split = input.split(delimiter).peekable();
+            while let Some(chunk) = split.next() {
+                if chunk.is_empty() && split.peek().is_none() {
+                    break;
+                }
+                if chunks.len() == MAX_RECORDS {
+                    return Err(FlexTextError::TooManyRecords);
+                }
+                chunks.push(chunk);
+            }
+            Ok(chunks)
+        }
         ManySplitter::LinesStartingWith(marker) => {
             let mut offsets = Vec::new();
             for offset in
@@ -425,9 +493,42 @@ fn input_records(input: &str) -> Result<Vec<&str>, FlexTextError> {
     Ok(records)
 }
 
+fn fixed_width_input_records(
+    input: &str,
+    width: usize,
+    delimited: bool,
+) -> Result<Vec<String>, FlexTextError> {
+    if input.is_empty() {
+        return Ok(Vec::new());
+    }
+    if delimited {
+        return input_records(input)
+            .map(|records| records.into_iter().map(str::to_string).collect());
+    }
+    let characters = input.chars().collect::<Vec<_>>();
+    if !characters.len().is_multiple_of(width) {
+        return Err(data_error(
+            "document",
+            format!(
+                "fixed-width input has {} character(s), which is not a multiple of record width {width}",
+                characters.len()
+            ),
+        ));
+    }
+    if characters.len() / width > MAX_RECORDS {
+        return Err(FlexTextError::TooManyRecords);
+    }
+    Ok(characters
+        .chunks(width)
+        .map(|chunk| chunk.iter().collect())
+        .collect())
+}
+
 fn parse_fixed_record(
     record: &str,
     fields: &[FixedWidthRecordField],
+    fill_char: char,
+    treat_empty_as_absent: bool,
     path: &str,
     state: &mut ParseState,
 ) -> Result<Instance, FlexTextError> {
@@ -453,11 +554,11 @@ fn parse_fixed_record(
             .iter()
             .collect::<String>();
         let raw = match field.ty() {
-            ScalarType::String => raw.trim_end_matches(' '),
-            _ => raw.trim_matches(' '),
+            ScalarType::String => raw.trim_end_matches(fill_char),
+            _ => raw.trim_matches(fill_char),
         };
         let field_path = join_path(path, field.name());
-        let value = parse_value(raw, field.ty(), true, &field_path)?;
+        let value = parse_value(raw, field.ty(), treat_empty_as_absent, &field_path)?;
         values.push((field.name().to_string(), Instance::Scalar(value)));
         offset += width;
     }
@@ -586,6 +687,7 @@ fn render_command(
     value: &Instance,
     path: &str,
     depth: usize,
+    line_ending: &str,
 ) -> Result<String, FlexTextError> {
     if depth > MAX_INSTANCE_DEPTH {
         return Err(FlexTextError::InstanceTooDeep);
@@ -598,17 +700,33 @@ fn render_command(
             first,
             second,
             ..
-        } => render_split_once(value, splitter, first, second, path, depth),
+        } => render_split_once(value, splitter, first, second, path, depth, line_ending),
         FlexCommand::SplitMany {
             splitter, child, ..
-        } => render_split_many(value, splitter, child, path, depth),
-        FlexCommand::FixedWidthRecords { fields, .. } => render_fixed_records(value, fields, path),
+        } => render_split_many(value, splitter, child, path, depth, line_ending),
+        FlexCommand::FixedWidthRecords {
+            fields,
+            fill_char,
+            record_delimiters,
+            ..
+        } => render_fixed_records(value, fields, *fill_char, *record_delimiters, path),
         FlexCommand::DelimitedRecords {
             dialect, fields, ..
         } => render_delimited_records(value, dialect, fields, path),
-        FlexCommand::Switch { arms, default, .. } => {
-            render_switch(value, arms, default.as_deref(), path, depth)
-        }
+        FlexCommand::Switch {
+            mode,
+            arms,
+            default,
+            ..
+        } => render_switch(
+            value,
+            *mode,
+            arms,
+            default.as_deref(),
+            path,
+            depth,
+            line_ending,
+        ),
     }
 }
 
@@ -619,6 +737,7 @@ fn render_split_once(
     second: &FlexCommand,
     path: &str,
     depth: usize,
+    line_ending: &str,
 ) -> Result<String, FlexTextError> {
     let fields = group_fields(value, path)?;
     reject_duplicate_fields(fields, path)?;
@@ -629,8 +748,8 @@ fn render_split_once(
             .flatten(),
         path,
     )?;
-    let first_text = render_optional_command(first, fields, path, depth + 1)?;
-    let second_text = render_optional_command(second, fields, path, depth + 1)?;
+    let first_text = render_optional_command(first, fields, path, depth + 1, line_ending)?;
+    let second_text = render_optional_command(second, fields, path, depth + 1, line_ending)?;
     match splitter {
         OnceSplitter::Delimiter(delimiter) => bounded_concat([
             first_text.as_str(),
@@ -686,6 +805,7 @@ fn render_split_many(
     child: &FlexCommand,
     path: &str,
     depth: usize,
+    line_ending: &str,
 ) -> Result<String, FlexTextError> {
     let items = repeated_items(value, path)?;
     if items.len() > MAX_RECORDS {
@@ -696,8 +816,27 @@ fn render_split_many(
         let item_path = indexed_path(path, index);
         let fields = group_fields(item, &item_path)?;
         let child_value = required_command_value(fields, child, &item_path)?;
-        let text = render_command(child, child_value, &item_path, depth + 1)?;
+        let text = render_command(child, child_value, &item_path, depth + 1, line_ending)?;
         match splitter {
+            ManySplitter::Delimiter(delimiter) => {
+                let normalized_text = normalize_line_endings(&text, line_ending)?;
+                let normalized_delimiter = normalize_line_endings(delimiter, line_ending)?;
+                if normalized_text.contains(&normalized_delimiter) {
+                    return Err(data_error(
+                        &item_path,
+                        "split item contains the record delimiter and cannot be written losslessly",
+                    ));
+                }
+                if normalized_text.is_empty() && index + 1 == items.len() {
+                    return Err(data_error(
+                        &item_path,
+                        "final delimiter-split item is empty and cannot be written losslessly",
+                    ));
+                }
+                if index > 0 {
+                    push_bounded(&mut output, delimiter)?;
+                }
+            }
             ManySplitter::FixedLines(lines) => {
                 let got = logical_line_count(&text);
                 if got != lines.get() as usize {
@@ -715,7 +854,10 @@ fn render_split_many(
             }
             ManySplitter::LinesStartingWith(_) => {}
         }
-        if !output.is_empty() && !output.ends_with('\n') {
+        if !matches!(splitter, ManySplitter::Delimiter(_))
+            && !output.is_empty()
+            && !output.ends_with('\n')
+        {
             push_bounded(&mut output, "\n")?;
         }
         push_bounded(&mut output, &text)?;
@@ -726,6 +868,8 @@ fn render_split_many(
 fn render_fixed_records(
     value: &Instance,
     fields: &[FixedWidthRecordField],
+    fill_char: char,
+    record_delimiters: bool,
     path: &str,
 ) -> Result<String, FlexTextError> {
     let items = repeated_items(value, path)?;
@@ -749,7 +893,7 @@ fn render_fixed_records(
                     format!("value has {got} characters, exceeding field width {width}"),
                 ));
             }
-            let padding = " ".repeat(width - got);
+            let padding = fill_char.to_string().repeat(width - got);
             if field.ty() == ScalarType::String {
                 push_bounded(&mut record, &raw)?;
                 push_bounded(&mut record, &padding)?;
@@ -760,7 +904,7 @@ fn render_fixed_records(
         }
         records.push(record);
     }
-    bounded_join(&records, "\n")
+    bounded_join(&records, if record_delimiters { "\n" } else { "" })
 }
 
 fn render_delimited_records(
@@ -794,10 +938,12 @@ fn render_delimited_records(
 
 fn render_switch(
     value: &Instance,
+    mode: SwitchMode,
     arms: &[mapping::SwitchArm],
     default: Option<&FlexCommand>,
     path: &str,
     depth: usize,
+    line_ending: &str,
 ) -> Result<String, FlexTextError> {
     let fields = group_fields(value, path)?;
     reject_duplicate_fields(fields, path)?;
@@ -806,30 +952,60 @@ fn render_switch(
         .filter_map(|arm| arm.command().output_name())
         .chain(default.and_then(FlexCommand::output_name));
     reject_unexpected_fields(fields, allowed, path)?;
-    let mut output = String::new();
-    let mut selected = false;
+    let mut rendered_arms = Vec::new();
     for arm in arms {
         if let Some(name) = arm.command().output_name()
             && let Some(value) = find_field(fields, name)
         {
-            selected = true;
-            push_bounded(
-                &mut output,
-                &render_command(arm.command(), value, &join_path(path, name), depth + 1)?,
-            )?;
+            rendered_arms.push(render_command(
+                arm.command(),
+                value,
+                &join_path(path, name),
+                depth + 1,
+                line_ending,
+            )?);
         }
     }
-    if !selected
-        && let Some(default) = default
-        && let Some(name) = default.output_name()
-        && let Some(value) = find_field(fields, name)
-    {
-        push_bounded(
-            &mut output,
-            &render_command(default, value, &join_path(path, name), depth + 1)?,
-        )?;
+    let rendered_default = default
+        .and_then(|command| {
+            command
+                .output_name()
+                .and_then(|name| find_field(fields, name).map(|value| (command, name, value)))
+        })
+        .map(|(command, name, value)| {
+            render_command(
+                command,
+                value,
+                &join_path(path, name),
+                depth + 1,
+                line_ending,
+            )
+        })
+        .transpose()?;
+    if !rendered_arms.is_empty() && rendered_default.is_some() {
+        return Err(FlexTextError::Data {
+            path: path.to_string(),
+            message: "switch instance contains both an arm and its default output".to_string(),
+        });
     }
-    Ok(output)
+    if mode == SwitchMode::FirstMatch && rendered_arms.len() > 1 {
+        return Err(FlexTextError::Data {
+            path: path.to_string(),
+            message: "first-match switch instance contains more than one arm output".to_string(),
+        });
+    }
+    if mode == SwitchMode::AllPossible && rendered_arms.windows(2).any(|pair| pair[0] != pair[1]) {
+        return Err(FlexTextError::Data {
+            path: path.to_string(),
+            message: "all-possible switch arm outputs do not reconstruct the same input"
+                .to_string(),
+        });
+    }
+    Ok(rendered_arms
+        .into_iter()
+        .next()
+        .or(rendered_default)
+        .unwrap_or_default())
 }
 
 fn render_optional_command(
@@ -837,13 +1013,14 @@ fn render_optional_command(
     fields: &[(String, Instance)],
     path: &str,
     depth: usize,
+    line_ending: &str,
 ) -> Result<String, FlexTextError> {
     let Some(name) = command.output_name() else {
         return Ok(String::new());
     };
     let value = find_field(fields, name)
         .ok_or_else(|| data_error(path, format!("missing field `{name}`")))?;
-    render_command(command, value, &join_path(path, name), depth)
+    render_command(command, value, &join_path(path, name), depth, line_ending)
 }
 
 fn render_scalar(instance: &Instance, ty: ScalarType, path: &str) -> Result<String, FlexTextError> {

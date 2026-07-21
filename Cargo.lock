@@ -1820,6 +1820,7 @@ version = "0.1.0"
 dependencies = [
  "ir",
  "mapping",
+ "regex",
  "thiserror 2.0.18",
 ]
 
@@ -2804,6 +2805,7 @@ name = "mapping"
 version = "0.1.0"
 dependencies = [
  "ir",
+ "regex",
  "serde",
  "serde_json",
 ]

@@ -233,6 +233,7 @@ fn xlsx_layout_options_default_empty_and_roundtrip() {
     assert!(defaults.xlsx_sheet.is_none());
     assert!(defaults.xlsx_start_row.is_none());
     assert!(defaults.xlsx_columns.is_empty());
+    assert!(defaults.xlsx_headers.is_empty());
     assert!(defaults.xlsx_rows.is_empty());
     assert!(defaults.xlsx_composite.is_none());
     assert!(defaults.xlsx_grid.is_none());
@@ -248,6 +249,7 @@ fn xlsx_layout_options_default_empty_and_roundtrip() {
         xlsx_sheet: Some("Revenue".into()),
         xlsx_start_row: Some(5),
         xlsx_columns: vec![2, 4, 7],
+        xlsx_headers: vec!["Item".into(), "Amount".into(), "Amount".into()],
         ..FormatOptions::default()
     };
     let encoded = serde_json::to_string(&options).unwrap();
@@ -256,6 +258,7 @@ fn xlsx_layout_options_default_empty_and_roundtrip() {
     assert_eq!(decoded.xlsx_sheet.as_deref(), Some("Revenue"));
     assert_eq!(decoded.xlsx_start_row, Some(5));
     assert_eq!(decoded.xlsx_columns, vec![2, 4, 7]);
+    assert_eq!(decoded.xlsx_headers, vec!["Item", "Amount", "Amount"]);
 
     let transposed = FormatOptions {
         xlsx_rows: vec![1, 3, 5],

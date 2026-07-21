@@ -11,6 +11,7 @@ use super::source::SourcePath;
 
 mod catalog;
 mod correlated;
+mod joined;
 mod sql;
 
 pub(super) use catalog::read_embedded_catalog;
@@ -23,6 +24,17 @@ pub(super) struct DbQuery {
     predicates: Vec<QueryPredicate>,
     order: Option<QueryOrder>,
     cardinality: QueryCardinality,
+    required_paths: Vec<Vec<String>>,
+    computed_ports: BTreeMap<u32, DbComputedExpression>,
+}
+
+#[derive(Clone)]
+enum DbComputedExpression {
+    Multiply {
+        left: Vec<String>,
+        right: Vec<String>,
+        ty: ScalarType,
+    },
 }
 
 #[cfg(test)]
@@ -33,6 +45,8 @@ pub(super) fn at_most_one_query_for_test(collection: Vec<String>) -> DbQuery {
         predicates: Vec::new(),
         order: None,
         cardinality: QueryCardinality::AtMostOne,
+        required_paths: Vec::new(),
+        computed_ports: BTreeMap::new(),
     }
 }
 
@@ -53,6 +67,7 @@ struct QueryPredicate {
 enum QueryOperator {
     Equal,
     Like,
+    Greater,
 }
 
 #[derive(Clone)]
@@ -206,7 +221,17 @@ pub(super) fn read_component(
             "query name encodes a correlation but no relation metadata matches it".to_string(),
         );
     }
-    read_uncorrelated_component(component, mfd_path, &connection, query_name, false)
+    read_uncorrelated_component(component, mfd_path, &connection, query_name, false).or_else(
+        |ordinary_reason| {
+            joined::read_component(component, mfd_path, &connection, query_name).map_err(
+                |joined_reason| {
+                    format!(
+                        "{ordinary_reason}; relational query lowering also failed: {joined_reason}"
+                    )
+                },
+            )
+        },
+    )
 }
 
 pub(super) fn read_inline_component(
@@ -343,6 +368,8 @@ fn read_uncorrelated_component(
             predicates,
             order: parsed.order,
             cardinality: parsed.cardinality,
+            required_paths: Vec::new(),
+            computed_ports: BTreeMap::new(),
         }],
         dynamic_json: None,
     })
@@ -677,6 +704,37 @@ fn ensure_unique_names(label: &str, names: &[String]) -> Result<(), String> {
 }
 
 impl GraphBuilder<'_> {
+    pub(super) fn db_computed_projection_node(&mut self, key: u32) -> Option<NodeId> {
+        if let Some(node) = self.source_node_function_nodes.get(&key) {
+            return Some(*node);
+        }
+        let (source, expression) =
+            self.sources
+                .iter()
+                .enumerate()
+                .find_map(|(source, component)| {
+                    component.db_queries.iter().find_map(|query| {
+                        query
+                            .computed_ports
+                            .get(&key)
+                            .cloned()
+                            .map(|expression| (source, expression))
+                    })
+                })?;
+        let DbComputedExpression::Multiply { left, right, ty } = expression;
+        let left = self.source_value_path(source, left);
+        let right = self.source_value_path(source, right);
+        let left = self.source_field_at(&left)?;
+        let right = self.source_field_at(&right)?;
+        let raw = self.alloc(Node::Call {
+            function: "sqlite_multiply".to_string(),
+            args: vec![left, right],
+        });
+        let node = self.apply_source_node_functions(key, ty, raw);
+        self.source_node_function_nodes.insert(key, node);
+        Some(node)
+    }
+
     pub(super) fn binding_node_at_anchor(
         &mut self,
         key: u32,
@@ -684,7 +742,7 @@ impl GraphBuilder<'_> {
         active_anchor: &[String],
     ) -> Option<NodeId> {
         let unscoped_query = self.sources.iter().enumerate().any(|(source, component)| {
-            component.ports.contains_key(&key)
+            db_query_owns_output(component, key)
                 && !component.db_queries.is_empty()
                 && !self.query_scope_sources.contains(&source)
         });
@@ -715,7 +773,7 @@ impl GraphBuilder<'_> {
             .sources
             .iter()
             .enumerate()
-            .find(|(_, component)| component.ports.contains_key(&key))
+            .find(|(_, component)| db_query_owns_output(component, key))
             && !component.db_queries.is_empty()
             && !self.query_scope_sources.contains(&source)
         {
@@ -800,6 +858,25 @@ impl GraphBuilder<'_> {
             collection.path = query.collection.clone();
             at_most_one |= query.collection == source_path.path
                 && query.cardinality == QueryCardinality::AtMostOne;
+            for path in query.required_paths {
+                let mut required = collection.clone();
+                required.path.extend(path);
+                let required = self.source_value_path(required.source, required.path);
+                let field = self
+                    .source_field_at(&required)
+                    .ok_or_else(|| "joined query required field is unavailable".to_string())?;
+                let exists = self.alloc(Node::Call {
+                    function: "exists".to_string(),
+                    args: vec![field],
+                });
+                filter = Some(match filter {
+                    Some(existing) => self.alloc(Node::Call {
+                        function: "and".to_string(),
+                        args: vec![existing, exists],
+                    }),
+                    None => exists,
+                });
+            }
             for predicate in query.predicates {
                 if matches!(predicate.operand, QueryOperand::Correlated) {
                     continue;
@@ -855,18 +932,17 @@ impl GraphBuilder<'_> {
                 input_key,
                 ty,
             } => {
-                if ty != column_type {
-                    return Err(format!(
-                        "query `{}` parameter `:{name}` type {ty:?} does not match column type {column_type:?}",
-                        self.sources[source_path.source]
-                            .db_queries
-                            .iter()
-                            .find(|query| query.collection == source_path.path)
-                            .map_or("unknown", |query| query.name.as_str())
-                    ));
-                }
                 let value = self.static_query_parameter(input_key, 0)?;
-                coerce_value(value, ty)?
+                let query_name = self.sources[source_path.source]
+                    .db_queries
+                    .iter()
+                    .find(|query| query.collection == source_path.path)
+                    .map_or("unknown", |query| query.name.as_str());
+                coerce_value(value, column_type).map_err(|reason| {
+                    format!(
+                        "query `{query_name}` parameter `:{name}` declared as {ty:?} cannot be converted: {reason}"
+                    )
+                })?
             }
             QueryOperand::Correlated => {
                 return Err(
@@ -888,6 +964,7 @@ impl GraphBuilder<'_> {
             function: match predicate.operator {
                 QueryOperator::Equal => "equal",
                 QueryOperator::Like => "sql_like",
+                QueryOperator::Greater => "greater_than",
             }
             .to_string(),
             args: vec![column, operand],
@@ -937,13 +1014,16 @@ impl GraphBuilder<'_> {
             return Ok(parse_constant(value, datatype));
         }
         if is_input(component) {
-            let transparent_input = component
-                .inputs
-                .first()
-                .copied()
-                .flatten()
-                .ok_or_else(|| "query parameter input has no upstream pin".to_string())?;
-            return self.static_query_parameter(transparent_input, depth + 1);
+            let transparent_input = component.inputs.first().copied().flatten();
+            return match transparent_input {
+                Some(input) if self.edge_from.contains_key(&input) => {
+                    self.static_query_parameter(input, depth + 1)
+                }
+                _ => component.input_preview.clone().ok_or_else(|| {
+                    "query parameter input has neither an upstream value nor an enabled preview value"
+                        .to_string()
+                }),
+            };
         }
         Err(format!(
             "query parameter uses dynamic function `{}`; only literal constants are supported",
@@ -957,6 +1037,14 @@ pub(super) fn source_query_is_at_most_one(source: &SchemaComponent, path: &[Stri
         .db_queries
         .iter()
         .any(|query| query.collection == path && query.cardinality == QueryCardinality::AtMostOne)
+}
+
+fn db_query_owns_output(component: &SchemaComponent, key: u32) -> bool {
+    component.ports.contains_key(&key)
+        || component
+            .db_queries
+            .iter()
+            .any(|query| query.computed_ports.contains_key(&key))
 }
 
 fn coerce_value(value: Value, ty: ScalarType) -> Result<Value, String> {
@@ -978,6 +1066,16 @@ fn coerce_value(value: Value, ty: ScalarType) -> Result<Value, String> {
             Ok(Value::Float(value as f64))
         }
         (Value::Float(value), ScalarType::Float) if value.is_finite() => Ok(Value::Float(value)),
+        (Value::String(value), ScalarType::Int) => value
+            .parse::<i64>()
+            .map(Value::Int)
+            .map_err(|_| "query operand is not an integer".to_string()),
+        (Value::String(value), ScalarType::Float) => value
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite())
+            .map(Value::Float)
+            .ok_or_else(|| "query operand is not a finite number".to_string()),
         (Value::Null, _) => Err("query parameters cannot be null".to_string()),
         (value, expected) => Err(format!(
             "query operand has type {}, expected {expected:?}",
@@ -1034,6 +1132,26 @@ mod tests {
         ] {
             assert!(Parser::new(sql).and_then(Parser::parse).is_err(), "{sql}");
         }
+    }
+
+    #[test]
+    fn parses_bounded_joined_projection_and_predicate() {
+        let parsed = Parser::new(
+            "SELECT (Units * Cost) AS Total, Purchase.Id, Item.Label FROM Purchase INNER JOIN Item ON Purchase.ItemId = Item.Id WHERE Purchase.Units > :Minimum",
+        )
+        .and_then(Parser::parse_joined)
+        .unwrap();
+        assert_eq!(parsed.primary_table, "Purchase");
+        assert_eq!(parsed.joined_table, "Item");
+        assert_eq!(parsed.projections.len(), 3);
+        assert!(matches!(
+            parsed.projections[0].expr,
+            sql::JoinedProjectionExpr::Multiply(_, _)
+        ));
+        assert!(matches!(
+            parsed.predicate_operand,
+            ParsedOperand::Parameter(ref name) if name == "Minimum"
+        ));
     }
 
     #[test]

@@ -6,7 +6,7 @@ use ir::{ScalarType, SchemaNode};
 use mapping::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
     FlexTextLayout, FormatOptions, MAX_FLEXTEXT_LAYOUT_DEPTH, MAX_FLEXTEXT_LAYOUT_NODES,
-    ManySplitter, OnceSplitter, StoreTrim, SwitchArm, TrimSide,
+    ManySplitter, OnceSplitter, StoreTrim, SwitchArm, SwitchMode, TrimSide,
 };
 
 use super::{
@@ -236,6 +236,9 @@ fn parse_split_many(
     state: &mut ParseState,
 ) -> Result<FlexCommand, String> {
     let splitter = match (node.attribute("Mode"), node.attribute("Behavior")) {
+        (None | Some(""), None | Some("")) => {
+            ManySplitter::Delimiter(value_child(node, "Separator")?)
+        }
         (Some("Fix"), _) => ManySplitter::FixedLines(nonzero_attribute(node, "Offset")?),
         (Some("DynLS"), Some("LineStartsWith")) => {
             ManySplitter::LinesStartingWith(value_child(node, "Separator")?)
@@ -284,12 +287,11 @@ fn parse_switch(
     depth: usize,
     state: &mut ParseState,
 ) -> Result<FlexCommand, String> {
-    if node.attribute("Mode") != Some("AllPossible") {
-        return Err(format!(
-            "unsupported Switch mode `{}`",
-            node.attribute("Mode").unwrap_or("")
-        ));
-    }
+    let mode = match node.attribute("Mode") {
+        None | Some("") => SwitchMode::FirstMatch,
+        Some("AllPossible") => SwitchMode::AllPossible,
+        Some(mode) => return Err(format!("unsupported Switch mode `{mode}`")),
+    };
     let conditions =
         child(node, "Conditions").ok_or_else(|| "Switch has no conditions".to_string())?;
     let mut arms = Vec::new();
@@ -312,11 +314,19 @@ fn parse_switch(
                         .map_err(|error| format!("invalid Switch condition ({error})"))?,
                 );
             }
+            Some("ContentContainsRegex") => {
+                let pattern = value_child(&condition, "Value")?;
+                arms.push(
+                    SwitchArm::new_contains_regex(pattern, command)
+                        .map_err(|error| format!("invalid Switch condition ({error})"))?,
+                );
+            }
             Some(mode) => return Err(format!("unsupported Switch condition mode `{mode}`")),
         }
     }
     Ok(FlexCommand::Switch {
         name: value_child(node, "Name")?,
+        mode,
         arms,
         default,
     })
@@ -335,6 +345,9 @@ fn parse_fixed_records(node: &roxmltree::Node<'_, '_>) -> Result<FlexCommand, St
     Ok(FlexCommand::FixedWidthRecords {
         name: value_child(node, "RecordName")?,
         fields,
+        fill_char: ' ',
+        record_delimiters: true,
+        treat_empty_as_absent: true,
     })
 }
 

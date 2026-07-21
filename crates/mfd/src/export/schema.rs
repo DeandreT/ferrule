@@ -40,6 +40,9 @@ pub(super) fn side_format(instance_path: &Option<String>, options: &FormatOption
     if options.pdf.is_some() {
         return SideFormat::Pdf;
     }
+    if options.wsdl.is_some() {
+        return SideFormat::Xml;
+    }
     if options.flextext.is_some() {
         return SideFormat::FlexText;
     }
@@ -214,6 +217,19 @@ pub(super) fn render_schema_component(
             });
         }
         SideFormat::Xml => {
+            if options.wsdl.is_some() {
+                return super::wsdl::render(super::wsdl::RenderArgs {
+                    schema,
+                    ports,
+                    side,
+                    instance_path,
+                    options,
+                    target_branches,
+                    component_uid,
+                    force_root_port,
+                    default_output,
+                });
+            }
             let schema_file = format!("{stem}-{sibling_suffix}.xsd");
             let namespace = format_xml::xsd::export_namespace(schema)?;
             let instance_root = format!(
@@ -639,6 +655,13 @@ pub(super) fn render_schema_component(
                 )));
             }
             let columns = xlsx_columns(fields.len(), &options.xlsx_columns, side_name)?;
+            if !options.xlsx_headers.is_empty() && options.xlsx_headers.len() != fields.len() {
+                return Err(MfdError::Unsupported(format!(
+                    "the {side_name} XLSX layout has {} header value(s) for {} field(s)",
+                    options.xlsx_headers.len(),
+                    fields.len()
+                )));
+            }
             let sheet = options
                 .xlsx_sheet
                 .as_deref()
@@ -649,19 +672,33 @@ pub(super) fn render_schema_component(
             } else {
                 ""
             };
+            let update_existing = if options.xlsx_update_existing {
+                " updateexistingfile=\"1\""
+            } else {
+                ""
+            };
             let mut cells = String::new();
-            for ((name, ty), column) in fields.iter().zip(columns) {
+            for (index, ((name, ty), column)) in fields.iter().zip(columns).enumerate() {
                 let key = ports.required_key_for_abs(&[(*name).to_string()], "XLSX cell")?;
                 let (datatype, storage_type) = xlsx_type_name(*ty);
+                let annotation = options
+                    .xlsx_headers
+                    .get(index)
+                    .map_or(*name, String::as_str);
+                let semantic_name = if annotation != *name {
+                    format!(" ferrulefield=\"{}\"", xml_escape(name))
+                } else {
+                    String::new()
+                };
                 let _ = write!(
                     cells,
-                    "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" {attr}=\"{key}\" annotation=\"{}\" datatype=\"{datatype}\">\n\
+                    "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Cell\" {attr}=\"{key}\" annotation=\"{}\"{semantic_name} datatype=\"{datatype}\">\n\
                      \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"logical-and\" library=\"core\">\n\
                      \t\t\t\t\t\t\t\t\t\t\t\t\t<expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"n\"/></expression><expression><constant value=\"{column}\" datatype=\"long\"/></expression></function></expression>\n\
                      \t\t\t\t\t\t\t\t\t\t\t\t\t<expression><function name=\"equal\" library=\"core\"><expression><attribute name=\"t\"/></expression><expression><constant value=\"{storage_type}\"/></expression></function></expression>\n\
                      \t\t\t\t\t\t\t\t\t\t\t\t</function></expression></condition>\n\
                      \t\t\t\t\t\t\t\t\t\t\t</entry>\n",
-                    xml_escape(name),
+                    xml_escape(annotation),
                 );
             }
             let _ = write!(
@@ -688,7 +725,7 @@ pub(super) fn render_schema_component(
                  \t\t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t\t</entry>\n\
                  \t\t\t\t\t\t</root>\n\
-                 \t\t\t\t\t\t<excel{instance}/>\n\
+                 \t\t\t\t\t\t<excel{instance}{update_existing}/>\n\
                  \t\t\t\t\t</data>\n\
                  \t\t\t\t</component>\n",
                 xml_escape(component_name),

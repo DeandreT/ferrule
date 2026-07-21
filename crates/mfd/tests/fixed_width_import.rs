@@ -89,11 +89,40 @@ fn unsupported_text_modes_have_specific_warnings() {
             && warning.contains("configuration `legacy.mft` was not found")
     }));
     assert!(imported.warnings.iter().any(|warning| {
-        warning.contains("fixed-length component `parse-record`")
-            && warning.contains("string-parse parameters")
+        warning.contains("fixed-length string parser `parse-record`")
+            && warning.contains("component could not be compiled")
     }));
     assert!(imported.warnings.iter().any(|warning| {
         warning.contains("fixed-length component `legacy-encoding`")
             && warning.contains("assumes UTF-8")
     }));
+}
+
+#[test]
+fn imports_inline_fixed_width_string_parser_and_executes_per_source_row() {
+    let imported = mfd::import(&fixture("fixed-width-string-parser.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let source = Instance::Repeated(vec![
+        Instance::Group(vec![(
+            "Raw".into(),
+            Instance::Scalar(Value::String("007Ada___".into())),
+        )]),
+        Instance::Group(vec![(
+            "Raw".into(),
+            Instance::Scalar(Value::String("012Grace_".into())),
+        )]),
+    ]);
+    let output = engine::run(&imported.project, &source).unwrap();
+    let rows = output.as_repeated().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0].field("Code").and_then(Instance::as_scalar),
+        Some(&Value::Int(7))
+    );
+    assert_eq!(
+        rows[1].field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Grace".into()))
+    );
 }
