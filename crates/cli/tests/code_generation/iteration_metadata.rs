@@ -495,7 +495,7 @@ fn iteration_metadata_matches_engine_and_generated_backends() -> TestResult<()> 
     let csharp_output = directory.0.join("csharp");
     generate_project(&project_path, &csharp_output, GenerateTarget::CSharp)?;
     write_csharp_harness(&csharp_output)?;
-    let csharp = Command::new("dotnet")
+    let csharp = dotnet_command(&csharp_output)
         .args([
             "run",
             "--project",

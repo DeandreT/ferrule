@@ -69,6 +69,25 @@ impl Drop for TempDir {
     }
 }
 
+fn dotnet_command(sandbox: &Path) -> Command {
+    let home = sandbox.join(".dotnet-home");
+    let packages = sandbox.join(".nuget-packages");
+    let temp = sandbox.join(".tmp");
+    let _ = std::fs::create_dir_all(&home);
+    let _ = std::fs::create_dir_all(&packages);
+    let _ = std::fs::create_dir_all(&temp);
+
+    let mut command = Command::new("dotnet");
+    command
+        .env("DOTNET_CLI_HOME", home)
+        .env("DOTNET_SKIP_FIRST_TIME_EXPERIENCE", "1")
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .env("NUGET_PACKAGES", packages)
+        .env("TMPDIR", temp);
+    command
+}
+
 fn string(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
 }
@@ -787,7 +806,7 @@ static void Assert(bool condition)
 }
 "#,
     )?;
-    let command = Command::new("dotnet")
+    let command = dotnet_command(&output)
         .args([
             "run",
             "--project",
@@ -1002,7 +1021,7 @@ static void Assert(bool condition)
 }
 "#,
     )?;
-    let command = Command::new("dotnet")
+    let command = dotnet_command(&output)
         .args([
             "run",
             "--project",
