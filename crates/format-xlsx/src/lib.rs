@@ -23,7 +23,7 @@ pub use grid::{from_bytes_grid, read_grid};
 pub use hierarchical::{
     from_bytes_hierarchical, read_hierarchical, to_bytes_hierarchical, write_hierarchical,
 };
-pub use update::update;
+pub use update::{update, update_with_options};
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
@@ -45,6 +45,8 @@ pub enum XlsxFormatError {
     InvalidCoordinate,
     #[error("expected {expected} column selector(s), got {got}")]
     ColumnCount { expected: usize, got: usize },
+    #[error("expected {expected} header value(s), got {got}")]
+    HeaderCount { expected: usize, got: usize },
     #[error("expected {expected} row selector(s), got {got}")]
     RowCount { expected: usize, got: usize },
     #[error("row {row}: column `{field}` expected {expected:?}, got `{value}`")]
@@ -94,6 +96,15 @@ pub enum XlsxFormatError {
 const MAX_EXACT_F64_INTEGER: i64 = 1_i64 << f64::MANTISSA_DIGITS;
 const MAX_WORKSHEET_ROW: u32 = 1_048_576;
 const MAX_WORKSHEET_COLUMN: u32 = 16_384;
+
+#[derive(Clone, Copy, Debug)]
+pub struct FlatTableWriteOptions<'a> {
+    pub sheet: Option<&'a str>,
+    pub start_row: u32,
+    pub columns: &'a [u32],
+    pub headers: &'a [String],
+    pub has_header: bool,
+}
 
 #[derive(Debug)]
 struct TransposedField<'a> {
@@ -422,7 +433,27 @@ pub fn write(
     columns: &[u32],
     has_header: bool,
 ) -> Result<(), XlsxFormatError> {
-    let bytes = to_bytes(schema, rows, sheet, start_row, columns, has_header)?;
+    write_with_options(
+        path,
+        schema,
+        rows,
+        FlatTableWriteOptions {
+            sheet,
+            start_row,
+            columns,
+            headers: &[],
+            has_header,
+        },
+    )
+}
+
+pub fn write_with_options(
+    path: &Path,
+    schema: &SchemaNode,
+    rows: &[Instance],
+    options: FlatTableWriteOptions<'_>,
+) -> Result<(), XlsxFormatError> {
+    let bytes = to_bytes_with_options(schema, rows, options)?;
     std::fs::write(path, bytes)?;
     Ok(())
 }
@@ -440,10 +471,41 @@ pub fn to_bytes(
     columns: &[u32],
     has_header: bool,
 ) -> Result<Vec<u8>, XlsxFormatError> {
+    to_bytes_with_options(
+        schema,
+        rows,
+        FlatTableWriteOptions {
+            sheet,
+            start_row,
+            columns,
+            headers: &[],
+            has_header,
+        },
+    )
+}
+
+pub fn to_bytes_with_options(
+    schema: &SchemaNode,
+    rows: &[Instance],
+    options: FlatTableWriteOptions<'_>,
+) -> Result<Vec<u8>, XlsxFormatError> {
+    let FlatTableWriteOptions {
+        sheet,
+        start_row,
+        columns,
+        headers,
+        has_header,
+    } = options;
     if start_row == 0 || start_row > MAX_WORKSHEET_ROW {
         return Err(XlsxFormatError::InvalidCoordinate);
     }
     let fields = row_fields(schema)?;
+    if !headers.is_empty() && headers.len() != fields.len() {
+        return Err(XlsxFormatError::HeaderCount {
+            expected: fields.len(),
+            got: headers.len(),
+        });
+    }
     let columns = column_indexes(fields.len(), columns)?;
     let records = rows
         .iter()
@@ -458,8 +520,9 @@ pub fn to_bytes(
     }
     let table_row = start_row - 1;
     if has_header {
-        for ((name, _), column) in fields.iter().zip(&columns) {
-            worksheet.write_string(table_row, u16_column(*column)?, *name)?;
+        for (index, ((name, _), column)) in fields.iter().zip(&columns).enumerate() {
+            let header = headers.get(index).map_or(*name, String::as_str);
+            worksheet.write_string(table_row, u16_column(*column)?, header)?;
         }
     }
     let data_row = table_row
@@ -715,6 +778,34 @@ mod tests {
         let actual = from_bytes(&bytes, &schema(), Some("Revenue"), 3, &[2, 4, 6], true).unwrap();
 
         assert_eq!(actual, vec![rows().remove(0)]);
+    }
+
+    #[test]
+    fn byte_writer_preserves_duplicate_physical_headers() {
+        let schema = SchemaNode::group(
+            "contacts",
+            vec![
+                SchemaNode::scalar("Phone", ScalarType::String),
+                SchemaNode::scalar("Phone_2", ScalarType::String),
+            ],
+        );
+        let headers = vec!["Phone".to_string(), "Phone".to_string()];
+        let bytes = to_bytes_with_options(
+            &schema,
+            &[],
+            FlatTableWriteOptions {
+                sheet: None,
+                start_row: 1,
+                columns: &[],
+                headers: &headers,
+                has_header: true,
+            },
+        )
+        .unwrap();
+        let range = worksheet_range(&bytes, None).unwrap();
+
+        assert_eq!(range.get_value((0, 0)), Some(&Data::String("Phone".into())));
+        assert_eq!(range.get_value((0, 1)), Some(&Data::String("Phone".into())));
     }
 
     #[test]

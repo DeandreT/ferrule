@@ -3,7 +3,7 @@ use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{
     Binding, DynamicBinding, DynamicSourcePath, Graph, NamedSource, Node, PdfCapture, PdfCommand,
     PdfLayout, PdfPageSelection, PdfRegion, Project, Scope, ScopeConstruction, SequenceExpr,
-    SequenceWindow, XbrlBoundaryOptions,
+    SequenceWindow, WsdlMessageOptions, XbrlBoundaryOptions,
 };
 use std::num::NonZeroU32;
 
@@ -60,6 +60,57 @@ fn accepts_a_valid_project_and_relative_source_paths() {
     );
 
     assert!(validate(&project).is_empty());
+}
+
+#[test]
+fn validates_flat_xlsx_header_and_update_options_before_execution() {
+    let mut project = valid_project();
+    project.source_options.xlsx_update_existing = true;
+    project.target_options.xlsx_headers = vec!["first".into(), "extra".into()];
+    project.target_options.xlsx_rows = vec![1];
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("valid only for mapping targets")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("only with a flat XLSX table")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue
+                .message
+                .contains("2 value(s) for 1 flat schema field(s)")
+    }));
+}
+
+#[test]
+fn validates_wsdl_roles_xml_identity_and_format_exclusivity() {
+    let mut project = valid_project();
+    project.source_options.wsdl = Some(
+        WsdlMessageOptions::response("contract.wsdl", "Service", "Port", "Operation").unwrap(),
+    );
+    project.source_options.json_document = true;
+    project.target_options.wsdl =
+        Some(WsdlMessageOptions::request("contract.wsdl", "Service", "Port", "Operation").unwrap());
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options" && issue.message.contains("must be a request")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("requires XML document identity")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "source format options"
+            && issue.message.contains("another format identity")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options" && issue.message.contains("response or fault")
+    }));
 }
 
 #[test]

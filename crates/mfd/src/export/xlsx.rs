@@ -25,6 +25,15 @@ pub(super) struct RenderArgs<'a> {
 /// Renders a retained transposed, composite, or two-dimensional XLSX source.
 /// `None` leaves ordinary flat worksheet rendering to `schema`.
 pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
+    if !args.options.xlsx_headers.is_empty()
+        && (args.options.xlsx_grid.is_some()
+            || args.options.xlsx_composite.is_some()
+            || !args.options.xlsx_rows.is_empty())
+    {
+        return Err(unsupported(
+            "flat XLSX header overrides cannot be combined with a retained non-flat layout",
+        ));
+    }
     if let Some(layout) = &args.options.xlsx_grid {
         return render_grid(&args, layout).map(Some);
     }
@@ -43,6 +52,11 @@ pub(super) fn render_hierarchical(
     layout: &XlsxHierarchicalLayout,
     default_output: bool,
 ) -> Result<String, MfdError> {
+    if !args.options.xlsx_headers.is_empty() {
+        return Err(unsupported(
+            "flat XLSX header overrides cannot be combined with a hierarchical layout",
+        ));
+    }
     if layout.worksheets_path != ["Worksheets"] || layout.worksheet_name_path != ["Name"] {
         return Err(unsupported(
             "hierarchical XLSX target paths must use canonical `Worksheets/Name` fields",

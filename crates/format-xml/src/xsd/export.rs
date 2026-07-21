@@ -60,12 +60,31 @@ fn recursive_export_anchors(
     for (anchor, node) in references {
         let mut candidates = Vec::new();
         collect_concrete_anchors(schema, &anchor, &mut candidates);
-        let [candidate] = candidates.as_slice() else {
+        let Some(candidate) = candidates.first().copied() else {
             return Err(XmlFormatError::UnsupportedRecursiveAnchor { node, anchor });
         };
-        anchors.insert(anchor, *candidate);
+        if !candidates
+            .iter()
+            .skip(1)
+            .all(|other| same_recursive_anchor_definition(candidate, other))
+        {
+            return Err(XmlFormatError::UnsupportedRecursiveAnchor { node, anchor });
+        }
+        anchors.insert(anchor, candidate);
     }
     Ok(anchors)
+}
+
+fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bool {
+    left.name == right.name
+        && left.recursive_ref == right.recursive_ref
+        && left.attribute == right.attribute
+        && left.text == right.text
+        && left.fixed == right.fixed
+        && left.value_generation == right.value_generation
+        && left.alternative_mode == right.alternative_mode
+        && left.xml_repeating_sequences == right.xml_repeating_sequences
+        && left.kind == right.kind
 }
 
 fn collect_recursive_references(
@@ -117,6 +136,11 @@ fn validate_export_node(
     root_name: &str,
     recursive_anchors: &BTreeMap<String, &SchemaNode>,
 ) -> Result<(), XmlFormatError> {
+    if !node.xml_repeating_sequences_are_valid() {
+        return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
+            group: node.name.clone(),
+        });
+    }
     if node.attribute && node.text {
         return Err(XmlFormatError::ConflictingSchemaRoles {
             node: node.name.clone(),
@@ -214,7 +238,7 @@ fn write_element(
     write_element_required(
         node,
         depth,
-        true,
+        ElementOccurrence::Required,
         root_name,
         recursive_anchors,
         alternatives,
@@ -222,10 +246,17 @@ fn write_element(
     )
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ElementOccurrence {
+    Required,
+    Optional,
+    RepeatingRequired,
+}
+
 fn write_element_required(
     node: &SchemaNode,
     depth: usize,
-    required: bool,
+    occurrence: ElementOccurrence,
     root_name: &str,
     recursive_anchors: &BTreeMap<String, &SchemaNode>,
     alternatives: &AlternativeExportPlan<'_>,
@@ -238,9 +269,11 @@ fn write_element_required(
         ));
         return Ok(());
     }
-    let occurs = if node.repeating {
+    let occurs = if node.repeating && occurrence == ElementOccurrence::RepeatingRequired {
+        " maxOccurs=\"unbounded\""
+    } else if node.repeating {
         " minOccurs=\"0\" maxOccurs=\"unbounded\""
-    } else if !required {
+    } else if occurrence == ElementOccurrence::Optional {
         " minOccurs=\"0\""
     } else {
         ""
@@ -378,21 +411,98 @@ fn write_complex_type(
     out.push_str(&format!(
         "{pad}<xs:complexType{name}{mixed}>\n{pad}  <xs:sequence>\n"
     ));
-    for child in nested_elements {
+    write_nested_elements(
+        node,
+        &nested_elements,
+        depth + 2,
+        root_name,
+        recursive_anchors,
+        alternatives,
+        out,
+    )?;
+    out.push_str(&format!("{pad}  </xs:sequence>\n"));
+    for attr in attrs {
+        write_attribute(attr, depth + 1, out)?;
+    }
+    out.push_str(&format!("{pad}</xs:complexType>\n"));
+    Ok(())
+}
+
+fn write_nested_elements(
+    group: &SchemaNode,
+    children: &[&SchemaNode],
+    depth: usize,
+    root_name: &str,
+    recursive_anchors: &BTreeMap<String, &SchemaNode>,
+    alternatives: &AlternativeExportPlan<'_>,
+    out: &mut String,
+) -> Result<(), XmlFormatError> {
+    for child in children {
+        let sequence = group.xml_repeating_sequences.iter().find(|sequence| {
+            sequence
+                .members
+                .first()
+                .is_some_and(|member| member.name == child.name)
+        });
+        if let Some(sequence) = sequence {
+            let pad = "  ".repeat(depth);
+            let min_occurs = if sequence.required {
+                ""
+            } else {
+                " minOccurs=\"0\""
+            };
+            out.push_str(&format!(
+                "{pad}<xs:sequence{min_occurs} maxOccurs=\"unbounded\">\n"
+            ));
+            for member in &sequence.members {
+                let child = children
+                    .iter()
+                    .find(|child| child.name == member.name)
+                    .ok_or_else(|| XmlFormatError::UnsupportedSchemaRole {
+                        node: group.name.clone(),
+                        role: "repeating sequence with a missing member",
+                        kind: "group",
+                    })?;
+                let mut occurrence = (*child).clone();
+                occurrence.repeating = member.repeating;
+                let requirement = if member.required && member.repeating {
+                    ElementOccurrence::RepeatingRequired
+                } else if member.required {
+                    ElementOccurrence::Required
+                } else {
+                    ElementOccurrence::Optional
+                };
+                write_element_required(
+                    &occurrence,
+                    depth + 1,
+                    requirement,
+                    root_name,
+                    recursive_anchors,
+                    alternatives,
+                    out,
+                )?;
+            }
+            out.push_str(&format!("{pad}</xs:sequence>\n"));
+            continue;
+        }
+        if group.xml_repeating_sequences.iter().any(|sequence| {
+            sequence
+                .members
+                .iter()
+                .skip(1)
+                .any(|member| member.name == child.name)
+        }) {
+            continue;
+        }
         write_element(
             child,
-            depth + 2,
+            depth,
             root_name,
             recursive_anchors,
             alternatives,
             out,
         )?;
     }
-    out.push_str(&format!("{pad}  </xs:sequence>\n"));
-    for attr in attrs {
-        write_attribute(attr, depth + 1, out)?;
-    }
-    out.push_str(&format!("{pad}</xs:complexType>\n"));
     Ok(())
 }
 

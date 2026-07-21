@@ -50,7 +50,9 @@ fn exports_and_reimports_flat_xlsx_target() {
     project.target_options.xlsx_sheet = Some("People & Ages".into());
     project.target_options.xlsx_start_row = Some(4);
     project.target_options.xlsx_columns = vec![5, 2];
-    project.target_options.has_header_row = Some(false);
+    project.target_options.xlsx_headers = vec!["Contact".into(), "Contact".into()];
+    project.target_options.has_header_row = Some(true);
+    project.target_options.xlsx_update_existing = true;
 
     let dir = TempDir::new("target");
     let design = dir.0.join("mapping.mfd");
@@ -61,16 +63,18 @@ fn exports_and_reimports_flat_xlsx_target() {
     assert!(text.contains("library=\"xlsx\""), "{text}");
     assert!(text.contains("kind=\"26\""), "{text}");
     assert!(
-        text.contains("<excel outputinstance=\"reports/people.xlsx\"/>"),
+        text.contains("<excel outputinstance=\"reports/people.xlsx\" updateexistingfile=\"1\"/>"),
         "{text}"
     );
     assert!(text.contains("value=\"People &amp; Ages\""), "{text}");
     assert!(text.contains("<range id=\"1\" start=\"4\"/>"), "{text}");
-    assert!(text.contains("annotation=\"Name\" datatype=\"string\""));
-    assert!(text.contains("annotation=\"Age\" datatype=\"long\""));
+    assert_eq!(text.matches("annotation=\"Contact\"").count(), 2);
+    assert!(text.contains("ferrulefield=\"Name\""), "{text}");
+    assert!(text.contains("ferrulefield=\"Age\""), "{text}");
     assert!(text.contains("constant value=\"2\" datatype=\"long\""));
     assert!(text.contains("constant value=\"5\" datatype=\"long\""));
-    assert!(!text.contains("enabletitlerow=\"1\""), "{text}");
+    assert!(text.contains("enabletitlerow=\"1\""), "{text}");
+    assert!(text.contains("updateexistingfile=\"1\""), "{text}");
     assert!(!dir.0.join("mapping-target.xsd").exists());
 
     let imported = mfd::import(&design).unwrap();
@@ -86,7 +90,12 @@ fn exports_and_reimports_flat_xlsx_target() {
     );
     assert_eq!(imported.project.target_options.xlsx_start_row, Some(4));
     assert_eq!(imported.project.target_options.xlsx_columns, vec![5, 2]);
-    assert_eq!(imported.project.target_options.has_header_row, Some(false));
+    assert_eq!(
+        imported.project.target_options.xlsx_headers,
+        ["Contact", "Contact"]
+    );
+    assert_eq!(imported.project.target_options.has_header_row, Some(true));
+    assert!(imported.project.target_options.xlsx_update_existing);
     assert_eq!(
         imported.project.target_options.tabular_kind,
         Some(TabularBoundaryKind::Xlsx)

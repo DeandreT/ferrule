@@ -396,6 +396,134 @@ pub(super) fn datetime_from_parts(args: &[Value]) -> Result<Value, FunctionError
     Ok(Value::String(output))
 }
 
+pub(super) fn duration_from_parts(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "duration_from_parts";
+    if !(3..=8).contains(&args.len()) {
+        return Err(FunctionError::ArityMismatch {
+            function: FUNCTION,
+            expected: 3,
+            got: args.len(),
+        });
+    }
+    let required = [
+        integer_part(&args[0], FUNCTION)?,
+        integer_part(&args[1], FUNCTION)?,
+        integer_part(&args[2], FUNCTION)?,
+    ];
+    let optional_integer = |index: usize| -> Result<i64, FunctionError> {
+        match args.get(index) {
+            None | Some(Value::Null) => Ok(0),
+            Some(value) => integer_part(value, FUNCTION),
+        }
+    };
+    let hour = optional_integer(3)?;
+    let minute = optional_integer(4)?;
+    let second = optional_integer(5)?;
+    let millisecond = match args.get(6) {
+        None | Some(Value::Null) => 0.0,
+        Some(value) => decimal_part(value, FUNCTION)?,
+    };
+    let negative = match args.get(7) {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(value)) => *value,
+        Some(value) => {
+            return Err(FunctionError::TypeMismatch {
+                function: FUNCTION,
+                got: value.type_name(),
+            });
+        }
+    };
+    if required
+        .into_iter()
+        .chain([hour, minute, second])
+        .any(|part| part < 0)
+        || !millisecond.is_finite()
+        || !(0.0..1000.0).contains(&millisecond)
+    {
+        return invalid(FUNCTION);
+    }
+    let [year, month, day] = required;
+    let has_date = year != 0 || month != 0 || day != 0;
+    let has_time = hour != 0 || minute != 0 || second != 0 || millisecond != 0.0;
+    let mut output = if negative {
+        "-P".to_string()
+    } else {
+        "P".to_string()
+    };
+    if year != 0 {
+        output.push_str(&format!("{year}Y"));
+    }
+    if month != 0 {
+        output.push_str(&format!("{month}M"));
+    }
+    if day != 0 {
+        output.push_str(&format!("{day}D"));
+    }
+    if has_time {
+        output.push('T');
+        if hour != 0 {
+            output.push_str(&format!("{hour}H"));
+        }
+        if minute != 0 {
+            output.push_str(&format!("{minute}M"));
+        }
+        if second != 0 || millisecond != 0.0 {
+            output.push_str(&second.to_string());
+            if millisecond != 0.0 {
+                let Some(fraction) = shifted_decimal_fraction(millisecond, 3) else {
+                    return invalid(FUNCTION);
+                };
+                output.push_str(&fraction);
+            }
+            output.push('S');
+        }
+    }
+    if !has_date && !has_time {
+        output.push_str("T0S");
+    }
+    Ok(Value::String(output))
+}
+
+fn shifted_decimal_fraction(value: f64, places: i32) -> Option<String> {
+    let lexical = value.to_string();
+    let (mantissa, exponent) = match lexical.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, exponent.parse::<i32>().ok()?),
+        None => (lexical.as_str(), 0),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    if whole.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let mut digits = String::with_capacity(whole.len() + fraction.len());
+    digits.push_str(whole);
+    digits.push_str(fraction);
+    let decimal_position = i32::try_from(whole.len())
+        .ok()?
+        .checked_add(exponent)?
+        .checked_sub(places)?;
+    let mut shifted = String::from(".");
+    if decimal_position < 0 {
+        shifted.push_str(&"0".repeat(decimal_position.unsigned_abs() as usize));
+        shifted.push_str(&digits);
+    } else {
+        let decimal_position = usize::try_from(decimal_position).ok()?;
+        if decimal_position >= digits.len() {
+            shifted.push_str(&digits);
+            shifted.push_str(&"0".repeat(decimal_position - digits.len()));
+        } else {
+            shifted.push_str(&digits[..decimal_position]);
+            shifted.push_str(&digits[decimal_position..]);
+        }
+    }
+    while shifted.ends_with('0') {
+        shifted.pop();
+    }
+    (shifted != ".").then_some(shifted)
+}
+
 fn integer_part(value: &Value, function: &'static str) -> Result<i64, FunctionError> {
     let parsed = match value {
         Value::Int(value) => Some(*value),

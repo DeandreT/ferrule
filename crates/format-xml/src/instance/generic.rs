@@ -34,13 +34,21 @@ pub(super) fn read_generic_element(
             group: schema.name.clone(),
         });
     }
-    read_group_fields(element, children, true, root_schema, recursion_depth)
+    read_group_fields(
+        element,
+        children,
+        true,
+        !schema.xml_repeating_sequences.is_empty(),
+        root_schema,
+        recursion_depth,
+    )
 }
 
 pub(super) fn read_group_fields(
     element: &roxmltree::Node,
     children: &[SchemaNode],
     generic_element: bool,
+    retain_element_order: bool,
     root_schema: &SchemaNode,
     recursion_depth: usize,
 ) -> Result<Instance, XmlFormatError> {
@@ -138,10 +146,11 @@ pub(super) fn read_group_fields(
             }
         }
     }
-    if children.iter().any(|child| child.text) && element.children().any(|node| node.is_element()) {
+    let mixed = children.iter().any(|child| child.text);
+    if (mixed || retain_element_order) && element.children().any(|node| node.is_element()) {
         fields.push((
             XML_MIXED_CONTENT_FIELD.to_string(),
-            Instance::Repeated(mixed_content_items(element, children, &fields)),
+            Instance::Repeated(mixed_content_items(element, children, &fields, mixed)),
         ));
     }
     Ok(Instance::Group(fields))
@@ -173,12 +182,16 @@ fn mixed_content_items(
     element: &roxmltree::Node<'_, '_>,
     children: &[SchemaNode],
     fields: &[(String, Instance)],
+    include_text: bool,
 ) -> Vec<Instance> {
     let mut occurrence = std::collections::BTreeMap::<&str, usize>::new();
     let mut generic_index = 0usize;
     element
         .children()
         .filter_map(|node| {
+            if node.is_text() && !include_text {
+                return None;
+            }
             let (name, text, value) = if node.is_text() {
                 (
                     String::new(),

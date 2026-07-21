@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     FlexCommand, FlexLineEnding, FlexTextLayout, FormatOptions, ManySplitter, OnceSplitter,
-    TrimSide,
+    SwitchMode, TrimSide,
 };
 
 use crate::MfdError;
@@ -117,6 +117,7 @@ fn has_conflicting_options(options: &FormatOptions) -> bool {
         || options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
@@ -176,6 +177,11 @@ fn render_command(
             child,
         } => {
             match splitter {
+                ManySplitter::Delimiter(separator) => {
+                    let _ = writeln!(output, "{pad}<SplitMultiple>");
+                    value_element(output, indent + 2, "Separator", separator);
+                    let _ = writeln!(output, "{pad}  <RegexPattern/>");
+                }
                 ManySplitter::FixedLines(lines) => {
                     let _ = writeln!(
                         output,
@@ -217,7 +223,18 @@ fn render_command(
         FlexCommand::Ignore => {
             let _ = writeln!(output, "{pad}<Ignore/>");
         }
-        FlexCommand::FixedWidthRecords { name, fields } => {
+        FlexCommand::FixedWidthRecords {
+            name,
+            fields,
+            fill_char,
+            record_delimiters,
+            treat_empty_as_absent,
+        } => {
+            if *fill_char != ' ' || !record_delimiters || !treat_empty_as_absent {
+                return Err(unsupported(format!(
+                    "the {side} FlexText layout uses non-default fixed-width record settings, which have no lossless canonical .mft representation"
+                )));
+            }
             let _ = writeln!(output, "{pad}<FLF>");
             value_element(output, indent + 2, "RecordName", name);
             let _ = writeln!(output, "{pad}  <Fields>");
@@ -275,14 +292,25 @@ fn render_command(
         }
         FlexCommand::Switch {
             name,
+            mode,
             arms,
             default,
         } => {
-            let _ = writeln!(output, "{pad}<Switch Mode=\"AllPossible\">");
+            let mode = if *mode == SwitchMode::AllPossible {
+                " Mode=\"AllPossible\""
+            } else {
+                ""
+            };
+            let _ = writeln!(output, "{pad}<Switch{mode}>");
             value_element(output, indent + 2, "Name", name);
             let _ = writeln!(output, "{pad}  <Conditions>");
             for arm in arms {
-                let _ = writeln!(output, "{pad}    <Condition Mode=\"ContentStartsWith\">");
+                let mode = if arm.contains_regex() {
+                    "ContentContainsRegex"
+                } else {
+                    "ContentStartsWith"
+                };
+                let _ = writeln!(output, "{pad}    <Condition Mode=\"{mode}\">");
                 value_element(output, indent + 6, "Value", arm.prefix());
                 render_connections(output, [arm.command()], indent + 6, side)?;
                 let _ = writeln!(output, "{pad}    </Condition>");

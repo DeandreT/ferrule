@@ -533,21 +533,34 @@ fn write_output(
             let rows = instance
                 .as_repeated()
                 .context("mapping did not produce a repeating row set for an XLSX output")?;
-            let write = if options.xlsx_update_existing {
-                format_xlsx::update
+            let result = if options.xlsx_update_existing {
+                format_xlsx::update_with_options(
+                    path,
+                    schema,
+                    rows,
+                    format_xlsx::FlatTableWriteOptions {
+                        sheet: options.xlsx_sheet.as_deref(),
+                        start_row: options.xlsx_start_row.unwrap_or(1),
+                        columns: &options.xlsx_columns,
+                        headers: &options.xlsx_headers,
+                        has_header: options.has_header_row.unwrap_or(true),
+                    },
+                )
             } else {
-                format_xlsx::write
+                format_xlsx::write_with_options(
+                    path,
+                    schema,
+                    rows,
+                    format_xlsx::FlatTableWriteOptions {
+                        sheet: options.xlsx_sheet.as_deref(),
+                        start_row: options.xlsx_start_row.unwrap_or(1),
+                        columns: &options.xlsx_columns,
+                        headers: &options.xlsx_headers,
+                        has_header: options.has_header_row.unwrap_or(true),
+                    },
+                )
             };
-            write(
-                path,
-                schema,
-                rows,
-                options.xlsx_sheet.as_deref(),
-                options.xlsx_start_row.unwrap_or(1),
-                &options.xlsx_columns,
-                options.has_header_row.unwrap_or(true),
-            )
-            .with_context(|| format!("writing output {}", path.display()))?;
+            result.with_context(|| format!("writing output {}", path.display()))?;
             Ok(rows.len())
         }
         "xml" => {
@@ -750,6 +763,14 @@ fn read_instance(
         }
         "xlsx" => {
             if let Some(layout) = &options.xlsx_hierarchical {
+                if options.xlsx_grid.is_some()
+                    || options.xlsx_composite.is_some()
+                    || has_legacy_xlsx_layout(options)
+                {
+                    anyhow::bail!(
+                        "`xlsx_hierarchical` cannot be combined with other XLSX layout options"
+                    );
+                }
                 format_xlsx::read_hierarchical(path, schema, layout)
                     .with_context(|| format!("reading input {}", path.display()))?
             } else if let Some(layout) = &options.xlsx_grid {
@@ -770,6 +791,11 @@ fn read_instance(
                 format_xlsx::read_composite(path, schema, layout)
                     .with_context(|| format!("reading input {}", path.display()))?
             } else {
+                if !options.xlsx_rows.is_empty() && !options.xlsx_headers.is_empty() {
+                    anyhow::bail!(
+                        "transposed XLSX input cannot be combined with flat header overrides"
+                    );
+                }
                 let rows = if options.xlsx_rows.is_empty() {
                     format_xlsx::read(
                         path,
@@ -1358,6 +1384,8 @@ fn has_legacy_xlsx_layout(options: &FormatOptions) -> bool {
     options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
+        || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.has_header_row.is_some()
 }
@@ -1412,6 +1440,7 @@ fn has_xlsx_specific_layout(options: &FormatOptions) -> bool {
     options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()

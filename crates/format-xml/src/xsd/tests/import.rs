@@ -1,6 +1,6 @@
 use super::super::*;
-use crate::from_str;
-use ir::SchemaKind;
+use crate::{from_str, to_string};
+use ir::{Instance, SchemaKind, Value};
 
 #[test]
 fn imports_utf16_schemas_with_or_without_a_bom() {
@@ -50,6 +50,182 @@ fn max_occurs_recognizes_arbitrarily_large_non_negative_integers() {
     for value in ["", "+", "0", "1", "0001", "-2", "two"] {
         assert!(!non_negative_integer_exceeds_one(value), "{value}");
     }
+}
+
+#[test]
+fn repeating_compositor_projects_each_named_member_as_a_repetition() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_repeating_compositor_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Report"><xs:complexType>
+            <xs:sequence maxOccurs="unbounded">
+              <xs:element name="Date" type="xs:string"/>
+              <xs:element name="Note" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(schema.child("Date").is_some_and(|child| child.repeating));
+    assert!(schema.child("Note").is_some_and(|child| child.repeating));
+    assert_eq!(schema.xml_repeating_sequences.len(), 1);
+
+    let instance = from_str(
+        "<Report><Date>first</Date><Note>memo</Note><Date>second</Date></Report>",
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        instance.field("Date"),
+        Some(&Instance::Repeated(vec![
+            Instance::Scalar(Value::String("first".into())),
+            Instance::Scalar(Value::String("second".into())),
+        ]))
+    );
+    assert_eq!(
+        instance.field("Note"),
+        Some(&Instance::Repeated(vec![Instance::Scalar(Value::String(
+            "memo".into()
+        ))]))
+    );
+    let rendered = to_string(&schema, &instance).unwrap();
+    assert!(
+        rendered.find("<Date>first</Date>") < rendered.find("<Note>memo</Note>")
+            && rendered.find("<Note>memo</Note>") < rendered.find("<Date>second</Date>")
+    );
+    assert_eq!(from_str(&rendered, &schema).unwrap(), instance);
+
+    let ambiguous = Instance::Group(vec![
+        (
+            "Date".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("first".into())),
+                Instance::Scalar(Value::String("second".into())),
+            ]),
+        ),
+        (
+            "Note".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::String("memo".into()))]),
+        ),
+    ]);
+    assert!(matches!(
+        to_string(&schema, &ambiguous),
+        Err(XmlFormatError::AmbiguousRepeatingSequence { .. })
+    ));
+
+    let paired = Instance::Group(vec![
+        (
+            "Date".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("first".into())),
+                Instance::Scalar(Value::String("second".into())),
+            ]),
+        ),
+        (
+            "Note".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("one".into())),
+                Instance::Scalar(Value::String("two".into())),
+            ]),
+        ),
+    ]);
+    let paired = to_string(&schema, &paired).unwrap();
+    let (Some(first_date), Some(first_note), Some(second_date), Some(second_note)) = (
+        paired.find("<Date>first</Date>"),
+        paired.find("<Note>one</Note>"),
+        paired.find("<Date>second</Date>"),
+        paired.find("<Note>two</Note>"),
+    ) else {
+        panic!("paired sequence output omitted a member: {paired}");
+    };
+    assert!(first_date < first_note && first_note < second_date && second_date < second_note);
+
+    let ambiguous_single_cycle = Instance::Group(vec![
+        (
+            "Date".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::String("first".into()))]),
+        ),
+        (
+            "Note".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("one".into())),
+                Instance::Scalar(Value::String("two".into())),
+            ]),
+        ),
+    ]);
+    assert!(matches!(
+        to_string(&schema, &ambiguous_single_cycle),
+        Err(XmlFormatError::AmbiguousRepeatingSequence { .. })
+    ));
+}
+
+#[test]
+fn required_repeating_member_reconstructs_one_item_per_outer_cycle() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_required_repeating_member_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Rows"><xs:complexType>
+            <xs:sequence maxOccurs="unbounded">
+              <xs:element name="Date" type="xs:string"/>
+              <xs:element name="Tag" type="xs:string" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let schema = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+
+    let instance = Instance::Group(vec![
+        (
+            "Date".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("first".into())),
+                Instance::Scalar(Value::String("second".into())),
+            ]),
+        ),
+        (
+            "Tag".into(),
+            Instance::Repeated(vec![
+                Instance::Scalar(Value::String("a".into())),
+                Instance::Scalar(Value::String("b".into())),
+            ]),
+        ),
+    ]);
+    let rendered = to_string(&schema, &instance).unwrap();
+    assert!(
+        rendered.find("<Date>first</Date>") < rendered.find("<Tag>a</Tag>")
+            && rendered.find("<Tag>a</Tag>") < rendered.find("<Date>second</Date>")
+            && rendered.find("<Date>second</Date>") < rendered.find("<Tag>b</Tag>")
+    );
+    assert!(
+        export(&schema)
+            .unwrap()
+            .contains("<xs:element name=\"Tag\" type=\"xs:string\" maxOccurs=\"unbounded\"/>")
+    );
+
+    let missing_required = Instance::Group(vec![
+        (
+            "Date".into(),
+            Instance::Repeated(vec![Instance::Scalar(Value::String("first".into()))]),
+        ),
+        ("Tag".into(), Instance::Repeated(Vec::new())),
+    ]);
+    assert!(matches!(
+        to_string(&schema, &missing_required),
+        Err(XmlFormatError::AmbiguousRepeatingSequence { .. })
+    ));
 }
 
 #[test]

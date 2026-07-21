@@ -219,3 +219,65 @@ fn composes_datetime_from_typed_parts() {
         .is_err()
     );
 }
+
+#[test]
+fn composes_duration_from_typed_parts() -> Result<(), FunctionError> {
+    assert_eq!(
+        duration_from_parts(&[
+            Value::Int(1),
+            Value::Int(4),
+            Value::Int(17),
+            Value::Int(8),
+            Value::Int(58),
+            Value::Int(54),
+            Value::Int(333),
+            Value::Bool(true),
+        ])?,
+        text("-P1Y4M17DT8H58M54.333S")
+    );
+    assert_eq!(
+        duration_from_parts(&[Value::Int(0), Value::Int(0), Value::Int(0), Value::Int(5),])?,
+        text("PT5H")
+    );
+    assert_eq!(
+        duration_from_parts(&[Value::Int(0), Value::Int(0), Value::Int(0)])?,
+        text("PT0S")
+    );
+    assert_eq!(
+        duration_from_parts(&[
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(9_007_199_254_740_993),
+            Value::Int(333),
+        ])?,
+        text("PT9007199254740993.333S")
+    );
+    assert_eq!(
+        duration_from_parts(&[
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(i64::MAX),
+        ])?,
+        text("PT9223372036854775807S")
+    );
+    assert!(duration_from_parts(&[Value::Int(0), Value::Int(0), Value::Int(-1)]).is_err());
+    assert!(
+        duration_from_parts(&[
+            Value::Int(0),
+            Value::Int(0),
+            Value::Int(0),
+            Value::Null,
+            Value::Null,
+            Value::Null,
+            Value::Int(1000),
+        ])
+        .is_err()
+    );
+    Ok(())
+}

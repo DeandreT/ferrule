@@ -101,6 +101,70 @@ fn write_design(path: &Path) {
     std::fs::write(path, design).unwrap();
 }
 
+fn prepare_joined_query(dir: &Path) -> PathBuf {
+    let connection = Connection::open(dir.join("purchases.sqlite")).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE Item (Id INTEGER PRIMARY KEY, Label TEXT, Cost REAL); \
+             CREATE TABLE Purchase (Id INTEGER PRIMARY KEY, ItemId INTEGER, Units INTEGER, \
+               FOREIGN KEY (ItemId) REFERENCES Item(Id)); \
+             INSERT INTO Item VALUES (1, 'Pen', 4.0), (2, 'Book', 10.0), (3, 'Unknown', NULL); \
+             INSERT INTO Purchase VALUES \
+               (1, 1, 2), (2, 1, 3), (3, 2, 5), (4, NULL, 6), (5, 3, 4);",
+        )
+        .unwrap();
+    let design = dir.join("joined-query.mfd");
+    let xml = r#"<mapping version="26"><resources><datasources><datasource name="purchases">
+      <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="purchases.sqlite" name="purchases">
+        <LocalViewStorage><LocalViewElement SQL="SELECT (Units * Cost) AS Total, Purchase.Id, Purchase.Units, Item.Label, Item.Cost FROM Purchase INNER JOIN Item ON Purchase.ItemId = Item.Id WHERE Purchase.Units &gt; :MinimumUnits">
+          <PathElement Name="main" Kind="Database"/><PathElement Name="PurchasesAboveMinimum" Kind="Select Statement"/>
+          <Parameters><Parameter name="MinimumUnits" type="text"/></Parameters>
+        </LocalViewElement></LocalViewStorage>
+      </database_connection></datasource></datasources></resources>
+      <component name="map" uid="1"><structure><children>
+        <component name="MinimumUnits" library="core" uid="2" kind="6">
+          <sources><datapoint/></sources><targets><datapoint pos="0" key="10"/></targets>
+          <data><input datatype="string" previewvalue="2" usepreviewvalue="1"/><parameter usageKind="input" name="MinimumUnits"/></data>
+        </component>
+        <component name="catalog" library="db" uid="3" kind="15"><data><root><entry name="document">
+          <entry name="PurchasesAboveMinimum" type="routine" outkey="20"/>
+        </entry></root><database ref="purchases"><data><selections><selection>
+          <PathElement Name="main" Kind="Database"/><PathElement Name="PurchasesAboveMinimum" Kind="Select Statement"/>
+        </selection></selections></data></database></data></component>
+        <component name="PurchasesAboveMinimum" library="db" uid="4" kind="28"><data>
+          <root><entry name="procedure" inpkey="21"/><entry name="PurchasesAboveMinimum"><entry name="MinimumUnits" type="attribute" inpkey="22"/></entry></root>
+          <root><entry name="PurchasesAboveMinimum" outkey="30"><entry name="PurchasesAboveMinimum">
+            <entry name="Total" type="attribute" outkey="31"><outputnodefunctions>
+              <rule applyto="self"><default value="7"/><filter datatype="decimal"/></rule>
+            </outputnodefunctions></entry><entry name="Id" type="attribute" outkey="32"/>
+            <entry name="Units" type="attribute" outkey="33"/><entry name="Label" type="attribute" outkey="34"/>
+            <entry name="Cost" type="attribute" outkey="35"/>
+          </entry></entry></root>
+        </data></component>
+        <component name="report" library="text" uid="5" kind="16"><properties XSLTDefaultOutput="1"/><data>
+          <root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="40">
+            <entry name="Total" inpkey="41"/><entry name="Id" inpkey="42"/><entry name="Units" inpkey="43"/>
+            <entry name="Label" inpkey="44"/><entry name="Cost" inpkey="45"/>
+          </entry></entry></entry></root>
+          <text type="csv" outputinstance="report.csv"><settings separator="," quote="&quot;" firstrownames="true"><names root="report" block="Rows">
+            <field0 name="Total" type="string"/><field1 name="Id" type="string"/><field2 name="Units" type="string"/>
+            <field3 name="Label" type="string"/><field4 name="Cost" type="string"/>
+          </names></settings></text>
+        </data></component>
+      </children><graph><vertices>
+        <vertex vertexkey="10"><edges><edge vertexkey="22"/></edges></vertex>
+        <vertex vertexkey="20"><edges><edge vertexkey="21"/></edges></vertex>
+        <vertex vertexkey="30"><edges><edge vertexkey="40"/></edges></vertex>
+        <vertex vertexkey="31"><edges><edge vertexkey="41"/></edges></vertex>
+        <vertex vertexkey="32"><edges><edge vertexkey="42"/></edges></vertex>
+        <vertex vertexkey="33"><edges><edge vertexkey="43"/></edges></vertex>
+        <vertex vertexkey="34"><edges><edge vertexkey="44"/></edges></vertex>
+        <vertex vertexkey="35"><edges><edge vertexkey="45"/></edges></vertex>
+      </vertices></graph></structure></component></mapping>"#;
+    std::fs::write(&design, xml).unwrap();
+    design
+}
+
 #[test]
 fn static_single_table_query_imports_and_executes() {
     let dir = TempDir::new();
@@ -134,6 +198,56 @@ fn static_single_table_query_imports_and_executes() {
 }
 
 #[test]
+fn many_to_one_joined_query_imports_computed_projection_and_filter() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source =
+        format_db::read_instance(&dir.0.join("purchases.sqlite"), &imported.project.source)
+            .unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let rows = output.as_repeated().unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        rows[0].field("Total").and_then(Instance::as_scalar),
+        Some(&Value::Float(12.0))
+    );
+    assert_eq!(
+        rows[0].field("Label").and_then(Instance::as_scalar),
+        Some(&Value::String("Pen".to_string()))
+    );
+    assert_eq!(
+        rows[1].field("Total").and_then(Instance::as_scalar),
+        Some(&Value::Float(50.0))
+    );
+    assert_eq!(
+        rows[1].field("Label").and_then(Instance::as_scalar),
+        Some(&Value::String("Book".to_string()))
+    );
+    assert_eq!(
+        rows[2].field("Total").and_then(Instance::as_scalar),
+        Some(&Value::Float(7.0))
+    );
+
+    let exported = dir.0.join("joined-query-roundtrip.mfd");
+    assert!(
+        mfd::export(&imported.project, &exported)
+            .unwrap()
+            .is_empty()
+    );
+    let roundtrip = mfd::import(&exported).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    let source =
+        format_db::read_instance(&dir.0.join("purchases.sqlite"), &roundtrip.project.source)
+            .unwrap();
+    assert_eq!(engine::run(&roundtrip.project, &source).unwrap(), output);
+}
+
+#[test]
 fn scalar_only_query_outputs_are_skipped_once() {
     let dir = TempDir::new();
     prepare_database(&dir.0);
@@ -149,6 +263,65 @@ fn scalar_only_query_outputs_are_skipped_once() {
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
     assert!(imported.warnings[0].contains("used only through scalar outputs"));
     assert!(imported.project.root.bindings.is_empty());
+}
+
+#[test]
+fn computed_only_query_outputs_cannot_bypass_query_scope() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let text = std::fs::read_to_string(&design).unwrap().replace(
+        "<vertex vertexkey=\"30\"><edges><edge vertexkey=\"40\"/></edges></vertex>",
+        "<vertex vertexkey=\"30\"><edges/></vertex>",
+    );
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(imported.warnings[0].contains("used only through scalar outputs"));
+    assert!(imported.project.root.bindings.is_empty());
+}
+
+#[test]
+fn joined_integer_multiplication_matches_sqlite_overflow_promotion() {
+    let dir = TempDir::new();
+    let design = prepare_joined_query(&dir.0);
+    let database = dir.0.join("purchases.sqlite");
+    let connection = Connection::open(&database).unwrap();
+    let large = 4_000_000_000_i64;
+    connection
+        .execute(
+            "INSERT INTO Purchase (Id, ItemId, Units) VALUES (?1, 1, ?1)",
+            [large],
+        )
+        .unwrap();
+    let sqlite_product = connection
+        .query_row(
+            "SELECT Id * Units FROM Purchase WHERE Id = ?1",
+            [large],
+            |row| row.get::<_, f64>(0),
+        )
+        .unwrap();
+    drop(connection);
+    let text = std::fs::read_to_string(&design)
+        .unwrap()
+        .replace("(Units * Cost)", "(Purchase.Id * Purchase.Units)");
+    std::fs::write(&design, text).unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = format_db::read_instance(&database, &imported.project.source).unwrap();
+    let output = engine::run(&imported.project, &source).unwrap();
+    let overflow_row = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .find(|row| row.field("Id").and_then(Instance::as_scalar) == Some(&Value::Int(large)))
+        .unwrap();
+    assert_eq!(
+        overflow_row.field("Total").and_then(Instance::as_scalar),
+        Some(&Value::Float(sqlite_product))
+    );
 }
 
 #[test]

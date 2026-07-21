@@ -9,11 +9,12 @@ use crate::MfdError;
 
 use super::schema::{SideFormat, side_format};
 use super::{
-    concatenation, edi, exception, external_source, flextext, pdf, protobuf, recursive, xbrl,
+    concatenation, edi, exception, external_source, flextext, pdf, protobuf, recursive, wsdl, xbrl,
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     exception::validate(project)?;
+    wsdl::validate(project)?;
     if project.extra_sources.len() > 256 {
         return Err(MfdError::Unsupported(
             "projects with more than 256 additional sources cannot be exported to .mfd".to_string(),
@@ -215,6 +216,7 @@ fn validate_tabular_identity(
             if options.xlsx_sheet.is_some()
                 || options.xlsx_start_row.is_some()
                 || !options.xlsx_columns.is_empty()
+                || !options.xlsx_headers.is_empty()
                 || options.xlsx_update_existing
                 || !options.xlsx_rows.is_empty()
                 || options.xlsx_composite.is_some()
@@ -268,6 +270,7 @@ fn validate_xml_identity(
         || options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
@@ -355,6 +358,7 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
                     || options.xlsx_sheet.is_some()
                     || options.xlsx_start_row.is_some()
                     || !options.xlsx_columns.is_empty()
+                    || !options.xlsx_headers.is_empty()
                     || !options.xlsx_rows.is_empty()
                     || options.xlsx_composite.is_some()
                     || options.xlsx_grid.is_some()

@@ -46,6 +46,7 @@ pub(super) fn validate_side(
         || options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
         || options.xlsx_grid.is_some()

@@ -52,6 +52,8 @@ pub enum XmlFormatError {
     DuplicateField { group: String, field: String },
     #[error("element `{group}` has invalid mixed-content metadata: {reason}")]
     InvalidMixedContent { group: String, reason: String },
+    #[error("element `{group}` cannot reconstruct its repeating XML sequence: {reason}")]
+    AmbiguousRepeatingSequence { group: String, reason: String },
     #[error("element `{name}` matches no declared schema alternative")]
     NoMatchingAlternative { name: String },
     #[error("element `{name}` matches more than one declared schema alternative")]
@@ -65,12 +67,20 @@ pub enum XmlFormatError {
     #[error("element `{name}` has invalid xsi:nil value `{value}`")]
     InvalidXmlNil { name: String, value: String },
     #[error(
-        "repeating xs:{compositor} with {element_count} element members cannot preserve tuple association"
+        "repeating xs:{compositor} with {element_count} non-unique element members cannot preserve occurrence identity"
     )]
     UnsupportedRepeatingParticle {
         compositor: String,
         element_count: usize,
     },
+    #[error(
+        "repeating xs:sequence contains nested xs:{compositor}, whose occurrence choices cannot be preserved"
+    )]
+    UnsupportedRepeatingSequenceCompositor { compositor: String },
+    #[error(
+        "repeating xs:sequence contains a nested repeating sequence with {element_count} members, whose tuple identity cannot be preserved"
+    )]
+    UnsupportedNestedRepeatingSequence { element_count: usize },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
     #[error("schema node `{node}` cannot be both XML text and an attribute")]
@@ -89,6 +99,8 @@ pub enum XmlFormatError {
     MixedContent { group: String },
     #[error("schema group `{group}` has alternatives that XSD export cannot preserve")]
     UnsupportedGroupAlternatives { group: String },
+    #[error("schema group `{group}` has invalid XML repeating-sequence metadata")]
+    InvalidRepeatingSequenceSchema { group: String },
     #[error(
         "schema group `{group}` has alternatives whose xsi:type identity XML input cannot preserve"
     )]
@@ -166,8 +178,14 @@ fn read_node(
                     name: schema.name.clone(),
                 });
             }
-            let mut instance =
-                read_group_fields(el, children, false, root_schema, recursion_depth)?;
+            let mut instance = read_group_fields(
+                el,
+                children,
+                false,
+                !schema.xml_repeating_sequences.is_empty(),
+                root_schema,
+                recursion_depth,
+            )?;
             if alternatives.is_empty() {
                 return Ok(instance);
             }
@@ -546,36 +564,242 @@ fn write_single_node<W: std::io::Write>(
                     }
                 }
             }
-            for child_schema in children
-                .iter()
-                .filter(|child| !child.attribute && !child.text)
-            {
-                if let Some((_, child_instance)) =
-                    fields.iter().find(|(name, _)| name == &child_schema.name)
+            if schema.xml_repeating_sequences.is_empty() {
+                for child_schema in children
+                    .iter()
+                    .filter(|child| !child.attribute && !child.text)
                 {
-                    // A Null scalar is an absent element, not an empty one
-                    // (mirrors the reader's treatment).
-                    if !child_schema.repeating
-                        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
-                        && matches!(child_instance, Instance::Scalar(Value::Null))
-                    {
-                        continue;
-                    }
-                    write_node(
-                        writer,
-                        child_schema,
-                        root_schema,
-                        child_instance,
-                        false,
-                        recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
-                    )?;
+                    write_group_child(writer, child_schema, root_schema, fields, recursion_depth)?;
                 }
+            } else {
+                write_repeating_sequence_children(
+                    writer,
+                    schema,
+                    children,
+                    root_schema,
+                    fields,
+                    recursion_depth,
+                )?;
             }
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
         }
         (SchemaKind::Scalar { .. }, other) => Err(shape_error(schema, "a scalar", other)),
         (SchemaKind::Group { .. }, other) => Err(shape_error(schema, "an element group", other)),
+    }
+}
+
+fn write_group_child<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    child_schema: &SchemaNode,
+    root_schema: &SchemaNode,
+    fields: &[(String, Instance)],
+    recursion_depth: usize,
+) -> Result<(), XmlFormatError> {
+    let Some((_, child_instance)) = fields.iter().find(|(name, _)| name == &child_schema.name)
+    else {
+        return Ok(());
+    };
+    if !child_schema.repeating
+        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
+        && matches!(child_instance, Instance::Scalar(Value::Null))
+    {
+        return Ok(());
+    }
+    write_node(
+        writer,
+        child_schema,
+        root_schema,
+        child_instance,
+        false,
+        recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
+    )
+}
+
+fn write_repeating_sequence_children<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    root_schema: &SchemaNode,
+    fields: &[(String, Instance)],
+    recursion_depth: usize,
+) -> Result<(), XmlFormatError> {
+    for child in children
+        .iter()
+        .filter(|child| !child.attribute && !child.text)
+    {
+        let sequence = schema.xml_repeating_sequences.iter().find(|sequence| {
+            sequence
+                .members
+                .first()
+                .is_some_and(|member| member.name == child.name)
+        });
+        if let Some(sequence) = sequence {
+            write_constructed_repeating_sequence(
+                writer,
+                schema,
+                children,
+                sequence,
+                root_schema,
+                fields,
+                recursion_depth,
+            )?;
+            continue;
+        }
+        if schema.xml_repeating_sequences.iter().any(|sequence| {
+            sequence
+                .members
+                .iter()
+                .skip(1)
+                .any(|member| member.name == child.name)
+        }) {
+            continue;
+        }
+        write_group_child(writer, child, root_schema, fields, recursion_depth)?;
+    }
+    Ok(())
+}
+
+fn write_constructed_repeating_sequence<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    schema: &SchemaNode,
+    children: &[SchemaNode],
+    sequence: &ir::XmlRepeatingSequence,
+    root_schema: &SchemaNode,
+    fields: &[(String, Instance)],
+    recursion_depth: usize,
+) -> Result<(), XmlFormatError> {
+    let items_for = |name: &str| -> Result<&[Instance], XmlFormatError> {
+        let instance = fields
+            .iter()
+            .find(|(field, _)| field == name)
+            .map(|(_, instance)| instance)
+            .ok_or_else(|| XmlFormatError::AmbiguousRepeatingSequence {
+                group: schema.name.clone(),
+                reason: format!("member `{name}` is absent from the instance"),
+            })?;
+        instance.as_repeated().ok_or_else(|| XmlFormatError::Shape {
+            name: name.to_string(),
+            expected: "repeating elements",
+            got: instance_kind(instance),
+        })
+    };
+    let anchors = sequence
+        .members
+        .iter()
+        .filter(|member| member.required && !member.repeating)
+        .collect::<Vec<_>>();
+    let cycles = match anchors.first() {
+        Some(anchor) => items_for(&anchor.name)?.len(),
+        None => {
+            let has_values = sequence.members.iter().try_fold(false, |found, member| {
+                items_for(&member.name).map(|items| found || !items.is_empty())
+            })?;
+            if has_values {
+                return Err(XmlFormatError::AmbiguousRepeatingSequence {
+                    group: schema.name.clone(),
+                    reason: "the sequence has no required singular member to determine iteration boundaries"
+                        .to_string(),
+                });
+            }
+            0
+        }
+    };
+    for anchor in anchors.iter().skip(1) {
+        if items_for(&anchor.name)?.len() != cycles {
+            return Err(XmlFormatError::AmbiguousRepeatingSequence {
+                group: schema.name.clone(),
+                reason: "required members have different occurrence counts".to_string(),
+            });
+        }
+    }
+    for member in &sequence.members {
+        let count = items_for(&member.name)?.len();
+        let unambiguous = if member.repeating {
+            if cycles == 1 {
+                !member.required || count > 0
+            } else if member.required {
+                count == cycles
+            } else {
+                count == 0
+            }
+        } else if member.required {
+            count == cycles
+        } else {
+            count == 0 || count == cycles
+        };
+        if !unambiguous {
+            return Err(XmlFormatError::AmbiguousRepeatingSequence {
+                group: schema.name.clone(),
+                reason: format!(
+                    "member `{}` has {count} values across {cycles} sequence iterations",
+                    member.name
+                ),
+            });
+        }
+    }
+    for cycle in 0..cycles {
+        for member in &sequence.members {
+            let child = children
+                .iter()
+                .find(|child| child.name == member.name)
+                .ok_or_else(|| XmlFormatError::AmbiguousRepeatingSequence {
+                    group: schema.name.clone(),
+                    reason: format!("member `{}` has no schema child", member.name),
+                })?;
+            let items = items_for(&member.name)?;
+            if member.repeating {
+                if cycles == 1 {
+                    for item in items {
+                        write_sequence_item(writer, child, root_schema, item, recursion_depth)?;
+                    }
+                } else if member.required {
+                    write_sequence_item(
+                        writer,
+                        child,
+                        root_schema,
+                        &items[cycle],
+                        recursion_depth,
+                    )?;
+                }
+            } else if let Some(item) = items.get(cycle) {
+                write_sequence_item(writer, child, root_schema, item, recursion_depth)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_sequence_item<W: std::io::Write>(
+    writer: &mut Writer<W>,
+    child: &SchemaNode,
+    root_schema: &SchemaNode,
+    item: &Instance,
+    recursion_depth: usize,
+) -> Result<(), XmlFormatError> {
+    let child_depth = recursion_depth + usize::from(child.recursive_ref.is_some());
+    let resolved;
+    let child = if let Some(anchor) = &child.recursive_ref {
+        if child_depth >= MAX_XML_RECURSION_DEPTH {
+            return Err(XmlFormatError::RecursionLimit {
+                limit: MAX_XML_RECURSION_DEPTH,
+            });
+        }
+        resolved = resolve_recursive_schema(child, root_schema, anchor)?;
+        &resolved
+    } else {
+        child
+    };
+    write_single_node(writer, child, root_schema, item, child_depth)
+}
+
+fn instance_kind(instance: &Instance) -> &'static str {
+    match instance {
+        Instance::Scalar(_) => "a scalar",
+        Instance::Group(_) => "an element group",
+        Instance::Repeated(_) => "repeating elements",
+        Instance::MappedSequence(_) => "a mapped element sequence",
+        Instance::DocumentSet(_) => "a document set",
     }
 }
 
@@ -850,8 +1074,9 @@ fn validate_group_fields(
 ) -> Result<(), XmlFormatError> {
     for (index, (name, _)) in fields.iter().enumerate() {
         let xml_type_marker = name == XML_TYPE_FIELD && !alternatives.is_empty();
-        let mixed_content_marker =
-            name == XML_MIXED_CONTENT_FIELD && children.iter().any(|child| child.text);
+        let mixed_content_marker = name == XML_MIXED_CONTENT_FIELD
+            && (children.iter().any(|child| child.text)
+                || !schema.xml_repeating_sequences.is_empty());
         if !xml_type_marker
             && !mixed_content_marker
             && !children.iter().any(|child| child.name == *name)

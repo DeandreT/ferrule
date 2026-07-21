@@ -7,18 +7,22 @@
 //! attribute-flagged scalar children; `xs:element ref="..."`, named
 //! top-level complex/simple types, and `complexContent`/`xs:extension`
 //! resolve across local `xs:include` and `xs:import` schema locations
-//! (recursive declarations remain finite named references); `xs:choice`
-//! and `xs:all` import as if they were sequences (every branch becomes a
-//! child -- ferrule has no exclusivity concept). `xs:simpleContent` becomes
-//! a `#text` scalar plus attribute scalars. Repeating `xs:sequence` particles
-//! with more than one element member are rejected because flattening them
-//! would lose tuple association. It does not support unions, `xs:any`, or
+//! (recursive declarations remain finite named references); anonymous
+//! `xs:sequence`, `xs:choice`, and `xs:all` particles import as named child
+//! fields. Repeating anonymous sequences retain their member occurrence
+//! metadata and input order while projecting repeating named ports, allowing
+//! exact read/write/export roundtrips and rejecting ambiguous newly constructed
+//! tuples. `xs:simpleContent` becomes a `#text` scalar plus attribute scalars.
+//! It does not support unions, `xs:any`, or
 //! remote schema URLs -- that's the "lite" in the name.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
+use ir::{
+    ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD, XmlRepeatingSequence,
+    XmlSequenceMember,
+};
 use roxmltree::Node;
 
 use crate::XmlFormatError;
@@ -57,14 +61,33 @@ struct ParseState {
 }
 
 enum ComplexTypeResolution {
-    Children(Vec<SchemaNode>),
+    Group(ParsedComplexType),
     Recursive(String),
 }
 
 #[derive(Clone)]
 struct CachedComplexType {
-    children: Vec<SchemaNode>,
+    group: ParsedComplexType,
     anchor: String,
+}
+
+#[derive(Clone, Default)]
+struct ParsedComplexType {
+    children: Vec<SchemaNode>,
+    repeating_sequences: Vec<XmlRepeatingSequence>,
+}
+
+impl ParsedComplexType {
+    fn into_schema(self, name: impl Into<String>) -> SchemaNode {
+        let mut schema = SchemaNode::group(name, self.children);
+        schema.xml_repeating_sequences = self.repeating_sequences;
+        schema
+    }
+
+    fn extend(&mut self, other: Self) {
+        self.children.extend(other.children);
+        self.repeating_sequences.extend(other.repeating_sequences);
+    }
 }
 
 impl ParseState {
@@ -134,24 +157,25 @@ impl ParseState {
         path
     }
 
-    fn reject_repeating_particle(&mut self, compositor: &str, element_count: usize) {
-        self.unsupported_particle
-            .get_or_insert(XmlFormatError::UnsupportedRepeatingParticle {
-                compositor: compositor.to_string(),
-                element_count,
+    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
+        if let Some(error) = self.unsupported_particle {
+            return Err(error);
+        }
+        if self.materialization_limit_reached {
+            return Err(XmlFormatError::SchemaMaterializationLimit {
+                limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
             });
+        }
+        if let Some(group) = invalid_repeating_sequence_group(&schema) {
+            return Err(XmlFormatError::InvalidRepeatingSequenceSchema {
+                group: group.to_string(),
+            });
+        }
+        Ok(schema)
     }
 
-    fn finish(self, schema: SchemaNode) -> Result<SchemaNode, XmlFormatError> {
-        match self.unsupported_particle {
-            Some(error) => Err(error),
-            None if self.materialization_limit_reached => {
-                Err(XmlFormatError::SchemaMaterializationLimit {
-                    limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS,
-                })
-            }
-            None => Ok(schema),
-        }
+    fn reject_repeating_particle(&mut self, error: XmlFormatError) {
+        self.unsupported_particle.get_or_insert(error);
     }
 }
 
@@ -283,7 +307,7 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
         .map_or((None, local_name(type_name)), |(namespace, local)| {
             (Some(namespace), local)
         });
-    let children = match namespace {
+    let group = match namespace {
         None => resolve_complex_type(type_name, &schema_el, path, &mut state, Some(local)),
         Some(namespace) if schema_el.attribute("targetNamespace") == Some(namespace) => {
             resolve_complex_type(local, &schema_el, path, &mut state, Some(local))
@@ -318,11 +342,11 @@ pub fn import_type(path: &Path, type_name: &str) -> Result<SchemaNode, XmlFormat
         }
     }
     .and_then(|resolved| match resolved {
-        ComplexTypeResolution::Children(children) => Some(children),
+        ComplexTypeResolution::Group(group) => Some(group),
         ComplexTypeResolution::Recursive(_) => None,
     })
     .ok_or_else(|| XmlFormatError::MissingElement(format!("named xs:complexType `{type_name}`")))?;
-    state.finish(SchemaNode::group(local, children))
+    state.finish(group.into_schema(local))
 }
 
 /// Resolves the direct complex-content base of a named complex type.
@@ -419,10 +443,7 @@ fn parse_element(
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "complexType")
     {
-        SchemaNode::group(
-            name,
-            parse_complex_type(&complex_type, schema_el, schema_path, state),
-        )
+        parse_complex_type(&complex_type, schema_el, schema_path, state).into_schema(name)
     } else if let Some(simple_type) = el
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "simpleType")
@@ -432,8 +453,8 @@ fn parse_element(
         if let Some(resolved) = resolve_complex_type(ty, schema_el, schema_path, state, Some(&name))
         {
             match resolved {
-                ComplexTypeResolution::Children(children) => {
-                    let mut node = SchemaNode::group(name, children);
+                ComplexTypeResolution::Group(group) => {
+                    let mut node = group.into_schema(name);
                     attach_type_alternatives(&mut node, ty, schema_el, schema_path, state);
                     node
                 }
@@ -585,7 +606,7 @@ fn attach_type_alternatives(
         let Some(declaration) = top_level(&derived_schema, "complexType", &derived.local) else {
             return;
         };
-        let Some(ComplexTypeResolution::Children(children)) = parse_complex_type_declaration(
+        let Some(ComplexTypeResolution::Group(group)) = parse_complex_type_declaration(
             &declaration,
             &derived_schema,
             &derived.path,
@@ -595,7 +616,10 @@ fn attach_type_alternatives(
         ) else {
             return;
         };
-        resolved.push((derived.identity, children));
+        if !group.repeating_sequences.is_empty() {
+            return;
+        }
+        resolved.push((derived.identity, group.children));
     }
     let alternative_count = resolved.len() + usize::from(!base_is_abstract);
     if alternative_count < 2 {
@@ -973,11 +997,11 @@ fn parse_complex_type_declaration(
     let identity = ParseState::declaration(schema_path, "complexType", name);
     if let Some(cached) = state.complex_types.get(&identity).cloned() {
         let anchor = occurrence_anchor.unwrap_or(&cached.anchor);
-        let mut children = cached.children;
-        rebase_recursive_anchor(&mut children, &cached.anchor, anchor);
+        let mut group = cached.group;
+        rebase_recursive_anchor(&mut group.children, &cached.anchor, anchor);
         return state
-            .reserve_elements(children.iter().map(schema_node_count).sum())
-            .then_some(ComplexTypeResolution::Children(children));
+            .reserve_elements(group.children.iter().map(schema_node_count).sum())
+            .then_some(ComplexTypeResolution::Group(group));
     }
     if !state.enter(schema_path, "complexType", name) {
         let anchor = state
@@ -991,17 +1015,17 @@ fn parse_complex_type_declaration(
         .or_else(|| state.complex_type_anchors.last().cloned())
         .unwrap_or_else(|| name.to_string());
     state.complex_type_anchors.push(anchor.clone());
-    let children = parse_complex_type(declaration, schema_el, schema_path, state);
+    let group = parse_complex_type(declaration, schema_el, schema_path, state);
     state.complex_type_anchors.pop();
     state.leave();
     state.complex_types.insert(
         identity,
         CachedComplexType {
-            children: children.clone(),
+            group: group.clone(),
             anchor,
         },
     );
-    Some(ComplexTypeResolution::Children(children))
+    Some(ComplexTypeResolution::Group(group))
 }
 
 fn rebase_recursive_anchor(children: &mut [SchemaNode], from: &str, to: &str) {
@@ -1196,21 +1220,30 @@ fn parse_complex_type(
     schema_el: &Node,
     schema_path: &Path,
     state: &mut ParseState,
-) -> Vec<SchemaNode> {
-    let mut children = Vec::new();
+) -> ParsedComplexType {
+    let mut parsed = ParsedComplexType::default();
     if complex_type.attribute("mixed") == Some("true") {
-        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+        parsed
+            .children
+            .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
     }
     for child in complex_type.children().filter(|n| n.is_element()) {
         match child.tag_name().name() {
             "sequence" | "choice" | "all" => {
+                if child.tag_name().name() == "sequence" && is_repeating(&child) {
+                    match repeating_sequence(&child) {
+                        Ok(Some(sequence)) => parsed.repeating_sequences.push(sequence),
+                        Ok(None) => {}
+                        Err(error) => state.reject_repeating_particle(error),
+                    }
+                }
                 collect_sequence(
                     &child,
                     is_repeating(&child),
                     schema_el,
                     schema_path,
                     state,
-                    &mut children,
+                    &mut parsed.children,
                 );
             }
             // complexContent/extension: the named base type's children
@@ -1221,12 +1254,12 @@ fn parse_complex_type(
                     .find(|n| n.is_element() && n.tag_name().name() == "extension")
                 {
                     if let Some(base) = ext.attribute("base")
-                        && let Some(ComplexTypeResolution::Children(base_children)) =
+                        && let Some(ComplexTypeResolution::Group(base_group)) =
                             resolve_complex_type(base, schema_el, schema_path, state, None)
                     {
-                        children.extend(base_children);
+                        parsed.extend(base_group);
                     }
-                    children.extend(parse_complex_type(&ext, schema_el, schema_path, state));
+                    parsed.extend(parse_complex_type(&ext, schema_el, schema_path, state));
                 }
             }
             "simpleContent" => {
@@ -1236,23 +1269,26 @@ fn parse_complex_type(
                 }) {
                     let mut resolved_base = false;
                     if let Some(base) = content.attribute("base") {
-                        if let Some(ComplexTypeResolution::Children(base_children)) =
+                        if let Some(ComplexTypeResolution::Group(base_group)) =
                             resolve_complex_type(base, schema_el, schema_path, state, None)
                         {
-                            children.extend(base_children);
+                            parsed.extend(base_group);
                             resolved_base = true;
                         } else {
                             let ty = resolve_simple_type(base, schema_el, schema_path, state)
                                 .unwrap_or_else(|| map_xsd_type(base));
-                            children.push(SchemaNode::scalar(XML_TEXT_FIELD, ty).text());
+                            parsed
+                                .children
+                                .push(SchemaNode::scalar(XML_TEXT_FIELD, ty).text());
                             resolved_base = true;
                         }
                     }
                     if !resolved_base {
-                        children
+                        parsed
+                            .children
                             .push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
                     }
-                    children.extend(parse_complex_type(&content, schema_el, schema_path, state));
+                    parsed.extend(parse_complex_type(&content, schema_el, schema_path, state));
                 }
             }
             _ => {}
@@ -1270,9 +1306,121 @@ fn parse_complex_type(
             .attribute("type")
             .map(map_xsd_type)
             .unwrap_or(ScalarType::String);
-        children.push(SchemaNode::scalar(name, ty).attribute());
+        parsed
+            .children
+            .push(SchemaNode::scalar(name, ty).attribute());
     }
-    children
+    parsed
+}
+
+fn repeating_sequence(
+    sequence: &Node<'_, '_>,
+) -> Result<Option<XmlRepeatingSequence>, XmlFormatError> {
+    if let Some(compositor) = nested_non_sequence_compositor(sequence) {
+        return Err(XmlFormatError::UnsupportedRepeatingSequenceCompositor { compositor });
+    }
+    if let Some(element_count) = nested_repeating_multi_member_sequence(sequence) {
+        return Err(XmlFormatError::UnsupportedNestedRepeatingSequence { element_count });
+    }
+    let mut members = Vec::new();
+    collect_sequence_members(sequence, true, false, false, &mut members);
+    if members.len() < 2 {
+        return Ok(None);
+    }
+    let mut names = BTreeSet::new();
+    if !members
+        .iter()
+        .all(|member| names.insert(member.name.as_str()))
+    {
+        return Err(XmlFormatError::UnsupportedRepeatingParticle {
+            compositor: "sequence".to_string(),
+            element_count: members.len(),
+        });
+    }
+    Ok(Some(XmlRepeatingSequence {
+        required: sequence.attribute("minOccurs") != Some("0"),
+        members,
+    }))
+}
+
+fn nested_non_sequence_compositor(particle: &Node<'_, '_>) -> Option<String> {
+    for child in particle.children().filter(|node| node.is_element()) {
+        if is_disabled_particle(&child) {
+            continue;
+        }
+        match child.tag_name().name() {
+            "choice" | "all" => return Some(child.tag_name().name().to_string()),
+            "sequence" => {
+                if let Some(compositor) = nested_non_sequence_compositor(&child) {
+                    return Some(compositor);
+                }
+            }
+            // Element-local complex types own a separate particle tree.
+            "element" => {}
+            _ => {}
+        }
+    }
+    None
+}
+
+fn nested_repeating_multi_member_sequence(particle: &Node<'_, '_>) -> Option<usize> {
+    for child in particle.children().filter(|node| node.is_element()) {
+        if is_disabled_particle(&child) || child.tag_name().name() == "element" {
+            continue;
+        }
+        if child.tag_name().name() == "sequence" && is_repeating(&child) {
+            let mut members = Vec::new();
+            collect_sequence_members(&child, true, false, false, &mut members);
+            if members.len() > 1 {
+                return Some(members.len());
+            }
+        }
+        if let Some(count) = nested_repeating_multi_member_sequence(&child) {
+            return Some(count);
+        }
+    }
+    None
+}
+
+fn invalid_repeating_sequence_group(schema: &SchemaNode) -> Option<&str> {
+    if !schema.xml_repeating_sequences_are_valid() {
+        return Some(&schema.name);
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return None;
+    };
+    children.iter().find_map(invalid_repeating_sequence_group)
+}
+
+fn collect_sequence_members(
+    particle: &Node<'_, '_>,
+    root: bool,
+    inherited_optional: bool,
+    inherited_repeating: bool,
+    out: &mut Vec<XmlSequenceMember>,
+) {
+    let optional = inherited_optional || (!root && particle.attribute("minOccurs") == Some("0"));
+    let repeating = inherited_repeating || (!root && is_repeating(particle));
+    for child in particle.children().filter(|node| node.is_element()) {
+        if is_disabled_particle(&child) {
+            continue;
+        }
+        match child.tag_name().name() {
+            "element" => out.push(XmlSequenceMember {
+                name: child
+                    .attribute("name")
+                    .or_else(|| child.attribute("ref").map(local_name))
+                    .unwrap_or_default()
+                    .to_string(),
+                required: !optional && child.attribute("minOccurs") != Some("0"),
+                repeating: repeating || is_repeating(&child),
+            }),
+            "sequence" | "choice" | "all" => {
+                collect_sequence_members(&child, false, optional, repeating, out);
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Recursively walks an `xs:sequence`, collecting the elements it declares.
@@ -1289,13 +1437,6 @@ fn collect_sequence(
 ) {
     if is_disabled_particle(sequence) {
         return;
-    }
-    if sequence.tag_name().name() == "sequence" && is_repeating(sequence) {
-        let element_count = particle_element_count(sequence);
-        if element_count > 1 {
-            state.reject_repeating_particle(sequence.tag_name().name(), element_count);
-            return;
-        }
     }
     for child in sequence.children().filter(|n| n.is_element()) {
         if is_disabled_particle(&child) {
@@ -1323,29 +1464,6 @@ fn collect_sequence(
             _ => {}
         }
     }
-}
-
-/// Counts element particles without descending into an element's own type.
-/// A repeating compositor is losslessly flattenable only when this is one:
-/// otherwise the IR would turn its associated tuple into independent arrays.
-fn particle_element_count(particle: &Node) -> usize {
-    if is_disabled_particle(particle) {
-        return 0;
-    }
-    particle
-        .children()
-        .filter(|node| node.is_element())
-        .map(|child| {
-            if is_disabled_particle(&child) {
-                return 0;
-            }
-            match child.tag_name().name() {
-                "element" => 1,
-                "sequence" | "choice" | "all" => particle_element_count(&child),
-                _ => 0,
-            }
-        })
-        .sum()
 }
 
 fn is_disabled_particle(particle: &Node) -> bool {

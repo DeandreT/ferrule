@@ -102,7 +102,12 @@ fn canonical_scalar_names_export_as_mapforce_core_functions() {
         unmap_function_name("datetime_from_parts"),
         "datetime-from-parts"
     );
+    assert_eq!(
+        unmap_function_name("duration_from_parts"),
+        "duration-from-parts"
+    );
     assert_eq!(function_library("datetime_from_parts"), "lang");
+    assert_eq!(function_library("duration_from_parts"), "lang");
     assert_eq!(unmap_function_name("datetime_add"), "datetime-add");
     assert_eq!(function_library("datetime_add"), "lang");
     assert_eq!(unmap_function_name("parse_date"), "parse-date");

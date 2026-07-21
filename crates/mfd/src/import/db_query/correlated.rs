@@ -213,6 +213,8 @@ fn read_correlated_component(
             predicates: parent.predicates,
             order: parent.order,
             cardinality: QueryCardinality::Many,
+            required_paths: Vec::new(),
+            computed_ports: BTreeMap::new(),
         });
     }
     queries.push(DbQuery {
@@ -221,6 +223,8 @@ fn read_correlated_component(
         predicates: child.predicates,
         order: child.order,
         cardinality: QueryCardinality::Many,
+        required_paths: Vec::new(),
+        computed_ports: BTreeMap::new(),
     });
     Ok(SchemaComponent {
         name: component.attribute("name").unwrap_or_default().to_string(),

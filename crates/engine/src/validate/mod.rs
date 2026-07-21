@@ -12,7 +12,7 @@ mod scope;
 use graph::{validate_cycles, validate_graph};
 use options::{
     validate_external_source_options, validate_structured_edi_source_options,
-    validate_target_options, validate_xbrl_options,
+    validate_target_options, validate_wsdl_options, validate_xbrl_options, validate_xlsx_options,
 };
 use schema::{display_path, source_path_matches, validate_schema};
 use scope::{ScopeSchemas, validate_scope};
@@ -66,9 +66,35 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         &project.source_options,
         &mut issues,
     );
+    validate_xlsx_options(
+        "source format options",
+        &project.source_options,
+        &project.source,
+        true,
+        &mut issues,
+    );
+    validate_wsdl_options(
+        "source format options",
+        &project.source_options,
+        true,
+        &mut issues,
+    );
     validate_target_options(
         "target format options",
         &project.target_options,
+        &mut issues,
+    );
+    validate_xlsx_options(
+        "target format options",
+        &project.target_options,
+        &project.target,
+        false,
+        &mut issues,
+    );
+    validate_wsdl_options(
+        "target format options",
+        &project.target_options,
+        false,
         &mut issues,
     );
     if let Some(layout) = &project.source_options.pdf
@@ -108,6 +134,19 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         validate_target_options(
             &format!("extra target `{name}` format options"),
             &target.options,
+            &mut issues,
+        );
+        validate_xlsx_options(
+            &format!("extra target `{name}` format options"),
+            &target.options,
+            &target.schema,
+            false,
+            &mut issues,
+        );
+        validate_wsdl_options(
+            &format!("extra target `{name}` format options"),
+            &target.options,
+            false,
             &mut issues,
         );
         validate_schema(
@@ -153,6 +192,19 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
         validate_structured_edi_source_options(
             &format!("{location} format options"),
             &source.options,
+            &mut issues,
+        );
+        validate_xlsx_options(
+            &format!("{location} format options"),
+            &source.options,
+            &source.schema,
+            true,
+            &mut issues,
+        );
+        validate_wsdl_options(
+            &format!("{location} format options"),
+            &source.options,
+            true,
             &mut issues,
         );
         if let Some(layout) = &source.options.pdf

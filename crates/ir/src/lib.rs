@@ -174,6 +174,11 @@ pub struct SchemaNode {
     /// model the bounded object-only JSON Schema `anyOf` subset.
     #[serde(default, skip_serializing_if = "GroupAlternativeMode::is_exclusive")]
     pub alternative_mode: GroupAlternativeMode,
+    /// Repeating anonymous XML sequences flattened into this group's named
+    /// children for mapping-port compatibility. XML adapters use this metadata
+    /// to retain document order and recreate the original compositor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xml_repeating_sequences: Vec<XmlRepeatingSequence>,
     pub kind: SchemaKind,
 }
 
@@ -201,6 +206,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             value_generation: Option<ValueGeneration>,
             #[serde(default)]
             alternative_mode: GroupAlternativeMode,
+            #[serde(default)]
+            xml_repeating_sequences: Vec<XmlRepeatingSequence>,
             kind: SchemaKind,
         }
 
@@ -215,19 +222,38 @@ impl<'de> Deserialize<'de> for SchemaNode {
             fixed: repr.fixed,
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
+            xml_repeating_sequences: repr.xml_repeating_sequences,
             kind: repr.kind,
         };
         if !node.alternatives_are_valid()
             || !node.recursive_ref_is_valid()
             || !node.value_generation_is_valid()
             || !node.alternative_mode_is_valid()
+            || !node.xml_repeating_sequences_are_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, value generation, or alternative mode",
+                "schema metadata contains invalid alternatives, recursion, value generation, alternative mode, or XML repeating sequences",
             ));
         }
         Ok(node)
     }
+}
+
+/// One anonymous `xs:sequence` whose repetitions are projected onto named
+/// child ports. Member occurrence flags describe one sequence iteration;
+/// every projected child remains repeating in the ordinary schema view.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XmlRepeatingSequence {
+    #[serde(default)]
+    pub required: bool,
+    pub members: Vec<XmlSequenceMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XmlSequenceMember {
+    pub name: String,
+    pub required: bool,
+    pub repeating: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -358,6 +384,7 @@ impl SchemaNode {
             fixed: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
+            xml_repeating_sequences: Vec::new(),
             kind: SchemaKind::Scalar { ty },
         }
     }
@@ -373,6 +400,7 @@ impl SchemaNode {
             fixed: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
+            xml_repeating_sequences: Vec::new(),
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
@@ -520,6 +548,47 @@ impl SchemaNode {
 
     pub fn alternative_mode(&self) -> GroupAlternativeMode {
         self.alternative_mode
+    }
+
+    pub fn xml_repeating_sequences_are_valid(&self) -> bool {
+        let SchemaKind::Group { children, .. } = &self.kind else {
+            return self.xml_repeating_sequences.is_empty();
+        };
+        let mut used = std::collections::BTreeSet::new();
+        self.xml_repeating_sequences.iter().all(|sequence| {
+            let positions = sequence
+                .members
+                .iter()
+                .map(|member| {
+                    let mut matches = children.iter().enumerate().filter(|(_, child)| {
+                        child.name == member.name
+                            && child.repeating
+                            && !child.attribute
+                            && !child.text
+                    });
+                    let position = matches.next().map(|(position, _)| position)?;
+                    matches.next().is_none().then_some(position)
+                })
+                .collect::<Option<Vec<_>>>();
+            sequence.members.len() > 1
+                && sequence
+                    .members
+                    .iter()
+                    .all(|member| !member.name.is_empty() && used.insert(member.name.as_str()))
+                && positions.is_some_and(|positions| {
+                    positions.windows(2).all(|pair| pair[1] == pair[0] + 1)
+                })
+        })
+    }
+
+    pub fn set_xml_repeating_sequences(&mut self, sequences: Vec<XmlRepeatingSequence>) -> bool {
+        let previous = std::mem::replace(&mut self.xml_repeating_sequences, sequences);
+        if self.xml_repeating_sequences_are_valid() {
+            true
+        } else {
+            self.xml_repeating_sequences = previous;
+            false
+        }
     }
 
     pub fn alternatives(&self) -> &[GroupAlternative] {
@@ -1180,5 +1249,63 @@ mod tests {
         let old_json = r#"{"name":"value","kind":{"kind":"scalar","ty":"string"}}"#;
         let old = serde_json::from_str::<SchemaNode>(old_json).unwrap();
         assert!(!old.text);
+    }
+
+    #[test]
+    fn xml_repeating_sequences_are_group_scoped_and_serde_validated() {
+        let sequence = XmlRepeatingSequence {
+            required: true,
+            members: vec![
+                XmlSequenceMember {
+                    name: "Date".into(),
+                    required: true,
+                    repeating: false,
+                },
+                XmlSequenceMember {
+                    name: "Note".into(),
+                    required: false,
+                    repeating: false,
+                },
+            ],
+        };
+        let mut schema = SchemaNode::group(
+            "Rows",
+            vec![
+                SchemaNode::scalar("Date", ScalarType::String).repeating(),
+                SchemaNode::scalar("Note", ScalarType::String).repeating(),
+            ],
+        );
+        assert!(schema.set_xml_repeating_sequences(vec![sequence]));
+        let encoded = serde_json::to_string(&schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            schema
+        );
+
+        let invalid = r#"{
+          "name":"Rows",
+          "xml_repeating_sequences":[{"required":true,"members":[
+            {"name":"Date","required":true,"repeating":false},
+            {"name":"Missing","required":false,"repeating":false}
+          ]}],
+          "kind":{"kind":"group","children":[
+            {"name":"Date","repeating":true,"kind":{"kind":"scalar","ty":"string"}}
+          ]}
+        }"#;
+        assert!(serde_json::from_str::<SchemaNode>(invalid).is_err());
+
+        let misplaced = r#"{
+          "name":"Rows",
+          "xml_repeating_sequences":[{"members":[
+            {"name":"Date","required":true,"repeating":false},
+            {"name":"Note","required":false,"repeating":false}
+          ]}],
+          "kind":{"kind":"group","children":[
+            {"name":"Date","repeating":true,"kind":{"kind":"scalar","ty":"string"}},
+            {"name":"Other","kind":{"kind":"scalar","ty":"string"}},
+            {"name":"Note","repeating":true,"kind":{"kind":"scalar","ty":"string"}}
+          ]}
+        }"#;
+        assert!(serde_json::from_str::<SchemaNode>(misplaced).is_err());
     }
 }

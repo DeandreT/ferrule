@@ -14,6 +14,7 @@ mod http_get;
 mod pdf;
 mod protobuf;
 mod shared;
+mod wsdl;
 mod xbrl;
 mod xlsx;
 mod xml_ports;
@@ -62,6 +63,22 @@ pub(super) fn read_http_get_component(
     warnings: &mut Vec<String>,
 ) -> Result<SchemaComponent, String> {
     http_get::read(component, mfd_path, warnings)
+}
+
+pub(super) fn read_wsdl_component(
+    component: &roxmltree::Node<'_, '_>,
+    mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<SchemaComponent, String> {
+    wsdl::read(component, mfd_path, warnings)
+}
+
+pub(super) fn refine_wsdl_target_schemas(
+    components: &mut [SchemaComponent],
+    functions: &[super::function::FnComponent],
+    edge_from: &BTreeMap<u32, u32>,
+) {
+    wsdl::refine_connected_targets(components, functions, edge_from);
 }
 
 pub(super) fn read_protobuf_component(

@@ -62,6 +62,65 @@ fn imports_static_flat_xlsx_table_with_sparse_columns() {
 }
 
 #[test]
+fn duplicate_source_annotations_keep_both_physical_columns_executable() {
+    let imported = mfd::import(&fixture("xlsx-duplicate-annotations.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert!(project.source.child("Phone").is_some());
+    assert!(project.source.child("Phone_5").is_some());
+    assert_eq!(project.source_options.xlsx_columns, [4, 5]);
+    assert_eq!(project.source_options.xlsx_headers, ["Phone", "Phone"]);
+    assert!(
+        project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::SourceField { path, .. } if path == &["Phone"]))
+    );
+    assert!(
+        project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::SourceField { path, .. } if path == &["Phone_5"]))
+    );
+    assert!(engine::validate(project).is_empty());
+
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    worksheet.set_name("Contacts").unwrap();
+    worksheet.write_string(0, 3, "Phone").unwrap();
+    worksheet.write_string(0, 4, "Phone").unwrap();
+    worksheet.write_string(1, 3, "555-0100").unwrap();
+    worksheet.write_string(1, 4, "555-0199").unwrap();
+    let rows = format_xlsx::from_bytes(
+        &workbook.save_to_buffer().unwrap(),
+        &project.source,
+        project.source_options.xlsx_sheet.as_deref(),
+        project.source_options.xlsx_start_row.unwrap_or(1),
+        &project.source_options.xlsx_columns,
+        project.source_options.has_header_row.unwrap_or(true),
+    )
+    .unwrap();
+
+    let output = engine::run(project, &Instance::Repeated(rows)).unwrap();
+    assert_eq!(
+        output,
+        Instance::Repeated(vec![Instance::Group(vec![
+            (
+                "PrimaryPhone".into(),
+                Instance::Scalar(Value::String("555-0100".into())),
+            ),
+            (
+                "SecondaryPhone".into(),
+                Instance::Scalar(Value::String("555-0199".into())),
+            ),
+        ])])
+    );
+}
+
+#[test]
 fn imports_fixed_rows_with_open_cells_as_a_transposed_table() {
     let imported = mfd::import(&fixture("xlsx-transposed.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);

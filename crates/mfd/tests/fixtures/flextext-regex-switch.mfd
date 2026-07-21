@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22">
+  <resources/>
+  <component name="regex-switch-map" uid="1" editable="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="events" library="text" uid="2" kind="16">
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Log"><entry name="Lines" outkey="10"><entry name="Classified"><entry name="Alert" outkey="11"/><entry name="Info" outkey="12"/><entry name="Other" outkey="13"/></entry></entry></entry></entry></entry></root>
+            <text type="txt" config="flextext/regex-switch.mft"/>
+          </data>
+        </component>
+        <component name="alerts" library="text" uid="3" kind="16">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="20"><entry name="Value" inpkey="21"/></entry></entry></entry></root>
+            <text type="csv"><settings separator="," firstrownames="false"><names root="Alerts" block="Rows"><field0 name="Value" type="string"/></names></settings></text>
+          </data>
+        </component>
+      </children>
+      <graph directed="1"><edges/><vertices>
+        <vertex vertexkey="11"><edges><edge vertexkey="20"/><edge vertexkey="21"/></edges></vertex>
+      </vertices></graph>
+    </structure>
+  </component>
+</mapping>

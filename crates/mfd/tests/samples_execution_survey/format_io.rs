@@ -418,21 +418,34 @@ fn write_xlsx(
     let rows = instance
         .as_repeated()
         .ok_or_else(|| "XLSX output is not a repeating row set".to_string())?;
-    let write = if options.xlsx_update_existing {
-        format_xlsx::update
+    let result = if options.xlsx_update_existing {
+        format_xlsx::update_with_options(
+            path,
+            schema,
+            rows,
+            format_xlsx::FlatTableWriteOptions {
+                sheet: options.xlsx_sheet.as_deref(),
+                start_row: options.xlsx_start_row.unwrap_or(1),
+                columns: &options.xlsx_columns,
+                headers: &options.xlsx_headers,
+                has_header: options.has_header_row.unwrap_or(true),
+            },
+        )
     } else {
-        format_xlsx::write
+        format_xlsx::write_with_options(
+            path,
+            schema,
+            rows,
+            format_xlsx::FlatTableWriteOptions {
+                sheet: options.xlsx_sheet.as_deref(),
+                start_row: options.xlsx_start_row.unwrap_or(1),
+                columns: &options.xlsx_columns,
+                headers: &options.xlsx_headers,
+                has_header: options.has_header_row.unwrap_or(true),
+            },
+        )
     };
-    write(
-        path,
-        schema,
-        rows,
-        options.xlsx_sheet.as_deref(),
-        options.xlsx_start_row.unwrap_or(1),
-        &options.xlsx_columns,
-        options.has_header_row.unwrap_or(true),
-    )
-    .map_err(|error| error.to_string())
+    result.map_err(|error| error.to_string())
 }
 
 pub(super) fn inferred_extension(options: &FormatOptions) -> Option<&'static str> {
@@ -449,6 +462,7 @@ pub(super) fn inferred_extension(options: &FormatOptions) -> Option<&'static str
     } else if options.xlsx_sheet.is_some()
         || options.xlsx_start_row.is_some()
         || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()

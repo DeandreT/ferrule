@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FlexText>
+  <Commands>
+    <Project LineEnding="LF">
+      <RootName Value="Log"/>
+      <Connections><Connection><SplitMultiple Mode="Fix" Offset="1">
+        <Name Value="Lines"/>
+        <Connections><Connection><Switch Mode="AllPossible">
+          <Name Value="Classified"/>
+          <Conditions>
+            <Condition Mode="ContentContainsRegex"><Value Value="alert-[0-9]+"/><Connections><Connection><Store Type="string" TrimCharSet="%0D%0A"><Name Value="Alert"/></Store></Connection></Connections></Condition>
+            <Condition Mode="ContentStartsWith"><Value Value="INFO"/><Connections><Connection><Store Type="string" TrimCharSet="%0D%0A"><Name Value="Info"/></Store></Connection></Connections></Condition>
+            <Condition Mode="Default"><Value/><Connections><Connection><Store Type="string" TrimCharSet="%0D%0A"><Name Value="Other"/></Store></Connection></Connections></Condition>
+          </Conditions>
+          <Connections><Connection/></Connections>
+        </Switch></Connection></Connections>
+      </SplitMultiple></Connection></Connections>
+    </Project>
+  </Commands>
+  <Functions/>
+</FlexText>

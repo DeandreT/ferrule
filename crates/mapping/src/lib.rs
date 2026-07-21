@@ -20,6 +20,7 @@ mod recursive;
 mod scope_serde;
 mod swift;
 mod tabular;
+mod wsdl;
 mod xbrl;
 mod xlsx_output;
 
@@ -36,7 +37,9 @@ pub use fixed_width::{FixedFieldWidth, FixedWidthLayout, FixedWidthLayoutError};
 pub use flextext::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
     FlexTextLayout, FlexTextLayoutError, MAX_FLEXTEXT_LAYOUT_DEPTH, MAX_FLEXTEXT_LAYOUT_NODES,
-    MAX_FLEXTEXT_LAYOUT_STRING_BYTES, ManySplitter, OnceSplitter, StoreTrim, SwitchArm, TrimSide,
+    MAX_FLEXTEXT_LAYOUT_STRING_BYTES, MAX_FLEXTEXT_REGEX_COMPILED_BYTES,
+    MAX_FLEXTEXT_REGEX_PATTERN_BYTES, ManySplitter, OnceSplitter, StoreTrim, SwitchArm, SwitchMode,
+    TrimSide,
 };
 pub use http::{HttpGetOptions, HttpTimeoutSeconds};
 pub use idoc::{
@@ -69,6 +72,7 @@ pub use swift::{
     SwiftValueExpr,
 };
 pub use tabular::TabularBoundaryKind;
+pub use wsdl::{WsdlMessageOptions, WsdlMessageOptionsError, WsdlMessageRole};
 pub use xbrl::{
     XBRL_UNIT_FIELD_PREFIX, XbrlBoundaryMode, XbrlBoundaryOptions, XbrlBoundaryOptionsError,
     XbrlFactBinding, XbrlFactType, XbrlNamespaceBinding,

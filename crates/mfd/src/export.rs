@@ -34,6 +34,7 @@ mod sequence;
 mod source;
 #[cfg(test)]
 mod tests;
+mod wsdl;
 mod xbrl;
 mod xlsx;
 
@@ -457,9 +458,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
          <mapping version=\"22\">\n\
          {resources}\
          \t<component name=\"defaultmap\" uid=\"1\" editable=\"1\">\n\
-         \t\t<properties SelectedLanguage=\"builtin\"/>\n\
+         \t\t{}\n\
          \t\t<structure>\n\
-         \t\t\t<children>\n"
+         \t\t\t<children>\n",
+        wsdl::mapping_properties(project)
+            .unwrap_or_else(|| "<properties SelectedLanguage=\"builtin\"/>".to_string())
     );
     let mut source_components = Vec::with_capacity(sources.len());
     for (source_index, source) in sources.iter().enumerate() {

@@ -7,6 +7,27 @@ use serde::{Deserialize, Serialize};
 pub const MAX_FLEXTEXT_LAYOUT_DEPTH: usize = 64;
 pub const MAX_FLEXTEXT_LAYOUT_NODES: usize = 4_096;
 pub const MAX_FLEXTEXT_LAYOUT_STRING_BYTES: usize = 1_048_576;
+pub const MAX_FLEXTEXT_REGEX_PATTERN_BYTES: usize = 64 * 1_024;
+pub const MAX_FLEXTEXT_REGEX_COMPILED_BYTES: usize = 1_024 * 1_024;
+pub const MAX_FLEXTEXT_REGEX_COUNT: usize = 64;
+pub const MAX_FLEXTEXT_REGEX_TOTAL_BYTES: usize =
+    MAX_FLEXTEXT_REGEX_COUNT * MAX_FLEXTEXT_REGEX_COMPILED_BYTES * 2;
+
+const fn default_fixed_width_fill() -> char {
+    ' '
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+const fn is_space(value: &char) -> bool {
+    *value == ' '
+}
+
+const fn is_true(value: &bool) -> bool {
+    *value
+}
 
 /// A validated recursive structured-text layout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -26,8 +47,8 @@ impl FlexTextLayout {
     ) -> Result<Self, FlexTextLayoutError> {
         let root_name = root_name.into();
         validate_name(&root_name, "root")?;
-        let mut nodes = 0;
-        validate_command(&command, 1, &mut nodes)?;
+        let mut validation = LayoutValidation::default();
+        validate_command(&command, 1, &mut validation)?;
         let string_bytes = root_name
             .len()
             .checked_add(command_string_bytes(&command)?)
@@ -134,6 +155,12 @@ pub enum FlexCommand {
     FixedWidthRecords {
         name: String,
         fields: Vec<FixedWidthRecordField>,
+        #[serde(default = "default_fixed_width_fill", skip_serializing_if = "is_space")]
+        fill_char: char,
+        #[serde(default = "default_true", skip_serializing_if = "is_true")]
+        record_delimiters: bool,
+        #[serde(default = "default_true", skip_serializing_if = "is_true")]
+        treat_empty_as_absent: bool,
     },
     DelimitedRecords {
         name: String,
@@ -142,10 +169,26 @@ pub enum FlexCommand {
     },
     Switch {
         name: String,
+        #[serde(default, skip_serializing_if = "SwitchMode::is_all_possible")]
+        mode: SwitchMode,
         arms: Vec<SwitchArm>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default: Option<Box<FlexCommand>>,
     },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SwitchMode {
+    FirstMatch,
+    #[default]
+    AllPossible,
+}
+
+impl SwitchMode {
+    const fn is_all_possible(value: &Self) -> bool {
+        matches!(value, Self::AllPossible)
+    }
 }
 
 impl FlexCommand {
@@ -190,7 +233,7 @@ impl FlexCommand {
             }
             Self::Store { name, ty, .. } => Some(SchemaNode::scalar(name, *ty)),
             Self::Ignore => None,
-            Self::FixedWidthRecords { name, fields } => Some(repeating_record_schema(
+            Self::FixedWidthRecords { name, fields, .. } => Some(repeating_record_schema(
                 name,
                 fields.iter().map(|field| (field.name(), field.ty())),
             )),
@@ -202,6 +245,7 @@ impl FlexCommand {
                 name,
                 arms,
                 default,
+                ..
             } => {
                 let children = arms
                     .iter()
@@ -242,6 +286,7 @@ pub enum OnceSplitter {
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum ManySplitter {
     FixedLines(NonZeroU32),
+    Delimiter(String),
     LinesStartingWith(String),
 }
 
@@ -469,6 +514,8 @@ impl<'de> Deserialize<'de> for DelimitedDialect {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SwitchArm {
     prefix: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    contains_regex: bool,
     command: Box<FlexCommand>,
 }
 
@@ -481,12 +528,31 @@ impl SwitchArm {
         validate_nonempty_string(&prefix, "switch prefix")?;
         Ok(Self {
             prefix,
+            contains_regex: false,
+            command: Box::new(command),
+        })
+    }
+
+    pub fn new_contains_regex(
+        pattern: impl Into<String>,
+        command: FlexCommand,
+    ) -> Result<Self, FlexTextLayoutError> {
+        let pattern = pattern.into();
+        validate_nonempty_string(&pattern, "switch regular expression")?;
+        validate_switch_regex(&pattern)?;
+        Ok(Self {
+            prefix: pattern,
+            contains_regex: true,
             command: Box::new(command),
         })
     }
 
     pub fn prefix(&self) -> &str {
         &self.prefix
+    }
+
+    pub const fn contains_regex(&self) -> bool {
+        self.contains_regex
     }
 
     pub fn command(&self) -> &FlexCommand {
@@ -502,10 +568,17 @@ impl<'de> Deserialize<'de> for SwitchArm {
         #[derive(Deserialize)]
         struct Repr {
             prefix: String,
+            #[serde(default)]
+            contains_regex: bool,
             command: FlexCommand,
         }
         let value = Repr::deserialize(deserializer)?;
-        Self::new(value.prefix, value.command).map_err(serde::de::Error::custom)
+        if value.contains_regex {
+            Self::new_contains_regex(value.prefix, value.command)
+        } else {
+            Self::new(value.prefix, value.command)
+        }
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -517,13 +590,16 @@ pub enum FlexTextLayoutError {
     TooManyStringBytes,
     DuplicateName(String),
     DuplicateSwitchPrefix(String),
+    InvalidSwitchRegex,
     DuplicateTrimCharacter,
     EmptyRecord,
     EmptySwitch,
     NoOutput,
     InvalidDelimitedDialect,
+    InvalidFixedWidthFill,
     LayoutTooDeep,
     TooManyNodes,
+    TooManySwitchRegexes,
     RecordWidthOverflow,
 }
 
@@ -542,8 +618,11 @@ impl std::fmt::Display for FlexTextLayoutError {
             ),
             Self::DuplicateName(name) => write!(formatter, "duplicate sibling name `{name}`"),
             Self::DuplicateSwitchPrefix(prefix) => {
-                write!(formatter, "duplicate switch prefix `{prefix}`")
+                write!(formatter, "duplicate switch condition `{prefix}`")
             }
+            Self::InvalidSwitchRegex => formatter.write_str(
+                "switch regular expression is invalid or exceeds the compiled-size limit",
+            ),
             Self::DuplicateTrimCharacter => {
                 formatter.write_str("trim characters must form a set without duplicates")
             }
@@ -555,6 +634,9 @@ impl std::fmt::Display for FlexTextLayoutError {
             Self::InvalidDelimitedDialect => formatter.write_str(
                 "field separator, quote, and escape must be non-NUL non-line characters and the field separator must differ from the quote",
             ),
+            Self::InvalidFixedWidthFill => {
+                formatter.write_str("fixed-width fill character must not be a line break")
+            }
             Self::LayoutTooDeep => write!(
                 formatter,
                 "command nesting exceeds the limit of {MAX_FLEXTEXT_LAYOUT_DEPTH}"
@@ -562,6 +644,10 @@ impl std::fmt::Display for FlexTextLayoutError {
             Self::TooManyNodes => write!(
                 formatter,
                 "command tree exceeds the limit of {MAX_FLEXTEXT_LAYOUT_NODES} nodes"
+            ),
+            Self::TooManySwitchRegexes => write!(
+                formatter,
+                "layout exceeds the limit of {MAX_FLEXTEXT_REGEX_COUNT} distinct switch regular expressions and its {MAX_FLEXTEXT_REGEX_TOTAL_BYTES}-byte aggregate compiled-memory budget"
             ),
             Self::RecordWidthOverflow => {
                 formatter.write_str("fixed-width record exceeds this platform's limits")
@@ -572,18 +658,40 @@ impl std::fmt::Display for FlexTextLayoutError {
 
 impl std::error::Error for FlexTextLayoutError {}
 
+#[derive(Default)]
+struct LayoutValidation {
+    nodes: usize,
+    regex_patterns: HashSet<String>,
+}
+
+impl LayoutValidation {
+    fn add_regex(&mut self, pattern: &str) -> Result<(), FlexTextLayoutError> {
+        if self.regex_patterns.contains(pattern) {
+            return Ok(());
+        }
+        if self.regex_patterns.len() == MAX_FLEXTEXT_REGEX_COUNT {
+            return Err(FlexTextLayoutError::TooManySwitchRegexes);
+        }
+        // Each retained regex separately caps its compiled program and lazy
+        // DFA cache. The distinct-pattern cap therefore also bounds their sum.
+        self.regex_patterns.insert(pattern.to_string());
+        Ok(())
+    }
+}
+
 fn validate_command(
     command: &FlexCommand,
     depth: usize,
-    nodes: &mut usize,
+    validation: &mut LayoutValidation,
 ) -> Result<(), FlexTextLayoutError> {
     if depth > MAX_FLEXTEXT_LAYOUT_DEPTH {
         return Err(FlexTextLayoutError::LayoutTooDeep);
     }
-    *nodes = nodes
+    validation.nodes = validation
+        .nodes
         .checked_add(1)
         .ok_or(FlexTextLayoutError::TooManyNodes)?;
-    if *nodes > MAX_FLEXTEXT_LAYOUT_NODES {
+    if validation.nodes > MAX_FLEXTEXT_LAYOUT_NODES {
         return Err(FlexTextLayoutError::TooManyNodes);
     }
     if let Some(name) = command.output_name() {
@@ -597,8 +705,8 @@ fn validate_command(
             ..
         } => {
             validate_once_splitter(splitter)?;
-            validate_command(first, depth + 1, nodes)?;
-            validate_command(second, depth + 1, nodes)?;
+            validate_command(first, depth + 1, validation)?;
+            validate_command(second, depth + 1, validation)?;
             ensure_unique_outputs([first.as_ref(), second.as_ref()])?;
             if first.schema_node().is_none() && second.schema_node().is_none() {
                 return Err(FlexTextLayoutError::NoOutput);
@@ -608,7 +716,7 @@ fn validate_command(
             splitter, child, ..
         } => {
             validate_many_splitter(splitter)?;
-            validate_command(child, depth + 1, nodes)?;
+            validate_command(child, depth + 1, validation)?;
             if child.schema_node().is_none() {
                 return Err(FlexTextLayoutError::NoOutput);
             }
@@ -619,7 +727,12 @@ fn validate_command(
             }
         }
         FlexCommand::Ignore => {}
-        FlexCommand::FixedWidthRecords { fields, .. } => {
+        FlexCommand::FixedWidthRecords {
+            fields, fill_char, ..
+        } => {
+            if matches!(fill_char, '\r' | '\n') {
+                return Err(FlexTextLayoutError::InvalidFixedWidthFill);
+            }
             validate_fields(fields.iter().map(FixedWidthRecordField::name))?;
             fields.iter().try_fold(0_usize, |total, field| {
                 let width = usize::try_from(field.width().get())
@@ -640,18 +753,31 @@ fn validate_command(
             if arms.is_empty() && default.is_none() {
                 return Err(FlexTextLayoutError::EmptySwitch);
             }
-            let mut prefixes = HashSet::new();
+            let mut conditions = HashSet::new();
             for arm in arms {
-                validate_nonempty_string(arm.prefix(), "switch prefix")?;
-                if !prefixes.insert(arm.prefix()) {
+                let kind = arm.contains_regex();
+                let value = arm.prefix();
+                validate_nonempty_string(
+                    value,
+                    if kind {
+                        "switch regular expression"
+                    } else {
+                        "switch prefix"
+                    },
+                )?;
+                if kind {
+                    validate_switch_regex(value)?;
+                    validation.add_regex(value)?;
+                }
+                if !conditions.insert((kind, value)) {
                     return Err(FlexTextLayoutError::DuplicateSwitchPrefix(
-                        arm.prefix().to_string(),
+                        value.to_string(),
                     ));
                 }
-                validate_command(arm.command(), depth + 1, nodes)?;
+                validate_command(arm.command(), depth + 1, validation)?;
             }
             if let Some(default) = default {
-                validate_command(default, depth + 1, nodes)?;
+                validate_command(default, depth + 1, validation)?;
             }
             ensure_unique_outputs(
                 arms.iter()
@@ -668,6 +794,20 @@ fn validate_command(
         }
     }
     Ok(())
+}
+
+fn validate_switch_regex(pattern: &str) -> Result<(), FlexTextLayoutError> {
+    if pattern.len() > MAX_FLEXTEXT_REGEX_PATTERN_BYTES {
+        return Err(FlexTextLayoutError::StringTooLong(
+            "switch regular expression",
+        ));
+    }
+    regex::RegexBuilder::new(pattern)
+        .size_limit(MAX_FLEXTEXT_REGEX_COMPILED_BYTES)
+        .dfa_size_limit(MAX_FLEXTEXT_REGEX_COMPILED_BYTES)
+        .build()
+        .map(|_| ())
+        .map_err(|_| FlexTextLayoutError::InvalidSwitchRegex)
 }
 
 fn command_string_bytes(command: &FlexCommand) -> Result<usize, FlexTextLayoutError> {
@@ -698,7 +838,9 @@ fn command_string_bytes(command: &FlexCommand) -> Result<usize, FlexTextLayoutEr
             splitter, child, ..
         } => {
             let splitter = match splitter {
-                ManySplitter::LinesStartingWith(value) => value.len(),
+                ManySplitter::Delimiter(value) | ManySplitter::LinesStartingWith(value) => {
+                    value.len()
+                }
                 ManySplitter::FixedLines(_) => 0,
             };
             add(add(name_bytes, splitter)?, command_string_bytes(child)?)
@@ -708,9 +850,13 @@ fn command_string_bytes(command: &FlexCommand) -> Result<usize, FlexTextLayoutEr
             trim.as_ref().map_or(0, |trim| trim.characters().len()),
         ),
         FlexCommand::Ignore => Ok(0),
-        FlexCommand::FixedWidthRecords { fields, .. } => fields
+        FlexCommand::FixedWidthRecords {
+            fields, fill_char, ..
+        } => fields
             .iter()
-            .try_fold(name_bytes, |total, field| add(total, field.name().len())),
+            .try_fold(add(name_bytes, fill_char.len_utf8())?, |total, field| {
+                add(total, field.name().len())
+            }),
         FlexCommand::DelimitedRecords {
             dialect, fields, ..
         } => {
@@ -749,6 +895,7 @@ fn validate_once_splitter(splitter: &OnceSplitter) -> Result<(), FlexTextLayoutE
 
 fn validate_many_splitter(splitter: &ManySplitter) -> Result<(), FlexTextLayoutError> {
     match splitter {
+        ManySplitter::Delimiter(value) => validate_nonempty_string(value, "record delimiter"),
         ManySplitter::LinesStartingWith(value) => {
             validate_nonempty_string(value, "line-start marker")
         }
@@ -835,6 +982,9 @@ mod tests {
                         FixedWidthRecordField::new("name", ScalarType::String, nonzero(4)).unwrap(),
                         FixedWidthRecordField::new("count", ScalarType::Int, nonzero(2)).unwrap(),
                     ],
+                    fill_char: ' ',
+                    record_delimiters: true,
+                    treat_empty_as_absent: true,
                 }),
             },
             FlexLineEnding::Crlf,
@@ -878,6 +1028,56 @@ mod tests {
             FlexTextLayout::new("root", command, FlexLineEnding::Lf, false),
             Err(FlexTextLayoutError::LayoutTooDeep)
         ));
+    }
+
+    #[test]
+    fn regex_switch_arms_validate_and_roundtrip_without_changing_prefix_arms() {
+        let regex = SwitchArm::new_contains_regex(
+            r"item-[0-9]+",
+            FlexCommand::store("numbered", ScalarType::String, None),
+        )
+        .unwrap();
+        assert!(regex.contains_regex());
+        let encoded = serde_json::to_string(&regex).unwrap();
+        assert!(encoded.contains(r#""contains_regex":true"#));
+        assert_eq!(serde_json::from_str::<SwitchArm>(&encoded).unwrap(), regex);
+
+        let prefix = SwitchArm::new(
+            "item-",
+            FlexCommand::store("literal", ScalarType::String, None),
+        )
+        .unwrap();
+        let encoded = serde_json::to_string(&prefix).unwrap();
+        assert!(!encoded.contains("contains_regex"));
+        assert_eq!(serde_json::from_str::<SwitchArm>(&encoded).unwrap(), prefix);
+        assert!(SwitchArm::new_contains_regex("[", FlexCommand::Ignore).is_err());
+    }
+
+    #[test]
+    fn layout_rejects_more_regexes_than_the_aggregate_budget_allows() {
+        let arms = (0..=MAX_FLEXTEXT_REGEX_COUNT)
+            .map(|index| {
+                SwitchArm::new_contains_regex(
+                    format!("item-{index}"),
+                    FlexCommand::store(format!("match_{index}"), ScalarType::String, None),
+                )
+                .unwrap()
+            })
+            .collect();
+        let error = FlexTextLayout::new(
+            "root",
+            FlexCommand::Switch {
+                name: "choice".into(),
+                mode: SwitchMode::AllPossible,
+                arms,
+                default: None,
+            },
+            FlexLineEnding::Lf,
+            false,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, FlexTextLayoutError::TooManySwitchRegexes);
     }
 
     #[test]

@@ -61,7 +61,8 @@ use schema::{
     ComponentFormat, SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
     read_edi_component, read_fixed_width_component, read_flextext_component,
     read_http_get_component, read_json_component, read_pdf_component, read_protobuf_component,
-    read_schema_component, read_xbrl_component, read_xlsx_component, schema_node_at,
+    read_schema_component, read_wsdl_component, read_xbrl_component, read_xlsx_component,
+    refine_wsdl_target_schemas, schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -175,10 +176,29 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             })
                         });
                         if string_parse {
-                            note_skipped_library(&mut skipped_libraries, "text/flf-stringparse");
-                            warnings.push(format!(
-                                "skipped fixed-length component `{name}`: string-parse parameters consume a run-time string, which ferrule file inputs cannot represent"
-                            ));
+                            let warning_count = warnings.len();
+                            match read_fixed_width_component(&component, &mut warnings)
+                                .ok_or_else(|| {
+                                    if warnings.len() == warning_count {
+                                        "component could not be compiled".to_string()
+                                    } else {
+                                        "component has invalid inline settings".to_string()
+                                    }
+                                })
+                                .and_then(|schema| {
+                                    flextext_parser::read_fixed_width(&component, schema)
+                                }) {
+                                Ok(parser) => flextext_parsers.push(parser),
+                                Err(reason) => {
+                                    note_skipped_library(
+                                        &mut skipped_libraries,
+                                        "text/flf-stringparse",
+                                    );
+                                    warnings.push(format!(
+                                        "skipped fixed-length string parser `{name}`: {reason}"
+                                    ));
+                                }
+                            }
                         } else {
                             let warning_count = warnings.len();
                             match read_fixed_width_component(&component, &mut warnings) {
@@ -251,6 +271,13 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     Err(reason) => {
                         note_skipped_library(&mut skipped_libraries, "webservice");
                         warnings.push(format!("skipped web-service component `{name}`: {reason}"));
+                    }
+                },
+                "wsdl" => match read_wsdl_component(&component, path, &mut warnings) {
+                    Ok(component) => schema_components.push(component),
+                    Err(reason) => {
+                        note_skipped_library(&mut skipped_libraries, "wsdl");
+                        warnings.push(format!("skipped WSDL message component `{name}`: {reason}"));
                     }
                 },
                 "binary" if component.attribute("kind") == Some("33") => {
@@ -388,6 +415,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         &udf_registry,
         &edge_from,
     );
+    refine_wsdl_target_schemas(&mut schema_components, &fn_components, &edge_from);
     schema::restore_connected_structural_ports(&mut schema_components, &edge_from);
     let copy_all_targets = read_copy_all_targets(&structure, Some(&wrapper));
     refine_copied_json_root_schemas(&mut schema_components, &edge_from, &copy_all_targets);

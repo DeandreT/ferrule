@@ -9,4 +9,5 @@ description = "Bounded structured-text/FlexText-style instance I/O"
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
+regex = { workspace = true }
 thiserror = { workspace = true }

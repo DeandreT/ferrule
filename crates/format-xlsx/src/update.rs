@@ -4,9 +4,15 @@ use ir::{Instance, ScalarType, SchemaNode, Value};
 use umya_spreadsheet::structs::{Style, Worksheet};
 
 use super::{
-    MAX_WORKSHEET_ROW, XlsxFormatError, column_indexes, exact_f64, lexical_f64, lexical_i64,
-    row_fields, validate_row,
+    FlatTableWriteOptions, MAX_WORKSHEET_ROW, XlsxFormatError, column_indexes, exact_f64,
+    lexical_f64, lexical_i64, row_fields, validate_row,
 };
+
+struct ReplacementOptions<'a> {
+    header_row: u32,
+    headers: &'a [String],
+    has_header: bool,
+}
 
 /// Replaces one selected table while preserving the rest of an existing
 /// workbook. The workbook is fully serialized before the original file is
@@ -20,10 +26,43 @@ pub fn update(
     columns: &[u32],
     has_header: bool,
 ) -> Result<(), XlsxFormatError> {
+    update_with_options(
+        path,
+        schema,
+        rows,
+        FlatTableWriteOptions {
+            sheet,
+            start_row,
+            columns,
+            headers: &[],
+            has_header,
+        },
+    )
+}
+
+pub fn update_with_options(
+    path: &Path,
+    schema: &SchemaNode,
+    rows: &[Instance],
+    options: FlatTableWriteOptions<'_>,
+) -> Result<(), XlsxFormatError> {
+    let FlatTableWriteOptions {
+        sheet,
+        start_row,
+        columns,
+        headers,
+        has_header,
+    } = options;
     if start_row == 0 || start_row > MAX_WORKSHEET_ROW {
         return Err(XlsxFormatError::InvalidCoordinate);
     }
     let fields = row_fields(schema)?;
+    if !headers.is_empty() && headers.len() != fields.len() {
+        return Err(XlsxFormatError::HeaderCount {
+            expected: fields.len(),
+            got: headers.len(),
+        });
+    }
     let columns = column_indexes(fields.len(), columns)?;
     let records = rows
         .iter()
@@ -52,7 +91,15 @@ pub fn update(
             .map_err(|_| XlsxFormatError::NoWorksheets)?,
     };
     replace_table(
-        worksheet, &fields, &columns, &records, start_row, data_start, has_header,
+        worksheet,
+        &fields,
+        &columns,
+        &records,
+        ReplacementOptions {
+            header_row: start_row,
+            headers,
+            has_header,
+        },
     )?;
 
     let mut bytes = Vec::new();
@@ -67,10 +114,12 @@ fn replace_table(
     fields: &[(&str, ScalarType)],
     columns: &[u32],
     records: &[Vec<&Value>],
-    header_row: u32,
-    data_start: u32,
-    has_header: bool,
+    options: ReplacementOptions<'_>,
 ) -> Result<(), XlsxFormatError> {
+    let header_row = options.header_row;
+    let data_start = header_row
+        .checked_add(u32::from(options.has_header))
+        .ok_or(XlsxFormatError::InvalidCoordinate)?;
     let columns = columns.iter().map(|column| column + 1).collect::<Vec<_>>();
     let data_styles = columns
         .iter()
@@ -86,15 +135,16 @@ fn replace_table(
             clear_cell(worksheet, *column, row);
         }
     }
-    if has_header {
-        for ((name, _), column) in fields.iter().zip(&columns) {
+    if options.has_header {
+        for (index, ((name, _), column)) in fields.iter().zip(&columns).enumerate() {
+            let header = options.headers.get(index).map_or(*name, String::as_str);
             replace_value(
                 worksheet,
                 *column,
                 header_row,
                 None,
                 ScalarType::String,
-                &Value::String((*name).to_string()),
+                &Value::String(header.to_string()),
                 0,
                 name,
             )?;
@@ -252,14 +302,18 @@ mod tests {
             ],
         );
 
-        update(
+        let headers = vec!["Measure".to_string(), "Measure".to_string()];
+        update_with_options(
             &path,
             &schema,
             &[row("January", 4.5)],
-            Some("Sales"),
-            5,
-            &[1, 2],
-            true,
+            FlatTableWriteOptions {
+                sheet: Some("Sales"),
+                start_row: 5,
+                columns: &[1, 2],
+                headers: &headers,
+                has_header: true,
+            },
         )
         .unwrap();
 
@@ -271,7 +325,14 @@ mod tests {
             sales.get_value((0, 0)),
             Some(&Data::String("Report title".into()))
         );
-        assert_eq!(sales.get_value((4, 0)), Some(&Data::String("Month".into())));
+        assert_eq!(
+            sales.get_value((4, 0)),
+            Some(&Data::String("Measure".into()))
+        );
+        assert_eq!(
+            sales.get_value((4, 1)),
+            Some(&Data::String("Measure".into()))
+        );
         assert_eq!(
             sales.get_value((5, 0)),
             Some(&Data::String("January".into()))

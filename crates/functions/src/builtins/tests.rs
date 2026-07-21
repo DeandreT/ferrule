@@ -100,6 +100,22 @@ fn integer_arithmetic_reports_overflow() {
 }
 
 #[test]
+fn sqlite_multiplication_promotes_integer_overflow_and_preserves_null() {
+    assert_eq!(
+        call("sqlite_multiply", &[Value::Int(6), Value::Int(7)]),
+        Ok(Value::Int(42))
+    );
+    assert_eq!(
+        call("sqlite_multiply", &[Value::Int(i64::MAX), Value::Int(2)]),
+        Ok(Value::Float(i64::MAX as f64 * 2.0))
+    );
+    assert_eq!(
+        call("sqlite_multiply", &[Value::Null, Value::Int(2)]),
+        Ok(Value::Null)
+    );
+}
+
+#[test]
 fn numeric_arithmetic_coerces_finite_lexical_numbers() {
     assert_eq!(
         call(
@@ -184,6 +200,7 @@ fn unknown_function_is_reported() {
     assert!(!is_known("nope"));
     assert!(is_known("concat"));
     assert!(is_known("flextext_parse_field"));
+    assert!(is_known("sqlite_multiply"));
     for name in BUILTIN_NAMES {
         assert!(
             !matches!(call(name, &[]), Err(FunctionError::UnknownFunction(_))),

@@ -3,10 +3,13 @@ use std::num::NonZeroU32;
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
     DelimitedDialect, DelimitedRecordField, FixedWidthRecordField, FlexCommand, FlexLineEnding,
-    FlexTextLayout, ManySplitter, OnceSplitter, StoreTrim, SwitchArm, TrimSide,
+    FlexTextLayout, ManySplitter, OnceSplitter, StoreTrim, SwitchArm, SwitchMode, TrimSide,
 };
 
-use crate::{FlexTextError, MAX_INPUT_BYTES, from_str, to_string};
+use crate::{
+    FlexTextError, MAX_INPUT_BYTES, MAX_RECORDS, compile_switch_regex, from_str, split_many,
+    to_string,
+};
 
 fn nonzero(value: u32) -> NonZeroU32 {
     match NonZeroU32::new(value) {
@@ -214,6 +217,68 @@ fn line_marker_split_retains_markers_and_discards_leading_prefix() {
     );
 }
 
+fn delimiter_split_layout() -> FlexTextLayout {
+    layout(FlexCommand::SplitMany {
+        name: "records".into(),
+        splitter: ManySplitter::Delimiter("|".into()),
+        child: Box::new(FlexCommand::store("raw", ScalarType::String, None)),
+    })
+}
+
+#[test]
+fn delimiter_split_roundtrips_representable_empty_items() {
+    let layout = delimiter_split_layout();
+    let instance = group(vec![(
+        "records",
+        Instance::Repeated(vec![
+            group(vec![("raw", scalar(Value::String("first".into())))]),
+            group(vec![("raw", scalar(Value::String(String::new())))]),
+            group(vec![("raw", scalar(Value::String("third".into())))]),
+        ]),
+    )]);
+
+    let output = to_string(&layout.schema(), &instance, &layout).unwrap();
+    assert_eq!(output, "first||third");
+    assert_eq!(parse(&layout, &output), instance);
+}
+
+#[test]
+fn delimiter_split_rejects_unrepresentable_writes() {
+    let layout = delimiter_split_layout();
+    let containing_delimiter = group(vec![(
+        "records",
+        Instance::Repeated(vec![group(vec![(
+            "raw",
+            scalar(Value::String("first|second".into())),
+        )])]),
+    )]);
+    let error = to_string(&layout.schema(), &containing_delimiter, &layout).unwrap_err();
+    assert!(matches!(
+        error,
+        FlexTextError::Data { message, .. } if message.contains("contains the record delimiter")
+    ));
+
+    let trailing_empty = group(vec![(
+        "records",
+        Instance::Repeated(vec![
+            group(vec![("raw", scalar(Value::String("first".into())))]),
+            group(vec![("raw", scalar(Value::String(String::new())))]),
+        ]),
+    )]);
+    let error = to_string(&layout.schema(), &trailing_empty, &layout).unwrap_err();
+    assert!(matches!(
+        error,
+        FlexTextError::Data { message, .. } if message.contains("final delimiter-split item is empty")
+    ));
+}
+
+#[test]
+fn delimiter_split_stops_at_the_record_limit() {
+    let input = "|".repeat(MAX_RECORDS + 1);
+    let error = split_many(&input, &ManySplitter::Delimiter("|".into())).unwrap_err();
+    assert!(matches!(error, FlexTextError::TooManyRecords));
+}
+
 #[test]
 fn fixed_line_writes_preserve_chunk_boundaries_without_a_trailing_delimiter() {
     let layout = layout(FlexCommand::SplitMany {
@@ -259,6 +324,7 @@ fn switch_runs_all_matching_arms_and_default_only_when_none_match() {
     ];
     let command = FlexCommand::Switch {
         name: "choice".into(),
+        mode: SwitchMode::AllPossible,
         arms,
         default: Some(Box::new(FlexCommand::store(
             "fallback",
@@ -272,6 +338,11 @@ fn switch_runs_all_matching_arms_and_default_only_when_none_match() {
     assert!(choice.field("starts_a").is_some());
     assert!(choice.field("starts_ab").is_some());
     assert!(choice.field("fallback").is_none());
+    assert_eq!(
+        to_string(&layout.schema(), &matched, &layout).unwrap(),
+        "AB-value"
+    );
+    assert_eq!(parse(&layout, "AB-value"), matched);
 
     let defaulted = parse(&layout, "Z-value");
     let choice = defaulted.field("choice").expect("choice should exist");
@@ -283,10 +354,90 @@ fn switch_runs_all_matching_arms_and_default_only_when_none_match() {
 }
 
 #[test]
+fn switch_regex_arms_search_the_complete_input() {
+    let command = FlexCommand::Switch {
+        name: "choice".into(),
+        mode: SwitchMode::AllPossible,
+        arms: vec![
+            SwitchArm::new_contains_regex(
+                r"status=[0-9]{3}\b",
+                FlexCommand::store("status", ScalarType::String, None),
+            )
+            .unwrap(),
+        ],
+        default: Some(Box::new(FlexCommand::store(
+            "fallback",
+            ScalarType::String,
+            None,
+        ))),
+    };
+    let layout = layout(command);
+    let matched = parse(&layout, "prefix status=204 suffix");
+    let choice = matched.field("choice").unwrap();
+    assert_eq!(
+        choice.field("status"),
+        Some(&scalar(Value::String("prefix status=204 suffix".into())))
+    );
+
+    let defaulted = parse(&layout, "status=ok");
+    assert!(
+        defaulted
+            .field("choice")
+            .and_then(|choice| choice.field("fallback"))
+            .is_some()
+    );
+}
+
+#[test]
+fn runtime_regex_compile_failures_are_typed() {
+    let error = compile_switch_regex("[", "document/choice").unwrap_err();
+    assert!(matches!(
+        error,
+        FlexTextError::SwitchRegex { path, .. } if path == "document/choice"
+    ));
+}
+
+#[test]
+fn first_match_switch_stops_after_the_first_matching_arm() {
+    let layout = layout(FlexCommand::Switch {
+        name: "choice".into(),
+        mode: SwitchMode::FirstMatch,
+        arms: vec![
+            SwitchArm::new("A", FlexCommand::store("first", ScalarType::String, None)).unwrap(),
+            SwitchArm::new("AB", FlexCommand::store("second", ScalarType::String, None)).unwrap(),
+        ],
+        default: None,
+    });
+
+    let parsed = parse(&layout, "AB-value");
+    let choice = parsed.field("choice").unwrap();
+    assert!(choice.field("first").is_some());
+    assert!(choice.field("second").is_none());
+    assert_eq!(
+        to_string(&layout.schema(), &parsed, &layout).unwrap(),
+        "AB-value"
+    );
+
+    let impossible = group(vec![(
+        "choice",
+        group(vec![
+            ("first", scalar(Value::String("AB-value".into()))),
+            ("second", scalar(Value::String("AB-value".into()))),
+        ]),
+    )]);
+    assert!(matches!(
+        to_string(&layout.schema(), &impossible, &layout),
+        Err(FlexTextError::Data { message, .. })
+            if message.contains("more than one arm")
+    ));
+}
+
+#[test]
 fn ignored_split_items_are_pruned_but_an_empty_stored_string_is_retained() {
     let trim = StoreTrim::new(TrimSide::Both, "\r\n").unwrap();
     let child = FlexCommand::Switch {
         name: "selected".into(),
+        mode: SwitchMode::AllPossible,
         arms: vec![SwitchArm::new("skip", FlexCommand::Ignore).unwrap()],
         default: Some(Box::new(FlexCommand::store(
             "value",
@@ -323,6 +474,9 @@ fn fixed_layout(line_ending: FlexLineEnding, bom: bool) -> FlexTextLayout {
         FlexCommand::FixedWidthRecords {
             name: "rows".into(),
             fields,
+            fill_char: ' ',
+            record_delimiters: true,
+            treat_empty_as_absent: true,
         },
         line_ending,
         bom,
@@ -347,6 +501,39 @@ fn fixed_width_records_use_unicode_columns_alignment_bom_and_crlf_output() {
     let output = to_string(&layout.schema(), &parsed, &layout).unwrap();
     assert_eq!(output, "\u{feff}李   7\r\nAda12");
     assert!(!output.ends_with("\r\n"));
+}
+
+#[test]
+fn fixed_width_records_honor_fill_empty_and_contiguous_record_settings() {
+    let layout = FlexTextLayout::new(
+        "document",
+        FlexCommand::FixedWidthRecords {
+            name: "rows".into(),
+            fields: vec![
+                FixedWidthRecordField::new("value", ScalarType::String, nonzero(3)).unwrap(),
+            ],
+            fill_char: '_',
+            record_delimiters: false,
+            treat_empty_as_absent: false,
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .unwrap();
+    let parsed = parse(&layout, "A_____B__");
+    let rows = parsed
+        .field("rows")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        rows[1].field("value"),
+        Some(&scalar(Value::String(String::new())))
+    );
+    assert_eq!(
+        to_string(&layout.schema(), &parsed, &layout).unwrap(),
+        "A_____B__"
+    );
 }
 
 fn delimited_layout() -> FlexTextLayout {
