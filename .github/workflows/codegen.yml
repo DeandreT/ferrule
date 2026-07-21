@@ -1,0 +1,48 @@
+name: Codegen CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codegen-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+jobs:
+  generated-backends:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy
+        run: >-
+          cargo clippy -p cli --test code_generation
+          --features codegen-tests -- -D warnings
+      - name: codegen crate tests
+        run: >-
+          cargo test
+          -p codegen
+          -p codegen-runtime
+          -p codegen-rust
+          -p codegen-csharp
+      - name: generated Rust and C# parity tests
+        run: >-
+          cargo test -p cli --test code_generation
+          --features codegen-tests
