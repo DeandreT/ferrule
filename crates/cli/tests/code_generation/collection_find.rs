@@ -531,7 +531,7 @@ fn collection_find_matches_engine_and_generated_backends() -> TestResult<()> {
         harness.join("Program.cs"),
         include_str!("fixtures/collection_find_csharp_harness.cs.txt"),
     )?;
-    let csharp = Command::new("dotnet")
+    let csharp = dotnet_command(&csharp_output)
         .args([
             "run",
             "--project",
