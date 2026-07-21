@@ -268,7 +268,7 @@ pub(crate) fn endpoint_block_size(title: &str, pin_labels: &[String]) -> egui::V
         .max()
         .unwrap_or(0);
     egui::vec2(
-        (label_chars as f32 * 7.5 + 48.0).clamp(120.0, 250.0),
-        (44.0 + pin_labels.len() as f32 * 22.0).max(80.0),
+        (label_chars as f32 * 7.0 + 40.0).clamp(110.0, 230.0),
+        (34.0 + pin_labels.len() as f32 * 20.0).max(58.0),
     )
 }

@@ -33,6 +33,8 @@ use graph_references::node_inputs;
 use node_palette::NodeTemplate;
 
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
+const GRAPH_TITLE_CHAR_LIMIT: usize = 36;
+const SOURCE_FIELD_EDIT_WIDTH: f32 = 170.0;
 
 fn compact_endpoint_label(path: &str) -> String {
     if path.chars().count() <= ENDPOINT_LABEL_CHAR_LIMIT {
@@ -55,6 +57,21 @@ fn compact_endpoint_label(path: &str) -> String {
         .chars()
         .rev()
         .take(ENDPOINT_LABEL_CHAR_LIMIT - 3)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect::<String>();
+    format!("...{suffix}")
+}
+
+fn compact_graph_title(label: &str) -> String {
+    if label.chars().count() <= GRAPH_TITLE_CHAR_LIMIT {
+        return label.to_string();
+    }
+    let suffix = label
+        .chars()
+        .rev()
+        .take(GRAPH_TITLE_CHAR_LIMIT - 3)
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
@@ -133,9 +150,7 @@ fn output_wire_emphasis(hovered_node: Option<SnarlNodeId>, pin: &OutPin) -> Wire
     let Some(hovered_node) = hovered_node else {
         return WireEmphasis::Normal;
     };
-    if pin.id.node == hovered_node
-        || matches!(pin.remotes.as_slice(), [remote] if remote.node == hovered_node)
-    {
+    if pin.id.node == hovered_node || pin.remotes.iter().any(|remote| remote.node == hovered_node) {
         WireEmphasis::Incident
     } else {
         WireEmphasis::Unrelated
@@ -682,7 +697,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .and_then(|frame| frame.last())
                         .map(|owner| format!("{owner}/"))
                         .unwrap_or_default();
-                    format!("Source: {owner}{}", path.join("/"))
+                    compact_graph_title(&format!("Source: {owner}{}", path.join("/")))
                 }
                 Some(Node::SourceDocumentPath) => "Source document path".to_string(),
                 Some(Node::Position { collection }) if collection.is_empty() => {
@@ -982,20 +997,31 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         if let Some(node) = self.graph.nodes.get_mut(&node_id) {
             match node {
                 Node::SourceField { path, frame } => {
+                    let mut joined = path.join("/");
+                    if ui
+                        .add_sized(
+                            [SOURCE_FIELD_EDIT_WIDTH, ui.spacing().interact_size.y],
+                            egui::TextEdit::singleline(&mut joined),
+                        )
+                        .on_hover_text(if joined.is_empty() {
+                            "Source path".to_string()
+                        } else {
+                            joined.clone()
+                        })
+                        .changed()
+                    {
+                        *path = joined
+                            .split('/')
+                            .map(str::to_string)
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                    }
                     if let Some(frame) = frame {
                         ui.label(format!(
                             "@{}",
                             frame.last().map(String::as_str).unwrap_or("frame")
                         ))
                         .on_hover_text(format!("source frame: {}", frame.join("/")));
-                    }
-                    let mut joined = path.join("/");
-                    if ui.text_edit_singleline(&mut joined).changed() {
-                        *path = joined
-                            .split('/')
-                            .map(str::to_string)
-                            .filter(|s| !s.is_empty())
-                            .collect();
                     }
                 }
                 Node::SourceDocumentPath => {

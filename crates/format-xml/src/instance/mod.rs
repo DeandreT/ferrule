@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use generic::{read_generic_element, read_group_fields, write_generic_element};
 
-const MAX_XML_RECURSION_DEPTH: usize = 256;
+const MAX_XML_RECURSION_DEPTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {

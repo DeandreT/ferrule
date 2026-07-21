@@ -92,7 +92,7 @@ fn endpoint_labels_keep_short_paths_unchanged() {
 }
 
 #[test]
-fn node_hover_emphasizes_incident_pins_without_spilling_across_fanout() {
+fn node_hover_emphasizes_every_incident_fanout_pin() {
     let source = SnarlNodeId(1);
     let hovered = SnarlNodeId(2);
     let unrelated = SnarlNodeId(3);
@@ -143,7 +143,7 @@ fn node_hover_emphasizes_incident_pins_without_spilling_across_fanout() {
     );
     assert_eq!(
         output_wire_emphasis(Some(hovered), &fanout),
-        WireEmphasis::Unrelated
+        WireEmphasis::Incident
     );
     assert_eq!(
         output_wire_emphasis(Some(source), &fanout),
