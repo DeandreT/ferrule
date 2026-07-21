@@ -10,6 +10,14 @@ description = "Headless runner: executes a ferrule mapping project against input
 name = "ferrule"
 path = "src/main.rs"
 
+[features]
+codegen-tests = []
+
+[[test]]
+name = "code_generation"
+path = "tests/code_generation.rs"
+required-features = ["codegen-tests"]
+
 [dependencies]
 ir = { workspace = true }
 mapping = { workspace = true }
