@@ -76,6 +76,38 @@ pub struct Imported {
     pub warnings: Vec<String>,
 }
 
+struct PrimarySourceHint {
+    name: String,
+    output_keys: BTreeSet<u32>,
+}
+
+fn primary_source_hint(
+    mapping: &roxmltree::Node<'_, '_>,
+    structure: &roxmltree::Node<'_, '_>,
+) -> Option<PrimarySourceHint> {
+    let uid = mapping.attribute("ferrule-primary-source")?;
+    let component = structure
+        .descendants()
+        .find(|node| node.has_tag_name("component") && node.attribute("uid") == Some(uid))?;
+    Some(PrimarySourceHint {
+        name: component.attribute("name").unwrap_or_default().to_string(),
+        output_keys: component
+            .descendants()
+            .filter_map(|node| node.attribute("outkey"))
+            .filter_map(|key| key.parse().ok())
+            .collect(),
+    })
+}
+
+fn hinted_primary_index(sources: &[&SchemaComponent], hint: &PrimarySourceHint) -> Option<usize> {
+    let mut matching = sources.iter().enumerate().filter(|(_, source)| {
+        source.name == hint.name
+            && (hint.output_keys.is_empty() || source.output_keys == hint.output_keys)
+    });
+    let (index, _) = matching.next()?;
+    matching.next().is_none().then_some(index)
+}
+
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let text = std::fs::read_to_string(path)?;
     let doc = roxmltree::Document::parse(&text)?;
@@ -91,6 +123,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "structure")
         .ok_or(MfdError::NotMfd("wrapper has no structure"))?;
+    let primary_source_hint = primary_source_hint(&mapping_el, &structure);
     let selected_language = wrapper
         .children()
         .find(|node| node.has_tag_name("properties"))
@@ -527,7 +560,10 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     if sources.is_empty() {
         return Err(unsupported("source"));
     }
-    let primary_source = primary_index(&sources, target, &edge_from, &fn_components);
+    let primary_source = primary_source_hint
+        .as_ref()
+        .and_then(|hint| hinted_primary_index(&sources, hint))
+        .unwrap_or_else(|| primary_index(&sources, target, &edge_from, &fn_components));
     sources.swap(0, primary_source);
     let source_names = runtime_names(&sources);
     let primary = sources[0];

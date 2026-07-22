@@ -487,12 +487,13 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let _ = write!(
         out,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-         <mapping version=\"22\">\n\
+         <mapping version=\"22\" ferrule-primary-source=\"{}\">\n\
          {resources}\
          \t<component name=\"defaultmap\" uid=\"1\" editable=\"1\">\n\
          \t\t{}\n\
          \t\t<structure>\n\
          \t\t\t<children>\n",
+        sources.primary_component_uid(),
         wsdl::mapping_properties(project)
             .unwrap_or_else(|| "<properties SelectedLanguage=\"builtin\"/>".to_string())
     );
