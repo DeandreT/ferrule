@@ -19,6 +19,9 @@ recognized user-function shapes. Adjacent XSLT extension modules also import
 when a named one-parameter template returns a direct count, sum, average,
 minimum, or maximum over a descendant path; ferrule lowers that template to a
 native aggregate rather than retaining an XSLT runtime dependency.
+Bounded adjacent C# and Java source modules can likewise lower direct numeric
+picture wrappers to ferrule's deterministic formatter, while bounded XQuery
+modules can lower scalar parameter/number arithmetic to the native call graph.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable

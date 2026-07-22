@@ -134,6 +134,13 @@ impl GraphBuilder<'_> {
             return Some(node);
         }
         if self
+            .external_scalar_recipes
+            .iter()
+            .any(|recipe| recipe.output == key)
+        {
+            return self.external_scalar_node(key);
+        }
+        if self
             .external_xslt_aggregates
             .iter()
             .any(|aggregate| aggregate.output == key)

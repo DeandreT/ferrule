@@ -21,6 +21,7 @@ mod db_where;
 mod dynamic_json;
 mod dynamic_xml_variable;
 mod exception;
+mod external_scalar;
 mod external_udf;
 mod external_xslt;
 mod feed;
@@ -89,6 +90,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "structure")
         .ok_or(MfdError::NotMfd("wrapper has no structure"))?;
+    let selected_language = wrapper
+        .children()
+        .find(|node| node.has_tag_name("properties"))
+        .and_then(|properties| properties.attribute("SelectedLanguage"))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
 
     let mut warnings = Vec::new();
     let mut schema_components = Vec::new();
@@ -100,6 +107,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut udf_registry = UdfRegistry::read(&mapping_el, path, &mut warnings);
     let mut udf_calls = Vec::new();
     let mut external_udf_candidates = Vec::new();
+    let mut external_scalar_recipes = Vec::new();
     let mut external_xslt_aggregates = Vec::new();
     let mut exception_recipes = Vec::new();
     let mut pending_joins = join::PendingJoins::default();
@@ -385,29 +393,38 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             }
                         }
                     } else {
-                        match external_xslt::read(&component, path) {
-                            Ok(Some(recipe)) => external_xslt_aggregates.push(recipe),
+                        match external_scalar::read(&component, path, &selected_language) {
+                            Ok(Some(recipe)) => external_scalar_recipes.push(recipe),
                             Err(reason) => {
                                 note_skipped_library(&mut skipped_libraries, other);
                                 warnings.push(format!(
-                                    "external XSLT function `{name}` is unsupported: {reason}"
+                                    "external {selected_language} function `{name}` is unsupported: {reason}"
                                 ));
                             }
-                            Ok(None) => {
-                                note_skipped_library(&mut skipped_libraries, other);
-                                if !external_udf::capture_or_warn(
-                                    &component,
-                                    udf_registry.unsupported_reason(other, &name),
-                                    &mut external_udf_candidates,
-                                    &mut warnings,
-                                ) {
+                            Ok(None) => match external_xslt::read(&component, path) {
+                                Ok(Some(recipe)) => external_xslt_aggregates.push(recipe),
+                                Err(reason) => {
+                                    note_skipped_library(&mut skipped_libraries, other);
                                     warnings.push(format!(
-                                        "skipped component `{name}`: unsupported library `{other}` \
-                                         (only xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf/pdf-source, requestless HTTP GET XML, scalar user-defined functions, and \
-                                         core/lang function components and supported XPath 2 functions import)"
+                                        "external XSLT function `{name}` is unsupported: {reason}"
                                     ));
                                 }
-                            }
+                                Ok(None) => {
+                                    note_skipped_library(&mut skipped_libraries, other);
+                                    if !external_udf::capture_or_warn(
+                                        &component,
+                                        udf_registry.unsupported_reason(other, &name),
+                                        &mut external_udf_candidates,
+                                        &mut warnings,
+                                    ) {
+                                        warnings.push(format!(
+                                            "skipped component `{name}`: unsupported library `{other}` \
+                                             (only xml/json/csv/fixed-length/flextext/edi/db/xlsx/protobuf/pdf-source, requestless HTTP GET XML, scalar user-defined functions, and \
+                                             core/lang function components and supported XPath 2 functions import)"
+                                        ));
+                                    }
+                                }
+                            },
                         }
                     }
                 }
@@ -519,6 +536,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         json_serializer_nodes: BTreeMap::new(),
+        external_scalar_nodes: BTreeMap::new(),
         external_xslt_nodes: BTreeMap::new(),
         json_parser_nodes: BTreeMap::new(),
         flextext_parser_nodes: BTreeMap::new(),
@@ -532,6 +550,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         source_names: &source_names,
         intermediates: &intermediates,
         json_serializers: &json_serializers,
+        external_scalar_recipes: &external_scalar_recipes,
         external_xslt_aggregates: &external_xslt_aggregates,
         json_parsers: &json_parsers,
         flextext_parsers: &flextext_parsers,
