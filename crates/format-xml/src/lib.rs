@@ -6,4 +6,6 @@ mod instance;
 pub mod xsd;
 
 pub use file_set::{LocalFileSetError, LocalFileSetLimits, LocalXmlFileSet, read_local_file_set};
-pub use instance::{XmlFormatError, from_str, read, to_string, write};
+pub use instance::{
+    XmlFormatError, XmlWriteOptions, from_str, read, to_string, to_string_with_options, write,
+};

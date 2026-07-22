@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
+use std::path::Path;
 
 use ir::{Value, XML_TEXT_FIELD};
 use mapping::{Graph, Node, NodeId, Project, RuntimeValue, SequenceExpr};
@@ -11,7 +12,7 @@ use super::function::{
 };
 use super::join::JoinExports;
 use super::position::render_component;
-use super::schema::{KeyAlloc, PortMatch, PortPairMatch, xml_escape};
+use super::schema::{GeneratedSibling, KeyAlloc, PortMatch, PortPairMatch, PortTree, xml_escape};
 use super::sequence::{SequenceExistsPins, collect_scope_sequences};
 use super::source::SourceExports;
 
@@ -24,13 +25,16 @@ pub(super) struct RenderArgs<'a> {
     pub(super) node_out_key: &'a mut BTreeMap<NodeId, u32>,
     pub(super) components: &'a mut String,
     pub(super) edges: &'a mut Vec<(u32, u32)>,
+    pub(super) structural_edges: &'a mut BTreeSet<(u32, u32)>,
     pub(super) warnings: &'a mut Vec<String>,
     pub(super) blocked_nodes: &'a BTreeSet<NodeId>,
+    pub(super) mfd_path: &'a Path,
 }
 
 pub(super) struct RenderedNodes {
     pub(super) position_inputs: BTreeMap<NodeId, u32>,
     pub(super) sequence_exists_pins: Vec<SequenceExistsPins>,
+    pub(super) siblings: Vec<GeneratedSibling>,
 }
 
 pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
@@ -43,8 +47,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         node_out_key,
         components,
         edges,
+        structural_edges,
         warnings,
         blocked_nodes,
+        mfd_path,
     } = args;
 
     let mut sequence_inputs = Vec::new();
@@ -188,6 +194,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut auto_number_inputs = Vec::new();
     let mut position_inputs = BTreeMap::new();
     let mut sequence_exists_pins = Vec::new();
+    let mut siblings = Vec::new();
     for (&id, node) in &project.graph.nodes {
         if joins.node_blocked(id) || blocked_nodes.contains(&id) {
             continue;
@@ -428,6 +435,101 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                      \t\t\t\t\t</data>\n\
                      \t\t\t\t</component>\n"
                 );
+            }
+            Node::XmlSerialize {
+                path,
+                frame,
+                schema,
+                declaration,
+                namespace,
+            } => {
+                let mut absolute = frame.clone().unwrap_or_default();
+                absolute.extend(path.iter().cloned());
+                let source = match sources.match_sequence(&absolute) {
+                    PortMatch::Unique(key) => key,
+                    PortMatch::Missing => {
+                        warnings.push(format!(
+                            "XML serializer source `{}` matches no source group; skipped",
+                            absolute.join("/")
+                        ));
+                        continue;
+                    }
+                    PortMatch::Ambiguous => {
+                        warnings.push(format!(
+                            "XML serializer source `{}` matches multiple source groups; skipped",
+                            absolute.join("/")
+                        ));
+                        continue;
+                    }
+                };
+                let serializer_ports = PortTree::build(schema, keys);
+                let Some(input) = serializer_ports.key_for_abs(&[]) else {
+                    warnings.push(format!(
+                        "XML serializer node {id} has no document-root input port; skipped"
+                    ));
+                    continue;
+                };
+                let output = keys.next();
+                let stem = mfd_path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or("mapping");
+                let schema_file = format!("{stem}-serializer-{id}.xsd");
+                let schema_text = match format_xml::xsd::export(schema) {
+                    Ok(schema) => schema,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "XML serializer node {id} schema cannot be exported ({error}); skipped"
+                        ));
+                        continue;
+                    }
+                };
+                siblings.push(GeneratedSibling {
+                    path: mfd_path
+                        .parent()
+                        .unwrap_or_else(|| Path::new("."))
+                        .join(&schema_file),
+                    contents: schema_text,
+                });
+                let entries = serializer_ports.entries_xml(
+                    schema,
+                    "inpkey",
+                    9,
+                    true,
+                    None,
+                    None,
+                );
+                let declaration = u8::from(*declaration);
+                let namespace_header = namespace.as_deref().map_or_else(
+                    || "<namespace/>".to_string(),
+                    |namespace| format!("<namespace uid=\"{}\"/>", xml_escape(namespace)),
+                );
+                let instance_root = namespace.as_deref().map_or_else(
+                    || format!("{{}}{}", schema.name),
+                    |namespace| format!("{{{namespace}}}{}", schema.name),
+                );
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"{}\" library=\"xml\" uid=\"{uid}\" kind=\"14\">\n\
+                     \t\t\t\t\t<properties XSLTTargetEncoding=\"UTF-8\" WriteXMLDeclaration=\"{declaration}\"/>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"240\" rby=\"180\"/>\n\
+                     \t\t\t\t\t<data>\n\
+                     \t\t\t\t\t\t<root><header><namespaces>{namespace_header}</namespaces></header>\n\
+                     \t\t\t\t\t\t\t<entry name=\"FileInstance\" outkey=\"{output}\" expanded=\"1\"><entry name=\"document\" expanded=\"1\">\n\
+                     {entries}\
+                     \t\t\t\t\t\t\t</entry></entry></root>\n\
+                     \t\t\t\t\t\t<document schema=\"{}\" instanceroot=\"{}\"/>\n\
+                     \t\t\t\t\t\t<wsdl/><parameter usageKind=\"stringserialize\"/>\n\
+                     \t\t\t\t\t</data>\n\
+                     \t\t\t\t</component>\n",
+                    xml_escape(&schema.name),
+                    xml_escape(&schema_file),
+                    xml_escape(&instance_root)
+                );
+                node_out_key.insert(id, output);
+                edges.push((source, input));
+                structural_edges.insert((source, input));
             }
             Node::CollectionFind {
                 predicate, value, ..
@@ -788,6 +890,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     RenderedNodes {
         position_inputs,
         sequence_exists_pins,
+        siblings,
     }
 }
 

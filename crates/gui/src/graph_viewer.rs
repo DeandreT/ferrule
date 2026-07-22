@@ -629,7 +629,8 @@ impl GraphViewer<'_> {
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
             | Node::Const { .. }
-            | Node::RuntimeValue { .. } => None,
+            | Node::RuntimeValue { .. }
+            | Node::XmlSerialize { .. } => None,
         }
     }
 
@@ -802,7 +803,8 @@ impl GraphViewer<'_> {
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
             | Node::Const { .. }
-            | Node::RuntimeValue { .. } => 0,
+            | Node::RuntimeValue { .. }
+            | Node::XmlSerialize { .. } => 0,
             Node::Call { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
@@ -890,6 +892,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Some(Node::XmlMixedContent { path, .. }) => {
                     format!("XML mixed content: {}", path.join("/"))
+                }
+                Some(Node::XmlSerialize { path, .. }) => {
+                    let path = if path.is_empty() {
+                        "<current>".to_string()
+                    } else {
+                        path.join("/")
+                    };
+                    format!("XML serialize: {path}")
                 }
                 Some(Node::CollectionFind { collection, .. }) => {
                     format!("Find: {}", collection.join("/"))
@@ -1434,6 +1444,24 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         replacements.len(),
                         if replacements.len() == 1 { "" } else { "s" }
                     ));
+                }
+                Node::XmlSerialize {
+                    path,
+                    declaration,
+                    namespace,
+                    ..
+                } => {
+                    let source = if path.is_empty() {
+                        "<current>".to_string()
+                    } else {
+                        path.join("/")
+                    };
+                    ui.label(format!("source: {source}"));
+                    ui.checkbox(declaration, "XML declaration");
+                    if let Some(namespace) = namespace {
+                        ui.label(namespace.as_str())
+                            .on_hover_text("default namespace");
+                    }
                 }
                 Node::CollectionFind { collection, .. } => {
                     ui.horizontal(|ui| {

@@ -377,6 +377,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                 child_instance,
                 false,
                 recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
+                None,
             )?;
         }
     }

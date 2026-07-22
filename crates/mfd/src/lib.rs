@@ -15,6 +15,8 @@
 //! proto2 binary target components (typed from their referenced `.proto`),
 //! single-table SQLite database components (schema introspected from the
 //! referenced database when reachable), the common core functions,
+//! structured XML string serializers with subtree, namespace, and declaration
+//! semantics,
 //! aggregates (count/sum/avg/min/max/string-join/item-at, converted to
 //! collection-reducing graph nodes), bounded one-parameter aggregate templates
 //! from adjacent XSLT extension modules, bounded invariant numeric-format
@@ -25,8 +27,9 @@
 //! it has to skip rather than failing. [`export`] writes a ferrule project
 //! back out as a `.mfd` (plus generated XSD / JSON Schema files next to
 //! it) for the exportable subset, picking each side's component family from the
-//! project's instance-path extension. Static HTTP XML sources and complete
-//! document-copy edges also round-trip through their canonical components.
+//! project's instance-path extension. Static HTTP XML sources, complete
+//! document-copy edges, and structured XML string serializers also round-trip
+//! through their canonical components.
 //! Captured-response boundaries reject export rather than publishing a
 //! design that would imply live POST or opaque UDF execution.
 //! A source-less design driven by one opaque user call can retain that call's

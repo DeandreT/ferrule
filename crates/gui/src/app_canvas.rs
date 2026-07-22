@@ -16,7 +16,8 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
-        | Node::RuntimeValue { .. } => vec![],
+        | Node::RuntimeValue { .. }
+        | Node::XmlSerialize { .. } => vec![],
         Node::Call { args, .. } => args.clone(),
         Node::If {
             condition,
