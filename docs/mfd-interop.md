@@ -25,6 +25,9 @@ modules can lower scalar parameter/number arithmetic to the native call graph.
 Structured XML string serializers retain the selected subtree schema and emit
 attributes, nested groups, repeated children, escaping, the configured default
 namespace, and optional XML declaration directly from the current source item.
+Filter components downstream from grouping retain their operator order: a
+group survives when any member satisfies the predicate, and sparse typed member
+ports resolve within that retained group.
 External EDI configurations may be ordinary sibling directories or adjacent
 ZIP packages. Packages are extracted under strict path, entry-count, compressed,
 and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata

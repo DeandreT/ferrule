@@ -161,6 +161,7 @@ fn lower_scope(
     inspect_scope_features(scope, target_path, diagnostics, root_context);
     let iteration = lower_iteration(scope);
     roots.extend(scope.filter);
+    roots.extend(scope.post_group_filter);
     roots.extend(scope.sort_keys().map(|key| key.node));
     roots.extend(scope.grouping_nodes());
     roots.extend(
@@ -405,6 +406,9 @@ fn inspect_scope_features(
     }
     if scope.merge_dynamic_fields {
         report(ScopeFeature::DynamicFieldMerge);
+    }
+    if scope.post_group_filter.is_some() {
+        report(ScopeFeature::PostGroupFilter);
     }
 }
 

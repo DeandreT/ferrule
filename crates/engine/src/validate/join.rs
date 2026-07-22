@@ -72,6 +72,7 @@ pub(super) fn validate_scope_nodes(
     let roots = scope
         .filter
         .into_iter()
+        .chain(scope.post_group_filter)
         .chain(scope.grouping_nodes())
         .chain(scope.sort_by)
         .chain(scope.output_path())

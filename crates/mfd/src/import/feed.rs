@@ -761,6 +761,14 @@ impl GraphBuilder<'_> {
         let computed_source = (!direct_group_source)
             .then(|| self.computed_iteration_source(from))
             .flatten();
+        let filter_after_grouping = if order_issue
+            == Some("applies filter after group-by, which cannot be represented exactly")
+        {
+            order_issue = None;
+            true
+        } else {
+            false
+        };
         let sort_filter_order = if order_issue
             == Some("applies sort after filter, which cannot be represented exactly")
         {
@@ -779,6 +787,7 @@ impl GraphBuilder<'_> {
             filter_inverted,
             udf_filters,
             has_filter,
+            filter_after_grouping,
             group_key,
             has_key_grouping,
             group_starting_with,

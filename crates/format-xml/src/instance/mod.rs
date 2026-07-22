@@ -15,6 +15,7 @@ use thiserror::Error;
 use generic::{read_generic_element, read_group_fields, write_generic_element};
 
 const MAX_XML_RECURSION_DEPTH: usize = 64;
+const MAX_XML_NODES: u32 = 1_000_000;
 
 #[derive(Debug, Error)]
 pub enum XmlFormatError {
@@ -127,7 +128,14 @@ pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, XmlFormatError
 /// in-memory form of [`read`] (useful where there is no filesystem, e.g.
 /// wasm).
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
-    let doc = roxmltree::Document::parse(text)?;
+    let doc = roxmltree::Document::parse_with_options(
+        text,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            nodes_limit: MAX_XML_NODES,
+            ..roxmltree::ParsingOptions::default()
+        },
+    )?;
     let root = doc.root_element();
     if root.tag_name().name() != schema.name {
         return Err(XmlFormatError::UnexpectedRoot {

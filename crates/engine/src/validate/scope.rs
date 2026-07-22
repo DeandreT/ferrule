@@ -86,6 +86,7 @@ pub(super) fn validate_scope(
         }
         if scope.construction != ScopeConstruction::Constructed
             || scope.filter.is_some()
+            || scope.post_group_filter.is_some()
             || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
@@ -343,6 +344,7 @@ pub(super) fn validate_scope(
             ));
         }
         if scope.filter.is_some()
+            || scope.post_group_filter.is_some()
             || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
@@ -442,6 +444,7 @@ pub(super) fn validate_scope(
             ));
         }
         if scope.filter.is_some()
+            || scope.post_group_filter.is_some()
             || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
@@ -535,6 +538,7 @@ pub(super) fn validate_scope(
             ));
         }
         if scope.filter.is_some()
+            || scope.post_group_filter.is_some()
             || scope.has_grouping()
             || scope.sort_by.is_some()
             || !scope.windows.is_empty()
@@ -666,6 +670,7 @@ pub(super) fn validate_scope(
     );
     for (label, node) in [
         ("filter", scope.filter),
+        ("post-group filter", scope.post_group_filter),
         ("group-by key", scope.group_by),
         ("group-adjacent-by key", scope.group_adjacent_by),
         ("group-starting-with predicate", scope.group_starting_with),
@@ -767,6 +772,12 @@ pub(super) fn validate_scope(
         issues.push(ValidationIssue::new(
             &location,
             "filter has no iterated source",
+        ));
+    }
+    if scope.post_group_filter.is_some() && !scope.has_grouping() {
+        issues.push(ValidationIssue::new(
+            &location,
+            "post-group filter requires one grouping control",
         ));
     }
     if !iterates && scope.group_by.is_some() {

@@ -453,6 +453,7 @@ impl DynamicObjectTarget {
         let control = builder.resolve_iteration_feed(property_feed);
         let nodes = IterationNodes {
             filter: None,
+            post_group_filter: None,
             group_by: None,
             group_starting_with: None,
             group_adjacent_by: None,

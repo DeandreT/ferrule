@@ -54,6 +54,7 @@ pub(super) fn infer_singleton_messages(
             },
             IterationNodes {
                 filter: None,
+                post_group_filter: None,
                 group_by: None,
                 group_starting_with: None,
                 group_adjacent_by: None,

@@ -1,15 +1,19 @@
 //! A bounded DTD subset importer for ordinary element/attribute schemas.
 //!
-//! The importer intentionally does not expand entities or external subsets.
-//! It supports `ELEMENT` and `ATTLIST` declarations, child sequences and
-//! choices, the standard occurrence suffixes, `EMPTY`, exact `(#PCDATA)`,
-//! and required CDATA/enumeration attributes.
+//! The importer supports bounded internal parameter entities containing
+//! content-model particles, but never loads external entities or subsets. It
+//! supports `ELEMENT` and `ATTLIST` declarations, child sequences and choices,
+//! the standard occurrence suffixes, `EMPTY`, exact `(#PCDATA)`, and
+//! CDATA/enumeration attributes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::Path;
 
-use ir::{ScalarType, SchemaNode, XML_TEXT_FIELD};
+use ir::{
+    ScalarType, SchemaNode, XML_ATTRIBUTES_FIELD, XML_ELEMENTS_FIELD, XML_LOCAL_NAME_FIELD,
+    XML_TEXT_FIELD,
+};
 use thiserror::Error;
 
 const MAX_INPUT_BYTES: usize = 1024 * 1024;
@@ -40,6 +44,10 @@ pub enum DtdError {
     MissingRoot(String),
     #[error("DTD declares element `{0}` more than once")]
     DuplicateElement(String),
+    #[error("DTD declares parameter entity `{0}` more than once")]
+    DuplicateParameterEntity(String),
+    #[error("DTD references undeclared parameter entity `{0}`")]
+    UnresolvedParameterEntity(String),
     #[error("DTD declares attribute `{attribute}` on element `{element}` more than once")]
     DuplicateAttribute { element: String, attribute: String },
     #[error("DTD ATTLIST owner `{0}` has no ELEMENT declaration")]
@@ -126,13 +134,13 @@ enum Content {
     Children(Particle),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Particle {
     kind: ParticleKind,
     occurs: Occurs,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ParticleKind {
     Element(String),
     Sequence(Vec<Particle>),
@@ -161,6 +169,7 @@ struct Parser<'a> {
     elements: BTreeMap<String, ElementDecl>,
     order: Vec<String>,
     attributes: BTreeMap<String, Vec<AttributeDecl>>,
+    parameter_entities: BTreeMap<String, Particle>,
 }
 
 impl<'a> Parser<'a> {
@@ -177,6 +186,7 @@ impl<'a> Parser<'a> {
             elements: BTreeMap::new(),
             order: Vec::new(),
             attributes: BTreeMap::new(),
+            parameter_entities: BTreeMap::new(),
         }
     }
 
@@ -196,8 +206,11 @@ impl<'a> Parser<'a> {
             } else if self.consume_declaration("ATTLIST") {
                 self.bump_declaration_count()?;
                 self.parse_attribute_list()?;
-            } else if self.starts_with("<!ENTITY") || self.starts_with("%") {
-                return self.unsupported("entity declarations and references");
+            } else if self.consume_declaration("ENTITY") {
+                self.bump_declaration_count()?;
+                self.parse_parameter_entity_declaration()?;
+            } else if self.starts_with("%") {
+                return self.unsupported("parameter entity references outside content models");
             } else if self.starts_with("<!NOTATION") {
                 return self.unsupported("notation declarations");
             } else if self.starts_with("<![") {
@@ -252,6 +265,9 @@ impl<'a> Parser<'a> {
         }
         if self.consume_keyword("ANY") {
             return self.unsupported("ANY element content");
+        }
+        if self.starts_with("%") {
+            return self.parse_particle(1).map(Content::Children);
         }
         if !self.consume("(") {
             return self.syntax("expected EMPTY, (#PCDATA), or a child particle");
@@ -323,6 +339,28 @@ impl<'a> Parser<'a> {
             let mut group = self.parse_particle_group(depth + 1)?;
             group.occurs = self.parse_occurrence();
             return Ok(group);
+        } else if self.consume("%") {
+            let name = self.parse_name()?;
+            self.expect(';')?;
+            let mut particle = self
+                .parameter_entities
+                .get(&name)
+                .cloned()
+                .ok_or_else(|| DtdError::UnresolvedParameterEntity(name.clone()))?;
+            self.reserve_particle_clones(particle_size(&particle))?;
+            let occurs = self.parse_occurrence();
+            if occurs != Occurs::Once {
+                if particle.occurs == Occurs::Once {
+                    particle.occurs = occurs;
+                } else {
+                    self.bump_particle_count()?;
+                    particle = Particle {
+                        kind: ParticleKind::Sequence(vec![particle]),
+                        occurs,
+                    };
+                }
+            }
+            return Ok(particle);
         } else if self.starts_with("#PCDATA") {
             return self.unsupported("mixed PCDATA and child-element content");
         } else {
@@ -366,14 +404,12 @@ impl<'a> Parser<'a> {
             self.require_whitespace("attribute type")?;
             self.parse_attribute_type()?;
             self.require_whitespace("attribute default declaration")?;
-            if !self.consume("#REQUIRED") {
-                return self.unsupported("attribute defaults other than #REQUIRED");
-            }
+            self.parse_attribute_default()?;
             if self
                 .peek_byte()
                 .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b'>')
             {
-                return self.syntax("expected whitespace or `>` after #REQUIRED");
+                return self.syntax("expected whitespace or `>` after attribute default");
             }
             if parsed
                 .iter()
@@ -398,6 +434,66 @@ impl<'a> Parser<'a> {
         }
         self.attributes.entry(owner).or_default().extend(parsed);
         Ok(())
+    }
+
+    fn parse_parameter_entity_declaration(&mut self) -> Result<(), DtdError> {
+        self.require_whitespace("parameter entity marker")?;
+        if !self.consume("%") {
+            return self.unsupported("general or external entity declarations");
+        }
+        self.require_whitespace("parameter entity name")?;
+        let name = self.parse_name()?;
+        self.require_whitespace("parameter entity value")?;
+        if self.parameter_entities.contains_key(&name) {
+            return Err(DtdError::DuplicateParameterEntity(name));
+        }
+        if !matches!(self.peek_byte(), Some(b'\'' | b'"')) {
+            return self.unsupported("external parameter entities");
+        }
+        let value = self.parse_quoted_value()?;
+        self.skip_whitespace();
+        self.expect('>')?;
+
+        let mut parser = Parser::new(&value);
+        parser.skip_whitespace();
+        let particle = parser.parse_particle(1)?;
+        parser.skip_whitespace();
+        if !parser.is_eof() {
+            return parser.syntax("parameter entity must contain one content-model particle");
+        }
+        self.reserve_particle_clones(parser.particle_count)?;
+        self.parameter_entities.insert(name, particle);
+        Ok(())
+    }
+
+    fn parse_attribute_default(&mut self) -> Result<(), DtdError> {
+        if self.consume("#REQUIRED") || self.consume("#IMPLIED") {
+            return Ok(());
+        }
+        if self.consume("#FIXED") {
+            self.require_whitespace("fixed attribute value")?;
+        }
+        self.parse_quoted_value().map(|_| ())
+    }
+
+    fn parse_quoted_value(&mut self) -> Result<String, DtdError> {
+        let Some(quote @ (b'\'' | b'"')) = self.peek_byte() else {
+            return self.syntax("expected a quoted value");
+        };
+        self.position += 1;
+        let start = self.position;
+        let Some(relative_end) = self
+            .remaining()
+            .as_bytes()
+            .iter()
+            .position(|byte| *byte == quote)
+        else {
+            return self.syntax("unterminated quoted value");
+        };
+        self.position += relative_end;
+        let value = self.text[start..self.position].to_string();
+        self.position += 1;
+        Ok(value)
     }
 
     fn parse_attribute_type(&mut self) -> Result<(), DtdError> {
@@ -483,6 +579,17 @@ impl<'a> Parser<'a> {
 
     fn bump_particle_count(&mut self) -> Result<(), DtdError> {
         self.particle_count += 1;
+        if self.particle_count > MAX_PARTICLES {
+            return Err(DtdError::LimitExceeded {
+                kind: "particle count",
+                limit: MAX_PARTICLES,
+            });
+        }
+        Ok(())
+    }
+
+    fn reserve_particle_clones(&mut self, count: usize) -> Result<(), DtdError> {
+        self.particle_count = self.particle_count.saturating_add(count);
         if self.particle_count > MAX_PARTICLES {
             return Err(DtdError::LimitExceeded {
                 kind: "particle count",
@@ -609,6 +716,15 @@ fn is_name_byte(byte: u8) -> bool {
     is_name_start(byte) || byte.is_ascii_digit() || matches!(byte, b'-' | b'.')
 }
 
+fn particle_size(particle: &Particle) -> usize {
+    1 + match &particle.kind {
+        ParticleKind::Element(_) => 0,
+        ParticleKind::Sequence(children) | ParticleKind::Choice(children) => {
+            children.iter().map(particle_size).sum()
+        }
+    }
+}
+
 struct Expander<'a> {
     document: &'a Document,
     active: Vec<&'a str>,
@@ -653,51 +769,57 @@ impl<'a> Expander<'a> {
                 })?;
         self.bump_node_count()?;
         self.active.push(name);
-        let result = match &declaration.content {
-            Content::Text if declaration.attributes.is_empty() => {
-                Ok(SchemaNode::scalar(name, ScalarType::String))
-            }
-            Content::Text => {
-                self.bump_node_count()?;
-                let mut children =
-                    vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
-                children.extend(self.expand_attributes(&declaration.attributes)?);
-                Ok(SchemaNode::group(name, children))
-            }
-            Content::Empty => Ok(SchemaNode::group(
-                name,
-                self.expand_attributes(&declaration.attributes)?,
-            )),
-            Content::Children(particle) => {
-                let uses = child_uses(name, particle)?;
-                let mut children = Vec::with_capacity(uses.len() + declaration.attributes.len());
-                for child_use in uses {
-                    let (child_name, _) = self
-                        .document
-                        .elements
-                        .get_key_value(child_use.name)
-                        .ok_or_else(|| DtdError::UnresolvedElement {
-                            parent: name.to_string(),
-                            child: child_use.name.to_string(),
-                        })?;
-                    let mut child = self.expand_element(child_name)?;
-                    child.repeating = child_use.repeating;
-                    children.push(child);
+        let result =
+            match &declaration.content {
+                Content::Text if declaration.attributes.is_empty() => {
+                    Ok(SchemaNode::scalar(name, ScalarType::String))
                 }
-                if let Some(attribute) = declaration
-                    .attributes
-                    .iter()
-                    .find(|attribute| children.iter().any(|child| child.name == attribute.name))
-                {
-                    return Err(DtdError::AttributeElementNameCollision {
-                        element: name.to_string(),
-                        name: attribute.name.clone(),
-                    });
+                Content::Text => {
+                    self.bump_node_count()?;
+                    let mut children =
+                        vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
+                    children.extend(self.expand_attributes(&declaration.attributes)?);
+                    Ok(SchemaNode::group(name, children))
                 }
-                children.extend(self.expand_attributes(&declaration.attributes)?);
-                Ok(SchemaNode::group(name, children))
-            }
-        };
+                Content::Empty => Ok(SchemaNode::group(
+                    name,
+                    self.expand_attributes(&declaration.attributes)?,
+                )),
+                Content::Children(particle) => {
+                    if let Some(names) = heterogeneous_repeating_names(particle) {
+                        let mut children = vec![self.expand_generic_elements(name, names)?];
+                        children.extend(self.expand_attributes(&declaration.attributes)?);
+                        Ok(SchemaNode::group(name, children))
+                    } else {
+                        let uses = child_uses(name, particle)?;
+                        let mut children =
+                            Vec::with_capacity(uses.len() + declaration.attributes.len());
+                        for child_use in uses {
+                            let (child_name, _) = self
+                                .document
+                                .elements
+                                .get_key_value(child_use.name)
+                                .ok_or_else(|| DtdError::UnresolvedElement {
+                                    parent: name.to_string(),
+                                    child: child_use.name.to_string(),
+                                })?;
+                            let mut child = self.expand_element(child_name)?;
+                            child.repeating = child_use.repeating;
+                            children.push(child);
+                        }
+                        if let Some(attribute) = declaration.attributes.iter().find(|attribute| {
+                            children.iter().any(|child| child.name == attribute.name)
+                        }) {
+                            return Err(DtdError::AttributeElementNameCollision {
+                                element: name.to_string(),
+                                name: attribute.name.clone(),
+                            });
+                        }
+                        children.extend(self.expand_attributes(&declaration.attributes)?);
+                        Ok(SchemaNode::group(name, children))
+                    }
+                }
+            };
         self.active.pop();
         result
     }
@@ -714,6 +836,42 @@ impl<'a> Expander<'a> {
         Ok(result)
     }
 
+    fn expand_generic_elements(
+        &mut self,
+        owner: &str,
+        names: BTreeSet<&str>,
+    ) -> Result<SchemaNode, DtdError> {
+        for name in &names {
+            if !self.document.elements.contains_key(*name) {
+                return Err(DtdError::UnresolvedElement {
+                    parent: owner.to_string(),
+                    child: (*name).to_string(),
+                });
+            }
+        }
+        self.bump_node_count()?;
+        let mut children = vec![SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String)];
+        for name in names {
+            self.bump_node_count()?;
+            children.push(SchemaNode::scalar(name, ScalarType::String));
+        }
+        self.bump_node_count()?;
+        children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+        self.bump_node_count()?;
+        let attributes = SchemaNode::group(
+            XML_ATTRIBUTES_FIELD,
+            vec![
+                SchemaNode::scalar(XML_LOCAL_NAME_FIELD, ScalarType::String),
+                SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text(),
+            ],
+        )
+        .repeating();
+        self.bump_node_count()?;
+        self.bump_node_count()?;
+        children.push(attributes);
+        Ok(SchemaNode::group(XML_ELEMENTS_FIELD, children).repeating())
+    }
+
     fn bump_node_count(&mut self) -> Result<(), DtdError> {
         self.node_count += 1;
         if self.node_count > MAX_SCHEMA_NODES {
@@ -724,6 +882,15 @@ impl<'a> Expander<'a> {
         }
         Ok(())
     }
+}
+
+fn heterogeneous_repeating_names(particle: &Particle) -> Option<BTreeSet<&str>> {
+    if !particle.occurs.is_repeating() {
+        return None;
+    }
+    let mut names = BTreeSet::new();
+    collect_distinct_names(particle, &mut names);
+    (names.len() > 1).then_some(names)
 }
 
 struct ChildUse<'a> {
