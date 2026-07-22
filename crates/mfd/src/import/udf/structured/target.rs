@@ -639,6 +639,7 @@ fn build_catalog_target(
         &builder.context_path(&collection),
         IterationNodes {
             filter: Some(filter),
+            post_group_filter: None,
             group_by: None,
             group_starting_with: None,
             group_adjacent_by: None,
@@ -753,6 +754,7 @@ fn build_aggregate_target(
         },
         IterationNodes {
             filter: None,
+            post_group_filter: None,
             group_by: None,
             group_starting_with: None,
             group_adjacent_by: None,

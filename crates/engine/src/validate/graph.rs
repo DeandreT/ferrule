@@ -820,6 +820,7 @@ fn context_node_inputs(node: &Node) -> Vec<NodeId> {
 
 fn collect_scope_graph_roots(scope: &Scope, roots: &mut BTreeSet<NodeId>) {
     roots.extend(scope.filter);
+    roots.extend(scope.post_group_filter);
     roots.extend(scope.grouping_nodes());
     roots.extend(scope.sort_by);
     roots.extend(scope.output_path());

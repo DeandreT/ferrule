@@ -25,6 +25,10 @@ impl TargetLeaf {
         path.push(self.field.clone());
         path
     }
+
+    pub(super) fn chain(&self) -> &[String] {
+        &self.chain
+    }
 }
 
 /// Builds the scope tree from iteration and binding connections. `anchors`
@@ -39,6 +43,7 @@ pub(super) struct ScopeBuilder {
 #[derive(Default)]
 pub(super) struct IterationNodes {
     pub(super) filter: Option<NodeId>,
+    pub(super) post_group_filter: Option<NodeId>,
     pub(super) group_by: Option<NodeId>,
     pub(super) group_starting_with: Option<NodeId>,
     pub(super) group_adjacent_by: Option<NodeId>,
@@ -52,6 +57,17 @@ pub(super) struct IterationNodes {
 }
 
 impl ScopeBuilder {
+    pub(super) fn scope(&self, chain: &[String]) -> Option<&Scope> {
+        let mut scope = &self.root;
+        for element in chain {
+            scope = scope
+                .children
+                .iter()
+                .find(|child| child.target_field == *element)?;
+        }
+        Some(scope)
+    }
+
     pub(super) fn ensure_scope(&mut self, chain: &[String]) -> &mut Scope {
         let mut scope = &mut self.root;
         for element in chain {
@@ -103,6 +119,7 @@ impl ScopeBuilder {
         let scope = self.ensure_scope(target_path);
         scope.set_source(Some(relative));
         scope.filter = nodes.filter;
+        scope.post_group_filter = nodes.post_group_filter;
         scope.group_by = nodes.group_by;
         scope.group_starting_with = nodes.group_starting_with;
         scope.group_adjacent_by = nodes.group_adjacent_by;
@@ -136,6 +153,7 @@ impl ScopeBuilder {
         let scope = self.ensure_scope(target_path);
         scope.set_sequence(Some(sequence));
         scope.filter = nodes.filter;
+        scope.post_group_filter = nodes.post_group_filter;
         scope.group_by = nodes.group_by;
         scope.group_starting_with = nodes.group_starting_with;
         scope.group_adjacent_by = nodes.group_adjacent_by;
@@ -160,6 +178,7 @@ impl ScopeBuilder {
         let scope = self.ensure_scope(target_path);
         scope.iteration = ScopeIteration::InnerJoin { id, plan };
         scope.filter = nodes.filter;
+        scope.post_group_filter = nodes.post_group_filter;
         scope.sort_by = nodes.sort_by;
         scope.sort_descending = nodes.sort_descending;
         scope.sort_then_by = nodes.sort_then_by;

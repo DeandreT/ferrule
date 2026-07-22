@@ -42,6 +42,7 @@ impl Project {
 
 fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
     roots.extend(scope.filter);
+    roots.extend(scope.post_group_filter);
     roots.extend(scope.grouping_nodes());
     roots.extend(scope.sort_by);
     roots.extend(scope.output_path());

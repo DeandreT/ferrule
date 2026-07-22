@@ -722,6 +722,30 @@ fn group_starting_predicate_roundtrips() {
 }
 
 #[test]
+fn post_group_filter_roundtrips_and_defaults_to_absent() {
+    let scope = Scope {
+        iteration: ScopeIteration::Source(vec!["items".into()]),
+        post_group_filter: Some(10),
+        group_by: Some(11),
+        ..Scope::default()
+    };
+    let encoded = serde_json::to_string(&scope).unwrap();
+    assert!(encoded.contains(r#""post_group_filter":10"#));
+    assert_eq!(
+        serde_json::from_str::<Scope>(&encoded)
+            .unwrap()
+            .post_group_filter,
+        Some(10)
+    );
+    assert_eq!(
+        serde_json::from_str::<Scope>(r#"{"group_by":11}"#)
+            .unwrap()
+            .post_group_filter,
+        None
+    );
+}
+
+#[test]
 fn adjacent_and_ending_group_controls_roundtrip() {
     let adjacent = Scope {
         iteration: ScopeIteration::Source(vec!["items".into()]),

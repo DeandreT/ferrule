@@ -461,6 +461,7 @@ fn validate_copy_scope_shape(
     if scope.sequence().is_some()
         || scope.join().is_some()
         || scope.filter.is_some()
+        || scope.post_group_filter.is_some()
         || scope.sort_by.is_some()
         || !scope.windows.is_empty()
         || scope.group_by.is_some()

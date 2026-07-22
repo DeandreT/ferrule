@@ -1003,6 +1003,14 @@ fn build_target_scope(
         let Some(node) = builder.binding_node_at_anchor(from, &target_path, &active_anchor) else {
             continue;
         };
+        let node = if scopes
+            .scope(target_leaf.chain())
+            .is_some_and(|scope| scope.post_group_filter.is_some())
+        {
+            builder.group_member_value(node)
+        } else {
+            node
+        };
         scopes.add_binding(target_leaf, node);
     }
     dynamic_json::build_target(dynamic_target, target, builder, &mut scopes);

@@ -176,6 +176,60 @@ fn append_sort_control(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn append_post_group_filter(
+    filter: NodeId,
+    chain: &[String],
+    source_stages: Option<&[(Vec<String>, u32)]>,
+    source_collection: Option<&[String]>,
+    join: Option<JoinId>,
+    graph: &Graph,
+    node_out_key: &BTreeMap<NodeId, u32>,
+    position_inputs: &BTreeMap<NodeId, u32>,
+    position_contexts: &mut BTreeMap<NodeId, Option<u32>>,
+    keys: &mut KeyAlloc,
+    uid: &mut u32,
+    components: &mut String,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+    from: u32,
+) -> u32 {
+    connect_scope_position_roots(
+        [filter],
+        source_stages,
+        source_collection,
+        join,
+        true,
+        from,
+        graph,
+        position_inputs,
+        position_contexts,
+        edges,
+        warnings,
+    );
+    let Some(&predicate) = node_out_key.get(&filter) else {
+        warnings.push(format!(
+            "scope `{}` post-group filter references an unexported node; filter dropped",
+            chain.join("/")
+        ));
+        return from;
+    };
+    let in_nodes = keys.next();
+    let in_predicate = keys.next();
+    let out_nodes = keys.next();
+    *uid += 1;
+    let _ = write!(
+        components,
+        "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+         \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{in_nodes}\"/><datapoint pos=\"1\" key=\"{in_predicate}\"/></sources>\n\
+         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{out_nodes}\"/><datapoint/></targets>\n\
+         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+         \t\t\t\t</component>\n"
+    );
+    edges.extend([(from, in_nodes), (predicate, in_predicate)]);
+    out_nodes
+}
+
+#[allow(clippy::too_many_arguments)]
 fn append_scope_controls(
     scope: &Scope,
     chain: &[String],
@@ -483,6 +537,25 @@ fn append_scope_controls(
                 chain.join("/")
             )),
         }
+    }
+    if let Some(filter) = scope.post_group_filter {
+        from = append_post_group_filter(
+            filter,
+            chain,
+            source_stages,
+            source_collection,
+            join,
+            graph,
+            node_out_key,
+            position_inputs,
+            position_contexts,
+            keys,
+            uid,
+            components,
+            edges,
+            warnings,
+            from,
+        );
     }
     for window in scope.windows.iter().copied() {
         let bounds = window.nodes().collect::<Vec<_>>();

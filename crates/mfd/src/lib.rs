@@ -3,8 +3,9 @@
 //! `.mfd` files are XML documents describing schema components (entry trees
 //! with integer port keys), function components, and a flat port-to-port
 //! connection graph. [`import`] converts the supported subset -- XML
-//! components (resolvable XSDs incl. local includes/imports, bounded DTDs,
-//! attributes, simple-content values, and element refs), requestless static
+//! components (resolvable XSDs incl. local includes/imports, bounded DTDs with
+//! internal content-model parameter entities, attributes, simple-content
+//! values, and element refs), requestless static
 //! HTTP GET calls with typed XML responses, captured-response HTTP POST calls
 //! with typed JSON request/response projections, JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
@@ -22,7 +23,8 @@
 //! from adjacent XSLT extension modules, bounded invariant numeric-format
 //! wrappers from adjacent C#/Java source, scalar arithmetic functions from
 //! adjacent XQuery modules, constants, if-else, value-map, and
-//! filter- and group-by-driven iteration -- into a
+//! filter- and group-by-driven iteration, including filters applied to formed
+//! groups -- into a
 //! ferrule [`mapping::Project`], collecting a warning for every construct
 //! it has to skip rather than failing. [`export`] writes a ferrule project
 //! back out as a `.mfd` (plus generated XSD / JSON Schema files next to

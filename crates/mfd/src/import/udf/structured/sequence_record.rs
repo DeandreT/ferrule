@@ -415,6 +415,7 @@ pub(super) fn build_target(
         &builder.context_path(&collection),
         IterationNodes {
             filter,
+            post_group_filter: None,
             group_by: None,
             group_starting_with: None,
             group_adjacent_by: None,

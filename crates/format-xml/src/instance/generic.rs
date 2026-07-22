@@ -64,6 +64,18 @@ pub(super) fn read_group_fields(
                 child.name.clone(),
                 Instance::Scalar(Value::String(element.tag_name().name().to_string())),
             ));
+        } else if generic_element
+            && child.name == element.tag_name().name()
+            && children.iter().any(|candidate| candidate.text)
+        {
+            let SchemaKind::Scalar { ty } = child.kind else {
+                return Err(XmlFormatError::MissingElement(child.name.clone()));
+            };
+            let text = element_string_value(element);
+            fields.push((
+                child.name.clone(),
+                Instance::Scalar(parse_scalar(&child.name, ty, &text)?),
+            ));
         } else if child.attribute {
             let value = match element.attribute(child.name.as_str()) {
                 Some(text) => {

@@ -673,6 +673,7 @@ fn collect_scope_aggregate_contexts(
     let nested = inside_iteration || scope.iterates();
     let mut roots = [
         scope.filter,
+        scope.post_group_filter,
         scope.group_by,
         scope.group_starting_with,
         scope.group_adjacent_by,

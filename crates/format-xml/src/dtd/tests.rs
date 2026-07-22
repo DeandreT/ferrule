@@ -124,10 +124,6 @@ fn rejects_unsupported_or_unrepresentable_content_precisely() {
         ("<!ENTITY item \"value\"><!ELEMENT Root EMPTY>", "entity"),
         ("<!NOTATION image SYSTEM \"image/png\">", "notation"),
         ("<![INCLUDE[<!ELEMENT Root EMPTY>]]>", "conditional"),
-        (
-            "<!ELEMENT Root EMPTY><!ATTLIST Root optional CDATA #IMPLIED>",
-            "attribute defaults other than #REQUIRED",
-        ),
     ];
     for (text, expected) in cases {
         let error = import_root_str(text, Some("Root")).unwrap_err();
@@ -138,14 +134,60 @@ fn rejects_unsupported_or_unrepresentable_content_precisely() {
         "<!ELEMENT Root (A,B)*><!ELEMENT A EMPTY><!ELEMENT B EMPTY>",
         Some("Root"),
     )
-    .unwrap_err();
-    assert!(matches!(
-        tuple,
-        DtdError::UnsupportedRepeatingParticle {
-            member_count: 2,
-            ..
-        }
-    ));
+    .unwrap();
+    let generic = tuple.child(XML_ELEMENTS_FIELD).unwrap();
+    assert!(generic.repeating);
+    assert!(generic.child("A").is_some());
+    assert!(generic.child("B").is_some());
+}
+
+#[test]
+fn internal_parameter_entities_become_ordered_generic_element_sequences() {
+    let schema = import_root_str(
+        r#"
+            <!ENTITY % entry "(name | text | number)">
+            <!ELEMENT Config (section)>
+            <!ATTLIST Config version CDATA "1">
+            <!ELEMENT section (%entry;)*>
+            <!ELEMENT name (#PCDATA)>
+            <!ELEMENT text (#PCDATA)>
+            <!ELEMENT number (#PCDATA)>
+        "#,
+        Some("Config"),
+    )
+    .unwrap();
+    assert!(
+        schema
+            .child("version")
+            .is_some_and(|version| version.attribute)
+    );
+    let generic = schema
+        .child("section")
+        .and_then(|section| section.child(XML_ELEMENTS_FIELD))
+        .unwrap();
+    assert!(generic.repeating);
+    assert!(generic.child("name").is_some());
+    assert!(generic.child("text").is_some());
+    assert!(generic.child("number").is_some());
+
+    let instance = from_str(
+        r#"<!DOCTYPE Config SYSTEM "unused.dtd"><Config version="2"><section><name>theme</name><text>dark</text><number>7</number></section></Config>"#,
+        &schema,
+    )
+    .unwrap();
+    let items = instance
+        .field("section")
+        .and_then(|section| section.field(XML_ELEMENTS_FIELD))
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        items[0].field("name").and_then(Instance::as_scalar),
+        Some(&Value::String("theme".into()))
+    );
+    assert_eq!(
+        items[1].field("text").and_then(Instance::as_scalar),
+        Some(&Value::String("dark".into()))
+    );
 }
 
 #[test]
