@@ -728,6 +728,10 @@ fn read_instance(
         if let Some(url) = http_url(path) {
             return read_http_xml(url, schema, options);
         }
+        if let Some(wsdl) = &options.wsdl {
+            return format_xml::read_wsdl_message(path, schema, wsdl.operation())
+                .with_context(|| format!("reading WSDL message input {}", path.display()));
+        }
         return format_xml::read(path, schema)
             .with_context(|| format!("reading XML input {}", path.display()));
     }
@@ -925,8 +929,11 @@ fn read_http_xml(
     let text = String::from_utf8(bytes).map_err(|_| {
         anyhow::anyhow!("HTTP GET {display_url} returned a response that is not UTF-8")
     })?;
-    format_xml::from_str(&text, schema)
-        .with_context(|| format!("parsing XML response from HTTP GET {display_url}"))
+    let parsed = match &options.wsdl {
+        Some(wsdl) => format_xml::from_wsdl_message_str(&text, schema, wsdl.operation()),
+        None => format_xml::from_str(&text, schema),
+    };
+    parsed.with_context(|| format!("parsing XML response from HTTP GET {display_url}"))
 }
 
 fn http_request_error(error: ureq::Error, url: &str, timeout_seconds: u64) -> anyhow::Error {
