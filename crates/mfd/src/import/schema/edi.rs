@@ -174,13 +174,6 @@ pub(super) fn read(
         ));
     }
 
-    let nested_instance = |role| {
-        root.descendants()
-            .find(|node| node.has_tag_name("file") && node.attribute("role") == Some(role))
-            .and_then(|node| node.attribute("name"))
-            .map(str::to_string)
-    };
-
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Edi,
@@ -188,11 +181,11 @@ pub(super) fn read(
         input_instance: text
             .attribute("inputinstance")
             .map(str::to_string)
-            .or_else(|| nested_instance("inputinstance")),
+            .or_else(|| super::nested_file_instance(&root, "inputinstance")),
         output_instance: text
             .attribute("outputinstance")
             .map(str::to_string)
-            .or_else(|| nested_instance("outputinstance")),
+            .or_else(|| super::nested_file_instance(&root, "outputinstance")),
         options: FormatOptions {
             lenient_segments: true,
             edi_kind: match kind {

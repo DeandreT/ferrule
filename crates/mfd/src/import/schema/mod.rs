@@ -188,6 +188,13 @@ pub(super) fn split_json_dynamic_port(path: &[String]) -> Option<(&[String], Jso
     Some((owner, port))
 }
 
+fn nested_file_instance(root: &roxmltree::Node<'_, '_>, role: &str) -> Option<String> {
+    root.descendants()
+        .find(|node| node.has_tag_name("file") && node.attribute("role") == Some(role))
+        .and_then(|node| node.attribute("name"))
+        .map(str::to_string)
+}
+
 /// Reads an xml schema component: entry tree, ports, and the schema itself
 /// (from the referenced XSD when it resolves, else derived from entries).
 pub(super) fn read_schema_component(
@@ -319,7 +326,8 @@ pub(super) fn read_schema_component(
 
     let input_instance = document
         .and_then(|document| document.attribute("inputinstance"))
-        .map(str::to_string);
+        .map(str::to_string)
+        .or_else(|| nested_file_instance(&root_el, "inputinstance"));
     let local_xml_file_set = input_instance
         .as_deref()
         .is_some_and(is_local_file_set_pattern);
@@ -370,7 +378,8 @@ pub(super) fn read_schema_component(
         input_instance,
         output_instance: document
             .and_then(|d| d.attribute("outputinstance"))
-            .map(str::to_string),
+            .map(str::to_string)
+            .or_else(|| nested_file_instance(&root_el, "outputinstance")),
         options: FormatOptions {
             xml_document: true,
             local_xml_file_set,
@@ -980,14 +989,6 @@ pub(super) fn read_csv_component(
         warnings.push(format!("component `{name}` has no connected ports"));
     }
     let is_source = out_count >= in_count;
-    let nested_instance = |role| {
-        root_el
-            .descendants()
-            .find(|node| node.has_tag_name("file") && node.attribute("role") == Some(role))
-            .and_then(|node| node.attribute("name"))
-            .map(str::to_string)
-    };
-
     Some(SchemaComponent {
         name,
         format: ComponentFormat::Csv,
@@ -995,11 +996,11 @@ pub(super) fn read_csv_component(
         input_instance: text_el
             .attribute("inputinstance")
             .map(str::to_string)
-            .or_else(|| nested_instance("inputinstance")),
+            .or_else(|| nested_file_instance(&root_el, "inputinstance")),
         output_instance: text_el
             .attribute("outputinstance")
             .map(str::to_string)
-            .or_else(|| nested_instance("outputinstance")),
+            .or_else(|| nested_file_instance(&root_el, "outputinstance")),
         options,
         is_source,
         is_default_output: is_default_output(component),

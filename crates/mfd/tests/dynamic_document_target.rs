@@ -57,7 +57,7 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
           <component name="constant" library="core" kind="2"><targets><datapoint key="30"/></targets><data><constant value="out-" datatype="string"/></data></component>
           <component name="concat" library="core" kind="5" growable="1"><sources><datapoint pos="0" key="31"/><datapoint pos="1" key="32"/></sources><targets><datapoint key="33"/></targets></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root>
-            <entry name="FileInstance" inpkey="20"><entry name="document"><entry name="Target">
+            <entry name="FileInstance" inpkey="20"><file role="outputinstance" name="fallback.xml"/><entry name="document"><entry name="Target">
               <entry name="Value" inpkey="21"/>
             </entry></entry></entry></root>
             <document schema="target.xsd" instanceroot="{}Target"/>
@@ -75,6 +75,7 @@ fn target_file_instance_roundtrips_and_executes_per_source_document() -> Result<
     assert!(engine::validate(&imported.project).is_empty());
     assert_eq!(imported.project.root.source(), Some([].as_slice()));
     assert!(imported.project.root.output_path().is_some());
+    assert_eq!(imported.project.target_path, None);
 
     let document = |path: &str, value: &str| {
         DocumentMember::new(
