@@ -109,6 +109,18 @@ fn wider_endpoints_reveal_more_of_deep_field_paths() {
 }
 
 #[test]
+fn minimap_focus_sets_zoom_and_centers_the_requested_graph_point() {
+    let graph_point = egui::pos2(640.0, 360.0);
+    let screen_point = egui::pos2(500.0, 400.0);
+    let mut transform = egui::emath::TSTransform::from_scaling(0.2);
+
+    apply_camera_focus(&mut transform, graph_point, screen_point, Some(1.0));
+
+    assert_eq!(transform.scaling, 1.0);
+    assert!((transform * graph_point - screen_point).length() < 0.001);
+}
+
+#[test]
 fn node_hover_emphasizes_every_incident_fanout_pin() {
     let source = SnarlNodeId(1);
     let hovered = SnarlNodeId(2);
