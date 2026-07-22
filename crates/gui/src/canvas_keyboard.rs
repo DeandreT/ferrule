@@ -75,6 +75,14 @@ pub fn show(
         search.open_selected(&selected, snarl);
     }
     viewer.endpoint_search_match = search.active_match(viewer.source_blocks, viewer.target_blocks);
+    viewer.pending_endpoint_wheel = (!wire_dragging)
+        .then(|| {
+            let delta_y = ui.ctx().input(|input| input.smooth_scroll_delta().y);
+            pointer.map(|pointer| (pointer, delta_y))
+        })
+        .flatten()
+        .filter(|(_, delta_y)| *delta_y != 0.0);
+    viewer.endpoint_wheel_consumed = false;
     let delete = !ui.ctx().egui_wants_keyboard_input()
         && ui.ctx().input_mut(|input| {
             input.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
@@ -90,6 +98,11 @@ pub fn show(
         .id(canvas_id)
         .style(style)
         .show(snarl, viewer, ui);
+    if viewer.endpoint_wheel_consumed {
+        ui.ctx()
+            .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        ui.ctx().request_repaint();
+    }
     crate::canvas_search::show(
         ui.ctx(),
         canvas_id,

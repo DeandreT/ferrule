@@ -172,6 +172,8 @@ pub struct GraphViewer<'a> {
     pub hovered_node_this_frame: Option<SnarlNodeId>,
     pub camera_pan: egui::Vec2,
     pub camera_focus: Option<(egui::Pos2, egui::Pos2, Option<f32>)>,
+    pub pending_endpoint_wheel: Option<(egui::Pos2, f32)>,
+    pub endpoint_wheel_consumed: bool,
     pub canvas_transform: Option<egui::emath::TSTransform>,
     pub pin_interaction_ids: Vec<egui::Id>,
     /// Set when an interaction can't be completed (e.g. binding into a
@@ -215,6 +217,72 @@ fn apply_camera_focus(
 }
 
 impl GraphViewer<'_> {
+    fn endpoint_at(
+        &self,
+        graph_position: egui::Pos2,
+        snarl: &Snarl<CanvasNode>,
+    ) -> Option<(CanvasNode, usize)> {
+        let sizes = self.node_sizes.as_deref()?;
+        snarl
+            .nodes_pos_ids()
+            .filter_map(|(_, position, &node)| {
+                let total = match node {
+                    CanvasNode::SourceBlock(block) => self.source_blocks.get(block)?.leaves.len(),
+                    CanvasNode::TargetBlock(block) => self.target_blocks.get(block)?.leaves.len(),
+                    CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => return None,
+                };
+                let size = sizes.get(&node)?;
+                egui::Rect::from_min_size(position, *size)
+                    .expand(4.0)
+                    .contains(graph_position)
+                    .then_some((node, total))
+            })
+            .last()
+    }
+
+    fn apply_endpoint_wheel(
+        &mut self,
+        to_global: &mut egui::emath::TSTransform,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let Some((pointer, delta_y)) = self.pending_endpoint_wheel.take() else {
+            return;
+        };
+        if delta_y == 0.0 || self.camera_focus.is_some() {
+            return;
+        }
+
+        // Scene applies wheel panning before this callback. Hit-test against
+        // the stationary canvas, then retain that transform only when an
+        // endpoint accepts the vertical wheel motion.
+        let mut stationary = *to_global;
+        stationary.translation.y -= delta_y;
+        let graph_position = stationary.inverse() * pointer;
+        let Some((node, total)) = self.endpoint_at(graph_position, snarl) else {
+            return;
+        };
+        let old = self.endpoint_scroll.offset(node, total);
+        let rows = crate::canvas_endpoints::scroll_rows(delta_y);
+        let max = total.saturating_sub(self.endpoint_scroll.visible_limit(node, total));
+        let can_scroll = (rows < 0 && old > 0) || (rows > 0 && old < max);
+        if !can_scroll {
+            return;
+        }
+
+        if self.endpoint_scroll.scroll_rows(node, total, rows) {
+            crate::app::sync_endpoint_wires(
+                self.graph,
+                self.root_scope,
+                self.source_blocks,
+                self.target_blocks,
+                self.endpoint_scroll,
+                snarl,
+            );
+        }
+        *to_global = stationary;
+        self.endpoint_wheel_consumed = true;
+    }
+
     pub fn begin_node_hover_frame(&mut self, hovered_node: Option<SnarlNodeId>) {
         self.hovered_node = hovered_node;
         self.hovered_node_this_frame = None;
@@ -759,12 +827,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn current_transform(
         &mut self,
         to_global: &mut egui::emath::TSTransform,
-        _snarl: &mut Snarl<CanvasNode>,
+        snarl: &mut Snarl<CanvasNode>,
     ) {
         if let Some((graph_point, screen_point, zoom)) = self.camera_focus {
             apply_camera_focus(to_global, graph_point, screen_point, zoom);
         }
         to_global.translation += self.camera_pan;
+        self.apply_endpoint_wheel(to_global, snarl);
         self.canvas_transform = Some(*to_global);
     }
 
@@ -982,29 +1051,6 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => None,
         };
         if let Some((total, natural_width, accent)) = endpoint {
-            if ui.rect_contains_pointer(rect) {
-                let scroll_delta = ui.ctx().input(|input| input.smooth_scroll_delta());
-                if total > self.endpoint_scroll.visible_limit(canvas_node, total)
-                    && scroll_delta.y.abs() >= 1.0
-                    && self.endpoint_scroll.scroll_rows(
-                        canvas_node,
-                        total,
-                        crate::canvas_endpoints::scroll_rows(scroll_delta.y),
-                    )
-                {
-                    crate::app::sync_endpoint_wires(
-                        self.graph,
-                        self.root_scope,
-                        self.source_blocks,
-                        self.target_blocks,
-                        self.endpoint_scroll,
-                        snarl,
-                    );
-                    ui.ctx()
-                        .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
-                    ui.ctx().request_repaint();
-                }
-            }
             let scrolled = crate::canvas_endpoints::show_scrollbar(
                 ui,
                 canvas_node,
@@ -1154,20 +1200,29 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             ui.label(label);
         }
         self.record_pin_interaction_id(ui);
-        PinInfo::circle()
+        let pin_info = if matches!(
+            endpoint_pin,
+            Some(EndpointDisplayPin::HiddenBefore | EndpointDisplayPin::HiddenAfter)
+        ) {
+            PinInfo::square()
+        } else {
+            PinInfo::circle()
+        };
+        pin_info
             .with_fill(fill.to_egui())
             .with_wire_color(self.input_wire_color(pin, canvas_node, semantic_idx))
     }
 
     #[allow(refining_impl_trait)]
     fn show_output(&mut self, pin: &OutPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
-        let fill = match snarl[pin.id.node] {
+        let canvas_node = snarl[pin.id.node];
+        let fill = match canvas_node {
             CanvasNode::SourceBlock(_) => self.colors.source,
             CanvasNode::TargetBlock(_) => self.colors.target,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => self.colors.transform,
         };
-        let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
-            if let CanvasNode::SourceBlock(block) = snarl[pin.id.node]
+        let Some(node_id) = Self::mapping_id(canvas_node) else {
+            if let CanvasNode::SourceBlock(block) = canvas_node
                 && let Some(section) = self.source_blocks.get(block)
             {
                 match self.endpoint_scroll.display_pin(
@@ -1226,7 +1281,15 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
             }
             self.record_pin_interaction_id(ui);
-            return PinInfo::circle()
+            let pin_info = if matches!(
+                self.endpoint_display_pin(canvas_node, pin.id.output),
+                Some(EndpointDisplayPin::HiddenBefore | EndpointDisplayPin::HiddenAfter)
+            ) {
+                PinInfo::square()
+            } else {
+                PinInfo::circle()
+            };
+            return pin_info
                 .with_fill(fill.to_egui())
                 .with_wire_color(self.output_wire_color(pin));
         };
@@ -1766,3 +1829,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
 #[cfg(test)]
 #[path = "graph_viewer_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "graph_viewer_endpoint_tests.rs"]
+mod endpoint_tests;
