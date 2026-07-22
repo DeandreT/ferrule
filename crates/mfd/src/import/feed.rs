@@ -155,6 +155,13 @@ impl GraphBuilder<'_> {
             return self.json_serializer_node(key);
         }
         if self
+            .xml_serializers
+            .iter()
+            .any(|serializer| serializer.output == key)
+        {
+            return self.xml_serializer_node(key);
+        }
+        if self
             .json_parsers
             .iter()
             .any(|parser| parser.outputs.contains_key(&key))

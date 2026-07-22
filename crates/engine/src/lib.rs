@@ -57,6 +57,8 @@ pub enum EngineError {
     Cycle(NodeId),
     #[error("no source field found at path `{0}`")]
     MissingSourceField(String),
+    #[error("node {node}: XML serialization failed: {message}")]
+    XmlSerialization { node: NodeId, message: String },
     #[error("node {node}: expected a bool, got {found}")]
     NotABool { node: NodeId, found: &'static str },
     #[error("node {node}: expected an item count, got {found}")]

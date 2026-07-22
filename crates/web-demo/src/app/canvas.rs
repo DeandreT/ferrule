@@ -83,7 +83,8 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         | Node::RuntimeValue { .. }
         | Node::Position { .. }
         | Node::JoinField { .. }
-        | Node::JoinPosition { .. } => vec![],
+        | Node::JoinPosition { .. }
+        | Node::XmlSerialize { .. } => vec![],
         Node::Call { args, .. } => args.iter().copied().map(Some).collect(),
         Node::If {
             condition,
@@ -149,6 +150,9 @@ fn node_title(node: &Node) -> String {
         }
         Node::XmlMixedContent { path, .. } => {
             format!("XML mixed content · {}", path.join("/"))
+        }
+        Node::XmlSerialize { path, .. } => {
+            format!("XML serialize · {}", path.join("/"))
         }
         Node::CollectionFind { collection, .. } => {
             format!("find · {}", collection.join("/"))

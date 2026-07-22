@@ -195,6 +195,42 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     }
                 }
             }
+            Node::XmlSerialize {
+                path,
+                frame,
+                schema,
+                namespace,
+                ..
+            } => {
+                let mut absolute = frame.clone().unwrap_or_default();
+                absolute.extend(path.iter().cloned());
+                let expected_group = matches!(schema.kind, SchemaKind::Group { .. });
+                if !source_path_matches_resolved(project, &absolute, |source| {
+                    source.name == schema.name
+                        && matches!(source.kind, SchemaKind::Group { .. }) == expected_group
+                }) {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        format!(
+                            "XML serializer source `{}` does not match its `{}` schema",
+                            display_path(&absolute),
+                            schema.name
+                        ),
+                    ));
+                }
+                if schema.repeating {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "XML serializer schema must describe one document element",
+                    ));
+                }
+                if namespace.as_ref().is_some_and(String::is_empty) {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "XML serializer namespace cannot be empty",
+                    ));
+                }
+            }
             Node::CollectionFind { collection, .. } => {
                 validate_collection_path(project, &location, collection, "collection find", issues);
             }
@@ -526,6 +562,9 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
             for replacement in replacements {
                 inspect(&replacement.collection);
             }
+        }
+        Node::XmlSerialize { path, frame, .. } => {
+            inspect(frame.as_deref().unwrap_or(path));
         }
         Node::SequenceExists { sequence, .. } | Node::SequenceItemAt { sequence, .. } => {
             if let Some(source) = sequence_dynamic_source(project, sequence) {
@@ -895,7 +934,8 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
-        | Node::RuntimeValue { .. } => Vec::new(),
+        | Node::RuntimeValue { .. }
+        | Node::XmlSerialize { .. } => Vec::new(),
         Node::Call { args, .. } => args
             .iter()
             .enumerate()

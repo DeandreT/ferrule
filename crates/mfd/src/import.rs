@@ -52,6 +52,7 @@ mod target_node_default;
 mod target_node_function;
 mod target_type_cast;
 mod udf;
+mod xml_serializer;
 
 use db_query::is_routine_catalog;
 use function::{
@@ -101,6 +102,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let mut schema_components = Vec::new();
     let mut fn_components = Vec::new();
     let mut json_serializers = Vec::new();
+    let mut xml_serializers = Vec::new();
     let mut json_parsers = Vec::new();
     let mut flextext_parsers = Vec::new();
     let mut output_parameters = Vec::new();
@@ -126,7 +128,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             let name = component.attribute("name").unwrap_or_default().to_string();
             match library {
                 "xml" => match read_schema_component(&component, path, &mut warnings) {
-                    Some(sc) => schema_components.push(sc),
+                    Some(sc) => match xml_serializer::read(&component, &sc) {
+                        Ok(Some(serializer)) => xml_serializers.push(serializer),
+                        Ok(None) => schema_components.push(sc),
+                        Err(reason) => {
+                            warnings.push(format!(
+                                "XML string serializer `{name}` is unsupported: {reason}"
+                            ));
+                            schema_components.push(sc);
+                        }
+                    },
                     None => warnings.push(format!("skipped xml component `{name}`")),
                 },
                 "json" => match read_json_component(&component, path, &mut warnings) {
@@ -536,6 +547,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         json_serializer_nodes: BTreeMap::new(),
+        xml_serializer_nodes: BTreeMap::new(),
         external_scalar_nodes: BTreeMap::new(),
         external_xslt_nodes: BTreeMap::new(),
         json_parser_nodes: BTreeMap::new(),
@@ -550,6 +562,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         source_names: &source_names,
         intermediates: &intermediates,
         json_serializers: &json_serializers,
+        xml_serializers: &xml_serializers,
         external_scalar_recipes: &external_scalar_recipes,
         external_xslt_aggregates: &external_xslt_aggregates,
         json_parsers: &json_parsers,

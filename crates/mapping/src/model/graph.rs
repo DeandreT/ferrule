@@ -113,6 +113,19 @@ pub enum Node {
         frame: Option<Vec<String>>,
         replacements: Vec<XmlMixedContentReplacement>,
     },
+    /// Serializes one complete XML source element as a string. Unlike a
+    /// scalar `SourceField`, this retains the structured instance so nested
+    /// elements, attributes, and repetitions reach the XML writer intact.
+    XmlSerialize {
+        path: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        frame: Option<Vec<String>>,
+        schema: ir::SchemaNode,
+        #[serde(default)]
+        declaration: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        namespace: Option<String>,
+    },
     /// Scans `collection` in source order, evaluating `predicate` and
     /// `value` once per item. Returns the value for the first item whose
     /// predicate is true, or `Null` when no item matches.

@@ -10,5 +10,6 @@ description = "Interprets a mapping graph against source instance(s) to produce 
 ir = { workspace = true }
 mapping = { workspace = true }
 functions = { workspace = true }
+format-xml = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }

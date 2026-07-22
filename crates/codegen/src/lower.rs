@@ -561,6 +561,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::SourceDocumentPath => UnsupportedNodeKind::SourceDocumentPath,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
+        Node::XmlSerialize { .. } => UnsupportedNodeKind::XmlSerialize,
         Node::SequenceExists { .. } => UnsupportedNodeKind::SequenceExists,
         Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
@@ -589,7 +590,8 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
-        | Node::RuntimeValue { .. } => Vec::new(),
+        | Node::RuntimeValue { .. }
+        | Node::XmlSerialize { .. } => Vec::new(),
         Node::Call { args, .. } => args.clone(),
         Node::If {
             condition,

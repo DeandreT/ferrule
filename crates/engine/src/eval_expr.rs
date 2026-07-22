@@ -152,6 +152,33 @@ pub(crate) fn eval_expr(
             positions,
             in_progress,
         ),
+        Node::XmlSerialize {
+            path,
+            frame,
+            schema,
+            declaration,
+            namespace,
+        } => {
+            let instance = match frame {
+                Some(frame) => instance_in_frame(context, positions, frame, path),
+                None => instance_in_active_collection(context, positions, path),
+            }
+            .ok_or_else(|| {
+                let mut display = frame.clone().unwrap_or_default();
+                display.extend(path.iter().cloned());
+                EngineError::MissingSourceField(display.join("/"))
+            })?;
+            let options = format_xml::XmlWriteOptions {
+                declaration: *declaration,
+                default_namespace: namespace.clone(),
+            };
+            format_xml::to_string_with_options(schema, instance, &options)
+                .map(Value::String)
+                .map_err(|error| EngineError::XmlSerialization {
+                    node: node_id,
+                    message: error.to_string(),
+                })
+        }
         Node::CollectionFind {
             collection,
             predicate,

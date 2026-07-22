@@ -781,6 +781,9 @@ fn node_label(node: &mapping::Node) -> String {
         mapping::Node::XmlMixedContent { path, .. } => {
             format!("XML mixed content {}", display_path(path))
         }
+        mapping::Node::XmlSerialize { path, .. } => {
+            format!("XML serialize {}", display_path(path))
+        }
         mapping::Node::CollectionFind { collection, .. } => {
             format!("find {}", display_path(collection))
         }

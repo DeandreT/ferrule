@@ -22,6 +22,9 @@ native aggregate rather than retaining an XSLT runtime dependency.
 Bounded adjacent C# and Java source modules can likewise lower direct numeric
 picture wrappers to ferrule's deterministic formatter, while bounded XQuery
 modules can lower scalar parameter/number arithmetic to the native call graph.
+Structured XML string serializers retain the selected subtree schema and emit
+attributes, nested groups, repeated children, escaping, the configured default
+namespace, and optional XML declaration directly from the current source item.
 External EDI configurations may be ordinary sibling directories or adjacent
 ZIP packages. Packages are extracted under strict path, entry-count, compressed,
 and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata
@@ -42,7 +45,9 @@ Export writes the representable project subset plus generated schema or layout
 siblings. Component kinds are selected from endpoint format metadata and paths.
 Supported named sources, independent targets, dynamic XML paths, HTTP response
 boundaries, selected joins, exception sinks, and configured format components
-retain their ownership in the exported design.
+retain their ownership in the exported design. Structured XML string serializers
+round-trip as native components with generated XSD siblings and structural
+source connections.
 
 Export is atomic: a shape that cannot be represented safely is rejected instead
 of publishing a partially wired design. Successfully exported designs are

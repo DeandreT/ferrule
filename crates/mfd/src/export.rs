@@ -263,6 +263,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let node::RenderedNodes {
         position_inputs,
         sequence_exists_pins,
+        siblings: node_siblings,
     } = node::render(node::RenderArgs {
         project,
         sources: &sources,
@@ -272,8 +273,10 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         node_out_key: &mut node_out_key,
         components: &mut components,
         edges: &mut edges,
+        structural_edges: &mut structural_edges,
         warnings: &mut warnings,
         blocked_nodes: &blocked_nodes,
+        mfd_path: path,
     });
     dynamic_sources.render_nodes(
         &mut keys,
@@ -653,6 +656,11 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     );
 
     let mut artifacts = Vec::new();
+    artifacts.extend(
+        node_siblings
+            .into_iter()
+            .map(|sibling| (sibling.path, sibling.contents)),
+    );
     for sibling in source_components
         .into_iter()
         .chain(target_components)

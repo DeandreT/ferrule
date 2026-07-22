@@ -379,16 +379,53 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     Ok(())
 }
 
+/// Controls document-level details when rendering an XML instance in memory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlWriteOptions {
+    pub declaration: bool,
+    pub default_namespace: Option<String>,
+}
+
+impl Default for XmlWriteOptions {
+    fn default() -> Self {
+        Self {
+            declaration: true,
+            default_namespace: None,
+        }
+    }
+}
+
 /// Renders an [`Instance`] tree shaped by `schema` as XML text -- the
 /// in-memory form of [`write`].
 pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, XmlFormatError> {
+    to_string_with_options(schema, instance, &XmlWriteOptions::default())
+}
+
+/// Renders XML with explicit declaration and root default-namespace policy.
+/// The namespace is declared only on the document element; ordinary child
+/// elements inherit it according to XML namespace rules.
+pub fn to_string_with_options(
+    schema: &SchemaNode,
+    instance: &Instance,
+    options: &XmlWriteOptions,
+) -> Result<String, XmlFormatError> {
     let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
-    writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new(
-        "1.0",
-        Some("UTF-8"),
-        None,
-    )))?;
-    write_node(&mut writer, schema, schema, instance, true, 0)?;
+    if options.declaration {
+        writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new(
+            "1.0",
+            Some("UTF-8"),
+            None,
+        )))?;
+    }
+    write_node(
+        &mut writer,
+        schema,
+        schema,
+        instance,
+        true,
+        0,
+        options.default_namespace.as_deref(),
+    )?;
     let bytes = writer.into_inner().into_inner();
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
@@ -400,6 +437,7 @@ fn write_node<W: std::io::Write>(
     instance: &Instance,
     is_root: bool,
     recursion_depth: usize,
+    root_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
     let resolved;
     let schema = if let Some(anchor) = &schema.recursive_ref {
@@ -433,7 +471,7 @@ fn write_node<W: std::io::Write>(
             return Err(shape_error(schema, expected, instance));
         }
         for item in items {
-            write_single_node(writer, schema, root_schema, item, recursion_depth)?;
+            write_single_node(writer, schema, root_schema, item, recursion_depth, None)?;
         }
         return Ok(());
     }
@@ -442,7 +480,7 @@ fn write_node<W: std::io::Write>(
             return Err(shape_error(schema, "repeating elements", instance));
         };
         for item in items {
-            write_single_node(writer, schema, root_schema, item, recursion_depth)?;
+            write_single_node(writer, schema, root_schema, item, recursion_depth, None)?;
         }
         return Ok(());
     }
@@ -454,7 +492,14 @@ fn write_node<W: std::io::Write>(
         };
         return Err(shape_error(schema, expected, instance));
     }
-    write_single_node(writer, schema, root_schema, instance, recursion_depth)
+    write_single_node(
+        writer,
+        schema,
+        root_schema,
+        instance,
+        recursion_depth,
+        is_root.then_some(root_namespace).flatten(),
+    )
 }
 
 fn write_single_node<W: std::io::Write>(
@@ -463,6 +508,7 @@ fn write_single_node<W: std::io::Write>(
     root_schema: &SchemaNode,
     instance: &Instance,
     recursion_depth: usize,
+    default_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
@@ -473,12 +519,19 @@ fn write_single_node<W: std::io::Write>(
                     });
                 }
                 let mut start = BytesStart::new(schema.name.clone());
+                if let Some(namespace) = default_namespace {
+                    start.push_attribute(("xmlns", namespace));
+                }
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 start.push_attribute(("xsi:nil", "true"));
                 writer.write_event(Event::Empty(start))?;
                 return Ok(());
             }
-            writer.write_event(Event::Start(BytesStart::new(schema.name.clone())))?;
+            let mut start = BytesStart::new(schema.name.clone());
+            if let Some(namespace) = default_namespace {
+                start.push_attribute(("xmlns", namespace));
+            }
+            writer.write_event(Event::Start(start))?;
             let text = format_scalar(&schema.name, *ty, value)?;
             writer.write_event(Event::Text(BytesText::new(&text)))?;
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
@@ -494,6 +547,9 @@ fn write_single_node<W: std::io::Write>(
         ) => {
             validate_group_fields(schema, children, alternatives, fields)?;
             let mut start = BytesStart::new(schema.name.clone());
+            if let Some(namespace) = default_namespace {
+                start.push_attribute(("xmlns", namespace));
+            }
             if let Some(alternative) = select_group_alternative(schema, alternatives, fields)? {
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 let (namespace, local) = split_expanded_name(&alternative.name);
@@ -613,6 +669,7 @@ fn write_group_child<W: std::io::Write>(
         child_instance,
         false,
         recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
+        None,
     )
 }
 
@@ -790,7 +847,7 @@ fn write_sequence_item<W: std::io::Write>(
     } else {
         child
     };
-    write_single_node(writer, child, root_schema, item, child_depth)
+    write_single_node(writer, child, root_schema, item, child_depth, None)
 }
 
 fn instance_kind(instance: &Instance) -> &'static str {
@@ -913,6 +970,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 root_schema,
                 child_instance,
                 child_depth,
+                None,
             )?;
         }
     }

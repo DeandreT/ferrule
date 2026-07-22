@@ -275,10 +275,18 @@ impl GraphBuilder<'_> {
         if source_path.path.as_slice() == [super::schema::SOURCE_DOCUMENT_PATH_PORT] {
             return Some(self.alloc(mapping::Node::SourceDocumentPath));
         }
+        let (frame, path) = self.source_location_at(source_path)?;
+        Some(self.source_field(frame, path))
+    }
+
+    pub(super) fn source_location_at(
+        &self,
+        source_path: &SourcePath,
+    ) -> Option<(Option<Vec<String>>, Vec<String>)> {
         let schema = &self.sources.get(source_path.source)?.schema;
         let path = self.suffix_after_framed(source_path.source, schema, &source_path.path);
         let frame = self.frame_for_field(source_path.source, schema, &source_path.path);
-        Some(self.source_field(frame, path))
+        Some((frame, path))
     }
 
     pub(super) fn source_field_at_anchor(
