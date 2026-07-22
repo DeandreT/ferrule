@@ -530,9 +530,23 @@ fn build_one(
             return;
         }
     };
-    if let (Some(source_path), Some(scope_source)) = (&source_path, &scope_source)
+    let structural_source_path = builder
+        .source_abs_path(feed.source_key)
+        .map(|mut path| {
+            path.path.extend(feed.source_suffix.iter().cloned());
+            path
+        })
+        .filter(|path| {
+            source_path.as_ref().is_some_and(|iteration| {
+                path.source == iteration.source
+                    && path.path.len() > iteration.path.len()
+                    && path.path.starts_with(&iteration.path)
+            })
+        })
+        .or_else(|| source_path.clone());
+    if let (Some(source_path), Some(scope_source)) = (&structural_source_path, &scope_source)
         && let Some(presence) =
-            edi_structural_presence_filter(source_path, scope_source, &iteration_anchor, builder)
+            structural_presence_filter(source_path, scope_source, &iteration_anchor, builder)
     {
         filter = Some(match filter {
             Some(filter) => builder.alloc(Node::Call {
@@ -814,39 +828,49 @@ fn materialize_windows(
     Some(materialized)
 }
 
-fn edi_structural_presence_filter(
+fn structural_presence_filter(
     source_path: &SourcePath,
     scope_source: &SourcePath,
     active_anchor: &[String],
     builder: &mut GraphBuilder<'_>,
 ) -> Option<NodeId> {
-    if source_path == scope_source
-        || builder.sources.get(source_path.source)?.format != ComponentFormat::Edi
+    if source_path.source != scope_source.source
+        || source_path.path == scope_source.path
+        || !source_path.path.starts_with(&scope_source.path)
     {
         return None;
     }
-    let source_group = builder.schema_node(source_path)?;
-    if source_group.repeating || !matches!(source_group.kind, SchemaKind::Group { .. }) {
+    let format = builder.sources.get(source_path.source)?.format;
+    if !matches!(format, ComponentFormat::Edi | ComponentFormat::FlexText) {
         return None;
     }
-    let mut relative_paths = Vec::new();
-    collect_matching_scalar_paths(
-        source_group,
-        source_group,
-        &mut Vec::new(),
-        &mut relative_paths,
-    );
-    let absolute_paths = relative_paths
-        .into_iter()
-        .map(|relative| {
-            let mut path = source_path.path.clone();
-            path.extend(relative);
-            SourcePath {
-                source: source_path.source,
-                path,
-            }
-        })
-        .collect::<Vec<_>>();
+    let source_node = builder.schema_node(source_path)?;
+    if source_node.repeating {
+        return None;
+    }
+    let absolute_paths = match &source_node.kind {
+        SchemaKind::Scalar { .. } => vec![source_path.clone()],
+        SchemaKind::Group { .. } => {
+            let mut relative_paths = Vec::new();
+            collect_matching_scalar_paths(
+                source_node,
+                source_node,
+                &mut Vec::new(),
+                &mut relative_paths,
+            );
+            relative_paths
+                .into_iter()
+                .map(|relative| {
+                    let mut path = source_path.path.clone();
+                    path.extend(relative);
+                    SourcePath {
+                        source: source_path.source,
+                        path,
+                    }
+                })
+                .collect()
+        }
+    };
 
     absolute_paths
         .into_iter()

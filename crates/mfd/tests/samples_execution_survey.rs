@@ -647,6 +647,23 @@ fn survey_file(
     outcome.output = Some(written.primary.display().to_string());
     outcome.output_write = StageOutcome::passed();
 
+    if has_nondeterministic_current_time(&imported.project.graph)
+        || has_nondeterministic_edi_autocomplete(
+            std::iter::once((&imported.project.target_options, &imported.project.root)).chain(
+                imported
+                    .project
+                    .extra_targets
+                    .iter()
+                    .map(|target| (&target.options, &target.root)),
+            ),
+        )
+    {
+        outcome.reference_match = StageOutcome::skipped(
+            "exact reference comparison is nondeterministic because the mapping reads or derives the current dateTime",
+        );
+        return outcome;
+    }
+
     let generated = match generated_references
         .map(|references| references.for_sample(mfd_path, samples_root))
         .transpose()
@@ -658,22 +675,6 @@ fn survey_file(
         }
     };
     if let Some(references) = generated {
-        if has_nondeterministic_current_time(&imported.project.graph)
-            || has_nondeterministic_edi_autocomplete(
-                std::iter::once((&imported.project.target_options, &imported.project.root)).chain(
-                    imported
-                        .project
-                        .extra_targets
-                        .iter()
-                        .map(|target| (&target.options, &target.root)),
-                ),
-            )
-        {
-            outcome.reference_match = StageOutcome::skipped(
-                "exact reference comparison is nondeterministic because the mapping reads or derives the current dateTime",
-            );
-            return outcome;
-        }
         outcome.reference_match =
             match compare_generated_references(&imported.project, &written, references) {
                 Ok(()) => StageOutcome::passed(),
@@ -1176,6 +1177,10 @@ fn database_templates_are_copied_without_touching_the_sample() -> Result<(), Box
     assert_eq!(std::fs::read(&output)?, b"sqlite-template");
     std::fs::write(&output, b"changed output")?;
     assert_eq!(std::fs::read(&template)?, b"sqlite-template");
+
+    let extensionless = output_root.join("retained-tabular-output");
+    prepare_database_output(&sample_root, &sample_root, None, &extensionless, &schema)?;
+    assert!(!extensionless.exists());
 
     let escaped = output_root.join("escaped.sqlite");
     assert!(

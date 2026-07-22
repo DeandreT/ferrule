@@ -234,6 +234,7 @@ fn parse_command(
                     fields,
                     *fill_char,
                     *treat_empty_as_absent,
+                    *record_delimiters,
                     &indexed_path(&command_path, index),
                     state,
                 )?);
@@ -529,6 +530,7 @@ fn parse_fixed_record(
     fields: &[FixedWidthRecordField],
     fill_char: char,
     treat_empty_as_absent: bool,
+    allow_short_final_string: bool,
     path: &str,
     state: &mut ParseState,
 ) -> Result<Instance, FlexTextError> {
@@ -537,7 +539,14 @@ fn parse_fixed_record(
         .iter()
         .map(|field| field.width().get() as usize)
         .sum();
-    if characters.len() != expected {
+    let minimum = fields.last().map_or(expected, |field| {
+        if allow_short_final_string && field.ty() == ScalarType::String {
+            expected - field.width().get() as usize
+        } else {
+            expected
+        }
+    });
+    if characters.len() < minimum || characters.len() > expected {
         return Err(data_error(
             path,
             format!(
@@ -550,9 +559,8 @@ fn parse_fixed_record(
     let mut values = Vec::with_capacity(fields.len());
     for field in fields {
         let width = field.width().get() as usize;
-        let raw = characters[offset..offset + width]
-            .iter()
-            .collect::<String>();
+        let end = (offset + width).min(characters.len());
+        let raw = characters[offset..end].iter().collect::<String>();
         let raw = match field.ty() {
             ScalarType::String => raw.trim_end_matches(fill_char),
             _ => raw.trim_matches(fill_char),

@@ -386,6 +386,9 @@ mod group_boundaries_tests;
 #[path = "tests/group_starting.rs"]
 mod group_starting_tests;
 #[cfg(test)]
+#[path = "tests/identity_iteration.rs"]
+mod identity_iteration_tests;
+#[cfg(test)]
 #[path = "tests/iteration_output.rs"]
 mod iteration_output_tests;
 #[cfg(test)]

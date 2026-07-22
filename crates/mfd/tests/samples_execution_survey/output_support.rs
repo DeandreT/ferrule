@@ -252,7 +252,10 @@ pub(super) fn prepare_database_output(
     output: &Path,
     schema: &SchemaNode,
 ) -> Result<(), String> {
-    if !matches!(extension(output)?.as_str(), "db" | "sqlite" | "sqlite3") {
+    let Ok(extension) = extension(output) else {
+        return Ok(());
+    };
+    if !matches!(extension.as_str(), "db" | "sqlite" | "sqlite3") {
         return Ok(());
     }
     let relational = matches!(

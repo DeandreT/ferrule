@@ -111,7 +111,7 @@ fn imports_inline_fixed_width_string_parser_and_executes_per_source_row() {
         )]),
         Instance::Group(vec![(
             "Raw".into(),
-            Instance::Scalar(Value::String("012Grace_".into())),
+            Instance::Scalar(Value::String("012Grace".into())),
         )]),
     ]);
     let output = engine::run(&imported.project, &source).unwrap();

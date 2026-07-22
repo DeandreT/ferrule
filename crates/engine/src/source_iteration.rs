@@ -103,8 +103,17 @@ pub(super) fn walk<'a>(
                 .collect(),
             _ => {
                 let mut next_instances = acc.to_vec();
-                next_instances.push(base);
+                if !prefix.is_empty() {
+                    next_instances.push(base);
+                }
                 vec![WalkExtension {
+                    // An empty path over a non-collection is an identity
+                    // iteration. `base` is already the active context frame;
+                    // pushing it again would create an untracked frame and
+                    // misalign outer collection positions in nested scopes.
+                    // A non-empty prefix means a named path was consumed to
+                    // reach this terminal value, which must remain available
+                    // to singleton joins and copy construction.
                     instances: next_instances,
                     positions: positions.to_vec(),
                 }]

@@ -117,4 +117,12 @@ fn imports_and_executes_regex_switch_conditions() {
             .and_then(|group| group.field("Other"))
             .is_some()
     );
+
+    let output = engine::run(&imported.project, &parsed).unwrap();
+    let rows = output.as_repeated().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].field("Value").and_then(Instance::as_scalar),
+        Some(&Value::String("prefix alert-42 suffix".into()))
+    );
 }
