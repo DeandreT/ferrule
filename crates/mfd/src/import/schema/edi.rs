@@ -69,6 +69,7 @@ pub(super) fn read(
         .map(str::to_string)
         .collect::<Vec<_>>();
     let (embedded_idoc, embedded_swift_mt) = embedded_runtime_layout(&text, kind, &name, warnings);
+    let embedded_implied_decimals = embedded_implied_decimals(&text, &name, warnings);
     let embedded_lexical_formats = embedded_lexical_formats(&text, &name, warnings);
     let config = text.attribute("config");
     let compiled = if runtime_boundary
@@ -136,7 +137,7 @@ pub(super) fn read(
             fallback_schema,
             embedded_idoc,
             embedded_swift_mt,
-            Vec::new(),
+            embedded_implied_decimals,
             embedded_lexical_formats,
         ));
     if has_compiled_schema && kind == "EDIX12" {
@@ -224,6 +225,29 @@ pub(super) fn read(
         db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
+}
+
+fn embedded_implied_decimals(
+    text: &roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<mapping::EdiImpliedDecimal> {
+    let Some(metadata) = text
+        .children()
+        .find(|node| node.has_tag_name("ferrule-implied-decimals"))
+    else {
+        return Vec::new();
+    };
+    match serde_json::from_str(metadata.text().unwrap_or_default()) {
+        Ok(formats) => formats,
+        Err(error) => {
+            warnings.push(format!(
+                "EDI component `{component_name}` has invalid embedded implied-decimal metadata \
+                 ({error}); EDI implied-decimal scaling was disabled"
+            ));
+            Vec::new()
+        }
+    }
 }
 
 fn embedded_lexical_formats(
