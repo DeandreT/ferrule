@@ -6,7 +6,7 @@ use mapping::{Node, NodeId};
 use super::function::{is_filter, is_sequence_producer, produces_scalar};
 use super::graph::GraphBuilder;
 use super::iteration::split_at_innermost_repeating;
-use super::schema::schema_node_at;
+use super::schema::{JsonDynamicPort, schema_node_at};
 
 impl GraphBuilder<'_> {
     pub(super) fn sequence_exists_node(&mut self, exists_index: usize) -> Option<Node> {
@@ -124,6 +124,9 @@ impl GraphBuilder<'_> {
         if let Some(&node) = self.fn_nodes.get(&filter_index) {
             return Some(node);
         }
+        if let Some(node) = self.dynamic_property_filter_node(filter_index) {
+            return Some(node);
+        }
         let value_feed = self.input_feed(filter_index, 0)?;
         let predicate_feed = self.input_feed(filter_index, 1)?;
         let direct_value = self.source_abs_path(value_feed).map(|path| {
@@ -202,6 +205,37 @@ impl GraphBuilder<'_> {
                 value,
             })
         };
+        self.fn_nodes.insert(filter_index, node);
+        Some(node)
+    }
+
+    pub(super) fn dynamic_property_filter_node(&mut self, filter_index: usize) -> Option<NodeId> {
+        if let Some(&node) = self.fn_nodes.get(&filter_index) {
+            return matches!(
+                self.graph.nodes.get(&node),
+                Some(Node::DynamicSourceField { .. })
+            )
+            .then_some(node);
+        }
+        let value_feed = self.input_feed(filter_index, 0)?;
+        let predicate_feed = self.input_feed(filter_index, 1)?;
+        let (value_source, JsonDynamicPort::Value(_)) =
+            self.json_dynamic_source_port(value_feed)?
+        else {
+            return None;
+        };
+        let (name_source, key, name_port) = self.dynamic_property_name_equality(predicate_feed)?;
+        if value_source != name_source {
+            return None;
+        }
+
+        self.claimed_dynamic_ports.insert(name_port);
+        self.claimed_dynamic_ports.insert(value_feed);
+        let source = self.sources.get(value_source.source)?;
+        let object =
+            self.suffix_after_framed(value_source.source, &source.schema, &value_source.path);
+        let frame = self.frame_for_field(value_source.source, &source.schema, &value_source.path);
+        let node = self.alloc(Node::DynamicSourceField { object, frame, key });
         self.fn_nodes.insert(filter_index, node);
         Some(node)
     }
