@@ -47,6 +47,7 @@ fn grouping_program() -> Program {
             source_field(5, &["Keep"]),
             constant(6, Value::Int(1)),
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),

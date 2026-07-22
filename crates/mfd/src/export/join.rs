@@ -977,7 +977,7 @@ fn blocked_nodes(
 
 fn node_inputs(node: &Node) -> Vec<NodeId> {
     match node {
-        Node::Call { args, .. } => args.clone(),
+        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
             condition,
             then,
@@ -1012,6 +1012,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
     }

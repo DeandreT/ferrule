@@ -790,8 +790,14 @@ fn node_label(node: &mapping::Node) -> String {
         }
         mapping::Node::JoinPosition { join } => format!("join {} position", join.get()),
         mapping::Node::Const { value } => format!("constant {value:?}"),
+        mapping::Node::FunctionParameter { parameter } => {
+            format!("function input {}", parameter.get())
+        }
         mapping::Node::RuntimeValue { value } => format!("runtime {value:?}"),
         mapping::Node::Call { function, .. } => function.clone(),
+        mapping::Node::UserFunctionCall { function, .. } => {
+            format!("user function {}", function.get())
+        }
         mapping::Node::If { .. } => "if".to_string(),
         mapping::Node::ValueMap { .. } => "value map".to_string(),
         mapping::Node::Lookup { collection, .. } => {

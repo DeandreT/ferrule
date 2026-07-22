@@ -145,6 +145,7 @@ fn join_project() -> Project {
             },
         ],
         extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
         failure_rules: Vec::new(),
         graph,
         root: Scope {

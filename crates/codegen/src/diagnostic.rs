@@ -1,6 +1,6 @@
 use std::fmt;
 
-use mapping::NodeId;
+use mapping::{FunctionId, NodeId};
 
 /// Why lowering could not produce backend-neutral code-generation IR.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +31,10 @@ pub enum Diagnostic {
     UnsupportedFunction {
         node: NodeId,
         function: String,
+    },
+    UserFunction {
+        function: FunctionId,
+        diagnostic: Box<Diagnostic>,
     },
 }
 
@@ -142,6 +146,10 @@ impl fmt::Display for Diagnostic {
                 formatter,
                 "graph node {node}: code generation does not support function `{function}`"
             ),
+            Self::UserFunction {
+                function,
+                diagnostic,
+            } => write!(formatter, "user function {}: {diagnostic}", function.get()),
         }
     }
 }

@@ -229,6 +229,7 @@ fn lowers_recursive_collect_into_a_repeating_scalar_scope() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
         failure_rules: Vec::new(),
         graph,
         root: Scope {

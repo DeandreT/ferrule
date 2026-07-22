@@ -209,6 +209,7 @@ pub(super) fn try_read(
     let output_id = component_id(output_node)?;
     Ok(Some((
         Definition {
+            scalar_interface: None,
             parameters: parameters.values().copied().collect(),
             structured_parameters: BTreeSet::from([source_id]),
             outputs: BTreeMap::from([(

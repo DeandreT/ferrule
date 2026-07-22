@@ -10,10 +10,10 @@ use codegen::{
     ArtifactSetError, Binding, Expression, GeneratedFile, GeneratedSequence, GroupingPlan,
     InnerJoin, IterationOutput, IterationPlan, IterationSource, Program, ProgramValidationError,
     RuntimeValue, SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
-    validate_program,
+    UserFunctionProgram, validate_program,
 };
 use ir::{ScalarType, Value};
-use mapping::NodeId;
+use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 mod failure;
 
@@ -141,7 +141,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              RuntimeError, RuntimeValue,\n\
              ScalarType, ScopeContext,\n\
              SequenceWindow, SortDirection, Value, adapt_target_value, aggregate,\n\
-             apply_sequence_windows, call, collection_find_selected, field, generate_sequence,\n\
+             adapt_user_function_value, apply_sequence_windows, call,\n\
+             collection_find_selected, field, generate_sequence,\n\
              group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
              sort_candidates, tokenize, tokenize_by_length, value_map,\n\
@@ -265,8 +266,22 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     }
     source.push_str("    Ok(ExecutionOutputs { primary, extras })\n}\n\n");
 
+    let functions = program
+        .user_functions
+        .iter()
+        .map(|function| (function.id, function))
+        .collect::<BTreeMap<_, _>>();
+    for function in &program.user_functions {
+        source.push_str(&render_user_function(function, &functions)?);
+    }
     for node in &program.expressions {
-        source.push_str(&render_expression(node.id, &node.expression)?);
+        source.push_str(&render_expression(
+            node.id,
+            &node.expression,
+            "expression_",
+            None,
+            &functions,
+        )?);
     }
     source.push_str(&failure::render(program));
 
@@ -281,7 +296,48 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     Ok(source)
 }
 
-fn render_expression(id: NodeId, expression: &Expression) -> Result<String, EmitError> {
+fn render_user_function(
+    function: &UserFunctionProgram,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+) -> Result<String, EmitError> {
+    let prefix = format!("user_function_{}_expression_", function.id.get());
+    let parameters = function
+        .parameters
+        .iter()
+        .enumerate()
+        .map(|(index, parameter)| (parameter.id, index))
+        .collect::<BTreeMap<_, _>>();
+    let mut output = String::new();
+    for expression in &function.expressions {
+        output.push_str(&render_expression(
+            expression.id,
+            &expression.expression,
+            &prefix,
+            Some(&parameters),
+            functions,
+        )?);
+    }
+    output.push_str(&format!(
+        "fn user_function_{}(\n    context: &ScopeContext<'_>,\n    parameters: &[Value],\n) -> Result<Value, RuntimeError> {{\n    let output = {}{}(context, parameters)?;\n    adapt_user_function_value(output, ScalarType::{}, {}, None)\n}}\n\n",
+        function.id.get(),
+        prefix,
+        function.output,
+        scalar_type_name(function.output_type),
+        function.id.get(),
+    ));
+    Ok(output)
+}
+
+fn render_expression(
+    id: NodeId,
+    expression: &Expression,
+    prefix: &str,
+    parameters: Option<&BTreeMap<FunctionParameterId, usize>>,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+) -> Result<String, EmitError> {
+    let parameter_argument = parameters.map(|_| ", parameters").unwrap_or_default();
+    let call_expression =
+        |node: NodeId, context: &str| format!("{prefix}{node}({context}{parameter_argument})");
     let body = match expression {
         Expression::SourceField { frame, path } => {
             let path = path
@@ -332,6 +388,16 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
         Expression::Const { value } => {
             format!("Ok({})", rust_value(id, value)?)
         }
+        Expression::FunctionParameter { parameter } => {
+            let index = parameters
+                .and_then(|parameters| parameters.get(parameter))
+                .copied()
+                .ok_or(ProgramValidationError::FunctionParameterInMain {
+                    node: id,
+                    parameter: *parameter,
+                })?;
+            format!("Ok(parameters[{index}].clone())")
+        }
         Expression::RuntimeValue { value } => format!(
             "context.runtime_value(RuntimeValue::{})",
             runtime_value_name(*value)
@@ -339,7 +405,10 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
         Expression::Call { function, args } => {
             let mut body = String::from("{\n        let args = vec![\n");
             for arg in args {
-                body.push_str(&format!("            expression_{arg}(context)?,\n"));
+                body.push_str(&format!(
+                    "            {}?,\n",
+                    call_expression(*arg, "context")
+                ));
             }
             body.push_str(&format!(
                 "        ];\n        call({}, &args)\n    }}",
@@ -347,13 +416,48 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
             ));
             body
         }
+        Expression::UserFunctionCall { function, args } => {
+            let definition = functions.get(function).ok_or({
+                ProgramValidationError::MissingUserFunction {
+                    owner: None,
+                    node: id,
+                    function: *function,
+                }
+            })?;
+            let mut body = String::from("{\n");
+            for (index, (argument, parameter)) in
+                args.iter().zip(&definition.parameters).enumerate()
+            {
+                body.push_str(&format!(
+                    "        let argument_{index} = adapt_user_function_value(\n            {}?,\n            ScalarType::{},\n            {},\n            Some({}),\n        )?;\n",
+                    call_expression(*argument, "context"),
+                    scalar_type_name(parameter.ty),
+                    function.get(),
+                    parameter.id.get(),
+                ));
+            }
+            let arguments = (0..args.len())
+                .map(|index| format!("argument_{index}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            body.push_str(&format!(
+                "        user_function_{}(context, &[{arguments}])\n    }}",
+                function.get()
+            ));
+            body
+        }
         Expression::If {
             condition,
             then,
             else_,
-        } => format!(
-            "{{\n        let condition = expression_{condition}(context)?;\n        if require_bool({condition}, condition)? {{\n            expression_{then}(context)\n        }} else {{\n            expression_{else_}(context)\n        }}\n    }}"
-        ),
+        } => {
+            let condition_call = call_expression(*condition, "context");
+            let then_call = call_expression(*then, "context");
+            let else_call = call_expression(*else_, "context");
+            format!(
+                "{{\n        let condition = {condition_call}?;\n        if require_bool({condition}, condition)? {{\n            {then_call}\n        }} else {{\n            {else_call}\n        }}\n    }}"
+            )
+        }
         Expression::ValueMap {
             input,
             input_type,
@@ -379,8 +483,9 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
                 Some(value) => format!("Some({})", rust_value(id, value)?),
                 None => "None".to_string(),
             };
+            let input = call_expression(*input, "context");
             format!(
-                "{{\n        let input = expression_{input}(context)?;\n        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
+                "{{\n        let input = {input}?;\n        Ok(value_map(input, {input_type}, &[{table}], {default}))\n    }}"
             )
         }
         Expression::Lookup {
@@ -468,8 +573,11 @@ fn render_expression(id: NodeId, expression: &Expression) -> Result<String, Emit
             body
         }
     };
+    let parameters_argument = parameters
+        .map(|_| ", parameters: &[Value]")
+        .unwrap_or_default();
     Ok(format!(
-        "fn expression_{id}(context: &ScopeContext<'_>) -> Result<Value, RuntimeError> {{\n    let _ = context;\n    {body}\n}}\n\n"
+        "fn {prefix}{id}(context: &ScopeContext<'_>{parameters_argument}) -> Result<Value, RuntimeError> {{\n    let _ = context;\n    {body}\n}}\n\n"
     ))
 }
 

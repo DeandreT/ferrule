@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, HashSet};
 
 use ir::{Instance, Value};
-use mapping::{AdjacencyTreePlan, Graph, NodeId};
+use mapping::{AdjacencyTreePlan, NodeId};
 
 use super::EngineError;
-use super::eval_expr::eval_expr;
+use super::eval_expr::{EvalProgram, eval_expr};
 use super::resolve::{field_scalar, repeated};
 use super::sequence::{MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH};
 use super::source_iteration::PositionFrame;
@@ -14,7 +14,7 @@ struct Row {
 }
 
 pub(super) fn construct(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     plan: &AdjacencyTreePlan,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -41,7 +41,7 @@ pub(super) fn construct(
     let root = match plan.root() {
         Some(node) => {
             let mut in_progress = HashSet::<NodeId>::new();
-            match eval_expr(graph, node, context, positions, &mut in_progress)? {
+            match eval_expr(program, node, context, positions, &mut in_progress)? {
                 Value::Null => None,
                 Value::String(value) => Some(value),
                 value => {

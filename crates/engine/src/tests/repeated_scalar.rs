@@ -19,6 +19,7 @@ fn repeated_scalar_bindings_concatenate_non_null_values_in_order() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [
                 (
@@ -83,6 +84,7 @@ fn duplicate_non_repeating_scalar_bindings_remain_invalid() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph::default(),
         root: Scope::default(),
     };

@@ -15,6 +15,7 @@ use super::position::render_component;
 use super::schema::{GeneratedSibling, KeyAlloc, PortMatch, PortPairMatch, PortTree, xml_escape};
 use super::sequence::{SequenceExistsPins, collect_scope_sequences};
 use super::source::SourceExports;
+use super::udf::Exports as UserFunctionExports;
 
 pub(super) struct RenderArgs<'a> {
     pub(super) project: &'a Project,
@@ -29,6 +30,7 @@ pub(super) struct RenderArgs<'a> {
     pub(super) warnings: &'a mut Vec<String>,
     pub(super) blocked_nodes: &'a BTreeSet<NodeId>,
     pub(super) mfd_path: &'a Path,
+    pub(super) user_functions: &'a UserFunctionExports,
 }
 
 pub(super) struct RenderedNodes {
@@ -51,6 +53,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         warnings,
         blocked_nodes,
         mfd_path,
+        user_functions,
     } = args;
 
     let mut sequence_inputs = Vec::new();
@@ -804,6 +807,33 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     xml_escape(&name)
                 );
             }
+            Node::UserFunctionCall { function, args } => {
+                let Some((ins, out)) = user_functions.render_call(
+                    *function,
+                    keys,
+                    uid,
+                    components,
+                ) else {
+                    warnings.push(format!(
+                        "call references missing user-defined function {}; its connections are skipped",
+                        function.get()
+                    ));
+                    continue;
+                };
+                if ins.len() != args.len() {
+                    warnings.push(format!(
+                        "call to user-defined function {} has the wrong arity; its connections are skipped",
+                        function.get()
+                    ));
+                    continue;
+                }
+                node_out_key.insert(id, out);
+                fn_inputs.insert(id, ins);
+            }
+            Node::FunctionParameter { parameter } => warnings.push(format!(
+                "main mapping graph contains function parameter {}; its connections are skipped",
+                parameter.get()
+            )),
             Node::If { .. } => {
                 let ins: Vec<u32> = (0..3).map(|_| keys.next()).collect();
                 let out = keys.next();
@@ -984,7 +1014,7 @@ fn connect_inputs(
             continue;
         };
         let args: Vec<NodeId> = match node {
-            Node::Call { args, .. } => args.clone(),
+            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
             Node::If {
                 condition,
                 then,

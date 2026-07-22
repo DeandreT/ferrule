@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 
+use ::mapping::{FunctionId, FunctionParameterId, NodeId};
 use codegen::{
     AggregateFunction, AggregateValue, Binding, Expression, GeneratedSequence, GroupingPlan,
     InnerJoin, IterationOutput, IterationPlan, IterationSource, JoinSource, JoinSourceCardinality,
-    Program, SequenceWindow, SortFilterOrder, TargetConstruction, TargetScope,
+    Program, ProgramValidationError, SequenceWindow, SortFilterOrder, TargetConstruction,
+    TargetScope, UserFunctionProgram,
 };
 use ir::ScalarType;
 
@@ -32,6 +34,11 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     for node in &program.expressions {
         expressions.insert(node.id, &node.expression);
     }
+    let functions = program
+        .user_functions
+        .iter()
+        .map(|function| (function.id, function))
+        .collect::<BTreeMap<_, _>>();
 
     let mut scopes = Vec::new();
     let primary_scope = add_scope(&program.root, &mut scopes);
@@ -46,6 +53,9 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     );
     render_entry_points(program, primary_scope, &extra_scopes, &mut output);
     failures::render(&program.failure_rules, &mut output);
+    for function in &program.user_functions {
+        render_user_function(function, &functions, &mut output)?;
+    }
 
     for (node, expression) in expressions {
         output.push('\n');
@@ -98,6 +108,13 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 output.push_str(&literal::value(node, value)?);
                 output.push_str(";\n");
             }
+            Expression::FunctionParameter { parameter } => {
+                return Err(ProgramValidationError::FunctionParameterInMain {
+                    node,
+                    parameter: *parameter,
+                }
+                .into());
+            }
             Expression::RuntimeValue { value } => {
                 output.push_str(" =>\n        context.ResolveRuntimeValue(");
                 output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
@@ -115,6 +132,18 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     output.push_str(&format!("Node_{argument}(context)"));
                 }
                 output.push_str(" });\n");
+            }
+            Expression::UserFunctionCall { function, args } => {
+                output.push_str("\n    {\n");
+                render_user_function_call(
+                    node,
+                    *function,
+                    args,
+                    &functions,
+                    |argument| format!("Node_{argument}(context)"),
+                    &mut output,
+                )?;
+                output.push_str("    }\n");
             }
             Expression::If {
                 condition,
@@ -333,6 +362,195 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
     }
     output.push_str("}\n");
     Ok(output)
+}
+
+fn render_user_function(
+    function: &UserFunctionProgram,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let parameters = function
+        .parameters
+        .iter()
+        .enumerate()
+        .map(|(index, parameter)| (parameter.id, index))
+        .collect::<BTreeMap<_, _>>();
+    for expression in &function.expressions {
+        render_user_function_expression(
+            function.id,
+            expression.id,
+            &expression.expression,
+            &parameters,
+            functions,
+            output,
+        )?;
+    }
+    output.push_str(&format!(
+        "\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_{}(\n        global::Ferrule.Runtime.ScopeContext context,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters)\n    {{\n        var value = UserFunction_{}_Node_{}(context, parameters);\n        return global::Ferrule.Runtime.FerruleUserFunctions.Adapt(\n            value,\n            global::Ferrule.Runtime.FerruleScalarType.{},\n            {}UL,\n            null);\n    }}\n",
+        function.id.get(),
+        function.id.get(),
+        function.output,
+        scalar_type_name(function.output_type),
+        function.id.get(),
+    ));
+    Ok(())
+}
+
+fn render_user_function_expression(
+    function: FunctionId,
+    node: NodeId,
+    expression: &Expression,
+    parameters: &BTreeMap<FunctionParameterId, usize>,
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let call = |dependency: NodeId| {
+        format!(
+            "UserFunction_{}_Node_{dependency}(context, parameters)",
+            function.get()
+        )
+    };
+    output.push_str(&format!(
+        "\n    private static global::Ferrule.Runtime.FerruleValue UserFunction_{}_Node_{node}(\n        global::Ferrule.Runtime.ScopeContext context,\n        global::System.Collections.Generic.IReadOnlyList<global::Ferrule.Runtime.FerruleValue> parameters)",
+        function.get()
+    ));
+    match expression {
+        Expression::Const { value } => {
+            output.push_str(" =>\n        ");
+            output.push_str(&literal::value(node, value)?);
+            output.push_str(";\n");
+        }
+        Expression::FunctionParameter { parameter } => {
+            let Some(index) = parameters.get(parameter) else {
+                return Err(ProgramValidationError::UnknownFunctionParameter {
+                    function,
+                    node,
+                    parameter: *parameter,
+                }
+                .into());
+            };
+            output.push_str(&format!(" =>\n        parameters[{index}];\n"));
+        }
+        Expression::Call {
+            function: builtin,
+            args,
+        } => {
+            output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
+            output.push_str(&literal::string(builtin.as_str()));
+            output.push_str(", new global::Ferrule.Runtime.FerruleValue[] { ");
+            for (index, argument) in args.iter().enumerate() {
+                if index != 0 {
+                    output.push_str(", ");
+                }
+                output.push_str(&call(*argument));
+            }
+            output.push_str(" });\n");
+        }
+        Expression::UserFunctionCall {
+            function: called,
+            args,
+        } => {
+            output.push_str("\n    {\n");
+            render_user_function_call(node, *called, args, functions, call, output)?;
+            output.push_str("    }\n");
+        }
+        Expression::If {
+            condition,
+            then,
+            else_,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!(
+                "        var condition_{node} = {};\n",
+                call(*condition)
+            ));
+            output.push_str(&format!(
+                "        if (global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(condition_{node}, {condition}U))\n        {{\n            return {};\n        }}\n",
+                call(*then)
+            ));
+            output.push_str(&format!("        return {};\n    }}\n", call(*else_)));
+        }
+        Expression::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => {
+            output.push_str("\n    {\n");
+            output.push_str(&format!(
+                "        var input_{node} = {};\n        return global::Ferrule.Runtime.FerruleValueMaps.Apply(\n            input_{node}, ",
+                call(*input)
+            ));
+            match input_type {
+                Some(value) => output.push_str(&format!(
+                    "global::Ferrule.Runtime.FerruleScalarType.{}",
+                    scalar_type_name(*value)
+                )),
+                None => output.push_str("null"),
+            }
+            output.push_str(",\n            new global::Ferrule.Runtime.FerruleValueMapEntry[]\n            {\n");
+            for (from, to) in table {
+                output.push_str("                new(");
+                output.push_str(&literal::value(node, from)?);
+                output.push_str(", ");
+                output.push_str(&literal::value(node, to)?);
+                output.push_str("),\n");
+            }
+            output.push_str("            },\n            ");
+            match default {
+                Some(value) => output.push_str(&literal::value(node, value)?),
+                None => output.push_str("null"),
+            }
+            output.push_str(");\n    }\n");
+        }
+        _ => {
+            return Err(ProgramValidationError::UnsupportedUserFunctionExpression {
+                function,
+                node,
+            }
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn render_user_function_call(
+    node: NodeId,
+    function: FunctionId,
+    args: &[NodeId],
+    functions: &BTreeMap<FunctionId, &UserFunctionProgram>,
+    call: impl Fn(NodeId) -> String,
+    output: &mut String,
+) -> Result<(), EmitError> {
+    let Some(definition) = functions.get(&function) else {
+        return Err(ProgramValidationError::MissingUserFunction {
+            owner: None,
+            node,
+            function,
+        }
+        .into());
+    };
+    for (index, (argument, parameter)) in args.iter().zip(&definition.parameters).enumerate() {
+        output.push_str(&format!(
+            "        var argument_{node}_{index} = global::Ferrule.Runtime.FerruleUserFunctions.Adapt(\n            {},\n            global::Ferrule.Runtime.FerruleScalarType.{},\n            {}UL,\n            {}UL);\n",
+            call(*argument),
+            scalar_type_name(parameter.ty),
+            function.get(),
+            parameter.id.get(),
+        ));
+    }
+    output.push_str(&format!(
+        "        return UserFunction_{}(context, new global::Ferrule.Runtime.FerruleValue[] {{ ",
+        function.get()
+    ));
+    for index in 0..args.len() {
+        if index != 0 {
+            output.push_str(", ");
+        }
+        output.push_str(&format!("argument_{node}_{index}"));
+    }
+    output.push_str(" });\n");
+    Ok(())
 }
 
 fn render_entry_points(

@@ -59,6 +59,7 @@ fn source_project(message: Option<u32>) -> Project {
             selection: FailureSelection::WhenFalse { predicate: 2 },
             message,
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -152,6 +153,7 @@ fn nested_project(message_collection: Vec<String>) -> Project {
             selection: FailureSelection::WhenFalse { predicate: 2 },
             message: Some(3),
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

@@ -655,6 +655,7 @@ mod tests {
                 root: Scope::default(),
             }],
             failure_rules: Vec::new(),
+            user_functions: Default::default(),
             graph: Graph::default(),
             root: Scope::default(),
         };

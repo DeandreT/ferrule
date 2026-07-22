@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::{Node, NodeId, Project, Scope, ScopeConstruction};
+use crate::{NodeId, Project, Scope, ScopeConstruction};
 
 impl Project {
     /// Removes graph expressions that no target, control, or dynamic source
@@ -33,7 +33,7 @@ impl Project {
                 continue;
             }
             if let Some(node) = self.graph.nodes.get(&id) {
-                pending.extend(node_dependencies(node));
+                pending.extend(node.dependencies());
             }
         }
         self.graph.nodes.retain(|id, _| reachable.contains(id));
@@ -85,54 +85,6 @@ fn collect_scope_roots(scope: &Scope, roots: &mut Vec<NodeId>) {
     for child in &scope.dynamic_children {
         roots.push(child.key);
         collect_scope_roots(&child.scope, roots);
-    }
-}
-
-fn node_dependencies(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Const { .. }
-        | Node::RuntimeValue { .. }
-        | Node::XmlSerialize { .. } => Vec::new(),
-        Node::Call { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        Node::Lookup { matches, .. } => vec![*matches],
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence
-            .inputs()
-            .into_iter()
-            .chain([sequence.item(), *predicate])
-            .collect(),
-        Node::SequenceItemAt { sequence, index } => sequence
-            .inputs()
-            .into_iter()
-            .chain([sequence.item(), *index])
-            .collect(),
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
     }
 }
 
@@ -188,6 +140,7 @@ mod tests {
                     message: None,
                 },
             ],
+            user_functions: Default::default(),
             graph: Graph {
                 nodes: [
                     (0, Node::Const { value: Value::Null }),

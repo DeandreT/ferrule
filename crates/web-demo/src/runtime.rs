@@ -330,6 +330,7 @@ mod tests {
             extra_sources: Vec::new(),
             extra_targets: Vec::new(),
             failure_rules: Vec::new(),
+            user_functions: Default::default(),
             graph,
             root: Scope {
                 iteration: if iterate_rows {

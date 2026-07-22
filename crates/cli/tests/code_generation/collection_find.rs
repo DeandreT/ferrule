@@ -52,6 +52,7 @@ fn collection_find_project() -> Project {
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

@@ -19,6 +19,7 @@ mod grouping;
 mod joins;
 mod scalar_functions;
 mod sequences;
+mod user_functions;
 
 fn scalar(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -48,6 +49,7 @@ fn supported_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
         failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([
@@ -237,6 +239,7 @@ fn lowers_exact_whole_current_source_group_copy() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
         failure_rules: Vec::new(),
         graph: Graph::default(),
         root: Scope {
@@ -273,6 +276,7 @@ fn rejects_copy_current_source_with_dynamic_target_paths() {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
         failure_rules: Vec::new(),
         graph: Graph {
             nodes: BTreeMap::from([(

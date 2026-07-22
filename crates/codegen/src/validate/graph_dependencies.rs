@@ -9,8 +9,9 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::JoinField { .. }
         | Expression::JoinPosition { .. }
         | Expression::Const { .. }
+        | Expression::FunctionParameter { .. }
         | Expression::RuntimeValue { .. } => Vec::new(),
-        Expression::Call { args, .. } => args.clone(),
+        Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
         Expression::If {
             condition,
             then,

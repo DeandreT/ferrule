@@ -178,6 +178,7 @@ pub(in crate::import::udf) fn try_read(
 
     Ok(Some((
         Definition {
+            scalar_interface: None,
             parameters: BTreeSet::new(),
             structured_parameters: BTreeSet::from([input_id]),
             outputs: BTreeMap::from([(

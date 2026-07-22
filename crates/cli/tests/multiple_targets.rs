@@ -57,6 +57,7 @@ fn project(extra_path: &str) -> Project {
             root: output_scope(),
         }],
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [(
                 0,

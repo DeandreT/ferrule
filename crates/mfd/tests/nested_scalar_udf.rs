@@ -116,15 +116,31 @@ fn setup() -> TempDir {
 }
 
 #[test]
-fn forward_declared_nested_scalar_udfs_inline_each_call_independently() {
+fn forward_declared_nested_scalar_udfs_preserve_callable_definitions() {
     let dir = setup();
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
+    assert_eq!(imported.project.user_functions.len(), 2);
     assert_eq!(
         imported
             .project
             .graph
+            .nodes
+            .values()
+            .filter(|node| matches!(node, Node::UserFunctionCall { .. }))
+            .count(),
+        1
+    );
+    let combined = imported
+        .project
+        .user_functions
+        .values()
+        .find(|function| function.name == "CombineWrapped")
+        .unwrap();
+    assert_eq!(
+        combined
+            .body
             .nodes
             .values()
             .filter(|node| matches!(node, Node::Call { function, .. } if function == "concat"))

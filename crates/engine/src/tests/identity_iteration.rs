@@ -55,6 +55,7 @@ fn nested_identity_scope_preserves_outer_collection_frames() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [
                 (

@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaKind, Value};
-use mapping::{Graph, Node, NodeId};
+use mapping::{
+    FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, NodeId, UserFunction,
+};
 
 use super::function::read as read_function;
 use super::graph::{GraphBuilder, read_edges};
@@ -130,6 +132,27 @@ pub(super) struct Definition {
     parameters: BTreeSet<u32>,
     structured_parameters: BTreeSet<u32>,
     outputs: BTreeMap<u32, OutputExpr>,
+    scalar_interface: Option<ScalarInterface>,
+}
+
+#[derive(Clone)]
+struct ScalarParameter {
+    component_id: u32,
+    name: String,
+    ty: Option<ScalarType>,
+}
+
+#[derive(Clone)]
+struct ScalarOutput {
+    component_id: u32,
+    name: String,
+    ty: Option<ScalarType>,
+}
+
+#[derive(Clone)]
+struct ScalarInterface {
+    parameters: Vec<ScalarParameter>,
+    outputs: Vec<ScalarOutput>,
 }
 
 #[derive(Default)]
@@ -322,6 +345,157 @@ impl Registry {
     pub(super) fn take_sources(&mut self) -> Vec<super::schema::SchemaComponent> {
         std::mem::take(&mut self.sources)
     }
+
+    pub(super) fn user_functions(&self) -> BTreeMap<FunctionId, UserFunction> {
+        self.supported
+            .iter()
+            .filter_map(|((library, name), &idx)| {
+                let id = function_id(idx)?;
+                self.definitions
+                    .get(idx)?
+                    .as_user_function(library, name)
+                    .map(|function| (id, function))
+            })
+            .collect()
+    }
+}
+
+fn function_id(idx: usize) -> Option<FunctionId> {
+    u64::try_from(idx).ok()?.checked_add(1).map(FunctionId::new)
+}
+
+impl Definition {
+    fn first_class_parts(&self) -> Option<(&[ScalarParameter], &ScalarOutput, &ScalarExpr)> {
+        let interface = self.scalar_interface.as_ref()?;
+        let [output] = interface.outputs.as_slice() else {
+            return None;
+        };
+        let OutputExpr::Scalar(expression) = self.outputs.get(&output.component_id)? else {
+            return None;
+        };
+        let mut parameter_names = BTreeSet::new();
+        (self.outputs.len() == 1
+            && self.structured_parameters.is_empty()
+            && !expression.has_parameter_default()
+            && output.ty.is_some()
+            && !output.name.trim().is_empty()
+            && interface.parameters.len() == self.parameters.len()
+            && interface.parameters.iter().all(|parameter| {
+                parameter.ty.is_some()
+                    && !parameter.name.trim().is_empty()
+                    && parameter_names.insert(parameter.name.clone())
+                    && self.parameters.contains(&parameter.component_id)
+            }))
+        .then_some((interface.parameters.as_slice(), output, expression))
+    }
+
+    fn as_user_function(&self, library: &str, name: &str) -> Option<UserFunction> {
+        let (interface_parameters, output, expression) = self.first_class_parts()?;
+        let parameters = interface_parameters
+            .iter()
+            .map(|parameter| {
+                let ty = parameter.ty?;
+                Some(FunctionParameter {
+                    id: FunctionParameterId::new(u64::from(parameter.component_id)),
+                    name: parameter.name.clone(),
+                    ty,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        if library.trim().is_empty() || name.trim().is_empty() {
+            return None;
+        }
+        let output_type = output.ty?;
+        let mut body = Graph::default();
+        let mut next_id = 0;
+        let parameter_nodes = interface_parameters
+            .iter()
+            .zip(&parameters)
+            .map(|(interface, parameter)| {
+                let node = alloc_node(
+                    &mut body,
+                    &mut next_id,
+                    Node::FunctionParameter {
+                        parameter: parameter.id,
+                    },
+                );
+                (interface.component_id, node)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let output_node =
+            instantiate_function_body(expression, &parameter_nodes, &mut body, &mut next_id)?;
+        Some(UserFunction {
+            library: library.to_string(),
+            name: name.to_string(),
+            description: None,
+            parameters,
+            output_name: output.name.clone(),
+            output_type,
+            body,
+            output: output_node,
+        })
+    }
+}
+
+impl ScalarExpr {
+    fn has_parameter_default(&self) -> bool {
+        match self {
+            Self::DefaultedParameter { .. } => true,
+            Self::Call { args, .. } => args.iter().any(Self::has_parameter_default),
+            Self::If {
+                condition,
+                then,
+                else_,
+            } => [condition.as_ref(), then.as_ref(), else_.as_ref()]
+                .into_iter()
+                .any(Self::has_parameter_default),
+            Self::ValueMap { input, .. } => input.has_parameter_default(),
+            Self::Parameter(_) | Self::Const(_) => false,
+        }
+    }
+}
+
+fn instantiate_function_body(
+    expression: &ScalarExpr,
+    parameters: &BTreeMap<u32, NodeId>,
+    graph: &mut Graph,
+    next_id: &mut NodeId,
+) -> Option<NodeId> {
+    let node = match expression {
+        ScalarExpr::Parameter(component_id) => return parameters.get(component_id).copied(),
+        ScalarExpr::DefaultedParameter { .. } => return None,
+        ScalarExpr::Const(value) => Node::Const {
+            value: value.clone(),
+        },
+        ScalarExpr::Call { function, args } => Node::Call {
+            function: function.clone(),
+            args: args
+                .iter()
+                .map(|argument| instantiate_function_body(argument, parameters, graph, next_id))
+                .collect::<Option<Vec<_>>>()?,
+        },
+        ScalarExpr::If {
+            condition,
+            then,
+            else_,
+        } => Node::If {
+            condition: instantiate_function_body(condition, parameters, graph, next_id)?,
+            then: instantiate_function_body(then, parameters, graph, next_id)?,
+            else_: instantiate_function_body(else_, parameters, graph, next_id)?,
+        },
+        ScalarExpr::ValueMap {
+            input,
+            input_type,
+            table,
+            default,
+        } => Node::ValueMap {
+            input: instantiate_function_body(input, parameters, graph, next_id)?,
+            input_type: *input_type,
+            table: table.clone(),
+            default: default.clone(),
+        },
+    };
+    Some(alloc_node(graph, next_id, node))
 }
 
 fn nested_definition_keys(component: roxmltree::Node<'_, '_>) -> Vec<(String, String)> {
@@ -721,6 +895,7 @@ fn read_lookup_definition(
     };
     Ok((
         Definition {
+            scalar_interface: None,
             parameters: BTreeSet::from([scalar_input_id]),
             structured_parameters: match &source {
                 LookupSource::Parameter { component_id, .. } => BTreeSet::from([*component_id]),
@@ -861,6 +1036,34 @@ impl GraphBuilder<'_> {
             };
             let node = self.value_node(feed).unwrap_or_else(|| self.const_null());
             parameters.insert(parameter, node);
+        }
+        let first_class_parameters = self
+            .udf_registry
+            .definition(call.definition)?
+            .first_class_parts()
+            .filter(|(_, output, _)| output.component_id == component_id)
+            .map(|(parameters, _, _)| {
+                parameters
+                    .iter()
+                    .map(|parameter| parameter.component_id)
+                    .collect::<Vec<_>>()
+            });
+        if let Some(first_class_parameters) = first_class_parameters {
+            let args = first_class_parameters
+                .iter()
+                .map(|parameter| {
+                    parameters
+                        .get(parameter)
+                        .copied()
+                        .unwrap_or_else(|| self.const_null())
+                })
+                .collect();
+            let node = self.alloc(Node::UserFunctionCall {
+                function: function_id(call.definition)?,
+                args,
+            });
+            self.udf_nodes.insert(output_key, node);
+            return Some(node);
         }
         let definition = self.udf_registry.definition(call.definition)?;
         let expression = definition.outputs.get(&component_id)?.clone();
@@ -1308,6 +1511,7 @@ mod tests {
         )
         .unwrap();
         let definition = Definition {
+            scalar_interface: None,
             parameters: BTreeSet::from([1]),
             structured_parameters: BTreeSet::new(),
             outputs: BTreeMap::from([(2, OutputExpr::Scalar(ScalarExpr::Const(Value::Null)))]),

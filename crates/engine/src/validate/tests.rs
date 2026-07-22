@@ -26,6 +26,7 @@ fn valid_project() -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(Vec::new()),

@@ -314,6 +314,7 @@ impl FerruleApp {
             ui.separator();
             ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
         }
+        self.show_mapping_tabs(ui, editing_enabled);
         self.show_workspace_tabs(ui, layout_class);
     }
 
@@ -353,8 +354,8 @@ impl FerruleApp {
 
     fn arrange_canvas(&mut self) {
         arrange_snarl(
-            &mut self.snarl,
-            &self.canvas_node_sizes,
+            &mut self.main_canvas.snarl,
+            &self.main_canvas.node_sizes,
             *self.appearance.wire(),
         );
         self.reset_canvas_view();
@@ -367,7 +368,7 @@ impl FerruleApp {
     }
 
     pub(super) fn reset_canvas_view(&mut self) {
-        self.canvas_view_generation = self.canvas_view_generation.wrapping_add(1);
+        self.main_canvas.reset_view();
     }
 
     fn validate_now(&mut self) {
@@ -556,7 +557,11 @@ impl FerruleApp {
         });
     }
 
-    pub(super) fn show_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+    pub(super) fn show_main_canvas(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
+        let function_names = self.function_names();
+        let function_inputs = self.function_inputs();
+        let parameter_names = std::collections::BTreeMap::new();
+        let mut requested_function = None;
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         let source_x12 = crate::x12_tooltips::boundary_has_x12(
@@ -577,8 +582,8 @@ impl FerruleApp {
                 &self.project.root,
                 &source_blocks,
                 &target_blocks,
-                &self.endpoint_scroll,
-                &mut self.snarl,
+                &self.main_canvas.endpoint_scroll,
+                &mut self.main_canvas.snarl,
             );
             let mut viewer = GraphViewer {
                 graph: &mut self.project.graph,
@@ -589,11 +594,16 @@ impl FerruleApp {
                 source_x12,
                 target_x12,
                 source_paths: &source_paths,
+                function_names: function_names.clone(),
+                function_inputs,
+                parameter_names,
+                protected_output: None,
+                requested_function_open: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
-                endpoint_scroll: &mut self.endpoint_scroll,
+                endpoint_scroll: &mut self.main_canvas.endpoint_scroll,
                 endpoint_search_match: None,
-                node_sizes: Some(&mut self.canvas_node_sizes),
+                node_sizes: Some(&mut self.main_canvas.node_sizes),
                 hovered_node: None,
                 hovered_node_this_frame: None,
                 camera_pan: egui::Vec2::ZERO,
@@ -603,11 +613,11 @@ impl FerruleApp {
                 error: None,
             };
             crate::canvas_keyboard::show(
-                &mut self.snarl,
+                &mut self.main_canvas.snarl,
                 &mut viewer,
-                &mut self.canvas_search,
+                &mut self.main_canvas.search,
                 self.show_minimap,
-                self.canvas_view_generation,
+                self.main_canvas.view_generation,
                 self.appearance.to_snarl_style_with_palette(self.palette),
                 ui,
             );
@@ -615,7 +625,11 @@ impl FerruleApp {
                 self.status = "graph edit failed".to_string();
                 self.diagnostics.error("Graph edit failed", error);
             }
+            requested_function = viewer.requested_function_open;
         });
+        if let Some(function) = requested_function {
+            self.open_function_tab(function);
+        }
     }
 
     pub(super) fn show_workspace_tabs(&mut self, ui: &mut egui::Ui, class: LayoutClass) {

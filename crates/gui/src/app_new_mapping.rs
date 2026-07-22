@@ -132,10 +132,12 @@ impl FerruleApp {
             extra_sources: Vec::new(),
             extra_targets: Vec::new(),
             failure_rules: Vec::new(),
+            user_functions: Default::default(),
             graph: Graph::default(),
             root: Scope::default(),
         };
-        self.snarl = build_snarl(&self.project);
+        self.mapping_workspace.reset();
+        self.main_canvas = CanvasDocumentState::main(&self.project);
         self.reset_canvas_view();
         self.document = DocumentLocation::untitled("mapping.json");
         self.history.mark_unsaved();

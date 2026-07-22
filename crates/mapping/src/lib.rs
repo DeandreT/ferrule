@@ -52,10 +52,11 @@ pub use iteration::{
 };
 pub use model::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, DynamicSourcePath, FailureIteration,
-    FailureRule, FailureSelection, FormatOptions, Graph, IterationOutput, NamedSource, NamedTarget,
-    Node, NodeId, Project, RuntimeValue, Scope, ScopeConstruction, SequenceExpr, SequenceWindow,
-    SortFilterOrder, SortKey, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord,
-    XlsxGridLayout, XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement,
+    FailureRule, FailureSelection, FormatOptions, FunctionId, FunctionParameter,
+    FunctionParameterId, Graph, IterationOutput, NamedSource, NamedTarget, Node, NodeId, Project,
+    RuntimeValue, Scope, ScopeConstruction, SequenceExpr, SequenceWindow, SortFilterOrder, SortKey,
+    UserFunction, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout,
+    XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout, XmlMixedContentElement,
     XmlMixedContentReplacement,
 };
 pub use path_hierarchy::PathHierarchyPlan;

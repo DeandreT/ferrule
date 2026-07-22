@@ -56,6 +56,7 @@ fn collection_find_program(named: bool) -> Program {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),

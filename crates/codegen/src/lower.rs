@@ -1,7 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{SchemaKind, SchemaNode};
-use mapping::{Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
+use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction, ScopeIteration};
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
@@ -9,7 +9,7 @@ use crate::{
     IterationPlan, IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram,
     NamedTargetProgram, Program, ScalarFunction, ScopeConstructionKind, ScopeFeature,
     SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind,
-    UnsupportedSequenceKind,
+    UnsupportedSequenceKind, UserFunctionParameter, UserFunctionProgram,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -70,17 +70,18 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             root,
         });
     }
-    let reachable = reachable_nodes(project, roots);
+    let reachable = reachable_nodes(&project.graph, roots);
     let mut expressions = Vec::with_capacity(reachable.len());
-    for id in reachable {
-        let Some(node) = project.graph.nodes.get(&id) else {
+    for id in &reachable {
+        let Some(node) = project.graph.nodes.get(id) else {
             continue;
         };
-        match lower_expression(id, node) {
+        match lower_expression(*id, node) {
             Ok(node) => expressions.push(node),
             Err(diagnostic) => diagnostics.push(diagnostic),
         }
     }
+    let user_functions = lower_user_functions(project, &reachable, &mut diagnostics);
 
     if diagnostics.is_empty() {
         Ok(Program {
@@ -88,6 +89,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
             extra_sources,
             target: project.target.clone(),
             expressions,
+            user_functions,
             failure_rules,
             root,
             extra_targets,
@@ -424,7 +426,7 @@ fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructi
     }
 }
 
-fn reachable_nodes(project: &Project, roots: Vec<NodeId>) -> BTreeSet<NodeId> {
+fn reachable_nodes(graph: &Graph, roots: impl IntoIterator<Item = NodeId>) -> BTreeSet<NodeId> {
     let mut pending: BTreeSet<_> = roots.into_iter().collect();
     let mut reachable = BTreeSet::new();
     while let Some(id) = pending.iter().next().copied() {
@@ -432,11 +434,94 @@ fn reachable_nodes(project: &Project, roots: Vec<NodeId>) -> BTreeSet<NodeId> {
         if !reachable.insert(id) {
             continue;
         }
-        if let Some(node) = project.graph.nodes.get(&id) {
-            pending.extend(node_dependencies(node));
+        if let Some(node) = graph.nodes.get(&id) {
+            pending.extend(node.dependencies());
         }
     }
     reachable
+}
+
+fn lower_user_functions(
+    project: &Project,
+    main_reachable: &BTreeSet<NodeId>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Vec<UserFunctionProgram> {
+    let mut calls = BTreeSet::new();
+    for id in main_reachable {
+        if let Some(Node::UserFunctionCall { function, .. }) = project.graph.nodes.get(id) {
+            calls.insert(*function);
+        }
+    }
+    let mut visits = BTreeMap::new();
+    let mut functions = Vec::new();
+    for function in calls {
+        lower_user_function(function, project, &mut visits, &mut functions, diagnostics);
+    }
+    functions
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FunctionVisit {
+    Active,
+    Complete,
+}
+
+fn lower_user_function(
+    id: FunctionId,
+    project: &Project,
+    visits: &mut BTreeMap<FunctionId, FunctionVisit>,
+    functions: &mut Vec<UserFunctionProgram>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match visits.get(&id) {
+        Some(FunctionVisit::Active | FunctionVisit::Complete) => return,
+        None => {}
+    }
+    visits.insert(id, FunctionVisit::Active);
+    let Some(function) = project.user_functions.get(&id) else {
+        return;
+    };
+    let reachable = reachable_nodes(&function.body, [function.output]);
+    let mut calls = BTreeSet::new();
+    for node in &reachable {
+        if let Some(Node::UserFunctionCall { function, .. }) = function.body.nodes.get(node) {
+            calls.insert(*function);
+        }
+    }
+    for called in calls {
+        lower_user_function(called, project, visits, functions, diagnostics);
+    }
+
+    let mut expressions = Vec::with_capacity(reachable.len());
+    for node in reachable {
+        let Some(expression) = function.body.nodes.get(&node) else {
+            continue;
+        };
+        match lower_expression(node, expression) {
+            Ok(expression) => expressions.push(expression),
+            Err(diagnostic) => diagnostics.push(Diagnostic::UserFunction {
+                function: id,
+                diagnostic: Box::new(diagnostic),
+            }),
+        }
+    }
+    functions.push(UserFunctionProgram {
+        id,
+        library: function.library.clone(),
+        name: function.name.clone(),
+        parameters: function
+            .parameters
+            .iter()
+            .map(|parameter| UserFunctionParameter {
+                id: parameter.id,
+                ty: parameter.ty,
+            })
+            .collect(),
+        output_type: function.output_type,
+        expressions,
+        output: function.output,
+    });
+    visits.insert(id, FunctionVisit::Complete);
 }
 
 fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnostic> {
@@ -463,6 +548,9 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         Node::Const { value } => Expression::Const {
             value: value.clone(),
         },
+        Node::FunctionParameter { parameter } => Expression::FunctionParameter {
+            parameter: *parameter,
+        },
         Node::RuntimeValue { value } => Expression::RuntimeValue {
             value: (*value).into(),
         },
@@ -478,6 +566,10 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
                 args: args.clone(),
             }
         }
+        Node::UserFunctionCall { function, args } => Expression::UserFunctionCall {
+            function: *function,
+            args: args.clone(),
+        },
         Node::If {
             condition,
             then,
@@ -574,8 +666,10 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::Call { .. }
+        | Node::UserFunctionCall { .. }
         | Node::If { .. }
         | Node::ValueMap { .. }
         | Node::Lookup { .. }
@@ -583,53 +677,5 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::Aggregate { .. } => {
             unreachable!("portable expressions are handled above")
         }
-    }
-}
-
-fn node_dependencies(node: &Node) -> Vec<NodeId> {
-    match node {
-        Node::SourceField { .. }
-        | Node::SourceDocumentPath
-        | Node::Position { .. }
-        | Node::JoinField { .. }
-        | Node::JoinPosition { .. }
-        | Node::Const { .. }
-        | Node::RuntimeValue { .. }
-        | Node::XmlSerialize { .. } => Vec::new(),
-        Node::Call { args, .. } => args.clone(),
-        Node::If {
-            condition,
-            then,
-            else_,
-        } => vec![*condition, *then, *else_],
-        Node::ValueMap { input, .. } => vec![*input],
-        Node::Lookup { matches, .. } => vec![*matches],
-        Node::DynamicSourceField { key, .. } => vec![*key],
-        Node::XmlMixedContent { replacements, .. } => replacements
-            .iter()
-            .map(|replacement| replacement.expression)
-            .collect(),
-        Node::CollectionFind {
-            predicate, value, ..
-        } => vec![*predicate, *value],
-        Node::SequenceExists {
-            sequence,
-            predicate,
-        } => sequence
-            .inputs()
-            .into_iter()
-            .chain([sequence.item(), *predicate])
-            .collect(),
-        Node::SequenceItemAt { sequence, index } => sequence
-            .inputs()
-            .into_iter()
-            .chain([sequence.item(), *index])
-            .collect(),
-        Node::Aggregate {
-            expression, arg, ..
-        }
-        | Node::JoinAggregate {
-            expression, arg, ..
-        } => expression.iter().chain(arg).copied().collect(),
     }
 }

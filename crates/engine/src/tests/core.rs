@@ -51,6 +51,7 @@ fn copy_current_source_preserves_the_complete_nested_group() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph::default(),
         root: Scope {
             construction: ScopeConstruction::CopyCurrentSource,
@@ -74,6 +75,7 @@ fn runtime_project() -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: graph_from(vec![
             (
                 0,
@@ -203,6 +205,7 @@ fn evaluates_a_function_call_over_source_fields() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -262,6 +265,7 @@ fn scalar_bindings_follow_repeating_target_shape() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: graph_from(vec![(
             0,
             Node::SourceField {
@@ -322,6 +326,7 @@ fn missing_source_field_is_reported() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -373,6 +378,7 @@ fn self_referential_node_is_a_cycle() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -456,6 +462,7 @@ fn nested_repetition_flattens_with_broadcast_from_enclosing_scope() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -594,6 +601,7 @@ fn if_only_evaluates_the_taken_branch() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -661,6 +669,7 @@ fn value_map_falls_back_to_default_on_miss() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -728,6 +737,7 @@ fn value_map_without_a_default_returns_null_on_miss() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -775,6 +785,7 @@ fn value_map_coerces_input_to_its_declared_type() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -851,6 +862,7 @@ fn scope_filter_drops_items_that_fail_the_predicate() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -946,6 +958,7 @@ fn scope_sort_and_first_window_are_stable_and_reindex_positions() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(Vec::new()),
@@ -1039,6 +1052,7 @@ fn scope_sort_uses_mixed_direction_tie_breakers() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(Vec::new()),
@@ -1146,6 +1160,7 @@ fn scope_can_filter_in_source_order_before_sorting_survivors() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(Vec::new()),
@@ -1220,6 +1235,7 @@ fn uniterated_repeating_elements_resolve_to_their_first_item() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -1301,6 +1317,7 @@ fn lookup_joins_rows_against_an_extra_source() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -1449,6 +1466,7 @@ fn collection_find_evaluates_composite_predicates_and_values_per_item() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -1528,6 +1546,7 @@ fn scope_source_path_reaches_an_extra_source() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             target_field: String::new(),
@@ -1652,6 +1671,7 @@ fn recursive_collect_project() -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             children: vec![Scope {

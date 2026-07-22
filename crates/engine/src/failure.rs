@@ -1,15 +1,15 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{FailureIteration, FailureRule, FailureSelection, Graph};
+use mapping::{FailureIteration, FailureRule, FailureSelection};
 
 use crate::EngineError;
-use crate::eval_expr::eval_expr;
+use crate::eval_expr::{EvalProgram, eval_expr};
 use crate::sequence::eval_sequence;
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 
 pub(super) fn evaluate(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     rules: &[FailureRule],
     context: &[&Instance],
 ) -> Result<(), EngineError> {
@@ -18,7 +18,7 @@ pub(super) fn evaluate(
         let extensions = match &rule.iteration {
             FailureIteration::Source { collection } => source_extensions(context, collection),
             FailureIteration::Sequence { sequence } => {
-                let values = eval_sequence(graph, sequence, context, &[])?;
+                let values = eval_sequence(program, sequence, context, &[])?;
                 sequence_items =
                     Instance::Repeated(values.into_iter().map(Instance::Scalar).collect());
                 walk(&sequence_items, &[], &[], &[], &[])
@@ -27,7 +27,7 @@ pub(super) fn evaluate(
         for extension in extensions {
             let mut item_context = context.to_vec();
             item_context.extend(extension.instances);
-            if !is_selected(graph, rule.selection, &item_context, &extension.positions)? {
+            if !is_selected(program, rule.selection, &item_context, &extension.positions)? {
                 continue;
             }
             let message = rule
@@ -35,7 +35,7 @@ pub(super) fn evaluate(
                 .map(|message| {
                     let mut in_progress = HashSet::new();
                     eval_expr(
-                        graph,
+                        program,
                         message,
                         &item_context,
                         &extension.positions,
@@ -70,7 +70,7 @@ fn source_extensions<'a>(
 }
 
 fn is_selected(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     selection: FailureSelection,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -81,7 +81,7 @@ fn is_selected(
         FailureSelection::WhenFalse { predicate } => (predicate, false),
     };
     let mut in_progress = HashSet::new();
-    match eval_expr(graph, predicate, context, positions, &mut in_progress)? {
+    match eval_expr(program, predicate, context, positions, &mut in_progress)? {
         Value::Bool(value) => Ok(value == expected),
         value => Err(EngineError::NotABool {
             node: predicate,

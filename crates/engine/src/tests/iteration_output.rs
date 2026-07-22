@@ -108,6 +108,7 @@ fn project_with_output(iteration_output: IterationOutput) -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -244,6 +245,7 @@ fn non_iterating_scope_constructs_one_item_for_a_repeating_target_group() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,
@@ -360,6 +362,7 @@ fn concatenated_mapped_sequence_preserves_segment_and_item_order() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
@@ -504,6 +507,7 @@ fn first_output_does_not_evaluate_later_unused_bindings() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

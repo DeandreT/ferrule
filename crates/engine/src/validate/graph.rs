@@ -102,6 +102,7 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
             Node::Position { collection } if !collection.is_empty() => {
                 validate_collection_path(project, &location, collection, "position", issues);
             }
+            Node::FunctionParameter { .. } | Node::UserFunctionCall { .. } => {}
             Node::Call { function, .. } if !functions::is_known(function) => {
                 issues.push(ValidationIssue::new(
                     &location,
@@ -579,8 +580,10 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         Node::SourceDocumentPath
         | Node::JoinPosition { .. }
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::Call { .. }
+        | Node::UserFunctionCall { .. }
         | Node::If { .. }
         | Node::ValueMap { .. } => {}
     }
@@ -935,9 +938,10 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
-        Node::Call { args, .. } => args
+        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args
             .iter()
             .enumerate()
             .map(|(index, &id)| (format!("argument {index}"), id))

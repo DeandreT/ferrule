@@ -380,6 +380,7 @@ pub(super) fn read(
     let output_id = component_id(output_node)?;
     Ok((
         Definition {
+            scalar_interface: None,
             parameters: parameters.values().copied().collect(),
             structured_parameters: BTreeSet::new(),
             outputs: BTreeMap::from([(
@@ -611,6 +612,7 @@ fn try_read_scalar_find(
     };
     Ok(Some((
         Definition {
+            scalar_interface: None,
             parameters: parameters.values().copied().collect(),
             structured_parameters,
             outputs: BTreeMap::from([(
@@ -851,6 +853,7 @@ fn read_aggregate_record(
 
     Ok((
         Definition {
+            scalar_interface: None,
             parameters: BTreeSet::new(),
             structured_parameters: BTreeSet::from([source_id]),
             outputs: BTreeMap::from([(

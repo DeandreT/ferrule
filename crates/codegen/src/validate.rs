@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::NodeId;
+use mapping::{FunctionId, FunctionParameterId, NodeId};
 
 use crate::{
     Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
@@ -19,6 +19,7 @@ mod recursive_sequence;
 mod sequences;
 mod sources;
 mod targets;
+mod user_functions;
 
 pub use context::{
     GroupingExpressionRole, JoinKeySide, RecursiveSequencePathRole, SequenceExpressionRole,
@@ -47,6 +48,55 @@ pub enum ProgramValidationError {
     },
     ExpressionCycle {
         cycle: Vec<NodeId>,
+    },
+    DuplicateUserFunction {
+        function: FunctionId,
+        first: usize,
+        duplicate: usize,
+    },
+    UserFunction {
+        function: FunctionId,
+        error: Box<ProgramValidationError>,
+    },
+    MissingUserFunctionOutput {
+        function: FunctionId,
+        output: NodeId,
+    },
+    DuplicateUserFunctionParameter {
+        function: FunctionId,
+        parameter: FunctionParameterId,
+    },
+    FunctionParameterInMain {
+        node: NodeId,
+        parameter: FunctionParameterId,
+    },
+    UnknownFunctionParameter {
+        function: FunctionId,
+        node: NodeId,
+        parameter: FunctionParameterId,
+    },
+    UnsupportedUserFunctionExpression {
+        function: FunctionId,
+        node: NodeId,
+    },
+    MissingUserFunction {
+        owner: Option<FunctionId>,
+        node: NodeId,
+        function: FunctionId,
+    },
+    UserFunctionArity {
+        owner: Option<FunctionId>,
+        node: NodeId,
+        function: FunctionId,
+        expected: usize,
+        actual: usize,
+    },
+    UserFunctionCycle {
+        cycle: Vec<FunctionId>,
+    },
+    UserFunctionDepth {
+        function: FunctionId,
+        limit: usize,
     },
     InvalidAggregateCollection {
         node: NodeId,
@@ -252,6 +302,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     let expressions = collect_expressions(program)?;
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
+    user_functions::validate(program, &expressions)?;
     validate_aggregate_paths(sources, &expressions)?;
     collection_find::validate(sources, &expressions)?;
     lookup::validate(sources, &expressions)?;
@@ -820,6 +871,90 @@ impl fmt::Display for ProgramValidationError {
                 "compiled mapping expressions contain a cycle: {}",
                 display_cycle(cycle)
             ),
+            Self::DuplicateUserFunction {
+                function,
+                first,
+                duplicate,
+            } => write!(
+                formatter,
+                "compiled mapping user functions {} and {} share id {}",
+                first + 1,
+                duplicate + 1,
+                function.get()
+            ),
+            Self::UserFunction { function, error } => {
+                write!(formatter, "user function {}: {error}", function.get())
+            }
+            Self::MissingUserFunctionOutput { function, output } => write!(
+                formatter,
+                "user function {} output references missing expression {output}",
+                function.get()
+            ),
+            Self::DuplicateUserFunctionParameter {
+                function,
+                parameter,
+            } => write!(
+                formatter,
+                "user function {} declares parameter {} more than once",
+                function.get(),
+                parameter.get()
+            ),
+            Self::FunctionParameterInMain { node, parameter } => write!(
+                formatter,
+                "compiled mapping expression {node} reads user-function parameter {} outside a function",
+                parameter.get()
+            ),
+            Self::UnknownFunctionParameter {
+                function,
+                node,
+                parameter,
+            } => write!(
+                formatter,
+                "user function {} expression {node} reads undeclared parameter {}",
+                function.get(),
+                parameter.get()
+            ),
+            Self::UnsupportedUserFunctionExpression { function, node } => write!(
+                formatter,
+                "user function {} expression {node} depends on mapping context",
+                function.get()
+            ),
+            Self::MissingUserFunction {
+                owner,
+                node,
+                function,
+            } => write!(
+                formatter,
+                "{} expression {node} calls missing user function {}",
+                display_function_owner(*owner),
+                function.get()
+            ),
+            Self::UserFunctionArity {
+                owner,
+                node,
+                function,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "{} expression {node} calls user function {} with {actual} arguments; expected {expected}",
+                display_function_owner(*owner),
+                function.get()
+            ),
+            Self::UserFunctionCycle { cycle } => write!(
+                formatter,
+                "compiled mapping user functions contain a cycle: {}",
+                cycle
+                    .iter()
+                    .map(|function| function.get().to_string())
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            ),
+            Self::UserFunctionDepth { function, limit } => write!(
+                formatter,
+                "user function {} exceeds the maximum call depth of {limit}",
+                function.get()
+            ),
             Self::InvalidAggregateCollection { node, collection } => write!(
                 formatter,
                 "compiled mapping aggregate expression {node} collection {} matches no source path",
@@ -1152,10 +1287,19 @@ impl fmt::Display for ProgramValidationError {
 impl std::error::Error for ProgramValidationError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::NamedTarget { error, .. } => Some(error.as_ref()),
+            Self::NamedTarget { error, .. } | Self::UserFunction { error, .. } => {
+                Some(error.as_ref())
+            }
             _ => None,
         }
     }
+}
+
+fn display_function_owner(owner: Option<FunctionId>) -> String {
+    owner.map_or_else(
+        || "compiled mapping".into(),
+        |function| format!("user function {}", function.get()),
+    )
 }
 
 fn display_path(path: &[String]) -> String {

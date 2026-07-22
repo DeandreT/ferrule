@@ -77,6 +77,7 @@ fn failure_project() -> Project {
                 message: None,
             },
         ],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

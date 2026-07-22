@@ -9,3 +9,4 @@ description = "Deterministic standalone C# emitter for ferrule mappings"
 [dependencies]
 codegen = { workspace = true }
 ir = { workspace = true }
+mapping = { workspace = true }

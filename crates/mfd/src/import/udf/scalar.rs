@@ -2,8 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, Value};
 
-use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
-use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
+use super::{
+    Call, Definition, OutputExpr, Registry, ScalarExpr, ScalarInterface, ScalarOutput,
+    ScalarParameter,
+};
+use crate::import::function::{
+    FnComponent, map_component_name, parse_constant, read as read_function,
+};
 use crate::import::graph::read_edges;
 use crate::import::schema::parse_u32;
 
@@ -45,11 +50,18 @@ pub(super) fn read(
         .all(|child| {
             matches!(child.attribute("library"), Some("core" | "lang"))
                 || child.attribute("kind") == Some("19")
+                || child.attribute("library") == Some("ferrule")
+                    && child.attribute("kind") == Some("5")
+                    && crate::canonical_function::is_internal(
+                        child.attribute("name").unwrap_or_default(),
+                    )
         });
 
     let mut functions = Vec::new();
     let mut function_component_ids = Vec::new();
     let mut parameter_types = BTreeMap::new();
+    let mut scalar_parameters = Vec::new();
+    let mut scalar_outputs = Vec::new();
     let mut nested_calls = Vec::new();
     let mut seen_component_ids = BTreeSet::new();
     let mut template_budget = ExpansionBudget::new();
@@ -121,7 +133,10 @@ pub(super) fn read(
             continue;
         }
 
-        if !matches!(library, "core" | "lang") {
+        let internal = library == "ferrule"
+            && child.attribute("kind") == Some("5")
+            && crate::canonical_function::is_internal(child_name);
+        if !matches!(library, "core" | "lang") && !internal {
             let detail = if library == "xml" || library == "json" || library == "text" {
                 "constructs or reads a structured sequence"
             } else {
@@ -132,14 +147,28 @@ pub(super) fn read(
             )));
         }
         let function = read_function(&child);
-        if function.kind == 6
-            && let Some(parameter_type) = child
-                .descendants()
-                .find(|node| node.has_tag_name("input"))
-                .and_then(|node| node.attribute("datatype"))
-                .and_then(scalar_type)
-        {
-            parameter_types.insert(component_id, parameter_type);
+        if function.kind == 6 {
+            if let Some(parameter_type) = function.input_type {
+                parameter_types.insert(component_id, parameter_type);
+            }
+            scalar_parameters.push(ScalarParameter {
+                component_id,
+                name: function.name.clone(),
+                ty: function.input_type,
+            });
+        } else if function.kind == 7 {
+            scalar_outputs.push(ScalarOutput {
+                component_id,
+                name: function.name.clone(),
+                ty: child
+                    .descendants()
+                    .find(|node| node.has_tag_name("output"))
+                    .and_then(|node| {
+                        node.attribute("datatype")
+                            .or_else(|| node.attribute("type"))
+                    })
+                    .and_then(scalar_type),
+            });
         }
         if function.kind == 3 && !scalar_only
             || function.kind == 30
@@ -254,6 +283,10 @@ pub(super) fn read(
         parameters: parameter_by_key.values().copied().collect(),
         structured_parameters: BTreeSet::new(),
         outputs,
+        scalar_interface: Some(ScalarInterface {
+            parameters: scalar_parameters,
+            outputs: scalar_outputs,
+        }),
     })
 }
 
@@ -446,7 +479,7 @@ impl DefinitionContext<'_> {
                 let mapped = match name {
                     "normalize-space" => Some("normalize_space"),
                     "empty" => Some("is_empty"),
-                    _ => map_name(name),
+                    _ => map_component_name(function),
                 }
                 .ok_or_else(|| format!("definition uses unsupported scalar function `{name}`"))?;
                 let arity = function

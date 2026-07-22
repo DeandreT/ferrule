@@ -14,7 +14,7 @@ use egui_snarl::Snarl;
 use egui_snarl::{InPinId, OutPinId};
 #[cfg(test)]
 use mapping::Node;
-use mapping::{Graph, NodeId, Project, Scope};
+use mapping::{FunctionId, Graph, NodeId, Project, Scope, UserFunction};
 use serde::{Deserialize, Serialize};
 
 use crate::appearance::EditorAppearance;
@@ -40,6 +40,8 @@ use crate::workspace_layout::{LayoutClass, SideDock, WorkspacePane, WorkspaceVis
 mod canvas_build;
 #[path = "app_extra_sources.rs"]
 mod extra_source_ui;
+#[path = "workspace/functions.rs"]
+mod function_workspace;
 #[path = "app_new_mapping.rs"]
 mod new_mapping_ui;
 #[path = "app_run.rs"]
@@ -49,11 +51,130 @@ mod scope_ui;
 #[path = "app_workspace.rs"]
 mod workspace_ui;
 
-use canvas_build::{build_snarl, build_snarl_with_layout};
+use canvas_build::{build_function_snarl, build_snarl, build_snarl_with_layout};
 pub(crate) use canvas_build::{endpoint_block_size, sync_endpoint_wires};
 
 const HISTORY_COALESCE_DELAY: std::time::Duration = std::time::Duration::from_millis(400);
-pub(super) const LAYOUT_VERSION: u32 = 1;
+pub(super) const LAYOUT_VERSION: u32 = 2;
+
+struct CanvasDocumentState {
+    snarl: Snarl<CanvasNode>,
+    node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
+    endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
+    search: crate::canvas_search::CanvasSearchState,
+    view_generation: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum MappingDocument {
+    Main,
+    Function(FunctionId),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum SplitOrientation {
+    #[default]
+    Horizontal,
+    Vertical,
+}
+
+struct MappingWorkspace {
+    tabs: Vec<MappingDocument>,
+    active: MappingDocument,
+    split: Option<MappingDocument>,
+    split_orientation: SplitOrientation,
+    floating: std::collections::BTreeSet<FunctionId>,
+    function_canvases: std::collections::BTreeMap<FunctionId, CanvasDocumentState>,
+}
+
+impl Default for MappingWorkspace {
+    fn default() -> Self {
+        Self {
+            tabs: vec![MappingDocument::Main],
+            active: MappingDocument::Main,
+            split: None,
+            split_orientation: SplitOrientation::Horizontal,
+            floating: std::collections::BTreeSet::new(),
+            function_canvases: std::collections::BTreeMap::new(),
+        }
+    }
+}
+
+impl MappingWorkspace {
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
+
+    fn reconcile(&mut self, functions: &std::collections::BTreeMap<FunctionId, UserFunction>) {
+        let exists = |document: &MappingDocument| match document {
+            MappingDocument::Main => true,
+            MappingDocument::Function(id) => functions.contains_key(id),
+        };
+        self.tabs.retain(exists);
+        if !self.tabs.contains(&MappingDocument::Main) {
+            self.tabs.insert(0, MappingDocument::Main);
+        }
+        if !exists(&self.active) {
+            self.active = MappingDocument::Main;
+        }
+        if self.split.is_some_and(|document| !exists(&document)) {
+            self.split = None;
+        }
+        self.floating.retain(|id| functions.contains_key(id));
+        self.function_canvases
+            .retain(|id, _| functions.contains_key(id));
+    }
+
+    fn from_layout(project: &Project, layout: Option<&CanvasLayout>) -> Self {
+        let Some(layout) = layout.filter(|layout| layout.matches_project(project)) else {
+            return Self::default();
+        };
+        let mut workspace = Self::default();
+        for function in &layout.open_functions {
+            if project.user_functions.contains_key(function) {
+                workspace.tabs.push(MappingDocument::Function(*function));
+            }
+        }
+        if let Some(function) = layout.active_function
+            && workspace
+                .tabs
+                .contains(&MappingDocument::Function(function))
+        {
+            workspace.active = MappingDocument::Function(function);
+        }
+        for (&function, nodes) in &layout.function_nodes {
+            let Some(definition) = project.user_functions.get(&function) else {
+                continue;
+            };
+            let mut snarl = build_function_snarl(definition);
+            CanvasLayout::apply_nodes(nodes, &mut snarl);
+            workspace
+                .function_canvases
+                .insert(function, CanvasDocumentState::with_snarl(snarl));
+        }
+        workspace
+    }
+}
+
+impl CanvasDocumentState {
+    fn main(project: &Project) -> Self {
+        Self::with_snarl(build_snarl(project))
+    }
+
+    fn with_snarl(snarl: Snarl<CanvasNode>) -> Self {
+        Self {
+            snarl,
+            node_sizes: std::collections::BTreeMap::new(),
+            endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
+            search: crate::canvas_search::CanvasSearchState::default(),
+            view_generation: 0,
+        }
+    }
+
+    fn reset_view(&mut self) {
+        self.view_generation = self.view_generation.wrapping_add(1);
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(super) struct CanvasLayout {
@@ -61,6 +182,12 @@ pub(super) struct CanvasLayout {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     project_fingerprint: Option<String>,
     nodes: Vec<CanvasNodeLayout>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    function_nodes: std::collections::BTreeMap<FunctionId, Vec<CanvasNodeLayout>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    open_functions: Vec<FunctionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    active_function: Option<FunctionId>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -120,11 +247,11 @@ impl PartialEq for EditorSnapshot {
 
 pub struct FerruleApp {
     project: Project,
-    snarl: Snarl<CanvasNode>,
-    canvas_node_sizes: std::collections::BTreeMap<CanvasNode, egui::Vec2>,
-    endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
-    canvas_search: crate::canvas_search::CanvasSearchState,
-    canvas_view_generation: u64,
+    main_canvas: CanvasDocumentState,
+    mapping_workspace: MappingWorkspace,
+    show_function_navigator: bool,
+    function_search: String,
+    new_function_draft: Option<function_workspace::NewFunctionDraft>,
     show_source_panel: bool,
     show_inspector_panel: bool,
     show_minimap: bool,
@@ -197,16 +324,17 @@ enum SaveContinuation {
 impl Default for FerruleApp {
     fn default() -> Self {
         let project = blank_project();
-        let snarl = build_snarl(&project);
-        let snapshot = editor_snapshot(&project, &snarl);
+        let main_canvas = CanvasDocumentState::main(&project);
+        let mapping_workspace = MappingWorkspace::default();
+        let snapshot = editor_snapshot(&project, &main_canvas.snarl, &mapping_workspace);
         let history = SnapshotHistory::new(snapshot.clone(), DocumentOrigin::Saved);
         Self {
             project,
-            snarl,
-            canvas_node_sizes: std::collections::BTreeMap::new(),
-            endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
-            canvas_search: crate::canvas_search::CanvasSearchState::default(),
-            canvas_view_generation: 0,
+            main_canvas,
+            mapping_workspace,
+            show_function_navigator: false,
+            function_search: String::new(),
+            new_function_draft: None,
             show_source_panel: true,
             show_inspector_panel: true,
             show_minimap: true,
@@ -244,23 +372,71 @@ impl Default for FerruleApp {
     }
 }
 
-fn editor_snapshot(project: &Project, snarl: &Snarl<CanvasNode>) -> EditorSnapshot {
+fn editor_snapshot(
+    project: &Project,
+    snarl: &Snarl<CanvasNode>,
+    workspace: &MappingWorkspace,
+) -> EditorSnapshot {
     EditorSnapshot {
         project: project.clone(),
-        state: editor_state(project, snarl),
+        state: editor_state(project, snarl, workspace),
     }
 }
 
-fn editor_state(project: &Project, snarl: &Snarl<CanvasNode>) -> EditorState {
+fn editor_state(
+    project: &Project,
+    snarl: &Snarl<CanvasNode>,
+    workspace: &MappingWorkspace,
+) -> EditorState {
     EditorState {
         serialized_project: serde_json::to_string(project)
             .expect("Project serialization cannot fail"),
-        layout: CanvasLayout::capture(project, snarl),
+        layout: CanvasLayout::capture(project, snarl, workspace),
     }
 }
 
 impl CanvasLayout {
-    fn capture(project: &Project, snarl: &Snarl<CanvasNode>) -> Self {
+    fn capture(project: &Project, snarl: &Snarl<CanvasNode>, workspace: &MappingWorkspace) -> Self {
+        let function_nodes = workspace
+            .function_canvases
+            .iter()
+            .map(|(&function, canvas)| (function, Self::capture_nodes(&canvas.snarl)))
+            .collect();
+        let mut open_functions = workspace
+            .tabs
+            .iter()
+            .filter_map(|document| match document {
+                MappingDocument::Main => None,
+                MappingDocument::Function(function) => Some(*function),
+            })
+            .chain(
+                workspace
+                    .split
+                    .into_iter()
+                    .filter_map(|document| match document {
+                        MappingDocument::Main => None,
+                        MappingDocument::Function(function) => Some(function),
+                    }),
+            )
+            .chain(workspace.floating.iter().copied())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        open_functions.sort_unstable();
+        Self {
+            version: LAYOUT_VERSION,
+            project_fingerprint: Some(project_fingerprint(project)),
+            nodes: Self::capture_nodes(snarl),
+            function_nodes,
+            open_functions,
+            active_function: match workspace.active {
+                MappingDocument::Main => None,
+                MappingDocument::Function(function) => Some(function),
+            },
+        }
+    }
+
+    fn capture_nodes(snarl: &Snarl<CanvasNode>) -> Vec<CanvasNodeLayout> {
         let mut nodes: Vec<_> = snarl
             .nodes_pos()
             .map(|(pos, &node)| CanvasNodeLayout {
@@ -270,19 +446,18 @@ impl CanvasLayout {
             })
             .collect();
         nodes.sort_by_key(|entry| entry.node);
-        Self {
-            version: LAYOUT_VERSION,
-            project_fingerprint: Some(project_fingerprint(project)),
-            nodes,
-        }
+        nodes
     }
 
     fn apply(&self, snarl: &mut Snarl<CanvasNode>) {
-        if self.version != LAYOUT_VERSION {
+        if !(1..=LAYOUT_VERSION).contains(&self.version) {
             return;
         }
-        let positions: std::collections::BTreeMap<_, _> = self
-            .nodes
+        Self::apply_nodes(&self.nodes, snarl);
+    }
+
+    fn apply_nodes(nodes: &[CanvasNodeLayout], snarl: &mut Snarl<CanvasNode>) {
+        let positions: std::collections::BTreeMap<_, _> = nodes
             .iter()
             .filter(|entry| entry.x.is_finite() && entry.y.is_finite())
             .map(|entry| (entry.node, egui::pos2(entry.x, entry.y)))
@@ -301,7 +476,7 @@ impl CanvasLayout {
     }
 
     fn matches_project(&self, project: &Project) -> bool {
-        self.version == LAYOUT_VERSION
+        (1..=LAYOUT_VERSION).contains(&self.version)
             && self.project_fingerprint.as_deref() == Some(project_fingerprint(project).as_str())
     }
 }
@@ -358,17 +533,28 @@ impl FerruleApp {
     }
 
     fn is_dirty(&self) -> bool {
-        let state = editor_state(&self.project, &self.snarl);
+        let state = editor_state(
+            &self.project,
+            &self.main_canvas.snarl,
+            &self.mapping_workspace,
+        );
         self.history.is_dirty_by(&state, |snapshot| &snapshot.state)
     }
 
     fn mark_clean(&mut self) {
-        self.history
-            .mark_saved(&editor_snapshot(&self.project, &self.snarl));
+        self.history.mark_saved(&editor_snapshot(
+            &self.project,
+            &self.main_canvas.snarl,
+            &self.mapping_workspace,
+        ));
     }
 
     fn rebase_history(&mut self) {
-        let snapshot = editor_snapshot(&self.project, &self.snarl);
+        let snapshot = editor_snapshot(
+            &self.project,
+            &self.main_canvas.snarl,
+            &self.mapping_workspace,
+        );
         let origin = if self.history.is_dirty(&snapshot) {
             DocumentOrigin::Unsaved
         } else {
@@ -395,7 +581,11 @@ impl FerruleApp {
         now: std::time::Instant,
         coalesce_change: bool,
     ) -> Option<std::time::Duration> {
-        let current_state = editor_state(&self.project, &self.snarl);
+        let current_state = editor_state(
+            &self.project,
+            &self.main_canvas.snarl,
+            &self.mapping_workspace,
+        );
         if current_state != self.observed_editor.state {
             let current = EditorSnapshot {
                 project: self.project.clone(),
@@ -446,7 +636,12 @@ impl FerruleApp {
 
     fn restore_history_snapshot(&mut self, snapshot: EditorSnapshot) {
         self.project = snapshot.project.clone();
-        self.snarl = build_snarl_with_layout(&self.project, Some(&snapshot.state.layout));
+        self.mapping_workspace =
+            MappingWorkspace::from_layout(&self.project, Some(&snapshot.state.layout));
+        self.main_canvas = CanvasDocumentState::with_snarl(build_snarl_with_layout(
+            &self.project,
+            Some(&snapshot.state.layout),
+        ));
         self.selected_scope.clear();
         self.observed_editor = snapshot;
         self.pending_history = None;
@@ -496,7 +691,8 @@ impl FerruleApp {
             DestructiveAction::NewProject => {
                 self.clear_run_report();
                 self.project = blank_project();
-                self.snarl = build_snarl(&self.project);
+                self.mapping_workspace.reset();
+                self.main_canvas = CanvasDocumentState::main(&self.project);
                 self.reset_canvas_view();
                 self.document = DocumentLocation::untitled("project.json");
                 self.selected_scope.clear();
@@ -567,10 +763,15 @@ impl FerruleApp {
                     Ok(layout) => (layout, None),
                     Err(error) => (None, Some(error.to_string())),
                 };
-                self.snarl = build_snarl_with_layout(&project, layout.as_ref());
+                self.main_canvas = CanvasDocumentState::with_snarl(build_snarl_with_layout(
+                    &project,
+                    layout.as_ref(),
+                ));
+                let mapping_workspace = MappingWorkspace::from_layout(&project, layout.as_ref());
                 self.reset_canvas_view();
                 self.clear_run_report();
                 self.project = project;
+                self.mapping_workspace = mapping_workspace;
                 self.document = DocumentLocation::saved(path);
                 self.selected_scope.clear();
                 self.mark_clean();
@@ -604,7 +805,14 @@ impl FerruleApp {
     fn save_document_to(&mut self, path: &std::path::Path) -> anyhow::Result<Vec<String>> {
         let json = serde_json::to_string_pretty(&self.project)?;
         std::fs::write(path, json)?;
-        write_layout(path, &CanvasLayout::capture(&self.project, &self.snarl))?;
+        write_layout(
+            path,
+            &CanvasLayout::capture(
+                &self.project,
+                &self.main_canvas.snarl,
+                &self.mapping_workspace,
+            ),
+        )?;
         self.document = DocumentLocation::saved(path);
         self.mark_clean();
         Ok(cli::validate(&self.project)
@@ -735,9 +943,10 @@ impl FerruleApp {
             DialogKind::ImportMfd => match mfd::import(std::path::Path::new(&path)) {
                 Ok(imported) => {
                     self.clear_run_report();
-                    self.snarl = build_snarl(&imported.project);
+                    self.main_canvas = CanvasDocumentState::main(&imported.project);
                     self.reset_canvas_view();
                     self.project = imported.project;
+                    self.mapping_workspace.reset();
                     self.history.mark_unsaved();
                     self.selected_scope.clear();
                     self.rebase_history();
@@ -921,7 +1130,9 @@ impl eframe::App for FerruleApp {
             WorkspacePane::Source => {
                 self.show_source_explorer(ui, project_editing_enabled);
             }
-            WorkspacePane::Canvas => self.show_canvas(ui, project_editing_enabled),
+            WorkspacePane::Canvas => {
+                self.show_mapping_workspace_canvas(ui, project_editing_enabled)
+            }
             WorkspacePane::Inspector => self.show_inspector(ui, project_editing_enabled),
         });
 
@@ -944,6 +1155,9 @@ impl eframe::App for FerruleApp {
         self.show_new_mapping_setup(ui.ctx());
         self.show_extra_source_setup(ui.ctx());
         self.show_extra_source_removal_confirmation(ui.ctx());
+        self.show_new_function_dialog(ui.ctx());
+        self.show_function_navigator(ui.ctx(), project_editing_enabled);
+        self.show_floating_function_windows(ui.ctx(), project_editing_enabled);
         if let Some(repaint_after) =
             self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {

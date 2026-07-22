@@ -79,6 +79,7 @@ fn fixture() -> Program {
             call(6, ScalarFunction::ToNumber, &[2]),
             call(7, ScalarFunction::DelayPassthrough, &[4, 3]),
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),

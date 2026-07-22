@@ -5,9 +5,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use codegen::{
     Binding, Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
     GeneratedSequence, IterationPlan, NamedSourceProgram, NamedTargetProgram, Program,
-    RuntimeValue, ScalarFunction, SourceIteration, TargetScope,
+    RuntimeValue, ScalarFunction, SourceIteration, TargetScope, UserFunctionParameter,
+    UserFunctionProgram,
 };
 use ir::{ScalarType, SchemaNode, Value};
+use mapping::{FunctionId, FunctionParameterId};
 
 #[test]
 fn generated_library_builds_and_executes_without_packages() {
@@ -173,8 +175,8 @@ fn fixture() -> Program {
             },
             ExpressionNode {
                 id: 9,
-                expression: Expression::Call {
-                    function: ScalarFunction::Add,
+                expression: Expression::UserFunctionCall {
+                    function: FunctionId::new(2),
                     args: vec![7, 8],
                 },
             },
@@ -444,6 +446,104 @@ fn fixture() -> Program {
                 expression: Expression::Const {
                     value: Value::Bool(false),
                 },
+            },
+        ],
+        user_functions: vec![
+            UserFunctionProgram {
+                id: FunctionId::new(1),
+                library: "tests".into(),
+                name: "identity".into(),
+                parameters: vec![UserFunctionParameter {
+                    id: FunctionParameterId::new(11),
+                    ty: ScalarType::Int,
+                }],
+                output_type: ScalarType::Int,
+                expressions: vec![ExpressionNode {
+                    id: 1,
+                    expression: Expression::FunctionParameter {
+                        parameter: FunctionParameterId::new(11),
+                    },
+                }],
+                output: 1,
+            },
+            UserFunctionProgram {
+                id: FunctionId::new(2),
+                library: "tests".into(),
+                name: "add_values".into(),
+                parameters: vec![
+                    UserFunctionParameter {
+                        id: FunctionParameterId::new(21),
+                        ty: ScalarType::Int,
+                    },
+                    UserFunctionParameter {
+                        id: FunctionParameterId::new(22),
+                        ty: ScalarType::Int,
+                    },
+                ],
+                output_type: ScalarType::Int,
+                expressions: vec![
+                    ExpressionNode {
+                        id: 1,
+                        expression: Expression::FunctionParameter {
+                            parameter: FunctionParameterId::new(21),
+                        },
+                    },
+                    ExpressionNode {
+                        id: 2,
+                        expression: Expression::FunctionParameter {
+                            parameter: FunctionParameterId::new(22),
+                        },
+                    },
+                    ExpressionNode {
+                        id: 3,
+                        expression: Expression::UserFunctionCall {
+                            function: FunctionId::new(1),
+                            args: vec![1],
+                        },
+                    },
+                    ExpressionNode {
+                        id: 4,
+                        expression: Expression::UserFunctionCall {
+                            function: FunctionId::new(1),
+                            args: vec![2],
+                        },
+                    },
+                    ExpressionNode {
+                        id: 5,
+                        expression: Expression::Call {
+                            function: ScalarFunction::Add,
+                            args: vec![3, 4],
+                        },
+                    },
+                    ExpressionNode {
+                        id: 6,
+                        expression: Expression::Const {
+                            value: Value::Bool(true),
+                        },
+                    },
+                    ExpressionNode {
+                        id: 7,
+                        expression: Expression::Const {
+                            value: Value::Int(0),
+                        },
+                    },
+                    ExpressionNode {
+                        id: 8,
+                        expression: Expression::Call {
+                            function: ScalarFunction::Divide,
+                            args: vec![3, 7],
+                        },
+                    },
+                    ExpressionNode {
+                        id: 9,
+                        expression: Expression::If {
+                            condition: 6,
+                            then: 5,
+                            else_: 8,
+                        },
+                    },
+                ],
+                output: 9,
             },
         ],
         failure_rules: vec![

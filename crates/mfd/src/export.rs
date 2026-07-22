@@ -34,6 +34,7 @@ mod sequence;
 mod source;
 #[cfg(test)]
 mod tests;
+mod udf;
 mod wsdl;
 mod xbrl;
 mod xlsx;
@@ -243,6 +244,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     let mut uid = u32::try_from(sources.len() + targets.len() + 2)
         .map_err(|_| MfdError::Unsupported("too many components for .mfd export".to_string()))?
         .max(100);
+    let user_functions = udf::Exports::build(project, &mut keys, &mut uid)?;
     let joins = join::render(join::RenderJoinArgs {
         project,
         sources: &sources,
@@ -277,6 +279,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         warnings: &mut warnings,
         blocked_nodes: &blocked_nodes,
         mfd_path: path,
+        user_functions: &user_functions,
     });
     dynamic_sources.render_nodes(
         &mut keys,
@@ -681,9 +684,9 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         }
         out.push_str("\t\t\t\t\t\t</edges>\n\t\t\t\t\t</vertex>\n");
     }
-    out.push_str(
-        "\t\t\t\t</vertices>\n\t\t\t</graph>\n\t\t</structure>\n\t</component>\n</mapping>\n",
-    );
+    out.push_str("\t\t\t\t</vertices>\n\t\t\t</graph>\n\t\t</structure>\n\t</component>\n");
+    out.push_str(user_functions.declarations());
+    out.push_str("</mapping>\n");
 
     let mut artifacts = Vec::new();
     artifacts.extend(

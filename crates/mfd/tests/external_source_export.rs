@@ -80,6 +80,7 @@ fn project_with_http_source() -> Result<Project, Box<dyn Error>> {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,
@@ -236,6 +237,7 @@ fn database_primary_survives_secondary_http_iteration() -> Result<(), Box<dyn Er
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (
