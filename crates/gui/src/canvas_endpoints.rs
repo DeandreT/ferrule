@@ -209,7 +209,7 @@ pub fn show_scrollbar(
     changed
 }
 
-pub fn show_resize_handle(
+pub fn show_resize_handles(
     ui: &mut egui::Ui,
     node: CanvasNode,
     node_rect: egui::Rect,
@@ -217,32 +217,75 @@ pub fn show_resize_handle(
     natural_width: f32,
     state: &mut EndpointScrollState,
 ) -> bool {
-    let right_inset = if matches!(node, CanvasNode::SourceBlock(_)) {
-        18.0
+    if !node_rect.is_positive() {
+        return false;
+    }
+
+    // Keep the width handle opposite the pins so resizing an endpoint never
+    // steals a wire drag. Sources place pins on the right; targets use left.
+    let on_left = matches!(node, CanvasNode::SourceBlock(_));
+    let edge_x = if on_left {
+        node_rect.left()
     } else {
-        0.0
+        node_rect.right()
     };
-    let corner = node_rect.right_bottom() - egui::vec2(right_inset, 0.0);
-    let grip = egui::Rect::from_min_max(corner - egui::vec2(16.0, 16.0), corner);
-    let response = ui
+    let corner = node_rect.right_bottom();
+    let corner_rect = egui::Rect::from_min_max(corner - egui::vec2(16.0, 16.0), corner);
+    let width_rect = egui::Rect::from_min_max(
+        egui::pos2(edge_x - 4.0, node_rect.top() + 24.0),
+        egui::pos2(edge_x + 4.0, node_rect.bottom() - 18.0),
+    );
+    let bottom_rect = egui::Rect::from_min_max(
+        egui::pos2(node_rect.left() + 18.0, node_rect.bottom() - 4.0),
+        egui::pos2(node_rect.right() - 18.0, node_rect.bottom() + 4.0),
+    );
+
+    let width_response = ui
         .interact(
-            grip,
-            ui.id().with(("endpoint_resize", node)),
+            width_rect,
+            ui.id().with(("endpoint_resize_width", node)),
+            egui::Sense::drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+        .on_hover_text("Resize endpoint width");
+    let height_response = ui
+        .interact(
+            bottom_rect,
+            ui.id().with(("endpoint_resize_height", node)),
+            egui::Sense::drag(),
+        )
+        .on_hover_cursor(egui::CursorIcon::ResizeVertical)
+        .on_hover_text("Resize visible fields");
+    let corner_response = ui
+        .interact(
+            corner_rect,
+            ui.id().with(("endpoint_resize_corner", node)),
             egui::Sense::drag(),
         )
         .on_hover_cursor(egui::CursorIcon::ResizeNwSe)
         .on_hover_text("Resize endpoint");
+
     let stroke = egui::Stroke::new(1.0, ui.visuals().widgets.inactive.fg_stroke.color);
-    let corner = corner - egui::vec2(4.0, 4.0);
-    ui.painter().line_segment(
-        [corner - egui::vec2(7.0, 0.0), corner - egui::vec2(0.0, 7.0)],
-        stroke,
-    );
-    ui.painter().line_segment(
-        [corner - egui::vec2(3.0, 0.0), corner - egui::vec2(0.0, 3.0)],
-        stroke,
-    );
-    state.resize(node, total, natural_width, response.drag_delta())
+    for inset in [4.0, 8.0, 12.0] {
+        ui.painter().line_segment(
+            [
+                corner + egui::vec2(-inset, -3.0),
+                corner + egui::vec2(-3.0, -inset),
+            ],
+            stroke,
+        );
+    }
+
+    let width_direction = if on_left { -1.0 } else { 1.0 };
+    let width_delta =
+        width_response.drag_delta().x * width_direction + corner_response.drag_delta().x;
+    let height_delta = height_response.drag_delta().y + corner_response.drag_delta().y;
+    state.resize(
+        node,
+        total,
+        natural_width,
+        egui::vec2(width_delta, height_delta),
+    )
 }
 
 const fn max_offset(total: usize, visible: usize) -> usize {
