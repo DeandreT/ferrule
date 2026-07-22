@@ -549,3 +549,130 @@ fn imported_worksheet_grid_executes_header_and_nested_cell_frames() {
         )])
     );
 }
+
+#[test]
+fn imports_and_executes_all_worksheets_with_physical_row_numbers() {
+    let imported = mfd::import(&fixture("xlsx-worksheet-set.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+    let layout = project.source_options.xlsx_worksheet_set.as_ref().unwrap();
+    assert_eq!(layout.worksheets_path, ["Worksheet"]);
+    assert_eq!(layout.worksheet_name_path, ["Name"]);
+    assert_eq!(layout.rows_path, ["Row"]);
+    assert_eq!(
+        layout.row_number_path.as_deref(),
+        Some(&["r".to_string()][..])
+    );
+    assert_eq!(layout.start_row.get(), 2);
+    assert!(layout.has_header);
+    assert!(engine::validate(project).is_empty());
+
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    for (sheet_name, values) in [("North", ["Ada", "Lin"]), ("South", ["Mira", "Noel"])] {
+        let worksheet = workbook.add_worksheet();
+        worksheet.set_name(sheet_name).unwrap();
+        worksheet.write_string(1, 0, "Value").unwrap();
+        worksheet.write_string(2, 0, values[0]).unwrap();
+        worksheet.write_string(3, 0, values[1]).unwrap();
+    }
+    let source = format_xlsx::from_bytes_worksheet_set(
+        &workbook.save_to_buffer().unwrap(),
+        &project.source,
+        layout,
+    )
+    .unwrap();
+    let actual = engine::run(project, &source).unwrap();
+    let people = actual
+        .field("Person")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    let actual = people
+        .iter()
+        .map(|person| {
+            (
+                person.field("Name").and_then(Instance::as_scalar),
+                person.field("Age").and_then(Instance::as_scalar),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual,
+        vec![
+            (
+                Some(&Value::String("NorthAda".into())),
+                Some(&Value::Int(3)),
+            ),
+            (
+                Some(&Value::String("NorthLin".into())),
+                Some(&Value::Int(4)),
+            ),
+            (
+                Some(&Value::String("SouthMira".into())),
+                Some(&Value::Int(3)),
+            ),
+            (
+                Some(&Value::String("SouthNoel".into())),
+                Some(&Value::Int(4)),
+            ),
+        ]
+    );
+}
+
+#[test]
+fn imports_and_executes_multiple_static_tables_with_row_numbers() {
+    let imported = mfd::import(&fixture("xlsx-multi-table.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+    let layout = project.source_options.xlsx_composite.as_ref().unwrap();
+    assert_eq!(layout.table.path, ["Admin"]);
+    assert_eq!(layout.table.row_number_field.as_deref(), Some("r"));
+    assert_eq!(layout.additional_tables.len(), 1);
+    assert_eq!(layout.additional_tables[0].path, ["Development"]);
+    assert_eq!(
+        layout.additional_tables[0].row_number_field.as_deref(),
+        Some("r")
+    );
+    assert!(engine::validate(project).is_empty());
+
+    let mut workbook = rust_xlsxwriter::Workbook::new();
+    let admin = workbook.add_worksheet();
+    admin.set_name("Admin").unwrap();
+    admin.write_string(1, 0, "First").unwrap();
+    admin.write_string(2, 0, "Ada").unwrap();
+    admin.write_string(3, 0, "Lin").unwrap();
+    let development = workbook.add_worksheet();
+    development.set_name("Development").unwrap();
+    development.write_string(3, 1, "Mira").unwrap();
+    let source = format_xlsx::from_bytes_composite(
+        &workbook.save_to_buffer().unwrap(),
+        &project.source,
+        layout,
+    )
+    .unwrap();
+    let actual = engine::run(project, &source).unwrap();
+    let rows = |name: &str| {
+        actual
+            .field(name)
+            .and_then(Instance::as_repeated)
+            .unwrap()
+            .iter()
+            .map(|row| {
+                (
+                    row.field("First").and_then(Instance::as_scalar),
+                    row.field("Row").and_then(Instance::as_scalar),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        rows("Admin"),
+        vec![
+            (Some(&Value::String("Ada".into())), Some(&Value::Int(3))),
+            (Some(&Value::String("Lin".into())), Some(&Value::Int(4))),
+        ]
+    );
+    assert_eq!(
+        rows("Development"),
+        vec![(Some(&Value::String("Mira".into())), Some(&Value::Int(4)),)]
+    );
+}

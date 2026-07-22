@@ -5,7 +5,7 @@ mod scope;
 
 pub use format_options::{
     FormatOptions, XlsxColumn, XlsxCompositeLayout, XlsxFixedCell, XlsxFixedRecord, XlsxGridLayout,
-    XlsxRow, XlsxTableRegion,
+    XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout,
 };
 pub use graph::{
     AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, Node, NodeId, RuntimeValue,

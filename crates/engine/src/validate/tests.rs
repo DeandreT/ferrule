@@ -3,7 +3,7 @@ use ir::{ScalarType, SchemaKind, SchemaNode, Value};
 use mapping::{
     Binding, DynamicBinding, DynamicSourcePath, Graph, NamedSource, Node, PdfCapture, PdfCommand,
     PdfLayout, PdfPageSelection, PdfRegion, Project, Scope, ScopeConstruction, SequenceExpr,
-    SequenceWindow, WsdlMessageOptions, XbrlBoundaryOptions,
+    SequenceWindow, WsdlMessageOptions, XbrlBoundaryOptions, XlsxRow, XlsxWorksheetSetLayout,
 };
 use std::num::NonZeroU32;
 
@@ -83,6 +83,31 @@ fn validates_flat_xlsx_header_and_update_options_before_execution() {
             && issue
                 .message
                 .contains("2 value(s) for 1 flat schema field(s)")
+    }));
+}
+
+#[test]
+fn validates_worksheet_set_direction_and_layout_exclusivity() {
+    let mut project = valid_project();
+    project.target_options.xlsx_sheet = Some("Legacy".into());
+    project.target_options.xlsx_worksheet_set = Some(XlsxWorksheetSetLayout {
+        worksheets_path: vec!["Sheets".into()],
+        worksheet_name_path: vec!["Name".into()],
+        rows_path: vec!["Rows".into()],
+        row_number_path: None,
+        start_row: XlsxRow::new(1).unwrap(),
+        columns: Vec::new(),
+        has_header: false,
+    });
+
+    let issues = validate(&project);
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("valid only for mapping sources")
+    }));
+    assert!(issues.iter().any(|issue| {
+        issue.location == "target format options"
+            && issue.message.contains("cannot be combined with flat")
     }));
 }
 

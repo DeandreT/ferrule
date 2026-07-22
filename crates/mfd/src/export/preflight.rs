@@ -220,6 +220,7 @@ fn validate_tabular_identity(
                 || options.xlsx_update_existing
                 || !options.xlsx_rows.is_empty()
                 || options.xlsx_composite.is_some()
+                || options.xlsx_worksheet_set.is_some()
                 || options.xlsx_grid.is_some()
                 || options.xlsx_hierarchical.is_some() =>
         {
@@ -274,6 +275,7 @@ fn validate_xml_identity(
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
         || (options.local_xml_file_set
@@ -361,6 +363,7 @@ fn has_conflicting_http_source_options(project: &Project) -> bool {
                     || !options.xlsx_headers.is_empty()
                     || !options.xlsx_rows.is_empty()
                     || options.xlsx_composite.is_some()
+                    || options.xlsx_worksheet_set.is_some()
                     || options.xlsx_grid.is_some()
                     || options.xlsx_hierarchical.is_some())
         })

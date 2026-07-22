@@ -64,6 +64,10 @@ pub struct XlsxTableRegion {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub columns: Vec<XlsxColumn>,
     pub has_header: bool,
+    /// Optional direct integer field populated with the one-based physical
+    /// worksheet row number. It is not included in `columns`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_number_field: Option<String>,
 }
 
 /// One scalar field read from a fixed worksheet coordinate.
@@ -86,12 +90,38 @@ pub struct XlsxFixedRecord {
     pub cells: Vec<XlsxFixedCell>,
 }
 
-/// Composite XLSX source layout with one repeated table and fixed records.
+/// Composite XLSX source layout with one or more repeated tables and fixed
+/// records. `table` remains the first table for serialized-project
+/// compatibility; additional regions are read into the same root instance.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct XlsxCompositeLayout {
     pub table: XlsxTableRegion,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_tables: Vec<XlsxTableRegion>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub records: Vec<XlsxFixedRecord>,
+}
+
+/// Input layout that materializes every worksheet as a repeated group, with
+/// a nested repeated row table for each sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct XlsxWorksheetSetLayout {
+    /// Absolute path to the repeating worksheet group.
+    pub worksheets_path: Vec<String>,
+    /// Path relative to one worksheet containing its name.
+    pub worksheet_name_path: Vec<String>,
+    /// Path relative to one worksheet containing its repeating row group.
+    pub rows_path: Vec<String>,
+    /// Optional path relative to one row containing its one-based physical
+    /// worksheet row number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub row_number_path: Option<Vec<String>>,
+    pub start_row: XlsxRow,
+    /// Columns aligned with the row group's ordinary scalar children. Empty
+    /// means consecutive columns beginning at A.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub columns: Vec<XlsxColumn>,
+    pub has_header: bool,
 }
 
 /// One two-dimensional worksheet grid exposed as header records containing
@@ -254,6 +284,11 @@ pub struct FormatOptions {
     /// flat/transposed XLSX fields above.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlsx_composite: Option<XlsxCompositeLayout>,
+    /// XLSX: all worksheets exposed as named groups with nested row tables.
+    /// This mode is input-only and mutually exclusive with every other XLSX
+    /// layout option.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xlsx_worksheet_set: Option<XlsxWorksheetSetLayout>,
     /// XLSX: a two-dimensional matrix repeated once per non-empty header
     /// cell. This mode is input-only and mutually exclusive with every
     /// other XLSX layout option.

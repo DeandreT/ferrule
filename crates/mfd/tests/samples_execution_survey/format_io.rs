@@ -190,6 +190,10 @@ fn read_xlsx(
             .map(Instance::Repeated)
             .map_err(|error| error.to_string());
     }
+    if let Some(layout) = &options.xlsx_worksheet_set {
+        return format_xlsx::read_worksheet_set(path, schema, layout)
+            .map_err(|error| error.to_string());
+    }
     if let Some(layout) = &options.xlsx_composite {
         return format_xlsx::read_composite(path, schema, layout)
             .map_err(|error| error.to_string());
@@ -410,6 +414,7 @@ fn write_xlsx(
             .map_err(|error| error.to_string());
     }
     if options.xlsx_grid.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_composite.is_some()
         || !options.xlsx_rows.is_empty()
     {
@@ -466,6 +471,7 @@ pub(super) fn inferred_extension(options: &FormatOptions) -> Option<&'static str
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
     {

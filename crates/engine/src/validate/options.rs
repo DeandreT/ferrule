@@ -93,6 +93,7 @@ fn has_xlsx_format_options(options: &FormatOptions) -> bool {
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
 }
@@ -140,6 +141,7 @@ fn has_non_external_source_format_options(options: &FormatOptions) -> bool {
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
 }
@@ -195,6 +197,7 @@ fn has_non_xbrl_format_options(options: &FormatOptions) -> bool {
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
 }
@@ -206,8 +209,33 @@ pub(super) fn validate_xlsx_options(
     source_side: bool,
     issues: &mut Vec<ValidationIssue>,
 ) {
+    let retained_layouts = usize::from(options.xlsx_composite.is_some())
+        + usize::from(options.xlsx_worksheet_set.is_some())
+        + usize::from(options.xlsx_grid.is_some())
+        + usize::from(options.xlsx_hierarchical.is_some());
+    if retained_layouts > 1 {
+        issues.push(ValidationIssue::new(
+            location,
+            "retained XLSX composite, worksheet-set, grid, and hierarchical layouts are mutually exclusive",
+        ));
+    }
+    let retained_layout = retained_layouts > 0;
+    let legacy_layout = options.xlsx_sheet.is_some()
+        || options.xlsx_start_row.is_some()
+        || !options.xlsx_columns.is_empty()
+        || !options.xlsx_headers.is_empty()
+        || options.xlsx_update_existing
+        || !options.xlsx_rows.is_empty()
+        || options.has_header_row.is_some();
+    if retained_layout && legacy_layout {
+        issues.push(ValidationIssue::new(
+            location,
+            "a retained XLSX layout cannot be combined with flat or transposed XLSX options",
+        ));
+    }
     let non_flat_layout = !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some();
     if !options.xlsx_headers.is_empty() && non_flat_layout {
@@ -226,6 +254,12 @@ pub(super) fn validate_xlsx_options(
         issues.push(ValidationIssue::new(
             location,
             "`xlsx_update_existing` can be used only with a flat XLSX table",
+        ));
+    }
+    if options.xlsx_worksheet_set.is_some() && !source_side {
+        issues.push(ValidationIssue::new(
+            location,
+            "`xlsx_worksheet_set` is valid only for mapping sources",
         ));
     }
     if !options.xlsx_headers.is_empty() {

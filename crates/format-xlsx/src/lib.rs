@@ -17,6 +17,7 @@ mod composite;
 mod grid;
 mod hierarchical;
 mod update;
+mod worksheet_set;
 
 pub use composite::{from_bytes_composite, read_composite};
 pub use grid::{from_bytes_grid, read_grid};
@@ -24,6 +25,7 @@ pub use hierarchical::{
     from_bytes_hierarchical, read_hierarchical, to_bytes_hierarchical, write_hierarchical,
 };
 pub use update::{update, update_with_options};
+pub use worksheet_set::{from_bytes_worksheet_set, read_worksheet_set};
 
 #[derive(Debug, Error)]
 pub enum XlsxFormatError {
@@ -76,6 +78,10 @@ pub enum XlsxFormatError {
     HierarchicalValue { path: String, reason: &'static str },
     #[error("worksheet name `{0}` is produced more than once")]
     DuplicateWorksheet(String),
+    #[error("worksheet-set XLSX root schema must be a non-repeating group")]
+    WorksheetSetRootSchema,
+    #[error("invalid worksheet-set XLSX path `{path}`: {reason}")]
+    WorksheetSetPath { path: String, reason: &'static str },
     #[error("row {row}: expected a group, got {got}")]
     RowShape { row: usize, got: &'static str },
     #[error("row {row}: missing column `{field}`")]
@@ -1106,7 +1112,9 @@ mod tests {
                 start_row: xlsx_row(1),
                 columns: vec![xlsx_column(1), xlsx_column(3), xlsx_column(5)],
                 has_header: true,
+                row_number_field: None,
             },
+            additional_tables: Vec::new(),
             records: vec![
                 XlsxFixedRecord {
                     path: Vec::new(),

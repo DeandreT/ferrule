@@ -559,7 +559,9 @@ fn is_group_sequence_path(
     let mut node = &source.schema;
     let mut repeats = node.repeating
         || source.format == ComponentFormat::Csv
-        || source.format == ComponentFormat::Xlsx && source.options.xlsx_composite.is_none();
+        || source.format == ComponentFormat::Xlsx
+            && source.options.xlsx_composite.is_none()
+            && source.options.xlsx_worksheet_set.is_none();
     for segment in &source_path.path {
         let Some(child) = node.child(segment) else {
             return false;
@@ -623,7 +625,8 @@ fn is_scalar_feed(builder: &GraphBuilder<'_>, feed: u32) -> bool {
                 let externally_repeated =
                     matches!(source.format, ComponentFormat::Csv | ComponentFormat::Db)
                         || source.format == ComponentFormat::Xlsx
-                            && source.options.xlsx_composite.is_none();
+                            && source.options.xlsx_composite.is_none()
+                            && source.options.xlsx_worksheet_set.is_none();
                 !externally_repeated
                     && (scalar_schema_path(&source.schema, path)
                         || is_generic_xml_text_path(source, path))
