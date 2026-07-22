@@ -147,6 +147,10 @@ pub(super) fn read_instance(
         return format_protobuf::read(path, &layout, &protobuf.root_message)
             .map_err(|error| error.to_string());
     }
+    if let Some(wsdl) = &options.wsdl {
+        return format_xml::read_wsdl_message(path, schema, wsdl.operation())
+            .map_err(|error| error.to_string());
+    }
     if let Some(layout) = &options.fixed_width {
         return format_csv::read_fixed_width(path, schema, layout)
             .map(Instance::Repeated)
