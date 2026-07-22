@@ -951,15 +951,16 @@ fn collect_scope_edges(
         let mapped_source =
             mapped_plan.and_then(|plan| plan.source().map(|(collection, _)| collection.to_vec()));
         let named_extra_path = sources.is_named_extra_path(source);
-        let abs = mapped_source.clone().unwrap_or_else(|| {
-            if named_extra_path {
-                source.to_vec()
-            } else {
-                let mut abs = anchor.clone();
-                abs.extend(source.iter().cloned());
-                abs
-            }
-        });
+        let (abs, absolute_scope_source) = mapped_source.clone().map_or_else(
+            || {
+                if named_extra_path {
+                    (source.to_vec(), false)
+                } else {
+                    sources.resolve_scope_path(anchor, source)
+                }
+            },
+            |source| (source, false),
+        );
         let structural_source = mapped_plan
             .and_then(|plan| plan.source().map(|(_, group)| group))
             .unwrap_or(&abs);
@@ -979,7 +980,7 @@ fn collect_scope_edges(
                 };
                 let first_stage_len = if mapped_source.is_some() || named_extra_path {
                     1
-                } else if source.is_empty() {
+                } else if source.is_empty() || absolute_scope_source {
                     abs.len()
                 } else {
                     anchor.len() + 1

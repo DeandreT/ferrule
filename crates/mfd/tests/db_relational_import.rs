@@ -95,6 +95,28 @@ fn write_relational_target_design(path: &Path) {
     std::fs::write(path, text).unwrap();
 }
 
+fn write_local_relation_design(path: &Path) {
+    let text = r#"<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="22"><resources><datasources><datasource name="sales">
+  <database_connection database_kind="SQLite" import_kind="SQLite" ConnectionString="sales.sqlite" name="sales" path="sales">
+    <LocalRelationsStorage><LocalRelationElement name="region-years">
+      <SourceTable><PathElement Name="main" Kind="Database"/><PathElement Name="years" Kind="Table"/></SourceTable>
+      <SourceColumns><Column name="region_id" kind="Column"/></SourceColumns>
+      <DestinationTable><PathElement Name="main" Kind="Database"/><PathElement Name="regions" Kind="Table"/></DestinationTable>
+      <DestinationColumns><Column name="id" kind="Column"/></DestinationColumns>
+    </LocalRelationElement></LocalRelationsStorage>
+  </database_connection>
+</datasource></datasources></resources><component name="map"><structure><children>
+  <component name="sales" library="db" kind="15"><data><root><entry name="document">
+    <entry name="regions" type="table" outkey="10"><entry name="name" outkey="11"/>
+      <entry name="years|region_id" type="table" outkey="12"><entry name="year" outkey="13"/><entry name="amount" outkey="14"/></entry>
+    </entry>
+  </entry></root><database ref="sales"/></data></component>
+  <component name="Report" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root><entry name="Report"><entry name="Amount" inpkey="20"/></entry></root></data></component>
+</children><graph><vertices><vertex vertexkey="14"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#;
+    std::fs::write(path, text).unwrap();
+}
+
 fn field<'a>(instance: &'a Instance, name: &str) -> &'a Instance {
     instance
         .field(name)
@@ -326,6 +348,54 @@ fn warns_when_nested_relationship_metadata_is_missing() {
             && warning.contains("people")
             && warning.contains("department_id")
     }));
+}
+
+#[test]
+fn local_relation_metadata_executes_without_a_physical_foreign_key_and_round_trips() {
+    let dir = TempDir::new("local_relation");
+    let db_path = dir.0.join("sales.sqlite");
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute_batch(
+            "CREATE TABLE regions (id INTEGER PRIMARY KEY, name TEXT); \
+             CREATE TABLE years (region_id INTEGER, year INTEGER, amount INTEGER); \
+             INSERT INTO regions VALUES (1, 'North'), (2, 'South'); \
+             INSERT INTO years VALUES (1, 2024, 10), (1, 2025, 12), (2, 2025, 7);",
+        )
+        .unwrap();
+    drop(connection);
+    let design = dir.0.join("local-relation.mfd");
+    write_local_relation_design(&design);
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let relation = imported
+        .project
+        .source
+        .child("years|region_id")
+        .and_then(|child| child.database_relation.as_ref())
+        .unwrap();
+    assert_eq!(relation.parent_column, "id");
+    assert_eq!(relation.child_column, "region_id");
+    let instance = format_db::read_instance(&db_path, &imported.project.source).unwrap();
+    let regions = instance.as_repeated().unwrap();
+    assert_eq!(
+        regions[0]
+            .field("years|region_id")
+            .and_then(Instance::as_repeated)
+            .unwrap()
+            .len(),
+        2
+    );
+
+    let exported_path = dir.0.join("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let reimported = mfd::import(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let roundtrip = format_db::read_instance(&db_path, &reimported.project.source).unwrap();
+    assert_eq!(roundtrip, instance);
 }
 
 #[test]

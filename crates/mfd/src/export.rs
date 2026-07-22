@@ -416,18 +416,28 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     components.push_str(&scope_components);
 
     // Database components reference a mapping-level datasource.
-    let mut datasources: Vec<(String, String)> = Vec::new();
-    for (format, instance) in sources
+    let mut datasources: Vec<(String, String, BTreeSet<String>)> = Vec::new();
+    for (format, instance, schema) in sources
         .iter()
-        .map(|source| (source.format, source.path))
-        .chain(targets.iter().map(|target| (target.format, target.path)))
+        .map(|source| (source.format, source.path, source.schema))
+        .chain(
+            targets
+                .iter()
+                .map(|target| (target.format, target.path, target.schema)),
+        )
     {
         if format == SideFormat::Db
             && let Some(conn) = instance
         {
             let name = db_datasource_name(Some(conn));
-            if !datasources.iter().any(|(n, _)| *n == name) {
-                datasources.push((name, conn.to_string()));
+            let relations = database::local_relation_elements(schema)?;
+            if let Some((_, _, existing)) = datasources
+                .iter_mut()
+                .find(|(existing, _, _)| *existing == name)
+            {
+                existing.extend(relations);
+            } else {
+                datasources.push((name, conn.to_string(), relations));
             }
         }
     }
@@ -435,12 +445,31 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         "\t<resources/>\n".to_string()
     } else {
         let mut resources = String::from("\t<resources>\n\t\t<datasources>\n");
-        for (name, conn) in &datasources {
+        for (name, conn, relations) in &datasources {
+            let connection = if relations.is_empty() {
+                format!(
+                    "\t\t\t\t<database_connection database_kind=\"SQLite\" import_kind=\"SQLite\" ConnectionString=\"{}\" name=\"{}\" path=\"{}\"/>\n",
+                    xml_escape(conn),
+                    xml_escape(name),
+                    xml_escape(name),
+                )
+            } else {
+                format!(
+                    "\t\t\t\t<database_connection database_kind=\"SQLite\" import_kind=\"SQLite\" ConnectionString=\"{}\" name=\"{}\" path=\"{}\">\n\
+                     \t\t\t\t\t<LocalRelationsStorage>\n{}\
+                     \t\t\t\t\t</LocalRelationsStorage>\n\
+                     \t\t\t\t</database_connection>\n",
+                    xml_escape(conn),
+                    xml_escape(name),
+                    xml_escape(name),
+                    relations.iter().cloned().collect::<String>(),
+                )
+            };
             let _ = write!(
                 resources,
                 "\t\t\t<datasource name=\"{0}\">\n\
                  \t\t\t\t<properties JDBCDriver=\"org.sqlite.JDBC\" JDBCDatabaseURL=\"jdbc:sqlite:{1}\" DBDataSource=\"{1}\" DBCatalog=\"main\"/>\n\
-                 \t\t\t\t<database_connection database_kind=\"SQLite\" import_kind=\"SQLite\" ConnectionString=\"{1}\" name=\"{0}\" path=\"{0}\"/>\n\
+                 {connection}\
                  \t\t\t</datasource>\n",
                 xml_escape(name),
                 xml_escape(conn),

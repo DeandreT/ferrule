@@ -1448,6 +1448,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Node::XmlSerialize {
                     path,
                     declaration,
+                    indent,
                     namespace,
                     ..
                 } => {
@@ -1458,6 +1459,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     };
                     ui.label(format!("source: {source}"));
                     ui.checkbox(declaration, "XML declaration");
+                    ui.checkbox(indent, "indent output");
                     if let Some(namespace) = namespace {
                         ui.label(namespace.as_str())
                             .on_hover_text("default namespace");

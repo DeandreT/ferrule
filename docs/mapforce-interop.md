@@ -25,6 +25,11 @@ modules can lower scalar parameter/number arithmetic to the native call graph.
 Structured XML string serializers retain the selected subtree schema and emit
 attributes, nested groups, repeated children, escaping, the configured default
 namespace, and optional XML declaration directly from the current source item.
+Structured XML database columns reuse that typed serializer with compact output,
+so document-valued TEXT fields execute without flattening the source subtree.
+SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
+endpoints, validated against the physical columns, and exported canonically. This
+keeps nested relational reads executable when the database omits foreign-key metadata.
 Filter components downstream from grouping retain their operator order: a
 group survives when any member satisfies the predicate, and sparse typed member
 ports resolve within that retained group.
@@ -50,7 +55,8 @@ Supported named sources, independent targets, dynamic XML paths, HTTP response
 boundaries, selected joins, exception sinks, and configured format components
 retain their ownership in the exported design. Structured XML string serializers
 round-trip as native components with generated XSD siblings and structural
-source connections.
+source connections. Declared local SQLite relations round-trip with their owning
+database connection.
 
 Export is atomic: a shape that cannot be represented safely is rejected instead
 of publishing a partially wired design. Successfully exported designs are

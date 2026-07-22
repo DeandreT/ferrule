@@ -243,6 +243,7 @@ fn read_correlated_component(
         input_keys,
         output_keys,
         db_queries: queries,
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }
