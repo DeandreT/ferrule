@@ -136,6 +136,7 @@ pub(super) fn target_format_is_implicit(options: &FormatOptions) -> bool {
         && !options.xlsx_update_existing
         && options.xlsx_rows.is_empty()
         && options.xlsx_composite.is_none()
+        && options.xlsx_worksheet_set.is_none()
         && options.xlsx_grid.is_none()
         && options.xlsx_hierarchical.is_none()
 }

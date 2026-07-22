@@ -193,6 +193,7 @@ fn validate_format_identity(side: &str, options: &FormatOptions) -> Result<(), M
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some();
     if conflict {

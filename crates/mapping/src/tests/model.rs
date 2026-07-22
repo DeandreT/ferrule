@@ -236,6 +236,7 @@ fn xlsx_layout_options_default_empty_and_roundtrip() {
     assert!(defaults.xlsx_headers.is_empty());
     assert!(defaults.xlsx_rows.is_empty());
     assert!(defaults.xlsx_composite.is_none());
+    assert!(defaults.xlsx_worksheet_set.is_none());
     assert!(defaults.xlsx_grid.is_none());
     assert!(defaults.xlsx_hierarchical.is_none());
     assert!(
@@ -278,7 +279,9 @@ fn xlsx_composite_layout_roundtrips() {
             start_row: XlsxRow::new(2).unwrap(),
             columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(3).unwrap()],
             has_header: true,
+            row_number_field: None,
         },
+        additional_tables: Vec::new(),
         records: vec![XlsxFixedRecord {
             path: vec!["Office".into()],
             sheet: Some("Office".into()),
@@ -296,6 +299,26 @@ fn xlsx_composite_layout_roundtrips() {
     let encoded = serde_json::to_string(&options).unwrap();
     let decoded: FormatOptions = serde_json::from_str(&encoded).unwrap();
     assert_eq!(decoded.xlsx_composite, Some(composite));
+}
+
+#[test]
+fn xlsx_worksheet_set_layout_roundtrips() {
+    let layout = XlsxWorksheetSetLayout {
+        worksheets_path: vec!["Sheets".into()],
+        worksheet_name_path: vec!["Name".into()],
+        rows_path: vec!["Rows".into()],
+        row_number_path: Some(vec!["r".into()]),
+        start_row: XlsxRow::new(2).unwrap(),
+        columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(4).unwrap()],
+        has_header: true,
+    };
+    let options = FormatOptions {
+        xlsx_worksheet_set: Some(layout.clone()),
+        ..FormatOptions::default()
+    };
+    let decoded: FormatOptions =
+        serde_json::from_str(&serde_json::to_string(&options).unwrap()).unwrap();
+    assert_eq!(decoded.xlsx_worksheet_set, Some(layout));
 }
 
 #[test]

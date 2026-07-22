@@ -7,6 +7,7 @@ use ir::{ScalarType, SchemaKind, SchemaNode};
 use mapping::{
     FormatOptions, XlsxCellKind, XlsxCompositeLayout, XlsxFixedCell, XlsxGridLayout,
     XlsxHierarchicalLayout, XlsxOutputColumn, XlsxOutputRange, XlsxRangeStart,
+    XlsxWorksheetSetLayout,
 };
 
 use crate::MfdError;
@@ -28,6 +29,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
     if !args.options.xlsx_headers.is_empty()
         && (args.options.xlsx_grid.is_some()
             || args.options.xlsx_composite.is_some()
+            || args.options.xlsx_worksheet_set.is_some()
             || !args.options.xlsx_rows.is_empty())
     {
         return Err(unsupported(
@@ -36,6 +38,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<Option<String>, MfdError> {
     }
     if let Some(layout) = &args.options.xlsx_grid {
         return render_grid(&args, layout).map(Some);
+    }
+    if let Some(layout) = &args.options.xlsx_worksheet_set {
+        return render_worksheet_set(&args, layout).map(Some);
     }
     if let Some(layout) = &args.options.xlsx_composite {
         return render_composite(&args, layout).map(Some);
@@ -495,51 +500,187 @@ fn render_composite(
         worksheets.push_str(&body);
     }
 
-    let table_name = one_segment(&layout.table.path, "composite XLSX table path")?;
-    let table_sheet = required_matching_sheet(layout.table.sheet.as_deref(), table_name)?;
-    if !names.insert(table_sheet) {
-        return Err(unsupported("composite XLSX worksheet names must be unique"));
+    for table_layout in std::iter::once(&layout.table).chain(&layout.additional_tables) {
+        let table_name = one_segment(&table_layout.path, "composite XLSX table path")?;
+        let table_sheet = required_matching_sheet(table_layout.sheet.as_deref(), table_name)?;
+        if !names.insert(table_sheet) {
+            return Err(unsupported("composite XLSX worksheet names must be unique"));
+        }
+        let table = schema_at(args.schema, &table_layout.path).ok_or_else(|| {
+            unsupported("the composite XLSX table path is missing from the schema")
+        })?;
+        if !table.repeating {
+            return Err(unsupported(
+                "the composite XLSX table path must select a repeating group",
+            ));
+        }
+        let fields = table_data_fields(table, table_layout.row_number_field.as_deref())?;
+        let columns = table_columns(fields.len(), &table_layout.columns)?;
+        let table_key = args
+            .ports
+            .required_key_for_abs(&table_layout.path, "composite XLSX table")?;
+        let mut cells = String::new();
+        for (field, column) in fields.iter().zip(columns) {
+            let mut path = table_layout.path.clone();
+            path.push(field.name.clone());
+            let key = args
+                .ports
+                .required_key_for_abs(&path, "composite XLSX table field")?;
+            let ty = scalar_type(field, "composite XLSX table field")?;
+            render_selected_cell(&field.name, ty, column, key, &mut cells);
+        }
+        let row_number = row_number_entry(
+            args,
+            &table_layout.path,
+            table_layout.row_number_field.as_deref(),
+        )?;
+        let range = format!(
+            "\t\t\t\t\t\t\t\t\t\t\t<range id=\"1\" start=\"{}\"/>\n",
+            table_layout.start_row.get()
+        );
+        let header = if table_layout.has_header {
+            " enabletitlerow=\"1\""
+        } else {
+            ""
+        };
+        let rows = format!(
+            "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" outkey=\"{table_key}\" expanded=\"1\"{header}>\n\
+             \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"1\" datatype=\"long\"/></expression></function></expression></condition>\n\
+             {row_number}{cells}\
+             \t\t\t\t\t\t\t\t\t\t\t</entry>\n"
+        );
+        worksheets.push_str(&worksheet_body(table_sheet, &range, &rows, None));
     }
-    let table = schema_at(args.schema, &layout.table.path)
-        .ok_or_else(|| unsupported("the composite XLSX table path is missing from the schema"))?;
-    if !table.repeating {
+    render_component(args, worksheets)
+}
+
+fn render_worksheet_set(
+    args: &RenderArgs<'_>,
+    layout: &XlsxWorksheetSetLayout,
+) -> Result<String, MfdError> {
+    let worksheets_name = one_segment(&layout.worksheets_path, "worksheet-set path")?;
+    let name_field = one_segment(&layout.worksheet_name_path, "worksheet-set name path")?;
+    let rows_name = one_segment(&layout.rows_path, "worksheet-set rows path")?;
+    let worksheets = schema_at(args.schema, &layout.worksheets_path)
+        .ok_or_else(|| unsupported("the worksheet-set collection is missing from the schema"))?;
+    if !worksheets.repeating {
         return Err(unsupported(
-            "the composite XLSX table path must select a repeating group",
+            "the worksheet-set path must select a repeating group",
         ));
     }
-    let fields = direct_scalar_fields(table)
-        .ok_or_else(|| unsupported("the composite XLSX table must be a flat scalar group"))?;
-    let columns = table_columns(fields.len(), &layout.table.columns)?;
-    let table_key = args
+    let name = schema_at(worksheets, &layout.worksheet_name_path)
+        .ok_or_else(|| unsupported("the worksheet-set name field is missing"))?;
+    if scalar_type(name, "worksheet-set name")? != ScalarType::String {
+        return Err(unsupported(
+            "the worksheet-set name must be a string scalar",
+        ));
+    }
+    let rows = schema_at(worksheets, &layout.rows_path)
+        .ok_or_else(|| unsupported("the worksheet-set row collection is missing"))?;
+    if !rows.repeating {
+        return Err(unsupported(
+            "the worksheet-set rows path must select a repeating group",
+        ));
+    }
+    let row_number_field = match layout.row_number_path.as_deref() {
+        Some([field]) => Some(field.as_str()),
+        Some(_) => {
+            return Err(unsupported(
+                "the worksheet-set row-number path must be direct",
+            ));
+        }
+        None => None,
+    };
+    let fields = table_data_fields(rows, row_number_field)?;
+    let columns = table_columns(fields.len(), &layout.columns)?;
+    let worksheet_key = args
         .ports
-        .required_key_for_abs(&layout.table.path, "composite XLSX table")?;
+        .required_key_for_abs(&layout.worksheets_path, "worksheet-set collection")?;
+    let mut name_path = layout.worksheets_path.clone();
+    name_path.extend(layout.worksheet_name_path.iter().cloned());
+    let name_key = args
+        .ports
+        .required_key_for_abs(&name_path, "worksheet-set name")?;
+    let mut rows_path = layout.worksheets_path.clone();
+    rows_path.extend(layout.rows_path.iter().cloned());
+    let row_key = args
+        .ports
+        .required_key_for_abs(&rows_path, "worksheet-set rows")?;
     let mut cells = String::new();
     for (field, column) in fields.iter().zip(columns) {
-        let mut path = layout.table.path.clone();
+        let mut path = rows_path.clone();
         path.push(field.name.clone());
         let key = args
             .ports
-            .required_key_for_abs(&path, "composite XLSX table field")?;
-        let ty = scalar_type(field, "composite XLSX table field")?;
+            .required_key_for_abs(&path, "worksheet-set row field")?;
+        let ty = scalar_type(field, "worksheet-set row field")?;
         render_selected_cell(&field.name, ty, column, key, &mut cells);
     }
-    let range = format!(
-        "\t\t\t\t\t\t\t\t\t\t\t<range id=\"1\" start=\"{}\"/>\n",
-        layout.table.start_row.get()
-    );
-    let header = if layout.table.has_header {
+    let row_number = row_number_entry(args, &rows_path, row_number_field)?;
+    let header = if layout.has_header {
         " enabletitlerow=\"1\""
     } else {
         ""
     };
-    let rows = format!(
-        "\t\t\t\t\t\t\t\t\t\t\t<entry name=\"Row\" outkey=\"{table_key}\" expanded=\"1\"{header}>\n\
+    let worksheets_xml = format!(
+        "\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" outkey=\"{worksheet_key}\" expanded=\"1\">\n\
+         \t\t\t\t\t\t\t\t\t\t\t<ranges><range id=\"1\" start=\"{}\"/></ranges>\n\
+         \t\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" type=\"attribute\" outkey=\"{name_key}\"/>\n\
+         \t\t\t\t\t\t\t\t\t\t\t<entry name=\"{}\" outkey=\"{row_key}\" expanded=\"1\"{header}>\n\
          \t\t\t\t\t\t\t\t\t\t\t\t<condition><expression><function name=\"is-range-id\"><expression><constant value=\"1\" datatype=\"long\"/></expression></function></expression></condition>\n\
-         {cells}\
-         \t\t\t\t\t\t\t\t\t\t\t</entry>\n"
+         {row_number}{cells}\
+         \t\t\t\t\t\t\t\t\t\t\t</entry>\n\
+         \t\t\t\t\t\t\t\t\t\t</entry>\n",
+        xml_escape(worksheets_name),
+        layout.start_row.get(),
+        xml_escape(name_field),
+        xml_escape(rows_name),
     );
-    worksheets.push_str(&worksheet_body(table_sheet, &range, &rows, None));
-    render_component(args, worksheets)
+    render_component(args, worksheets_xml)
+}
+
+fn table_data_fields<'a>(
+    table: &'a SchemaNode,
+    row_number_field: Option<&str>,
+) -> Result<Vec<&'a SchemaNode>, MfdError> {
+    let SchemaKind::Group { children, .. } = &table.kind else {
+        return Err(unsupported("an XLSX table must be a group"));
+    };
+    if let Some(name) = row_number_field {
+        let field = children
+            .iter()
+            .find(|field| field.name == name)
+            .ok_or_else(|| unsupported("the XLSX row-number field is missing"))?;
+        if scalar_type(field, "XLSX row-number field")? != ScalarType::Int {
+            return Err(unsupported("the XLSX row-number field must be an integer"));
+        }
+    }
+    children
+        .iter()
+        .filter(|field| row_number_field != Some(field.name.as_str()))
+        .map(|field| {
+            scalar_type(field, "XLSX table field")?;
+            Ok(field)
+        })
+        .collect()
+}
+
+fn row_number_entry(
+    args: &RenderArgs<'_>,
+    table_path: &[String],
+    field: Option<&str>,
+) -> Result<String, MfdError> {
+    let Some(field) = field else {
+        return Ok(String::new());
+    };
+    let mut path = table_path.to_vec();
+    path.push(field.to_string());
+    let key = args
+        .ports
+        .required_key_for_abs(&path, "XLSX physical row number")?;
+    Ok(format!(
+        "\t\t\t\t\t\t\t\t\t\t\t\t<entry name=\"r\" type=\"attribute\" outkey=\"{key}\"/>\n"
+    ))
 }
 
 fn render_grid(args: &RenderArgs<'_>, layout: &XlsxGridLayout) -> Result<String, MfdError> {
