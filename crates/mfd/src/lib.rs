@@ -9,8 +9,9 @@
 //! with typed JSON request/response projections, JSON
 //! components (JSON Schema incl. local `$ref`, or the entry tree as
 //! fallback), CSV text components (inline delimiter/header settings), and EDI
-//! text component graphs (entry-tree fallback, explicitly non-executable
-//! until a positional EDI schema is supplied),
+//! text component graphs whose external configuration directories or adjacent
+//! bounded ZIP packages compile into portable positional runtime schemas
+//! (with a non-executable entry-tree fallback when no configuration resolves),
 //! proto2 binary target components (typed from their referenced `.proto`),
 //! single-table SQLite database components (schema introspected from the
 //! referenced database when reachable), the common core functions,
