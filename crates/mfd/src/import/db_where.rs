@@ -109,49 +109,63 @@ impl GraphBuilder<'_> {
             [qualifier, column] => (column.as_str(), Some(qualifier.as_str())),
             _ => return Err("column identifiers may contain at most one qualifier".to_string()),
         };
-        let collection = self
+        let original_collection = self
             .schema_node(source_path)
-            .ok_or_else(|| "collection schema is unresolved".to_string())?;
-        if let Some(qualifier) = qualifier {
+            .ok_or_else(|| "collection schema is unresolved".to_string())?
+            .name
+            .clone();
+        let mut candidate_path = source_path.path.clone();
+        let mut matched_field = None;
+        loop {
+            let candidate = SourcePath {
+                source: source_path.source,
+                path: candidate_path.clone(),
+            };
+            let collection = self
+                .schema_node(&candidate)
+                .ok_or_else(|| "collection schema is unresolved".to_string())?;
             let physical_name = collection
                 .name
                 .split_once('|')
                 .map_or(collection.name.as_str(), |(table, _)| table);
-            if !physical_name.eq_ignore_ascii_case(qualifier) {
+            if qualifier.is_none_or(|qualifier| physical_name.eq_ignore_ascii_case(qualifier)) {
+                let SchemaKind::Group { children, .. } = &collection.kind else {
+                    return Err(format!("collection `{}` is not a group", collection.name));
+                };
+                let matches = children
+                    .iter()
+                    .filter(|child| child.name.eq_ignore_ascii_case(column))
+                    .collect::<Vec<_>>();
+                if matches.len() > 1 {
+                    return Err(format!(
+                        "column `{column}` is ambiguous ignoring ASCII case"
+                    ));
+                }
+                if let Some(matched) = matches.first()
+                    && !matched.repeating
+                    && let SchemaKind::Scalar { ty } = matched.kind
+                {
+                    let mut field = candidate;
+                    field.path.push(matched.name.clone());
+                    matched_field = Some((field, ty));
+                    break;
+                }
+            }
+            let Some((_, parent)) = candidate_path.split_last() else {
+                break;
+            };
+            candidate_path = parent.to_vec();
+        }
+        let Some((field, column_type)) = matched_field else {
+            if let Some(qualifier) = qualifier {
                 return Err(format!(
-                    "column qualifier `{qualifier}` does not match collection `{}`",
-                    collection.name
+                    "column qualifier `{qualifier}` does not match a scalar `{column}` field of collection `{original_collection}` or an ancestor"
                 ));
             }
-        }
-        let SchemaKind::Group { children, .. } = &collection.kind else {
-            return Err(format!("collection `{}` is not a group", collection.name));
-        };
-        let mut matches = children
-            .iter()
-            .filter(|child| child.name.eq_ignore_ascii_case(column));
-        let matched = matches.next();
-        if matches.next().is_some() {
             return Err(format!(
-                "column `{column}` is ambiguous ignoring ASCII case"
-            ));
-        }
-        let column_type = matched
-            .filter(|node| !node.repeating)
-            .and_then(|node| match node.kind {
-                SchemaKind::Scalar { ty } => Some(ty),
-                SchemaKind::Group { .. } => None,
-            });
-        let Some(column_type) = column_type else {
-            return Err(format!(
-                "column `{column}` is not a scalar field of collection `{}`",
-                collection.name
+                "column `{column}` is not a scalar field of collection `{original_collection}` or an ancestor"
             ));
         };
-        let mut field = source_path.clone();
-        field
-            .path
-            .push(matched.map_or(column, |node| &node.name).to_string());
         self.source_field_at(&field)
             .map(|node| (node, column_type))
             .ok_or_else(|| format!("column `{column}` cannot be resolved"))

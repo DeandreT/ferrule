@@ -169,6 +169,8 @@ pub(super) struct Registry {
     joins: BTreeMap<JoinId, ResolvedJoin>,
     row_outputs: BTreeMap<u32, JoinId>,
     field_outputs: BTreeMap<u32, ResolvedField>,
+    hierarchical_rows: BTreeMap<u32, SourcePath>,
+    hierarchical_fields: BTreeMap<u32, SourcePath>,
     rejected_row_outputs: BTreeSet<u32>,
     rejected_field_outputs: BTreeSet<u32>,
 }
@@ -191,6 +193,11 @@ struct ResolvedField {
     join: JoinId,
     input_index: usize,
     path: Vec<String>,
+}
+
+struct ResolvedHierarchy {
+    rows: Vec<(u32, SourcePath)>,
+    fields: Vec<(u32, SourcePath)>,
 }
 
 pub(super) enum IterationFeed {
@@ -245,8 +252,16 @@ impl PendingJoins {
                 ));
                 continue;
             }
-            match resolve_join(&pending, edge_from, sources, source_names) {
-                Ok(resolved) => registry.insert(pending.id, resolved),
+            let resolved = if pending.parsed.equalities.is_empty() {
+                resolve_hierarchy(&pending, edge_from, sources).map(EitherJoin::Hierarchy)
+            } else {
+                resolve_join(&pending, edge_from, sources, source_names)
+                    .map(Box::new)
+                    .map(EitherJoin::Keyed)
+            };
+            match resolved {
+                Ok(EitherJoin::Keyed(resolved)) => registry.insert(pending.id, *resolved),
+                Ok(EitherJoin::Hierarchy(resolved)) => registry.insert_hierarchy(resolved),
                 Err(reason) => {
                     registry.reject(&pending.parsed);
                     warnings.push(format!(
@@ -294,6 +309,21 @@ impl Registry {
             }
         }
         self.joins.insert(id, resolved);
+    }
+
+    fn insert_hierarchy(&mut self, resolved: ResolvedHierarchy) {
+        self.hierarchical_rows.extend(resolved.rows);
+        self.hierarchical_fields.extend(resolved.fields);
+    }
+
+    pub(super) fn hierarchical_source(&self, port: u32) -> Option<&SourcePath> {
+        self.hierarchical_rows
+            .get(&port)
+            .or_else(|| self.hierarchical_fields.get(&port))
+    }
+
+    fn hierarchical_field(&self, port: u32) -> Option<&SourcePath> {
+        self.hierarchical_fields.get(&port)
     }
 
     pub(super) fn row_join(&self, port: u32) -> Option<JoinId> {
@@ -626,6 +656,10 @@ impl GraphBuilder<'_> {
     }
 
     pub(super) fn join_field_node(&mut self, port: u32) -> Option<NodeId> {
+        if let Some(source) = self.joins.hierarchical_field(port).cloned() {
+            let source = self.source_value_path(source.source, source.path);
+            return self.source_field_at(&source);
+        }
         let field = self.joins.field(port)?;
         let join = field.join;
         let input_index = field.input_index;
@@ -758,43 +792,7 @@ fn resolve_join(
     sources: &[&SchemaComponent],
     source_names: &[String],
 ) -> Result<ResolvedJoin, String> {
-    let mut inputs = Vec::with_capacity(pending.parsed.inputs.len());
-    for input in &pending.parsed.inputs {
-        let feed = edge_from
-            .get(&input.input_port)
-            .copied()
-            .ok_or_else(|| format!("input {} is not connected", input.index))?;
-        let (source, path) = sources
-            .iter()
-            .enumerate()
-            .find_map(|(index, component)| {
-                component
-                    .ports
-                    .get(&feed)
-                    .cloned()
-                    .map(|path| (index, path))
-            })
-            .ok_or_else(|| format!("input {} is not a plain source feed", input.index))?;
-        let source_node = sources
-            .get(source)
-            .and_then(|source| schema_node_at(&source.schema, &path));
-        let singleton = source_node
-            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }));
-        if !singleton
-            && !source_node
-                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
-        {
-            return Err(format!(
-                "input {} must be a repeating structural source or singleton scalar",
-                input.index
-            ));
-        }
-        inputs.push(ResolvedInput {
-            source,
-            path,
-            singleton,
-        });
-    }
+    let inputs = resolve_inputs(&pending.parsed, edge_from, sources)?;
     for equality in &pending.parsed.equalities {
         for key in [&equality.first, &equality.second] {
             let input = inputs
@@ -853,6 +851,128 @@ fn resolve_join(
         planned: None,
         target_path: None,
     })
+}
+
+enum EitherJoin {
+    Keyed(Box<ResolvedJoin>),
+    Hierarchy(ResolvedHierarchy),
+}
+
+fn resolve_inputs(
+    parsed: &ParsedJoin,
+    edge_from: &BTreeMap<u32, u32>,
+    sources: &[&SchemaComponent],
+) -> Result<Vec<ResolvedInput>, String> {
+    let mut inputs = Vec::with_capacity(parsed.inputs.len());
+    for input in &parsed.inputs {
+        let feed = edge_from
+            .get(&input.input_port)
+            .copied()
+            .ok_or_else(|| format!("input {} is not connected", input.index))?;
+        let (source, path) = sources
+            .iter()
+            .enumerate()
+            .find_map(|(index, component)| {
+                component
+                    .ports
+                    .get(&feed)
+                    .cloned()
+                    .map(|path| (index, path))
+            })
+            .ok_or_else(|| format!("input {} is not a plain source feed", input.index))?;
+        let source_node = sources
+            .get(source)
+            .and_then(|source| schema_node_at(&source.schema, &path));
+        let singleton = source_node
+            .is_some_and(|node| !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. }));
+        if !singleton
+            && !source_node
+                .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
+        {
+            return Err(format!(
+                "input {} must be a repeating structural source or singleton scalar",
+                input.index
+            ));
+        }
+        inputs.push(ResolvedInput {
+            source,
+            path,
+            singleton,
+        });
+    }
+    Ok(inputs)
+}
+
+fn resolve_hierarchy(
+    pending: &PendingJoin,
+    edge_from: &BTreeMap<u32, u32>,
+    sources: &[&SchemaComponent],
+) -> Result<ResolvedHierarchy, String> {
+    let inputs = resolve_inputs(&pending.parsed, edge_from, sources)?;
+    let Some(first) = inputs.first() else {
+        return Err("keyless hierarchy has no inputs".to_string());
+    };
+    if inputs.iter().any(|input| input.singleton) {
+        return Err("keyless hierarchy inputs must all be repeating groups".to_string());
+    }
+    for pair in inputs.windows(2) {
+        let [parent, child] = pair else {
+            continue;
+        };
+        if child.source != first.source
+            || child.path.len() <= parent.path.len()
+            || !child.path.starts_with(&parent.path)
+        {
+            return Err(
+                "keyless join inputs must form one strict nested source hierarchy".to_string(),
+            );
+        }
+    }
+
+    let mut rows = Vec::new();
+    let mut fields = Vec::new();
+    if let Some(port) = pending.parsed.tuple_output {
+        let driver = inputs
+            .last()
+            .ok_or("keyless hierarchy has no driver input")?;
+        rows.push((
+            port,
+            SourcePath {
+                source: driver.source,
+                path: driver.path.clone(),
+            },
+        ));
+    }
+    for input in &pending.parsed.inputs {
+        let resolved = inputs
+            .get(input.index)
+            .ok_or("keyless hierarchy output references an unknown input")?;
+        for output in &input.outputs {
+            let mut path = resolved.path.clone();
+            path.extend(output.path.iter().cloned());
+            let source_path = SourcePath {
+                source: resolved.source,
+                path,
+            };
+            if output.path.is_empty() {
+                rows.push((output.port, source_path));
+            } else if sources
+                .get(resolved.source)
+                .and_then(|source| schema_node_at(&source.schema, &source_path.path))
+                .is_some_and(|node| {
+                    !node.repeating && matches!(node.kind, SchemaKind::Scalar { .. })
+                })
+            {
+                fields.push((output.port, source_path));
+            } else {
+                return Err(format!(
+                    "output port {} does not project a scalar descendant",
+                    output.port
+                ));
+            }
+        }
+    }
+    Ok(ResolvedHierarchy { rows, fields })
 }
 
 fn validate_outputs(
@@ -1037,9 +1157,6 @@ fn parse_keypaths(keypaths: XmlNode<'_, '_>) -> Result<BTreeMap<u32, Vec<String>
     {
         collect_keypaths(root, &mut Vec::new(), &mut paths)?;
     }
-    if paths.is_empty() {
-        return Err("join declares no key paths".to_string());
-    }
     Ok(paths)
 }
 
@@ -1077,6 +1194,9 @@ fn parse_equalities(
         .filter(|node| node.has_tag_name("keypair"))
         .collect::<Vec<_>>();
     if pairs.is_empty() {
+        if paths.is_empty() {
+            return Ok(Vec::new());
+        }
         return Err("join must declare at least one equality condition".to_string());
     }
     let mut equalities = Vec::with_capacity(pairs.len());
