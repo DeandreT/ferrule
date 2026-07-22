@@ -63,43 +63,6 @@ pub fn show(
         .ctx()
         .data(|data| data.get_temp::<Option<SnarlNodeId>>(hover_marker).flatten());
     viewer.begin_node_hover_frame(hovered_node);
-    if let Some(node) = hovered_node.and_then(|node| snarl.get_node(node)).copied() {
-        let total = match node {
-            CanvasNode::SourceBlock(block) => viewer
-                .source_blocks
-                .get(block)
-                .map_or(0, |section| section.leaves.len()),
-            CanvasNode::TargetBlock(block) => viewer
-                .target_blocks
-                .get(block)
-                .map_or(0, |section| section.leaves.len()),
-            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 0,
-        };
-        let pan_delta = ui.ctx().input(|input| input.smooth_scroll_delta());
-        if !wire_dragging
-            && total > viewer.endpoint_scroll.visible_limit(node, total)
-            && pan_delta.y.abs() >= 1.0
-        {
-            let rows = scroll_rows(pan_delta.y);
-            if viewer.endpoint_scroll.scroll_rows(node, total, rows) {
-                crate::app::sync_endpoint_wires(
-                    viewer.graph,
-                    viewer.root_scope,
-                    viewer.source_blocks,
-                    viewer.target_blocks,
-                    viewer.endpoint_scroll,
-                    snarl,
-                );
-                ui.ctx().request_repaint();
-
-                // The canvas scene treats an unclaimed wheel event as pan.
-                // Consume only the vertical component once the endpoint has
-                // accepted it, while retaining horizontal trackpad panning.
-                ui.ctx()
-                    .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
-            }
-        }
-    }
     let selected = SnarlWidget::new()
         .id(canvas_id)
         .style(style)
@@ -191,15 +154,6 @@ fn pin_drag_active(
     pin_interaction_ids: &[egui::Id],
 ) -> bool {
     primary_down && dragged_id.is_some_and(|dragged| pin_interaction_ids.contains(&dragged))
-}
-
-fn scroll_rows(delta_y: f32) -> isize {
-    let rows = ((-delta_y / 18.0).round() as isize).clamp(-5, 5);
-    if rows == 0 {
-        -delta_y.signum() as isize
-    } else {
-        rows
-    }
 }
 
 fn edge_pan_delta(
@@ -305,13 +259,5 @@ mod tests {
         assert!(!pin_drag_active(true, Some(node), &[pin]));
         assert!(!pin_drag_active(false, Some(pin), &[pin]));
         assert!(!pin_drag_active(true, None, &[pin]));
-    }
-
-    #[test]
-    fn endpoint_wheel_delta_maps_to_bounded_field_rows() {
-        assert_eq!(scroll_rows(-18.0), 1);
-        assert_eq!(scroll_rows(36.0), -2);
-        assert_eq!(scroll_rows(-500.0), 5);
-        assert_eq!(scroll_rows(0.5), -1);
     }
 }

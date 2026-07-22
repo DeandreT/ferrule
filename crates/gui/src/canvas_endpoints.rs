@@ -11,6 +11,13 @@ const PIN_ROW_HEIGHT: f32 = 20.0;
 const MIN_WIDTH: f32 = 110.0;
 const MAX_WIDTH: f32 = 480.0;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EndpointDisplayPin {
+    HiddenBefore,
+    Visible(usize),
+    HiddenAfter,
+}
+
 #[derive(Default)]
 pub struct EndpointScrollState {
     offsets: BTreeMap<CanvasNode, usize>,
@@ -45,28 +52,71 @@ impl EndpointScrollState {
         self.visible_range(node, total).len()
     }
 
+    pub fn display_pin_count(&self, node: CanvasNode, total: usize) -> usize {
+        self.visible_len(node, total)
+            + usize::from(self.hidden_before(node, total) > 0)
+            + usize::from(self.hidden_after(node, total) > 0)
+    }
+
+    pub fn display_pin(
+        &self,
+        node: CanvasNode,
+        displayed_pin: usize,
+        total: usize,
+    ) -> Option<EndpointDisplayPin> {
+        let before = self.hidden_before(node, total);
+        let has_before = before > 0;
+        if has_before && displayed_pin == 0 {
+            return Some(EndpointDisplayPin::HiddenBefore);
+        }
+
+        let visible = self.visible_range(node, total);
+        let visible_pin = displayed_pin.checked_sub(usize::from(has_before))?;
+        if visible_pin < visible.len() {
+            return Some(EndpointDisplayPin::Visible(visible.start + visible_pin));
+        }
+
+        (self.hidden_after(node, total) > 0 && visible_pin == visible.len())
+            .then_some(EndpointDisplayPin::HiddenAfter)
+    }
+
     pub fn semantic_pin(
         &self,
         node: CanvasNode,
         displayed_pin: usize,
         total: usize,
     ) -> Option<usize> {
-        let range = self.visible_range(node, total);
-        (displayed_pin < range.len()).then_some(range.start + displayed_pin)
+        match self.display_pin(node, displayed_pin, total)? {
+            EndpointDisplayPin::Visible(semantic) => Some(semantic),
+            EndpointDisplayPin::HiddenBefore | EndpointDisplayPin::HiddenAfter => None,
+        }
     }
 
-    pub fn displayed_pin(
+    pub fn visual_pin_for_semantic(
         &self,
         node: CanvasNode,
         semantic_pin: usize,
         total: usize,
     ) -> Option<usize> {
         let range = self.visible_range(node, total);
+        let has_before = self.hidden_before(node, total) > 0;
         if range.contains(&semantic_pin) {
-            Some(semantic_pin - range.start)
+            Some(semantic_pin - range.start + usize::from(has_before))
+        } else if semantic_pin < range.start && has_before {
+            Some(0)
+        } else if semantic_pin >= range.end && self.hidden_after(node, total) > 0 {
+            Some(range.len() + usize::from(has_before))
         } else {
             None
         }
+    }
+
+    pub fn hidden_before(&self, node: CanvasNode, total: usize) -> usize {
+        self.visible_range(node, total).start
+    }
+
+    pub fn hidden_after(&self, node: CanvasNode, total: usize) -> usize {
+        total.saturating_sub(self.visible_range(node, total).end)
     }
 
     pub fn scroll_rows(&mut self, node: CanvasNode, total: usize, rows: isize) -> bool {
@@ -140,6 +190,15 @@ impl EndpointScrollState {
             self.offsets.insert(node, offset);
         }
         old != offset
+    }
+}
+
+pub fn scroll_rows(delta_y: f32) -> isize {
+    let rows = ((-delta_y / 18.0).round() as isize).clamp(-5, 5);
+    if rows == 0 {
+        -delta_y.signum() as isize
+    } else {
+        rows
     }
 }
 
@@ -304,9 +363,46 @@ mod tests {
         assert_eq!(state.visible_range(node, 30), 0..12);
         assert!(state.scroll_rows(node, 30, 7));
         assert_eq!(state.visible_range(node, 30), 7..19);
-        assert_eq!(state.semantic_pin(node, 3, 30), Some(10));
-        assert_eq!(state.displayed_pin(node, 10, 30), Some(3));
-        assert_eq!(state.displayed_pin(node, 2, 30), None);
+        assert_eq!(state.semantic_pin(node, 3, 30), Some(9));
+        assert_eq!(state.visual_pin_for_semantic(node, 10, 30), Some(4));
+        assert_eq!(state.visual_pin_for_semantic(node, 2, 30), Some(0));
+    }
+
+    #[test]
+    fn displayed_endpoint_pins_include_hidden_edge_proxies() {
+        let node = CanvasNode::SourceBlock(2);
+        let mut state = EndpointScrollState::default();
+
+        assert_eq!(state.display_pin_count(node, 30), 13);
+        assert_eq!(
+            state.display_pin(node, 0, 30),
+            Some(EndpointDisplayPin::Visible(0))
+        );
+        assert_eq!(
+            state.display_pin(node, 12, 30),
+            Some(EndpointDisplayPin::HiddenAfter)
+        );
+        assert_eq!(state.visual_pin_for_semantic(node, 18, 30), Some(12));
+
+        assert!(state.scroll_rows(node, 30, 7));
+        assert_eq!(state.display_pin_count(node, 30), 14);
+        assert_eq!(
+            state.display_pin(node, 0, 30),
+            Some(EndpointDisplayPin::HiddenBefore)
+        );
+        assert_eq!(
+            state.display_pin(node, 1, 30),
+            Some(EndpointDisplayPin::Visible(7))
+        );
+        assert_eq!(
+            state.display_pin(node, 13, 30),
+            Some(EndpointDisplayPin::HiddenAfter)
+        );
+        assert_eq!(state.visual_pin_for_semantic(node, 2, 30), Some(0));
+        assert_eq!(state.visual_pin_for_semantic(node, 10, 30), Some(4));
+        assert_eq!(state.visual_pin_for_semantic(node, 25, 30), Some(13));
+        assert_eq!(state.semantic_pin(node, 0, 30), None);
+        assert_eq!(state.semantic_pin(node, 4, 30), Some(10));
     }
 
     #[test]
@@ -333,5 +429,13 @@ mod tests {
         assert_eq!(state.visible_limit(node, 30), 13);
         assert!(state.resize(node, 30, 200.0, egui::vec2(0.0, -400.0)));
         assert_eq!(state.visible_limit(node, 30), MIN_VISIBLE_PINS);
+    }
+
+    #[test]
+    fn endpoint_wheel_delta_maps_to_bounded_field_rows() {
+        assert_eq!(scroll_rows(-18.0), 1);
+        assert_eq!(scroll_rows(36.0), -2);
+        assert_eq!(scroll_rows(-500.0), 5);
+        assert_eq!(scroll_rows(0.5), -1);
     }
 }

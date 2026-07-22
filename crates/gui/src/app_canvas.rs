@@ -297,7 +297,7 @@ pub(crate) fn sync_endpoint_wires(
     let visible_output = |id: NodeId| -> Option<OutPinId> {
         if let Some(&(block, semantic_pin)) = source_fields.get(&id) {
             let section = source_blocks.get(block)?;
-            let output = scroll.displayed_pin(
+            let output = scroll.visual_pin_for_semantic(
                 CanvasNode::SourceBlock(block),
                 semantic_pin,
                 section.leaves.len(),
@@ -338,7 +338,7 @@ pub(crate) fn sync_endpoint_wires(
         let Some(section) = target_blocks.get(block) else {
             continue;
         };
-        let Some(input) = scroll.displayed_pin(
+        let Some(input) = scroll.visual_pin_for_semantic(
             CanvasNode::TargetBlock(block),
             semantic_pin,
             section.leaves.len(),

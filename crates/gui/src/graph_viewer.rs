@@ -18,6 +18,7 @@ use mapping::{AggregateOp, Binding, Graph, NamedTarget, Node, NodeId, Scope};
 
 use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
+use crate::canvas_endpoints::EndpointDisplayPin;
 use crate::path_picker::SourcePathCatalog;
 use crate::value_editor::{show_value_editor, show_value_map_editor};
 use crate::wire_colors::WireEmphasis;
@@ -128,6 +129,29 @@ fn show_endpoint_label(
     );
     ui.interact(row_rect, ui.next_auto_id(), egui::Sense::hover())
         .on_hover_text(hover_text);
+}
+
+fn show_endpoint_proxy_label(
+    ui: &mut Ui,
+    hidden: usize,
+    above: bool,
+    align: egui::Align,
+    source: bool,
+) {
+    let direction = if above { "above" } else { "below" };
+    let label = if above {
+        format!("^ {hidden} more")
+    } else {
+        format!("v {hidden} more")
+    };
+    let side = if source { "source" } else { "target" };
+    show_endpoint_label(
+        ui,
+        &label,
+        align,
+        format!("Scroll to show {hidden} hidden {side} field(s) {direction}"),
+        false,
+    );
 }
 
 pub struct GraphViewer<'a> {
@@ -263,14 +287,19 @@ impl GraphViewer<'_> {
         section.leaves.get(semantic)
     }
 
-    fn endpoint_semantic_pin(&self, node: CanvasNode, displayed_pin: usize) -> Option<usize> {
+    fn endpoint_display_pin(
+        &self,
+        node: CanvasNode,
+        displayed_pin: usize,
+    ) -> Option<EndpointDisplayPin> {
         let total = match node {
             CanvasNode::SourceBlock(block) => self.source_blocks.get(block)?.leaves.len(),
             CanvasNode::TargetBlock(block) => self.target_blocks.get(block)?.leaves.len(),
-            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => return Some(displayed_pin),
+            CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => {
+                return Some(EndpointDisplayPin::Visible(displayed_pin));
+            }
         };
-        self.endpoint_scroll
-            .semantic_pin(node, displayed_pin, total)
+        self.endpoint_scroll.display_pin(node, displayed_pin, total)
     }
 
     fn placeholder_position(owner: egui::Pos2, input: usize, inputs: usize) -> egui::Pos2 {
@@ -953,6 +982,29 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => None,
         };
         if let Some((total, natural_width, accent)) = endpoint {
+            if ui.rect_contains_pointer(rect) {
+                let scroll_delta = ui.ctx().input(|input| input.smooth_scroll_delta());
+                if total > self.endpoint_scroll.visible_limit(canvas_node, total)
+                    && scroll_delta.y.abs() >= 1.0
+                    && self.endpoint_scroll.scroll_rows(
+                        canvas_node,
+                        total,
+                        crate::canvas_endpoints::scroll_rows(scroll_delta.y),
+                    )
+                {
+                    crate::app::sync_endpoint_wires(
+                        self.graph,
+                        self.root_scope,
+                        self.source_blocks,
+                        self.target_blocks,
+                        self.endpoint_scroll,
+                        snarl,
+                    );
+                    ui.ctx()
+                        .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+                    ui.ctx().request_repaint();
+                }
+            }
             let scrolled = crate::canvas_endpoints::show_scrollbar(
                 ui,
                 canvas_node,
@@ -989,7 +1041,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::SourceBlock(_) => 0,
             CanvasNode::TargetBlock(block) => self.target_blocks.get(*block).map_or(0, |section| {
                 self.endpoint_scroll
-                    .visible_len(*node, section.leaves.len())
+                    .display_pin_count(*node, section.leaves.len())
             }),
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 self.graph.nodes.get(id).map_or(0, Self::input_count)
@@ -1001,7 +1053,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         match node {
             CanvasNode::SourceBlock(block) => self.source_blocks.get(*block).map_or(0, |section| {
                 self.endpoint_scroll
-                    .visible_len(*node, section.leaves.len())
+                    .display_pin_count(*node, section.leaves.len())
             }),
             CanvasNode::TargetBlock(_) => 0,
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 1,
@@ -1012,7 +1064,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let idx = pin.id.input;
         let canvas_node = snarl[pin.id.node];
-        let semantic_idx = self.endpoint_semantic_pin(canvas_node, idx).unwrap_or(idx);
+        let endpoint_pin = self.endpoint_display_pin(canvas_node, idx);
+        let semantic_idx = match endpoint_pin {
+            Some(EndpointDisplayPin::Visible(semantic)) => semantic,
+            Some(EndpointDisplayPin::HiddenBefore | EndpointDisplayPin::HiddenAfter) => idx,
+            None => idx,
+        };
         let fill = match canvas_node {
             CanvasNode::SourceBlock(_) => self.colors.source,
             CanvasNode::TargetBlock(_) => self.colors.target,
@@ -1048,29 +1105,50 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
         };
         if let CanvasNode::TargetBlock(block) = snarl[pin.id.node] {
-            if let Some(section) = self.target_blocks.get(block)
-                && let (Some(leaf), Some(label)) = (
-                    section.leaves.get(semantic_idx),
-                    section.pin_labels.get(semantic_idx),
-                )
-            {
-                let state = if pin.remotes.is_empty() {
-                    "Unmapped target"
-                } else {
-                    "Mapped target"
-                };
-                let hover = crate::x12_tooltips::append_segment_for_path(
-                    format!("{state}: {}", leaf.label),
-                    self.target_x12,
-                    &leaf.label,
-                );
-                show_endpoint_label(
-                    ui,
-                    label,
-                    egui::Align::Min,
-                    hover,
-                    self.endpoint_search_match == Some((canvas_node, semantic_idx)),
-                );
+            if let Some(section) = self.target_blocks.get(block) {
+                match endpoint_pin {
+                    Some(EndpointDisplayPin::Visible(semantic_idx)) => {
+                        if let (Some(leaf), Some(label)) = (
+                            section.leaves.get(semantic_idx),
+                            section.pin_labels.get(semantic_idx),
+                        ) {
+                            let state = if pin.remotes.is_empty() {
+                                "Unmapped target"
+                            } else {
+                                "Mapped target"
+                            };
+                            let hover = crate::x12_tooltips::append_segment_for_path(
+                                format!("{state}: {}", leaf.label),
+                                self.target_x12,
+                                &leaf.label,
+                            );
+                            show_endpoint_label(
+                                ui,
+                                label,
+                                egui::Align::Min,
+                                hover,
+                                self.endpoint_search_match == Some((canvas_node, semantic_idx)),
+                            );
+                        }
+                    }
+                    Some(EndpointDisplayPin::HiddenBefore) => show_endpoint_proxy_label(
+                        ui,
+                        self.endpoint_scroll
+                            .hidden_before(canvas_node, section.leaves.len()),
+                        true,
+                        egui::Align::Min,
+                        false,
+                    ),
+                    Some(EndpointDisplayPin::HiddenAfter) => show_endpoint_proxy_label(
+                        ui,
+                        self.endpoint_scroll
+                            .hidden_after(canvas_node, section.leaves.len()),
+                        false,
+                        egui::Align::Min,
+                        false,
+                    ),
+                    None => {}
+                }
             }
         } else if let Some(label) = label {
             ui.label(label);
@@ -1091,39 +1169,61 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let Some(node_id) = Self::mapping_id(snarl[pin.id.node]) else {
             if let CanvasNode::SourceBlock(block) = snarl[pin.id.node]
                 && let Some(section) = self.source_blocks.get(block)
-                && let Some(semantic) = self.endpoint_scroll.semantic_pin(
+            {
+                match self.endpoint_scroll.display_pin(
                     CanvasNode::SourceBlock(block),
                     pin.id.output,
                     section.leaves.len(),
-                )
-                && let (Some(leaf), Some(label)) = (
-                    section.leaves.get(semantic),
-                    section.pin_labels.get(semantic),
-                )
-            {
-                let context = leaf.frame.as_ref().map_or_else(
-                    || format!("Source: {}", leaf.label),
-                    |frame| {
-                        let frame = if frame.is_empty() {
-                            "document rows".to_string()
-                        } else {
-                            frame.join("/")
-                        };
-                        format!("Source: {}\nRepeating context: {frame}", leaf.label)
-                    },
-                );
-                let hover = crate::x12_tooltips::append_segment_for_path(
-                    context,
-                    self.source_x12,
-                    &leaf.label,
-                );
-                show_endpoint_label(
-                    ui,
-                    label,
-                    egui::Align::Max,
-                    hover,
-                    self.endpoint_search_match == Some((CanvasNode::SourceBlock(block), semantic)),
-                );
+                ) {
+                    Some(EndpointDisplayPin::Visible(semantic)) => {
+                        if let (Some(leaf), Some(label)) = (
+                            section.leaves.get(semantic),
+                            section.pin_labels.get(semantic),
+                        ) {
+                            let context = leaf.frame.as_ref().map_or_else(
+                                || format!("Source: {}", leaf.label),
+                                |frame| {
+                                    let frame = if frame.is_empty() {
+                                        "document rows".to_string()
+                                    } else {
+                                        frame.join("/")
+                                    };
+                                    format!("Source: {}\nRepeating context: {frame}", leaf.label)
+                                },
+                            );
+                            let hover = crate::x12_tooltips::append_segment_for_path(
+                                context,
+                                self.source_x12,
+                                &leaf.label,
+                            );
+                            show_endpoint_label(
+                                ui,
+                                label,
+                                egui::Align::Max,
+                                hover,
+                                self.endpoint_search_match
+                                    == Some((CanvasNode::SourceBlock(block), semantic)),
+                            );
+                        }
+                    }
+                    Some(EndpointDisplayPin::HiddenBefore) => show_endpoint_proxy_label(
+                        ui,
+                        self.endpoint_scroll
+                            .hidden_before(CanvasNode::SourceBlock(block), section.leaves.len()),
+                        true,
+                        egui::Align::Max,
+                        true,
+                    ),
+                    Some(EndpointDisplayPin::HiddenAfter) => show_endpoint_proxy_label(
+                        ui,
+                        self.endpoint_scroll
+                            .hidden_after(CanvasNode::SourceBlock(block), section.leaves.len()),
+                        false,
+                        egui::Align::Max,
+                        true,
+                    ),
+                    None => {}
+                }
             }
             self.record_pin_interaction_id(ui);
             return PinInfo::circle()
