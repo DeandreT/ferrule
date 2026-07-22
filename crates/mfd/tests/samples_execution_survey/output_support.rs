@@ -6,7 +6,7 @@ use ir::{Instance, SchemaKind, SchemaNode};
 use mapping::{FormatOptions, Project};
 
 use super::format_io::{
-    extension, output_path, portable_path, read_instance, resolve_sample_input, write_instance,
+    extension, output_path, portable_path, read_instance, resolve_sample_input_from, write_instance,
 };
 use super::reference_support::{
     first_instance_difference, host_path_instances_equal, instances_semantically_equal,
@@ -71,6 +71,7 @@ pub(super) fn write_outputs(
     outputs: &engine::ExecutionOutputs,
     sample_dir: &Path,
     samples_root: &Path,
+    design_base: &Path,
 ) -> Result<WrittenSurveyOutputs, String> {
     let primary_path = write_target_output(
         &project.root,
@@ -81,6 +82,7 @@ pub(super) fn write_outputs(
         &project.target_options,
         sample_dir,
         samples_root,
+        design_base,
     )?;
     if outputs.extras.len() != project.extra_targets.len() {
         return Err("engine returned an unexpected number of additional targets".to_string());
@@ -101,6 +103,7 @@ pub(super) fn write_outputs(
             &target.options,
             sample_dir,
             samples_root,
+            design_base,
         )
         .map_err(|error| format!("writing extra target `{}` failed: {error}", target.name))?;
         extras.push(path);
@@ -121,6 +124,7 @@ fn write_target_output(
     options: &FormatOptions,
     sample_dir: &Path,
     samples_root: &Path,
+    design_base: &Path,
 ) -> Result<PathBuf, String> {
     if scope.output_path().is_some() {
         let documents = instance.as_document_set().ok_or_else(|| {
@@ -134,8 +138,15 @@ fn write_target_output(
         ));
     }
     let path = output_path(sample_dir, stored, options, label)?;
-    prepare_database_output(samples_root, stored, &path, schema)?;
-    prepare_xlsx_update_output(samples_root, sample_dir, stored, &path, options)?;
+    prepare_database_output(samples_root, design_base, stored, &path, schema)?;
+    prepare_xlsx_update_output(
+        samples_root,
+        design_base,
+        sample_dir,
+        stored,
+        &path,
+        options,
+    )?;
     write_instance(&path, schema, instance, options)
         .map_err(|error| format!("writing {label} failed: {error}"))?;
     Ok(path)
@@ -236,6 +247,7 @@ pub(super) fn validate_document_paths(
 
 pub(super) fn prepare_database_output(
     samples_root: &Path,
+    design_base: &Path,
     stored: Option<&str>,
     output: &Path,
     schema: &SchemaNode,
@@ -257,7 +269,7 @@ pub(super) fn prepare_database_output(
             Ok(())
         };
     };
-    match resolve_sample_input(samples_root, stored) {
+    match resolve_sample_input_from(samples_root, design_base, stored) {
         Ok(template) => std::fs::copy(&template, output)
             .map(|_| ())
             .map_err(|error| {
@@ -275,6 +287,7 @@ pub(super) fn prepare_database_output(
 
 pub(super) fn prepare_xlsx_update_output(
     samples_root: &Path,
+    design_base: &Path,
     writable_root: &Path,
     stored: Option<&str>,
     output: &Path,
@@ -292,7 +305,7 @@ pub(super) fn prepare_xlsx_update_output(
     }
     let stored = stored
         .ok_or_else(|| "update-in-place XLSX output has no stored workbook template".to_string())?;
-    let template = resolve_sample_input(samples_root, stored)?;
+    let template = resolve_sample_input_from(samples_root, design_base, stored)?;
     if extension(&template)? != "xlsx" {
         return Err(format!(
             "update-in-place XLSX template `{}` is not an .xlsx workbook",
