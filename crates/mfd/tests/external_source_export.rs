@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     Binding, ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,
-    FormatOptions, Graph, HttpTimeoutSeconds, NamedSource, Node, Project, Scope,
+    FormatOptions, Graph, HttpTimeoutSeconds, NamedSource, Node, Project, Scope, ScopeIteration,
 };
 
 struct TempDir(PathBuf);
@@ -203,5 +203,90 @@ fn captured_secondary_source_roundtrips_with_its_owner() -> Result<(), Box<dyn E
         vec![(secondary.name.clone(), captured)],
     )?;
     assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[test]
+fn database_primary_survives_secondary_http_iteration() -> Result<(), Box<dyn Error>> {
+    let response_name = "ClassifierResponse";
+    let database_schema = SchemaNode::group(
+        "catalog",
+        vec![
+            SchemaNode::scalar("id", ScalarType::Int),
+            SchemaNode::scalar("answer", ScalarType::String),
+        ],
+    )
+    .repeating();
+    let project = Project {
+        source: database_schema.clone(),
+        target: database_schema,
+        source_path: Some("catalog.sqlite".into()),
+        target_path: Some("catalog.sqlite".into()),
+        source_options: FormatOptions::default(),
+        target_options: FormatOptions::default(),
+        extra_sources: vec![NamedSource {
+            name: response_name.into(),
+            path: "https://example.test/classify".into(),
+            schema: response_schema(),
+            options: FormatOptions {
+                external_source: Some(http_boundary()?),
+                ..FormatOptions::default()
+            },
+            dynamic_path: None,
+        }],
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["id".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec![response_name.into(), "answer".into()],
+                        frame: None,
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            iteration: ScopeIteration::Source(vec![response_name.into()]),
+            bindings: vec![
+                Binding {
+                    target_field: "id".into(),
+                    node: 0,
+                },
+                Binding {
+                    target_field: "answer".into(),
+                    node: 1,
+                },
+            ],
+            ..Scope::default()
+        },
+    };
+    assert!(engine::validate(&project).is_empty());
+    let temp = TempDir::new()?;
+    let design = temp.0.join("database-primary.mfd");
+
+    assert!(mfd::export(&project, &design)?.is_empty());
+    let exported = std::fs::read_to_string(&design)?;
+    assert!(exported.contains("ferrule-primary-source=\"2\""));
+    let roundtrip = mfd::import(&design)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert_eq!(roundtrip.project.source, project.source);
+    assert_eq!(roundtrip.project.source_path, project.source_path);
+    assert_eq!(roundtrip.project.source_options, project.source_options);
+    let [secondary] = roundtrip.project.extra_sources.as_slice() else {
+        return Err("roundtrip did not retain exactly one secondary source".into());
+    };
+    assert_eq!(secondary.name, response_name);
+    assert_eq!(secondary.options, project.extra_sources[0].options);
+    assert_eq!(roundtrip.project.root.source(), project.root.source());
+    assert!(engine::validate(&roundtrip.project).is_empty());
     Ok(())
 }
