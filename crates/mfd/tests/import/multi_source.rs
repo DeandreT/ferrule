@@ -92,3 +92,36 @@ fn primary_scoring_unwraps_supported_iteration_controls() {
     assert_eq!(rows.len(), 1);
     assert_eq!(scalar(&rows[0], "Name"), Value::String("first".into()));
 }
+
+#[test]
+fn nested_xml_file_instances_retain_executable_source_and_target_paths() {
+    let imported = mfd::import(&fixture("multi-source-nested-files.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let project = &imported.project;
+
+    assert_eq!(project.source_path.as_deref(), Some("alpha.xml"));
+    assert_eq!(project.target_path.as_deref(), Some("output.xml"));
+    let [secondary] = project.extra_sources.as_slice() else {
+        panic!("expected one secondary XML source");
+    };
+    assert_eq!(secondary.name, "Beta");
+    assert_eq!(secondary.path, "beta.xml");
+
+    let primary = Instance::Group(vec![
+        ("RowsA".into(), Instance::Repeated(vec![row("a1")])),
+        ("RowsB".into(), Instance::Repeated(vec![row("a2")])),
+    ]);
+    let beta = Instance::Group(vec![(
+        "Rows".into(),
+        Instance::Repeated(vec![row("b1"), row("b2")]),
+    )]);
+    let target = engine::run_with_sources(project, &primary, vec![("Beta".into(), beta)]).unwrap();
+
+    let rows = target.field("B").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(
+        rows.iter()
+            .map(|item| scalar(item, "Name"))
+            .collect::<Vec<_>>(),
+        vec![Value::String("b1".into()), Value::String("b2".into())]
+    );
+}

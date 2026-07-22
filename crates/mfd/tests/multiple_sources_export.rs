@@ -59,7 +59,7 @@ fn source_instances() -> (Instance, Instance) {
 
 #[test]
 fn static_xml_sources_export_as_owned_components_and_roundtrip() -> Result<(), Box<dyn Error>> {
-    let imported = mfd::import(&fixture("multi-source.mfd"))?;
+    let imported = mfd::import(&fixture("multi-source-nested-files.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
 
     let temp = TempDir::new()?;

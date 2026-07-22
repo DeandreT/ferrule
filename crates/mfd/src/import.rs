@@ -592,24 +592,30 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     );
     let mut extra_targets = Vec::new();
     for (index, extra) in connected_targets.iter().copied().enumerate().skip(1) {
-        extra_targets.push(NamedTarget {
-            name: target_names[index].clone(),
-            path: extra
+        let extra_root = build_target_scope(
+            &mapping_el,
+            extra,
+            &structure,
+            path,
+            &edge_from,
+            &copy_all_targets,
+            &mut builder,
+        );
+        let extra_path = if extra_root.output_path().is_some() {
+            None
+        } else {
+            extra
                 .output_instance
                 .clone()
                 .or_else(|| extra.input_instance.clone())
-                .or_else(|| default_pass_through_output_path(extra)),
+                .or_else(|| default_pass_through_output_path(extra))
+        };
+        extra_targets.push(NamedTarget {
+            name: target_names[index].clone(),
+            path: extra_path,
             schema: runtime_target_schema(extra, &edge_from),
             options: extra.options.clone(),
-            root: build_target_scope(
-                &mapping_el,
-                extra,
-                &structure,
-                path,
-                &edge_from,
-                &copy_all_targets,
-                &mut builder,
-            ),
+            root: extra_root,
         });
     }
 
@@ -645,12 +651,16 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         .input_instance
         .clone()
         .or_else(|| builder.static_component_input_path(primary));
-    let target_path = target
-        .output_instance
-        .clone()
-        .or_else(|| target.input_instance.clone())
-        .or_else(|| builder.static_target_document_path(target))
-        .or_else(|| default_pass_through_output_path(target));
+    let target_path = if root.output_path().is_some() {
+        None
+    } else {
+        target
+            .output_instance
+            .clone()
+            .or_else(|| target.input_instance.clone())
+            .or_else(|| builder.static_target_document_path(target))
+            .or_else(|| default_pass_through_output_path(target))
+    };
     let failure_rules = exception::lower(exception_recipes, &mut builder);
     warnings.extend(builder.warnings);
     let mut project = Project {
