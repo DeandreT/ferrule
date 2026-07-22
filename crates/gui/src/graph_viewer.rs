@@ -137,19 +137,25 @@ fn show_endpoint_proxy_label(
     above: bool,
     align: egui::Align,
     source: bool,
+    connected: bool,
 ) {
     let direction = if above { "above" } else { "below" };
     let label = if above {
-        format!("^ {hidden} more")
+        format!("^ {hidden} hidden")
     } else {
-        format!("v {hidden} more")
+        format!("v {hidden} hidden")
     };
     let side = if source { "source" } else { "target" };
+    let connection = if connected {
+        "Connected offscreen fields are routed through this edge pin. "
+    } else {
+        ""
+    };
     show_endpoint_label(
         ui,
         &label,
         align,
-        format!("Scroll to show {hidden} hidden {side} field(s) {direction}"),
+        format!("{connection}Scroll to show {hidden} hidden {side} field(s) {direction}"),
         false,
     );
 }
@@ -172,8 +178,6 @@ pub struct GraphViewer<'a> {
     pub hovered_node_this_frame: Option<SnarlNodeId>,
     pub camera_pan: egui::Vec2,
     pub camera_focus: Option<(egui::Pos2, egui::Pos2, Option<f32>)>,
-    pub pending_endpoint_wheel: Option<(egui::Pos2, f32)>,
-    pub endpoint_wheel_consumed: bool,
     pub canvas_transform: Option<egui::emath::TSTransform>,
     pub pin_interaction_ids: Vec<egui::Id>,
     /// Set when an interaction can't be completed (e.g. binding into a
@@ -240,33 +244,24 @@ impl GraphViewer<'_> {
             .last()
     }
 
-    fn apply_endpoint_wheel(
+    pub fn scroll_endpoint_at(
         &mut self,
-        to_global: &mut egui::emath::TSTransform,
+        graph_position: egui::Pos2,
+        delta_y: f32,
         snarl: &mut Snarl<CanvasNode>,
-    ) {
-        let Some((pointer, delta_y)) = self.pending_endpoint_wheel.take() else {
-            return;
-        };
+    ) -> bool {
         if delta_y == 0.0 || self.camera_focus.is_some() {
-            return;
+            return false;
         }
-
-        // Scene applies wheel panning before this callback. Hit-test against
-        // the stationary canvas, then retain that transform only when an
-        // endpoint accepts the vertical wheel motion.
-        let mut stationary = *to_global;
-        stationary.translation.y -= delta_y;
-        let graph_position = stationary.inverse() * pointer;
         let Some((node, total)) = self.endpoint_at(graph_position, snarl) else {
-            return;
+            return false;
         };
         let old = self.endpoint_scroll.offset(node, total);
         let rows = crate::canvas_endpoints::scroll_rows(delta_y);
         let max = total.saturating_sub(self.endpoint_scroll.visible_limit(node, total));
         let can_scroll = (rows < 0 && old > 0) || (rows > 0 && old < max);
         if !can_scroll {
-            return;
+            return false;
         }
 
         if self.endpoint_scroll.scroll_rows(node, total, rows) {
@@ -278,9 +273,10 @@ impl GraphViewer<'_> {
                 self.endpoint_scroll,
                 snarl,
             );
+            true
+        } else {
+            false
         }
-        *to_global = stationary;
-        self.endpoint_wheel_consumed = true;
     }
 
     pub fn begin_node_hover_frame(&mut self, hovered_node: Option<SnarlNodeId>) {
@@ -829,13 +825,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     fn current_transform(
         &mut self,
         to_global: &mut egui::emath::TSTransform,
-        snarl: &mut Snarl<CanvasNode>,
+        _snarl: &mut Snarl<CanvasNode>,
     ) {
         if let Some((graph_point, screen_point, zoom)) = self.camera_focus {
             apply_camera_focus(to_global, graph_point, screen_point, zoom);
         }
         to_global.translation += self.camera_pan;
-        self.apply_endpoint_wheel(to_global, snarl);
         self.canvas_transform = Some(*to_global);
     }
 
@@ -1194,6 +1189,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         true,
                         egui::Align::Min,
                         false,
+                        !pin.remotes.is_empty(),
                     ),
                     Some(EndpointDisplayPin::HiddenAfter) => show_endpoint_proxy_label(
                         ui,
@@ -1202,6 +1198,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         false,
                         egui::Align::Min,
                         false,
+                        !pin.remotes.is_empty(),
                     ),
                     None => {}
                 }
@@ -1278,6 +1275,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         true,
                         egui::Align::Max,
                         true,
+                        !pin.remotes.is_empty(),
                     ),
                     Some(EndpointDisplayPin::HiddenAfter) => show_endpoint_proxy_label(
                         ui,
@@ -1286,6 +1284,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         false,
                         egui::Align::Max,
                         true,
+                        !pin.remotes.is_empty(),
                     ),
                     None => {}
                 }
