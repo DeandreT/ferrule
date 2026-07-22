@@ -117,6 +117,23 @@ impl GraphBuilder<'_> {
             value: local,
         })
     }
+
+    pub(super) fn database_xml_column_node(
+        &mut self,
+        feed: u32,
+        column: &super::schema::database_xml::Column,
+    ) -> Option<NodeId> {
+        let source = self.sequence_source_path(feed)?;
+        let (frame, path) = self.source_location_at(&source)?;
+        Some(self.alloc(Node::XmlSerialize {
+            path,
+            frame,
+            schema: column.schema.clone(),
+            declaration: false,
+            indent: false,
+            namespace: column.namespace.clone(),
+        }))
+    }
 }
 
 pub(super) fn read_edges(

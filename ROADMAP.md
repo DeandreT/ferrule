@@ -35,6 +35,14 @@ clean-room interoperability, and extensible adapters.
   stored endpoint defaults, native graph editor with dirty-state guards,
   undo/redo, and persisted canvas layout; plus a WASM XML/JSON/CSV/XBRL
   playground.
+- `.mfd` survey: all 186 designs in the local ReferenceSamples corpus import
+  warning-free and engine-valid, then export, re-import, and validate
+  warning-free. The safe execution profile runs 113 of its 120 top-level
+  designs without network access or writes to the read-only sample tree;
+  all 113 execute and all 113 export, re-import, validate, and execute with zero
+  semantic output drifts. Across the current isolated behavioral manifests, all 79
+  available deterministic references match exactly.
+  These measurements describe the local sample profile, not commercial-product parity.
 - Known architectural constraints: one primary driver input per run, scalar graph
   outputs, no general endpoint/stage DAG, no trace API, and no project-level
   reusable functions.
@@ -54,7 +62,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, documented library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 120/120 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
+| `.mfd` | 186/186 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, 58 scalar functions, typed failures and ordered failure rules, host runtime values, ordered value maps, static named inputs, cross-source lookups, expression-driven collection search, root-context static inner joins, multiple mapped outputs, scalar/group targets, exact whole-group copies, source/generated iteration, keyed/marker/block grouping, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers | Broaden toward interpreter parity, publish the Rust runtime, and consider optional XML-specific XSLT |
 
 ## Workstreams

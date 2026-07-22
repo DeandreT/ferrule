@@ -1,4 +1,7 @@
-use ir::{Instance, ScalarType, SchemaNode, Value, ValueGeneration};
+use ir::{
+    DatabaseForeignKeySide, DatabaseRelation, Instance, ScalarType, SchemaNode, Value,
+    ValueGeneration,
+};
 use rusqlite::Connection;
 
 use super::{
@@ -379,6 +382,82 @@ fn rejects_a_relation_without_matching_foreign_key_metadata() {
             child_table,
             join_column,
         } if parent_table == "parents" && child_table == "children" && join_column == "parent_id"
+    ));
+}
+
+#[test]
+fn declared_relation_reads_without_physical_foreign_key_metadata() {
+    let path = test_path("declared_relation");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE parents (id INTEGER PRIMARY KEY, name TEXT); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER, value TEXT); \
+         INSERT INTO parents VALUES (1, 'First'), (2, 'Second'); \
+         INSERT INTO children VALUES (10, 1, 'A'), (11, 1, 'B'), (12, 2, 'C');",
+    )
+    .unwrap();
+    drop(conn);
+    let children = table(
+        "children|parent_id",
+        vec![scalar("value", ScalarType::String)],
+    )
+    .with_database_relation(DatabaseRelation {
+        parent_column: "id".into(),
+        child_column: "parent_id".into(),
+        foreign_key_side: DatabaseForeignKeySide::Child,
+    })
+    .unwrap();
+    let schema = table(
+        "parents",
+        vec![scalar("name", ScalarType::String), children],
+    );
+
+    let instance = read_instance(&path, &schema).unwrap();
+    let parents = instance.as_repeated().unwrap();
+    let first = field(&parents[0], "children|parent_id")
+        .as_repeated()
+        .unwrap();
+    let second = field(&parents[1], "children|parent_id")
+        .as_repeated()
+        .unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    assert_eq!(first.len(), 2);
+    assert_eq!(second.len(), 1);
+    assert_eq!(scalar_value(&first[1], "value"), &Value::String("B".into()));
+    assert_eq!(
+        scalar_value(&second[0], "value"),
+        &Value::String("C".into())
+    );
+}
+
+#[test]
+fn declared_relations_reject_missing_physical_columns() {
+    let path = test_path("declared_relation_missing_column");
+    let _ = std::fs::remove_file(&path);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE parents (id INTEGER PRIMARY KEY); \
+         CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER);",
+    )
+    .unwrap();
+    drop(conn);
+    let children = table("children|parent_id", vec![scalar("id", ScalarType::Int)])
+        .with_database_relation(DatabaseRelation {
+            parent_column: "missing_id".into(),
+            child_column: "parent_id".into(),
+            foreign_key_side: DatabaseForeignKeySide::Child,
+        })
+        .unwrap();
+    let schema = table("parents", vec![scalar("id", ScalarType::Int), children]);
+
+    let error = read_instance(&path, &schema).unwrap_err();
+    std::fs::remove_file(&path).unwrap();
+    assert!(matches!(
+        error,
+        DbFormatError::MissingDeclaredRelationColumn { table, column }
+            if table == "parents" && column == "missing_id"
     ));
 }
 

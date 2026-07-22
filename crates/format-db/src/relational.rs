@@ -702,8 +702,26 @@ fn resolve_relation<'a>(
         ));
     }
 
-    let (columns, foreign_key_side) =
-        relation_columns_with_side(conn, parent_table, child_table, join_column)?;
+    if !schema.database_relation_is_valid() {
+        return Err(invalid_schema(
+            schema,
+            "declared database relation metadata is inconsistent",
+        ));
+    }
+    let (columns, foreign_key_side) = match &schema.database_relation {
+        Some(relation) => {
+            require_column(conn, parent_table, &relation.parent_column)?;
+            require_column(conn, child_table, &relation.child_column)?;
+            (
+                ForeignKeyColumns {
+                    parent_column: relation.parent_column.clone(),
+                    child_column: relation.child_column.clone(),
+                },
+                relation.foreign_key_side.into(),
+            )
+        }
+        None => relation_columns_with_side(conn, parent_table, child_table, join_column)?,
+    };
     let child = build_table_plan(conn, schema, child_table)?;
     Ok(Relation {
         child: Box::new(child),
@@ -711,6 +729,22 @@ fn resolve_relation<'a>(
         child_key: columns.child_column,
         foreign_key_side,
     })
+}
+
+fn require_column(conn: &Connection, table: &str, column: &str) -> Result<(), DbFormatError> {
+    let mut statement = conn.prepare(&format!("PRAGMA table_info({})", quote(table)))?;
+    let exists = statement
+        .query_map([], |row| row.get::<_, String>("name"))?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .any(|name| name.eq_ignore_ascii_case(column));
+    if !exists {
+        return Err(DbFormatError::MissingDeclaredRelationColumn {
+            table: table.to_string(),
+            column: column.to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn relation_columns(

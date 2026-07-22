@@ -12,7 +12,7 @@ layout and dialect details that an extension cannot express.
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
-| SQLite | Yes | Yes | Table introspection, typed reads, imported relational query shapes, and idempotent full-replace writes |
+| SQLite | Yes | Yes | Table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, and optional lenient parsing |
 | HL7 v2 / TRADACOMS | Yes | Yes | Bounded schema-guided message I/O |
 | IDoc / SWIFT MT | Yes | Yes | Runtime I/O through embedded imported layouts |

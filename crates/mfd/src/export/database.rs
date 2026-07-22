@@ -13,6 +13,91 @@ use super::schema::{
     db_type_name, db_wrapper_attr, xml_escape,
 };
 
+pub(super) fn local_relation_elements(schema: &SchemaNode) -> Result<BTreeSet<String>, MfdError> {
+    let mut elements = BTreeSet::new();
+    if schema.repeating {
+        let parent = physical_table(&schema.name)?;
+        collect_local_relations(schema, parent, &mut elements)?;
+        return Ok(elements);
+    }
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Ok(elements);
+    };
+    for table in children.iter().filter(|table| table.repeating) {
+        let parent = physical_table(&table.name)?;
+        collect_local_relations(table, parent, &mut elements)?;
+    }
+    Ok(elements)
+}
+
+fn collect_local_relations(
+    table: &SchemaNode,
+    parent_table: &str,
+    elements: &mut BTreeSet<String>,
+) -> Result<(), MfdError> {
+    let SchemaKind::Group { children, .. } = &table.kind else {
+        return Ok(());
+    };
+    for child in children
+        .iter()
+        .filter(|child| matches!(child.kind, SchemaKind::Group { .. }))
+    {
+        let child_table = physical_table(&child.name)?;
+        if let Some(relation) = &child.database_relation {
+            if !child.database_relation_is_valid() {
+                return Err(MfdError::Unsupported(format!(
+                    "database relation `{}` has inconsistent endpoint metadata",
+                    child.name
+                )));
+            }
+            let (source_table, source_column, destination_table, destination_column) =
+                match relation.foreign_key_side {
+                    ir::DatabaseForeignKeySide::Parent => (
+                        parent_table,
+                        relation.parent_column.as_str(),
+                        child_table,
+                        relation.child_column.as_str(),
+                    ),
+                    ir::DatabaseForeignKeySide::Child => (
+                        child_table,
+                        relation.child_column.as_str(),
+                        parent_table,
+                        relation.parent_column.as_str(),
+                    ),
+                };
+            let name = format!(
+                "ferrule-{}-{}-{}",
+                source_table, destination_table, source_column
+            );
+            elements.insert(format!(
+                "\t\t\t\t\t\t<LocalRelationElement name=\"{}\">\n\
+                 \t\t\t\t\t\t\t<SourceTable><PathElement Name=\"main\" Kind=\"Database\"/><PathElement Name=\"{}\" Kind=\"Table\"/></SourceTable>\n\
+                 \t\t\t\t\t\t\t<SourceColumns><Column name=\"{}\" kind=\"Column\"/></SourceColumns>\n\
+                 \t\t\t\t\t\t\t<DestinationTable><PathElement Name=\"main\" Kind=\"Database\"/><PathElement Name=\"{}\" Kind=\"Table\"/></DestinationTable>\n\
+                 \t\t\t\t\t\t\t<DestinationColumns><Column name=\"{}\" kind=\"Column\"/></DestinationColumns>\n\
+                 \t\t\t\t\t\t</LocalRelationElement>\n",
+                xml_escape(&name),
+                xml_escape(source_table),
+                xml_escape(source_column),
+                xml_escape(destination_table),
+                xml_escape(destination_column),
+            ));
+        }
+        collect_local_relations(child, child_table, elements)?;
+    }
+    Ok(())
+}
+
+fn physical_table(name: &str) -> Result<&str, MfdError> {
+    let table = name.split_once('|').map_or(name, |(table, _)| table);
+    if table.is_empty() {
+        return Err(MfdError::Unsupported(
+            "database relation has an empty physical table name".into(),
+        ));
+    }
+    Ok(table)
+}
+
 pub(super) struct RenderMixedArgs<'a> {
     pub(super) schema: &'a SchemaNode,
     pub(super) source_ports: &'a PortTree,
