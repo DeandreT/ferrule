@@ -30,6 +30,14 @@ pub(super) fn eager_functions(builder: &mut GraphBuilder<'_>) {
             builder.fn_node(index);
         }
     }
+    // Typed dynamic JSON property filters also consume their name/value ports
+    // as one lookup. Claim those pairs before `equal` is materialized alone.
+    for index in 0..builder.fn_components.len() {
+        let component = &builder.fn_components[index];
+        if is_filter(component) {
+            builder.dynamic_property_filter_node(index);
+        }
+    }
     // Materialize every remaining value-producing function up front
     // (filters and group-bys are handled at the scope stage instead).
     // Outputless core components are annotations such as comments.

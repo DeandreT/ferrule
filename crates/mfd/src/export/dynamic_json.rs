@@ -18,7 +18,7 @@ use component::{JsonComponentArgs, JsonSide, render_json_component};
 #[derive(Default)]
 pub(super) struct SourcePlan {
     sites: Vec<SourceSite>,
-    patterns: Vec<DynamicBooleanPattern>,
+    patterns: Vec<DynamicSourcePattern>,
     owned_nodes: BTreeSet<NodeId>,
 }
 
@@ -27,12 +27,19 @@ struct SourceSite {
     owner: Vec<String>,
     name_port: u32,
     value_port: u32,
+    value_type: ScalarType,
 }
 
-struct DynamicBooleanPattern {
+struct DynamicSourcePattern {
     output: NodeId,
     key: NodeId,
     site: usize,
+    kind: DynamicSourcePatternKind,
+}
+
+enum DynamicSourcePatternKind {
+    BooleanEnvelope,
+    ScalarFilter,
 }
 
 pub(super) struct TargetPlan {
@@ -153,16 +160,6 @@ impl SourcePlan {
             let Node::DynamicSourceField { object, frame, key } = node else {
                 continue;
             };
-            let (output, exists) = exact_boolean_envelope(
-                &project.graph,
-                &consumers,
-                field_id,
-            )
-            .ok_or_else(|| {
-                MfdError::Unsupported(format!(
-                    "dynamic source field node {field_id} is exportable only through an exact boolean existence envelope"
-                ))
-            })?;
             let mut absolute = frame.clone().unwrap_or_default();
             absolute.extend(object.iter().cloned());
             let (source_index, source, owner) = sources.owner_with_index(&absolute);
@@ -180,24 +177,31 @@ impl SourcePlan {
                     absolute.join("/")
                 ))
             })?;
-            if !matches!(
-                owner_schema.dynamic_fields(),
-                Some(SchemaNode {
-                    repeating: false,
-                    kind: SchemaKind::Scalar {
-                        ty: ScalarType::Bool
-                    },
-                    ..
-                })
-            ) {
+            let Some(SchemaNode {
+                repeating: false,
+                kind: SchemaKind::Scalar { ty: value_type },
+                ..
+            }) = owner_schema.dynamic_fields()
+            else {
                 return Err(MfdError::Unsupported(format!(
-                    "dynamic source field node {field_id} requires boolean additional properties"
+                    "dynamic source field node {field_id} requires non-repeating scalar additional properties"
                 )));
-            }
+            };
+            let envelope = (*value_type == ScalarType::Bool)
+                .then(|| exact_boolean_envelope(&project.graph, &consumers, field_id))
+                .flatten();
+            let (output, kind) = envelope.map_or(
+                (field_id, DynamicSourcePatternKind::ScalarFilter),
+                |(output, _)| (output, DynamicSourcePatternKind::BooleanEnvelope),
+            );
             let site = plan
                 .sites
                 .iter()
-                .position(|site| site.source_index == source_index && site.owner == owner)
+                .position(|site| {
+                    site.source_index == source_index
+                        && site.owner == owner
+                        && site.value_type == *value_type
+                })
                 .unwrap_or_else(|| {
                     let index = plan.sites.len();
                     plan.sites.push(SourceSite {
@@ -205,15 +209,20 @@ impl SourcePlan {
                         owner: owner.to_vec(),
                         name_port: keys.next(),
                         value_port: keys.next(),
+                        value_type: *value_type,
                     });
                     index
                 });
-            plan.patterns.push(DynamicBooleanPattern {
+            plan.patterns.push(DynamicSourcePattern {
                 output,
                 key: *key,
                 site,
+                kind,
             });
-            plan.owned_nodes.extend([field_id, exists, output]);
+            plan.owned_nodes.insert(field_id);
+            if let Some((output, exists)) = envelope {
+                plan.owned_nodes.extend([exists, output]);
+            }
         }
         Ok(plan)
     }
@@ -253,24 +262,39 @@ impl SourcePlan {
                  \t\t\t\t</component>\n"
             );
 
-            let and_predicate = keys.next();
-            let and_value = keys.next();
-            let and_output = keys.next();
+            let value_input = keys.next();
+            let predicate_input = keys.next();
+            let output = keys.next();
             *uid += 1;
-            let _ = write!(
-                components,
-                "\t\t\t\t<component name=\"logical-and\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
-                 \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{and_predicate}\"/><datapoint pos=\"1\" key=\"{and_value}\"/></sources>\n\
-                 \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{and_output}\"/></targets>\n\
-                 \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
-                 \t\t\t\t</component>\n"
-            );
-            node_out_key.insert(pattern.output, and_output);
+            match pattern.kind {
+                DynamicSourcePatternKind::BooleanEnvelope => {
+                    let _ = write!(
+                        components,
+                        "\t\t\t\t<component name=\"logical-and\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                         \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{predicate_input}\"/><datapoint pos=\"1\" key=\"{value_input}\"/></sources>\n\
+                         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n\
+                         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                         \t\t\t\t</component>\n"
+                    );
+                }
+                DynamicSourcePatternKind::ScalarFilter => {
+                    let name = json_type_name(site.value_type);
+                    let _ = write!(
+                        components,
+                        "\t\t\t\t<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+                         \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{value_input}\"/><datapoint pos=\"1\" key=\"{predicate_input}\"/></sources>\n\
+                         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{output}\"/><datapoint/></targets>\n\
+                         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                         \t\t\t\t</component>\n"
+                    );
+                }
+            }
+            node_out_key.insert(pattern.output, output);
             edges.extend([
                 (site.name_port, equal_name),
                 (key_output, equal_key),
-                (equal_output, and_predicate),
-                (site.value_port, and_value),
+                (equal_output, predicate_input),
+                (site.value_port, value_input),
             ]);
         }
         Ok(())
@@ -1151,7 +1175,8 @@ fn render_source_value(
                 );
                 let _ = writeln!(
                     out,
-                    "{pad}\t\t<entry name=\"boolean\" outkey=\"{}\"/>",
+                    "{pad}\t\t<entry name=\"{}\" outkey=\"{}\"/>",
+                    json_type_name(site.value_type),
                     site.value_port
                 );
                 let _ = writeln!(out, "{pad}\t</entry>");

@@ -377,7 +377,10 @@ impl GraphBuilder<'_> {
         None
     }
 
-    fn dynamic_property_name_equality(&mut self, feed: u32) -> Option<(SourcePath, NodeId, u32)> {
+    pub(super) fn dynamic_property_name_equality(
+        &mut self,
+        feed: u32,
+    ) -> Option<(SourcePath, NodeId, u32)> {
         let index = *self.fn_by_output.get(&feed)?;
         let component = self.fn_components.get(index)?;
         if component.kind != 5 || component.name != "equal" {
@@ -410,7 +413,10 @@ impl GraphBuilder<'_> {
         Some((source, input))
     }
 
-    fn json_dynamic_source_port(&self, key: u32) -> Option<(SourcePath, JsonDynamicPort)> {
+    pub(super) fn json_dynamic_source_port(
+        &self,
+        key: u32,
+    ) -> Option<(SourcePath, JsonDynamicPort)> {
         self.sources
             .iter()
             .enumerate()
