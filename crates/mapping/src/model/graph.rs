@@ -7,6 +7,10 @@ use crate::{JoinId, JoinPlan, Scope};
 
 pub type NodeId = u32;
 
+const fn default_xml_indent() -> bool {
+    true
+}
+
 /// A value supplied by the execution host rather than source instance data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -123,6 +127,8 @@ pub enum Node {
         schema: ir::SchemaNode,
         #[serde(default)]
         declaration: bool,
+        #[serde(default = "default_xml_indent")]
+        indent: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         namespace: Option<String>,
     },

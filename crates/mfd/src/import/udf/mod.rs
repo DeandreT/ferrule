@@ -500,7 +500,7 @@ pub(super) fn refine_source_schemas(
                 let Some(target) = schema_node_at_mut(&mut component.schema, &path) else {
                     continue;
                 };
-                let mut replacement = schema.clone();
+                let mut replacement = schema.as_ref().clone();
                 replacement.name.clone_from(&target.name);
                 replacement.repeating = target.repeating;
                 *target = replacement;

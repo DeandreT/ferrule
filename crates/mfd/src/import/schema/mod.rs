@@ -5,6 +5,8 @@ use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD}
 use mapping::{FormatOptions, TabularBoundaryKind};
 
 mod csv;
+mod database_relation;
+pub(super) mod database_xml;
 mod definition_parameter;
 mod edi;
 mod fixed_width;
@@ -151,6 +153,7 @@ pub(super) struct SchemaComponent {
     pub(super) input_keys: BTreeSet<u32>,
     pub(super) output_keys: BTreeSet<u32>,
     pub(super) db_queries: Vec<super::db_query::DbQuery>,
+    pub(super) db_xml_columns: BTreeMap<u32, database_xml::Column>,
     pub(super) dynamic_json: Option<super::dynamic_json::DynamicJsonTarget>,
 }
 
@@ -402,6 +405,7 @@ pub(super) fn read_schema_component(
         input_keys,
         output_keys,
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }
@@ -632,6 +636,7 @@ pub(super) fn read_json_component(
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json,
     })
 }
@@ -1012,6 +1017,7 @@ pub(super) fn read_csv_component(
         input_keys: BTreeSet::new(),
         output_keys: BTreeSet::new(),
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }
@@ -1307,16 +1313,6 @@ pub(super) fn read_db_component(
     } else {
         connected_tables
     };
-    if container.descendants().any(|entry| {
-        entry.has_tag_name("entry")
-            && entry
-                .attribute("type")
-                .is_some_and(|entry_type| entry_type != "table")
-    }) {
-        warnings.push(format!(
-            "database component `{name}` contains non-table database entries; those entries were skipped"
-        ));
-    }
     let single_plain_table = tables.len() == 1
         && !tables[0]
             .children()
@@ -1324,6 +1320,23 @@ pub(super) fn read_db_component(
     let canonical_database_wrapper = tables.len() == 1
         && !single_plain_table
         && container.attribute("ferrule-database-wrapper") == Some("1");
+    let db_xml_columns = database_xml::collect(
+        &tables,
+        tables.len() > 1 || canonical_database_wrapper,
+        mfd_path,
+        &name,
+        warnings,
+    );
+    if container.descendants().any(|entry| {
+        entry.has_tag_name("entry")
+            && entry
+                .attribute("type")
+                .is_some_and(|entry_type| !matches!(entry_type, "table" | "doc-xml"))
+    }) {
+        warnings.push(format!(
+            "database component `{name}` contains non-table database entries; those entries were skipped"
+        ));
+    }
 
     let mut ports = BTreeMap::new();
     let mut out_count = 0usize;
@@ -1336,6 +1349,10 @@ pub(super) fn read_db_component(
         };
         collect_db_ports(table, &mut path, &mut ports, &mut out_count, &mut in_count);
     }
+    for (&input, column) in &db_xml_columns {
+        ports.insert(input, column.path.clone());
+        in_count += 1;
+    }
     if out_count == 0 && in_count == 0 {
         warnings.push(format!("component `{name}` has no connected ports"));
     }
@@ -1344,7 +1361,7 @@ pub(super) fn read_db_component(
     let input_ancestors = input_port_ancestors(&root_el, &input_keys);
     // The connection string lives in the mapping's datasource registry,
     // linked from the component by name.
-    let connection = data
+    let connection_node = data
         .children()
         .find(|n| n.is_element() && n.tag_name().name() == "database")
         .and_then(|db| db.attribute("ref"))
@@ -1352,7 +1369,9 @@ pub(super) fn read_db_component(
             mapping_el
                 .descendants()
                 .find(|n| n.has_tag_name("database_connection") && n.attribute("name") == Some(r))
-        })
+        });
+    let connection = connection_node
+        .as_ref()
         .and_then(|c| c.attribute("ConnectionString"))
         .map(str::to_string);
     if connection.is_none() {
@@ -1394,7 +1413,7 @@ pub(super) fn read_db_component(
     // Keep the exact existing flat-table behavior, including exposing every
     // introspected column. Relational entry trees instead select their own
     // columns and use introspection only to recover each selected leaf type.
-    let schema = if single_plain_table {
+    let mut schema = if single_plain_table {
         let table = tables[0];
         let table_name = table.attribute("name").unwrap_or_default();
         let introspected =
@@ -1452,6 +1471,7 @@ pub(super) fn read_db_component(
         }
         schema
     };
+    database_relation::apply(connection_node.as_ref(), &mut schema, &name, warnings);
     if !single_plain_table
         && let Some(path) = db_path.as_deref()
         && let Err(error) = format_db::validate_relational_schema(path, &schema)
@@ -1479,6 +1499,7 @@ pub(super) fn read_db_component(
         input_keys,
         output_keys,
         db_queries: Vec::new(),
+        db_xml_columns,
         dynamic_json: None,
     })
 }

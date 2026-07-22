@@ -60,6 +60,23 @@ pub enum ValueGeneration {
     MaxNumber,
 }
 
+/// Which table owns the foreign-key column for a declared database relation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DatabaseForeignKeySide {
+    Parent,
+    Child,
+}
+
+/// Exact columns for a nested relational database group when the mapping
+/// design declares a relation that is not present in the physical database.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DatabaseRelation {
+    pub parent_column: String,
+    pub child_column: String,
+    pub foreign_key_side: DatabaseForeignKeySide,
+}
+
 /// A single scalar value flowing through a mapping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -179,6 +196,11 @@ pub struct SchemaNode {
     /// to retain document order and recreate the original compositor.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xml_repeating_sequences: Vec<XmlRepeatingSequence>,
+    /// Explicit join endpoints for a nested repeating database relation.
+    /// When absent, database adapters resolve the relation from physical FK
+    /// metadata. Non-database adapters ignore this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub database_relation: Option<DatabaseRelation>,
     pub kind: SchemaKind,
 }
 
@@ -208,6 +230,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             alternative_mode: GroupAlternativeMode,
             #[serde(default)]
             xml_repeating_sequences: Vec<XmlRepeatingSequence>,
+            #[serde(default)]
+            database_relation: Option<DatabaseRelation>,
             kind: SchemaKind,
         }
 
@@ -223,6 +247,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
             xml_repeating_sequences: repr.xml_repeating_sequences,
+            database_relation: repr.database_relation,
             kind: repr.kind,
         };
         if !node.alternatives_are_valid()
@@ -230,9 +255,10 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.value_generation_is_valid()
             || !node.alternative_mode_is_valid()
             || !node.xml_repeating_sequences_are_valid()
+            || !node.database_relation_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, value generation, alternative mode, or XML repeating sequences",
+                "schema metadata contains invalid alternatives, recursion, value generation, alternative mode, XML repeating sequences, or database relation",
             ));
         }
         Ok(node)
@@ -385,6 +411,7 @@ impl SchemaNode {
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_repeating_sequences: Vec::new(),
+            database_relation: None,
             kind: SchemaKind::Scalar { ty },
         }
     }
@@ -401,6 +428,7 @@ impl SchemaNode {
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_repeating_sequences: Vec::new(),
+            database_relation: None,
             kind: SchemaKind::Group {
                 children,
                 alternatives: Vec::new(),
@@ -442,6 +470,42 @@ impl SchemaNode {
             || (!self.repeating
                 && self.fixed.is_none()
                 && matches!(self.kind, SchemaKind::Scalar { .. }))
+    }
+
+    /// Checks that declared database relation metadata belongs to this nested table.
+    pub fn database_relation_is_valid(&self) -> bool {
+        let Some(relation) = &self.database_relation else {
+            return true;
+        };
+        let Some((table, join_column)) = self.name.split_once('|') else {
+            return false;
+        };
+        if table.is_empty()
+            || join_column.is_empty()
+            || join_column.contains('|')
+            || relation.parent_column.is_empty()
+            || relation.child_column.is_empty()
+        {
+            return false;
+        }
+        let join_matches_owner = match relation.foreign_key_side {
+            DatabaseForeignKeySide::Parent => {
+                join_column.eq_ignore_ascii_case(&relation.parent_column)
+            }
+            DatabaseForeignKeySide::Child => {
+                join_column.eq_ignore_ascii_case(&relation.child_column)
+            }
+        };
+        join_matches_owner
+            && self.repeating
+            && self.recursive_ref.is_none()
+            && matches!(self.kind, SchemaKind::Group { .. })
+    }
+
+    /// Attaches exact relation endpoints to a nested repeating database group.
+    pub fn with_database_relation(mut self, relation: DatabaseRelation) -> Option<Self> {
+        self.database_relation = Some(relation);
+        self.database_relation_is_valid().then_some(self)
     }
 
     /// Marks a non-repeating scalar as format-generated.
@@ -1307,5 +1371,39 @@ mod tests {
           ]}
         }"#;
         assert!(serde_json::from_str::<SchemaNode>(misplaced).is_err());
+    }
+
+    #[test]
+    fn database_relations_are_nested_group_scoped_and_serde_validated() {
+        let relation = DatabaseRelation {
+            parent_column: "id".into(),
+            child_column: "parent_id".into(),
+            foreign_key_side: DatabaseForeignKeySide::Child,
+        };
+        let child = SchemaNode::group("children|parent_id", Vec::new())
+            .repeating()
+            .with_database_relation(relation.clone())
+            .unwrap();
+        let encoded = serde_json::to_string(&child).unwrap();
+        assert!(encoded.contains(r#""database_relation""#));
+        assert_eq!(serde_json::from_str::<SchemaNode>(&encoded).unwrap(), child);
+
+        assert!(
+            SchemaNode::group("children|wrong", Vec::new())
+                .repeating()
+                .with_database_relation(relation.clone())
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("children|parent_id", ScalarType::String)
+                .repeating()
+                .with_database_relation(relation)
+                .is_none()
+        );
+        let legacy: SchemaNode = serde_json::from_str(
+            r#"{"name":"children|parent_id","repeating":true,"kind":{"kind":"group","children":[]}}"#,
+        )
+        .unwrap();
+        assert!(legacy.database_relation.is_none());
     }
 }

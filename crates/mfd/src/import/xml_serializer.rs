@@ -8,6 +8,7 @@ pub(super) struct Recipe {
     input: u32,
     schema: ir::SchemaNode,
     declaration: bool,
+    indent: bool,
     namespace: Option<String>,
 }
 
@@ -53,6 +54,7 @@ pub(super) fn read(
     }
     let declaration =
         properties.and_then(|node| node.attribute("WriteXMLDeclaration")) != Some("0");
+    let indent = properties.and_then(|node| node.attribute("ferrule-indent")) != Some("0");
     let namespace = component
         .descendants()
         .find(|node| node.has_tag_name("document"))
@@ -65,6 +67,7 @@ pub(super) fn read(
         input: *input,
         schema: schema.schema.clone(),
         declaration,
+        indent,
         namespace,
     }))
 }
@@ -86,6 +89,7 @@ impl GraphBuilder<'_> {
             frame,
             schema: recipe.schema.clone(),
             declaration: recipe.declaration,
+            indent: recipe.indent,
             namespace: recipe.namespace.clone(),
         });
         self.xml_serializer_nodes.insert(output, node);

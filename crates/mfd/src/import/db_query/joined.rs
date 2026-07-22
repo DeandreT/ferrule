@@ -192,6 +192,7 @@ pub(super) fn read_component(
             required_paths: vec![vec![relation_name, joined_join]],
             computed_ports: output_ports.computed,
         }],
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }

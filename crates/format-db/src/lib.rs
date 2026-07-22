@@ -5,11 +5,15 @@
 //! interface. The convention mirroring the other flat-rows formats: a
 //! table maps to a repeating [`SchemaNode`] group of scalar fields whose
 //! `name` is the table name, and one table row maps to one
-//! [`Instance::Group`].
+//! [`Instance::Group`]. Nested relational groups resolve through physical
+//! SQLite foreign keys or an exact validated [`ir::DatabaseRelation`]
+//! declaration retained from mapping metadata.
 
 use std::path::Path;
 
-use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value, ValueGeneration};
+use ir::{
+    DatabaseForeignKeySide, Instance, ScalarType, SchemaKind, SchemaNode, Value, ValueGeneration,
+};
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OptionalExtension};
 use thiserror::Error;
@@ -101,12 +105,23 @@ pub enum DbFormatError {
         child_table: String,
         child_column: String,
     },
+    #[error("declared database relation references missing column `{table}`.`{column}`")]
+    MissingDeclaredRelationColumn { table: String, column: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ForeignKeySide {
     Parent,
     Child,
+}
+
+impl From<DatabaseForeignKeySide> for ForeignKeySide {
+    fn from(side: DatabaseForeignKeySide) -> Self {
+        match side {
+            DatabaseForeignKeySide::Parent => Self::Parent,
+            DatabaseForeignKeySide::Child => Self::Child,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

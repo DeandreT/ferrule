@@ -150,6 +150,27 @@ impl<'a> SourceExports<'a> {
         Some(node)
     }
 
+    /// Resolves a scope's source as relative to its active anchor, falling
+    /// back to an absolute primary-source path only when the relative path is
+    /// invalid. This mirrors engine source traversal without guessing when
+    /// both interpretations are valid.
+    pub(super) fn resolve_scope_path(
+        &self,
+        anchor: &[String],
+        source: &[String],
+    ) -> (Vec<String>, bool) {
+        let mut relative = anchor.to_vec();
+        relative.extend(source.iter().cloned());
+        if !anchor.is_empty()
+            && self.schema_node_at(&relative).is_none()
+            && self.schema_node_at(source).is_some()
+        {
+            (source.to_vec(), true)
+        } else {
+            (relative, false)
+        }
+    }
+
     pub(super) fn is_named_extra_path(&self, path: &[String]) -> bool {
         path.first().is_some_and(|name| {
             self.extras
@@ -265,5 +286,45 @@ mod tests {
             sources.match_field(&["Name".into()], false),
             PortMatch::Unique(_)
         ));
+    }
+
+    #[test]
+    fn scope_paths_fall_back_to_absolute_only_when_relative_is_invalid() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::group(
+                    "Item",
+                    vec![SchemaNode::group("Detail", Vec::new()).repeating()],
+                )
+                .repeating(),
+            ],
+        );
+        let options = FormatOptions::default();
+        let mut keys = KeyAlloc { next: 1 };
+        let Ok(primary) = build_source(
+            "Root",
+            &schema,
+            Some("source.xml"),
+            &options,
+            None,
+            0,
+            &mut keys,
+        ) else {
+            panic!("ordinary XML source should build");
+        };
+        let sources = SourceExports {
+            primary,
+            extras: Vec::new(),
+        };
+
+        assert_eq!(
+            sources.resolve_scope_path(&["Item".into()], &["Detail".into()]),
+            (vec!["Item".into(), "Detail".into()], false)
+        );
+        assert_eq!(
+            sources.resolve_scope_path(&["Item".into()], &["Item".into()]),
+            (vec!["Item".into()], true)
+        );
     }
 }

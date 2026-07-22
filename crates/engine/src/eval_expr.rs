@@ -157,6 +157,7 @@ pub(crate) fn eval_expr(
             frame,
             schema,
             declaration,
+            indent,
             namespace,
         } => {
             let instance = match frame {
@@ -170,6 +171,7 @@ pub(crate) fn eval_expr(
             })?;
             let options = format_xml::XmlWriteOptions {
                 declaration: *declaration,
+                indent: *indent,
                 default_namespace: namespace.clone(),
             };
             format_xml::to_string_with_options(schema, instance, &options)

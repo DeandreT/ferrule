@@ -15,7 +15,9 @@
 //! (with a non-executable entry-tree fallback when no configuration resolves),
 //! proto2 binary target components (typed from their referenced `.proto`),
 //! single-table SQLite database components (schema introspected from the
-//! referenced database when reachable), the common core functions,
+//! referenced database when reachable), including structured XML documents
+//! serialized compactly into text columns and validated local relation
+//! declarations when physical foreign keys are absent, the common core functions,
 //! structured XML string serializers with subtree, namespace, and declaration
 //! semantics,
 //! aggregates (count/sum/avg/min/max/string-join/item-at, converted to

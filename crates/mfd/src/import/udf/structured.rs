@@ -45,7 +45,7 @@ pub(super) enum FindSource {
     },
     Parameter {
         component_id: u32,
-        schema: ir::SchemaNode,
+        schema: Box<ir::SchemaNode>,
         collection: Vec<String>,
     },
 }
@@ -592,7 +592,7 @@ fn try_read_scalar_find(
     let source = if parameter_source {
         FindSource::Parameter {
             component_id: component_id(*catalog_node)?,
-            schema: catalog.schema.clone(),
+            schema: Box::new(catalog.schema.clone()),
             collection,
         }
     } else {

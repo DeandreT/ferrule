@@ -172,6 +172,7 @@ fn read_json_output_source(
         input_keys: BTreeSet::new(),
         output_keys,
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }

@@ -371,6 +371,7 @@ fn read_uncorrelated_component(
             required_paths: Vec::new(),
             computed_ports: BTreeMap::new(),
         }],
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }

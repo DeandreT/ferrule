@@ -271,6 +271,7 @@ pub(super) fn read(
             input_keys,
             output_keys,
             db_queries: Vec::new(),
+            db_xml_columns: BTreeMap::new(),
             dynamic_json: None,
         },
         workbook,
@@ -462,6 +463,7 @@ fn read_composite(
         input_keys,
         output_keys,
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }

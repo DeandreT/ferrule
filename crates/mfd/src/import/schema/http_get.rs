@@ -199,6 +199,7 @@ fn read_get(
         input_keys: payload_inputs,
         output_keys: payload_outputs,
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }
@@ -379,6 +380,7 @@ fn read_post(
         input_ancestors: BTreeMap::new(),
         output_keys: response_outputs,
         db_queries: Vec::new(),
+        db_xml_columns: BTreeMap::new(),
         dynamic_json: None,
     })
 }

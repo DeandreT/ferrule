@@ -391,6 +391,7 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XmlWriteOptions {
     pub declaration: bool,
+    pub indent: bool,
     pub default_namespace: Option<String>,
 }
 
@@ -398,6 +399,7 @@ impl Default for XmlWriteOptions {
     fn default() -> Self {
         Self {
             declaration: true,
+            indent: true,
             default_namespace: None,
         }
     }
@@ -417,7 +419,12 @@ pub fn to_string_with_options(
     instance: &Instance,
     options: &XmlWriteOptions,
 ) -> Result<String, XmlFormatError> {
-    let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
+    let cursor = Cursor::new(Vec::new());
+    let mut writer = if options.indent {
+        Writer::new_with_indent(cursor, b' ', 2)
+    } else {
+        Writer::new(cursor)
+    };
     if options.declaration {
         writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new(
             "1.0",

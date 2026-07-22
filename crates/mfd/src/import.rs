@@ -978,7 +978,7 @@ fn build_target_scope(
         &mut scopes,
     );
     target_mixed_content::install(target, builder, &mut scopes);
-    for (target_leaf, from, _) in bindings {
+    for (target_leaf, from, input) in bindings {
         let target_path = target_leaf.path();
         if builder.join_dependency_rejected(from) {
             continue;
@@ -1000,7 +1000,11 @@ fn build_target_scope(
             continue;
         }
         let active_anchor = scopes.enclosing_anchor(&target_path);
-        let Some(node) = builder.binding_node_at_anchor(from, &target_path, &active_anchor) else {
+        let node = match target.db_xml_columns.get(&input) {
+            Some(column) => builder.database_xml_column_node(from, column),
+            None => builder.binding_node_at_anchor(from, &target_path, &active_anchor),
+        };
+        let Some(node) = node else {
             continue;
         };
         let node = if scopes
