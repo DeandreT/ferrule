@@ -605,7 +605,11 @@ fn parse_time_join_rejection_retains_output_ownership() {
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("declares no key paths"));
+    assert!(
+        imported.warnings[0].contains("join equality references unknown key path id 101"),
+        "{:?}",
+        imported.warnings
+    );
 }
 
 #[test]
@@ -675,7 +679,11 @@ fn rejected_join_provenance_propagates_through_scalar_functions() {
 
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
     assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(imported.warnings[0].contains("declares no key paths"));
+    assert!(
+        imported.warnings[0].contains("join equality references unknown key path id 101"),
+        "{:?}",
+        imported.warnings
+    );
     assert!(
         imported
             .project

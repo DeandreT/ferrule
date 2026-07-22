@@ -530,6 +530,7 @@ impl GraphBuilder<'_> {
                     .cloned()
                     .map(|path| SourcePath { source, path })
             })
+            .or_else(|| self.joins.hierarchical_source(key).cloned())
     }
 }
 
