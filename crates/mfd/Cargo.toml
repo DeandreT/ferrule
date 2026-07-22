@@ -17,6 +17,7 @@ format-protobuf = { workspace = true }
 roxmltree = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+zip = { workspace = true }
 
 [dev-dependencies]
 codegen = { workspace = true }

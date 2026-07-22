@@ -22,6 +22,11 @@ native aggregate rather than retaining an XSLT runtime dependency.
 Bounded adjacent C# and Java source modules can likewise lower direct numeric
 picture wrappers to ferrule's deterministic formatter, while bounded XQuery
 modules can lower scalar parameter/number arithmetic to the native call graph.
+External EDI configurations may be ordinary sibling directories or adjacent
+ZIP packages. Packages are extracted under strict path, entry-count, compressed,
+and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata
+are embedded in the imported project, so execution and later export do not
+depend on the package remaining available.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable

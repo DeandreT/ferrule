@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 
 use ir::{SchemaKind, SchemaNode};
 use mapping::{
@@ -8,6 +8,9 @@ use mapping::{
 };
 
 use super::{ComponentFormat, SchemaComponent};
+
+#[path = "edi/config_source.rs"]
+mod config_source;
 
 pub(super) fn read(
     component: &roxmltree::Node,
@@ -74,8 +77,8 @@ pub(super) fn read(
             "EDIX12" | "EDIFACT" | "EDIHL7" | "EDITRADACOMS" | "EDIFIXED" | "SWIFTMT"
         ) {
         config.and_then(|declared| {
-            match resolve_config(mfd_path, declared).and_then(|path| match kind {
-                "EDIFIXED" => format_edi::config::idoc::import_config(&path)
+            match config_source::resolve(mfd_path, declared).and_then(|resolved| match kind {
+                "EDIFIXED" => format_edi::config::idoc::import_config(resolved.path())
                     .map(|compiled| {
                         (
                             compiled.schema,
@@ -86,18 +89,20 @@ pub(super) fn read(
                         )
                     })
                     .map_err(|error| error.to_string()),
-                "SWIFTMT" => format_edi::config::swift::import_config(&path, &selected_messages)
-                    .map(|compiled| {
-                        (
-                            compiled.schema,
-                            None,
-                            Some(compiled.layout),
-                            Vec::new(),
-                            Vec::new(),
-                        )
-                    })
-                    .map_err(|error| error.to_string()),
-                _ => format_edi::config::import_config(&path, &selected_messages)
+                "SWIFTMT" => {
+                    format_edi::config::swift::import_config(resolved.path(), &selected_messages)
+                }
+                .map(|compiled| {
+                    (
+                        compiled.schema,
+                        None,
+                        Some(compiled.layout),
+                        Vec::new(),
+                        Vec::new(),
+                    )
+                })
+                .map_err(|error| error.to_string()),
+                _ => format_edi::config::import_config(resolved.path(), &selected_messages)
                     .map(|compiled| {
                         (
                             compiled.schema,
@@ -536,94 +541,6 @@ fn merge_parser_error_entries(entry: &roxmltree::Node, schema: &mut SchemaNode) 
             merge_parser_error_entries(&child_entry, child_schema);
         }
     }
-}
-
-fn resolve_config(mfd_path: &Path, declared: &str) -> Result<PathBuf, String> {
-    let portable = declared
-        .strip_prefix("altova://edi_config/")
-        .unwrap_or(declared)
-        .replace('\\', "/");
-    let relative = Path::new(&portable);
-    if relative
-        .components()
-        .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
-    {
-        return Err(format!(
-            "configuration path `{declared}` is not a bounded relative path"
-        ));
-    }
-
-    let unresolved_base = mfd_path.parent().unwrap_or_else(|| Path::new("."));
-    let base = std::fs::canonicalize(unresolved_base)
-        .map_err(|error| format!("could not resolve mapping directory ({error})"))?;
-    let mut roots = vec![base.to_path_buf()];
-    if let Some(root) = std::env::var_os("FERRULE_EDI_CONFIG_DIR") {
-        roots.push(PathBuf::from(root));
-    }
-    for ancestor in base.ancestors().take(12) {
-        roots.push(ancestor.to_path_buf());
-        roots.push(ancestor.join("MapForceEDI"));
-        if let Ok(entries) = std::fs::read_dir(ancestor) {
-            roots.extend(
-                entries
-                    .take(128)
-                    .filter_map(Result::ok)
-                    .filter_map(|entry| {
-                        entry
-                            .file_type()
-                            .ok()
-                            .filter(|file_type| file_type.is_dir())
-                            .map(|_| entry)
-                    })
-                    .map(|entry| entry.path().join("MapForceEDI")),
-            );
-        }
-    }
-    let mut matches = roots
-        .into_iter()
-        .filter_map(|root| resolve_case_insensitive(&root, relative))
-        .filter_map(|path| std::fs::canonicalize(path).ok())
-        .collect::<Vec<_>>();
-    matches.sort();
-    matches.dedup();
-    match matches.as_slice() {
-        [path] => Ok(path.clone()),
-        [] => Err(format!("configuration `{declared}` was not found")),
-        _ => Err(format!(
-            "configuration `{declared}` resolves to multiple nearby installations"
-        )),
-    }
-}
-
-fn resolve_case_insensitive(base: &Path, relative: &Path) -> Option<PathBuf> {
-    let mut current = base.to_path_buf();
-    for component in relative.components() {
-        let Component::Normal(expected) = component else {
-            continue;
-        };
-        let direct = current.join(expected);
-        if direct.exists() {
-            current = direct;
-            continue;
-        }
-        let expected = expected.to_str()?;
-        let mut matches = std::fs::read_dir(&current)
-            .ok()?
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_str()
-                    .is_some_and(|name| name.eq_ignore_ascii_case(expected))
-            })
-            .map(|entry| entry.path());
-        let found = matches.next()?;
-        if matches.next().is_some() {
-            return None;
-        }
-        current = found;
-    }
-    current.is_file().then_some(current)
 }
 
 fn entry_tree_schema(
