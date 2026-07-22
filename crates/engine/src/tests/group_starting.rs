@@ -184,3 +184,41 @@ fn group_starting_with_requires_a_boolean_predicate() {
         Err(EngineError::NotABool { node: 0, .. })
     ));
 }
+
+#[test]
+fn post_group_filter_retains_a_group_when_any_member_matches() {
+    let mut project = project();
+    let scope = &mut project.root.children[0];
+    scope.filter = None;
+    scope.post_group_filter = Some(7);
+    let source = Instance::Group(vec![(
+        "Rows".into(),
+        Instance::Repeated(vec![
+            row("L", "A", false),
+            row("H", "B", false),
+            row("L", "C", true),
+            row("H", "D", false),
+            row("H", "E", true),
+            row("L", "F", false),
+        ]),
+    )]);
+
+    let output = run(&project, &source).unwrap();
+    let groups = output
+        .field("Group")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+    assert_eq!(groups.len(), 2);
+    assert_eq!(
+        groups[0].field("First").and_then(Instance::as_scalar),
+        Some(&Value::String("B".into()))
+    );
+    assert_eq!(
+        groups[0].field("Joined").and_then(Instance::as_scalar),
+        Some(&Value::String("B,C".into()))
+    );
+    assert_eq!(
+        groups[1].field("First").and_then(Instance::as_scalar),
+        Some(&Value::String("E".into()))
+    );
+}

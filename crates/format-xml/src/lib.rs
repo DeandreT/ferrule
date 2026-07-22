@@ -1,4 +1,6 @@
 //! XSD-lite and bounded DTD-lite schema import plus XML instance read/write.
+//! DTD support includes internal parameter entities used as content-model
+//! particles; XML parsing never loads external entity or subset identifiers.
 
 pub mod dtd;
 mod file_set;

@@ -7,7 +7,7 @@ layout and dialect details that an extension cannot express.
 
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
-| XML | Yes | Yes | Hierarchical instance I/O; XSD-lite and bounded DTD import; attributes, `xsi:nil`, generic elements, and ordered mixed content |
+| XML | Yes | Yes | Hierarchical instance I/O; XSD-lite and bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
 | JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; JSON Schema local references, compatible closed-object alternatives, and typed dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |

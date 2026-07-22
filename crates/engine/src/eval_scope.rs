@@ -26,6 +26,7 @@ struct GroupBucket {
     members: Vec<Instance>,
     intermediate_frames: Vec<Instance>,
     positions: Vec<PositionFrame>,
+    post_filter_match: bool,
 }
 
 struct OwnedGroup {
@@ -386,6 +387,12 @@ pub(crate) fn eval_scope(
                 | GroupingMode::StartingWith(_)
                 | GroupingMode::IntoBlocks(_) => false,
             };
+            let post_filter_match = passes_filter(
+                graph,
+                scope.post_group_filter,
+                &item_context,
+                &item_positions,
+            )?;
             let existing = match grouping {
                 GroupingMode::By(_) => groups.iter_mut().find(|group| group.key == key),
                 GroupingMode::AdjacentBy(_) => groups.last_mut().filter(|group| group.key == key),
@@ -408,7 +415,10 @@ pub(crate) fn eval_scope(
                 }
             };
             match existing {
-                Some(group) => group.members.push(member),
+                Some(group) => {
+                    group.members.push(member);
+                    group.post_filter_match |= post_filter_match;
+                }
                 None => groups.push(GroupBucket {
                     key,
                     members: vec![member],
@@ -417,6 +427,7 @@ pub(crate) fn eval_scope(
                         .map(|instance| (**instance).clone())
                         .collect(),
                     positions: item_positions,
+                    post_filter_match,
                 }),
             }
             ending_group_closed = ends_group;
@@ -425,6 +436,7 @@ pub(crate) fn eval_scope(
         // immediately before the grouped members.
         let owned: Vec<OwnedGroup> = groups
             .into_iter()
+            .filter(|group| group.post_filter_match)
             .map(|group| {
                 let members = Instance::Repeated(group.members);
                 let wrapper = scope

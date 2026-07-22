@@ -471,6 +471,7 @@ fn has_controls_or_content(scope: &Scope) -> bool {
     scope.source().is_some()
         || scope.join().is_some()
         || scope.filter.is_some()
+        || scope.post_group_filter.is_some()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
         || scope.group_adjacent_by.is_some()

@@ -61,6 +61,7 @@ pub(super) fn references_to(
         };
         for (reference, description) in [
             (scope.filter, "filter"),
+            (scope.post_group_filter, "post-group filter"),
             (scope.group_by, "group-by key"),
             (scope.group_adjacent_by, "group-adjacent key"),
             (scope.group_starting_with, "group-starting predicate"),

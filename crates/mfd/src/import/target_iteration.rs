@@ -705,8 +705,14 @@ fn build_one(
         skipped.push(target_path);
         return;
     }
+    let post_group_filter = if feed.filter_after_grouping {
+        filter.take()
+    } else {
+        None
+    };
     let nodes = IterationNodes {
         filter,
+        post_group_filter,
         group_by: group,
         group_starting_with: start_group,
         group_adjacent_by: adjacent_group,

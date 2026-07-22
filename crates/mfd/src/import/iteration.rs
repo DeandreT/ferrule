@@ -51,6 +51,9 @@ pub(super) struct IterationFeed {
     pub(super) udf_filters: Vec<u32>,
     /// Whether a filter was crossed, including one with a missing condition.
     pub(super) has_filter: bool,
+    /// The filter is downstream from grouping and therefore selects complete
+    /// groups when any member satisfies its per-item predicate.
+    pub(super) filter_after_grouping: bool,
     /// The group-by's key expression key, if a group-by was crossed.
     pub(super) group_key: Option<u32>,
     /// Whether a key-based group operation was crossed.
@@ -79,7 +82,8 @@ pub(super) struct IterationFeed {
     /// grouping key while iteration retains the owning source item.
     pub(super) distinct_key: Option<u32>,
     /// First unsupported operator ordering found while unwrapping the
-    /// sequence. The scope still imports using ferrule's canonical order.
+    /// sequence. Representable alternate orders are removed before this is
+    /// returned.
     pub(super) order_issue: Option<&'static str>,
     /// Sort key expressions and directions crossed by the sequence, in
     /// lexicographic priority order. Missing pins remain explicit.

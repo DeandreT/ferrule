@@ -32,6 +32,8 @@ struct ScopeRef<'a> {
     segments: Option<&'a ScopeSequence>,
     filter: Option<NodeId>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    post_group_filter: Option<NodeId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     group_by: Option<NodeId>,
     #[serde(skip_serializing_if = "Option::is_none")]
     group_adjacent_by: Option<NodeId>,
@@ -81,6 +83,8 @@ struct ScopeOwned {
     segments: Option<ScopeSequence>,
     #[serde(default)]
     filter: Option<NodeId>,
+    #[serde(default)]
+    post_group_filter: Option<NodeId>,
     #[serde(default)]
     group_by: Option<NodeId>,
     #[serde(default)]
@@ -140,6 +144,7 @@ impl Serialize for Scope {
             join,
             segments,
             filter: self.filter,
+            post_group_filter: self.post_group_filter,
             group_by: self.group_by,
             group_adjacent_by: self.group_adjacent_by,
             group_starting_with: self.group_starting_with,
@@ -209,6 +214,7 @@ impl<'de> Deserialize<'de> for Scope {
             iteration,
             construction: wire.construction,
             filter: wire.filter,
+            post_group_filter: wire.post_group_filter,
             group_by: wire.group_by,
             group_adjacent_by: wire.group_adjacent_by,
             group_starting_with: wire.group_starting_with,

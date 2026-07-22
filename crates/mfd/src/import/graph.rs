@@ -94,6 +94,29 @@ impl GraphBuilder<'_> {
         self.sequence_items.insert(idx, item);
         item
     }
+
+    pub(super) fn group_member_value(&mut self, node: NodeId) -> NodeId {
+        // Grouped DTD ports are sparse aliases on generic element members.
+        // Preserve other expression shapes instead of guessing their context.
+        let source = match self.graph.nodes.get(&node) {
+            Some(Node::SourceField { .. }) => node,
+            Some(Node::CollectionFind { value, .. }) => *value,
+            _ => return node,
+        };
+        let Some(Node::SourceField { path, .. }) = self.graph.nodes.get(&source).cloned() else {
+            return node;
+        };
+        let local = self.source_field(None, path);
+        let present = self.alloc(Node::Call {
+            function: "exists".into(),
+            args: vec![local],
+        });
+        self.alloc(Node::CollectionFind {
+            collection: Vec::new(),
+            predicate: present,
+            value: local,
+        })
+    }
 }
 
 pub(super) fn read_edges(

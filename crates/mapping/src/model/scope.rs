@@ -128,6 +128,10 @@ pub struct Scope {
     /// bindings, child scopes, generated sequences, joins, and grouping.
     pub construction: ScopeConstruction,
     pub filter: Option<NodeId>,
+    /// Per-member predicate applied after grouping. A group survives when at
+    /// least one member evaluates to true. This is distinct from `filter`,
+    /// which removes individual candidates before groups are formed.
+    pub post_group_filter: Option<NodeId>,
     /// Groups the iterated items by this key expression (evaluated once
     /// per item): the scope then produces one target group per distinct
     /// key, in first-seen order, and the iteration frame becomes the

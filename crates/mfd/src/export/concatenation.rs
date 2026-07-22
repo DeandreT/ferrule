@@ -225,6 +225,7 @@ fn validate_container(
     if scope.construction != ScopeConstruction::Constructed
         || scope.iteration_output != output
         || scope.filter.is_some()
+        || scope.post_group_filter.is_some()
         || scope.group_by.is_some()
         || scope.group_starting_with.is_some()
         || scope.group_adjacent_by.is_some()
@@ -276,6 +277,7 @@ fn validate_segment(
     if format == SideFormat::Csv
         && !scope.iterates()
         && (scope.filter.is_some()
+            || scope.post_group_filter.is_some()
             || scope.group_by.is_some()
             || scope.group_starting_with.is_some()
             || scope.group_adjacent_by.is_some()

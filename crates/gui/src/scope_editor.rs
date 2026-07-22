@@ -139,6 +139,9 @@ fn set_grouping_mode(scope: &mut Scope, mode: GroupingMode, first_node: Option<N
     scope.group_starting_with = node_for(GroupingMode::StartingWith);
     scope.group_ending_with = node_for(GroupingMode::EndingWith);
     scope.group_into_blocks = node_for(GroupingMode::IntoBlocks);
+    if mode == GroupingMode::None {
+        scope.post_group_filter = None;
+    }
 }
 
 fn first_node_id(graph: &Graph) -> Option<NodeId> {
@@ -551,6 +554,25 @@ pub fn show_scope_editor(
                     }
                 }
             });
+            if grouping_mode(scope) != GroupingMode::None {
+                ui.horizontal(|ui| {
+                    ui.label("  after-group filter:");
+                    let mut enabled = scope.post_group_filter.is_some();
+                    if ui
+                        .add_enabled(
+                            enabled || first_node.is_some(),
+                            egui::Checkbox::new(&mut enabled, "filtered"),
+                        )
+                        .on_disabled_hover_text("Add a graph node before enabling a filter")
+                        .changed()
+                    {
+                        scope.post_group_filter = enabled.then_some(first_node).flatten();
+                    }
+                    if let Some(filter) = &mut scope.post_group_filter {
+                        node_picker(ui, "post_group_filter_node", filter, graph);
+                    }
+                });
+            }
         }
 
         ui.horizontal(|ui| {

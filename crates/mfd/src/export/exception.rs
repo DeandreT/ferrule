@@ -161,6 +161,7 @@ fn preserves_descendant_items(scope: &Scope) -> bool {
         scope.iteration,
         ScopeIteration::None | ScopeIteration::Source(_) | ScopeIteration::DynamicDocuments { .. }
     ) && scope.filter.is_none()
+        && scope.post_group_filter.is_none()
         && !scope.has_sort()
         && scope.group_by.is_none()
         && scope.group_starting_with.is_none()
