@@ -1,4 +1,7 @@
 mod generic;
+mod soap;
+
+pub use soap::{from_wsdl_message_str, read_wsdl_message};
 
 use std::io::Cursor;
 use std::path::Path;
@@ -116,6 +119,10 @@ pub enum XmlFormatError {
     UnsupportedRecursiveAnchor { node: String, anchor: String },
     #[error("XML recursion exceeds the {limit}-element depth limit")]
     RecursionLimit { limit: usize },
+    #[error("invalid SOAP envelope: {0}")]
+    InvalidSoapEnvelope(String),
+    #[error("SOAP body cannot be projected into WSDL message schema `{schema}`")]
+    IncompatibleSoapBody { schema: String },
 }
 
 /// Reads an XML file into an [`Instance`] tree shaped by `schema`.

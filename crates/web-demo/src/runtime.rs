@@ -107,7 +107,13 @@ pub fn parse_source(
     )?;
     match format {
         DataFormat::Xml => {
-            format_xml::from_str(text, &project.source).map_err(|error| RuntimeError::Parse {
+            let parsed = match &project.source_options.wsdl {
+                Some(wsdl) => {
+                    format_xml::from_wsdl_message_str(text, &project.source, wsdl.operation())
+                }
+                None => format_xml::from_str(text, &project.source),
+            };
+            parsed.map_err(|error| RuntimeError::Parse {
                 format,
                 message: error.to_string(),
             })
@@ -279,7 +285,7 @@ mod tests {
     use ir::{ScalarType, SchemaNode, Value, XML_TEXT_FIELD};
     use mapping::{
         Binding, FormatOptions, Graph, NamedSource, Node, Scope, ScopeIteration,
-        XbrlBoundaryOptions, XbrlNamespaceBinding,
+        WsdlMessageOptions, XbrlBoundaryOptions, XbrlNamespaceBinding,
     };
 
     const XBRLI: &str = "http://www.xbrl.org/2003/instance";
@@ -513,6 +519,45 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&output).unwrap(),
             serde_json::json!({"name": "Ada", "age": 37})
         );
+    }
+
+    #[test]
+    fn parses_wsdl_soap_source_in_memory() -> Result<(), Box<dyn std::error::Error>> {
+        let mut project = scalar_project(false);
+        project.source = SchemaNode::group(
+            "LookupSoapIn",
+            vec![SchemaNode::group(
+                "parameters",
+                vec![SchemaNode::scalar("city", ScalarType::String)],
+            )],
+        );
+        project.source_options.xml_document = true;
+        project.source_options.wsdl = Some(WsdlMessageOptions::request(
+            "lookup.wsdl",
+            "{urn:test}LookupService",
+            "LookupPort",
+            "{urn:test}Lookup",
+        )?);
+
+        let source = parse_source(
+            &project,
+            r#"<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+                <s:Body><Lookup><city>Boston</city></Lookup></s:Body>
+            </s:Envelope>"#,
+            DataFormat::Xml,
+        )?;
+
+        assert_eq!(
+            source,
+            Instance::Group(vec![(
+                "parameters".into(),
+                Instance::Group(vec![(
+                    "city".into(),
+                    Instance::Scalar(Value::String("Boston".into())),
+                )]),
+            )])
+        );
+        Ok(())
     }
 
     #[test]

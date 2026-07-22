@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use ir::{ScalarType, SchemaNode};
 use mapping::{
     Binding, EdiBoundaryKind, Graph, Node, Project, Scope, ScopeIteration, TabularBoundaryKind,
+    WsdlMessageOptions,
 };
 
 fn test_dir(name: &str) -> PathBuf {
@@ -129,6 +130,80 @@ fn xml_document_identity_overrides_neutral_instance_extensions() {
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Root>\n  <value>retained</value>\n</Root>"
     );
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn wsdl_message_identity_unwraps_soap_inputs() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = test_dir("wsdl_soap");
+    let source = SchemaNode::group(
+        "LookupSoapIn",
+        vec![SchemaNode::group(
+            "parameters",
+            vec![SchemaNode::scalar("city", ScalarType::String)],
+        )],
+    );
+    let target = SchemaNode::group(
+        "Result",
+        vec![SchemaNode::scalar("city", ScalarType::String)],
+    );
+    let mut graph = Graph::default();
+    graph.nodes.insert(
+        0,
+        Node::SourceField {
+            path: vec!["parameters".into(), "city".into()],
+            frame: None,
+        },
+    );
+    let project = Project {
+        source,
+        target,
+        source_path: None,
+        target_path: None,
+        source_options: mapping::FormatOptions {
+            xml_document: true,
+            wsdl: Some(WsdlMessageOptions::request(
+                "lookup.wsdl",
+                "{urn:test}LookupService",
+                "LookupPort",
+                "{urn:test}Lookup",
+            )?),
+            ..mapping::FormatOptions::default()
+        },
+        target_options: mapping::FormatOptions {
+            xml_document: true,
+            ..mapping::FormatOptions::default()
+        },
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        graph,
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "city".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        },
+    };
+
+    let project_path = write_project(&directory, &project);
+    let input_path = directory.join("request.capture");
+    let output_path = directory.join("result.capture");
+    std::fs::write(
+        &input_path,
+        r#"<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+            <s:Body><m:Lookup xmlns:m="urn:test"><m:city>Boston</m:city></m:Lookup></s:Body>
+        </s:Envelope>"#,
+    )?;
+
+    assert_eq!(
+        cli::run_project(&project_path, &input_path, &output_path)?,
+        1
+    );
+    let output = std::fs::read_to_string(&output_path)?;
+    assert!(output.contains("<city>Boston</city>"), "{output}");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
 }
 
 #[test]
