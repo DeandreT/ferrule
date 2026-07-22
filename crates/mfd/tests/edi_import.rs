@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use mapping::{EdiBoundaryKind, Node, X12Separators};
+use mapping::{EdiBoundaryKind, EdiImpliedDecimal, Node, X12Separators};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -198,7 +198,7 @@ fn retains_nested_edifact_output_instance_through_export() {
     )
     .unwrap();
 
-    let imported = mfd::import(&design).unwrap();
+    let mut imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source_path.as_deref(), Some("orders.x12"));
     assert_eq!(imported.project.target_path.as_deref(), Some("result.edi"));
@@ -206,6 +206,10 @@ fn retains_nested_edifact_output_instance_through_export() {
         imported.project.target_options.edi_kind,
         Some(EdiBoundaryKind::Edifact)
     );
+    imported.project.target_options.edi_implied_decimals = vec![
+        EdiImpliedDecimal::new(vec!["Envelope".into(), "Message".into(), "Code".into()], 2)
+            .unwrap(),
+    ];
 
     let roundtrip = directory.path().join("roundtrip.mfd");
     let warnings = mfd::export(&imported.project, &roundtrip).unwrap();
@@ -695,6 +699,43 @@ fn compiles_and_executes_tradacoms_implied_decimals() {
     );
     let xml = format_xml::to_string(&imported.project.target, &output).unwrap();
     assert!(xml.contains("<Amount>12.345</Amount>"));
+    assert_source_boundary_roundtrip(&imported.project, directory.path());
+}
+
+#[test]
+fn malformed_embedded_implied_decimals_warn_and_disable_scaling() {
+    let directory = TempDir::new("invalid_implied_decimal_metadata");
+    let design = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="text" kind="16"><data>
+            <root><entry name="Envelope"><entry name="Amount" datatype="decimal" outkey="10"/></entry></root>
+            <text type="edi" kind="EDITRADACOMS"><ferrule-implied-decimals>[{"path":[],"places":0}]</ferrule-implied-decimals></text>
+          </data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="Result"><entry name="Amount" inpkey="20"/></entry></root>
+          </data></component>
+        </children><graph><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex></vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("invalid embedded implied-decimal metadata")),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(
+        imported
+            .project
+            .source_options
+            .edi_implied_decimals
+            .is_empty()
+    );
 }
 
 struct TempDir(PathBuf);

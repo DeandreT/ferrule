@@ -490,6 +490,16 @@ fn retained_layout_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Result
             xml_escape(&formats)
         );
     }
+    if !options.edi_implied_decimals.is_empty() {
+        let formats = serde_json::to_string(&options.edi_implied_decimals).map_err(|error| {
+            MfdError::Unsupported(format!("could not serialize EDI implied decimals: {error}"))
+        })?;
+        let _ = writeln!(
+            output,
+            "\t\t\t\t\t\t\t<ferrule-implied-decimals>{}</ferrule-implied-decimals>",
+            xml_escape(&formats)
+        );
+    }
     Ok(output)
 }
 
