@@ -377,6 +377,51 @@ mod tests {
     }
 
     #[test]
+    fn x12_style_repeating_segments_share_one_scrollable_source() {
+        let segment = |name: &str, prefix: &str| {
+            SchemaNode::group(
+                name,
+                (1..=9)
+                    .map(|element| {
+                        SchemaNode::scalar(format!("{prefix}{element:02}"), ScalarType::String)
+                    })
+                    .collect(),
+            )
+            .repeating()
+        };
+        let schema = SchemaNode::group(
+            "Interchange",
+            vec![
+                segment("DTM", "DTM"),
+                segment("MTX", "MTX"),
+                SchemaNode::group(
+                    "LoopPO1",
+                    vec![segment("PO1", "PO1"), segment("PID", "PID")],
+                )
+                .repeating(),
+            ],
+        );
+
+        let blocks = source_blocks(&schema);
+
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].title, "Source: Interchange");
+        assert_eq!(blocks[0].leaves.len(), 36);
+        assert!(
+            blocks[0]
+                .pin_labels
+                .iter()
+                .any(|label| label == "DTM/DTM01")
+        );
+        assert!(
+            blocks[0]
+                .pin_labels
+                .iter()
+                .any(|label| label == "LoopPO1/PO1/PO101")
+        );
+    }
+
+    #[test]
     fn target_leaves_carry_their_scope_chain() {
         // row { a, Order { b } }
         let schema = SchemaNode::group(

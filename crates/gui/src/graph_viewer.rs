@@ -147,7 +147,7 @@ pub struct GraphViewer<'a> {
     pub hovered_node: Option<SnarlNodeId>,
     pub hovered_node_this_frame: Option<SnarlNodeId>,
     pub camera_pan: egui::Vec2,
-    pub camera_focus: Option<(egui::Pos2, egui::Pos2)>,
+    pub camera_focus: Option<(egui::Pos2, egui::Pos2, Option<f32>)>,
     pub canvas_transform: Option<egui::emath::TSTransform>,
     pub pin_interaction_ids: Vec<egui::Id>,
     /// Set when an interaction can't be completed (e.g. binding into a
@@ -176,6 +176,18 @@ fn output_wire_emphasis(hovered_node: Option<SnarlNodeId>, pin: &OutPin) -> Wire
     } else {
         WireEmphasis::Unrelated
     }
+}
+
+fn apply_camera_focus(
+    transform: &mut egui::emath::TSTransform,
+    graph_point: egui::Pos2,
+    screen_point: egui::Pos2,
+    zoom: Option<f32>,
+) {
+    if let Some(zoom) = zoom {
+        transform.scaling = zoom;
+    }
+    transform.translation = screen_point.to_vec2() - graph_point.to_vec2() * transform.scaling;
 }
 
 impl GraphViewer<'_> {
@@ -720,9 +732,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         to_global: &mut egui::emath::TSTransform,
         _snarl: &mut Snarl<CanvasNode>,
     ) {
-        if let Some((graph_point, screen_point)) = self.camera_focus {
-            to_global.translation =
-                screen_point.to_vec2() - graph_point.to_vec2() * to_global.scaling;
+        if let Some((graph_point, screen_point, zoom)) = self.camera_focus {
+            apply_camera_focus(to_global, graph_point, screen_point, zoom);
         }
         to_global.translation += self.camera_pan;
         self.canvas_transform = Some(*to_global);
@@ -893,6 +904,26 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         }
     }
 
+    fn has_footer(&mut self, node: &CanvasNode) -> bool {
+        matches!(
+            node,
+            CanvasNode::SourceBlock(_) | CanvasNode::TargetBlock(_)
+        )
+    }
+
+    fn show_footer(
+        &mut self,
+        _node: SnarlNodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        ui: &mut Ui,
+        _snarl: &mut Snarl<CanvasNode>,
+    ) {
+        // Reserve a compact control strip so the resize grip never overlaps
+        // the last endpoint pin.
+        ui.allocate_space(egui::vec2(1.0, 8.0));
+    }
+
     fn final_node_rect(
         &mut self,
         node: SnarlNodeId,
@@ -930,7 +961,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 self.endpoint_scroll,
                 accent,
             );
-            let resized = crate::canvas_endpoints::show_resize_handle(
+            let resized = crate::canvas_endpoints::show_resize_handles(
                 ui,
                 canvas_node,
                 rect,

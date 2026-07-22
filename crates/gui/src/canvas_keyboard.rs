@@ -14,7 +14,10 @@ const EDGE_PAN_SPEED: f32 = 900.0;
 struct PinInteractionIds(Vec<egui::Id>);
 
 #[derive(Clone, Copy, Default)]
-struct CanvasFocus(egui::Pos2);
+struct CanvasFocus {
+    graph_position: egui::Pos2,
+    zoom: Option<f32>,
+}
 
 pub fn show(
     snarl: &mut Snarl<CanvasNode>,
@@ -51,7 +54,7 @@ pub fn show(
     viewer.camera_focus = ui
         .ctx()
         .data_mut(|data| data.remove_temp::<CanvasFocus>(focus_marker))
-        .map(|focus| (focus.0, viewport.center()));
+        .map(|focus| (focus.graph_position, viewport.center(), focus.zoom));
     viewer.canvas_transform = None;
     let initialize_fit = ui
         .ctx()
@@ -72,7 +75,7 @@ pub fn show(
                 .map_or(0, |section| section.leaves.len()),
             CanvasNode::Graph(_) | CanvasNode::Placeholder(_) => 0,
         };
-        let pan_delta = ui.ctx().input(|input| input.smooth_scroll_delta);
+        let pan_delta = ui.ctx().input(|input| input.smooth_scroll_delta());
         if !wire_dragging
             && total > viewer.endpoint_scroll.visible_limit(node, total)
             && pan_delta.y.abs() >= 1.0
@@ -88,11 +91,13 @@ pub fn show(
                     snarl,
                 );
                 ui.ctx().request_repaint();
+
+                // The canvas scene treats an unclaimed wheel event as pan.
+                // Consume only the vertical component once the endpoint has
+                // accepted it, while retaining horizontal trackpad panning.
+                ui.ctx()
+                    .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
             }
-            // egui-snarl interprets the same wheel event as scene panning.
-            // Its transform is adjusted before `current_transform`, so this
-            // equal inverse delta keeps the canvas stationary.
-            viewer.camera_pan -= pan_delta;
         }
     }
     let selected = SnarlWidget::new()
@@ -134,7 +139,7 @@ pub fn show(
     if show_minimap
         && let (Some(transform), Some(node_sizes)) =
             (viewer.canvas_transform, viewer.node_sizes.as_deref())
-        && let Some(focus) = crate::canvas_minimap::show(
+        && let Some(navigation) = crate::canvas_minimap::show(
             ui,
             canvas_id,
             viewport,
@@ -144,8 +149,15 @@ pub fn show(
             viewer.colors,
         )
     {
-        ui.ctx()
-            .data_mut(|data| data.insert_temp(focus_marker, CanvasFocus(focus)));
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(
+                focus_marker,
+                CanvasFocus {
+                    graph_position: navigation.graph_position,
+                    zoom: navigation.zoom,
+                },
+            );
+        });
         ui.ctx().request_repaint();
     }
     let pin_interaction_ids = std::mem::take(&mut viewer.pin_interaction_ids);
