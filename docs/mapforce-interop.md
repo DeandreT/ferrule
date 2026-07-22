@@ -15,7 +15,10 @@ nodes, scopes, format options, and endpoints. Current coverage includes common
 XML, JSON, CSV/fixed-width/FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL,
 HTTP XML, and visual PDF source components, together with a broad set of scalar
 functions, aggregates, sequence controls, lookups, joins, exceptions, and
-recognized user-function shapes.
+recognized user-function shapes. Adjacent XSLT extension modules also import
+when a named one-parameter template returns a direct count, sum, average,
+minimum, or maximum over a descendant path; ferrule lowers that template to a
+native aggregate rather than retaining an XSLT runtime dependency.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable
