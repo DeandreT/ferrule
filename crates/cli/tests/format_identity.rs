@@ -47,6 +47,7 @@ fn json_document_identity_overrides_neutral_instance_extensions() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -106,6 +107,7 @@ fn xml_document_identity_overrides_neutral_instance_extensions() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -176,6 +178,7 @@ fn wsdl_message_identity_unwraps_soap_inputs() -> Result<(), Box<dyn std::error:
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -259,6 +262,7 @@ fn tabular_project(target_kind: TabularBoundaryKind) -> Project {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             iteration: ScopeIteration::Source(Vec::new()),

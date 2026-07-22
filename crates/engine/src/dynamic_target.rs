@@ -1,20 +1,20 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{Graph, NodeId};
+use mapping::NodeId;
 
 use super::EngineError;
-use super::eval_expr::eval_expr;
+use super::eval_expr::{EvalProgram, eval_expr};
 use super::source_iteration::PositionFrame;
 
 pub(super) fn eval_dynamic_key(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     node: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<String, EngineError> {
     let mut in_progress = HashSet::new();
-    match eval_expr(graph, node, context, positions, &mut in_progress)? {
+    match eval_expr(program, node, context, positions, &mut in_progress)? {
         Value::String(key) => Ok(key),
         other => Err(EngineError::DynamicPropertyName {
             node,

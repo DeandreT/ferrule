@@ -8,9 +8,10 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
-        Node::Call { args, .. } => args.clone(),
+        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
             condition,
             then,

@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{AggregateOp, Graph, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId};
+use mapping::{AggregateOp, JoinConditions, JoinId, JoinPlan, JoinSource, NodeId};
 
 use super::EngineError;
 use super::aggregate::aggregate;
-use super::eval_expr::eval_expr;
+use super::eval_expr::{EvalProgram, eval_expr};
 use super::resolve::{context_for_position, field_scalar};
 use super::source_iteration::{PositionFrame, WalkExtension, walk};
 
@@ -70,7 +70,7 @@ pub(super) fn extensions<'a>(rows: &[JoinedRow<'a>]) -> Vec<WalkExtension<'a>> {
 }
 
 pub(super) fn eval_aggregate(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     input: AggregateInput<'_>,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -87,7 +87,7 @@ pub(super) fn eval_aggregate(
                 let mut item_positions = positions.to_vec();
                 item_positions.extend(extension.positions.iter().cloned());
                 eval_expr(
-                    graph,
+                    program,
                     expression,
                     &item_context,
                     &item_positions,
@@ -100,7 +100,7 @@ pub(super) fn eval_aggregate(
     }
     let arg = input
         .arg
-        .map(|arg| eval_expr(graph, arg, context, positions, in_progress))
+        .map(|arg| eval_expr(program, arg, context, positions, in_progress))
         .transpose()?;
     aggregate(input.function, extensions.len(), &values, arg)
 }

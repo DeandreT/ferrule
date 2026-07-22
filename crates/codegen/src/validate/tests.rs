@@ -14,6 +14,7 @@ mod grouping;
 mod invariants;
 mod joins;
 mod sources;
+mod user_functions;
 
 fn program() -> Program {
     Program {
@@ -38,6 +39,7 @@ fn program() -> Program {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),

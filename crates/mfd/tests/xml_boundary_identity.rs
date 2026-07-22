@@ -54,6 +54,7 @@ fn pathless_xml_boundaries_roundtrip_without_format_inference() -> Result<(), Bo
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,

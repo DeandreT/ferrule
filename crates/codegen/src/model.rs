@@ -1,5 +1,5 @@
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::{AggregateOp, NodeId};
+use mapping::{AggregateOp, FunctionId, FunctionParameterId, NodeId};
 
 use crate::{InnerJoin, JoinId};
 
@@ -356,11 +356,32 @@ pub struct Program {
     pub target: SchemaNode,
     /// Reachable expressions ordered by node ID.
     pub expressions: Vec<ExpressionNode>,
+    /// Reachable user functions ordered with callees before callers.
+    pub user_functions: Vec<UserFunctionProgram>,
     /// Ordered pre-target failures evaluated against the shared source frames.
     pub failure_rules: Vec<FailureRule>,
     pub root: TargetScope,
     /// Additional independently shaped outputs in declaration order.
     pub extra_targets: Vec<NamedTargetProgram>,
+}
+
+/// One isolated scalar user function retained for deterministic helper emission.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UserFunctionProgram {
+    pub id: FunctionId,
+    pub library: String,
+    pub name: String,
+    pub parameters: Vec<UserFunctionParameter>,
+    pub output_type: ScalarType,
+    pub expressions: Vec<ExpressionNode>,
+    pub output: NodeId,
+}
+
+/// One ordered, typed input to a generated user function.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserFunctionParameter {
+    pub id: FunctionParameterId,
+    pub ty: ScalarType,
 }
 
 /// One ordered pre-target failure evaluated until its first selected item.
@@ -438,11 +459,18 @@ pub enum Expression {
     Const {
         value: Value,
     },
+    FunctionParameter {
+        parameter: FunctionParameterId,
+    },
     RuntimeValue {
         value: RuntimeValue,
     },
     Call {
         function: ScalarFunction,
+        args: Vec<NodeId>,
+    },
+    UserFunctionCall {
+        function: FunctionId,
         args: Vec<NodeId>,
     },
     /// Conditional evaluation. Backends must evaluate only the selected

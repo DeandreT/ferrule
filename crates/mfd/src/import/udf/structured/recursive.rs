@@ -266,6 +266,7 @@ fn try_read_collect(
 
     Ok((
         Definition {
+            scalar_interface: None,
             parameters: BTreeSet::from([prefix_id]),
             structured_parameters: BTreeSet::from([input_id]),
             outputs: BTreeMap::from([(
@@ -512,6 +513,7 @@ fn try_read_filter(
 
     Ok((
         Definition {
+            scalar_interface: None,
             parameters: BTreeSet::from([parameter_id]),
             structured_parameters: BTreeSet::from([input_id]),
             outputs: BTreeMap::from([(

@@ -18,6 +18,7 @@ fn project(
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: nodes.into_iter().collect(),
         },

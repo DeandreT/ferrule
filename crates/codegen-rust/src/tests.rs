@@ -7,9 +7,10 @@ use super::*;
 use codegen::{
     Binding, ExpressionNode, FailureIteration, FailureRule, FailureSelection, GeneratedSequence,
     IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram, ScalarFunction,
-    SourceIteration, TargetConstruction,
+    SourceIteration, TargetConstruction, UserFunctionParameter, UserFunctionProgram,
 };
 use ir::{SchemaKind, SchemaNode};
+use mapping::{FunctionId, FunctionParameterId};
 
 mod collection_find;
 mod extra_sources;
@@ -177,6 +178,7 @@ fn program() -> Program {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
@@ -469,6 +471,105 @@ fn generated_project_builds_and_matches_the_static_mapping() {
         .unwrap();
     let output = TempDir::new("rust_codegen");
     let mut program = program();
+    let identity = FunctionParameterId::new(11);
+    let first = FunctionParameterId::new(21);
+    let second = FunctionParameterId::new(22);
+    program.user_functions.push(UserFunctionProgram {
+        id: FunctionId::new(1),
+        library: "tests".into(),
+        name: "identity".into(),
+        parameters: vec![UserFunctionParameter {
+            id: identity,
+            ty: ScalarType::Int,
+        }],
+        output_type: ScalarType::Int,
+        expressions: vec![ExpressionNode {
+            id: 1,
+            expression: Expression::FunctionParameter {
+                parameter: identity,
+            },
+        }],
+        output: 1,
+    });
+    program.user_functions.push(UserFunctionProgram {
+        id: FunctionId::new(2),
+        library: "tests".into(),
+        name: "add_values".into(),
+        parameters: vec![
+            UserFunctionParameter {
+                id: first,
+                ty: ScalarType::Int,
+            },
+            UserFunctionParameter {
+                id: second,
+                ty: ScalarType::Int,
+            },
+        ],
+        output_type: ScalarType::Int,
+        expressions: vec![
+            ExpressionNode {
+                id: 1,
+                expression: Expression::FunctionParameter { parameter: first },
+            },
+            ExpressionNode {
+                id: 2,
+                expression: Expression::FunctionParameter { parameter: second },
+            },
+            ExpressionNode {
+                id: 3,
+                expression: Expression::UserFunctionCall {
+                    function: FunctionId::new(1),
+                    args: vec![1],
+                },
+            },
+            ExpressionNode {
+                id: 4,
+                expression: Expression::UserFunctionCall {
+                    function: FunctionId::new(1),
+                    args: vec![2],
+                },
+            },
+            ExpressionNode {
+                id: 5,
+                expression: Expression::Call {
+                    function: ScalarFunction::Add,
+                    args: vec![3, 4],
+                },
+            },
+            ExpressionNode {
+                id: 6,
+                expression: Expression::Const {
+                    value: Value::Bool(true),
+                },
+            },
+            ExpressionNode {
+                id: 7,
+                expression: Expression::Const {
+                    value: Value::Int(0),
+                },
+            },
+            ExpressionNode {
+                id: 8,
+                expression: Expression::Call {
+                    function: ScalarFunction::Divide,
+                    args: vec![3, 7],
+                },
+            },
+            ExpressionNode {
+                id: 9,
+                expression: Expression::If {
+                    condition: 6,
+                    then: 5,
+                    else_: 8,
+                },
+            },
+        ],
+        output: 9,
+    });
+    program.expressions[6].expression = Expression::UserFunctionCall {
+        function: FunctionId::new(2),
+        args: vec![5, 6],
+    };
     let SchemaKind::Group { children, .. } = &mut program.source.kind else {
         panic!("test program source must be a group")
     };
@@ -558,6 +659,41 @@ let expected = group([
     ])),
 ]);
 assert_eq!(actual, expected);
+
+let coerced_source = source(
+    Value::String("8".to_string()),
+    Value::Int(2),
+    Value::Bool(true),
+);
+assert_eq!(sample_map::execute(&coerced_source).unwrap(), expected);
+
+assert_eq!(
+    sample_map::execute(&source(
+        Value::Bool(true),
+        Value::Int(2),
+        Value::Bool(true),
+    )),
+    Err(RuntimeError::UserFunctionType {
+        function: 2,
+        parameter: Some(21),
+        expected: codegen_runtime::ScalarType::Int,
+        found: "bool",
+    }),
+);
+
+let boundary_short_circuit = group([
+    field("Name", scalar(Value::String("Ada".to_string()))),
+    field("First", scalar(Value::Bool(true))),
+]);
+assert_eq!(
+    sample_map::execute(&boundary_short_circuit),
+    Err(RuntimeError::UserFunctionType {
+        function: 2,
+        parameter: Some(21),
+        expected: codegen_runtime::ScalarType::Int,
+        found: "bool",
+    }),
+);
 
 assert_eq!(
     sample_map::execute_with_sources(
@@ -772,6 +908,7 @@ fn generated_range_project_builds_runs_and_short_circuits_null_bounds() {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),
@@ -1022,6 +1159,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),

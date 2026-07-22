@@ -66,8 +66,12 @@ impl FerruleApp {
     }
 
     fn rebuild_snarl_preserving_positions(&mut self) {
-        let layout = CanvasLayout::capture(&self.project, &self.snarl);
-        self.snarl = build_snarl_with_layout(&self.project, Some(&layout));
+        let layout = CanvasLayout::capture(
+            &self.project,
+            &self.main_canvas.snarl,
+            &self.mapping_workspace,
+        );
+        self.main_canvas.snarl = build_snarl_with_layout(&self.project, Some(&layout));
     }
 }
 

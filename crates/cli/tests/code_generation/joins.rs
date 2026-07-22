@@ -77,6 +77,7 @@ fn join_project() -> Result<Project, mapping::JoinPlanError> {
         }],
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

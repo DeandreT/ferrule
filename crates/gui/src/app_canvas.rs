@@ -1,7 +1,7 @@
 //! Mapping-project to canvas-node projection.
 
 use egui_snarl::{InPinId, OutPinId, Snarl};
-use mapping::{Node, NodeId, Project, Scope};
+use mapping::{Node, NodeId, Project, Scope, UserFunction};
 
 use super::{CanvasLayout, CanvasNode, PersistedCanvasNode};
 use crate::canvas::{SourceBlock, TargetBlock, source_blocks, target_blocks};
@@ -16,9 +16,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::XmlSerialize { .. } => vec![],
-        Node::Call { args, .. } => args.clone(),
+        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {
             condition,
             then,
@@ -47,6 +48,42 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
     }
+}
+
+/// Builds the isolated graph canvas for one user-defined function.
+pub(super) fn build_function_snarl(function: &UserFunction) -> Snarl<CanvasNode> {
+    let mut snarl = Snarl::new();
+    let mut snarl_ids = std::collections::BTreeMap::new();
+    for &id in function.body.nodes.keys() {
+        let snarl_id = snarl.insert_node(egui::Pos2::ZERO, CanvasNode::Graph(id));
+        snarl_ids.insert(id, snarl_id);
+    }
+    for (&id, node) in &function.body.nodes {
+        let Some(&to_node) = snarl_ids.get(&id) else {
+            continue;
+        };
+        for (input, dependency) in node_inputs(node).into_iter().enumerate() {
+            let Some(&from_node) = snarl_ids.get(&dependency) else {
+                continue;
+            };
+            snarl.connect(
+                OutPinId {
+                    node: from_node,
+                    output: 0,
+                },
+                InPinId {
+                    node: to_node,
+                    input,
+                },
+            );
+        }
+    }
+    arrange_snarl(
+        &mut snarl,
+        &std::collections::BTreeMap::new(),
+        crate::appearance::WireAppearance::default(),
+    );
+    snarl
 }
 
 fn source_pin_for_field(

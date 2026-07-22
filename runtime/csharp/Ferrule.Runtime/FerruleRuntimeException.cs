@@ -29,6 +29,7 @@ public enum FerruleRuntimeError
     GeneratedSequenceTooLarge,
     RecursiveSequenceDepth,
     RecursiveSequenceTooLarge,
+    UserFunctionType,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>
@@ -50,7 +51,10 @@ public sealed class FerruleRuntimeException : Exception
         FerruleRuntimeValue? runtimeValue = null,
         int? failureRule = null,
         string? mappingFailureMessage = null,
-        ulong? join = null)
+        ulong? join = null,
+        ulong? userFunction = null,
+        ulong? functionParameter = null,
+        FerruleScalarType? expectedScalarType = null)
         : base(message)
     {
         Error = error;
@@ -68,6 +72,9 @@ public sealed class FerruleRuntimeException : Exception
         FailureRule = failureRule;
         MappingFailureMessage = mappingFailureMessage;
         Join = join;
+        UserFunction = userFunction;
+        FunctionParameter = functionParameter;
+        ExpectedScalarType = expectedScalarType;
     }
 
     public FerruleRuntimeException(
@@ -87,7 +94,10 @@ public sealed class FerruleRuntimeException : Exception
         FerruleRuntimeValue? runtimeValue = null,
         int? failureRule = null,
         string? mappingFailureMessage = null,
-        ulong? join = null)
+        ulong? join = null,
+        ulong? userFunction = null,
+        ulong? functionParameter = null,
+        FerruleScalarType? expectedScalarType = null)
         : base(message, innerException)
     {
         Error = error;
@@ -105,6 +115,9 @@ public sealed class FerruleRuntimeException : Exception
         FailureRule = failureRule;
         MappingFailureMessage = mappingFailureMessage;
         Join = join;
+        UserFunction = userFunction;
+        FunctionParameter = functionParameter;
+        ExpectedScalarType = expectedScalarType;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -136,4 +149,10 @@ public sealed class FerruleRuntimeException : Exception
     public string? MappingFailureMessage { get; }
 
     public ulong? Join { get; }
+
+    public ulong? UserFunction { get; }
+
+    public ulong? FunctionParameter { get; }
+
+    public FerruleScalarType? ExpectedScalarType { get; }
 }

@@ -14,7 +14,9 @@ use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
 use ir::Value;
-use mapping::{AggregateOp, Binding, Graph, NamedTarget, Node, NodeId, Scope};
+use mapping::{
+    AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId, Scope,
+};
 
 use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
@@ -169,6 +171,11 @@ pub struct GraphViewer<'a> {
     pub source_x12: bool,
     pub target_x12: bool,
     pub source_paths: &'a SourcePathCatalog,
+    pub function_names: std::collections::BTreeMap<FunctionId, String>,
+    pub function_inputs: std::collections::BTreeMap<FunctionId, Vec<String>>,
+    pub parameter_names: std::collections::BTreeMap<FunctionParameterId, String>,
+    pub protected_output: Option<NodeId>,
+    pub requested_function_open: Option<FunctionId>,
     pub colors: SemanticThemeColors,
     pub wire_color_mode: WireColorMode,
     pub endpoint_scroll: &'a mut crate::canvas_endpoints::EndpointScrollState,
@@ -514,7 +521,7 @@ impl GraphViewer<'_> {
             return false;
         }
         match node {
-            Node::Call { args, .. } => {
+            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
                 args[idx] = from_id;
             }
             Node::If {
@@ -591,7 +598,7 @@ impl GraphViewer<'_> {
 
     fn input_at(&self, node_id: NodeId, idx: usize) -> Option<NodeId> {
         match self.graph.nodes.get(&node_id)? {
-            Node::Call { args, .. } => args.get(idx).copied(),
+            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.get(idx).copied(),
             Node::If {
                 condition,
                 then,
@@ -625,6 +632,7 @@ impl GraphViewer<'_> {
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
             | Node::Const { .. }
+            | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
             | Node::XmlSerialize { .. } => None,
         }
@@ -691,7 +699,16 @@ impl GraphViewer<'_> {
     }
 
     fn references_to(&self, needle: NodeId) -> Vec<String> {
-        graph_references::references_to(self.graph, self.root_scope, self.extra_targets, needle)
+        let mut references = graph_references::references_to(
+            self.graph,
+            self.root_scope,
+            self.extra_targets,
+            needle,
+        );
+        if self.protected_output == Some(needle) {
+            references.push("function output".to_string());
+        }
+        references
     }
 
     fn remove_orphaned_placeholder(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
@@ -799,9 +816,10 @@ impl GraphViewer<'_> {
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
             | Node::Const { .. }
+            | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
             | Node::XmlSerialize { .. } => 0,
-            Node::Call { args, .. } => args.len(),
+            Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.len(),
             Node::If { .. } => 3,
             Node::ValueMap { .. } | Node::Lookup { .. } | Node::DynamicSourceField { .. } => 1,
             Node::XmlMixedContent { replacements, .. } => replacements.len(),
@@ -844,98 +862,118 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 .target_blocks
                 .get(*block)
                 .map_or_else(|| "Target".to_string(), |section| section.title.clone()),
-            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => match self.graph.nodes.get(id) {
-                Some(Node::SourceField { path, frame }) => {
-                    let owner = frame
-                        .as_ref()
-                        .and_then(|frame| frame.last())
-                        .map(|owner| format!("{owner}/"))
-                        .unwrap_or_default();
-                    compact_graph_title(&format!("Source: {owner}{}", path.join("/")))
-                }
-                Some(Node::SourceDocumentPath) => "Source document path".to_string(),
-                Some(Node::Position { collection }) if collection.is_empty() => {
-                    "Position".to_string()
-                }
-                Some(Node::Position { collection }) => {
-                    format!("Position: {}", collection.join("/"))
-                }
-                Some(Node::JoinField {
-                    join,
-                    collection,
-                    path,
-                }) => {
-                    let mut display = collection.clone();
-                    display.extend(path.iter().cloned());
-                    format!("Join field #{}: {}", join.get(), display.join("/"))
-                }
-                Some(Node::JoinPosition { join }) => {
-                    format!("Join position #{}", join.get())
-                }
-                Some(Node::Const { value }) => {
-                    format!("Const: {}", crate::value_editor::display_string(value))
-                }
-                Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
-                Some(Node::Call { function, .. }) => format!("Call: {function}"),
-                Some(Node::If { .. }) => "If".to_string(),
-                Some(Node::ValueMap { .. }) => "Value Map".to_string(),
-                Some(Node::Lookup { collection, .. }) => {
-                    format!("Lookup: {}", collection.join("/"))
-                }
-                Some(Node::DynamicSourceField { object, .. }) => {
-                    format!("Dynamic field: {}", object.join("/"))
-                }
-                Some(Node::XmlMixedContent { path, .. }) => {
-                    format!("XML mixed content: {}", path.join("/"))
-                }
-                Some(Node::XmlSerialize { path, .. }) => {
-                    let path = if path.is_empty() {
-                        "<current>".to_string()
-                    } else {
-                        path.join("/")
-                    };
-                    format!("XML serialize: {path}")
-                }
-                Some(Node::CollectionFind { collection, .. }) => {
-                    format!("Find: {}", collection.join("/"))
-                }
-                Some(Node::SequenceExists { sequence, .. }) => {
-                    format!("Exists: {}", graph_sequence::label(sequence))
-                }
-                Some(Node::SequenceItemAt { sequence, .. }) => {
-                    format!("Item at: {}", graph_sequence::label(sequence))
-                }
-                Some(Node::Aggregate {
-                    function,
-                    collection,
-                    value,
-                    expression,
-                    ..
-                }) => {
-                    let mut path = collection.clone();
-                    if expression.is_none() {
-                        path.extend(value.iter().cloned());
+            CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
+                let title = match self.graph.nodes.get(id) {
+                    Some(Node::SourceField { path, frame }) => {
+                        let owner = frame
+                            .as_ref()
+                            .and_then(|frame| frame.last())
+                            .map(|owner| format!("{owner}/"))
+                            .unwrap_or_default();
+                        compact_graph_title(&format!("Source: {owner}{}", path.join("/")))
                     }
-                    let op = format!("{function:?}").to_lowercase();
-                    let target = expression.map_or_else(|| path.join("/"), |_| "computed".into());
-                    format!("{op}: {target}")
+                    Some(Node::SourceDocumentPath) => "Source document path".to_string(),
+                    Some(Node::Position { collection }) if collection.is_empty() => {
+                        "Position".to_string()
+                    }
+                    Some(Node::Position { collection }) => {
+                        format!("Position: {}", collection.join("/"))
+                    }
+                    Some(Node::JoinField {
+                        join,
+                        collection,
+                        path,
+                    }) => {
+                        let mut display = collection.clone();
+                        display.extend(path.iter().cloned());
+                        format!("Join field #{}: {}", join.get(), display.join("/"))
+                    }
+                    Some(Node::JoinPosition { join }) => {
+                        format!("Join position #{}", join.get())
+                    }
+                    Some(Node::Const { value }) => {
+                        format!("Const: {}", crate::value_editor::display_string(value))
+                    }
+                    Some(Node::FunctionParameter { parameter }) => {
+                        self.parameter_names.get(parameter).map_or_else(
+                            || "Function input".to_string(),
+                            |name| format!("Input: {name}"),
+                        )
+                    }
+                    Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
+                    Some(Node::Call { function, .. }) => format!("Call: {function}"),
+                    Some(Node::UserFunctionCall { function, .. }) => {
+                        self.function_names.get(function).map_or_else(
+                            || "Call: <missing function>".to_string(),
+                            |name| format!("Call: {name}"),
+                        )
+                    }
+                    Some(Node::If { .. }) => "If".to_string(),
+                    Some(Node::ValueMap { .. }) => "Value Map".to_string(),
+                    Some(Node::Lookup { collection, .. }) => {
+                        format!("Lookup: {}", collection.join("/"))
+                    }
+                    Some(Node::DynamicSourceField { object, .. }) => {
+                        format!("Dynamic field: {}", object.join("/"))
+                    }
+                    Some(Node::XmlMixedContent { path, .. }) => {
+                        format!("XML mixed content: {}", path.join("/"))
+                    }
+                    Some(Node::XmlSerialize { path, .. }) => {
+                        let path = if path.is_empty() {
+                            "<current>".to_string()
+                        } else {
+                            path.join("/")
+                        };
+                        format!("XML serialize: {path}")
+                    }
+                    Some(Node::CollectionFind { collection, .. }) => {
+                        format!("Find: {}", collection.join("/"))
+                    }
+                    Some(Node::SequenceExists { sequence, .. }) => {
+                        format!("Exists: {}", graph_sequence::label(sequence))
+                    }
+                    Some(Node::SequenceItemAt { sequence, .. }) => {
+                        format!("Item at: {}", graph_sequence::label(sequence))
+                    }
+                    Some(Node::Aggregate {
+                        function,
+                        collection,
+                        value,
+                        expression,
+                        ..
+                    }) => {
+                        let mut path = collection.clone();
+                        if expression.is_none() {
+                            path.extend(value.iter().cloned());
+                        }
+                        let op = format!("{function:?}").to_lowercase();
+                        let target =
+                            expression.map_or_else(|| path.join("/"), |_| "computed".into());
+                        format!("{op}: {target}")
+                    }
+                    Some(Node::JoinAggregate {
+                        function,
+                        join,
+                        expression,
+                        ..
+                    }) => {
+                        let op = format!("{function:?}").to_lowercase();
+                        let target = if expression.is_some() {
+                            "computed "
+                        } else {
+                            ""
+                        };
+                        format!("{op}: {target}join #{}", join.get())
+                    }
+                    None => "<missing>".to_string(),
+                };
+                if self.protected_output == Some(*id) {
+                    format!("{title} (output)")
+                } else {
+                    title
                 }
-                Some(Node::JoinAggregate {
-                    function,
-                    join,
-                    expression,
-                    ..
-                }) => {
-                    let op = format!("{function:?}").to_lowercase();
-                    let target = if expression.is_some() {
-                        "computed "
-                    } else {
-                        ""
-                    };
-                    format!("{op}: {target}join #{}", join.get())
-                }
-                None => "<missing>".to_string(),
-            },
+            }
         }
     }
 
@@ -1001,7 +1039,30 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             // painted independently so right-to-left rows cannot grow sideways.
             ui.set_min_width((width - 32.0).max(0.0));
         }
-        let response = ui.label(self.title(&canvas_node));
+        let function_call = Self::mapping_id(canvas_node)
+            .and_then(|id| self.graph.nodes.get(&id))
+            .and_then(|node| match node {
+                Node::UserFunctionCall { function, .. } => Some(*function),
+                _ => None,
+            });
+        let response = if let Some(function) = function_call {
+            ui.horizontal(|ui| {
+                let response = ui.label(self.title(&canvas_node));
+                let open = ui
+                    .add(egui::Button::new(crate::icons::text(
+                        lucide_icons::Icon::ExternalLink,
+                        12.0,
+                    )))
+                    .on_hover_text("Open function mapping");
+                if response.double_clicked() || open.clicked() {
+                    self.requested_function_open = Some(function);
+                }
+                response
+            })
+            .inner
+        } else {
+            ui.label(self.title(&canvas_node))
+        };
         if let Some(hint) = endpoint_hint {
             response.on_hover_text(hint);
         }
@@ -1132,6 +1193,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             CanvasNode::Graph(id) | CanvasNode::Placeholder(id) => {
                 Some(match self.graph.nodes.get(&id) {
                     Some(Node::Call { .. }) => format!("arg {idx}"),
+                    Some(Node::UserFunctionCall { function, .. }) => self
+                        .function_inputs
+                        .get(function)
+                        .and_then(|parameters| parameters.get(idx))
+                        .cloned()
+                        .unwrap_or_else(|| format!("input {}", idx + 1)),
                     Some(Node::If { .. }) => ["condition", "then", "else"][idx].to_string(),
                     Some(Node::ValueMap { .. }) => "input".to_string(),
                     Some(Node::Lookup { .. }) => "match/key".to_string(),
@@ -1361,6 +1428,14 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         .on_hover_text("flattened inner-join position");
                 }
                 Node::Const { value } => show_value_editor(ui, value),
+                Node::FunctionParameter { parameter } => {
+                    ui.label(
+                        self.parameter_names
+                            .get(parameter)
+                            .map(String::as_str)
+                            .unwrap_or("missing parameter"),
+                    );
+                }
                 Node::RuntimeValue { value } => {
                     ui.label(format!("{value:?}"));
                 }
@@ -1381,6 +1456,18 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             remove_call_wire = args.pop().map(|node| (input, node));
                         }
                     });
+                }
+                Node::UserFunctionCall { function, args } => {
+                    let name = self
+                        .function_names
+                        .get(function)
+                        .map(String::as_str)
+                        .unwrap_or("missing function");
+                    ui.label(format!(
+                        "{name} ({} input{})",
+                        args.len(),
+                        if args.len() == 1 { "" } else { "s" }
+                    ));
                 }
                 Node::If { .. } => {
                     ui.label("condition ? then : else");

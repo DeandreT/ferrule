@@ -1,10 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use ir::{
     Instance, ScalarType, Value, XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD,
     XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
 };
-use mapping::{Graph, Node, NodeId};
+use mapping::{FunctionId, Graph, Node, NodeId, UserFunction};
 
 use crate::EngineError;
 use crate::aggregate::aggregate;
@@ -16,9 +16,28 @@ use crate::resolve::{
 };
 use crate::sequence::{eval_sequence_exists, eval_sequence_item_at};
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
+use crate::user_function;
+
+#[derive(Clone, Copy)]
+pub(crate) struct EvalProgram<'a> {
+    pub(crate) graph: &'a Graph,
+    pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
+}
+
+impl<'a> EvalProgram<'a> {
+    pub(crate) fn new(
+        graph: &'a Graph,
+        user_functions: &'a BTreeMap<FunctionId, UserFunction>,
+    ) -> Self {
+        Self {
+            graph,
+            user_functions,
+        }
+    }
+}
 
 pub(crate) fn eval_expr(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     node_id: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -28,7 +47,8 @@ pub(crate) fn eval_expr(
         return Err(EngineError::Cycle(node_id));
     }
 
-    let node = graph
+    let node = program
+        .graph
         .nodes
         .get(&node_id)
         .ok_or(EngineError::MissingNode(node_id))?;
@@ -68,6 +88,9 @@ pub(crate) fn eval_expr(
             })
             .ok_or(EngineError::MissingJoinContext { join: *join }),
         Node::Const { value } => Ok(value.clone()),
+        Node::FunctionParameter { .. } => {
+            Err(EngineError::FunctionParameterOutsideFunction { node: node_id })
+        }
         Node::RuntimeValue { value } => context
             .first()
             .and_then(|frame| frame.field(runtime_field(*value)))
@@ -77,17 +100,24 @@ pub(crate) fn eval_expr(
         Node::Call { function, args } => {
             let mut values = Vec::with_capacity(args.len());
             for arg in args {
-                values.push(eval_expr(graph, *arg, context, positions, in_progress)?);
+                values.push(eval_expr(program, *arg, context, positions, in_progress)?);
             }
             functions::call(function, &values).map_err(EngineError::from)
+        }
+        Node::UserFunctionCall { function, args } => {
+            let mut values = Vec::with_capacity(args.len());
+            for arg in args {
+                values.push(eval_expr(program, *arg, context, positions, in_progress)?);
+            }
+            user_function::evaluate(program.user_functions, *function, values)
         }
         Node::If {
             condition,
             then,
             else_,
-        } => match eval_expr(graph, *condition, context, positions, in_progress)? {
-            Value::Bool(true) => eval_expr(graph, *then, context, positions, in_progress),
-            Value::Bool(false) => eval_expr(graph, *else_, context, positions, in_progress),
+        } => match eval_expr(program, *condition, context, positions, in_progress)? {
+            Value::Bool(true) => eval_expr(program, *then, context, positions, in_progress),
+            Value::Bool(false) => eval_expr(program, *else_, context, positions, in_progress),
             other => Err(EngineError::NotABool {
                 node: *condition,
                 found: other.type_name(),
@@ -99,7 +129,7 @@ pub(crate) fn eval_expr(
             table,
             default,
         } => {
-            let value = eval_expr(graph, *input, context, positions, in_progress)?;
+            let value = eval_expr(program, *input, context, positions, in_progress)?;
             let value = input_type
                 .and_then(|ty| coerce_value_map_input(&value, ty))
                 .unwrap_or(value);
@@ -116,7 +146,7 @@ pub(crate) fn eval_expr(
             matches,
             value,
         } => {
-            let needle = eval_expr(graph, *matches, context, positions, in_progress)?;
+            let needle = eval_expr(program, *matches, context, positions, in_progress)?;
             let items = repeated(context, collection)
                 .ok_or_else(|| EngineError::MissingSourceField(collection.join("/")))?;
             Ok(items
@@ -126,7 +156,7 @@ pub(crate) fn eval_expr(
                 .unwrap_or(Value::Null))
         }
         Node::DynamicSourceField { object, frame, key } => {
-            let key = eval_expr(graph, *key, context, positions, in_progress)?;
+            let key = eval_expr(program, *key, context, positions, in_progress)?;
             let Value::String(key) = key else {
                 return Ok(Value::Null);
             };
@@ -140,7 +170,7 @@ pub(crate) fn eval_expr(
             frame,
             replacements,
         } => eval_xml_mixed_content(
-            graph,
+            program,
             path,
             frame.as_deref(),
             replacements,
@@ -182,7 +212,7 @@ pub(crate) fn eval_expr(
             predicate,
             value,
         } => eval_collection_find(
-            graph,
+            program,
             collection,
             *predicate,
             *value,
@@ -193,9 +223,16 @@ pub(crate) fn eval_expr(
         Node::SequenceExists {
             sequence,
             predicate,
-        } => eval_sequence_exists(graph, sequence, *predicate, context, positions, in_progress),
+        } => eval_sequence_exists(
+            program,
+            sequence,
+            *predicate,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::SequenceItemAt { sequence, index } => {
-            eval_sequence_item_at(graph, sequence, *index, context, positions, in_progress)
+            eval_sequence_item_at(program, sequence, *index, context, positions, in_progress)
         }
         Node::Aggregate {
             function,
@@ -215,7 +252,7 @@ pub(crate) fn eval_expr(
                     let mut item_positions = positions.to_vec();
                     item_positions.extend(item.positions.iter().cloned());
                     eval_expr(
-                        graph,
+                        program,
                         *expression,
                         &item_context,
                         &item_positions,
@@ -235,7 +272,7 @@ pub(crate) fn eval_expr(
                 values.push(item_value);
             }
             let arg_value = match arg {
-                Some(id) => Some(eval_expr(graph, *id, context, positions, in_progress)?),
+                Some(id) => Some(eval_expr(program, *id, context, positions, in_progress)?),
                 None => None,
             };
             aggregate(*function, items.len(), &values, arg_value)
@@ -247,7 +284,7 @@ pub(crate) fn eval_expr(
             expression,
             arg,
         } => eval_join_aggregate(
-            graph,
+            program,
             JoinAggregateInput {
                 function: *function,
                 join: *join,
@@ -267,7 +304,7 @@ pub(crate) fn eval_expr(
 
 #[allow(clippy::too_many_arguments)]
 fn eval_xml_mixed_content(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     path: &[String],
     frame: Option<&[String]>,
     replacements: &[mapping::XmlMixedContentReplacement],
@@ -331,7 +368,7 @@ fn eval_xml_mixed_content(
             });
         }
         let value = eval_expr(
-            graph,
+            program,
             replacement.expression,
             &item_context,
             &item_positions,
@@ -366,7 +403,7 @@ fn aggregate_items<'a>(context: &[&'a Instance], collection: &[String]) -> Vec<W
 }
 
 fn eval_collection_find(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     collection: &[String],
     predicate: NodeId,
     value: NodeId,
@@ -391,7 +428,7 @@ fn eval_collection_find(
     let mut item_context = context.to_vec();
     let mut item_positions = positions.to_vec();
     visit_collection_find(
-        graph,
+        program,
         root,
         collection,
         0,
@@ -406,7 +443,7 @@ fn eval_collection_find(
 
 #[allow(clippy::too_many_arguments)]
 fn visit_collection_find<'a>(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     current: &'a Instance,
     collection: &[String],
     consumed: usize,
@@ -428,7 +465,7 @@ fn visit_collection_find<'a>(
                 document_path: None,
             });
             let found = visit_collection_find(
-                graph,
+                program,
                 item,
                 collection,
                 consumed,
@@ -449,7 +486,7 @@ fn visit_collection_find<'a>(
     if consumed < collection.len() {
         return match current.field(&collection[consumed]) {
             Some(next) => visit_collection_find(
-                graph,
+                program,
                 next,
                 collection,
                 consumed + 1,
@@ -462,8 +499,8 @@ fn visit_collection_find<'a>(
             None => Ok(None),
         };
     }
-    match eval_expr(graph, predicate, context, positions, in_progress)? {
-        Value::Bool(true) => eval_expr(graph, value, context, positions, in_progress).map(Some),
+    match eval_expr(program, predicate, context, positions, in_progress)? {
+        Value::Bool(true) => eval_expr(program, value, context, positions, in_progress).map(Some),
         Value::Bool(false) | Value::Null | Value::XmlNil(_) => Ok(None),
         other => Err(EngineError::NotABool {
             node: predicate,

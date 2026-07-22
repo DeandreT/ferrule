@@ -93,6 +93,7 @@ fn source_project() -> Project {
         target_options: Default::default(),
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
         failure_rules: Vec::new(),
     }
 }

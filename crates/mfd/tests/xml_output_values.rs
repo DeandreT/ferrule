@@ -168,6 +168,7 @@ fn nested_collection_find_writes_every_runtime_xml_name() -> Result<(), Box<dyn 
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             children: vec![item_scope],
