@@ -46,6 +46,7 @@ fn rows_project(
             selection,
             message,
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: nodes.into_iter().collect(),
         },
@@ -209,6 +210,7 @@ fn generated_sequence_message_uses_its_owned_item_context() {
             selection: FailureSelection::WhenTrue { predicate: 4 },
             message: Some(2),
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [
                 (
@@ -448,6 +450,7 @@ fn validation_rejects_failure_item_reused_as_sequence_exists_predicate() {
             selection: FailureSelection::WhenTrue { predicate: 3 },
             message: None,
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [
                 (
@@ -532,6 +535,7 @@ fn validation_confines_an_unused_failure_item_from_external_roots() {
             selection: FailureSelection::All,
             message: None,
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [
                 (
@@ -591,6 +595,7 @@ fn validation_rejects_inactive_join_nodes_in_failure_expressions() {
             selection: FailureSelection::WhenTrue { predicate: 1 },
             message: Some(2),
         }],
+        user_functions: Default::default(),
         graph: Graph {
             nodes: [
                 (

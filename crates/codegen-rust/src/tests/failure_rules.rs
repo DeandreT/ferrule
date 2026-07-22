@@ -113,6 +113,7 @@ fn failure_program() -> Program {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: vec![
             FailureRule {
                 iteration: FailureIteration::Source(SourceIteration::new(vec!["Rows".into()])),

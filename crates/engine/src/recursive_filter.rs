@@ -1,15 +1,15 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{Graph, RecursiveFilterPlan};
+use mapping::RecursiveFilterPlan;
 
 use crate::EngineError;
-use crate::eval_expr::eval_expr;
+use crate::eval_expr::{EvalProgram, eval_expr};
 use crate::sequence::MAX_RECURSIVE_SEQUENCE_DEPTH;
 use crate::source_iteration::PositionFrame;
 
 pub(super) fn execute(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     plan: &RecursiveFilterPlan,
     current: &Instance,
     context: &[&Instance],
@@ -17,11 +17,11 @@ pub(super) fn execute(
 ) -> Result<Instance, EngineError> {
     let mut context = context.to_vec();
     let mut positions = positions.to_vec();
-    filter_group(graph, plan, current, &mut context, &mut positions, 0)
+    filter_group(program, plan, current, &mut context, &mut positions, 0)
 }
 
 fn filter_group<'a>(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     plan: &RecursiveFilterPlan,
     current: &'a Instance,
     context: &mut Vec<&'a Instance>,
@@ -42,9 +42,9 @@ fn filter_group<'a>(
     let mut output = Vec::with_capacity(fields.len());
     for (name, value) in fields {
         let value = if name == plan.items() {
-            filter_items(graph, plan, value, context, positions)?
+            filter_items(program, plan, value, context, positions)?
         } else if name == plan.children() {
-            filter_children(graph, plan, value, context, positions, depth)?
+            filter_children(program, plan, value, context, positions, depth)?
         } else {
             value.clone()
         };
@@ -54,7 +54,7 @@ fn filter_group<'a>(
 }
 
 fn filter_items<'a>(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     plan: &RecursiveFilterPlan,
     collection: &'a Instance,
     context: &mut Vec<&'a Instance>,
@@ -72,7 +72,7 @@ fn filter_items<'a>(
         positions.push(position(plan.items(), index));
         let mut in_progress = HashSet::new();
         let keep = eval_expr(
-            graph,
+            program,
             plan.predicate(),
             context,
             positions,
@@ -95,7 +95,7 @@ fn filter_items<'a>(
 }
 
 fn filter_children<'a>(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     plan: &RecursiveFilterPlan,
     collection: &'a Instance,
     context: &mut Vec<&'a Instance>,
@@ -112,7 +112,7 @@ fn filter_children<'a>(
     for (index, child) in children.iter().enumerate() {
         context.push(child);
         positions.push(position(plan.children(), index));
-        let filtered = filter_group(graph, plan, child, context, positions, depth + 1);
+        let filtered = filter_group(program, plan, child, context, positions, depth + 1);
         positions.pop();
         context.pop();
         output.push(filtered?);

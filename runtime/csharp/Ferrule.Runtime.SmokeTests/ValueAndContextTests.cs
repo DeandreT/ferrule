@@ -118,6 +118,38 @@ internal static partial class Program
             Text("input"),
             null,
             null!));
+
+        Equal(
+            FerruleValue.FromInt64(42),
+            FerruleUserFunctions.Adapt(
+                Text(" 42 "),
+                FerruleScalarType.Int64,
+                7,
+                3));
+        Equal(
+            FerruleValue.FromDouble(42),
+            FerruleUserFunctions.Adapt(
+                FerruleValue.FromInt64(42),
+                FerruleScalarType.Double,
+                7,
+                null));
+        Equal(
+            FerruleValue.Null,
+            FerruleUserFunctions.Adapt(
+                FerruleValue.Null,
+                FerruleScalarType.Bool,
+                7,
+                3));
+        var functionType = Error(
+            FerruleRuntimeError.UserFunctionType,
+            () => FerruleUserFunctions.Adapt(
+                FerruleValue.FromDouble(1.5),
+                FerruleScalarType.Int64,
+                7,
+                3));
+        Equal((ulong?)7, functionType.UserFunction);
+        Equal((ulong?)3, functionType.FunctionParameter);
+        Equal(FerruleScalarType.Int64, functionType.ExpectedScalarType);
     }
 
     private static void RuntimeExecutionContext()

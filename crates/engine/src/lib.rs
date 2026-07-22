@@ -6,9 +6,9 @@ use std::sync::Arc;
 #[cfg(test)]
 use ir::ScalarType;
 use ir::{Instance, Value};
+use mapping::{FunctionId, FunctionParameterId, JoinId, NodeId, Project, RuntimeValue};
 #[cfg(test)]
 use mapping::{Graph, IterationOutput, Node, Scope, ScopeConstruction};
-use mapping::{JoinId, NodeId, Project, RuntimeValue};
 use thiserror::Error;
 
 mod adjacency_tree;
@@ -26,6 +26,7 @@ mod recursive_filter;
 mod resolve;
 mod sequence;
 mod source_iteration;
+mod user_function;
 mod validate;
 
 #[cfg(test)]
@@ -55,6 +56,80 @@ pub enum EngineError {
     MissingNode(NodeId),
     #[error("cycle detected while evaluating node {0}")]
     Cycle(NodeId),
+    #[error("function parameter node {node} cannot be evaluated in the main mapping graph")]
+    FunctionParameterOutsideFunction { node: NodeId },
+    #[error("user-defined function {} does not exist", .function.get())]
+    MissingUserFunction { function: FunctionId },
+    #[error(
+        "user-defined function {} expected {expected} argument(s), got {found}",
+        .function.get()
+    )]
+    UserFunctionArity {
+        function: FunctionId,
+        expected: usize,
+        found: usize,
+    },
+    #[error(
+        "user-defined function {} parameter {} expected {expected:?}, got {found}",
+        .function.get(),
+        .parameter.get()
+    )]
+    UserFunctionParameterType {
+        function: FunctionId,
+        parameter: FunctionParameterId,
+        expected: ir::ScalarType,
+        found: &'static str,
+    },
+    #[error(
+        "user-defined function {} output expected {expected:?}, got {found}",
+        .function.get()
+    )]
+    UserFunctionOutputType {
+        function: FunctionId,
+        expected: ir::ScalarType,
+        found: &'static str,
+    },
+    #[error(
+        "user-defined function {} references unavailable parameter {}",
+        .function.get(),
+        .parameter.get()
+    )]
+    MissingUserFunctionParameter {
+        function: FunctionId,
+        parameter: FunctionParameterId,
+    },
+    #[error("user-defined function {} has no body node {node}", .function.get())]
+    MissingUserFunctionNode { function: FunctionId, node: NodeId },
+    #[error(
+        "user-defined function {} contains unsupported body node {node}",
+        .function.get()
+    )]
+    UnsupportedUserFunctionNode { function: FunctionId, node: NodeId },
+    #[error(
+        "cycle detected in user-defined function {} at body node {node}",
+        .function.get()
+    )]
+    UserFunctionNodeCycle { function: FunctionId, node: NodeId },
+    #[error(
+        "user-defined function {} body node {node} expected a bool, got {found}",
+        .function.get()
+    )]
+    UserFunctionNotABool {
+        function: FunctionId,
+        node: NodeId,
+        found: &'static str,
+    },
+    #[error("user-defined function {} body node {node}: {source}", .function.get())]
+    UserFunctionBuiltin {
+        function: FunctionId,
+        node: NodeId,
+        #[source]
+        source: functions::FunctionError,
+    },
+    #[error("recursive user-defined function call reaches function {}", .function.get())]
+    UserFunctionCycle { function: FunctionId },
+    #[error("user-defined function calls exceed the nesting limit of {limit}")]
+    UserFunctionDepth { limit: usize },
     #[error("no source field found at path `{0}`")]
     MissingSourceField(String),
     #[error("node {node}: XML serialization failed: {message}")]
@@ -321,9 +396,10 @@ fn run_outputs_internal(
     );
     let extras_frame = Instance::Group(extras);
     let context = [&runtime_frame, &extras_frame, source];
-    failure::evaluate(&project.graph, &project.failure_rules, &context)?;
+    let program = eval_expr::EvalProgram::new(&project.graph, &project.user_functions);
+    failure::evaluate(program, &project.failure_rules, &context)?;
     let primary = eval_scope(
-        &project.graph,
+        program,
         &project.root,
         Some(&project.target),
         &context,
@@ -336,7 +412,7 @@ fn run_outputs_internal(
         targets.push(NamedOutput {
             name: target.name.clone(),
             instance: eval_scope(
-                &project.graph,
+                program,
                 &target.root,
                 Some(&target.schema),
                 &context,
@@ -412,3 +488,6 @@ mod sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/sequence_windows.rs"]
 mod sequence_windows_tests;
+#[cfg(test)]
+#[path = "tests/user_function.rs"]
+mod user_function_tests;

@@ -159,6 +159,7 @@ fn named_source_program() -> Program {
                 },
             },
         ],
+        user_functions: Vec::new(),
         failure_rules: Vec::new(),
         root: TargetScope {
             target_field: String::new(),

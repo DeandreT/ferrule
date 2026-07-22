@@ -27,7 +27,7 @@ pub fn read_layout(project_path: &Path) -> anyhow::Result<Option<CanvasLayout>> 
     };
     let layout: CanvasLayout = serde_json::from_str(&text)?;
     anyhow::ensure!(
-        layout.version == LAYOUT_VERSION,
+        (1..=LAYOUT_VERSION).contains(&layout.version),
         "unsupported canvas layout version {}",
         layout.version
     );

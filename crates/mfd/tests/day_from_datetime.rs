@@ -141,9 +141,19 @@ fn scalar_datetime_component_udf_imports_and_executes() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let validation = engine::validate(&imported.project);
     assert!(validation.is_empty(), "{validation:?}");
+    assert!(
+        imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::UserFunctionCall { .. }))
+    );
     for function in ["month_from_datetime", "day_from_datetime"] {
-        assert!(imported.project.graph.nodes.values().any(|node| {
-            matches!(node, Node::Call { function: imported, .. } if imported == function)
+        assert!(imported.project.user_functions.values().any(|definition| {
+            definition.body.nodes.values().any(|node| {
+                matches!(node, Node::Call { function: imported, .. } if imported == function)
+            })
         }));
     }
 

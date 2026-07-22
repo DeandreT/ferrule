@@ -48,6 +48,7 @@ fn static_source_project() -> Project {
             },
         }],
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([
                 (

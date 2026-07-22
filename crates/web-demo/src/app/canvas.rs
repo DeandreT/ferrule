@@ -80,12 +80,15 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::Const { .. }
+        | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
         | Node::XmlSerialize { .. } => vec![],
-        Node::Call { args, .. } => args.iter().copied().map(Some).collect(),
+        Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => {
+            args.iter().copied().map(Some).collect()
+        }
         Node::If {
             condition,
             then,
@@ -140,8 +143,14 @@ fn node_title(node: &Node) -> String {
         }
         Node::JoinPosition { join } => format!("join {} position", join.get()),
         Node::Const { .. } => "const".to_string(),
+        Node::FunctionParameter { parameter } => {
+            format!("function parameter {}", parameter.get())
+        }
         Node::RuntimeValue { value } => format!("runtime · {value:?}"),
         Node::Call { function, .. } => function.clone(),
+        Node::UserFunctionCall { function, .. } => {
+            format!("user function {}", function.get())
+        }
         Node::If { .. } => "if".to_string(),
         Node::ValueMap { .. } => "value-map".to_string(),
         Node::Lookup { collection, .. } => format!("lookup · {}", collection.join("/")),

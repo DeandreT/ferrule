@@ -12,6 +12,7 @@ mod failure;
 mod generated_sequence;
 mod iteration;
 mod runtime_value;
+mod user_function;
 mod value_map;
 
 use std::fmt;
@@ -33,6 +34,7 @@ pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
 pub use runtime_value::{ExecutionContext, RuntimeValue};
+pub use user_function::adapt_user_function_value;
 pub use value_map::value_map;
 
 /// Failure produced while executing generated mapping code.
@@ -87,6 +89,12 @@ pub enum RuntimeError {
     },
     InvalidBlockSize {
         node: u32,
+    },
+    UserFunctionType {
+        function: u64,
+        parameter: Option<u64>,
+        expected: ScalarType,
+        found: &'static str,
     },
 }
 
@@ -160,6 +168,21 @@ impl fmt::Display for RuntimeError {
             Self::InvalidBlockSize { node } => {
                 write!(formatter, "node {node}: group block size must be positive")
             }
+            Self::UserFunctionType {
+                function,
+                parameter,
+                expected,
+                found,
+            } => match parameter {
+                Some(parameter) => write!(
+                    formatter,
+                    "user function {function} parameter {parameter}: expected {expected:?}, got {found}"
+                ),
+                None => write!(
+                    formatter,
+                    "user function {function} output: expected {expected:?}, got {found}"
+                ),
+            },
         }
     }
 }
@@ -182,7 +205,8 @@ impl std::error::Error for RuntimeError {
             | Self::MappingFailure { .. }
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. }
-            | Self::InvalidBlockSize { .. } => None,
+            | Self::InvalidBlockSize { .. }
+            | Self::UserFunctionType { .. } => None,
         }
     }
 }

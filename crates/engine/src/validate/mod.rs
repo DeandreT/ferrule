@@ -8,6 +8,7 @@ mod join;
 mod options;
 mod schema;
 mod scope;
+mod user_function;
 
 use graph::{validate_cycles, validate_graph};
 use options::{
@@ -16,6 +17,7 @@ use options::{
 };
 use schema::{display_path, source_path_matches, validate_schema};
 use scope::{ScopeSchemas, validate_scope};
+use user_function::validate_user_functions;
 
 /// One actionable problem found before a mapping is executed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,6 +244,7 @@ pub fn validate(project: &Project) -> Vec<ValidationIssue> {
             }
         }
     }
+    validate_user_functions(project, &mut issues);
     validate_graph(project, &mut issues);
     validate_cycles(&project.graph, &mut issues);
     validate_scope(

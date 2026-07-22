@@ -32,6 +32,7 @@ fn failure_rules_roundtrip_in_declaration_order() {
                 message: None,
             },
         ],
+        user_functions: Default::default(),
         graph: Graph::default(),
         root: Scope::default(),
     };
@@ -40,7 +41,129 @@ fn failure_rules_roundtrip_in_declaration_order() {
     let decoded: Project = serde_json::from_str(&encoded).unwrap();
 
     assert_eq!(encoded.matches("\"message\"").count(), 1);
+    assert!(!encoded.contains("user_functions"));
     assert_eq!(decoded.failure_rules, project.failure_rules);
+    assert!(decoded.user_functions.is_empty());
+}
+
+#[test]
+fn user_defined_functions_roundtrip_with_stable_identities() {
+    let function_id = FunctionId::new(17);
+    let left = FunctionParameterId::new(23);
+    let right = FunctionParameterId::new(29);
+    let function = UserFunction {
+        library: "invoice".into(),
+        name: "format_line".into(),
+        description: Some("Formats one invoice line".into()),
+        parameters: vec![
+            FunctionParameter {
+                id: left,
+                name: "sku".into(),
+                ty: ScalarType::String,
+            },
+            FunctionParameter {
+                id: right,
+                name: "quantity".into(),
+                ty: ScalarType::Int,
+            },
+        ],
+        output_name: "line".into(),
+        output_type: ScalarType::String,
+        body: Graph {
+            nodes: [
+                (1, Node::FunctionParameter { parameter: left }),
+                (2, Node::FunctionParameter { parameter: right }),
+                (
+                    3,
+                    Node::Call {
+                        function: "concat".into(),
+                        args: vec![1, 2],
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        },
+        output: 3,
+    };
+    let project = Project {
+        source: ir::SchemaNode::group("Source", Vec::new()),
+        target: ir::SchemaNode::group("Target", Vec::new()),
+        source_path: None,
+        target_path: None,
+        source_options: FormatOptions::default(),
+        target_options: FormatOptions::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: [(function_id, function)].into_iter().collect(),
+        graph: Graph {
+            nodes: [
+                (
+                    10,
+                    Node::Const {
+                        value: ir::Value::String("ABC".into()),
+                    },
+                ),
+                (
+                    11,
+                    Node::Const {
+                        value: ir::Value::Int(2),
+                    },
+                ),
+                (
+                    12,
+                    Node::UserFunctionCall {
+                        function: function_id,
+                        args: vec![10, 11],
+                    },
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        },
+        root: Scope::default(),
+    };
+
+    let encoded = serde_json::to_string(&project).unwrap();
+    let decoded: Project = serde_json::from_str(&encoded).unwrap();
+    let decoded_function = &decoded.user_functions[&function_id];
+
+    assert_eq!(function_id.get(), 17);
+    assert_eq!(decoded_function.library, "invoice");
+    assert_eq!(decoded_function.name, "format_line");
+    assert_eq!(
+        decoded_function.description.as_deref(),
+        Some("Formats one invoice line")
+    );
+    assert_eq!(decoded_function.parameters[0].id.get(), 23);
+    assert_eq!(decoded_function.parameters[1].id.get(), 29);
+    assert_eq!(decoded_function.output_name, "line");
+    assert_eq!(decoded_function.output_type, ScalarType::String);
+    assert_eq!(decoded_function.output, 3);
+    assert!(matches!(
+        decoded_function.body.nodes.get(&1),
+        Some(Node::FunctionParameter { parameter }) if *parameter == left
+    ));
+    assert!(matches!(
+        decoded.graph.nodes.get(&12),
+        Some(Node::UserFunctionCall { function, args })
+            if *function == function_id && args == &[10, 11]
+    ));
+}
+
+#[test]
+fn user_defined_function_nodes_report_graph_dependencies() {
+    let parameter = Node::FunctionParameter {
+        parameter: FunctionParameterId::new(5),
+    };
+    let call = Node::UserFunctionCall {
+        function: FunctionId::new(8),
+        args: vec![13, 21, 34],
+    };
+
+    assert!(parameter.dependencies().is_empty());
+    assert_eq!(call.dependencies(), vec![13, 21, 34]);
 }
 
 #[test]

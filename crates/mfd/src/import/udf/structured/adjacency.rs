@@ -123,6 +123,7 @@ pub(in crate::import) fn try_read(
 
     Ok(Some((
         Definition {
+            scalar_interface: None,
             parameters: BTreeSet::from([base_id]),
             structured_parameters: BTreeSet::from([input_id]),
             outputs: BTreeMap::from([(

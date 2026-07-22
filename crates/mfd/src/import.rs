@@ -475,6 +475,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             }
         }
     }
+    let user_functions = udf_registry.user_functions();
     // UDF-owned static catalogs are secondary to ordinary mapping sources.
     // Keeping them last also preserves the document source as the default in
     // scalar-only mappings, where repetition-based primary scoring is tied.
@@ -756,6 +757,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         extra_sources,
         extra_targets,
         failure_rules,
+        user_functions,
         graph: builder.graph,
         root,
     };

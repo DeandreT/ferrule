@@ -140,7 +140,7 @@ public static class FerruleValueMaps
         };
     }
 
-    private static string RustFloatText(double value)
+    internal static string RustFloatText(double value)
     {
         var text = value.ToString("R", CultureInfo.InvariantCulture);
         var exponentIndex = text.IndexOf('E', StringComparison.Ordinal);

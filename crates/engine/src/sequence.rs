@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
 use ir::{Instance, Value};
-use mapping::{Graph, NodeId, SequenceExpr};
+use mapping::{NodeId, SequenceExpr};
 use regex::RegexBuilder;
 
 use super::EngineError;
-use super::eval_expr::eval_expr;
+use super::eval_expr::{EvalProgram, eval_expr};
 use super::source_iteration::PositionFrame;
 
 pub(super) const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
@@ -14,17 +14,17 @@ const MAX_TOKENIZE_REGEX_PATTERN_BYTES: usize = 64 * 1024;
 const MAX_TOKENIZE_REGEX_COMPILED_BYTES: usize = 10 * 1024 * 1024;
 
 pub(super) fn eval_sequence(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     sequence: &SequenceExpr,
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<Vec<Value>, EngineError> {
     let mut in_progress = HashSet::new();
-    eval_sequence_in_progress(graph, sequence, context, positions, &mut in_progress)
+    eval_sequence_in_progress(program, sequence, context, positions, &mut in_progress)
 }
 
 pub(super) fn eval_sequence_in_progress(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     sequence: &SequenceExpr,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -34,23 +34,24 @@ pub(super) fn eval_sequence_in_progress(
         SequenceExpr::Tokenize {
             input, delimiter, ..
         } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions, in_progress)?
+            let Some(input) = eval_sequence_arg(program, *input, context, positions, in_progress)?
             else {
                 return Ok(Vec::new());
             };
             let Some(delimiter) =
-                eval_sequence_arg(graph, *delimiter, context, positions, in_progress)?
+                eval_sequence_arg(program, *delimiter, context, positions, in_progress)?
             else {
                 return Ok(Vec::new());
             };
             tokenize(input, delimiter)
         }
         SequenceExpr::TokenizeByLength { input, length, .. } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions, in_progress)?
+            let Some(input) = eval_sequence_arg(program, *input, context, positions, in_progress)?
             else {
                 return Ok(Vec::new());
             };
-            let Some(length) = eval_sequence_arg(graph, *length, context, positions, in_progress)?
+            let Some(length) =
+                eval_sequence_arg(program, *length, context, positions, in_progress)?
             else {
                 return Ok(Vec::new());
             };
@@ -62,19 +63,19 @@ pub(super) fn eval_sequence_in_progress(
             flags,
             ..
         } => {
-            let Some(input) = eval_sequence_arg(graph, *input, context, positions, in_progress)?
+            let Some(input) = eval_sequence_arg(program, *input, context, positions, in_progress)?
             else {
                 return Ok(Vec::new());
             };
             let Some(pattern) =
-                eval_sequence_arg(graph, *pattern, context, positions, in_progress)?
+                eval_sequence_arg(program, *pattern, context, positions, in_progress)?
             else {
                 return Ok(Vec::new());
             };
             let flags = match flags {
                 Some(node) => {
                     let Some(flags) =
-                        eval_sequence_arg(graph, *node, context, positions, in_progress)?
+                        eval_sequence_arg(program, *node, context, positions, in_progress)?
                     else {
                         return Ok(Vec::new());
                     };
@@ -88,7 +89,7 @@ pub(super) fn eval_sequence_in_progress(
             let from = match from {
                 Some(node) => {
                     let Some(value) =
-                        eval_sequence_arg(graph, *node, context, positions, in_progress)?
+                        eval_sequence_arg(program, *node, context, positions, in_progress)?
                     else {
                         return Ok(Vec::new());
                     };
@@ -96,7 +97,7 @@ pub(super) fn eval_sequence_in_progress(
                 }
                 None => None,
             };
-            let Some(to) = eval_sequence_arg(graph, *to, context, positions, in_progress)? else {
+            let Some(to) = eval_sequence_arg(program, *to, context, positions, in_progress)? else {
                 return Ok(Vec::new());
             };
             generate_sequence(from, to)
@@ -111,14 +112,15 @@ pub(super) fn eval_sequence_in_progress(
             separator,
             ..
         } => {
-            let prefix = eval_sequence_arg(graph, *prefix, context, positions, in_progress)?
+            let prefix = eval_sequence_arg(program, *prefix, context, positions, in_progress)?
                 .map(|value| scalar_text(&value))
                 .transpose()?
                 .unwrap_or_default();
-            let separator = eval_sequence_arg(graph, *separator, context, positions, in_progress)?
-                .map(|value| scalar_text(&value))
-                .transpose()?
-                .unwrap_or_default();
+            let separator =
+                eval_sequence_arg(program, *separator, context, positions, in_progress)?
+                    .map(|value| scalar_text(&value))
+                    .transpose()?
+                    .unwrap_or_default();
             recursive_collect(
                 context,
                 collection,
@@ -299,14 +301,14 @@ fn scalar_text(value: &Value) -> Result<String, EngineError> {
 }
 
 pub(super) fn eval_sequence_exists(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     sequence: &SequenceExpr,
     predicate: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let values = eval_sequence_in_progress(graph, sequence, context, positions, in_progress)?;
+    let values = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
     for (index, value) in values.into_iter().enumerate() {
         let item = Instance::Scalar(value);
         let mut item_context = context.to_vec();
@@ -321,7 +323,7 @@ pub(super) fn eval_sequence_exists(
             document_path: None,
         });
         match eval_expr(
-            graph,
+            program,
             predicate,
             &item_context,
             &item_positions,
@@ -341,15 +343,15 @@ pub(super) fn eval_sequence_exists(
 }
 
 pub(super) fn eval_sequence_item_at(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     sequence: &SequenceExpr,
     index: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
-    let values = eval_sequence_in_progress(graph, sequence, context, positions, in_progress)?;
-    let index = eval_expr(graph, index, context, positions, in_progress)?;
+    let values = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
+    let index = eval_expr(program, index, context, positions, in_progress)?;
     super::aggregate::aggregate(
         mapping::AggregateOp::ItemAt,
         values.len(),
@@ -359,13 +361,13 @@ pub(super) fn eval_sequence_item_at(
 }
 
 fn eval_sequence_arg(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     node: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Option<Value>, EngineError> {
-    let value = eval_expr(graph, node, context, positions, in_progress)?;
+    let value = eval_expr(program, node, context, positions, in_progress)?;
     Ok((value != Value::Null).then_some(value))
 }
 

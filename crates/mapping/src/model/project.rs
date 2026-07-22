@@ -1,7 +1,61 @@
-use ir::SchemaNode;
+use std::collections::BTreeMap;
+
+use ir::{ScalarType, SchemaNode};
 use serde::{Deserialize, Serialize};
 
 use crate::{FormatOptions, Graph, NodeId, Scope, SequenceExpr};
+
+/// Stable identity of one user-defined function within a project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FunctionId(u64);
+
+impl FunctionId {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Stable identity of one ordered input in a user-defined function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FunctionParameterId(u64);
+
+impl FunctionParameterId {
+    pub const fn new(value: u64) -> Self {
+        Self(value)
+    }
+
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// One ordered scalar input exposed by a user-defined function.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FunctionParameter {
+    pub id: FunctionParameterId,
+    pub name: String,
+    pub ty: ScalarType,
+}
+
+/// A reusable scalar mapping with an isolated graph and one output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserFunction {
+    pub library: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub parameters: Vec<FunctionParameter>,
+    pub output_name: String,
+    pub output_type: ScalarType,
+    pub body: Graph,
+    pub output: NodeId,
+}
 
 /// One ordered mapping failure evaluated before any target is produced.
 ///
@@ -76,6 +130,9 @@ pub struct Project {
     /// Ordered failure rules evaluated before any primary or named target.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub failure_rules: Vec<FailureRule>,
+    /// Reusable scalar mappings referenced by [`crate::Node::UserFunctionCall`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub user_functions: BTreeMap<FunctionId, UserFunction>,
     pub graph: Graph,
     pub root: Scope,
 }

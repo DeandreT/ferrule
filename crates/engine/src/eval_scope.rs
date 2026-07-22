@@ -5,13 +5,13 @@ use ir::{
     XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
 };
 use mapping::{
-    Graph, IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SequenceWindow,
+    IterationOutput, NamedSource, NodeId, Scope, ScopeConstruction, SequenceWindow,
     SortFilterOrder, XmlMixedContentElement,
 };
 
 use crate::aggregate::value_ordering;
 use crate::dynamic_target::{self, eval_dynamic_key, insert_target_field};
-use crate::eval_expr::eval_expr;
+use crate::eval_expr::{EvalProgram, eval_expr};
 use crate::grouping::GroupingMode;
 use crate::iteration_output::finalize_scope_output;
 use crate::join::{execute as execute_join, extensions as join_extensions};
@@ -42,7 +42,7 @@ struct ProducedItem {
 }
 
 struct ItemEvaluator<'a> {
-    graph: &'a Graph,
+    program: EvalProgram<'a>,
     scope: &'a Scope,
     target: Option<&'a ir::SchemaNode>,
     extra_sources: &'a [NamedSource],
@@ -50,7 +50,7 @@ struct ItemEvaluator<'a> {
 }
 
 pub(crate) fn eval_scope(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     scope: &Scope,
     target: Option<&ir::SchemaNode>,
     context: &[&Instance],
@@ -62,7 +62,7 @@ pub(crate) fn eval_scope(
         let mut output = Vec::new();
         for segment in segments.iter() {
             match eval_scope(
-                graph,
+                program,
                 segment,
                 target,
                 context,
@@ -94,7 +94,7 @@ pub(crate) fn eval_scope(
     }
     let sequence_items = scope
         .sequence()
-        .map(|sequence| eval_sequence(graph, sequence, context, positions))
+        .map(|sequence| eval_sequence(program, sequence, context, positions))
         .transpose()?
         .map(|values| {
             Instance::Repeated(values.into_iter().map(Instance::Scalar).collect::<Vec<_>>())
@@ -142,7 +142,7 @@ pub(crate) fn eval_scope(
             item_positions.extend(driver.positions.iter().cloned());
             let mut in_progress = HashSet::new();
             let path = eval_expr(
-                graph,
+                program,
                 dynamic.node,
                 &item_context,
                 &item_positions,
@@ -246,7 +246,7 @@ pub(crate) fn eval_scope(
             item_context.extend(extension.instances.iter().copied());
             let mut item_positions = positions.to_vec();
             item_positions.extend(extension.positions.iter().cloned());
-            if passes_filter(graph, scope.filter, &item_context, &item_positions)? {
+            if passes_filter(program, scope.filter, &item_context, &item_positions)? {
                 filtered.push(extension);
             }
         }
@@ -265,7 +265,7 @@ pub(crate) fn eval_scope(
             for key in &sort_keys {
                 let mut in_progress = HashSet::new();
                 values.push(eval_expr(
-                    graph,
+                    program,
                     key.node,
                     &item_context,
                     &item_positions,
@@ -302,7 +302,7 @@ pub(crate) fn eval_scope(
         .windows
         .iter()
         .copied()
-        .map(|window| eval_sequence_window(graph, window, context, positions))
+        .map(|window| eval_sequence_window(program, window, context, positions))
         .collect::<Result<Vec<_>, _>>()?;
     if scope.iteration_output == IterationOutput::First {
         windows.push(EvaluatedWindow::First(1));
@@ -323,14 +323,14 @@ pub(crate) fn eval_scope(
         Some(GroupingMode::EndingWith(node))
     } else if let Some(node) = scope.group_into_blocks {
         Some(GroupingMode::IntoBlocks(eval_block_size(
-            graph, node, context, positions,
+            program, node, context, positions,
         )?))
     } else {
         None
     };
     let mut produced = Vec::new();
     let item_evaluator = ItemEvaluator {
-        graph,
+        program,
         scope,
         target,
         extra_sources,
@@ -345,7 +345,7 @@ pub(crate) fn eval_scope(
             let mut item_positions = positions.to_vec();
             item_positions.extend(extension.positions.iter().cloned());
             if !filter_before_sort
-                && !passes_filter(graph, scope.filter, &item_context, &item_positions)?
+                && !passes_filter(program, scope.filter, &item_context, &item_positions)?
             {
                 continue;
             }
@@ -358,7 +358,7 @@ pub(crate) fn eval_scope(
                 GroupingMode::By(key_node) | GroupingMode::AdjacentBy(key_node) => {
                     let mut in_progress = HashSet::new();
                     Some(eval_expr(
-                        graph,
+                        program,
                         key_node,
                         &item_context,
                         &item_positions,
@@ -371,7 +371,7 @@ pub(crate) fn eval_scope(
             };
             let starts_group = match grouping {
                 GroupingMode::StartingWith(predicate) => {
-                    passes_filter(graph, Some(predicate), &item_context, &item_positions)?
+                    passes_filter(program, Some(predicate), &item_context, &item_positions)?
                 }
                 GroupingMode::By(_)
                 | GroupingMode::AdjacentBy(_)
@@ -380,7 +380,7 @@ pub(crate) fn eval_scope(
             };
             let ends_group = match grouping {
                 GroupingMode::EndingWith(predicate) => {
-                    passes_filter(graph, Some(predicate), &item_context, &item_positions)?
+                    passes_filter(program, Some(predicate), &item_context, &item_positions)?
                 }
                 GroupingMode::By(_)
                 | GroupingMode::AdjacentBy(_)
@@ -388,7 +388,7 @@ pub(crate) fn eval_scope(
                 | GroupingMode::IntoBlocks(_) => false,
             };
             let post_filter_match = passes_filter(
-                graph,
+                program,
                 scope.post_group_filter,
                 &item_context,
                 &item_positions,
@@ -485,7 +485,7 @@ pub(crate) fn eval_scope(
                 item_context.extend(extension.instances.iter().copied());
                 let mut item_positions = positions.to_vec();
                 item_positions.extend(extension.positions.iter().cloned());
-                if passes_filter(graph, scope.filter, &item_context, &item_positions)? {
+                if passes_filter(program, scope.filter, &item_context, &item_positions)? {
                     filtered.push(extension);
                 }
             }
@@ -571,27 +571,27 @@ enum EvaluatedWindow {
 }
 
 fn eval_sequence_window(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     window: SequenceWindow,
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<EvaluatedWindow, EngineError> {
     Ok(match window {
         SequenceWindow::SkipFirst { count } => {
-            EvaluatedWindow::SkipFirst(eval_item_count(graph, count, context, positions)?)
+            EvaluatedWindow::SkipFirst(eval_item_count(program, count, context, positions)?)
         }
         SequenceWindow::First { count } => {
-            EvaluatedWindow::First(eval_item_count(graph, count, context, positions)?)
+            EvaluatedWindow::First(eval_item_count(program, count, context, positions)?)
         }
         SequenceWindow::From { position } => {
-            EvaluatedWindow::From(eval_item_count(graph, position, context, positions)?)
+            EvaluatedWindow::From(eval_item_count(program, position, context, positions)?)
         }
         SequenceWindow::FromTo { first, last } => EvaluatedWindow::FromTo {
-            first: eval_item_count(graph, first, context, positions)?,
-            last: eval_item_count(graph, last, context, positions)?,
+            first: eval_item_count(program, first, context, positions)?,
+            last: eval_item_count(program, last, context, positions)?,
         },
         SequenceWindow::Last { count } => {
-            EvaluatedWindow::Last(eval_item_count(graph, count, context, positions)?)
+            EvaluatedWindow::Last(eval_item_count(program, count, context, positions)?)
         }
     })
 }
@@ -630,13 +630,13 @@ fn renumber_extension(positions: &mut [PositionFrame], index: usize) {
 }
 
 fn eval_item_count(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     node: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<usize, EngineError> {
     let mut in_progress = HashSet::new();
-    let value = eval_expr(graph, node, context, positions, &mut in_progress)?;
+    let value = eval_expr(program, node, context, positions, &mut in_progress)?;
     let count = match &value {
         Value::Int(value) => Some(*value),
         Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
@@ -652,12 +652,12 @@ fn eval_item_count(
 }
 
 fn eval_block_size(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     node: NodeId,
     context: &[&Instance],
     positions: &[PositionFrame],
 ) -> Result<usize, EngineError> {
-    let size = eval_item_count(graph, node, context, positions)?;
+    let size = eval_item_count(program, node, context, positions)?;
     if size == 0 {
         return Err(EngineError::InvalidBlockSize { node });
     }
@@ -685,7 +685,7 @@ impl ItemEvaluator<'_> {
             .map(|node| {
                 let mut in_progress = HashSet::new();
                 match eval_expr(
-                    self.graph,
+                    self.program,
                     node,
                     context,
                     output_positions,
@@ -714,19 +714,19 @@ impl ItemEvaluator<'_> {
         apply_filter: bool,
     ) -> Result<Option<Instance>, EngineError> {
         let Self {
-            graph,
+            program,
             scope,
             target,
             extra_sources,
             source_loader,
         } = *self;
-        if apply_filter && !passes_filter(graph, scope.filter, context, filter_positions)? {
+        if apply_filter && !passes_filter(program, scope.filter, context, filter_positions)? {
             return Ok(None);
         }
 
         if let ScopeConstruction::Scalar { value } = &scope.construction {
             let mut in_progress = HashSet::new();
-            return eval_expr(graph, *value, context, output_positions, &mut in_progress)
+            return eval_expr(program, *value, context, output_positions, &mut in_progress)
                 .map(Instance::Scalar)
                 .map(Some);
         }
@@ -739,7 +739,7 @@ impl ItemEvaluator<'_> {
                     .ok_or(EngineError::RecursiveFilterRequiresGroup {
                         found: "missing context",
                     })?;
-            return recursive_filter::execute(graph, plan, current, context, output_positions)
+            return recursive_filter::execute(program, plan, current, context, output_positions)
                 .map(Some);
         }
 
@@ -748,7 +748,7 @@ impl ItemEvaluator<'_> {
         }
 
         if let ScopeConstruction::AdjacencyTree { plan } = &scope.construction {
-            return crate::adjacency_tree::construct(graph, plan, context, output_positions)
+            return crate::adjacency_tree::construct(program, plan, context, output_positions)
                 .map(Some);
         }
 
@@ -786,7 +786,7 @@ impl ItemEvaluator<'_> {
         for binding in &scope.bindings {
             let mut in_progress = HashSet::new();
             let value = eval_expr(
-                graph,
+                program,
                 binding.node,
                 context,
                 output_positions,
@@ -808,10 +808,10 @@ impl ItemEvaluator<'_> {
             insert_static_binding(&mut fields, binding.target_field.clone(), value, repeating)?;
         }
         for binding in &scope.dynamic_bindings {
-            let key = eval_dynamic_key(graph, binding.key, context, output_positions)?;
+            let key = eval_dynamic_key(program, binding.key, context, output_positions)?;
             let mut in_progress = HashSet::new();
             let value = eval_expr(
-                graph,
+                program,
                 binding.value,
                 context,
                 output_positions,
@@ -827,7 +827,7 @@ impl ItemEvaluator<'_> {
         for child in &scope.children {
             let child_target = target.and_then(|schema| schema.child(&child.target_field));
             let child_instance = eval_scope(
-                graph,
+                program,
                 child,
                 child_target,
                 context,
@@ -841,10 +841,10 @@ impl ItemEvaluator<'_> {
             if child.scope.iteration_output == IterationOutput::MappedSequence {
                 return Err(EngineError::MappedSequenceDynamicTarget);
             }
-            let key = eval_dynamic_key(graph, child.key, context, output_positions)?;
+            let key = eval_dynamic_key(program, child.key, context, output_positions)?;
             let child_target = target.and_then(ir::SchemaNode::dynamic_fields);
             let child_instance = eval_scope(
-                graph,
+                program,
                 &child.scope,
                 child_target,
                 context,
@@ -974,7 +974,7 @@ fn insert_static_binding(
 }
 
 fn passes_filter(
-    graph: &Graph,
+    program: EvalProgram<'_>,
     filter: Option<NodeId>,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -983,7 +983,7 @@ fn passes_filter(
         return Ok(true);
     };
     let mut in_progress = HashSet::new();
-    match eval_expr(graph, filter_node, context, positions, &mut in_progress)? {
+    match eval_expr(program, filter_node, context, positions, &mut in_progress)? {
         Value::Bool(value) => Ok(value),
         other => Err(EngineError::NotABool {
             node: filter_node,

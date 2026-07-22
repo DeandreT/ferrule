@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use ir::{ScalarType, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{JoinId, JoinPlan, Scope};
+use crate::{FunctionId, FunctionParameterId, JoinId, JoinPlan, Scope};
 
 pub type NodeId = u32;
 
@@ -61,11 +61,19 @@ pub enum Node {
     JoinPosition { join: JoinId },
     /// A literal value.
     Const { value: Value },
+    /// Reads one input from the isolated context of a user-defined function.
+    FunctionParameter { parameter: FunctionParameterId },
     /// Reads a value supplied explicitly by the execution host.
     RuntimeValue { value: RuntimeValue },
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.
     Call { function: String, args: Vec<NodeId> },
+    /// Invokes a reusable project-local scalar mapping. Arguments correspond
+    /// positionally to the function's ordered parameters.
+    UserFunctionCall {
+        function: FunctionId,
+        args: Vec<NodeId>,
+    },
     /// Evaluates `condition`; if it's `true` evaluates and returns `then`,
     /// otherwise `else_`. Unlike `Call`, only the taken branch is evaluated
     /// -- important once branches can error or have side effects.
@@ -187,6 +195,59 @@ pub enum Node {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arg: Option<NodeId>,
     },
+}
+
+impl Node {
+    /// Graph nodes whose outputs must be available to evaluate this node.
+    /// The order follows expression evaluation where that order is meaningful.
+    pub fn dependencies(&self) -> Vec<NodeId> {
+        match self {
+            Self::SourceField { .. }
+            | Self::SourceDocumentPath
+            | Self::Position { .. }
+            | Self::JoinField { .. }
+            | Self::JoinPosition { .. }
+            | Self::Const { .. }
+            | Self::FunctionParameter { .. }
+            | Self::RuntimeValue { .. }
+            | Self::XmlSerialize { .. } => Vec::new(),
+            Self::Call { args, .. } | Self::UserFunctionCall { args, .. } => args.clone(),
+            Self::If {
+                condition,
+                then,
+                else_,
+            } => vec![*condition, *then, *else_],
+            Self::ValueMap { input, .. } => vec![*input],
+            Self::Lookup { matches, .. } => vec![*matches],
+            Self::DynamicSourceField { key, .. } => vec![*key],
+            Self::XmlMixedContent { replacements, .. } => replacements
+                .iter()
+                .map(|replacement| replacement.expression)
+                .collect(),
+            Self::CollectionFind {
+                predicate, value, ..
+            } => vec![*predicate, *value],
+            Self::SequenceExists {
+                sequence,
+                predicate,
+            } => sequence
+                .inputs()
+                .into_iter()
+                .chain([sequence.item(), *predicate])
+                .collect(),
+            Self::SequenceItemAt { sequence, index } => sequence
+                .inputs()
+                .into_iter()
+                .chain([sequence.item(), *index])
+                .collect(),
+            Self::Aggregate {
+                expression, arg, ..
+            }
+            | Self::JoinAggregate {
+                expression, arg, ..
+            } => expression.iter().chain(arg).copied().collect(),
+        }
+    }
 }
 
 /// One direct-element replacement in [`Node::XmlMixedContent`].

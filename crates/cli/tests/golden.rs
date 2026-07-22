@@ -351,6 +351,7 @@ fn composite_xlsx_source_maps_fixed_record_and_repeated_table_to_json() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![Binding {
@@ -444,7 +445,8 @@ fn composite_xlsx_source_rejects_legacy_layout_options() {
     assert!(
         error
             .to_string()
-            .contains("`xlsx_composite` cannot be combined")
+            .contains("a retained XLSX layout cannot be combined"),
+        "unexpected error: {error:#}"
     );
 }
 
@@ -575,6 +577,7 @@ fn grid_xlsx_source_maps_headers_and_matrix_rows_to_nested_json_and_xml() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             children: vec![Scope {
@@ -696,10 +699,22 @@ fn grid_xlsx_source_rejects_other_layout_modes() {
     legacy.xlsx_rows.clear();
     legacy.xlsx_sheet = Some("Legacy".into());
 
-    for (mode, options) in [
-        ("transposed", transposed),
-        ("composite", composite),
-        ("legacy", legacy),
+    for (mode, options, expected) in [
+        (
+            "transposed",
+            transposed,
+            "a retained XLSX layout cannot be combined",
+        ),
+        (
+            "composite",
+            composite,
+            "retained XLSX composite, worksheet-set, grid, and hierarchical layouts are mutually exclusive",
+        ),
+        (
+            "legacy",
+            legacy,
+            "a retained XLSX layout cannot be combined",
+        ),
     ] {
         let mut project = project.clone();
         project.source_options = options;
@@ -716,7 +731,10 @@ fn grid_xlsx_source_rejects_other_layout_modes() {
         }
         std::fs::remove_file(output_path).ok();
 
-        assert!(error.to_string().contains("`xlsx_grid` cannot be combined"));
+        assert!(
+            error.to_string().contains(expected),
+            "unexpected error: {error:#}"
+        );
     }
 }
 
@@ -949,6 +967,7 @@ fn composite_sqlite_input_iterates_a_selected_table() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph: Graph {
             nodes: BTreeMap::from([(
                 0,

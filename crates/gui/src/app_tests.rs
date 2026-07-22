@@ -54,14 +54,14 @@ fn canvas_layout_saves_alongside_backward_compatible_project_json() {
             value: ir::Value::Null,
         },
     );
-    app.snarl = build_snarl(&app.project);
+    app.main_canvas.snarl = build_snarl(&app.project);
     move_canvas_node(
-        &mut app.snarl,
+        &mut app.main_canvas.snarl,
         CanvasNode::SourceBlock(0),
         egui::pos2(73.0, 91.0),
     );
     move_canvas_node(
-        &mut app.snarl,
+        &mut app.main_canvas.snarl,
         CanvasNode::Graph(7),
         egui::pos2(517.0, 233.0),
     );
@@ -80,11 +80,11 @@ fn canvas_layout_saves_alongside_backward_compatible_project_json() {
     };
     loaded.load_project_from(&project_path);
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::SourceBlock(0)),
+        canvas_position(&loaded.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         egui::pos2(73.0, 91.0)
     );
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::Graph(7)),
+        canvas_position(&loaded.main_canvas.snarl, CanvasNode::Graph(7)),
         egui::pos2(517.0, 233.0)
     );
     assert!(!loaded.is_dirty());
@@ -125,7 +125,7 @@ fn layout_sidecar_restores_placeholder_identity_and_wiring() {
             input: 0,
         },
     );
-    app.snarl = snarl;
+    app.main_canvas.snarl = snarl;
     app.document = DocumentLocation::saved(project_path.clone());
     app.save_document_to(&project_path)
         .expect("project and layout save");
@@ -136,13 +136,19 @@ fn layout_sidecar_restores_placeholder_identity_and_wiring() {
     };
     loaded.load_project_from(&project_path);
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::Placeholder(0)),
+        canvas_position(&loaded.main_canvas.snarl, CanvasNode::Placeholder(0)),
         egui::pos2(180.0, 210.0)
     );
     let wires: Vec<_> = loaded
+        .main_canvas
         .snarl
         .wires()
-        .map(|(from, to)| (loaded.snarl[from.node], loaded.snarl[to.node]))
+        .map(|(from, to)| {
+            (
+                loaded.main_canvas.snarl[from.node],
+                loaded.main_canvas.snarl[to.node],
+            )
+        })
         .collect();
     assert_eq!(
         wires,
@@ -169,19 +175,19 @@ fn stale_layout_cannot_reclassify_or_reposition_nodes() {
             value: ir::Value::Int(1),
         },
     );
-    app.snarl = build_snarl(&app.project);
-    for node in app.snarl.nodes_mut() {
+    app.main_canvas.snarl = build_snarl(&app.project);
+    for node in app.main_canvas.snarl.nodes_mut() {
         if *node == CanvasNode::Graph(0) {
             *node = CanvasNode::Placeholder(0);
         }
     }
     move_canvas_node(
-        &mut app.snarl,
+        &mut app.main_canvas.snarl,
         CanvasNode::SourceBlock(0),
         egui::pos2(901.0, 733.0),
     );
     move_canvas_node(
-        &mut app.snarl,
+        &mut app.main_canvas.snarl,
         CanvasNode::Graph(1),
         egui::pos2(1201.0, 833.0),
     );
@@ -217,22 +223,24 @@ fn stale_layout_cannot_reclassify_or_reposition_nodes() {
     loaded.load_project_from(&project_path);
     assert!(
         loaded
+            .main_canvas
             .snarl
             .nodes()
             .any(|node| *node == CanvasNode::Graph(0))
     );
     assert!(
         !loaded
+            .main_canvas
             .snarl
             .nodes()
             .any(|node| *node == CanvasNode::Placeholder(0))
     );
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::SourceBlock(0)),
+        canvas_position(&loaded.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         expected_source
     );
     assert_eq!(
-        canvas_position(&loaded.snarl, CanvasNode::Graph(1)),
+        canvas_position(&loaded.main_canvas.snarl, CanvasNode::Graph(1)),
         expected_graph
     );
 
@@ -256,7 +264,7 @@ fn project_without_layout_sidecar_uses_default_layout() {
     };
     app.load_project_from(&project_path);
     assert_eq!(
-        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         egui::pos2(0.0, 0.0)
     );
     assert_eq!(app.status, format!("loaded {}", project_path.display()));
@@ -269,33 +277,37 @@ fn project_without_layout_sidecar_uses_default_layout() {
 #[test]
 fn canvas_moves_and_arrange_roundtrip_through_history() {
     let mut app = FerruleApp::default();
-    let arranged = canvas_position(&app.snarl, CanvasNode::SourceBlock(0));
+    let arranged = canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0));
     let custom = egui::pos2(123.0, 456.0);
-    move_canvas_node(&mut app.snarl, CanvasNode::SourceBlock(0), custom);
+    move_canvas_node(
+        &mut app.main_canvas.snarl,
+        CanvasNode::SourceBlock(0),
+        custom,
+    );
     app.mark_clean();
     app.rebase_history();
 
     arrange_snarl(
-        &mut app.snarl,
-        &app.canvas_node_sizes,
+        &mut app.main_canvas.snarl,
+        &app.main_canvas.node_sizes,
         crate::appearance::WireAppearance::default(),
     );
     app.observe_editor_history(std::time::Instant::now(), false);
     assert_eq!(
-        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         arranged
     );
     assert!(app.is_dirty());
 
     app.undo_project();
     assert_eq!(
-        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         custom
     );
     assert!(!app.is_dirty());
     app.redo_project();
     assert_eq!(
-        canvas_position(&app.snarl, CanvasNode::SourceBlock(0)),
+        canvas_position(&app.main_canvas.snarl, CanvasNode::SourceBlock(0)),
         arranged
     );
     assert!(app.is_dirty());
@@ -678,6 +690,7 @@ fn build_snarl_recreates_endpoint_and_binding_wires() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             iteration: mapping::ScopeIteration::Source(vec![]),
@@ -773,6 +786,7 @@ fn build_snarl_matches_hidden_source_fields_by_frame_and_path() {
         extra_sources: Vec::new(),
         extra_targets: Vec::new(),
         failure_rules: Vec::new(),
+        user_functions: Default::default(),
         graph,
         root: Scope {
             bindings: vec![
@@ -827,6 +841,7 @@ fn build_snarl_only_hides_legacy_frameless_fields_with_unique_suffixes() {
             extra_sources: Vec::new(),
             extra_targets: Vec::new(),
             failure_rules: Vec::new(),
+            user_functions: Default::default(),
             graph,
             root: Scope {
                 bindings: vec![Binding {
@@ -892,7 +907,7 @@ fn new_mapping_stages_both_schemas_before_replacing_the_project() {
     assert_eq!(app.project.target.name, "TargetRoot");
     assert!(app.new_mapping_setup.is_none());
     assert!(app.is_dirty());
-    assert_eq!(app.snarl.nodes().count(), 2);
+    assert_eq!(app.main_canvas.snarl.nodes().count(), 2);
 
     std::fs::remove_dir_all(directory).expect("temporary test directory is removed");
 }
