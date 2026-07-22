@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use ir::SchemaKind;
+use ir::{SchemaKind, Value};
 use mapping::NodeId;
 
 use super::function::{
@@ -223,7 +223,13 @@ impl GraphBuilder<'_> {
         if is_input_component(&self.fn_components[idx]) {
             let input = match self.input_feed(idx, 0) {
                 Some(feed) => self.value_node(feed),
-                None => Some(self.const_null()),
+                None => {
+                    let preview = self.fn_components[idx]
+                        .input_preview
+                        .clone()
+                        .unwrap_or(Value::Null);
+                    Some(self.alloc(mapping::Node::Const { value: preview }))
+                }
             };
             return match (input, self.fn_components[idx].input_type) {
                 (Some(input), Some(ir::ScalarType::Int | ir::ScalarType::Float)) => {
