@@ -504,6 +504,61 @@ fn fixed_width_records_use_unicode_columns_alignment_bom_and_crlf_output() {
 }
 
 #[test]
+fn delimited_fixed_width_records_allow_omitted_final_string_padding() {
+    let layout = FlexTextLayout::new(
+        "document",
+        FlexCommand::FixedWidthRecords {
+            name: "rows".into(),
+            fields: vec![
+                FixedWidthRecordField::new("count", ScalarType::Int, nonzero(2)).unwrap(),
+                FixedWidthRecordField::new("name", ScalarType::String, nonzero(3)).unwrap(),
+            ],
+            fill_char: ' ',
+            record_delimiters: true,
+            treat_empty_as_absent: true,
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .unwrap();
+    let parsed = parse(&layout, "12Ada\n 7Bo");
+    let rows = parsed
+        .field("rows")
+        .and_then(Instance::as_repeated)
+        .unwrap();
+
+    assert_eq!(
+        rows[1].field("name"),
+        Some(&scalar(Value::String("Bo".into())))
+    );
+    assert_eq!(rows[1].field("count"), Some(&scalar(Value::Int(7))));
+}
+
+#[test]
+fn fixed_width_records_keep_non_final_and_contiguous_short_fields_strict() {
+    let layout = fixed_layout(FlexLineEnding::Lf, false);
+    assert!(from_str("Bo\n", &layout.schema(), &layout).is_err());
+
+    let contiguous = FlexTextLayout::new(
+        "document",
+        FlexCommand::FixedWidthRecords {
+            name: "rows".into(),
+            fields: vec![
+                FixedWidthRecordField::new("count", ScalarType::Int, nonzero(2)).unwrap(),
+                FixedWidthRecordField::new("name", ScalarType::String, nonzero(3)).unwrap(),
+            ],
+            fill_char: ' ',
+            record_delimiters: false,
+            treat_empty_as_absent: true,
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .unwrap();
+    assert!(from_str("12Bo", &contiguous.schema(), &contiguous).is_err());
+}
+
+#[test]
 fn fixed_width_records_honor_fill_empty_and_contiguous_record_settings() {
     let layout = FlexTextLayout::new(
         "document",

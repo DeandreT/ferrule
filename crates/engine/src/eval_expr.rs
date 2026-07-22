@@ -34,17 +34,13 @@ pub(crate) fn eval_expr(
         .ok_or(EngineError::MissingNode(node_id))?;
 
     let result = match node {
-        Node::SourceField { path, frame } => {
-            let value = match frame {
-                Some(frame) => scalar_in_frame(context, positions, frame, path),
-                None => scalar_in_active_collection(context, positions, path),
-            };
-            value.ok_or_else(|| {
-                let mut display = frame.clone().unwrap_or_default();
-                display.extend(path.iter().cloned());
-                EngineError::MissingSourceField(display.join("/"))
-            })
-        }
+        Node::SourceField { path, frame } => match frame {
+            Some(frame) => {
+                Ok(scalar_in_frame(context, positions, frame, path).unwrap_or(Value::Null))
+            }
+            None => scalar_in_active_collection(context, positions, path)
+                .ok_or_else(|| EngineError::MissingSourceField(path.join("/"))),
+        },
         Node::SourceDocumentPath => source_document_path(context, positions)
             .map(|path| Value::String(path.to_string()))
             .ok_or_else(|| EngineError::MissingSourceField("<document-path>".into())),
