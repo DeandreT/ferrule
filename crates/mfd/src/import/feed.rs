@@ -134,6 +134,13 @@ impl GraphBuilder<'_> {
             return Some(node);
         }
         if self
+            .external_xslt_aggregates
+            .iter()
+            .any(|aggregate| aggregate.output == key)
+        {
+            return self.external_xslt_aggregate_node(key);
+        }
+        if self
             .json_serializers
             .iter()
             .any(|serializer| serializer.output == key)
