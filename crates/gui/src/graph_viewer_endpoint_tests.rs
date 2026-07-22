@@ -1,10 +1,9 @@
 use super::*;
 use crate::canvas::{source_blocks, target_blocks};
-use egui_snarl::ui::SnarlViewer;
 use ir::{ScalarType, SchemaNode};
 
 #[test]
-fn wheel_scrolls_before_paint_and_routes_hidden_wires_to_edge_proxies() {
+fn wheel_scrolls_endpoint_under_pointer_and_routes_hidden_wires_to_edge_proxies() {
     let source_schema = SchemaNode::group(
         "source",
         (0..20)
@@ -79,7 +78,6 @@ fn wheel_scrolls_before_paint_and_routes_hidden_wires_to_edge_proxies() {
         .get_node_info(source)
         .map(|info| info.pos + egui::vec2(100.0, 100.0))
         .expect("source endpoint exists");
-    let mut transform = egui::emath::TSTransform::from_translation(egui::vec2(0.0, -90.0));
     {
         let mut viewer = GraphViewer {
             graph: &mut graph,
@@ -99,17 +97,13 @@ fn wheel_scrolls_before_paint_and_routes_hidden_wires_to_edge_proxies() {
             hovered_node_this_frame: None,
             camera_pan: egui::Vec2::ZERO,
             camera_focus: None,
-            pending_endpoint_wheel: Some((source_pointer, -90.0)),
-            endpoint_wheel_consumed: false,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
             error: None,
         };
-        viewer.current_transform(&mut transform, &mut snarl);
-        assert!(viewer.endpoint_wheel_consumed);
+        assert!(viewer.scroll_endpoint_at(source_pointer, -90.0, &mut snarl));
     }
 
-    assert_eq!(transform.translation.y, 0.0);
     assert_eq!(endpoint_scroll.offset(CanvasNode::SourceBlock(0), 20), 5);
     assert_eq!(wire_pins(&snarl), [(0, 0), (11, 12)]);
 
@@ -117,7 +111,6 @@ fn wheel_scrolls_before_paint_and_routes_hidden_wires_to_edge_proxies() {
         .get_node_info(target)
         .map(|info| info.pos + egui::vec2(100.0, 100.0))
         .expect("target endpoint exists");
-    transform.translation.y = -90.0;
     {
         let mut viewer = GraphViewer {
             graph: &mut graph,
@@ -137,14 +130,11 @@ fn wheel_scrolls_before_paint_and_routes_hidden_wires_to_edge_proxies() {
             hovered_node_this_frame: None,
             camera_pan: egui::Vec2::ZERO,
             camera_focus: None,
-            pending_endpoint_wheel: Some((target_pointer, -90.0)),
-            endpoint_wheel_consumed: false,
             canvas_transform: None,
             pin_interaction_ids: Vec::new(),
             error: None,
         };
-        viewer.current_transform(&mut transform, &mut snarl);
-        assert!(viewer.endpoint_wheel_consumed);
+        assert!(viewer.scroll_endpoint_at(target_pointer, -90.0, &mut snarl));
     }
 
     assert_eq!(endpoint_scroll.offset(CanvasNode::TargetBlock(0), 20), 5);

@@ -19,6 +19,11 @@ struct CanvasFocus {
     zoom: Option<f32>,
 }
 
+#[derive(Clone, Copy)]
+// The last painted transform lets endpoint wheel input be consumed before
+// egui::Scene decides whether to pan the canvas behind an interactive node.
+struct CanvasTransform(egui::emath::TSTransform);
+
 pub fn show(
     snarl: &mut Snarl<CanvasNode>,
     viewer: &mut GraphViewer<'_>,
@@ -51,6 +56,7 @@ pub fn show(
     let fit_marker = canvas_id.with("initial_fit_complete");
     let hover_marker = canvas_id.with("hovered_node");
     let focus_marker = canvas_id.with("minimap_focus");
+    let transform_marker = canvas_id.with("transform");
     viewer.camera_focus = ui
         .ctx()
         .data_mut(|data| data.remove_temp::<CanvasFocus>(focus_marker))
@@ -75,14 +81,27 @@ pub fn show(
         search.open_selected(&selected, snarl);
     }
     viewer.endpoint_search_match = search.active_match(viewer.source_blocks, viewer.target_blocks);
-    viewer.pending_endpoint_wheel = (!wire_dragging)
+    let previous_transform = ui
+        .ctx()
+        .data(|data| data.get_temp::<CanvasTransform>(transform_marker));
+    let endpoint_wheel = (!wire_dragging)
         .then(|| {
             let delta_y = ui.ctx().input(|input| input.smooth_scroll_delta().y);
-            pointer.map(|pointer| (pointer, delta_y))
+            pointer
+                .zip(previous_transform)
+                .map(|(pointer, transform)| (transform.0.inverse() * pointer, delta_y))
         })
         .flatten()
         .filter(|(_, delta_y)| *delta_y != 0.0);
-    viewer.endpoint_wheel_consumed = false;
+    if let Some((graph_position, delta_y)) = endpoint_wheel
+        && viewer.scroll_endpoint_at(graph_position, delta_y, snarl)
+    {
+        // Consume the vertical component before egui::Scene can interpret it
+        // as canvas panning. Horizontal trackpad motion remains available.
+        ui.ctx()
+            .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        ui.ctx().request_repaint();
+    }
     let delete = !ui.ctx().egui_wants_keyboard_input()
         && ui.ctx().input_mut(|input| {
             input.consume_key(egui::Modifiers::NONE, egui::Key::Delete)
@@ -98,10 +117,9 @@ pub fn show(
         .id(canvas_id)
         .style(style)
         .show(snarl, viewer, ui);
-    if viewer.endpoint_wheel_consumed {
+    if let Some(transform) = viewer.canvas_transform {
         ui.ctx()
-            .input_mut(|input| input.smooth_scroll_delta.y = 0.0);
-        ui.ctx().request_repaint();
+            .data_mut(|data| data.insert_temp(transform_marker, CanvasTransform(transform)));
     }
     crate::canvas_search::show(
         ui.ctx(),

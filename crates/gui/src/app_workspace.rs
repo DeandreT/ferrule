@@ -598,8 +598,6 @@ impl FerruleApp {
                 hovered_node_this_frame: None,
                 camera_pan: egui::Vec2::ZERO,
                 camera_focus: None,
-                pending_endpoint_wheel: None,
-                endpoint_wheel_consumed: false,
                 canvas_transform: None,
                 pin_interaction_ids: Vec::new(),
                 error: None,
