@@ -15,7 +15,8 @@
 //! single-table SQLite database components (schema introspected from the
 //! referenced database when reachable), the common core functions,
 //! aggregates (count/sum/avg/min/max/string-join/item-at, converted to
-//! collection-reducing graph nodes), constants, if-else, value-map, and
+//! collection-reducing graph nodes), bounded one-parameter aggregate templates
+//! from adjacent XSLT extension modules, constants, if-else, value-map, and
 //! filter- and group-by-driven iteration -- into a
 //! ferrule [`mapping::Project`], collecting a warning for every construct
 //! it has to skip rather than failing. [`export`] writes a ferrule project
