@@ -58,6 +58,10 @@ impl<'a> SourceExports<'a> {
         self.extras.len() + 1
     }
 
+    pub(super) const fn primary_component_uid(&self) -> u32 {
+        self.primary.component_uid
+    }
+
     pub(super) fn iter(&self) -> impl Iterator<Item = &SourceExport<'a>> {
         std::iter::once(&self.primary).chain(&self.extras)
     }

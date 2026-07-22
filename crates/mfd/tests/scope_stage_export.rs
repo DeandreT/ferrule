@@ -365,19 +365,19 @@ fn nested_concatenation_can_switch_absolute_collections_in_one_named_source()
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
-    assert_eq!(imported.project.source.name, "Catalog");
+    assert_eq!(imported.project.source.name, "Driver");
     assert!(
         imported
             .project
             .extra_sources
             .iter()
-            .any(|source| source.name == "Driver")
+            .any(|source| source.name == "catalog")
     );
     assert_eq!(
         engine::run_with_sources(
             &imported.project,
-            &catalog,
-            vec![("Driver".into(), primary)],
+            &primary,
+            vec![("catalog".into(), catalog)],
         )?,
         expected
     );
