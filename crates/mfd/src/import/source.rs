@@ -557,7 +557,9 @@ fn dependency_collection(component: &SchemaComponent, path: &[String]) -> Option
     let externally_repeated = component.schema.repeating
         || component.options.local_xml_file_set
         || component.format == ComponentFormat::Csv
-        || component.format == ComponentFormat::Xlsx && component.options.xlsx_composite.is_none();
+        || component.format == ComponentFormat::Xlsx
+            && component.options.xlsx_composite.is_none()
+            && component.options.xlsx_worksheet_set.is_none();
     externally_repeated.then(Vec::new)
 }
 

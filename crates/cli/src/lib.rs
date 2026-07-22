@@ -514,6 +514,7 @@ fn write_output(
             if let Some(layout) = &options.xlsx_hierarchical {
                 if options.xlsx_grid.is_some()
                     || options.xlsx_composite.is_some()
+                    || options.xlsx_worksheet_set.is_some()
                     || has_legacy_xlsx_layout(options)
                 {
                     bail!("`xlsx_hierarchical` cannot be combined with other XLSX layout options");
@@ -523,6 +524,11 @@ fn write_output(
             }
             if options.xlsx_grid.is_some() {
                 bail!("grid XLSX output is not supported; `xlsx_grid` is input-only");
+            }
+            if options.xlsx_worksheet_set.is_some() {
+                bail!(
+                    "worksheet-set XLSX output is not supported; `xlsx_worksheet_set` is input-only"
+                );
             }
             if options.xlsx_composite.is_some() {
                 bail!("composite XLSX output is not supported; `xlsx_composite` is input-only");
@@ -765,6 +771,7 @@ fn read_instance(
             if let Some(layout) = &options.xlsx_hierarchical {
                 if options.xlsx_grid.is_some()
                     || options.xlsx_composite.is_some()
+                    || options.xlsx_worksheet_set.is_some()
                     || has_legacy_xlsx_layout(options)
                 {
                     anyhow::bail!(
@@ -774,7 +781,10 @@ fn read_instance(
                 format_xlsx::read_hierarchical(path, schema, layout)
                     .with_context(|| format!("reading input {}", path.display()))?
             } else if let Some(layout) = &options.xlsx_grid {
-                if options.xlsx_composite.is_some() || has_legacy_xlsx_layout(options) {
+                if options.xlsx_composite.is_some()
+                    || options.xlsx_worksheet_set.is_some()
+                    || has_legacy_xlsx_layout(options)
+                {
                     anyhow::bail!(
                         "`xlsx_grid` cannot be combined with `xlsx_composite` or legacy XLSX sheet, row, column, transposed, or header options"
                     );
@@ -782,6 +792,14 @@ fn read_instance(
                 let rows = format_xlsx::read_grid(path, schema, layout)
                     .with_context(|| format!("reading input {}", path.display()))?;
                 Instance::Repeated(rows)
+            } else if let Some(layout) = &options.xlsx_worksheet_set {
+                if options.xlsx_composite.is_some() || has_legacy_xlsx_layout(options) {
+                    anyhow::bail!(
+                        "`xlsx_worksheet_set` cannot be combined with `xlsx_composite` or legacy XLSX sheet, row, column, transposed, or header options"
+                    );
+                }
+                format_xlsx::read_worksheet_set(path, schema, layout)
+                    .with_context(|| format!("reading input {}", path.display()))?
             } else if let Some(layout) = &options.xlsx_composite {
                 if has_legacy_xlsx_layout(options) {
                     anyhow::bail!(
@@ -1376,6 +1394,7 @@ fn x12_separators(separators: mapping::X12Separators) -> format_edi::x12::Separa
 fn has_any_xlsx_layout(options: &FormatOptions) -> bool {
     has_legacy_xlsx_layout(options)
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
 }
@@ -1444,6 +1463,7 @@ fn has_xlsx_specific_layout(options: &FormatOptions) -> bool {
         || options.xlsx_update_existing
         || !options.xlsx_rows.is_empty()
         || options.xlsx_composite.is_some()
+        || options.xlsx_worksheet_set.is_some()
         || options.xlsx_grid.is_some()
         || options.xlsx_hierarchical.is_some()
 }

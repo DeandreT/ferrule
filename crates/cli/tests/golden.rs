@@ -12,7 +12,9 @@ fn composite_xlsx_layout() -> mapping::XlsxCompositeLayout {
             start_row: XlsxRow::new(1).unwrap(),
             columns: vec![XlsxColumn::new(1).unwrap(), XlsxColumn::new(2).unwrap()],
             has_header: true,
+            row_number_field: None,
         },
+        additional_tables: Vec::new(),
         records: vec![XlsxFixedRecord {
             path: vec!["Office".into()],
             sheet: Some("Office".into()),

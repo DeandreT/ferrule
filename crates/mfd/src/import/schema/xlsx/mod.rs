@@ -10,6 +10,7 @@ use super::{ComponentFormat, SchemaComponent, entry_key_sets, is_default_output,
 
 mod grid;
 mod hierarchical;
+mod worksheet_set;
 
 const MAX_WORKSHEET_ROW: u32 = 1_048_576;
 const MAX_WORKSHEET_COLUMN: u32 = 16_384;
@@ -26,6 +27,8 @@ struct Column {
 #[derive(Clone)]
 struct Table {
     sheet: Option<String>,
+    worksheet_ports: Vec<u32>,
+    worksheet_name_ports: Vec<u32>,
     layout: TableLayout,
 }
 
@@ -35,6 +38,7 @@ enum TableLayout {
         start_row: Option<u32>,
         has_header: bool,
         row_ports: Vec<u32>,
+        row_number_ports: Vec<u32>,
         columns: Vec<Column>,
     },
     Transposed {
@@ -124,7 +128,20 @@ pub(super) fn read(
         );
     }
 
-    if !records.is_empty()
+    if let Some(worksheet_set) = worksheet_set::read(
+        &name,
+        excel,
+        &tables,
+        input_keys.clone(),
+        output_keys.clone(),
+        is_source,
+        is_default_output(component),
+        warnings,
+    ) {
+        return Some(with_workbook_root_ports(worksheet_set, workbook));
+    }
+
+    if (!records.is_empty() || tables.len() > 1)
         && let Some(composite) = read_composite(
             name.clone(),
             excel,
@@ -155,16 +172,23 @@ pub(super) fn read(
         }
     };
 
+    warn_dynamic_table_ports(&table, &name, warnings);
     let mut ports = BTreeMap::new();
     let (fields, options) = match table.layout {
         TableLayout::Flat {
             start_row,
             has_header,
             row_ports,
+            row_number_ports,
             columns,
         } => {
             for key in row_ports {
                 ports.insert(key, Vec::new());
+            }
+            if !row_number_ports.is_empty() {
+                warnings.push(format!(
+                    "xlsx component `{name}` exposes physical Row/@r ports; those index values were skipped"
+                ));
             }
             let mut fields = Vec::with_capacity(columns.len());
             let mut xlsx_columns = Vec::with_capacity(columns.len());
@@ -275,52 +299,50 @@ fn read_composite(
     is_default_output: bool,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    let table = match tables.len() {
-        1 => tables.pop()?,
-        0 => {
-            warnings.push(format!(
-                "xlsx component `{name}` has fixed records but no supported open row table; composite XLSX sources require exactly one table"
-            ));
-            return None;
-        }
-        count => {
-            warnings.push(format!(
-                "xlsx component `{name}` has fixed records and {count} tables; composite XLSX sources require exactly one table"
-            ));
-            return None;
-        }
-    };
-    let TableLayout::Flat {
-        start_row,
-        has_header,
-        row_ports,
-        columns,
-    } = table.layout
-    else {
+    if tables.is_empty() {
         warnings.push(format!(
-            "xlsx component `{name}` combines fixed records with a transposed table; that composite layout is unsupported"
+            "xlsx component `{name}` has fixed records but no supported open row table; composite XLSX sources require at least one table"
         ));
         return None;
-    };
-    let Some(table_name) = table.sheet.clone().filter(|sheet| !sheet.is_empty()) else {
+    }
+    if tables
+        .iter()
+        .any(|table| matches!(table.layout, TableLayout::Transposed { .. }))
+    {
+        let reason = if !records.is_empty() && tables.len() == 1 {
+            "combines fixed records with a transposed table"
+        } else {
+            "combines multiple tables with a transposed table"
+        };
         warnings.push(format!(
-            "xlsx component `{name}` combines fixed records with a default worksheet table; a static table worksheet name is required"
+            "xlsx component `{name}` {reason}; that composite layout is unsupported"
         ));
         return None;
-    };
-    let start_row = XlsxRow::new(start_row.unwrap_or(1))?;
+    }
     let mut names = BTreeSet::new();
-    if !names.insert(table_name.as_str())
-        || records
-            .iter()
-            .any(|record| !names.insert(record.name.as_str()))
+    for table in &tables {
+        let Some(sheet) = table.sheet.as_deref().filter(|sheet| !sheet.is_empty()) else {
+            warnings.push(format!(
+                "xlsx component `{name}` combines workbook regions with a default worksheet table; every table needs a static worksheet name"
+            ));
+            return None;
+        };
+        if !names.insert(sheet) {
+            warnings.push(format!(
+                "xlsx component `{name}` uses worksheet `{sheet}` for more than one composite table; component skipped"
+            ));
+            return None;
+        }
+    }
+    if records
+        .iter()
+        .any(|record| !names.insert(record.name.as_str()))
     {
         warnings.push(format!(
             "xlsx component `{name}` uses the same worksheet name for more than one composite region; component skipped"
         ));
         return None;
     }
-
     let mut ports = BTreeMap::new();
     let mut fields = Vec::with_capacity(records.len() + 1);
     let mut fixed_layouts = Vec::with_capacity(records.len());
@@ -352,23 +374,63 @@ fn read_composite(
         });
     }
 
-    let table_path = vec![table_name.clone()];
-    for key in row_ports {
-        ports.insert(key, table_path.clone());
-    }
-    let mut table_fields = Vec::with_capacity(columns.len());
-    let mut table_columns = Vec::with_capacity(columns.len());
-    for column in columns {
-        let index = XlsxColumn::new(column.index)?;
-        let mut field_path = table_path.clone();
-        field_path.push(column.name.clone());
-        for key in column.ports {
-            ports.insert(key, field_path.clone());
+    let mut table_layouts = Vec::with_capacity(tables.len());
+    for table in tables.drain(..) {
+        let table_name = table.sheet.clone()?;
+        let TableLayout::Flat {
+            start_row,
+            has_header,
+            row_ports,
+            row_number_ports,
+            columns,
+        } = table.layout
+        else {
+            return None;
+        };
+        let table_path = vec![table_name.clone()];
+        for key in row_ports.into_iter().chain(table.worksheet_ports) {
+            ports.insert(key, table_path.clone());
         }
-        table_fields.push(SchemaNode::scalar(&column.name, column.ty));
-        table_columns.push(index);
+        let mut table_fields = Vec::with_capacity(columns.len() + 1);
+        let mut table_columns = Vec::with_capacity(columns.len());
+        for column in columns {
+            let index = XlsxColumn::new(column.index)?;
+            let mut field_path = table_path.clone();
+            field_path.push(column.name.clone());
+            for key in column.ports {
+                ports.insert(key, field_path.clone());
+            }
+            table_fields.push(SchemaNode::scalar(&column.name, column.ty));
+            table_columns.push(index);
+        }
+        let row_number_field = if row_number_ports.is_empty() {
+            None
+        } else {
+            let field_name = unique_field_name("r", &table_fields);
+            let mut field_path = table_path.clone();
+            field_path.push(field_name.clone());
+            for key in row_number_ports {
+                ports.insert(key, field_path.clone());
+            }
+            table_fields.push(SchemaNode::scalar(&field_name, ScalarType::Int));
+            Some(field_name)
+        };
+        if !table.worksheet_name_ports.is_empty() {
+            warnings.push(format!(
+                "xlsx component `{name}` has connected worksheet-name ports on static worksheet `{table_name}`; those constant names were skipped"
+            ));
+        }
+        fields.push(SchemaNode::group(&table_name, table_fields).repeating());
+        table_layouts.push(XlsxTableRegion {
+            path: table_path,
+            sheet: table.sheet,
+            start_row: XlsxRow::new(start_row.unwrap_or(1))?,
+            columns: table_columns,
+            has_header,
+            row_number_field,
+        });
     }
-    fields.push(SchemaNode::group(&table_name, table_fields).repeating());
+    let table = table_layouts.remove(0);
 
     if excel.attribute("updateexistingfile") == Some("1") {
         warnings.push(format!(
@@ -384,13 +446,8 @@ fn read_composite(
         options: FormatOptions {
             tabular_kind: Some(TabularBoundaryKind::Xlsx),
             xlsx_composite: Some(XlsxCompositeLayout {
-                table: XlsxTableRegion {
-                    path: table_path,
-                    sheet: table.sheet,
-                    start_row,
-                    columns: table_columns,
-                    has_header,
-                },
+                table,
+                additional_tables: table_layouts,
                 records: fixed_layouts,
             }),
             ..FormatOptions::default()
@@ -499,8 +556,7 @@ fn inspect_worksheet(
                 continue;
             }
         };
-        warn_dynamic_sheet_ports(worksheet, component_name, warnings);
-        warn_physical_index_ports(row, component_name, warnings);
+        warn_physical_cell_index_ports(row, component_name, warnings);
 
         let start_row = match range.attribute("start") {
             Some(value) => match value.parse::<u32>() {
@@ -541,10 +597,13 @@ fn inspect_worksheet(
         let row_ports = port_keys(row);
         tables.push(Table {
             sheet,
+            worksheet_ports: port_keys(worksheet),
+            worksheet_name_ports: worksheet_name_ports(worksheet),
             layout: TableLayout::Flat {
                 start_row,
                 has_header: row.attribute("enabletitlerow") == Some("1"),
                 row_ports,
+                row_number_ports: physical_row_ports(row),
                 columns,
             },
         });
@@ -565,9 +624,10 @@ fn inspect_worksheet(
                     return;
                 }
             };
-            warn_dynamic_sheet_ports(worksheet, component_name, warnings);
             tables.push(Table {
                 sheet,
+                worksheet_ports: port_keys(worksheet),
+                worksheet_name_ports: worksheet_name_ports(worksheet),
                 layout: TableLayout::Transposed {
                     rows: transposed_rows,
                     index_ports: transposed_index_ports,
@@ -834,18 +894,8 @@ pub(super) fn scalar_type(datatype: Option<&str>) -> ScalarType {
     }
 }
 
-fn warn_dynamic_sheet_ports(
-    worksheet: roxmltree::Node<'_, '_>,
-    component_name: &str,
-    warnings: &mut Vec<String>,
-) {
-    let has_worksheet_port = !port_keys(worksheet).is_empty();
-    let has_name_port = worksheet.children().any(|node| {
-        node.has_tag_name("entry")
-            && node.attribute("name") == Some("Name")
-            && !port_keys(node).is_empty()
-    });
-    if has_worksheet_port || has_name_port {
+fn warn_dynamic_table_ports(table: &Table, component_name: &str, warnings: &mut Vec<String>) {
+    if !table.worksheet_ports.is_empty() || !table.worksheet_name_ports.is_empty() {
         warnings.push(format!(
             "xlsx component `{component_name}` has connected dynamic worksheet/name ports; the configured static worksheet is used and those ports were skipped"
         ));
@@ -869,16 +919,11 @@ fn warn_dynamic_sheet_name_port(
     }
 }
 
-fn warn_physical_index_ports(
+fn warn_physical_cell_index_ports(
     row: roxmltree::Node<'_, '_>,
     component_name: &str,
     warnings: &mut Vec<String>,
 ) {
-    let row_index = row.children().any(|node| {
-        node.has_tag_name("entry")
-            && node.attribute("name") == Some("r")
-            && !port_keys(node).is_empty()
-    });
     let cell_index = row.children().any(|cell| {
         cell.has_tag_name("entry")
             && cell.attribute("name") == Some("Cell")
@@ -888,16 +933,39 @@ fn warn_physical_index_ports(
                     && !port_keys(node).is_empty()
             })
     });
-    if row_index {
-        warnings.push(format!(
-            "xlsx component `{component_name}` exposes physical Row/@r ports; those index values were skipped"
-        ));
-    }
     if cell_index {
         warnings.push(format!(
             "xlsx component `{component_name}` exposes physical Cell/@n ports; those index values were skipped"
         ));
     }
+}
+
+fn worksheet_name_ports(worksheet: roxmltree::Node<'_, '_>) -> Vec<u32> {
+    worksheet
+        .children()
+        .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("Name"))
+        .flat_map(port_keys)
+        .collect()
+}
+
+fn physical_row_ports(row: roxmltree::Node<'_, '_>) -> Vec<u32> {
+    row.children()
+        .filter(|node| node.has_tag_name("entry") && node.attribute("name") == Some("r"))
+        .flat_map(port_keys)
+        .collect()
+}
+
+fn unique_field_name(base: &str, fields: &[SchemaNode]) -> String {
+    if fields.iter().all(|field| field.name != base) {
+        return base.to_string();
+    }
+    for suffix in 2usize.. {
+        let candidate = format!("{base}_{suffix}");
+        if fields.iter().all(|field| field.name != candidate) {
+            return candidate;
+        }
+    }
+    base.to_string()
 }
 
 pub(super) fn port_keys(node: roxmltree::Node<'_, '_>) -> Vec<u32> {
@@ -961,295 +1029,4 @@ fn duplicate_fixed_cell(cells: &[FixedCell]) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn minimal_grid(
-        header_start: u32,
-        data_start: u32,
-        header_row_key: Option<u32>,
-        value_ports: bool,
-    ) -> String {
-        let header_row_key = header_row_key
-            .map(|key| format!(r#" outkey="{key}""#))
-            .unwrap_or_default();
-        let header_value_key = if value_ports { r#" outkey="1""# } else { "" };
-        let data_value_key = if value_ports { r#" outkey="4""# } else { "" };
-        format!(
-            r#"
-            <component name="Grid">
-              <data>
-                <root><entry name="Workbook"><entry name="Worksheet">
-                  <ranges>
-                    <range id="1" start="{header_start}" count="1"/>
-                    <range id="2" start="{data_start}"/>
-                  </ranges>
-                  <entry name="Row"{header_row_key}>
-                    <condition><function name="is-range-id"><constant value="1"/></function></condition>
-                    <entry name="Cell"{header_value_key}><entry name="n" outkey="2"/></entry>
-                  </entry>
-                  <entry name="Row" outkey="3">
-                    <condition><function name="is-range-id"><constant value="2"/></function></condition>
-                    <entry name="Cell"{data_value_key}><entry name="n" outkey="5"/></entry>
-                  </entry>
-                </entry></entry></root>
-                <excel inputinstance="grid.xlsx"/>
-              </data>
-            </component>
-            "#
-        )
-    }
-
-    fn read_minimal_grid(xml: &str) -> (SchemaComponent, Vec<String>) {
-        let document = roxmltree::Document::parse(xml).unwrap();
-        let mut warnings = Vec::new();
-        let component = read(&document.root_element(), &mut warnings).unwrap();
-        (component, warnings)
-    }
-
-    #[test]
-    fn unsupported_composite_shape_falls_back_to_its_supported_table() {
-        let document = roxmltree::Document::parse(
-            r#"
-            <component name="MixedWorkbook">
-              <data>
-                <root>
-                  <entry name="FileInstance">
-                    <entry name="document">
-                      <entry name="Workbook">
-                        <entry name="Worksheet">
-                          <condition><expression><function name="equal-ignorecase" library="xlsx">
-                            <expression><attribute name="Name"/></expression>
-                            <expression><constant value="Sales"/></expression>
-                          </function></expression></condition>
-                          <ranges>
-                            <range id="fixed" start="1" count="1"/>
-                            <range id="row" start="2" count="1"/>
-                          </ranges>
-                          <entry name="Row">
-                            <condition><expression><function name="is-range-id">
-                              <expression><constant value="fixed"/></expression>
-                            </function></expression></condition>
-                            <entry name="Cell" outkey="101" annotation="Year" datatype="string">
-                              <condition><expression><function name="equal" library="core">
-                                <expression><attribute name="n"/></expression>
-                                <expression><constant value="1" datatype="long"/></expression>
-                              </function></expression></condition>
-                            </entry>
-                          </entry>
-                          <entry name="Row">
-                            <condition><expression><function name="is-range-id">
-                              <expression><constant value="row"/></expression>
-                            </function></expression></condition>
-                            <entry name="Cell" outkey="102" annotation="Month" datatype="string">
-                              <entry name="n" outkey="103"/>
-                            </entry>
-                          </entry>
-                        </entry>
-                      </entry>
-                    </entry>
-                  </entry>
-                </root>
-                <excel inputinstance="mixed.xlsx"/>
-              </data>
-            </component>
-            "#,
-        )
-        .unwrap();
-        let mut warnings = Vec::new();
-
-        let component = read(&document.root_element(), &mut warnings).unwrap();
-
-        assert!(component.options.xlsx_composite.is_none());
-        assert_eq!(component.options.xlsx_rows, [2]);
-        assert!(warnings.iter().any(|warning| warning.contains(
-            "combines fixed records with a transposed table; that composite layout is unsupported"
-        )));
-    }
-
-    #[test]
-    fn grid_field_collision_warns_and_falls_back() {
-        let document = roxmltree::Document::parse(
-            r#"
-            <component name="Grid">
-              <data>
-                <root><entry name="Workbook"><entry name="Worksheet">
-                  <ranges>
-                    <range id="1" start="1" count="1"/>
-                    <range id="2" start="2"/>
-                  </ranges>
-                  <entry name="Row">
-                    <condition><function name="is-range-id"><constant value="1"/></function></condition>
-                    <entry name="Cell" annotation="value" outkey="1">
-                      <entry name="n" outkey="2"/>
-                    </entry>
-                  </entry>
-                  <entry name="Row" outkey="3">
-                    <condition><function name="is-range-id"><constant value="2"/></function></condition>
-                    <entry name="Cell" outkey="4"><entry name="n" outkey="5"/></entry>
-                  </entry>
-                </entry></entry></root>
-                <excel inputinstance="grid.xlsx"/>
-              </data>
-            </component>
-            "#,
-        )
-        .unwrap();
-        let mut warnings = Vec::new();
-
-        let component = read(&document.root_element(), &mut warnings).unwrap();
-
-        assert!(component.options.xlsx_grid.is_none());
-        assert!(warnings.iter().any(|warning| {
-            warning.contains("nested-grid header name `value` conflicts with a generated field")
-        }));
-    }
-
-    #[test]
-    fn grid_rejects_runtime_invalid_row_order_and_connected_header_rows() {
-        let (component, warnings) = read_minimal_grid(&minimal_grid(2, 1, None, true));
-        assert!(component.options.xlsx_grid.is_none());
-        assert!(
-            warnings
-                .iter()
-                .any(|warning| warning.contains("data row must start after its header row"))
-        );
-
-        let (component, warnings) = read_minimal_grid(&minimal_grid(1, 2, Some(6), true));
-        assert!(component.options.xlsx_grid.is_none());
-        assert!(
-            warnings
-                .iter()
-                .any(|warning| { warning.contains("header Row connections are not supported") })
-        );
-    }
-
-    #[test]
-    fn grid_accepts_position_only_cell_sequences() {
-        let (component, warnings) = read_minimal_grid(&minimal_grid(1, 2, None, false));
-
-        assert!(warnings.is_empty(), "{warnings:?}");
-        assert!(component.options.xlsx_grid.is_some());
-        assert!(!component.ports.contains_key(&1));
-        assert!(!component.ports.contains_key(&4));
-        assert_eq!(component.ports.get(&2), Some(&vec!["HeaderColumn".into()]));
-        assert_eq!(
-            component.ports.get(&5),
-            Some(&vec!["Rows".into(), "Cells".into(), "CellColumn".into()])
-        );
-    }
-
-    #[test]
-    fn flat_target_retains_existing_workbook_update_mode() {
-        let document = roxmltree::Document::parse(
-            r#"
-            <component name="Report">
-              <data>
-                <root><entry name="Workbook"><entry name="Worksheet">
-                  <condition><function name="equal-ignorecase" library="xlsx">
-                    <attribute name="Name"/><constant value="Sales"/>
-                  </function></condition>
-                  <ranges><range id="2" start="5"/></ranges>
-                  <entry name="Row" inpkey="10" enabletitlerow="1">
-                    <condition><function name="is-range-id"><constant value="2"/></function></condition>
-                    <entry name="Cell" inpkey="11" annotation="Month" datatype="string">
-                      <condition><function name="equal"><attribute name="n"/><constant value="1"/></function></condition>
-                    </entry>
-                  </entry>
-                </entry></entry></root>
-                <excel outputinstance="report.xlsx" updateexistingfile="1"/>
-              </data>
-            </component>
-            "#,
-        )
-        .unwrap();
-        let mut warnings = Vec::new();
-
-        let component = read(&document.root_element(), &mut warnings).unwrap();
-
-        assert!(warnings.is_empty(), "{warnings:?}");
-        assert!(component.options.xlsx_update_existing);
-        assert_eq!(component.options.xlsx_sheet.as_deref(), Some("Sales"));
-        assert_eq!(component.options.xlsx_start_row, Some(5));
-    }
-
-    #[test]
-    fn flat_columns_keep_distinct_physical_indexes_when_annotations_repeat() {
-        let mut columns = vec![
-            Column {
-                name: "Phone".into(),
-                header: "Phone".into(),
-                index: 4,
-                ty: ScalarType::String,
-                ports: vec![10],
-            },
-            Column {
-                name: "Phone".into(),
-                header: "Phone".into(),
-                index: 5,
-                ty: ScalarType::String,
-                ports: vec![11],
-            },
-            Column {
-                name: "Phone_5".into(),
-                header: "Phone_5".into(),
-                index: 6,
-                ty: ScalarType::String,
-                ports: vec![12],
-            },
-        ];
-
-        assert!(!duplicate_column_index(&columns));
-        assert!(duplicate_column_name(&columns));
-        disambiguate_column_names(&mut columns);
-
-        assert_eq!(
-            columns
-                .iter()
-                .map(|column| column.name.as_str())
-                .collect::<Vec<_>>(),
-            ["Phone", "Phone_5_2", "Phone_5"]
-        );
-        assert!(!duplicate_column_name(&columns));
-        columns[2].index = 5;
-        assert!(duplicate_column_index(&columns));
-    }
-
-    #[test]
-    fn flat_target_retains_duplicate_headers_behind_unique_field_names() {
-        let document = roxmltree::Document::parse(
-            r#"
-            <component name="Report">
-              <data>
-                <root><entry name="Workbook"><entry name="Worksheet">
-                  <ranges><range id="1" start="1"/></ranges>
-                  <entry name="Row" inpkey="10" enabletitlerow="1">
-                    <condition><function name="is-range-id"><constant value="1"/></function></condition>
-                    <entry name="Cell" inpkey="11" annotation="Phone">
-                      <condition><function name="equal"><attribute name="n"/><constant value="4"/></function></condition>
-                    </entry>
-                    <entry name="Cell" inpkey="12" annotation="Phone">
-                      <condition><function name="equal"><attribute name="n"/><constant value="5"/></function></condition>
-                    </entry>
-                  </entry>
-                </entry></entry></root>
-                <excel outputinstance="report.xlsx"/>
-              </data>
-            </component>
-            "#,
-        )
-        .unwrap();
-        let mut warnings = Vec::new();
-
-        let component = read(&document.root_element(), &mut warnings)
-            .unwrap_or_else(|| panic!("duplicate-header target was skipped: {warnings:?}"));
-
-        assert!(warnings.is_empty(), "{warnings:?}");
-        assert_eq!(component.options.xlsx_headers, ["Phone", "Phone"]);
-        let ir::SchemaKind::Group { children, .. } = component.schema.kind else {
-            panic!("expected flat XLSX group schema");
-        };
-        assert_eq!(children[0].name, "Phone");
-        assert_eq!(children[1].name, "Phone_5");
-    }
-}
+mod tests;

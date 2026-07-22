@@ -283,6 +283,63 @@ fn exports_and_reimports_composite_xlsx_sources() {
 }
 
 #[test]
+fn exports_and_reimports_all_worksheet_sources() {
+    let imported = mfd::import(&fixture("xlsx-worksheet-set.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let dir = TempDir::new("worksheet_set");
+    let design = dir.0.join("mapping.mfd");
+
+    let warnings = mfd::export(&imported.project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let text = std::fs::read_to_string(&design).unwrap();
+    assert!(text.contains("<entry name=\"Worksheet\" outkey="), "{text}");
+    assert!(text.contains("<entry name=\"Name\" type=\"attribute\" outkey="));
+    assert!(text.contains("<entry name=\"r\" type=\"attribute\" outkey="));
+
+    let roundtripped = mfd::import(&design).unwrap();
+    assert!(
+        roundtripped.warnings.is_empty(),
+        "{:?}",
+        roundtripped.warnings
+    );
+    assert_eq!(roundtripped.project.source, imported.project.source);
+    assert_eq!(
+        roundtripped.project.source_options.xlsx_worksheet_set,
+        imported.project.source_options.xlsx_worksheet_set
+    );
+}
+
+#[test]
+fn exports_and_reimports_multiple_static_xlsx_tables() {
+    let imported = mfd::import(&fixture("xlsx-multi-table.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let dir = TempDir::new("multiple_tables");
+    let design = dir.0.join("mapping.mfd");
+
+    let warnings = mfd::export(&imported.project, &design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let text = std::fs::read_to_string(&design).unwrap();
+    assert_eq!(text.matches("<entry name=\"Worksheet\"").count(), 2);
+    assert_eq!(
+        text.matches("<entry name=\"r\" type=\"attribute\" outkey=")
+            .count(),
+        2
+    );
+
+    let roundtripped = mfd::import(&design).unwrap();
+    assert!(
+        roundtripped.warnings.is_empty(),
+        "{:?}",
+        roundtripped.warnings
+    );
+    assert_eq!(roundtripped.project.source, imported.project.source);
+    assert_eq!(
+        roundtripped.project.source_options.xlsx_composite,
+        imported.project.source_options.xlsx_composite
+    );
+}
+
+#[test]
 fn exports_and_reimports_grid_xlsx_source() {
     let project = mfd::import(&fixture("xlsx-grid.mfd")).unwrap().project;
     let dir = TempDir::new("grid");

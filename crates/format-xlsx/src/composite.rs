@@ -7,7 +7,7 @@ use mapping::{XlsxColumn, XlsxCompositeLayout, XlsxFixedRecord, XlsxRow, XlsxTab
 
 use super::{XlsxFormatError, column_indexes, parse_cell, rows_from_range};
 
-/// Reads one repeated table and fixed worksheet records into a schema-shaped
+/// Reads repeated tables and fixed worksheet records into a schema-shaped
 /// composite instance.
 pub fn read_composite(
     path: &Path,
@@ -32,13 +32,17 @@ pub fn from_bytes_composite(
         .first()
         .cloned()
         .ok_or(XlsxFormatError::NoWorksheets)?;
-    let table_sheet = select_sheet(&sheet_names, &first_sheet, layout.table.sheet.as_deref())?;
+    let table_sheets = tables(layout)
+        .map(|table| select_sheet(&sheet_names, &first_sheet, table.sheet.as_deref()))
+        .collect::<Result<Vec<_>, _>>()?;
     let record_sheets = layout
         .records
         .iter()
         .map(|record| select_sheet(&sheet_names, &first_sheet, record.sheet.as_deref()))
         .collect::<Result<Vec<_>, _>>()?;
-    let selected_sheets = std::iter::once(table_sheet.clone())
+    let selected_sheets = table_sheets
+        .iter()
+        .cloned()
         .chain(record_sheets.iter().cloned())
         .collect::<std::collections::BTreeSet<_>>();
     let mut ranges = std::collections::BTreeMap::new();
@@ -54,21 +58,29 @@ pub fn from_bytes_composite(
         materialize_fixed_record(&mut instance, schema, record, range)?;
     }
 
-    let table_schema = schema_node_at(schema, &layout.table.path)?;
-    let table_fields = flat_table_fields(table_schema, &layout.table.path)?;
-    let columns = composite_columns(&layout.table, table_fields.len())?;
-    let table_range = ranges
-        .get(&table_sheet)
-        .ok_or_else(|| XlsxFormatError::MissingWorksheet(table_sheet.clone()))?;
-    let rows = rows_from_range(
-        table_range,
-        &table_fields,
-        layout.table.start_row.get(),
-        &columns,
-        layout.table.has_header,
-    )?;
-    replace_at_path(&mut instance, &layout.table.path, Instance::Repeated(rows))?;
+    for (table, sheet) in tables(layout).zip(&table_sheets) {
+        let table_schema = schema_node_at(schema, &table.path)?;
+        let table_fields =
+            flat_table_fields(table_schema, &table.path, table.row_number_field.as_deref())?;
+        let columns = composite_columns(table, table_fields.len())?;
+        let table_range = ranges
+            .get(sheet)
+            .ok_or_else(|| XlsxFormatError::MissingWorksheet(sheet.clone()))?;
+        let mut rows = rows_from_range(
+            table_range,
+            &table_fields,
+            table.start_row.get(),
+            &columns,
+            table.has_header,
+        )?;
+        materialize_row_numbers(&mut rows, table_schema, table)?;
+        replace_at_path(&mut instance, &table.path, Instance::Repeated(rows))?;
+    }
     Ok(instance)
+}
+
+fn tables(layout: &XlsxCompositeLayout) -> impl Iterator<Item = &XlsxTableRegion> {
+    std::iter::once(&layout.table).chain(&layout.additional_tables)
 }
 
 fn select_sheet(
@@ -90,9 +102,18 @@ pub(super) fn validate_composite_layout(
     if schema.repeating || !matches!(schema.kind, SchemaKind::Group { .. }) {
         return Err(XlsxFormatError::CompositeRootSchema);
     }
-    let table = schema_node_at(schema, &layout.table.path)?;
-    let table_fields = flat_table_fields(table, &layout.table.path)?;
-    composite_columns(&layout.table, table_fields.len())?;
+    let mut table_paths = std::collections::BTreeSet::new();
+    for table in tables(layout) {
+        if !table_paths.insert(table.path.clone()) {
+            return Err(XlsxFormatError::DuplicateCompositePath(display_path(
+                &table.path,
+            )));
+        }
+        let table_schema = schema_node_at(schema, &table.path)?;
+        let table_fields =
+            flat_table_fields(table_schema, &table.path, table.row_number_field.as_deref())?;
+        composite_columns(table, table_fields.len())?;
+    }
 
     let mut record_paths = std::collections::BTreeSet::new();
     let mut cell_paths = std::collections::BTreeSet::new();
@@ -109,7 +130,7 @@ pub(super) fn validate_composite_layout(
                 "fixed record must resolve to a group",
             ));
         }
-        if record.path == layout.table.path {
+        if table_paths.contains(&record.path) {
             return Err(composite_path_error(
                 &record.path,
                 "fixed record and table cannot own the same group",
@@ -134,7 +155,7 @@ pub(super) fn validate_composite_layout(
                 ));
             }
             let absolute = joined_path(&record.path, &cell.path);
-            if absolute.starts_with(&layout.table.path) {
+            if table_paths.iter().any(|table| absolute.starts_with(table)) {
                 return Err(composite_path_error(
                     &absolute,
                     "fixed cells cannot be inside the table",
@@ -153,6 +174,7 @@ pub(super) fn validate_composite_layout(
 fn flat_table_fields<'a>(
     schema: &'a SchemaNode,
     path: &[String],
+    row_number_field: Option<&str>,
 ) -> Result<Vec<(&'a str, ScalarType)>, XlsxFormatError> {
     if !schema.repeating {
         return Err(composite_path_error(
@@ -166,8 +188,31 @@ fn flat_table_fields<'a>(
             "table must resolve to a repeating group",
         ));
     };
+    if let Some(field_name) = row_number_field {
+        let Some(field) = children.iter().find(|child| child.name == field_name) else {
+            return Err(composite_path_error(
+                path,
+                "row-number field does not exist in the table",
+            ));
+        };
+        if field.repeating
+            || field.attribute
+            || !matches!(
+                field.kind,
+                SchemaKind::Scalar {
+                    ty: ScalarType::Int
+                }
+            )
+        {
+            return Err(composite_path_error(
+                path,
+                "row-number field must be a non-repeating integer scalar",
+            ));
+        }
+    }
     children
         .iter()
+        .filter(|child| row_number_field != Some(child.name.as_str()))
         .map(|child| match child.kind {
             SchemaKind::Scalar { ty } if !child.repeating && !child.attribute => {
                 Ok((child.name.as_str(), ty))
@@ -178,6 +223,46 @@ fn flat_table_fields<'a>(
             )),
         })
         .collect()
+}
+
+fn materialize_row_numbers(
+    rows: &mut [Instance],
+    table_schema: &SchemaNode,
+    table: &XlsxTableRegion,
+) -> Result<(), XlsxFormatError> {
+    let Some(field_name) = table.row_number_field.as_deref() else {
+        return Ok(());
+    };
+    let SchemaKind::Group { children, .. } = &table_schema.kind else {
+        return Err(XlsxFormatError::UnsupportedSchema);
+    };
+    let Some(field_index) = children.iter().position(|child| child.name == field_name) else {
+        return Err(composite_path_error(
+            &table.path,
+            "row-number field does not exist in the table",
+        ));
+    };
+    let first_row = table
+        .start_row
+        .get()
+        .checked_add(u32::from(table.has_header))
+        .ok_or(XlsxFormatError::InvalidCoordinate)?;
+    for (offset, row) in rows.iter_mut().enumerate() {
+        let physical_row = first_row
+            .checked_add(u32::try_from(offset).map_err(|_| XlsxFormatError::InvalidCoordinate)?)
+            .ok_or(XlsxFormatError::InvalidCoordinate)?;
+        let Instance::Group(fields) = row else {
+            return Err(XlsxFormatError::UnsupportedSchema);
+        };
+        fields.insert(
+            field_index,
+            (
+                field_name.to_string(),
+                Instance::Scalar(Value::Int(i64::from(physical_row))),
+            ),
+        );
+    }
+    Ok(())
 }
 
 fn composite_columns(

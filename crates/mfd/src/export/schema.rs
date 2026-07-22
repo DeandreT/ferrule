@@ -622,6 +622,7 @@ pub(super) fn render_schema_component(
             }
             let retained_source_layout = options.xlsx_grid.is_some()
                 || options.xlsx_composite.is_some()
+                || options.xlsx_worksheet_set.is_some()
                 || !options.xlsx_rows.is_empty();
             if retained_source_layout && side != Side::Source {
                 return Err(MfdError::Unsupported(format!(
