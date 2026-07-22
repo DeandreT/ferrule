@@ -217,21 +217,25 @@ fn survey_roundtrip_file(
         return outcome;
     }
 
-    let sources = match load_sources(&imported.project, samples_root) {
+    let design_base = mfd_path.parent().unwrap_or(samples_root);
+    let sources = match load_sources(&imported.project, samples_root, design_base) {
         Ok(sources) => sources,
         Err(reason) => {
             outcome.source_load = StageOutcome::skipped(reason);
             return outcome;
         }
     };
-    let dynamic_loader =
-        match SurveyDynamicSourceLoader::new(samples_root, &imported.project.extra_sources) {
-            Ok(loader) => loader,
-            Err(reason) => {
-                outcome.source_load = StageOutcome::skipped(reason);
-                return outcome;
-            }
-        };
+    let dynamic_loader = match SurveyDynamicSourceLoader::new(
+        samples_root,
+        design_base,
+        &imported.project.extra_sources,
+    ) {
+        Ok(loader) => loader,
+        Err(reason) => {
+            outcome.source_load = StageOutcome::skipped(reason);
+            return outcome;
+        }
+    };
     let runtime_mapping_path = match std::fs::canonicalize(mfd_path) {
         Ok(path) => path,
         Err(error) => {

@@ -65,6 +65,14 @@ pub(super) fn portable_path(value: &str) -> PathBuf {
 }
 
 pub(super) fn resolve_sample_input(samples_root: &Path, stored: &str) -> Result<PathBuf, String> {
+    resolve_sample_input_from(samples_root, samples_root, stored)
+}
+
+pub(super) fn resolve_sample_input_from(
+    samples_root: &Path,
+    design_base: &Path,
+    stored: &str,
+) -> Result<PathBuf, String> {
     if stored.trim().is_empty() {
         return Err("input instance path is empty".to_string());
     }
@@ -75,7 +83,7 @@ pub(super) fn resolve_sample_input(samples_root: &Path, stored: &str) -> Result<
     let candidate = if stored.is_absolute() {
         stored
     } else {
-        samples_root.join(stored)
+        design_base.join(stored)
     };
     let resolved = std::fs::canonicalize(&candidate).map_err(|error| {
         format!(

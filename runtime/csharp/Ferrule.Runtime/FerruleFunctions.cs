@@ -72,9 +72,9 @@ public static partial class FerruleFunctions
             "not" => UnaryBoolean(function, arguments, value => !value),
             "exists" => Exists(arguments),
             "is_empty" => IsEmpty(arguments),
-            "starts_with" => BinaryString(function, arguments, static (left, right) =>
+            "starts_with" => BinaryScalarString(function, arguments, static (left, right) =>
                 left.StartsWith(right, StringComparison.Ordinal)),
-            "contains" => BinaryString(function, arguments, static (left, right) =>
+            "contains" => BinaryScalarString(function, arguments, static (left, right) =>
                 left.Contains(right, StringComparison.Ordinal)),
             "add" => Numeric(function, arguments, NumericOperation.Add),
             "subtract" => Numeric(function, arguments, NumericOperation.Subtract),
@@ -116,7 +116,7 @@ public static partial class FerruleFunctions
     private static FerruleValue IsEmpty(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("is_empty", arguments, 1);
-        return FerruleValue.FromBoolean(RequireString(arguments[0], "is_empty").Length == 0);
+        return FerruleValue.FromBoolean(ScalarText(arguments[0]).Length == 0);
     }
 
     private static FerruleValue UnaryBoolean(
@@ -147,6 +147,17 @@ public static partial class FerruleFunctions
         RequireArity(function, arguments, 2);
         var left = RequireString(arguments[0], function);
         var right = RequireString(arguments[1], function);
+        return FerruleValue.FromBoolean(operation(left, right));
+    }
+
+    private static FerruleValue BinaryScalarString(
+        string function,
+        IReadOnlyList<FerruleValue> arguments,
+        Func<string, string, bool> operation)
+    {
+        RequireArity(function, arguments, 2);
+        var left = ScalarText(arguments[0]);
+        var right = ScalarText(arguments[1]);
         return FerruleValue.FromBoolean(operation(left, right));
     }
 
