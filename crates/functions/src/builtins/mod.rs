@@ -24,8 +24,8 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
             s.trim_end_matches([' ', '\t', '\r', '\n']).to_string()
         }),
         "length" => length(args),
-        "starts_with" => binary_string(args, "starts_with", |a, b| a.starts_with(b)),
-        "contains" => binary_string(args, "contains", |a, b| a.contains(b)),
+        "starts_with" => binary_scalar_string(args, "starts_with", |a, b| a.starts_with(b)),
+        "contains" => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
         "sql_like" => binary_string(args, "sql_like", sql_like),
         "pad_string_left" => pad_string(args, "pad_string_left", true),
         "pad_string_right" => pad_string(args, "pad_string_right", false),
@@ -230,11 +230,7 @@ fn unary_string_predicate(
     predicate: impl Fn(&str) -> bool,
 ) -> Result<Value, FunctionError> {
     match args {
-        [Value::String(value)] => Ok(Value::Bool(predicate(value))),
-        [other] => Err(FunctionError::TypeMismatch {
-            function: name,
-            got: other.type_name(),
-        }),
+        [value] => Ok(Value::Bool(predicate(&scalar_text(value)))),
         _ => Err(FunctionError::ArityMismatch {
             function: name,
             expected: 1,
@@ -265,6 +261,21 @@ fn binary_string(
                 got: bad.type_name(),
             })
         }
+        _ => Err(FunctionError::ArityMismatch {
+            function: name,
+            expected: 2,
+            got: args.len(),
+        }),
+    }
+}
+
+fn binary_scalar_string(
+    args: &[Value],
+    name: &'static str,
+    f: impl Fn(&str, &str) -> bool,
+) -> Result<Value, FunctionError> {
+    match args {
+        [a, b] => Ok(Value::Bool(f(&scalar_text(a), &scalar_text(b)))),
         _ => Err(FunctionError::ArityMismatch {
             function: name,
             expected: 2,

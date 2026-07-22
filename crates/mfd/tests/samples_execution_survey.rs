@@ -32,7 +32,10 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use format_io::{inferred_extension, is_http, portable_path, read_instance, resolve_sample_input};
+use format_io::{
+    inferred_extension, is_http, portable_path, read_instance, resolve_sample_input,
+    resolve_sample_input_from,
+};
 use ir::{Instance, SchemaNode};
 use mapping::{
     DynamicSourcePath, EdiAutocomplete, ExternalPayloadFormat, ExternalSourceOrigin, FormatOptions,
@@ -120,10 +123,9 @@ struct SampleOutcome {
 
 impl SampleOutcome {
     fn pending(path: &Path) -> Self {
-        let file = path
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.display().to_string());
+        let file = portable_path(&path.to_string_lossy())
+            .to_string_lossy()
+            .into_owned();
         let blocked = StageOutcome::skipped("an earlier execution-survey stage did not complete");
         Self {
             file,
@@ -281,7 +283,8 @@ fn explicit_reference(
     if !declared {
         return Err("target path is not an explicit outputinstance declaration".to_string());
     }
-    let reference = resolve_sample_input(samples_root, stored)?;
+    let design_base = mfd_path.parent().unwrap_or(samples_root);
+    let reference = resolve_sample_input_from(samples_root, design_base, stored)?;
     if input_paths.contains(&reference) {
         return Err("target output instance is also used as an input".to_string());
     }
@@ -315,7 +318,14 @@ fn output_instance_owners(samples_root: &Path, reference: &Path) -> Result<Vec<P
                 });
                 declared
                     .filter(|stored| !is_http(stored))
-                    .and_then(|stored| resolve_sample_input(samples_root, stored).ok())
+                    .and_then(|stored| {
+                        resolve_sample_input_from(
+                            samples_root,
+                            design.parent().unwrap_or(samples_root),
+                            stored,
+                        )
+                        .ok()
+                    })
                     .is_some_and(|declared| declared == reference)
             });
         if owns_reference {
@@ -380,10 +390,15 @@ fn primary_source_path<'a>(
     })
 }
 
-fn load_sources(project: &Project, samples_root: &Path) -> Result<LoadedSources, String> {
+fn load_sources(
+    project: &Project,
+    samples_root: &Path,
+    design_base: &Path,
+) -> Result<LoadedSources, String> {
     let source_path = primary_source_path(project.source_path.as_deref(), &project.source_options)?;
     let (primary, mut paths) = load_source(
         samples_root,
+        design_base,
         source_path,
         &project.source,
         &project.source_options,
@@ -394,10 +409,14 @@ fn load_sources(project: &Project, samples_root: &Path) -> Result<LoadedSources,
         if source.dynamic_path.is_some() {
             continue;
         }
-        let (instance, source_paths) =
-            load_source(samples_root, &source.path, &source.schema, &source.options).map_err(
-                |error| format!("reading extra source `{}` failed: {error}", source.name),
-            )?;
+        let (instance, source_paths) = load_source(
+            samples_root,
+            design_base,
+            &source.path,
+            &source.schema,
+            &source.options,
+        )
+        .map_err(|error| format!("reading extra source `{}` failed: {error}", source.name))?;
         paths.extend(source_paths);
         extras.push((source.name.clone(), instance));
     }
@@ -410,17 +429,23 @@ fn load_sources(project: &Project, samples_root: &Path) -> Result<LoadedSources,
 
 struct SurveyDynamicSourceLoader<'a> {
     samples_root: PathBuf,
+    design_base: PathBuf,
     sources: &'a [NamedSource],
     cache: RefCell<BTreeMap<(String, PathBuf), Arc<Instance>>>,
     loaded_paths: RefCell<BTreeSet<PathBuf>>,
 }
 
 impl<'a> SurveyDynamicSourceLoader<'a> {
-    fn new(samples_root: &Path, sources: &'a [NamedSource]) -> Result<Self, String> {
+    fn new(
+        samples_root: &Path,
+        design_base: &Path,
+        sources: &'a [NamedSource],
+    ) -> Result<Self, String> {
         let samples_root = std::fs::canonicalize(samples_root)
             .map_err(|error| format!("resolving sample root failed: {error}"))?;
         Ok(Self {
             samples_root,
+            design_base: design_base.to_owned(),
             sources,
             cache: RefCell::new(BTreeMap::new()),
             loaded_paths: RefCell::new(BTreeSet::new()),
@@ -439,7 +464,7 @@ impl engine::DynamicSourceLoader for SurveyDynamicSourceLoader<'_> {
             .iter()
             .find(|source| source.name == source_name && source.dynamic_path.is_some())
             .ok_or_else(|| format!("dynamic source `{source_name}` is not declared"))?;
-        let resolved = resolve_sample_input(&self.samples_root, path)?;
+        let resolved = resolve_sample_input_from(&self.samples_root, &self.design_base, path)?;
         let key = (source_name.to_string(), resolved.clone());
         if let Some(instance) = self.cache.borrow().get(&key).cloned() {
             return Ok(instance);
@@ -453,12 +478,13 @@ impl engine::DynamicSourceLoader for SurveyDynamicSourceLoader<'_> {
 
 fn load_source(
     samples_root: &Path,
+    design_base: &Path,
     stored: &str,
     schema: &SchemaNode,
     options: &FormatOptions,
 ) -> Result<(Instance, BTreeSet<PathBuf>), String> {
     if !options.local_xml_file_set {
-        let path = resolve_sample_input(samples_root, stored)?;
+        let path = resolve_sample_input_from(samples_root, design_base, stored)?;
         let instance = read_instance(&path, schema, options)?;
         return Ok((instance, BTreeSet::from([path])));
     }
@@ -468,7 +494,13 @@ fn load_source(
     if is_http(stored) {
         return Err("network XML file sets are disabled".into());
     }
-    let pattern = portable_path(stored);
+    let relative_base = design_base.strip_prefix(samples_root).map_err(|_| {
+        format!(
+            "mapping directory `{}` escapes the read-only sample directory",
+            design_base.display()
+        )
+    })?;
+    let pattern = relative_base.join(portable_path(stored));
     let loaded = format_xml::read_local_file_set(
         samples_root,
         &pattern,
@@ -486,7 +518,8 @@ fn survey_file(
     workspace: &SurveyWorkspace,
     generated_references: Option<&GeneratedReferences>,
 ) -> SampleOutcome {
-    let mut outcome = SampleOutcome::pending(mfd_path);
+    let identity = mfd_path.strip_prefix(samples_root).unwrap_or(mfd_path);
+    let mut outcome = SampleOutcome::pending(identity);
     let imported = match mfd::import(mfd_path) {
         Ok(imported) => imported,
         Err(error) => {
@@ -539,21 +572,25 @@ fn survey_file(
         return outcome;
     }
 
-    let mut sources = match load_sources(&imported.project, samples_root) {
+    let design_base = mfd_path.parent().unwrap_or(samples_root);
+    let mut sources = match load_sources(&imported.project, samples_root, design_base) {
         Ok(sources) => sources,
         Err(reason) => {
             outcome.execution = StageOutcome::skipped(reason);
             return outcome;
         }
     };
-    let dynamic_loader =
-        match SurveyDynamicSourceLoader::new(samples_root, &imported.project.extra_sources) {
-            Ok(loader) => loader,
-            Err(reason) => {
-                outcome.execution = StageOutcome::failed(reason);
-                return outcome;
-            }
-        };
+    let dynamic_loader = match SurveyDynamicSourceLoader::new(
+        samples_root,
+        design_base,
+        &imported.project.extra_sources,
+    ) {
+        Ok(loader) => loader,
+        Err(reason) => {
+            outcome.execution = StageOutcome::failed(reason);
+            return outcome;
+        }
+    };
     let runtime_mapping_path = match std::fs::canonicalize(mfd_path) {
         Ok(path) => path,
         Err(error) => {
@@ -594,7 +631,13 @@ fn survey_file(
     sources.paths.extend(dynamic_loader.loaded_paths());
     outcome.execution = StageOutcome::passed();
 
-    let written = match write_outputs(&imported.project, &outputs, &sample_dir, samples_root) {
+    let written = match write_outputs(
+        &imported.project,
+        &outputs,
+        &sample_dir,
+        samples_root,
+        design_base,
+    ) {
         Ok(written) => written,
         Err(reason) => {
             outcome.output_write = StageOutcome::skipped(reason);
@@ -955,6 +998,7 @@ fn xlsx_update_templates_are_atomically_detached_from_samples() -> Result<(), Bo
 
     prepare_xlsx_update_output(
         &sample_root,
+        &sample_root,
         &output_root,
         Some("template.xlsx"),
         &output,
@@ -967,6 +1011,7 @@ fn xlsx_update_templates_are_atomically_detached_from_samples() -> Result<(), Bo
     assert!(
         prepare_xlsx_update_output(
             &sample_root,
+            &sample_root,
             &output_root,
             Some("template.xlsx"),
             &escaped,
@@ -978,6 +1023,7 @@ fn xlsx_update_templates_are_atomically_detached_from_samples() -> Result<(), Bo
 
     assert!(
         prepare_xlsx_update_output(
+            &sample_root,
             &sample_root,
             &sample_root,
             Some("template.xlsx"),
@@ -994,13 +1040,23 @@ fn xlsx_update_templates_are_atomically_detached_from_samples() -> Result<(), Bo
 fn network_and_parent_paths_are_not_local_sample_inputs() -> Result<(), Box<dyn Error>> {
     let workspace = SurveyWorkspace::new()?;
     let sample_root = workspace.0.join("samples");
-    std::fs::create_dir(&sample_root)?;
+    let nested = sample_root.join("Tutorial");
+    std::fs::create_dir_all(&nested)?;
     std::fs::write(sample_root.join("input.xml"), "<root/>")?;
+    std::fs::write(nested.join("input.xml"), "<nested/>")?;
     std::fs::write(workspace.0.join("outside.xml"), "<root/>")?;
 
     assert!(resolve_sample_input(&sample_root, "input.xml").is_ok());
+    assert_eq!(
+        resolve_sample_input_from(&sample_root, &nested, "input.xml")?,
+        std::fs::canonicalize(nested.join("input.xml"))?
+    );
+    assert_eq!(
+        resolve_sample_input_from(&sample_root, &nested, "../input.xml")?,
+        std::fs::canonicalize(sample_root.join("input.xml"))?
+    );
     assert!(resolve_sample_input(&sample_root, "https://example.test/input.xml").is_err());
-    assert!(resolve_sample_input(&sample_root, "../outside.xml").is_err());
+    assert!(resolve_sample_input_from(&sample_root, &nested, "../../outside.xml").is_err());
     Ok(())
 }
 
@@ -1034,7 +1090,7 @@ fn dynamic_sources_load_only_declared_contained_files_and_cache_them() -> Result
         }),
     };
     let sources = [source];
-    let loader = SurveyDynamicSourceLoader::new(&sample_root, &sources)?;
+    let loader = SurveyDynamicSourceLoader::new(&sample_root, &sample_root, &sources)?;
 
     let first = engine::DynamicSourceLoader::load(&loader, "document", "nested/input.xml")?;
     let second =
@@ -1081,7 +1137,7 @@ fn dynamic_sources_reject_symlinks_outside_the_sample_root() -> Result<(), Box<d
         }),
     };
     let sources = [source];
-    let loader = SurveyDynamicSourceLoader::new(&sample_root, &sources)?;
+    let loader = SurveyDynamicSourceLoader::new(&sample_root, &sample_root, &sources)?;
 
     assert!(engine::DynamicSourceLoader::load(&loader, "document", "linked.xml").is_err());
     assert!(loader.loaded_paths().is_empty());
@@ -1110,15 +1166,27 @@ fn database_templates_are_copied_without_touching_the_sample() -> Result<(), Box
     )
     .repeating();
 
-    prepare_database_output(&sample_root, Some("template.sqlite"), &output, &schema)?;
+    prepare_database_output(
+        &sample_root,
+        &sample_root,
+        Some("template.sqlite"),
+        &output,
+        &schema,
+    )?;
     assert_eq!(std::fs::read(&output)?, b"sqlite-template");
     std::fs::write(&output, b"changed output")?;
     assert_eq!(std::fs::read(&template)?, b"sqlite-template");
 
     let escaped = output_root.join("escaped.sqlite");
     assert!(
-        prepare_database_output(&sample_root, Some("../outside.sqlite"), &escaped, &schema)
-            .is_err()
+        prepare_database_output(
+            &sample_root,
+            &sample_root,
+            Some("../outside.sqlite"),
+            &escaped,
+            &schema,
+        )
+        .is_err()
     );
     assert!(!escaped.exists());
     Ok(())
@@ -1252,14 +1320,8 @@ fn survey_sample_execution() -> Result<(), Box<dyn Error>> {
         );
         return Ok(());
     }
-    let mut paths = std::fs::read_dir(&samples_root)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("mfd"))
-        })
-        .collect::<Vec<_>>();
+    let mut paths = Vec::new();
+    collect_mfd_paths(&samples_root, &mut paths)?;
     paths.sort();
 
     let workspace = SurveyWorkspace::new()?;

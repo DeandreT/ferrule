@@ -219,7 +219,9 @@ internal static partial class Program
         CallEquals(FerruleValue.FromBoolean(false), "exists", FerruleValue.Null);
         CallEquals(FerruleValue.FromBoolean(true), "exists", FerruleValue.XmlNil);
         CallEquals(FerruleValue.FromBoolean(true), "is_empty", Text(string.Empty));
+        CallEquals(FerruleValue.FromBoolean(true), "is_empty", FerruleValue.Null);
         CallEquals(FerruleValue.FromBoolean(true), "starts_with", Text("ferrule"), Text("fer"));
+        CallEquals(FerruleValue.FromBoolean(true), "starts_with", Text("120"), FerruleValue.FromDouble(1.0));
         CallEquals(FerruleValue.FromBoolean(true), "contains", Text("ferrule"), Text("rul"));
 
         CallEquals(

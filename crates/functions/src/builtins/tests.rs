@@ -278,6 +278,22 @@ fn string_predicates() {
         Value::Bool(true)
     );
     assert_eq!(
+        call(
+            "starts_with",
+            &[Value::String("120".into()), Value::Float(1.0)]
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        call(
+            "contains",
+            &[Value::Bool(false), Value::String("als".into())]
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
         call("length", &[Value::String("Jane".into())]).unwrap(),
         Value::Int(4)
     );
@@ -302,6 +318,15 @@ fn normalize_space_and_empty_follow_string_semantics() {
     );
     assert_eq!(
         call("is_empty", &[Value::String(" ".into())]).unwrap(),
+        Value::Bool(false)
+    );
+    assert_eq!(call("is_empty", &[Value::Null]).unwrap(), Value::Bool(true));
+    assert_eq!(
+        call("is_empty", &[Value::xml_nil()]).unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        call("is_empty", &[Value::Int(0)]).unwrap(),
         Value::Bool(false)
     );
 }
