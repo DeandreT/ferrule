@@ -114,8 +114,9 @@ The current portable model includes:
   grouping runs after the declared filter/sort order and before windows
 - literal tokenization, Unicode-scalar fixed-length tokenization, bounded
   inclusive integer ranges, and bounded recursive depth-first collection
-- existential predicates and 1-based scalar `item-at` over those generated
-  sequences; predicates short-circuit after the sequence has been materialized
+- existential predicates over those generated sequences, plus 1-based scalar
+  `item-at` over them or bounded regular-expression tokenization; predicates
+  short-circuit after the sequence has been materialized
 - active collection identity, outward source-field fallback, and compacted
   output positions
 
@@ -140,12 +141,14 @@ Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
 function implementations preserve the interpreter's typed arity, type, and
 invalid-argument failures, including the one-million-character padding bound.
-Regex
-tokenization remains interpreter-only because Rust and .NET expose materially
-different regex dialects and Unicode behavior; exact cross-backend support needs
-a Ferrule-owned matcher. Recursive-filter, path-hierarchy, and adjacency-tree
-target construction remain interpreter-only. Per-item dynamic named sources
-remain interpreter-only because their graph-computed paths require a typed host
+General regex-driven iteration and existential reduction remain interpreter-only
+because Rust and .NET expose materially different regex dialects and Unicode
+behavior; exact cross-backend support needs a Ferrule-owned matcher. Scalar
+`item-at` supports bounded regex tokenization with the common `i`, `m`, `s`, and
+`x` flags; patterns outside the shared non-backtracking dialect can still produce
+a backend-specific invalid-pattern error. Recursive-filter, path-hierarchy, and
+adjacency-tree target construction remain interpreter-only. Per-item dynamic
+named sources remain interpreter-only because their graph-computed paths require a typed host
 loader contract during scope evaluation. Correlated or nested join plans and
 joined-tuple aggregates also remain interpreter-only; their ownership and
 parent-context rules need a broader portable join model. Code generation is

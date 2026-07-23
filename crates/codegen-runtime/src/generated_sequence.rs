@@ -1,7 +1,10 @@
 use crate::{FunctionError, RuntimeError, Value};
+use regex::RegexBuilder;
 
 pub const MAX_GENERATED_SEQUENCE_ITEMS: u128 = 1_000_000;
 pub const MAX_RECURSIVE_SEQUENCE_DEPTH: usize = 256;
+const MAX_TOKENIZE_REGEX_PATTERN_BYTES: usize = 64 * 1024;
+const MAX_TOKENIZE_REGEX_COMPILED_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 pub struct RecursiveCollectPaths<'a> {
@@ -79,6 +82,76 @@ pub fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Value>, Run
         .chunks(length)
         .map(|chunk| Value::String(chunk.iter().collect()))
         .collect())
+}
+
+/// Splits text with the bounded XPath-compatible regular-expression flags.
+pub fn tokenize_regex(
+    input: Value,
+    pattern: Value,
+    flags: Option<Value>,
+) -> Result<Vec<Value>, RuntimeError> {
+    tokenize_regex_with_limit(input, pattern, flags, MAX_GENERATED_SEQUENCE_ITEMS as usize)
+}
+
+fn tokenize_regex_with_limit(
+    input: Value,
+    pattern: Value,
+    flags: Option<Value>,
+    max_items: usize,
+) -> Result<Vec<Value>, RuntimeError> {
+    let input = sequence_string(input, "tokenize-regexp")?;
+    let pattern = sequence_string(pattern, "tokenize-regexp")?;
+    let flags = flags
+        .map(|value| sequence_string(value, "tokenize-regexp"))
+        .transpose()?
+        .unwrap_or_default();
+    if pattern.len() > MAX_TOKENIZE_REGEX_PATTERN_BYTES {
+        return Err(RuntimeError::TokenizeRegexPatternTooLarge {
+            bytes: pattern.len(),
+            max: MAX_TOKENIZE_REGEX_PATTERN_BYTES,
+        });
+    }
+
+    let mut builder = RegexBuilder::new(&pattern);
+    for flag in flags.chars() {
+        let apply: fn(&mut RegexBuilder, bool) -> &mut RegexBuilder = match flag {
+            'i' => RegexBuilder::case_insensitive,
+            'm' => RegexBuilder::multi_line,
+            's' => RegexBuilder::dot_matches_new_line,
+            'x' => RegexBuilder::ignore_whitespace,
+            _ => return Err(RuntimeError::InvalidTokenizeRegexFlags { flags }),
+        };
+        apply(&mut builder, true);
+    }
+    let regex = builder
+        .size_limit(MAX_TOKENIZE_REGEX_COMPILED_BYTES)
+        .dfa_size_limit(MAX_TOKENIZE_REGEX_COMPILED_BYTES)
+        .build()
+        .map_err(|error| RuntimeError::InvalidTokenizeRegex {
+            message: error.to_string(),
+        })?;
+    if regex.is_match("")
+        || regex
+            .find_iter(&input)
+            .any(|matched| matched.start() == matched.end())
+    {
+        return Err(RuntimeError::ZeroWidthTokenizeRegex);
+    }
+    if input.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let values = regex
+        .split(&input)
+        .take(max_items.saturating_add(1))
+        .map(|value| Value::String(value.to_string()))
+        .collect::<Vec<_>>();
+    if values.len() > max_items {
+        return Err(RuntimeError::TokenizeRegexTooLarge {
+            max: max_items as u128,
+        });
+    }
+    Ok(values)
 }
 
 /// Generates an inclusive integer range with the engine's one-million-item
@@ -197,6 +270,85 @@ mod tests {
                 ..
             }))
         ));
+    }
+
+    #[test]
+    fn regex_tokenize_is_bounded_and_preserves_typed_failures() {
+        assert_eq!(
+            tokenize_regex(
+                Value::String("Alpha--beta---GAMMA".into()),
+                Value::String("-+ BETA -+".into()),
+                Some(Value::String("ix".into())),
+            ),
+            Ok(vec![
+                Value::String("Alpha".into()),
+                Value::String("GAMMA".into()),
+            ])
+        );
+        assert_eq!(
+            tokenize_regex(
+                Value::String("--a--".into()),
+                Value::String("-+".into()),
+                None,
+            ),
+            Ok(vec![
+                Value::String(String::new()),
+                Value::String("a".into()),
+                Value::String(String::new()),
+            ])
+        );
+        assert_eq!(
+            tokenize_regex(
+                Value::String(String::new()),
+                Value::String(",".into()),
+                None,
+            ),
+            Ok(Vec::new())
+        );
+        assert!(matches!(
+            tokenize_regex(Value::Int(1), Value::String(",".into()), None),
+            Err(RuntimeError::Function(FunctionError::TypeMismatch {
+                function: "tokenize-regexp",
+                got: "int",
+            }))
+        ));
+        assert!(matches!(
+            tokenize_regex(
+                Value::String("abc".into()),
+                Value::String("a".into()),
+                Some(Value::String("q".into())),
+            ),
+            Err(RuntimeError::InvalidTokenizeRegexFlags { .. })
+        ));
+        assert!(matches!(
+            tokenize_regex(Value::String("abc".into()), Value::String("(".into()), None,),
+            Err(RuntimeError::InvalidTokenizeRegex { .. })
+        ));
+        assert_eq!(
+            tokenize_regex(
+                Value::String("abc".into()),
+                Value::String(r"\b".into()),
+                None,
+            ),
+            Err(RuntimeError::ZeroWidthTokenizeRegex)
+        );
+        assert!(matches!(
+            tokenize_regex(
+                Value::String("abc".into()),
+                Value::String("a".repeat(MAX_TOKENIZE_REGEX_PATTERN_BYTES + 1)),
+                None,
+            ),
+            Err(RuntimeError::TokenizeRegexPatternTooLarge { .. })
+        ));
+        assert_eq!(
+            tokenize_regex_with_limit(
+                Value::String("a,b,c".into()),
+                Value::String(",".into()),
+                None,
+                2,
+            ),
+            Err(RuntimeError::TokenizeRegexTooLarge { max: 2 })
+        );
     }
 
     #[test]

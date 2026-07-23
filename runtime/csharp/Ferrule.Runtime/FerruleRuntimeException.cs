@@ -29,6 +29,11 @@ public enum FerruleRuntimeError
     GeneratedSequenceTooLarge,
     RecursiveSequenceDepth,
     RecursiveSequenceTooLarge,
+    TokenizeRegexPatternTooLarge,
+    InvalidTokenizeRegexFlags,
+    InvalidTokenizeRegex,
+    ZeroWidthTokenizeRegex,
+    TokenizeRegexTooLarge,
     UserFunctionType,
 }
 

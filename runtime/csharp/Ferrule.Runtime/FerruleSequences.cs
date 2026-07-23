@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Ferrule.Runtime;
 
@@ -59,6 +60,7 @@ public static class FerruleSequences
 {
     public const ulong MaximumGeneratedSequenceItems = 1_000_000;
     public const int MaximumRecursiveSequenceDepth = 256;
+    private const int MaximumTokenizeRegexPatternBytes = 64 * 1024;
 
     /// <summary>Splits around a literal delimiter while preserving empty items.</summary>
     public static IReadOnlyList<FerruleValue> Tokenize(
@@ -125,6 +127,80 @@ public static class FerruleSequences
             values.Add(FerruleValue.FromString(builder.ToString()));
             start += count;
         }
+        return new ReadOnlyCollection<FerruleValue>(values);
+    }
+
+    /// <summary>Splits text using bounded XPath-compatible regex flags.</summary>
+    public static IReadOnlyList<FerruleValue> TokenizeRegex(
+        FerruleValue input,
+        FerruleValue pattern,
+        FerruleValue? flags)
+    {
+        var text = RequireString(input, "tokenize-regexp");
+        var expression = RequireString(pattern, "tokenize-regexp");
+        var flagText = flags.HasValue
+            ? RequireString(flags.Value, "tokenize-regexp")
+            : string.Empty;
+        var patternBytes = Encoding.UTF8.GetByteCount(expression);
+        if (patternBytes > MaximumTokenizeRegexPatternBytes)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.TokenizeRegexPatternTooLarge,
+                $"tokenize-regexp pattern is {patternBytes} bytes; maximum is {MaximumTokenizeRegexPatternBytes}",
+                detail: patternBytes.ToString(CultureInfo.InvariantCulture),
+                maximumItems: MaximumTokenizeRegexPatternBytes);
+        }
+
+        var options = RegexOptions.CultureInvariant | RegexOptions.NonBacktracking;
+        foreach (var flag in flagText)
+        {
+            options |= flag switch
+            {
+                'i' => RegexOptions.IgnoreCase,
+                'm' => RegexOptions.Multiline,
+                's' => RegexOptions.Singleline,
+                'x' => RegexOptions.IgnorePatternWhitespace,
+                _ => throw new FerruleRuntimeException(
+                    FerruleRuntimeError.InvalidTokenizeRegexFlags,
+                    $"tokenize-regexp flags `{flagText}` contain an unsupported flag",
+                    detail: flagText),
+            };
+        }
+
+        Regex regex;
+        try
+        {
+            regex = new Regex(expression, options);
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.InvalidTokenizeRegex,
+                $"tokenize-regexp pattern is invalid: {error.Message}",
+                error,
+                detail: error.Message);
+        }
+        if (regex.IsMatch(string.Empty))
+        {
+            throw ZeroWidthRegex();
+        }
+        if (text.Length == 0)
+        {
+            return Array.Empty<FerruleValue>();
+        }
+
+        var values = new List<FerruleValue>();
+        var start = 0;
+        foreach (var match in regex.EnumerateMatches(text))
+        {
+            if (match.Length == 0)
+            {
+                throw ZeroWidthRegex();
+            }
+            AddRegexToken(values, text[start..match.Index]);
+            start = match.Index + match.Length;
+        }
+        AddRegexToken(values, text[start..]);
         return new ReadOnlyCollection<FerruleValue>(values);
     }
 
@@ -644,6 +720,23 @@ public static class FerruleSequences
             function: function,
             foundKind: value.Kind);
     }
+
+    private static void AddRegexToken(List<FerruleValue> values, string token)
+    {
+        if ((ulong)values.Count >= MaximumGeneratedSequenceItems)
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.TokenizeRegexTooLarge,
+                $"tokenize-regexp produced more than {MaximumGeneratedSequenceItems} items",
+                maximumItems: MaximumGeneratedSequenceItems);
+        }
+        values.Add(FerruleValue.FromString(token));
+    }
+
+    private static FerruleRuntimeException ZeroWidthRegex() =>
+        new(
+            FerruleRuntimeError.ZeroWidthTokenizeRegex,
+            "tokenize-regexp pattern matches a zero-width string");
 
     private static long SequenceInteger(FerruleValue value)
     {

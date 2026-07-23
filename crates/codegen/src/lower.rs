@@ -351,6 +351,64 @@ fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> Option<Generate
     }
 }
 
+fn lower_item_at_sequence(sequence: &mapping::SequenceExpr) -> GeneratedSequence {
+    match sequence {
+        mapping::SequenceExpr::Tokenize {
+            input,
+            delimiter,
+            item,
+        } => GeneratedSequence::Tokenize {
+            input: *input,
+            delimiter: *delimiter,
+            item: *item,
+        },
+        mapping::SequenceExpr::TokenizeByLength {
+            input,
+            length,
+            item,
+        } => GeneratedSequence::TokenizeByLength {
+            input: *input,
+            length: *length,
+            item: *item,
+        },
+        mapping::SequenceExpr::TokenizeRegex {
+            input,
+            pattern,
+            flags,
+            item,
+        } => GeneratedSequence::TokenizeRegex {
+            input: *input,
+            pattern: *pattern,
+            flags: *flags,
+            item: *item,
+        },
+        mapping::SequenceExpr::RecursiveCollect {
+            collection,
+            children,
+            descent_value,
+            values,
+            value,
+            prefix,
+            separator,
+            item,
+        } => GeneratedSequence::RecursiveCollect {
+            collection: collection.clone(),
+            children: children.clone(),
+            descent_value: descent_value.clone(),
+            values: values.clone(),
+            value: value.clone(),
+            prefix: *prefix,
+            separator: *separator,
+            item: *item,
+        },
+        mapping::SequenceExpr::Generate { from, to, item } => GeneratedSequence::Range {
+            from: *from,
+            to: *to,
+            item: *item,
+        },
+    }
+}
+
 fn display_target_scope(path: &[String]) -> String {
     if path.is_empty() {
         "target scope `<root>`".into()
@@ -640,10 +698,7 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             predicate: *predicate,
         },
         Node::SequenceItemAt { sequence, index } => Expression::SequenceItemAt {
-            sequence: lower_generated_sequence(sequence).ok_or(Diagnostic::UnsupportedNode {
-                node: id,
-                kind: UnsupportedNodeKind::SequenceItemAt,
-            })?,
+            sequence: lower_item_at_sequence(sequence),
             index: *index,
         },
         node => {
@@ -662,7 +717,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
         Node::XmlSerialize { .. } => UnsupportedNodeKind::XmlSerialize,
         Node::SequenceExists { .. } => UnsupportedNodeKind::SequenceExists,
-        Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
         Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -679,6 +733,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::ValueMap { .. }
         | Node::Lookup { .. }
         | Node::CollectionFind { .. }
+        | Node::SequenceItemAt { .. }
         | Node::Aggregate { .. } => {
             unreachable!("portable expressions are handled above")
         }

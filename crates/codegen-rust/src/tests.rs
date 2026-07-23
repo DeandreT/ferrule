@@ -1063,6 +1063,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                 SchemaNode::scalar("Delimiter", ScalarType::String),
                 SchemaNode::scalar("Index", ScalarType::Int),
                 SchemaNode::scalar("FailIndex", ScalarType::Bool),
+                SchemaNode::scalar("Flags", ScalarType::String),
             ],
         ),
         extra_sources: Vec::new(),
@@ -1178,12 +1179,20 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             ExpressionNode {
                 id: 15,
                 expression: Expression::SequenceItemAt {
-                    sequence: GeneratedSequence::Tokenize {
+                    sequence: GeneratedSequence::TokenizeRegex {
                         input: 1,
-                        delimiter: 2,
+                        pattern: 2,
+                        flags: Some(16),
                         item: 11,
                     },
                     index: 14,
+                },
+            },
+            ExpressionNode {
+                id: 16,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Flags".into()],
                 },
             },
         ],
@@ -1255,6 +1264,15 @@ fn main() {
         ]),
     );
 
+    let out_of_range = input(Value::String("hit,bad".into()), ",", 3, false);
+    assert_eq!(
+        generated_sequence_reducers::execute(&out_of_range).unwrap(),
+        group([
+            field("Selected", scalar(Value::Null)),
+            field("Exists", scalar(Value::Bool(true))),
+        ]),
+    );
+
     let failing_index = input(Value::Null, ",", 2, true);
     assert_eq!(
         generated_sequence_reducers::execute(&failing_index),
@@ -1268,6 +1286,7 @@ fn input(text: Value, delimiter: &str, index: i64, fail_index: bool) -> Instance
         field("Delimiter", scalar(Value::String(delimiter.into()))),
         field("Index", scalar(Value::Int(index))),
         field("FailIndex", scalar(Value::Bool(fail_index))),
+        field("Flags", scalar(Value::String("i".into()))),
     ])
 }
 "#,
