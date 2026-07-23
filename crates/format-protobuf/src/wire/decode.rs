@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use ir::{Instance, Value};
 
@@ -74,6 +74,7 @@ fn decode_message(
     }
     let mut cursor = Cursor::new(bytes);
     let mut occurrences = BTreeMap::<u32, Vec<Occurrence>>::new();
+    let mut active_oneofs = HashMap::new();
     while !cursor.is_empty() {
         budget.charge_field(path)?;
         let key = cursor.varint(path, "field key")?;
@@ -102,6 +103,12 @@ fn decode_message(
             continue;
         };
         let field_path = format!("{path}.{}", field.name());
+        if let Some(oneof) = field.oneof()
+            && let Some(previous) = active_oneofs.insert(oneof, number)
+            && previous != number
+        {
+            occurrences.remove(&previous);
+        }
         let output = occurrences.entry(number).or_default();
         if wire == 2 && field.cardinality() == Cardinality::Repeated && is_packable(field.ty()) {
             let payload = cursor.length_delimited(&field_path)?;
@@ -196,6 +203,9 @@ fn materialize_message(
             }
             Cardinality::Optional => {
                 if values.is_empty() {
+                    if field.oneof().is_some() {
+                        continue;
+                    }
                     if let Some(value) = materialize_default(layout, field, &field_path)? {
                         fields.push((field.name().to_string(), Instance::Scalar(value)));
                     } else if !matches!(field.ty(), FieldType::Message(_)) {

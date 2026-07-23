@@ -4,7 +4,7 @@ use crate::ProtobufError;
 
 use super::model::{
     Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, Message,
-    MessageId, ScalarType,
+    MessageId, Oneof, OneofId, ScalarType,
 };
 
 #[derive(Debug)]
@@ -19,6 +19,7 @@ pub(super) struct RawMessage {
     pub(super) name: String,
     pub(super) full_name: String,
     pub(super) fields: Vec<RawField>,
+    pub(super) oneofs: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -30,6 +31,7 @@ pub(super) struct RawField {
     pub(super) scope: String,
     pub(super) packed: bool,
     pub(super) default: Option<RawDefault>,
+    pub(super) oneof: Option<String>,
 }
 
 #[derive(Debug)]
@@ -109,6 +111,18 @@ fn resolve_message(
     names: &HashMap<&str, DeclId>,
     enums: &[RawEnum],
 ) -> Result<Message, ProtobufError> {
+    let mut oneof_ids = HashMap::new();
+    let mut oneofs = Vec::with_capacity(raw.oneofs.len());
+    for name in &raw.oneofs {
+        let id = OneofId(oneofs.len());
+        if oneof_ids.insert(name.as_str(), id).is_some() {
+            return Err(ProtobufError::schema(format!(
+                "message `{}` has duplicate oneof `{name}`",
+                raw.full_name
+            )));
+        }
+        oneofs.push(Oneof { name: name.clone() });
+    }
     let mut field_names = HashSet::new();
     let mut field_numbers = HashSet::new();
     let mut fields = Vec::with_capacity(raw.fields.len());
@@ -116,6 +130,12 @@ fn resolve_message(
         if !field_names.insert(field.name.as_str()) {
             return Err(ProtobufError::schema(format!(
                 "message `{}` has duplicate field `{}`",
+                raw.full_name, field.name
+            )));
+        }
+        if oneof_ids.contains_key(field.name.as_str()) {
+            return Err(ProtobufError::schema(format!(
+                "message `{}` uses `{}` as both a field and oneof name",
                 raw.full_name, field.name
             )));
         }
@@ -156,6 +176,18 @@ fn resolve_message(
         } else {
             default
         };
+        let oneof = field
+            .oneof
+            .as_ref()
+            .map(|name| {
+                oneof_ids.get(name.as_str()).copied().ok_or_else(|| {
+                    ProtobufError::schema(format!(
+                        "field `{}.{}` references unknown oneof `{name}`",
+                        raw.full_name, field.name
+                    ))
+                })
+            })
+            .transpose()?;
         fields.push(Field {
             name: field.name.clone(),
             number: field.number,
@@ -163,12 +195,14 @@ fn resolve_message(
             ty,
             packed: field.packed,
             default,
+            oneof,
         });
     }
     Ok(Message {
         name: raw.name.clone(),
         full_name: raw.full_name.clone(),
         fields,
+        oneofs,
     })
 }
 

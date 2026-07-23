@@ -20,6 +20,16 @@ impl EnumId {
     }
 }
 
+/// Stable identifier for a resolved oneof declaration within one message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OneofId(pub(super) usize);
+
+impl OneofId {
+    pub fn index(self) -> usize {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cardinality {
     Required,
@@ -101,6 +111,7 @@ pub struct Field {
     pub(super) ty: FieldType,
     pub(super) packed: bool,
     pub(super) default: Option<DefaultValue>,
+    pub(super) oneof: Option<OneofId>,
 }
 
 impl Field {
@@ -127,6 +138,21 @@ impl Field {
     pub fn default(&self) -> Option<&DefaultValue> {
         self.default.as_ref()
     }
+
+    pub fn oneof(&self) -> Option<OneofId> {
+        self.oneof
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Oneof {
+    pub(super) name: String,
+}
+
+impl Oneof {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -134,6 +160,7 @@ pub struct Message {
     pub(super) name: String,
     pub(super) full_name: String,
     pub(super) fields: Vec<Field>,
+    pub(super) oneofs: Vec<Oneof>,
 }
 
 impl Message {
@@ -151,6 +178,14 @@ impl Message {
 
     pub fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|field| field.name == name)
+    }
+
+    pub fn oneofs(&self) -> &[Oneof] {
+        &self.oneofs
+    }
+
+    pub fn oneof(&self, id: OneofId) -> Option<&Oneof> {
+        self.oneofs.get(id.0)
     }
 }
 

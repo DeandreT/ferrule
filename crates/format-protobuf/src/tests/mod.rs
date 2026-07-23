@@ -421,6 +421,196 @@ fn proto3_optional_preserves_scalar_and_message_presence() {
 }
 
 #[test]
+fn oneof_projects_exclusive_choices_and_preserves_wire_presence() {
+    let layout = parse(
+        r#"
+        syntax = "proto3";
+        message Child { string value = 1; }
+        message Root {
+          int32 id = 1;
+          oneof payload {
+            string text = 2;
+            int32 count = 3;
+            Child child = 4;
+          }
+        }
+        "#,
+    );
+    let root_id = layout.resolve_message("Root").unwrap();
+    let root = layout.message(root_id).unwrap();
+    assert_eq!(root.oneofs().len(), 1);
+    assert_eq!(root.oneofs()[0].name(), "payload");
+    assert_eq!(
+        root.field("text")
+            .and_then(|field| field.oneof())
+            .and_then(|id| root.oneof(id))
+            .map(|oneof| oneof.name()),
+        Some("payload")
+    );
+    assert_eq!(
+        root.field("text").unwrap().cardinality(),
+        Cardinality::Optional
+    );
+
+    let schema = to_ir_schema(&layout, "Root").unwrap();
+    assert_eq!(
+        schema
+            .alternatives()
+            .iter()
+            .map(|alternative| alternative.name.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "payload=<unset>",
+            "payload=text",
+            "payload=count",
+            "payload=child",
+        ]
+    );
+    let count = &schema.alternatives()[2];
+    assert_eq!(count.members, ["id", "count"]);
+    assert_eq!(count.required, ["count"]);
+
+    assert_eq!(
+        decode(&layout, "Root", &[]),
+        group(vec![("id", scalar(Value::Int(0)))])
+    );
+    assert_eq!(
+        encode(
+            &layout,
+            "Root",
+            &group(vec![
+                ("id", scalar(Value::Int(0))),
+                ("count", scalar(Value::Int(0))),
+            ]),
+        ),
+        vec![0x18, 0x00]
+    );
+    assert_eq!(
+        encode(
+            &layout,
+            "Root",
+            &group(vec![
+                ("id", scalar(Value::Int(0))),
+                ("text", scalar(Value::String(String::new()))),
+            ]),
+        ),
+        vec![0x12, 0x00]
+    );
+
+    let count_wins = decode(&layout, "Root", &[0x12, 0x01, b'a', 0x18, 0x07]);
+    assert!(count_wins.field("text").is_none());
+    assert_eq!(
+        count_wins.field("count").and_then(Instance::as_scalar),
+        Some(&Value::Int(7))
+    );
+    let text_wins = decode(&layout, "Root", &[0x18, 0x07, 0x12, 0x01, b'a']);
+    assert!(text_wins.field("count").is_none());
+    assert_eq!(
+        text_wins.field("text").and_then(Instance::as_scalar),
+        Some(&Value::String("a".into()))
+    );
+
+    let error = error_text(to_vec(
+        &layout,
+        "Root",
+        &group(vec![
+            ("id", scalar(Value::Int(0))),
+            ("text", scalar(Value::String("a".into()))),
+            ("count", scalar(Value::Int(1))),
+        ]),
+    ));
+    assert!(error.contains("Root.payload"));
+    assert!(error.contains("`text` and `count` are both active"));
+}
+
+#[test]
+fn proto2_oneof_and_multiple_oneof_projection_are_supported_boundedly() {
+    let proto2 = parse(
+        r#"
+        syntax = "proto2";
+        message Root {
+          required int32 id = 1;
+          oneof value { string text = 2; int32 count = 3; }
+        }
+        "#,
+    );
+    assert_eq!(
+        encode(&proto2, "Root", &group(vec![("id", scalar(Value::Int(1)))]),),
+        vec![0x08, 0x01]
+    );
+
+    let multiple = parse(
+        r#"
+        syntax = "proto3";
+        message Root {
+          oneof left { string a = 1; }
+          oneof right { string b = 2; }
+        }
+        "#,
+    );
+    let schema = to_ir_schema(&multiple, "Root").unwrap();
+    assert_eq!(schema.alternatives().len(), 4);
+    assert!(schema.alternatives().iter().any(|alternative| {
+        alternative.name == "left=a; right=b"
+            && alternative.members == ["a", "b"]
+            && alternative.required == ["a", "b"]
+    }));
+
+    let mut source = String::from("syntax = \"proto3\"; message Root {");
+    for index in 0..13 {
+        source.push_str(&format!(
+            "oneof choice{index} {{ string value{index} = {}; }}",
+            index + 1
+        ));
+    }
+    source.push('}');
+    let oversized = parse(&source);
+    let error = error_text(to_ir_schema(&oversized, "Root"));
+    assert!(error.contains("oneof combinations exceed the limit of 4096"));
+}
+
+#[test]
+fn rejects_malformed_oneof_declarations() {
+    let cases = [
+        (
+            r#"syntax = "proto3"; message M { oneof value {} }"#,
+            "must declare at least one field",
+        ),
+        (
+            r#"syntax = "proto3"; message M { oneof value { optional string text = 1; } }"#,
+            "cannot declare a cardinality label",
+        ),
+        (
+            r#"syntax = "proto3"; message M { oneof value { repeated string text = 1; } }"#,
+            "cannot declare a cardinality label",
+        ),
+        (
+            r#"syntax = "proto2"; message M { oneof value { string text = 1 [default = "x"]; } }"#,
+            "cannot declare defaults",
+        ),
+        (
+            r#"syntax = "proto2"; message M { oneof value { int32 count = 1 [packed = true]; } }"#,
+            "cannot use packed encoding",
+        ),
+        (
+            r#"syntax = "proto3"; message M { oneof value { string text = 1; } oneof value { int32 count = 2; } }"#,
+            "duplicate oneof",
+        ),
+        (
+            r#"syntax = "proto3"; message M { oneof value { string text = 1; } string value = 2; }"#,
+            "both a field and oneof name",
+        ),
+    ];
+    for (source, expected) in cases {
+        let error = error_text(Layout::parse(source));
+        assert!(
+            error.contains(expected),
+            "`{error}` should contain `{expected}`"
+        );
+    }
+}
+
+#[test]
 fn parses_and_decodes_proto3_implicit_defaults() {
     let layout = parse(
         r#"

@@ -72,6 +72,35 @@ fn encode_message(
         }
     }
 
+    let mut active_oneofs = HashMap::new();
+    for field in message.fields() {
+        let Some(oneof_id) = field.oneof() else {
+            continue;
+        };
+        let Some(value) = fields.get(field.name()).copied() else {
+            continue;
+        };
+        if is_null(value) {
+            continue;
+        }
+        if let Some(previous) = active_oneofs.insert(oneof_id, field.name()) {
+            let oneof = message.oneof(oneof_id).ok_or_else(|| {
+                ProtobufError::schema(format!(
+                    "unknown resolved oneof id {} in message `{}`",
+                    oneof_id.index(),
+                    message.full_name()
+                ))
+            })?;
+            return Err(ProtobufError::instance(
+                join_path(path, oneof.name()),
+                format!(
+                    "oneof fields `{previous}` and `{}` are both active",
+                    field.name()
+                ),
+            ));
+        }
+    }
+
     for field in message.fields() {
         let field_path = join_path(path, field.name());
         let value = fields.get(field.name()).copied();
