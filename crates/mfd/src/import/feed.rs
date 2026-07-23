@@ -23,26 +23,49 @@ struct VariableConstructionIssue {
     reason: &'static str,
 }
 
+const MAX_VARIABLE_CONSTRUCTION_PATH_DEPTH: usize = 32;
+
 fn validate_bounded_repeating_construction(
     component: &SchemaComponent,
     output_path: &[String],
     projections: &[(Vec<String>, u32)],
 ) -> Result<(), &'static str> {
-    if component.schema.repeating || output_path.len() != 1 {
-        return Err("only one immediate repeating child of a non-repeating record is supported");
+    if component.schema.repeating {
+        return Err("the variable root must be a non-repeating record");
     }
-    let SchemaKind::Group { children, .. } = &component.schema.kind else {
+    if output_path.is_empty() || output_path.len() > MAX_VARIABLE_CONSTRUCTION_PATH_DEPTH {
+        return Err("the repeated child exceeds the 32-level variable construction path limit");
+    }
+    if !matches!(component.schema.kind, SchemaKind::Group { .. }) {
         return Err("the variable root is not a record");
-    };
-    let repeated_children = children.iter().filter(|child| child.repeating).count();
-    if repeated_children != 1 {
-        return Err("the variable record has multiple or ambiguous repeating children");
     }
     let Some(output) = schema::schema_node_at(&component.schema, output_path) else {
         return Err("the repeated child is absent from the variable schema");
     };
+    let mut wrapper = &component.schema;
+    for segment in &output_path[..output_path.len() - 1] {
+        let SchemaKind::Group { children, .. } = &wrapper.kind else {
+            return Err("the repeated child path crosses a non-record wrapper");
+        };
+        let Some(next) = children.iter().find(|child| child.name == *segment) else {
+            return Err("the repeated child is absent from the variable schema");
+        };
+        if next.repeating {
+            return Err("more than one repetition level is not supported");
+        }
+        if !matches!(next.kind, SchemaKind::Group { .. }) {
+            return Err("the repeated child path crosses a non-record wrapper");
+        }
+        wrapper = next;
+    }
+    if !output.repeating || !matches!(output.kind, SchemaKind::Group { .. }) {
+        return Err("the selected variable output is not a repeating record");
+    }
     if has_repeating_descendant(output) {
         return Err("deeper nested repetition is not supported");
+    }
+    if count_repeating_nodes(&component.schema) != 1 {
+        return Err("the variable record has multiple or ambiguous repeating children");
     }
     for (relative, _) in projections {
         let mut absolute = output_path.to_vec();
@@ -62,6 +85,14 @@ fn validate_bounded_repeating_construction(
         }
     }
     Ok(())
+}
+
+fn count_repeating_nodes(node: &ir::SchemaNode) -> usize {
+    let own = usize::from(node.repeating);
+    let SchemaKind::Group { children, .. } = &node.kind else {
+        return own;
+    };
+    own + children.iter().map(count_repeating_nodes).sum::<usize>()
 }
 
 fn has_repeating_descendant(node: &ir::SchemaNode) -> bool {

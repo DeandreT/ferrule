@@ -35,6 +35,7 @@ enum VariableShape {
     Supported,
     Ambiguous,
     Deep,
+    NestedRepetition,
 }
 
 fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::Error> {
@@ -57,18 +58,29 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
     } else {
         ""
     };
-    let line_schema = if shape == VariableShape::Deep {
-        r#"<xs:element name="Container"><xs:complexType><xs:sequence>
+    let nested_detail = if shape == VariableShape::NestedRepetition {
+        r#"<xs:element name="Detail" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Value" type="xs:string"/>
+    </xs:sequence></xs:complexType></xs:element>"#
+    } else {
+        ""
+    };
+    let line_schema = if matches!(shape, VariableShape::Deep | VariableShape::NestedRepetition) {
+        format!(
+            r#"<xs:element name="Container"><xs:complexType><xs:sequence>
     <xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence>
       <xs:element name="Code" type="xs:string"/>
       <xs:element name="Qty" type="xs:int"/>
+      {nested_detail}
     </xs:sequence></xs:complexType></xs:element>
     </xs:sequence></xs:complexType></xs:element>"#
+        )
     } else {
         r#"<xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence>
       <xs:element name="Code" type="xs:string"/>
       <xs:element name="Qty" type="xs:int"/>
     </xs:sequence></xs:complexType></xs:element>"#
+            .to_string()
     };
     write(
         &dir.join("variable.xsd"),
@@ -95,7 +107,10 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
   </xs:sequence></xs:complexType></xs:element>
 </xs:schema>"#,
     )?;
-    let invalid = shape != VariableShape::Supported;
+    let invalid = matches!(
+        shape,
+        VariableShape::Ambiguous | VariableShape::NestedRepetition
+    );
     let second_row = if invalid {
         r#"<entry name="Row" inpkey="23"><entry name="BatchId"/><entry name="Code"/><entry name="Qty"/></entry>"#
     } else {
@@ -106,7 +121,7 @@ fn write_fixture(dir: &Path, shape: VariableShape) -> Result<PathBuf, std::io::E
     } else {
         ""
     };
-    let line_entry = if shape == VariableShape::Deep {
+    let line_entry = if matches!(shape, VariableShape::Deep | VariableShape::NestedRepetition) {
         r#"<entry name="Container"><entry name="Line" inpkey="12" outkey="13"><entry name="Code" inpkey="14"/><entry name="Qty" inpkey="15"/></entry></entry>"#
     } else {
         r#"<entry name="Line" inpkey="12" outkey="13"><entry name="Code" inpkey="14"/><entry name="Qty" inpkey="15"/></entry>"#
@@ -200,6 +215,26 @@ fn constructed_variable_repeated_child_executes_and_roundtrips() -> Result<(), B
 }
 
 #[test]
+fn wrapped_repeated_child_executes_and_roundtrips() -> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new()?;
+    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::Deep)?)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let rows = row(&imported.project.root, "Row").ok_or("missing Row scope")?;
+    assert_eq!(rows.source(), Some(["Item".to_string()].as_slice()));
+    assert_execution(&imported.project)?;
+
+    let exported = dir.0.join("deep-round-trip.mfd");
+    let warnings = mfd::export(&imported.project, &exported)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let reimported = mfd::import(&exported)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_execution(&reimported.project)?;
+    Ok(())
+}
+
+#[test]
 fn ambiguous_nested_variable_construction_warns_once() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
     let imported = mfd::import(&write_fixture(&dir.0, VariableShape::Ambiguous)?)?;
@@ -214,15 +249,15 @@ fn ambiguous_nested_variable_construction_warns_once() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn deeper_nested_variable_construction_warns_once() -> Result<(), Box<dyn Error>> {
+fn genuinely_nested_repetition_warns_once() -> Result<(), Box<dyn Error>> {
     let dir = TempDir::new()?;
-    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::Deep)?)?;
+    let imported = mfd::import(&write_fixture(&dir.0, VariableShape::NestedRepetition)?)?;
     let warnings = imported
         .warnings
         .iter()
         .filter(|warning| warning.contains("variable `envelope` cannot construct repeating target"))
         .collect::<Vec<_>>();
     assert_eq!(warnings.len(), 1, "{:?}", imported.warnings);
-    assert!(warnings[0].contains("only one immediate repeating child"));
+    assert!(warnings[0].contains("deeper nested repetition"));
     Ok(())
 }
