@@ -312,6 +312,43 @@ impl<'a> ScopeContext<'a> {
         self.generated_item_contexts(items).collect()
     }
 
+    pub(crate) fn with_xml_mixed_content_value<'b>(
+        &'b self,
+        value: &'b Instance,
+        collection: &[&str],
+        index: usize,
+    ) -> ScopeContext<'b>
+    where
+        'a: 'b,
+    {
+        let mut frames = self
+            .frames
+            .iter()
+            .map(|frame| ScopeFrame {
+                instance: frame.instance,
+                collection: frame.collection.clone(),
+                document_path: frame.document_path,
+                join: frame.join,
+                join_position: frame.join_position,
+            })
+            .collect::<Vec<_>>();
+        frames.push(collection_frame(
+            value,
+            CollectionIdentity::Repeated {
+                path: collection
+                    .iter()
+                    .map(|segment| (*segment).to_string())
+                    .collect(),
+                index,
+            },
+        ));
+        ScopeContext {
+            frames,
+            named_inputs: self.named_inputs,
+            execution: self.execution,
+        }
+    }
+
     fn named_input(&self, name: &str) -> Option<&'a Instance> {
         self.named_inputs
             .iter()

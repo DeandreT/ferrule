@@ -483,6 +483,171 @@ fn imports_one_concrete_type_derived_from_an_abstract_base() {
 }
 
 #[test]
+fn imports_transitive_complex_substitution_groups_and_preserves_element_names() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_substitution_group_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:creatures" targetNamespace="urn:ferrule:creatures"
+                elementFormDefault="qualified">
+          <xs:complexType name="CreatureType"><xs:sequence>
+            <xs:element name="name" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="CatType"><xs:complexContent>
+            <xs:extension base="t:CreatureType"><xs:sequence>
+              <xs:element name="lives" type="xs:integer"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:complexType name="DogType"><xs:complexContent>
+            <xs:extension base="t:CreatureType"><xs:sequence>
+              <xs:element name="barks" type="xs:boolean"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Creature" type="t:CreatureType" abstract="true"/>
+          <xs:element name="Mammal" type="t:CreatureType" abstract="true"
+                      substitutionGroup="t:Creature"/>
+          <xs:element name="Cat" type="t:CatType" substitutionGroup="t:Mammal"/>
+          <xs:element name="Dog" type="t:DogType" substitutionGroup="t:Creature"/>
+          <xs:element name="Habitat"><xs:complexType><xs:sequence>
+            <xs:element ref="t:Creature" maxOccurs="unbounded"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("{urn:ferrule:creatures}Habitat")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let creature = schema.child("Creature").unwrap();
+    assert!(creature.repeating);
+    assert_eq!(
+        creature
+            .alternatives()
+            .iter()
+            .map(|alternative| alternative.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["{urn:ferrule:creatures}Cat", "{urn:ferrule:creatures}Dog"]
+    );
+    assert_eq!(
+        creature.xml_alternative_kind,
+        ir::XmlAlternativeKind::SubstitutionGroup
+    );
+
+    let input = from_str(
+        r#"<Habitat xmlns="urn:ferrule:creatures">
+          <Cat><name>Ada</name><lives>9</lives></Cat>
+          <Dog><name>Byron</name><barks>true</barks></Dog>
+        </Habitat>"#,
+        &schema,
+    )
+    .unwrap();
+    let creatures = input
+        .field("Creature")
+        .and_then(ir::Instance::as_repeated)
+        .unwrap();
+    assert_eq!(
+        creatures[0]
+            .field(ir::XML_SUBSTITUTION_FIELD)
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String("{urn:ferrule:creatures}Cat".into()))
+    );
+    assert_eq!(
+        creatures[1]
+            .field(ir::XML_SUBSTITUTION_FIELD)
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String("{urn:ferrule:creatures}Dog".into()))
+    );
+    let output = crate::to_string(&schema, &input).unwrap();
+    assert!(output.contains("<Cat>"), "{output}");
+    assert!(output.contains("<Dog>"), "{output}");
+    assert!(!output.contains("xsi:type"), "{output}");
+}
+
+#[test]
+fn rejects_substitution_members_with_ambiguous_field_schemas() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_ambiguous_substitution_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:ambiguous-substitution"
+                targetNamespace="urn:ferrule:ambiguous-substitution">
+          <xs:complexType name="Empty"/>
+          <xs:complexType name="TextChoice"><xs:complexContent>
+            <xs:extension base="t:Empty"><xs:sequence>
+              <xs:element name="value" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:complexType name="NumberChoice"><xs:complexContent>
+            <xs:extension base="t:Empty"><xs:sequence>
+              <xs:element name="value" type="xs:integer"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Choice" type="t:Empty" abstract="true"/>
+          <xs:element name="Text" type="t:TextChoice" substitutionGroup="t:Choice"/>
+          <xs:element name="Number" type="t:NumberChoice" substitutionGroup="t:Choice"/>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element ref="t:Choice"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let error = import_root(&path, Some("{urn:ferrule:ambiguous-substitution}Root")).unwrap_err();
+    std::fs::remove_file(path).unwrap();
+    assert!(matches!(
+        error,
+        crate::XmlFormatError::UnsupportedSubstitutionGroup {
+            reason: "same-named member fields have incompatible schemas",
+            ..
+        }
+    ));
+}
+
+#[test]
+fn rejects_nonabstract_substitution_heads_with_independent_xsi_type_alternatives() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_substitution_xsi_type_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:substitution-xsi-type"
+                targetNamespace="urn:ferrule:substitution-xsi-type">
+          <xs:complexType name="CreatureType"><xs:sequence>
+            <xs:element name="name" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="DecoratedCreatureType"><xs:complexContent>
+            <xs:extension base="t:CreatureType"><xs:sequence>
+              <xs:element name="decoration" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Creature" type="t:CreatureType"/>
+          <xs:element name="Cat" type="t:CreatureType" substitutionGroup="t:Creature"/>
+          <xs:element name="Root"><xs:complexType><xs:sequence>
+            <xs:element ref="t:Creature"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let error = import_root(&path, Some("{urn:ferrule:substitution-xsi-type}Root")).unwrap_err();
+    std::fs::remove_file(path).unwrap();
+    assert!(matches!(
+        error,
+        crate::XmlFormatError::UnsupportedSubstitutionGroup {
+            reason: "substitution heads with xsi:type alternatives are not supported",
+            ..
+        }
+    ));
+}
+
+#[test]
 fn imports_transitive_derived_types_through_an_abstract_intermediate() {
     let dir = std::env::temp_dir().join(format!(
         "ferrule_xsd_transitive_alternatives_{}",

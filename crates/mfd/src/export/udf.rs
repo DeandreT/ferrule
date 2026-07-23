@@ -158,6 +158,14 @@ fn validate_function(id: FunctionId, function: &UserFunction) -> Result<(), MfdE
         })?;
         match node {
             Node::FunctionParameter { parameter } if parameter_ids.contains(parameter) => {}
+            Node::Const {
+                value: Value::JsonNull(_),
+            } => {
+                return Err(unsupported(format!(
+                    "user-defined function `{}` contains an explicit JSON null constant that .mfd cannot represent",
+                    function.name
+                )));
+            }
             Node::Unconnected
             | Node::Const {
                 value:
@@ -483,6 +491,7 @@ fn render_constant(
     let (text, datatype) = constant_parts(value);
     let (name, kind) = match value {
         Value::Null => ("set-empty", 5),
+        Value::JsonNull(_) => ("set-empty", 5),
         Value::XmlNil(_) => ("set-xsi-nil", 5),
         _ => ("constant", 2),
     };

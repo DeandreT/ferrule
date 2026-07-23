@@ -10,6 +10,7 @@ const VALUE_MAP_CELL_WIDTH: f32 = 92.0;
 pub fn display_string(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
+        Value::JsonNull(_) => "json:null".to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
@@ -27,6 +28,12 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
                 .clicked()
             {
                 *value = Value::Null;
+            }
+            if ui
+                .selectable_label(value.is_json_null(), "JSON null")
+                .clicked()
+            {
+                *value = Value::json_null();
             }
             if ui
                 .selectable_label(matches!(value, Value::Bool(_)), "bool")
@@ -57,7 +64,7 @@ pub fn show_value_editor(ui: &mut Ui, value: &mut Value) {
             }
         });
     match value {
-        Value::Null => {}
+        Value::Null | Value::JsonNull(_) => {}
         Value::Bool(b) => {
             ui.checkbox(b, "");
         }

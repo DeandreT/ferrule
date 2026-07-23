@@ -198,7 +198,7 @@ public static partial class FerruleFunctions
             time = arguments[1].Kind switch
             {
                 FerruleValueKind.String => arguments[1].StringValue,
-                FerruleValueKind.Null => "00:00:00",
+                FerruleValueKind.Null or FerruleValueKind.JsonNull => "00:00:00",
                 _ => throw Type(function, arguments[1]),
             };
         }
@@ -226,7 +226,7 @@ public static partial class FerruleFunctions
     {
         const string function = "coerce_datetime";
         RequireArity(function, arguments, 1);
-        if (arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil)
+        if (arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
         {
             return arguments[0];
         }
@@ -256,16 +256,18 @@ public static partial class FerruleFunctions
         var month = DateTimeIntegerPart(arguments[1], function);
         var day = DateTimeIntegerPart(arguments[2], function);
         long OptionalInteger(int index) => index >= arguments.Count ||
-            arguments[index].Kind == FerruleValueKind.Null
+            arguments[index].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
                 ? 0
                 : DateTimeIntegerPart(arguments[index], function);
         var hour = OptionalInteger(3);
         var minute = OptionalInteger(4);
         var second = OptionalInteger(5);
-        var millisecond = arguments.Count <= 6 || arguments[6].Kind == FerruleValueKind.Null
+        var millisecond = arguments.Count <= 6 ||
+            arguments[6].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
             ? 0.0
             : DateTimeDecimalPart(arguments[6], function);
-        long? timezone = arguments.Count <= 7 || arguments[7].Kind == FerruleValueKind.Null
+        long? timezone = arguments.Count <= 7 ||
+            arguments[7].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
             ? null
             : DateTimeIntegerPart(arguments[7], function);
 
@@ -406,7 +408,7 @@ public static partial class FerruleFunctions
         string function)
     {
         RequireArity(function, arguments, 1);
-        if (arguments[0].Kind == FerruleValueKind.Null)
+        if (arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {
             return null;
         }

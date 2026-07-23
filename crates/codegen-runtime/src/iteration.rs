@@ -56,7 +56,9 @@ pub fn item_count(node: u32, value: Value) -> Result<usize, RuntimeError> {
         Value::Int(value) => Some(*value),
         Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
         Value::String(value) => value.trim().parse::<i64>().ok(),
-        Value::Null | Value::XmlNil(_) | Value::Bool(_) | Value::Float(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) | Value::Float(_) => {
+            None
+        }
     };
     count
         .map(|count| count.max(0) as usize)

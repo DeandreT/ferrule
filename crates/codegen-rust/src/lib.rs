@@ -150,6 +150,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
              serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
+             xml_mixed_content, XmlMixedContentReplacement,\n\
          };\n\n",
     );
     source.push_str("pub use codegen_runtime::NamedInput;\n\n");
@@ -387,6 +388,32 @@ fn render_expression(
             format!(
                 "{{\n        let instance = context.resolve_xml_instance({frame}, &[{path}])?;\n        serialize_xml({id}, {}, instance, {declaration}, {indent}, {namespace})\n    }}",
                 rust_string(&schema)
+            )
+        }
+        Expression::XmlMixedContent {
+            frame,
+            path,
+            replacements,
+        } => {
+            let path = render_string_path(path);
+            let frame = frame.as_ref().map_or_else(
+                || "None".to_string(),
+                |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+            );
+            let replacements = replacements
+                .iter()
+                .map(|replacement| {
+                    format!(
+                        "XmlMixedContentReplacement {{ element: {}, collection: &[{}], expression: {prefix}{} }}",
+                        rust_string(&replacement.element),
+                        render_string_path(&replacement.collection),
+                        replacement.expression,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",\n            ");
+            format!(
+                "xml_mixed_content(\n        context,\n        {frame},\n        &[{path}],\n        &[\n            {replacements}\n        ],\n    )"
             )
         }
         Expression::SourceDocumentPath => {
@@ -1069,10 +1096,10 @@ fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &
         GeneratedSequence::Tokenize {
             input, delimiter, ..
         } => output.push_str(&format!(
-            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{delimiter}(context)?;\n{indent}    if sequence_parameter == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
+            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null || sequence_input.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{delimiter}(context)?;\n{indent}    if sequence_parameter == Value::Null || sequence_parameter.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
         )),
         GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
-            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{length}(context)?;\n{indent}    if sequence_parameter == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize_by_length(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
+            "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null || sequence_input.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{length}(context)?;\n{indent}    if sequence_parameter == Value::Null || sequence_parameter.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize_by_length(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
         )),
         GeneratedSequence::TokenizeRegex {
             input,
@@ -1081,11 +1108,11 @@ fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &
             ..
         } => {
             output.push_str(&format!(
-                "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_pattern = expression_{pattern}(context)?;\n{indent}    if sequence_pattern == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n"
+                "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null || sequence_input.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_pattern = expression_{pattern}(context)?;\n{indent}    if sequence_pattern == Value::Null || sequence_pattern.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n"
             ));
             match flags {
                 Some(flags) => output.push_str(&format!(
-                    "{indent}        let sequence_flags = expression_{flags}(context)?;\n{indent}        if sequence_flags == Value::Null {{\n{indent}            Vec::new()\n{indent}        }} else {{\n{indent}            tokenize_regex(sequence_input, sequence_pattern, Some(sequence_flags))?\n{indent}        }}\n"
+                    "{indent}        let sequence_flags = expression_{flags}(context)?;\n{indent}        if sequence_flags == Value::Null || sequence_flags.is_json_null() {{\n{indent}            Vec::new()\n{indent}        }} else {{\n{indent}            tokenize_regex(sequence_input, sequence_pattern, Some(sequence_flags))?\n{indent}        }}\n"
                 )),
                 None => output.push_str(&format!(
                     "{indent}        tokenize_regex(sequence_input, sequence_pattern, None)?\n"
@@ -1124,10 +1151,10 @@ fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &
             to,
             ..
         } => output.push_str(&format!(
-            "{indent}let sequence_from = expression_{from}(context)?;\n{indent}let sequence_values = if sequence_from == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_to = expression_{to}(context)?;\n{indent}    if sequence_to == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        generate_sequence(Some(sequence_from), sequence_to)?\n{indent}    }}\n{indent}}};\n"
+            "{indent}let sequence_from = expression_{from}(context)?;\n{indent}let sequence_values = if sequence_from == Value::Null || sequence_from.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_to = expression_{to}(context)?;\n{indent}    if sequence_to == Value::Null || sequence_to.is_json_null() {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        generate_sequence(Some(sequence_from), sequence_to)?\n{indent}    }}\n{indent}}};\n"
         )),
         GeneratedSequence::Range { from: None, to, .. } => output.push_str(&format!(
-            "{indent}let sequence_to = expression_{to}(context)?;\n{indent}let sequence_values = if sequence_to == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    generate_sequence(None, sequence_to)?\n{indent}}};\n"
+            "{indent}let sequence_to = expression_{to}(context)?;\n{indent}let sequence_values = if sequence_to == Value::Null || sequence_to.is_json_null() {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    generate_sequence(None, sequence_to)?\n{indent}}};\n"
         )),
     }
 }
@@ -1296,6 +1323,7 @@ fn scalar_type_name(value: ScalarType) -> &'static str {
 fn rust_value(_node: NodeId, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "Value::Null".to_string(),
+        Value::JsonNull(_) => "Value::json_null()".to_string(),
         Value::XmlNil(_) => "Value::xml_nil()".to_string(),
         Value::Bool(value) => format!("Value::Bool({value})"),
         Value::Int(i64::MIN) => "Value::Int(i64::MIN)".to_string(),

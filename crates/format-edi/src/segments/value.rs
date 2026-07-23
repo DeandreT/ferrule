@@ -55,7 +55,8 @@ pub(super) fn scalar_or_fixed(
     value: Option<&Value>,
 ) -> Result<String, EdiFormatError> {
     let missing = value.is_none_or(|value| {
-        matches!(value, Value::Null) || matches!(value, Value::String(text) if text.is_empty())
+        matches!(value, Value::Null | Value::JsonNull(_))
+            || matches!(value, Value::String(text) if text.is_empty())
     });
     let Some(fixed) = &schema.fixed else {
         if missing {
@@ -185,7 +186,7 @@ fn format_value(schema: &SchemaNode, value: &Value) -> Result<String, EdiFormatE
         got,
     };
     match (ty, value) {
-        (_, Value::Null) => Ok(String::new()),
+        (_, Value::Null | Value::JsonNull(_)) => Ok(String::new()),
         (ScalarType::String, Value::Bool(value)) => Ok(value.to_string()),
         (ScalarType::String, Value::Int(value)) => Ok(value.to_string()),
         (ScalarType::String, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),

@@ -5,10 +5,12 @@
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
 //! refs degrade to string scalars). Compatible closed-object `oneOf` and
 //! `anyOf` unions, their required scalar `const` discriminators, and typed
-//! `additionalProperties` schemas are preserved. An omitted or false
-//! `additionalProperties` is treated as closed; explicitly unconstrained
-//! `true`/`{}` schemas and general composition or validation keywords remain
-//! outside this "lite" subset.
+//! `additionalProperties` schemas are preserved. Scalar-plus-null `oneOf` /
+//! `anyOf` and scalar nullable type arrays retain explicit nullability,
+//! including scalar array items. An omitted or false `additionalProperties`
+//! is treated as closed; explicitly unconstrained `true`/`{}` schemas and
+//! general composition or validation keywords remain outside this "lite"
+//! subset.
 
 use ir::{GroupAlternativeMode, ScalarType, SchemaNode};
 
@@ -17,7 +19,9 @@ use crate::JsonFormatError;
 mod alternatives;
 mod render;
 
-use alternatives::{parse_inferred_const_scalar, parse_object_alternatives};
+use alternatives::{
+    parse_inferred_const_scalar, parse_nullable_scalar_alternatives, parse_object_alternatives,
+};
 
 /// Imports the root of a JSON Schema file as a [`SchemaNode`]. The root
 /// node is named by the schema's `title` (looked up through a root-level
@@ -66,6 +70,16 @@ fn parse(
         return node;
     }
     if let Some(alternatives) = schema.get("oneOf") {
+        if let Some(nullable) = parse_nullable_scalar_alternatives(
+            name,
+            schema,
+            alternatives,
+            "oneOf",
+            doc,
+            active_refs,
+        )? {
+            return Ok(nullable);
+        }
         return parse_object_alternatives(
             name,
             schema,
@@ -76,6 +90,16 @@ fn parse(
         );
     }
     if let Some(alternatives) = schema.get("anyOf") {
+        if let Some(nullable) = parse_nullable_scalar_alternatives(
+            name,
+            schema,
+            alternatives,
+            "anyOf",
+            doc,
+            active_refs,
+        )? {
+            return Ok(nullable);
+        }
         return parse_object_alternatives(
             name,
             schema,
@@ -85,7 +109,7 @@ fn parse(
             active_refs,
         );
     }
-    let ty = schema_type(name, schema)?;
+    let (ty, nullable) = schema_type(name, schema)?;
     match ty {
         Some("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
@@ -97,9 +121,14 @@ fn parse(
             };
             Ok(parse(name, items, doc, active_refs)?.repeating())
         }
-        Some("integer") => Ok(SchemaNode::scalar(name, ScalarType::Int)),
-        Some("number") => Ok(SchemaNode::scalar(name, ScalarType::Float)),
-        Some("boolean") => Ok(SchemaNode::scalar(name, ScalarType::Bool)),
+        Some("string") => Ok(scalar_schema(name, ScalarType::String, nullable)),
+        Some("integer") => Ok(scalar_schema(name, ScalarType::Int, nullable)),
+        Some("number") => Ok(scalar_schema(name, ScalarType::Float, nullable)),
+        Some("boolean") => Ok(scalar_schema(name, ScalarType::Bool, nullable)),
+        Some("null") => Err(unsupported_union(
+            name,
+            "a null-only schema has no distinct ferrule scalar value type",
+        )),
         None if schema.get("const").is_some() => {
             parse_inferred_const_scalar(name, &schema["const"])
         }
@@ -114,25 +143,67 @@ fn parse(
 fn schema_type<'a>(
     name: &str,
     schema: &'a serde_json::Value,
-) -> Result<Option<&'a str>, JsonFormatError> {
+) -> Result<(Option<&'a str>, bool), JsonFormatError> {
     let Some(value) = schema.get("type") else {
-        return Ok(None);
+        return Ok((None, false));
     };
     let serde_json::Value::Array(types) = value else {
-        return Ok(value.as_str());
+        return Ok((value.as_str(), false));
     };
-    let mut concrete = types
-        .iter()
-        .filter_map(serde_json::Value::as_str)
-        .filter(|ty| *ty != "null");
-    let first = concrete.next();
-    if concrete.next().is_some() {
+    let mut concrete = None;
+    let mut nullable = false;
+    for ty in types {
+        let Some(ty) = ty.as_str() else {
+            return Err(unsupported_union(
+                name,
+                "type arrays may contain only string type names",
+            ));
+        };
+        if ty == "null" {
+            if nullable {
+                return Err(unsupported_union(
+                    name,
+                    "type arrays may not repeat the null type",
+                ));
+            }
+            nullable = true;
+        } else if concrete.replace(ty).is_some() {
+            return Err(unsupported_union(
+                name,
+                "type arrays may contain only one non-null type",
+            ));
+        }
+    }
+    let Some(concrete) = concrete else {
         return Err(unsupported_union(
             name,
-            "type arrays may contain only one non-null type",
+            "type arrays must contain one non-null type",
+        ));
+    };
+    if nullable && matches!(concrete, "object" | "array") {
+        return Err(unsupported_union(
+            name,
+            "nullable object and array schemas cannot be represented without losing explicit null",
         ));
     }
-    Ok(first)
+    if nullable
+        && !matches!(
+            concrete,
+            "string" | "integer" | "number" | "boolean" | "object" | "array"
+        )
+    {
+        return Err(unsupported_union(
+            name,
+            "nullable type arrays require a supported scalar type",
+        ));
+    }
+    Ok((Some(concrete), nullable))
+}
+
+fn scalar_schema(name: &str, ty: ScalarType, nullable: bool) -> SchemaNode {
+    let mut node = SchemaNode::scalar(name, ty);
+    node.nullable = nullable;
+    node
 }
 
 fn attach_dynamic_fields(

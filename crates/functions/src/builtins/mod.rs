@@ -139,7 +139,7 @@ fn concat(args: &[Value]) -> Value {
     let mut out = String::new();
     for arg in args {
         match arg {
-            Value::Null | Value::XmlNil(_) => {}
+            Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => {}
             Value::Bool(b) => out.push_str(&b.to_string()),
             Value::Int(i) => out.push_str(&i.to_string()),
             Value::Float(f) => out.push_str(&f.to_string()),
@@ -306,7 +306,7 @@ fn is_numeric(args: &[Value]) -> Result<Value, FunctionError> {
             .trim()
             .parse::<f64>()
             .is_ok_and(|value| value.is_finite()),
-        Value::Null | Value::XmlNil(_) | Value::Bool(_) => false,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) => false,
     };
     Ok(Value::Bool(numeric))
 }
@@ -320,7 +320,7 @@ fn to_number(args: &[Value]) -> Result<Value, FunctionError> {
         });
     };
     match value {
-        Value::Null => Ok(Value::Null),
+        Value::Null | Value::JsonNull(_) => Ok(Value::Null),
         Value::Int(value) => Ok(Value::Int(*value)),
         Value::Float(value) if value.is_finite() => Ok(Value::Float(*value)),
         Value::String(value) => {
@@ -519,7 +519,9 @@ fn sqlite_multiply(args: &[Value]) -> Result<Value, FunctionError> {
             got: args.len(),
         });
     };
-    if matches!(left, Value::Null) || matches!(right, Value::Null) {
+    if matches!(left, Value::Null | Value::JsonNull(_))
+        || matches!(right, Value::Null | Value::JsonNull(_))
+    {
         return Ok(Value::Null);
     }
     match (
@@ -715,7 +717,10 @@ fn split_string(args: &[Value], name: &'static str, before: bool) -> Result<Valu
 /// source node arrives as `Null`.
 fn exists(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
-        [value] => Ok(Value::Bool(!matches!(value, Value::Null))),
+        [value] => Ok(Value::Bool(!matches!(
+            value,
+            Value::Null | Value::JsonNull(_)
+        ))),
         _ => Err(FunctionError::ArityMismatch {
             function: "exists",
             expected: 1,
@@ -788,7 +793,7 @@ fn nullable_string_arg<'a>(
     function: &'static str,
 ) -> Result<Option<&'a str>, FunctionError> {
     let value = match args {
-        [Value::Null] => return Ok(None),
+        [Value::Null | Value::JsonNull(_)] => return Ok(None),
         [Value::String(value)] => value,
         [other] => {
             return Err(FunctionError::TypeMismatch {
@@ -1088,7 +1093,10 @@ fn iso_days_in_month(year: &str, month: u32) -> u32 {
 
 fn substitute_missing(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
-        [Value::Null | Value::XmlNil(_), replacement] => Ok(replacement.clone()),
+        [
+            Value::Null | Value::JsonNull(_) | Value::XmlNil(_),
+            replacement,
+        ] => Ok(replacement.clone()),
         [value, _] => Ok(value.clone()),
         _ => Err(FunctionError::ArityMismatch {
             function: "substitute_missing",
@@ -1100,7 +1108,7 @@ fn substitute_missing(args: &[Value]) -> Result<Value, FunctionError> {
 
 fn substitute_missing_with_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {
     match args {
-        [Value::Null] => Ok(Value::xml_nil()),
+        [Value::Null | Value::JsonNull(_)] => Ok(Value::xml_nil()),
         [value] => Ok(value.clone()),
         _ => Err(FunctionError::ArityMismatch {
             function: "substitute_missing_with_xml_nil",
@@ -1117,8 +1125,8 @@ fn value_ordering(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
         (Value::Int(a), Value::Float(b)) => (*a as f64).partial_cmp(b),
         (Value::Float(a), Value::Int(b)) => a.partial_cmp(&(*b as f64)),
         (Value::String(a), Value::String(b)) => Some(a.cmp(b)),
-        (Value::String(_), Value::Null | Value::XmlNil(_))
-        | (Value::Null | Value::XmlNil(_), Value::String(_)) => None,
+        (Value::String(_), Value::Null | Value::JsonNull(_) | Value::XmlNil(_))
+        | (Value::Null | Value::JsonNull(_) | Value::XmlNil(_), Value::String(_)) => None,
         (Value::String(a), b) => Some(a.as_str().cmp(scalar_text(b).as_str())),
         (a, Value::String(b)) => Some(scalar_text(a).as_str().cmp(b.as_str())),
         (Value::Bool(a), Value::Bool(b)) => Some(a.cmp(b)),
@@ -1132,9 +1140,8 @@ fn comparison(
     matches: impl Fn(std::cmp::Ordering) -> bool,
 ) -> Result<Value, FunctionError> {
     match args {
-        [Value::Null | Value::XmlNil(_), _] | [_, Value::Null | Value::XmlNil(_)] => {
-            Ok(Value::Bool(false))
-        }
+        [Value::Null | Value::JsonNull(_) | Value::XmlNil(_), _]
+        | [_, Value::Null | Value::JsonNull(_) | Value::XmlNil(_)] => Ok(Value::Bool(false)),
         [a, b] => match value_ordering(a, b) {
             Some(ordering) => Ok(Value::Bool(matches(ordering))),
             None => Err(FunctionError::TypeMismatch {

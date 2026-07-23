@@ -143,6 +143,23 @@ pub enum ProgramValidationError {
         schema: String,
         feature: &'static str,
     },
+    InvalidXmlMixedContentSource {
+        node: NodeId,
+        path: Vec<String>,
+    },
+    EmptyXmlMixedContentElement {
+        node: NodeId,
+        replacement: usize,
+    },
+    DuplicateXmlMixedContentElement {
+        node: NodeId,
+        element: String,
+    },
+    InvalidXmlMixedContentCollection {
+        node: NodeId,
+        replacement: usize,
+        collection: Vec<String>,
+    },
     DuplicateJoinOwner {
         join: crate::JoinId,
     },
@@ -1177,6 +1194,30 @@ impl fmt::Display for ProgramValidationError {
             } => write!(
                 formatter,
                 "compiled mapping XML serializer expression {node} schema {schema:?} uses unsupported {feature}"
+            ),
+            Self::InvalidXmlMixedContentSource { node, path } => write!(
+                formatter,
+                "compiled mapping XML mixed-content expression {node} source {} is not a mixed-content group",
+                display_path(path)
+            ),
+            Self::EmptyXmlMixedContentElement { node, replacement } => write!(
+                formatter,
+                "compiled mapping XML mixed-content expression {node} replacement {} has an empty element name",
+                replacement + 1
+            ),
+            Self::DuplicateXmlMixedContentElement { node, element } => write!(
+                formatter,
+                "compiled mapping XML mixed-content expression {node} replaces element {element:?} more than once"
+            ),
+            Self::InvalidXmlMixedContentCollection {
+                node,
+                replacement,
+                collection,
+            } => write!(
+                formatter,
+                "compiled mapping XML mixed-content expression {node} replacement {} collection {} is not repeating",
+                replacement + 1,
+                display_path(collection)
             ),
             Self::DuplicateJoinOwner { join } => write!(
                 formatter,

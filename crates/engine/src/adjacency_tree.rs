@@ -42,7 +42,7 @@ pub(super) fn construct(
         Some(node) => {
             let mut in_progress = HashSet::<NodeId>::new();
             match eval_expr(program, node, context, positions, &mut in_progress)? {
-                Value::Null => None,
+                Value::Null | Value::JsonNull(_) => None,
                 Value::String(value) => Some(value),
                 value => {
                     return Err(EngineError::InvalidAdjacencyRoot {
@@ -126,7 +126,7 @@ fn optional_string_field(
     role: &'static str,
 ) -> Result<Option<String>, EngineError> {
     match field_scalar(instance, path) {
-        Some(Value::Null) | None => Ok(None),
+        Some(Value::Null | Value::JsonNull(_)) | None => Ok(None),
         Some(Value::String(value)) => Ok(Some(value.clone())),
         Some(value) => Err(EngineError::InvalidAdjacencyField {
             role,

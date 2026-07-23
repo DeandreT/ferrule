@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use ir::{
     GroupAlternativeConstraintValue, GroupAlternativeMode, ScalarType, SchemaKind, SchemaNode,
 };
@@ -10,11 +12,12 @@ fn import_str(text: &str) -> SchemaNode {
 }
 
 fn import_str_result(text: &str) -> Result<SchemaNode, JsonFormatError> {
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
     let dir = std::env::temp_dir();
     let path = dir.join(format!(
         "ferrule_json_schema_test_{}_{}.json",
         std::process::id(),
-        text.len()
+        NEXT.fetch_add(1, Ordering::Relaxed)
     ));
     std::fs::write(&path, text).unwrap();
     let schema = import(&path);
@@ -832,6 +835,204 @@ fn nullable_type_arrays_use_the_only_non_null_type() {
             ty: ScalarType::Int
         }
     ));
+    assert!(schema.child("Count").is_some_and(|child| child.nullable));
+    let exported = export(&schema);
+    let value: serde_json::Value = serde_json::from_str(&exported).unwrap();
+    assert_eq!(
+        value["properties"]["Count"]["type"],
+        serde_json::json!(["integer", "null"])
+    );
+    assert_eq!(import_str(&exported), schema);
+}
+
+#[test]
+fn nullable_scalar_one_of_and_any_of_are_canonical_and_executable() {
+    for keyword in ["oneOf", "anyOf"] {
+        let text = format!(
+            r#"{{
+  "title":"MaybeText",
+  "{keyword}":[
+    {{"type":"null","description":"missing"}},
+    {{"type":"string","title":"present"}}
+  ]
+}}"#
+        );
+        let schema = import_str(&text);
+        assert!(schema.nullable);
+        assert!(matches!(
+            schema.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        ));
+        for input in [r#""value""#, "null"] {
+            let instance = crate::from_str(input, &schema).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(
+                    &crate::to_string(&schema, &instance).unwrap()
+                )
+                .unwrap(),
+                serde_json::from_str::<serde_json::Value>(input).unwrap()
+            );
+        }
+        assert!(matches!(
+            crate::from_str("7", &schema),
+            Err(JsonFormatError::Shape { .. })
+        ));
+        let exported = export(&schema);
+        let value: serde_json::Value = serde_json::from_str(&exported).unwrap();
+        assert_eq!(value["type"], serde_json::json!(["string", "null"]));
+        assert_eq!(import_str(&exported), schema);
+    }
+}
+
+#[test]
+fn nullable_scalar_refs_and_array_items_preserve_null_values() {
+    let referenced = import_str(
+        r##"{
+  "title":"Envelope",
+  "type":"object",
+  "properties":{"value":{"$ref":"#/$defs/maybeBoolean"}},
+  "$defs":{
+    "maybeBoolean":{
+      "anyOf":[{"type":"boolean"},{"type":"null"}]
+    }
+  }
+}"##,
+    );
+    let value = referenced.child("value").unwrap();
+    assert!(value.nullable);
+    assert!(matches!(
+        value.kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Bool
+        }
+    ));
+
+    let sequence = import_str(
+        r#"{
+  "title":"Values",
+  "type":"array",
+  "items":{"oneOf":[{"type":"integer"},{"type":"null"}]}
+}"#,
+    );
+    assert!(sequence.repeating);
+    assert!(sequence.nullable);
+    let instance = crate::from_str("[1,null,2]", &sequence).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&crate::to_string(&sequence, &instance).unwrap())
+            .unwrap(),
+        serde_json::json!([1, null, 2])
+    );
+    assert_eq!(import_str(&export(&sequence)), sequence);
+}
+
+#[test]
+fn nullable_scalar_unions_reject_unrepresentable_validation() {
+    for validation in [
+        r#""minLength":1"#,
+        r#""pattern":"^[a-z]+$""#,
+        r#""enum":["a","b"]"#,
+    ] {
+        let text = format!(
+            r#"{{
+  "title":"Constrained",
+  "oneOf":[
+    {{"type":"string",{validation}}},
+    {{"type":"null"}}
+  ]
+}}"#
+        );
+        let error = import_str_result(&text).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("nullable scalar alternatives cannot preserve"),
+            "{error}"
+        );
+    }
+
+    for text in [
+        r#"{"title":"NullOnly","type":"null"}"#,
+        r#"{"title":"MaybeObject","type":["object","null"],"properties":{}}"#,
+        r#"{"title":"MaybeArray","type":["array","null"],"items":{"type":"string"}}"#,
+    ] {
+        assert!(matches!(
+            import_str_result(text),
+            Err(JsonFormatError::UnsupportedSchemaUnion { .. })
+        ));
+    }
+}
+
+#[test]
+fn object_alternatives_keep_nullable_field_presence_branch_neutral() {
+    let schema = import_str(
+        r#"{
+  "title":"Events",
+  "oneOf":[
+    {
+      "title":"created",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind","payload"],
+      "properties":{
+        "kind":{"type":"string","const":"created"},
+        "payload":{"type":["string","null"]}
+      }
+    },
+    {
+      "title":"deleted",
+      "type":"object",
+      "additionalProperties":false,
+      "required":["kind","payload"],
+      "properties":{
+        "kind":{"type":"string","const":"deleted"},
+        "payload":{"oneOf":[{"type":"string"},{"type":"null"}]}
+      }
+    }
+  ]
+}"#,
+    );
+    let instance = crate::from_str(r#"{"kind":"created","payload":null}"#, &schema).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&crate::to_string(&schema, &instance).unwrap())
+            .unwrap(),
+        serde_json::json!({"kind":"created","payload":null})
+    );
+    assert_eq!(import_str(&export(&schema)), schema);
+
+    let presence_sensitive = import_str(
+        r#"{
+  "title":"PresenceSensitive",
+  "oneOf":[
+    {"title":"absent","type":"object","additionalProperties":false,"properties":{}},
+    {"title":"present","type":"object","additionalProperties":false,"required":["value"],
+      "properties":{"value":{"type":["string","null"]}}}
+  ]
+}"#,
+    );
+    for input in [r#"{}"#, r#"{"value":null}"#] {
+        let instance = crate::from_str(input, &presence_sensitive).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&presence_sensitive, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+    }
+    assert_eq!(
+        crate::from_str(r#"{}"#, &presence_sensitive)
+            .unwrap()
+            .field("value"),
+        Some(&ir::Instance::Scalar(ir::Value::Null))
+    );
+    assert_eq!(
+        crate::from_str(r#"{"value":null}"#, &presence_sensitive)
+            .unwrap()
+            .field("value"),
+        Some(&ir::Instance::Scalar(ir::Value::json_null()))
+    );
 }
 
 #[test]

@@ -1192,9 +1192,11 @@ impl PortTree {
                         continue;
                     }
                     by_abs.insert(path.clone(), keys.next());
-                    for alternative in child.alternatives() {
-                        by_alternative
-                            .insert((path.clone(), alternative.name.clone()), keys.next());
+                    if child.xml_alternative_kind == ir::XmlAlternativeKind::XsiType {
+                        for alternative in child.alternatives() {
+                            by_alternative
+                                .insert((path.clone(), alternative.name.clone()), keys.next());
+                        }
                     }
                     match child.recursive_ref.as_deref() {
                         Some(anchor) if recursive_depth < MAX_RECURSIVE_PORT_DEPTH => {
@@ -1433,7 +1435,10 @@ impl PortTree {
                             let _ = writeln!(out, "{pad}</entry>");
                         }
                     }
-                    if attr == "outkey" && target_branches.is_none() {
+                    if attr == "outkey"
+                        && target_branches.is_none()
+                        && child.xml_alternative_kind == ir::XmlAlternativeKind::XsiType
+                    {
                         let pad = "\t".repeat(indent);
                         for alternative in child.alternatives() {
                             let Some(key) = ports.key_for_alternative(path, &alternative.name)

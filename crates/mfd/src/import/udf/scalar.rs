@@ -527,7 +527,9 @@ fn coerce_constant(expression: ScalarExpr, expected: Option<ScalarType>) -> Scal
         return expression;
     };
     let value = match (expected, value) {
-        (Some(ScalarType::String), Value::Null | Value::XmlNil(_)) => Value::String(String::new()),
+        (Some(ScalarType::String), Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) => {
+            Value::String(String::new())
+        }
         (Some(ScalarType::String), Value::Bool(value)) => Value::String(value.to_string()),
         (Some(ScalarType::String), Value::Int(value)) => Value::String(value.to_string()),
         (Some(ScalarType::String), Value::Float(value)) => Value::String(value.to_string()),

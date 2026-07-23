@@ -642,7 +642,7 @@ fn write_cell(
         got,
     };
     match (ty, value) {
-        (_, Value::Null) => {}
+        (_, Value::Null | Value::JsonNull(_)) => {}
         (ScalarType::String, Value::String(value)) => {
             worksheet.write_string(row, column, value)?;
         }

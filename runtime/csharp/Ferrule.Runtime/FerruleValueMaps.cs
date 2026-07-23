@@ -41,7 +41,7 @@ public static class FerruleValueMaps
 
     private static FerruleValue Coerce(FerruleValue value, FerruleScalarType type)
     {
-        if (value.Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil)
+        if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
         {
             return value;
         }

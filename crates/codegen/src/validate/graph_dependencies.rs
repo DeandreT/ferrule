@@ -13,6 +13,10 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::Const { .. }
         | Expression::FunctionParameter { .. }
         | Expression::RuntimeValue { .. } => Vec::new(),
+        Expression::XmlMixedContent { replacements, .. } => replacements
+            .iter()
+            .map(|replacement| replacement.expression)
+            .collect(),
         Expression::Call { args, .. } | Expression::UserFunctionCall { args, .. } => args.clone(),
         Expression::If {
             condition,

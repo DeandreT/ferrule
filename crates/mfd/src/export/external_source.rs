@@ -115,6 +115,7 @@ fn validate_json_schema(schema: &SchemaNode, role: &str) -> Result<(), MfdError>
     if schema.attribute
         || schema.text
         || schema.nillable
+        || schema.nullable
         || schema.fixed.is_some()
         || schema.recursive_ref.is_some()
     {

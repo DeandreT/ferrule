@@ -228,7 +228,7 @@ fn validate_at(
 
 fn lexical_value(value: &Value) -> Option<std::borrow::Cow<'_, str>> {
     match value {
-        Value::Null | Value::XmlNil(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
         Value::String(value) => Some(std::borrow::Cow::Borrowed(value)),
         Value::Bool(value) => Some(std::borrow::Cow::Owned(value.to_string())),
         Value::Int(value) => Some(std::borrow::Cow::Owned(value.to_string())),

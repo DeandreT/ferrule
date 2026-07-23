@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD};
+use std::collections::BTreeSet;
+
+use ir::{SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::NodeId;
 
 use super::{ProgramValidationError, SourceCatalog};
@@ -11,6 +13,61 @@ pub(super) fn validate(
     expressions: &BTreeMap<NodeId, &Expression>,
 ) -> Result<(), ProgramValidationError> {
     for (&node, expression) in expressions {
+        if let Expression::XmlMixedContent {
+            frame,
+            path,
+            replacements,
+        } = expression
+        {
+            let mut absolute = frame.clone().unwrap_or_default();
+            absolute.extend(path.iter().cloned());
+            let mixed_source = sources
+                .path_targets(&absolute)
+                .into_iter()
+                .any(|candidate| {
+                    candidate.resolved().is_some_and(|candidate| {
+                        matches!(candidate.node().kind, SchemaKind::Group { .. })
+                            && candidate
+                                .node()
+                                .child(XML_TEXT_FIELD)
+                                .is_some_and(|text| text.text)
+                    })
+                });
+            if !mixed_source {
+                return Err(ProgramValidationError::InvalidXmlMixedContentSource {
+                    node,
+                    path: absolute,
+                });
+            }
+            let mut elements = BTreeSet::new();
+            for (replacement, rule) in replacements.iter().enumerate() {
+                if rule.element.is_empty() {
+                    return Err(ProgramValidationError::EmptyXmlMixedContentElement {
+                        node,
+                        replacement,
+                    });
+                }
+                if !elements.insert(rule.element.as_str()) {
+                    return Err(ProgramValidationError::DuplicateXmlMixedContentElement {
+                        node,
+                        element: rule.element.clone(),
+                    });
+                }
+                if !rule.collection.is_empty()
+                    && !sources
+                        .path_targets(&rule.collection)
+                        .into_iter()
+                        .any(|candidate| candidate.node().repeating)
+                {
+                    return Err(ProgramValidationError::InvalidXmlMixedContentCollection {
+                        node,
+                        replacement,
+                        collection: rule.collection.clone(),
+                    });
+                }
+            }
+            continue;
+        }
         let Expression::XmlSerialize {
             frame,
             path,

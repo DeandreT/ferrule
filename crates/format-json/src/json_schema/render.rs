@@ -24,7 +24,12 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 ScalarType::Float => "number",
                 ScalarType::Bool => "boolean",
             };
-            out.insert("type".into(), name.into());
+            let ty = if node.nullable {
+                serde_json::Value::Array(vec![name.into(), "null".into()])
+            } else {
+                name.into()
+            };
+            out.insert("type".into(), ty);
         }
         SchemaKind::Group {
             children,

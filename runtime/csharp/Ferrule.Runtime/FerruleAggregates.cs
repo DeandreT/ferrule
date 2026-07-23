@@ -101,7 +101,7 @@ public static class FerruleAggregates
         return FerruleValue.FromString(string.Join(
             separator,
             values
-                .Where(value => value.Kind != FerruleValueKind.Null)
+                .Where(value => value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull))
                 .Select(FerruleFunctions.ScalarText)));
     }
 

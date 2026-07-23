@@ -21,6 +21,7 @@ mod failure_rules;
 mod grouping;
 mod joins;
 mod scalar_functions;
+mod xml_mixed_content;
 mod xml_serialize;
 
 fn program() -> Program {

@@ -3,10 +3,11 @@
 //! Shaping rules: a [`SchemaKind::Group`] is a JSON object; a child marked
 //! `repeating` holds a JSON array of that child's shape (a missing repeating
 //! field reads as empty, matching the XML reader's zero-match behavior);
-//! scalars map per [`ScalarType`], with JSON `null` allowed for any of them.
-//! Absent object properties read as Null scalars / empty groups, and Null
-//! scalars are omitted on write -- optional keys survive a roundtrip as
-//! omissions, the same convention as the XML adapter.
+//! scalars map per [`ScalarType`], with explicit JSON `null` accepted only
+//! when the schema node is nullable.
+//! Absent object properties read as Null scalars / empty groups. Null values
+//! on non-nullable scalar properties are omitted on write, while nullable
+//! scalar properties serialize them as explicit JSON `null`.
 
 pub mod json_schema;
 
@@ -118,7 +119,12 @@ fn read_repeated(
 
 fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
     match &schema.kind {
-        SchemaKind::Scalar { ty } => Ok(Instance::Scalar(read_scalar(value, *ty, &schema.name)?)),
+        SchemaKind::Scalar { ty } => Ok(Instance::Scalar(read_scalar(
+            value,
+            *ty,
+            schema.nullable,
+            &schema.name,
+        )?)),
         SchemaKind::Group {
             children,
             alternatives,
@@ -198,6 +204,7 @@ fn missing_instance(schema: &SchemaNode) -> Instance {
 fn read_scalar(
     value: &serde_json::Value,
     ty: ScalarType,
+    nullable: bool,
     name: &str,
 ) -> Result<Value, JsonFormatError> {
     let bad = |expected: &'static str| JsonFormatError::Shape {
@@ -206,7 +213,7 @@ fn read_scalar(
         got: json_type_name(value),
     };
     match (ty, value) {
-        (_, serde_json::Value::Null) => Ok(Value::Null),
+        (_, serde_json::Value::Null) if nullable => Ok(Value::json_null()),
         (ScalarType::String, serde_json::Value::String(s)) => Ok(Value::String(s.clone())),
         (ScalarType::Int, serde_json::Value::Number(n)) => {
             n.as_i64().map(Value::Int).ok_or_else(|| bad("integer"))
@@ -324,7 +331,7 @@ fn write_single_node(
 ) -> Result<serde_json::Value, JsonFormatError> {
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
-            write_scalar(value, *ty, &schema.name)
+            write_scalar(value, *ty, schema.nullable, &schema.name)
         }
         (
             SchemaKind::Group {
@@ -367,8 +374,8 @@ fn write_single_node(
                 if let Some((_, child_instance)) =
                     fields.iter().find(|(n, _)| n == &child_schema.name)
                 {
-                    // A Null scalar is an absent property, not an
-                    // explicit null (mirrors the reader's treatment).
+                    // A non-nullable Null scalar is boundary-level absence.
+                    // Nullable scalars retain an explicit JSON null.
                     if !child_schema.repeating
                         && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
                         && matches!(child_instance, Instance::Scalar(Value::Null))
@@ -408,13 +415,13 @@ fn validate_alternative_fields(
     let matches = alternatives
         .iter()
         .filter(|alternative| {
-            alternative
-                .required
-                .iter()
-                .all(|required| fields.get(required).is_some_and(|value| !value.is_null()))
-                && fields
-                    .keys()
-                    .all(|field| alternative.members.iter().any(|member| member == field))
+            alternative.required.iter().all(|required| {
+                fields.get(required).is_some_and(|value| {
+                    !value.is_null() || schema.child(required).is_some_and(|child| child.nullable)
+                })
+            }) && fields
+                .keys()
+                .all(|field| alternative.members.iter().any(|member| member == field))
                 && alternative.constraints.iter().all(|constraint| {
                     fields
                         .get(&constraint.member)
@@ -460,6 +467,7 @@ fn constraint_matches(
 fn write_scalar(
     value: &Value,
     ty: ScalarType,
+    nullable: bool,
     name: &str,
 ) -> Result<serde_json::Value, JsonFormatError> {
     if let Value::Float(value) = value
@@ -478,7 +486,7 @@ fn write_scalar(
         got: value.type_name(),
     };
     match (ty, value) {
-        (_, Value::Null) => Ok(serde_json::Value::Null),
+        (_, Value::JsonNull(_)) if nullable => Ok(serde_json::Value::Null),
         (ScalarType::String, Value::Bool(value)) => {
             Ok(serde_json::Value::String(value.to_string()))
         }
@@ -862,6 +870,58 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert!(!text.contains("Nick"), "{text}");
+    }
+
+    #[test]
+    fn explicit_null_requires_nullable_scalar_metadata() {
+        let scalar = SchemaNode::scalar("Value", ScalarType::String);
+        assert!(matches!(
+            from_str("null", &scalar),
+            Err(JsonFormatError::Shape {
+                expected: "string",
+                got: "null",
+                ..
+            })
+        ));
+        assert!(matches!(
+            to_string(&scalar, &Instance::Scalar(Value::Null)),
+            Err(JsonFormatError::Shape {
+                expected: "string",
+                got: "null",
+                ..
+            })
+        ));
+
+        let nullable = scalar.nullable().unwrap();
+        let instance = from_str("null", &nullable).unwrap();
+        assert_eq!(instance, Instance::Scalar(Value::json_null()));
+        assert_eq!(to_string(&nullable, &instance).unwrap(), "null\n");
+    }
+
+    #[test]
+    fn nullable_object_properties_distinguish_absence_from_explicit_null() {
+        let schema = SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::scalar("Optional", ScalarType::String),
+                SchemaNode::scalar("Nullable", ScalarType::String)
+                    .nullable()
+                    .unwrap(),
+            ],
+        );
+        let instance = from_str("{}", &schema).unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(&to_string(&schema, &instance).unwrap()).unwrap();
+        assert_eq!(value, serde_json::json!({}));
+
+        let instance = from_str(r#"{"Nullable":null}"#, &schema).unwrap();
+        assert_eq!(
+            instance.field("Nullable"),
+            Some(&Instance::Scalar(Value::json_null()))
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&to_string(&schema, &instance).unwrap()).unwrap();
+        assert_eq!(value, serde_json::json!({"Nullable": null}));
     }
 
     #[test]

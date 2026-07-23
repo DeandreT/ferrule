@@ -581,7 +581,7 @@ fn direct_scalar_child(schema: &SchemaNode, instance: &Instance, name: &str) -> 
 
 fn scalar_value(instance: &Instance) -> Option<String> {
     match instance.as_scalar()? {
-        Value::Null | Value::XmlNil(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => None,
         Value::String(value) => Some(value.clone()),
         Value::Int(value) => Some(value.to_string()),
         Value::Float(value) if value.is_finite() => Some(value.to_string()),

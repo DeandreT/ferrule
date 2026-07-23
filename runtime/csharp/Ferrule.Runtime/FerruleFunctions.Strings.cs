@@ -9,7 +9,7 @@ public static partial class FerruleFunctions
         var result = new StringBuilder();
         foreach (var argument in arguments)
         {
-            if (argument.Kind is not (FerruleValueKind.Null or FerruleValueKind.XmlNil))
+            if (argument.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil))
             {
                 result.Append(ScalarText(argument));
             }
@@ -302,7 +302,7 @@ public static partial class FerruleFunctions
     private static FerruleValue SubstituteMissing(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("substitute_missing", arguments, 2);
-        return arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil
+        return arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil
             ? arguments[1]
             : arguments[0];
     }
@@ -311,7 +311,7 @@ public static partial class FerruleFunctions
         IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("substitute_missing_with_xml_nil", arguments, 1);
-        return arguments[0].Kind == FerruleValueKind.Null
+        return arguments[0].Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
             ? FerruleValue.XmlNil
             : arguments[0];
     }

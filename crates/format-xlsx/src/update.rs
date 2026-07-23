@@ -204,7 +204,7 @@ fn replace_value(
         .map(|cell| cell.style().clone())
         .or_else(|| fallback_style.cloned());
     worksheet.remove_cell((column, row));
-    if *value == Value::Null {
+    if matches!(value, Value::Null | Value::JsonNull(_)) {
         if let Some(style) = existing_style {
             worksheet.cell_mut((column, row)).set_style(style);
         }

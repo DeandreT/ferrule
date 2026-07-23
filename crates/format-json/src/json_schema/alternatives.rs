@@ -12,6 +12,132 @@ enum WrapperAdditional {
     Typed(Box<SchemaNode>),
 }
 
+enum ScalarAlternative {
+    Null,
+    Scalar(ScalarType),
+    Other,
+}
+
+/// Canonicalizes the common nullable-scalar union spelling used by OpenAPI
+/// and generated JSON Schemas. Structured nullability needs a distinct
+/// instance variant, while scalar nullability maps exactly to
+/// `SchemaNode::nullable`.
+pub(super) fn parse_nullable_scalar_alternatives(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    keyword: &str,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    let Some(alternatives) = alternatives
+        .as_array()
+        .filter(|alternatives| alternatives.len() == 2)
+    else {
+        return Ok(None);
+    };
+    let first = classify_scalar_alternative(name, &alternatives[0], doc, active_refs)?;
+    let second = classify_scalar_alternative(name, &alternatives[1], doc, active_refs)?;
+    let ty = match (first, second) {
+        (ScalarAlternative::Null, ScalarAlternative::Scalar(ty))
+        | (ScalarAlternative::Scalar(ty), ScalarAlternative::Null) => ty,
+        _ => return Ok(None),
+    };
+    ensure_annotation_only(name, schema, keyword)?;
+    let mut node = SchemaNode::scalar(name, ty);
+    node.nullable = true;
+    Ok(Some(node))
+}
+
+fn classify_scalar_alternative(
+    union_name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<ScalarAlternative, JsonFormatError> {
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        ensure_annotation_only(union_name, schema, "$ref")?;
+        if active_refs.iter().any(|active| active == reference) {
+            return Err(unsupported_union(
+                union_name,
+                "nullable scalar alternatives cannot use cyclic references",
+            ));
+        }
+        let Some(resolved) = resolve_ref(doc, reference) else {
+            return Err(unsupported_union(
+                union_name,
+                "nullable scalar alternatives require document-local references",
+            ));
+        };
+        active_refs.push(reference.to_string());
+        let classified = classify_scalar_alternative(union_name, resolved, doc, active_refs);
+        active_refs.pop();
+        return classified;
+    }
+    let Some(ty) = schema.get("type").and_then(serde_json::Value::as_str) else {
+        if schema.get("const").is_some() {
+            return Err(unsupported_union(
+                union_name,
+                "nullable scalar alternatives cannot preserve const validation",
+            ));
+        }
+        return Ok(ScalarAlternative::Other);
+    };
+    let classified = match ty {
+        "null" => ScalarAlternative::Null,
+        "string" => ScalarAlternative::Scalar(ScalarType::String),
+        "integer" => ScalarAlternative::Scalar(ScalarType::Int),
+        "number" => ScalarAlternative::Scalar(ScalarType::Float),
+        "boolean" => ScalarAlternative::Scalar(ScalarType::Bool),
+        _ => return Ok(ScalarAlternative::Other),
+    };
+    ensure_annotation_only(union_name, schema, "type")?;
+    Ok(classified)
+}
+
+fn ensure_annotation_only(
+    union_name: &str,
+    schema: &serde_json::Value,
+    shape_keyword: &str,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Err(unsupported_union(
+            union_name,
+            "nullable scalar alternatives must be schema objects",
+        ));
+    };
+    if let Some(keyword) = object.keys().find(|keyword| {
+        keyword.as_str() != shape_keyword && !is_annotation_keyword(keyword.as_str())
+    }) {
+        return Err(unsupported_union(
+            union_name,
+            &format!("nullable scalar alternatives cannot preserve `{keyword}` validation"),
+        ));
+    }
+    Ok(())
+}
+
+fn is_annotation_keyword(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "$schema"
+            | "$id"
+            | "id"
+            | "$anchor"
+            | "$dynamicAnchor"
+            | "$comment"
+            | "$defs"
+            | "definitions"
+            | "title"
+            | "description"
+            | "default"
+            | "deprecated"
+            | "readOnly"
+            | "writeOnly"
+            | "examples"
+    )
+}
+
 pub(super) fn parse_inferred_const_scalar(
     name: &str,
     value: &serde_json::Value,

@@ -36,7 +36,11 @@ impl ExactDecimal {
                     value.to_string()
                 }
             }
-            Value::Null | Value::XmlNil(_) | Value::Bool(_) | Value::Float(_) => return None,
+            Value::Null
+            | Value::JsonNull(_)
+            | Value::XmlNil(_)
+            | Value::Bool(_)
+            | Value::Float(_) => return None,
         };
         Self::parse(&lexical)
     }

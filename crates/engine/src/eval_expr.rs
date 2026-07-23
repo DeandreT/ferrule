@@ -383,7 +383,7 @@ fn eval_xml_mixed_content(
             in_progress,
         )?;
         match value {
-            Value::Null | Value::XmlNil(_) => {}
+            Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => {}
             Value::String(value) => output.push_str(&value),
             Value::Bool(value) => output.push_str(if value { "true" } else { "false" }),
             Value::Int(value) => output.push_str(&value.to_string()),
@@ -509,7 +509,7 @@ fn visit_collection_find<'a>(
     }
     match eval_expr(program, predicate, context, positions, in_progress)? {
         Value::Bool(true) => eval_expr(program, value, context, positions, in_progress).map(Some),
-        Value::Bool(false) | Value::Null | Value::XmlNil(_) => Ok(None),
+        Value::Bool(false) | Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => Ok(None),
         other => Err(EngineError::NotABool {
             node: predicate,
             found: other.type_name(),
@@ -520,6 +520,7 @@ fn visit_collection_find<'a>(
 fn coerce_value_map_input(value: &Value, ty: ScalarType) -> Option<Value> {
     match (ty, value) {
         (_, Value::Null) => Some(Value::Null),
+        (_, Value::JsonNull(_)) => Some(Value::Null),
         (_, Value::XmlNil(value)) => Some(Value::XmlNil(*value)),
         (ScalarType::String, Value::String(value)) => Some(Value::String(value.clone())),
         (ScalarType::String, Value::Bool(value)) => Some(Value::String(value.to_string())),

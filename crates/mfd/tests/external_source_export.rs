@@ -153,6 +153,32 @@ fn captured_user_function_roundtrips_its_result_contract() -> Result<(), Box<dyn
 }
 
 #[test]
+fn captured_external_schema_rejects_unserializable_json_nullability() -> Result<(), Box<dyn Error>>
+{
+    let mut project = project_with_http_source()?;
+    project.source = SchemaNode::group(
+        "Response",
+        vec![
+            SchemaNode::scalar("answer", ScalarType::String)
+                .nullable()
+                .ok_or("string scalar is nullable")?,
+        ],
+    );
+    let temp = TempDir::new()?;
+    let design = temp.0.join("nullable-response.mfd");
+
+    let error = mfd::export(&project, &design).unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("canonical JSON entry tree cannot preserve"),
+        "{error}"
+    );
+    assert!(!design.exists());
+    Ok(())
+}
+
+#[test]
 fn captured_secondary_source_roundtrips_with_its_owner() -> Result<(), Box<dyn Error>> {
     let mut project = project_with_http_source()?;
     project.source_options = FormatOptions::default();

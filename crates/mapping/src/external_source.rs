@@ -90,7 +90,7 @@ pub enum ExternalSourceOrigin {
         mode: ExternalHttpMode,
         timeout_seconds: HttpTimeoutSeconds,
         request_format: Option<ExternalPayloadFormat>,
-        request_schema: Option<SchemaNode>,
+        request_schema: Option<Box<SchemaNode>>,
         headers: Vec<ExternalHttpHeader>,
     },
 }
@@ -142,7 +142,7 @@ impl ExternalSourceOptions {
                 mode,
                 timeout_seconds,
                 request_format,
-                request_schema,
+                request_schema: request_schema.map(Box::new),
                 headers,
             },
         })
@@ -183,7 +183,7 @@ impl<'de> Deserialize<'de> for ExternalSourceOptions {
                 mode: ExternalHttpMode,
                 timeout_seconds: HttpTimeoutSeconds,
                 request_format: Option<ExternalPayloadFormat>,
-                request_schema: Option<SchemaNode>,
+                request_schema: Option<Box<SchemaNode>>,
                 #[serde(default)]
                 headers: Vec<ExternalHttpHeader>,
             },
@@ -204,7 +204,7 @@ impl<'de> Deserialize<'de> for ExternalSourceOptions {
                 mode,
                 timeout_seconds,
                 request_format,
-                request_schema,
+                request_schema.map(|schema| *schema),
                 wire.payload,
                 headers,
             ),
@@ -261,6 +261,13 @@ mod tests {
         )?;
         let encoded = serde_json::to_string(&options)?;
         assert!(!encoded.contains("secret"));
+        let encoded_value = serde_json::from_str::<serde_json::Value>(&encoded)?;
+        assert_eq!(
+            encoded_value
+                .pointer("/origin/request_schema/name")
+                .and_then(serde_json::Value::as_str),
+            Some("request")
+        );
         assert_eq!(
             serde_json::from_str::<ExternalSourceOptions>(&encoded)?,
             options

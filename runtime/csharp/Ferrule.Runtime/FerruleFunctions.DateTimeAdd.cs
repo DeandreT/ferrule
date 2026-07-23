@@ -378,7 +378,7 @@ public static partial class FerruleFunctions
         for (var index = 1; index < arguments.Count; index++)
         {
             var duration = arguments[index];
-            if (duration.Kind == FerruleValueKind.Null)
+            if (duration.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
             {
                 continue;
             }

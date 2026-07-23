@@ -465,6 +465,13 @@ pub enum Expression {
         indent: bool,
         namespace: Option<String>,
     },
+    /// Atomizes one retained ordered XML content stream, replacing selected
+    /// direct element occurrences in their exact source-item contexts.
+    XmlMixedContent {
+        frame: Option<Vec<String>>,
+        path: Vec<String>,
+        replacements: Vec<XmlMixedContentReplacement>,
+    },
     /// Reads the resolved path retained by the nearest source document.
     SourceDocumentPath,
     Position {
@@ -560,6 +567,16 @@ pub enum Expression {
         sequence: GeneratedSequence,
         index: NodeId,
     },
+}
+
+/// One direct-element replacement in an ordered XML mixed-content stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlMixedContentReplacement {
+    pub element: String,
+    /// Repeating source collection represented by matching occurrences.
+    /// Empty leaves the expression in the mixed group's parent context.
+    pub collection: Vec<String>,
+    pub expression: NodeId,
 }
 
 /// Exactly one way to obtain each aggregate item's scalar value.

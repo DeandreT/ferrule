@@ -17,7 +17,7 @@ pub struct RecursiveCollectPaths<'a> {
 
 pub fn recursive_sequence_parameter(value: Value) -> Result<String, RuntimeError> {
     match value {
-        Value::Null => Ok(String::new()),
+        Value::Null | Value::JsonNull(_) => Ok(String::new()),
         value => recursive_scalar_text(&value),
     }
 }
@@ -37,11 +37,13 @@ pub(crate) fn recursive_scalar_text(value: &Value) -> Result<String, RuntimeErro
         Value::Int(value) => Ok(value.to_string()),
         Value::Float(value) if value.is_finite() => Ok(value.to_string()),
         Value::String(value) => Ok(value.clone()),
-        Value::Null | Value::XmlNil(_) | Value::Float(_) => Err(FunctionError::TypeMismatch {
-            function: "recursive-collect",
-            got: value.type_name(),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Float(_) => {
+            Err(FunctionError::TypeMismatch {
+                function: "recursive-collect",
+                got: value.type_name(),
+            }
+            .into())
         }
-        .into()),
     }
 }
 
@@ -69,7 +71,9 @@ pub fn tokenize_by_length(input: Value, length: Value) -> Result<Vec<Value>, Run
         Value::Int(value) => Some(value),
         Value::Float(value) if value.is_finite() => Some(value.trunc() as i64),
         Value::String(value) => value.trim().parse().ok(),
-        Value::Null | Value::XmlNil(_) | Value::Bool(_) | Value::Float(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) | Value::Float(_) => {
+            None
+        }
     }
     .filter(|length| *length > 0)
     .ok_or(FunctionError::InvalidArgument {
@@ -194,7 +198,7 @@ fn sequence_integer(value: Value) -> Result<i64, RuntimeError> {
                 .ok()
                 .and_then(exact_float_integer)
         }),
-        Value::Null | Value::XmlNil(_) | Value::Bool(_) => None,
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) => None,
     };
     coerced.ok_or_else(|| {
         FunctionError::TypeMismatch {

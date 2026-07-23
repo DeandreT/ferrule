@@ -327,7 +327,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                     child_instance,
                 ));
             };
-            if !matches!(value, Value::Null) {
+            if !matches!(value, Value::Null | Value::JsonNull(_)) {
                 let SchemaKind::Scalar { ty } = child_schema.kind else {
                     return Err(shape_error(
                         child_schema,
@@ -360,7 +360,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
             let Instance::Scalar(value) = child_instance else {
                 return Err(shape_error(child_schema, "a text scalar", child_instance));
             };
-            if !matches!(value, Value::Null) {
+            if !matches!(value, Value::Null | Value::JsonNull(_)) {
                 let SchemaKind::Scalar { ty } = child_schema.kind else {
                     return Err(shape_error(child_schema, "a text scalar", child_instance));
                 };
@@ -382,7 +382,10 @@ pub(super) fn write_generic_element<W: std::io::Write>(
         {
             if !child_schema.repeating
                 && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
-                && matches!(child_instance, Instance::Scalar(Value::Null))
+                && matches!(
+                    child_instance,
+                    Instance::Scalar(Value::Null | Value::JsonNull(_))
+                )
             {
                 continue;
             }

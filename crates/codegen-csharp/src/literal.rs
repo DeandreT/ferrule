@@ -27,6 +27,7 @@ pub(crate) fn string(value: &str) -> String {
 pub(crate) fn value(_node: u32, value: &Value) -> Result<String, EmitError> {
     Ok(match value {
         Value::Null => "global::Ferrule.Runtime.FerruleValue.Null".to_string(),
+        Value::JsonNull(_) => "global::Ferrule.Runtime.FerruleValue.JsonNull".to_string(),
         Value::XmlNil(_) => "global::Ferrule.Runtime.FerruleValue.XmlNil".to_string(),
         Value::Bool(value) => format!(
             "global::Ferrule.Runtime.FerruleValue.FromBoolean({})",
@@ -69,6 +70,7 @@ mod tests {
     #[test]
     fn scalar_literals_cover_all_tags_and_exact_numeric_bits() {
         assert!(value(0, &Value::Null).is_ok_and(|value| value.ends_with(".Null")));
+        assert!(value(0, &Value::json_null()).is_ok_and(|value| value.ends_with(".JsonNull")));
         assert!(value(0, &Value::xml_nil()).is_ok_and(|value| value.ends_with(".XmlNil")));
         assert!(value(0, &Value::Bool(true)).is_ok_and(|value| value.contains("true")));
         assert!(

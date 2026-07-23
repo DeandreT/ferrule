@@ -6,6 +6,7 @@ namespace Ferrule.Runtime;
 public enum FerruleValueKind
 {
     Null,
+    JsonNull,
     XmlNil,
     Bool,
     Int64,
@@ -31,6 +32,8 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
 
     public static FerruleValue Null => default;
 
+    public static FerruleValue JsonNull => new(FerruleValueKind.JsonNull, null);
+
     public static FerruleValue XmlNil => new(FerruleValueKind.XmlNil, null);
 
     public static FerruleValue FromBoolean(bool value) => new(FerruleValueKind.Bool, value);
@@ -55,7 +58,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
     public bool Equals(FerruleValue other) =>
         Kind == other.Kind && Kind switch
         {
-            FerruleValueKind.Null or FerruleValueKind.XmlNil => true,
+            FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil => true,
             FerruleValueKind.Bool => BooleanValue == other.BooleanValue,
             FerruleValueKind.Int64 => Int64Value == other.Int64Value,
             FerruleValueKind.Double => DoubleValue == other.DoubleValue,
@@ -71,7 +74,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
         {
             var payloadHash = Kind switch
             {
-                FerruleValueKind.Null or FerruleValueKind.XmlNil => 0,
+                FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil => 0,
                 FerruleValueKind.Bool => BooleanValue ? 1 : 0,
                 FerruleValueKind.Int64 => Fold64(Int64Value),
                 FerruleValueKind.Double => DoubleValue == 0.0
@@ -87,6 +90,7 @@ public readonly struct FerruleValue : IEquatable<FerruleValue>
     public override string ToString() => Kind switch
     {
         FerruleValueKind.Null => "null",
+        FerruleValueKind.JsonNull => "null",
         FerruleValueKind.XmlNil => "xml:nil",
         FerruleValueKind.Bool => BooleanValue ? "true" : "false",
         FerruleValueKind.Int64 => Int64Value.ToString(CultureInfo.InvariantCulture),

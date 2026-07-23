@@ -225,7 +225,7 @@ fn evaluate_body_node(
 
 fn adapt_scalar(value: Value, expected: ScalarType) -> Option<Value> {
     match (expected, value) {
-        (_, value @ (Value::Null | Value::XmlNil(_))) => Some(value),
+        (_, value @ (Value::Null | Value::JsonNull(_) | Value::XmlNil(_))) => Some(value),
         (ScalarType::String, value @ Value::String(_))
         | (ScalarType::Int, value @ Value::Int(_))
         | (ScalarType::Float, value @ Value::Float(_))
