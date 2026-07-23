@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Text;
 
 namespace Ferrule.Runtime;
@@ -28,6 +27,28 @@ public sealed class FerruleXmlMixedContentReplacement
     public IReadOnlyList<string> Collection { get; }
 
     public Func<ScopeContext, FerruleValue> Expression { get; }
+}
+
+/// <summary>One direct-child rename retained in a constructed mixed-content stream.</summary>
+public sealed class FerruleXmlMixedContentElement
+{
+    public FerruleXmlMixedContentElement(string source, string target)
+    {
+        if (string.IsNullOrEmpty(source))
+        {
+            throw new ArgumentException("Source element name cannot be empty.", nameof(source));
+        }
+        if (string.IsNullOrEmpty(target))
+        {
+            throw new ArgumentException("Target element name cannot be empty.", nameof(target));
+        }
+        Source = source;
+        Target = target;
+    }
+
+    public string Source { get; }
+
+    public string Target { get; }
 }
 
 /// <summary>Engine-compatible ordered XML mixed-content atomization.</summary>
@@ -93,12 +114,97 @@ public static class FerruleXmlMixedContent
         return FerruleValue.FromString(output.ToString());
     }
 
+    public static FerruleGroup Preserve(
+        ScopeContext context,
+        FerruleGroup output,
+        IReadOnlyList<FerruleXmlMixedContentElement> elements)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(elements);
+        if (context.Frames.Count == 0 ||
+            !TrySourceField(context.Frames[^1], MixedContentField, out var retained) ||
+            retained is not FerruleRepeated sourceItems)
+        {
+            return output;
+        }
+
+        var items = new List<FerruleInstance>();
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var item in sourceItems.Items)
+        {
+            var name = OptionalStringField(item, NodeNameField);
+            if (name is null)
+            {
+                continue;
+            }
+            if (name.Length == 0)
+            {
+                items.Add(item);
+                continue;
+            }
+            var element = elements.FirstOrDefault(candidate =>
+                string.Equals(candidate.Source, name, StringComparison.Ordinal));
+            if (element is null ||
+                !output.TryGetField(element.Target, out var field) ||
+                field is not FerruleRepeated values)
+            {
+                continue;
+            }
+            occurrences.TryGetValue(element.Target, out var occurrence);
+            if (occurrence >= values.Items.Count)
+            {
+                continue;
+            }
+            var value = values.Items[occurrence];
+            occurrences[element.Target] = occurrence + 1;
+            var text = value is FerruleScalar scalar
+                ? FerruleFunctions.ScalarText(scalar.Value)
+                : string.Empty;
+            items.Add(new FerruleGroup([
+                new(NodeNameField, new FerruleScalar(FerruleValue.FromString(element.Target))),
+                new(TextField, new FerruleScalar(FerruleValue.FromString(text))),
+                new(MixedValueField, value),
+            ]));
+        }
+        if (items.Count == 0)
+        {
+            return output;
+        }
+
+        var fields = new List<FerruleField>(output.Fields)
+        {
+            new(MixedContentField, new FerruleRepeated(items)),
+        };
+        return new FerruleGroup(fields);
+    }
+
+    private static bool TrySourceField(
+        FerruleInstance source,
+        string name,
+        out FerruleInstance? value)
+    {
+        if (source is FerruleGroup group)
+        {
+            return group.TryGetField(name, out value);
+        }
+        if (source is FerruleDocumentSet { Documents.Count: > 0 } documents)
+        {
+            return TrySourceField(documents.Documents[0].Value, name, out value);
+        }
+        value = null;
+        return false;
+    }
+
     private static string StringField(FerruleInstance item, string name) =>
+        OptionalStringField(item, name) ?? string.Empty;
+
+    private static string? OptionalStringField(FerruleInstance item, string name) =>
         item is FerruleGroup group &&
         group.TryGetField(name, out var field) &&
         field is FerruleScalar { Value.Kind: FerruleValueKind.String } scalar
             ? scalar.Value.StringValue
-            : string.Empty;
+            : null;
 
     private static void Append(StringBuilder output, FerruleValue value)
     {
@@ -112,13 +218,9 @@ public static class FerruleXmlMixedContent
                 output.Append(value.BooleanValue ? "true" : "false");
                 return;
             case FerruleValueKind.Int64:
-                output.Append(value.Int64Value.ToString(CultureInfo.InvariantCulture));
-                return;
             case FerruleValueKind.Double:
-                output.Append(value.DoubleValue.ToString("R", CultureInfo.InvariantCulture));
-                return;
             case FerruleValueKind.String:
-                output.Append(value.StringValue);
+                output.Append(FerruleFunctions.ScalarText(value));
                 return;
             default:
                 throw new InvalidOperationException($"Unsupported scalar kind {value.Kind}.");

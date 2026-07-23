@@ -374,9 +374,3 @@ impl<'a> GroupedItems<'a> {
         }
     }
 }
-
-impl ScopeContext<'_> {
-    fn current_instance(&self) -> Option<&Instance> {
-        self.frames.last().map(|frame| frame.instance)
-    }
-}

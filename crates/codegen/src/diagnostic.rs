@@ -45,7 +45,6 @@ pub enum ScopeFeature {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScopeConstructionKind {
-    XmlMixedContent,
     RecursiveFilter,
     PathHierarchy,
     AdjacencyTree,
@@ -162,7 +161,6 @@ impl fmt::Display for ScopeFeature {
 impl fmt::Display for ScopeConstructionKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::XmlMixedContent => "XML mixed-content",
             Self::RecursiveFilter => "recursive-filter",
             Self::PathHierarchy => "path-hierarchy",
             Self::AdjacencyTree => "adjacency-tree",

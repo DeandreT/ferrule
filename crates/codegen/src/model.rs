@@ -891,7 +891,7 @@ impl From<mapping::SequenceWindow> for SequenceWindow {
 }
 
 /// The one target value constructed for each scope candidate.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum TargetConstruction {
     #[default]
     Group,
@@ -899,6 +899,16 @@ pub enum TargetConstruction {
     Scalar {
         expression: NodeId,
     },
+    XmlMixedContent {
+        elements: Vec<XmlMixedContentElement>,
+    },
+}
+
+/// One direct-child rename retained in a mixed-content target stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct XmlMixedContentElement {
+    pub source: String,
+    pub target: String,
 }
 
 /// One statically named constructed target value.

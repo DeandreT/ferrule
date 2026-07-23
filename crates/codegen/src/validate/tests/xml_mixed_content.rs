@@ -92,3 +92,137 @@ fn validates_mixed_source_replacement_identity_and_collection() {
         })
     );
 }
+
+fn mixed_construction_program() -> Program {
+    let mut program = program();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+            SchemaNode::scalar("Em", ScalarType::String).repeating(),
+            SchemaNode::scalar("Strong", ScalarType::String).repeating(),
+        ],
+    );
+    program.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+            SchemaNode::scalar("Italic", ScalarType::String).repeating(),
+        ],
+    );
+    program.root.construction = TargetConstruction::XmlMixedContent {
+        elements: vec![crate::XmlMixedContentElement {
+            source: "Em".into(),
+            target: "Italic".into(),
+        }],
+    };
+    program.root.bindings = vec![Binding {
+        target_field: "Italic".into(),
+        expression: 1,
+        target_type: ScalarType::String,
+        repeating: true,
+    }];
+    program
+}
+
+#[test]
+fn validates_target_mixed_content_source_target_and_element_invariants() {
+    let valid = mixed_construction_program();
+    assert_eq!(validate_program(&valid), Ok(()));
+
+    let mut scalar_source = valid.clone();
+    scalar_source.source = SchemaNode::scalar("Source", ScalarType::String);
+    assert_eq!(
+        validate_program(&scalar_source),
+        Err(
+            ProgramValidationError::XmlMixedContentConstructionRequiresGroupSource {
+                target_path: Vec::new(),
+            }
+        )
+    );
+
+    let mut plain_target = valid.clone();
+    plain_target.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::scalar("Italic", ScalarType::String).repeating()],
+    );
+    assert_eq!(
+        validate_program(&plain_target),
+        Err(
+            ProgramValidationError::XmlMixedContentConstructionRequiresMixedTarget {
+                target_path: Vec::new(),
+            }
+        )
+    );
+
+    let mut empty = valid.clone();
+    empty.root.construction = TargetConstruction::XmlMixedContent {
+        elements: Vec::new(),
+    };
+    assert_eq!(
+        validate_program(&empty),
+        Err(ProgramValidationError::EmptyXmlMixedContentConstruction {
+            target_path: Vec::new(),
+        })
+    );
+
+    let mut duplicate = valid.clone();
+    let TargetConstruction::XmlMixedContent { elements } = &mut duplicate.root.construction else {
+        unreachable!();
+    };
+    elements.push(elements[0].clone());
+    assert_eq!(
+        validate_program(&duplicate),
+        Err(
+            ProgramValidationError::InvalidXmlMixedContentConstructionElement {
+                target_path: Vec::new(),
+                element: 1,
+            }
+        )
+    );
+
+    let mut shared_target = valid.clone();
+    let TargetConstruction::XmlMixedContent { elements } = &mut shared_target.root.construction
+    else {
+        unreachable!();
+    };
+    elements.push(crate::XmlMixedContentElement {
+        source: "Strong".into(),
+        target: "Italic".into(),
+    });
+    assert_eq!(validate_program(&shared_target), Ok(()));
+
+    let mut missing_source = valid.clone();
+    let TargetConstruction::XmlMixedContent { elements } = &mut missing_source.root.construction
+    else {
+        unreachable!();
+    };
+    elements[0].source = "Missing".into();
+    assert_eq!(
+        validate_program(&missing_source),
+        Err(
+            ProgramValidationError::InvalidXmlMixedContentConstructionSource {
+                target_path: Vec::new(),
+                element: 0,
+                source_field: "Missing".into(),
+            }
+        )
+    );
+
+    let mut scalar_target = valid;
+    let TargetConstruction::XmlMixedContent { elements } = &mut scalar_target.root.construction
+    else {
+        unreachable!();
+    };
+    elements[0].target = ir::XML_TEXT_FIELD.into();
+    assert_eq!(
+        validate_program(&scalar_target),
+        Err(
+            ProgramValidationError::InvalidXmlMixedContentConstructionTarget {
+                target_path: Vec::new(),
+                element: 0,
+                target_field: ir::XML_TEXT_FIELD.into(),
+            }
+        )
+    );
+}

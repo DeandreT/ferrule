@@ -1,5 +1,5 @@
 use super::*;
-use codegen::XmlMixedContentReplacement;
+use codegen::{XmlMixedContentElement, XmlMixedContentReplacement};
 
 fn constant(id: u32, value: Value) -> ExpressionNode {
     ExpressionNode {
@@ -162,5 +162,141 @@ fn main() {
         .current_dir(output.path())
         .status()
         .expect("run generated mixed-content package");
+    assert!(status.success());
+}
+
+fn target_fixture() -> Program {
+    Program {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::scalar("Em", ScalarType::String).repeating(),
+                SchemaNode::scalar("Strong", ScalarType::String).repeating(),
+            ],
+        ),
+        extra_sources: Vec::new(),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::scalar("Styled", ScalarType::String).repeating(),
+            ],
+        ),
+        expressions: vec![
+            constant(1, Value::String("first".into())),
+            constant(2, Value::String("second".into())),
+        ],
+        user_functions: Vec::new(),
+        failure_rules: Vec::new(),
+        root: TargetScope {
+            target_field: String::new(),
+            repeating: false,
+            iteration: None,
+            construction: TargetConstruction::XmlMixedContent {
+                elements: vec![
+                    XmlMixedContentElement {
+                        source: "Em".into(),
+                        target: "Styled".into(),
+                    },
+                    XmlMixedContentElement {
+                        source: "Strong".into(),
+                        target: "Styled".into(),
+                    },
+                ],
+            },
+            bindings: vec![
+                Binding {
+                    target_field: "Styled".into(),
+                    expression: 1,
+                    target_type: ScalarType::String,
+                    repeating: true,
+                },
+                Binding {
+                    target_field: "Styled".into(),
+                    expression: 2,
+                    target_type: ScalarType::String,
+                    repeating: true,
+                },
+            ],
+            children: Vec::new(),
+        },
+        extra_targets: Vec::new(),
+    }
+}
+
+#[test]
+fn generated_package_preserves_constructed_target_mixed_content_order() {
+    let runtime_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../codegen-runtime")
+        .canonicalize()
+        .expect("runtime path exists");
+    let output = TempDir::new("rust_target_xml_mixed_content_codegen");
+    let artifacts = emit(
+        &target_fixture(),
+        &Options {
+            package_name: "target-mixed-content-map".into(),
+            runtime_dependency: RuntimeDependency::Path(
+                runtime_path.to_string_lossy().into_owned(),
+            ),
+        },
+    )
+    .expect("target mixed-content program emits");
+    write_artifacts(output.path(), &artifacts);
+    fs::write(
+        output.path().join("src/main.rs"),
+        r##"use codegen_runtime::{Instance, Value, field, group, repeated, scalar, string};
+
+const MIXED: &str = "\u{1f}ferrule-xml-mixed-content";
+
+fn content(name: &str, text: &str) -> Instance {
+    group([
+        field("NodeName", scalar(string(name))),
+        field("#text", scalar(string(text))),
+    ])
+}
+
+fn text(item: &Instance, field: &str) -> String {
+    item.field(field)
+        .and_then(Instance::as_scalar)
+        .and_then(|value| match value {
+            Value::String(value) => Some(value.clone()),
+            _ => None,
+        })
+        .unwrap()
+}
+
+fn main() {
+    let source = group([field(
+        MIXED,
+        repeated([
+            content("", "before "),
+            content("Em", "old"),
+            content("Strong", "old"),
+            content("Code", "drop"),
+            content("", " after"),
+        ]),
+    )]);
+    let output = target_mixed_content_map::execute(&source).unwrap();
+    let ordered = output.field(MIXED).and_then(Instance::as_repeated).unwrap();
+    assert_eq!(ordered.len(), 4);
+    assert_eq!(
+        ordered.iter().map(|item| text(item, "NodeName")).collect::<Vec<_>>(),
+        ["", "Styled", "Styled", ""]
+    );
+    assert_eq!(
+        ordered.iter().map(|item| text(item, "#text")).collect::<Vec<_>>(),
+        ["before ", "first", "second", " after"]
+    );
+}
+"##,
+    )
+    .expect("write generated target mixed-content harness");
+
+    let status = Command::new("cargo")
+        .args(["run", "--quiet"])
+        .current_dir(output.path())
+        .status()
+        .expect("run generated target mixed-content package");
     assert!(status.success());
 }

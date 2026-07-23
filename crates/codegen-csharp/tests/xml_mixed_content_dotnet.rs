@@ -4,13 +4,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     Binding, Expression, ExpressionNode, Program, ScalarFunction, TargetConstruction, TargetScope,
-    XmlMixedContentReplacement,
+    XmlMixedContentElement, XmlMixedContentReplacement,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
 #[test]
 fn generated_mapping_preserves_order_and_frames_each_replaced_occurrence() {
-    let artifacts = codegen_csharp::emit(&fixture()).expect("mixed-content fixture emits");
+    let stdout = run_generated(&fixture(), HARNESS);
+    assert_eq!(stdout, "generated mixed content passed");
+}
+
+fn run_generated(program: &Program, harness: &str) -> String {
+    let artifacts = codegen_csharp::emit(program).expect("mixed-content fixture emits");
     let directory = TempDirectory::new();
     for file in artifacts.files() {
         let path = directory.path().join(file.path.as_str());
@@ -19,7 +24,7 @@ fn generated_mapping_preserves_order_and_frames_each_replaced_occurrence() {
         }
         std::fs::write(path, &file.contents).expect("artifact is written");
     }
-    write_harness(directory.path());
+    write_harness(directory.path(), harness);
 
     let build = Command::new("dotnet")
         .args([
@@ -47,10 +52,7 @@ fn generated_mapping_preserves_order_and_frames_each_replaced_occurrence() {
         .output()
         .expect("generated harness starts");
     assert_command_succeeded("generated harness", &run);
-    assert_eq!(
-        String::from_utf8_lossy(&run.stdout).trim(),
-        "generated mixed content passed"
-    );
+    String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
 fn fixture() -> Program {
@@ -128,7 +130,83 @@ fn fixture() -> Program {
     }
 }
 
-fn write_harness(root: &Path) {
+fn target_fixture() -> Program {
+    Program {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::scalar("Em", ScalarType::String).repeating(),
+                SchemaNode::scalar("Strong", ScalarType::String).repeating(),
+            ],
+        ),
+        extra_sources: Vec::new(),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::scalar("Styled", ScalarType::String).repeating(),
+            ],
+        ),
+        expressions: vec![
+            ExpressionNode {
+                id: 1,
+                expression: Expression::Const {
+                    value: Value::String("first".into()),
+                },
+            },
+            ExpressionNode {
+                id: 2,
+                expression: Expression::Const {
+                    value: Value::String("second".into()),
+                },
+            },
+        ],
+        user_functions: Vec::new(),
+        failure_rules: Vec::new(),
+        root: TargetScope {
+            target_field: String::new(),
+            repeating: false,
+            iteration: None,
+            construction: TargetConstruction::XmlMixedContent {
+                elements: vec![
+                    XmlMixedContentElement {
+                        source: "Em".into(),
+                        target: "Styled".into(),
+                    },
+                    XmlMixedContentElement {
+                        source: "Strong".into(),
+                        target: "Styled".into(),
+                    },
+                ],
+            },
+            bindings: vec![
+                Binding {
+                    target_field: "Styled".into(),
+                    expression: 1,
+                    target_type: ScalarType::String,
+                    repeating: true,
+                },
+                Binding {
+                    target_field: "Styled".into(),
+                    expression: 2,
+                    target_type: ScalarType::String,
+                    repeating: true,
+                },
+            ],
+            children: Vec::new(),
+        },
+        extra_targets: Vec::new(),
+    }
+}
+
+#[test]
+fn generated_mapping_preserves_constructed_target_mixed_content_order() {
+    let stdout = run_generated(&target_fixture(), TARGET_HARNESS);
+    assert_eq!(stdout, "generated target mixed content passed");
+}
+
+fn write_harness(root: &Path, harness: &str) {
     let directory = root.join("Harness");
     std::fs::create_dir_all(&directory).expect("harness directory is created");
     std::fs::write(
@@ -148,7 +226,7 @@ fn write_harness(root: &Path) {
 "#,
     )
     .expect("harness project is written");
-    std::fs::write(directory.join("Program.cs"), HARNESS).expect("harness source is written");
+    std::fs::write(directory.join("Program.cs"), harness).expect("harness source is written");
 }
 
 const HARNESS: &str = r##"using Ferrule.Generated;
@@ -195,6 +273,53 @@ Console.WriteLine("generated mixed content passed");
 
 static FerruleValue Value(FerruleGroup group, string name) =>
     ((FerruleScalar)group.Fields.Single(field => field.Name == name).Value).Value;
+
+static void Equal<T>(T expected, T actual)
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+    {
+        throw new InvalidOperationException($"Expected '{expected}', found '{actual}'.");
+    }
+}
+"##;
+
+const TARGET_HARNESS: &str = r##"using Ferrule.Generated;
+using Ferrule.Runtime;
+
+const string Mixed = "\u001fferrule-xml-mixed-content";
+
+FerruleGroup Content(string name, string text) => new([
+    new("NodeName", new FerruleScalar(FerruleValue.FromString(name))),
+    new("#text", new FerruleScalar(FerruleValue.FromString(text))),
+]);
+
+var source = new FerruleGroup([
+    new(Mixed, new FerruleRepeated([
+        Content("", "before "),
+        Content("Em", "old"),
+        Content("Strong", "old"),
+        Content("Code", "drop"),
+        Content("", " after"),
+    ])),
+]);
+var output = (FerruleGroup)GeneratedMapping.Execute(source);
+var ordered = ((FerruleRepeated)Field(output, Mixed)).Items;
+Equal(4, ordered.Count);
+Equal("", Text(ordered[0], "NodeName"));
+Equal("Styled", Text(ordered[1], "NodeName"));
+Equal("Styled", Text(ordered[2], "NodeName"));
+Equal("", Text(ordered[3], "NodeName"));
+Equal("before ", Text(ordered[0], "#text"));
+Equal("first", Text(ordered[1], "#text"));
+Equal("second", Text(ordered[2], "#text"));
+Equal(" after", Text(ordered[3], "#text"));
+Console.WriteLine("generated target mixed content passed");
+
+static FerruleInstance Field(FerruleGroup group, string name) =>
+    group.Fields.Single(field => field.Name == name).Value;
+
+static string Text(FerruleInstance instance, string name) =>
+    ((FerruleScalar)Field((FerruleGroup)instance, name)).Value.StringValue;
 
 static void Equal<T>(T expected, T actual)
 {

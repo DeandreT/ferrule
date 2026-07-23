@@ -188,18 +188,30 @@ pub(super) fn validate_scope(
             ));
         }
         let mut source_names = BTreeSet::new();
-        let mut target_names = BTreeSet::new();
         for element in elements {
             if element.source.is_empty()
                 || element.target.is_empty()
                 || !source_names.insert(&element.source)
-                || !target_names.insert(&element.target)
             {
                 issues.push(ValidationIssue::new(
                     &location,
-                    "XML mixed-content child mappings require unique non-empty source and target names",
+                    "XML mixed-content child mappings require unique non-empty source names and non-empty target names",
                 ));
                 break;
+            }
+            if current_source
+                .and_then(|node| node.child(&element.source))
+                .is_none_or(|node| {
+                    !node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. })
+                })
+            {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "XML mixed-content source `{}` must be a repeating scalar field",
+                        element.source
+                    ),
+                ));
             }
             if target
                 .and_then(|node| node.child(&element.target))

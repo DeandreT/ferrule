@@ -16,7 +16,7 @@ mod failures;
 struct ScopePlan<'a> {
     repeating: bool,
     iteration: Option<&'a IterationPlan>,
-    construction: TargetConstruction,
+    construction: &'a TargetConstruction,
     evaluations: Vec<u32>,
     bindings: Vec<BindingPlan<'a>>,
     children: Vec<(&'a str, usize)>,
@@ -456,7 +456,21 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             output.push_str(&format!(", Scope_{child_index}(context)),\n"));
         }
         output.push_str("        });\n");
-        output.push_str(&format!("        return group_{scope_index};\n"));
+        if let TargetConstruction::XmlMixedContent { elements } = scope.construction {
+            output.push_str(&format!(
+                "        return global::Ferrule.Runtime.FerruleXmlMixedContent.Preserve(\n            context,\n            group_{scope_index},\n            new global::Ferrule.Runtime.FerruleXmlMixedContentElement[]\n            {{\n"
+            ));
+            for element in elements {
+                output.push_str("                new(");
+                output.push_str(&literal::string(&element.source));
+                output.push_str(", ");
+                output.push_str(&literal::string(&element.target));
+                output.push_str("),\n");
+            }
+            output.push_str("            });\n");
+        } else {
+            output.push_str(&format!("        return group_{scope_index};\n"));
+        }
         output.push_str("    }\n");
     }
     output.push_str("}\n");
@@ -1176,7 +1190,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
     scopes.push(ScopePlan {
         repeating: false,
         iteration: None,
-        construction: TargetConstruction::Group,
+        construction: &scope.construction,
         evaluations: Vec::new(),
         bindings: Vec::new(),
         children: Vec::new(),
@@ -1218,7 +1232,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
     scopes[scope_index] = ScopePlan {
         repeating: scope.repeating,
         iteration: scope.iteration.as_ref(),
-        construction: scope.construction,
+        construction: &scope.construction,
         evaluations,
         bindings,
         children,
