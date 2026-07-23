@@ -371,8 +371,8 @@ fn canonical_edi_decimal(number: f64, max_chars: usize) -> Result<f64, &'static 
 
 fn validate_edi_decimal_string(value: &str, max_chars: usize) -> Result<String, &'static str> {
     let value = value.trim();
-    if value.is_empty() || value.len() > max_chars {
-        return Err("decimal lexical value exceeds the declared EDI field length");
+    if value.is_empty() {
+        return Err("decimal lexical value is empty");
     }
     let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
     let mut parts = unsigned.split('.');
@@ -387,12 +387,27 @@ fn validate_edi_decimal_string(value: &str, max_chars: usize) -> Result<String, 
     {
         return Err("expected a plain EDI decimal without exponent notation");
     }
-    value
+    let number = value
         .parse::<f64>()
         .ok()
         .filter(|number| number.is_finite())
         .ok_or("EDI decimal is outside the finite runtime range")?;
-    Ok(value.to_string())
+    if value.len() <= max_chars {
+        return Ok(value.to_string());
+    }
+
+    // Target scalar adaptation can turn a computed float into its shortest
+    // round-trip string before this schema-guided EDI formatting pass. Only
+    // compact that exact runtime spelling; explicit lexical choices such as
+    // leading zeros remain significant and fail rather than being rewritten.
+    if number.to_string() != value {
+        return Err("decimal lexical value exceeds the declared EDI field length");
+    }
+    let canonical = canonical_edi_decimal(number, max_chars)?.to_string();
+    if canonical.len() > max_chars || canonical.contains(['e', 'E']) {
+        return Err("decimal lexical value exceeds the declared EDI field length");
+    }
+    Ok(canonical)
 }
 
 fn compact_date(value: &str, short: bool) -> Result<String, &'static str> {
@@ -695,6 +710,10 @@ mod tests {
                     "DecimalFraction".into(),
                     Instance::Scalar(Value::String(".09".into())),
                 ),
+                (
+                    "DecimalArtifact".into(),
+                    Instance::Scalar(Value::String("0.18000000000000002".into())),
+                ),
             ])]),
         )]);
         let formats = [
@@ -716,6 +735,11 @@ mod tests {
             EdiLexicalFormat::new(
                 vec!["Rows".into(), "DecimalFraction".into()],
                 EdiLexicalKind::Decimal { max_chars: 3 },
+            )
+            .unwrap(),
+            EdiLexicalFormat::new(
+                vec!["Rows".into(), "DecimalArtifact".into()],
+                EdiLexicalKind::Decimal { max_chars: 10 },
             )
             .unwrap(),
             EdiLexicalFormat::new(
@@ -775,6 +799,10 @@ mod tests {
             row.field("DecimalFraction").and_then(Instance::as_scalar),
             Some(&Value::String(".09".into()))
         );
+        assert_eq!(
+            row.field("DecimalArtifact").and_then(Instance::as_scalar),
+            Some(&Value::String("0.18".into()))
+        );
     }
 
     #[test]
@@ -817,5 +845,30 @@ mod tests {
             apply_output_lexical_formats(&mut over_precise, &[decimal]),
             Err(EdiFormatError::LexicalFormatValue { .. })
         ));
+
+        let decimal = EdiLexicalFormat::new(
+            vec!["Amount".into()],
+            EdiLexicalKind::Decimal { max_chars: 4 },
+        )
+        .unwrap();
+        for lexical in ["1.234567", "00001"] {
+            let mut significant_lexical = Instance::Group(vec![(
+                "Amount".into(),
+                Instance::Scalar(Value::String(lexical.into())),
+            )]);
+            assert!(matches!(
+                apply_output_lexical_formats(
+                    &mut significant_lexical,
+                    std::slice::from_ref(&decimal)
+                ),
+                Err(EdiFormatError::LexicalFormatValue { .. })
+            ));
+            assert_eq!(
+                significant_lexical
+                    .field("Amount")
+                    .and_then(Instance::as_scalar),
+                Some(&Value::String(lexical.into()))
+            );
+        }
     }
 }
