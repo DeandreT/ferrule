@@ -422,7 +422,7 @@ public static class FerruleXml
                 {
                     throw Shape(attribute, "an attribute scalar", field);
                 }
-                if (scalar.Value.Kind != FerruleValueKind.Null)
+                if (scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull))
                 {
                     var type = attribute.ScalarType ?? throw new InvalidOperationException(
                         $"attribute '{attribute.Name}' must have a scalar schema");
@@ -447,7 +447,7 @@ public static class FerruleXml
                 {
                     throw Shape(textChild, "a text scalar", field);
                 }
-                if (scalar.Value.Kind != FerruleValueKind.Null)
+                if (scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull))
                 {
                     var type = textChild.ScalarType ?? throw new InvalidOperationException(
                         $"text field '{textChild.Name}' must have a scalar schema");
@@ -583,7 +583,8 @@ public static class FerruleXml
             instance switch
             {
                 FerruleScalar scalar when schema.ScalarType is not null =>
-                    schema.Repeating || scalar.Value.Kind != FerruleValueKind.Null,
+                    schema.Repeating ||
+                    scalar.Value.Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull),
                 FerruleScalar => true,
                 FerruleRepeated repeated => repeated.Items.Count != 0,
                 FerruleMappedSequence mapped => mapped.Items.Count != 0,
@@ -598,7 +599,8 @@ public static class FerruleXml
                 {
                     continue;
                 }
-                if (field is FerruleScalar scalar && scalar.Value.Kind == FerruleValueKind.Null)
+                if (field is FerruleScalar scalar &&
+                    scalar.Value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
                 {
                     continue;
                 }

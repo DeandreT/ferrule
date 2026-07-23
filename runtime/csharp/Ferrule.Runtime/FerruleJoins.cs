@@ -250,7 +250,7 @@ public sealed partial class ScopeContext
     }
 
     private static bool IsNullLike(FerruleValue value) =>
-        value.Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil;
+        value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil;
 
     private sealed record JoinRow(
         IReadOnlyList<FerruleInstance> Frames,

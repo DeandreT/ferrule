@@ -242,7 +242,9 @@ public static class FerruleSequences
 
     /// <summary>Converts one recursive sequence prefix or separator.</summary>
     public static string RecursiveCollectArgumentText(FerruleValue value) =>
-        value.Kind == FerruleValueKind.Null ? string.Empty : RecursiveScalarText(value);
+        value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull
+            ? string.Empty
+            : RecursiveScalarText(value);
 
     /// <summary>Collects scalar leaves from a recursive source tree in preorder.</summary>
     public static IReadOnlyList<FerruleValue> RecursiveCollect(
@@ -517,11 +519,11 @@ public static class FerruleSequences
     /// </summary>
     public static int? CompareValues(FerruleValue left, FerruleValue right)
     {
-        if (left.Kind == FerruleValueKind.Null)
+        if (left.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {
-            return right.Kind == FerruleValueKind.Null ? 0 : -1;
+            return right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull ? 0 : -1;
         }
-        if (right.Kind == FerruleValueKind.Null)
+        if (right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {
             return 1;
         }
@@ -796,6 +798,7 @@ public static class FerruleSequences
     private static string ValueTypeName(FerruleValue value) => value.Kind switch
     {
         FerruleValueKind.Null => "null",
+        FerruleValueKind.JsonNull => "json null",
         FerruleValueKind.XmlNil => "xml nil",
         FerruleValueKind.Bool => "bool",
         FerruleValueKind.Int64 => "int",

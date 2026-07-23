@@ -199,7 +199,7 @@ fn apply_implied_decimal(
             apply_implied_decimal(value, tail, full_path, places)
         }
         Instance::Scalar(value) if remaining.is_empty() => match value {
-            Value::Null | Value::XmlNil(_) => Ok(()),
+            Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => Ok(()),
             Value::Float(number) => {
                 *number /= 10_f64.powi(i32::from(places));
                 Ok(())
@@ -270,7 +270,7 @@ fn apply_output_lexical_format(
             apply_output_lexical_format(value, tail, full_path, kind)
         }
         Instance::Scalar(value) if remaining.is_empty() => match value {
-            Value::Null | Value::XmlNil(_) => Ok(()),
+            Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => Ok(()),
             Value::Float(number) => match kind {
                 EdiLexicalKind::Decimal { max_chars } => {
                     *number = canonical_edi_decimal(*number, usize::from(max_chars)).map_err(

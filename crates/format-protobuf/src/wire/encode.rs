@@ -250,7 +250,7 @@ fn encoded_map_key(
     path: &str,
 ) -> Result<MapKey, ProtobufError> {
     let value = match instance {
-        None | Some(Instance::Scalar(Value::Null)) => None,
+        None | Some(Instance::Scalar(Value::Null | Value::JsonNull(_))) => None,
         Some(Instance::Scalar(value)) => Some(value),
         Some(other) => {
             return Err(ProtobufError::instance(
@@ -348,7 +348,7 @@ fn encode_scalar_or_enum_payload(
             format!("expected a scalar, got {}", instance_kind(instance)),
         ));
     };
-    if matches!(value, Value::Null | Value::XmlNil(_)) {
+    if matches!(value, Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) {
         return Err(ProtobufError::instance(
             path,
             format!("null is not a protobuf {} value", field_type_name(ty)),
@@ -577,7 +577,7 @@ fn missing_required(path: &str) -> ProtobufError {
 }
 
 fn is_null(instance: &Instance) -> bool {
-    matches!(instance, Instance::Scalar(Value::Null))
+    matches!(instance, Instance::Scalar(Value::Null | Value::JsonNull(_)))
 }
 
 fn instance_kind(instance: &Instance) -> &'static str {

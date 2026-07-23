@@ -114,7 +114,8 @@ public static partial class FerruleFunctions
     private static FerruleValue Exists(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("exists", arguments, 1);
-        return FerruleValue.FromBoolean(arguments[0].Kind != FerruleValueKind.Null);
+        return FerruleValue.FromBoolean(
+            arguments[0].Kind is not (FerruleValueKind.Null or FerruleValueKind.JsonNull));
     }
 
     private static FerruleValue IsEmpty(IReadOnlyList<FerruleValue> arguments)
@@ -219,6 +220,7 @@ public static partial class FerruleFunctions
     private static string TypeName(FerruleValue value) => value.Kind switch
     {
         FerruleValueKind.Null => "null",
+        FerruleValueKind.JsonNull => "json null",
         FerruleValueKind.XmlNil => "xml nil",
         FerruleValueKind.Bool => "bool",
         FerruleValueKind.Int64 => "int",

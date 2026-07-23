@@ -278,10 +278,9 @@ fn decoded_map_key(entry: &Instance, path: &str) -> Result<MapKey, ProtobufError
         Value::Bool(value) => Ok(MapKey::Bool(*value)),
         Value::Int(value) => Ok(MapKey::Int(*value)),
         Value::String(value) => Ok(MapKey::String(value.clone())),
-        Value::Null | Value::XmlNil(_) | Value::Float(_) => Err(ProtobufError::instance(
-            path,
-            "decoded map key has an invalid type",
-        )),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Float(_) => Err(
+            ProtobufError::instance(path, "decoded map key has an invalid type"),
+        ),
     }
 }
 

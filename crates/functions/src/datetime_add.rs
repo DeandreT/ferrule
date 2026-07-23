@@ -53,7 +53,7 @@ pub(super) fn datetime_add(args: &[Value]) -> Result<Value, FunctionError> {
     let mut result = DateTime::parse(datetime)?;
     let mut saw_duration = false;
     for duration in values {
-        if matches!(duration, Value::Null) {
+        if matches!(duration, Value::Null | Value::JsonNull(_)) {
             continue;
         }
         let Value::String(duration) = duration else {

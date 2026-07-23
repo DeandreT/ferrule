@@ -320,7 +320,7 @@ fn format_value(
 ) -> Result<String, CsvFormatError> {
     let incompatible = || value_type_error(row, field, ty, value.type_name());
     match (ty, value) {
-        (_, Value::Null) => Ok(String::new()),
+        (_, Value::Null | Value::JsonNull(_)) => Ok(String::new()),
         (ScalarType::String, Value::Bool(value)) => Ok(value.to_string()),
         (ScalarType::String, Value::Int(value)) => Ok(value.to_string()),
         (ScalarType::String, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),

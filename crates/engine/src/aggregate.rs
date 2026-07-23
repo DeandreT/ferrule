@@ -62,7 +62,7 @@ pub(crate) fn aggregate(
             Ok(Value::String(
                 values
                     .iter()
-                    .filter(|value| !matches!(value, Value::Null))
+                    .filter(|value| !matches!(value, Value::Null | Value::JsonNull(_)))
                     .map(value_text)
                     .collect::<Vec<_>>()
                     .join(&separator),
@@ -272,9 +272,11 @@ fn compare_int_float(integer: i64, float: f64) -> std::cmp::Ordering {
 
 pub(crate) fn value_ordering(left: &Value, right: &Value) -> Option<std::cmp::Ordering> {
     match (left, right) {
-        (Value::Null, Value::Null) => Some(std::cmp::Ordering::Equal),
-        (Value::Null, _) => Some(std::cmp::Ordering::Less),
-        (_, Value::Null) => Some(std::cmp::Ordering::Greater),
+        (Value::Null | Value::JsonNull(_), Value::Null | Value::JsonNull(_)) => {
+            Some(std::cmp::Ordering::Equal)
+        }
+        (Value::Null | Value::JsonNull(_), _) => Some(std::cmp::Ordering::Less),
+        (_, Value::Null | Value::JsonNull(_)) => Some(std::cmp::Ordering::Greater),
         (Value::Int(left), Value::Int(right)) => Some(left.cmp(right)),
         (Value::Float(left), Value::Float(right)) => left.partial_cmp(right),
         (Value::Int(left), Value::Float(right)) if right.is_finite() => {
@@ -291,7 +293,7 @@ pub(crate) fn value_ordering(left: &Value, right: &Value) -> Option<std::cmp::Or
 
 fn value_text(value: &Value) -> String {
     match value {
-        Value::Null | Value::XmlNil(_) => String::new(),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => String::new(),
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),

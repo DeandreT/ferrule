@@ -54,7 +54,6 @@ pub enum ScopeConstructionKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
     DynamicSourceField,
-    XmlMixedContent,
     CorrelatedJoinAggregate,
 }
 
@@ -175,7 +174,6 @@ impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
             Self::DynamicSourceField => "a dynamic source field",
-            Self::XmlMixedContent => "XML mixed content",
             Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
         })
     }

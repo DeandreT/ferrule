@@ -9,7 +9,7 @@ use crate::{
     JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
     ProgramValidationError, ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow,
     SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
-    UserFunctionProgram, validate_program,
+    UserFunctionProgram, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -591,6 +591,22 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             indent: *indent,
             namespace: namespace.clone(),
         },
+        Node::XmlMixedContent {
+            path,
+            frame,
+            replacements,
+        } => Expression::XmlMixedContent {
+            frame: frame.clone(),
+            path: path.clone(),
+            replacements: replacements
+                .iter()
+                .map(|replacement| XmlMixedContentReplacement {
+                    element: replacement.element.clone(),
+                    collection: replacement.collection.clone(),
+                    expression: replacement.expression,
+                })
+                .collect(),
+        },
         Node::SourceDocumentPath => Expression::SourceDocumentPath,
         Node::Position { collection } => Expression::Position {
             collection: collection.clone(),
@@ -726,9 +742,9 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
     match node {
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
-        Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
         Node::SourceField { .. }
         | Node::XmlSerialize { .. }
+        | Node::XmlMixedContent { .. }
         | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }

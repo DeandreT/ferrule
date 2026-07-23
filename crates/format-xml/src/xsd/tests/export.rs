@@ -160,6 +160,115 @@ fn export_roundtrips_one_concrete_xsi_type_through_an_abstract_base() {
 }
 
 #[test]
+fn export_roundtrips_complex_substitution_group_declarations() {
+    let namespace = "urn:ferrule:substitution-export";
+    let child = |name, ty| {
+        SchemaNode::scalar(name, ty)
+            .xml_qualified(namespace)
+            .unwrap()
+    };
+    let creature = SchemaNode::group(
+        "Creature",
+        vec![
+            child("name", ScalarType::String),
+            child("lives", ScalarType::Int),
+            child("barks", ScalarType::Bool),
+        ],
+    )
+    .xml_qualified(namespace)
+    .unwrap()
+    .with_substitution_group_alternatives(vec![
+        ir::GroupAlternative {
+            name: format!("{{{namespace}}}Cat"),
+            members: vec!["name".into(), "lives".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        },
+        ir::GroupAlternative {
+            name: format!("{{{namespace}}}Dog"),
+            members: vec!["name".into(), "barks".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        },
+    ])
+    .unwrap()
+    .repeating();
+    let schema = SchemaNode::group("Habitat", vec![creature])
+        .xml_qualified(namespace)
+        .unwrap();
+
+    let xsd = export(&schema).unwrap();
+    assert!(
+        xsd.contains(r#"<xs:element name="Creature""#) && xsd.contains(r#"abstract="true""#),
+        "{xsd}"
+    );
+    assert!(
+        xsd.contains(r#"<xs:element name="Cat""#)
+            && xsd.contains(r#"substitutionGroup="tns:Creature""#),
+        "{xsd}"
+    );
+    assert!(
+        xsd.contains(r#"<xs:element ref="tns:Creature" minOccurs="0" maxOccurs="unbounded"/>"#),
+        "{xsd}"
+    );
+
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_substitution_export_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import_root(&path, Some(&format!("{{{namespace}}}Habitat"))).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(
+        imported.child("Creature").unwrap().alternatives(),
+        schema.child("Creature").unwrap().alternatives()
+    );
+    assert_eq!(
+        imported.child("Creature").unwrap().xml_alternative_kind,
+        ir::XmlAlternativeKind::SubstitutionGroup
+    );
+}
+
+#[test]
+fn export_orders_multiple_substitution_heads_by_expanded_name() {
+    let namespace = "urn:ferrule:substitution-order";
+    let substitution = |head: &str, member: &str| {
+        SchemaNode::group(
+            head,
+            vec![
+                SchemaNode::scalar("name", ScalarType::String)
+                    .xml_qualified(namespace)
+                    .unwrap(),
+            ],
+        )
+        .xml_qualified(namespace)
+        .unwrap()
+        .with_substitution_group_alternatives(vec![ir::GroupAlternative {
+            name: format!("{{{namespace}}}{member}"),
+            members: vec!["name".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        }])
+        .unwrap()
+    };
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            substitution("BetaHead", "BetaMember"),
+            substitution("AlphaHead", "AlphaMember"),
+        ],
+    )
+    .xml_qualified(namespace)
+    .unwrap();
+
+    let xsd = export(&schema).unwrap();
+    let alpha = xsd.find(r#"<xs:element name="AlphaHead""#).unwrap();
+    let beta = xsd.find(r#"<xs:element name="BetaHead""#).unwrap();
+    assert!(alpha < beta, "{xsd}");
+    assert_eq!(xsd, export(&schema).unwrap());
+}
+
+#[test]
 fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
     let choice = SchemaNode::group(
         "Address",

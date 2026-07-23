@@ -149,7 +149,7 @@ pub(crate) fn eval_scope(
                 &mut in_progress,
             )?;
             let Value::String(path) = path else {
-                if path == Value::Null {
+                if matches!(path, Value::Null | Value::JsonNull(_)) {
                     continue;
                 }
                 return Err(EngineError::DynamicSourcePath {
@@ -922,7 +922,7 @@ fn attach_xml_mixed_content(
 
 fn mixed_content_text(value: &Value) -> String {
     match value {
-        Value::Null | Value::XmlNil(_) => String::new(),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => String::new(),
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),

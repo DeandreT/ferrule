@@ -568,7 +568,7 @@ fn write_value(
     datetime_format: &Format,
     time_format: &Format,
 ) -> Result<(), XlsxFormatError> {
-    if matches!(value, Value::Null) {
+    if matches!(value, Value::Null | Value::JsonNull(_)) {
         return Ok(());
     }
     let column = u16::try_from(column).map_err(|_| XlsxFormatError::InvalidCoordinate)?;

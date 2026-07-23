@@ -148,6 +148,14 @@ impl<'a> AlternativeExportPlan<'a> {
             .map(|name| self.qualified(name))
     }
 
+    pub(super) fn type_for_alternative(&self, node: &SchemaNode, identity: &str) -> Option<String> {
+        self.groups.get(&node_key(node))?;
+        let (_, local) = split_identity(identity)?;
+        self.definitions
+            .contains_key(&local)
+            .then(|| self.qualified(&local))
+    }
+
     pub(super) fn restricted_view_for(&self, node: &SchemaNode) -> Option<&[String]> {
         let key = node_key(node);
         let base = self.groups.get(&key)?;
