@@ -63,6 +63,9 @@ pub(super) fn classify_target_connection(
         feed,
         copy_all_targets,
     } = connection;
+    if builder.reject_unsupported_variable_construction(feed, target_path) {
+        return;
+    }
     match builder.classify_join_iteration(feed, target_path) {
         super::join::IterationFeed::Join(join) => {
             if target.format.is_xml_like() && target_path.is_empty() && !target_node.repeating {

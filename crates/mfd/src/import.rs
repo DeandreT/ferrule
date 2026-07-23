@@ -581,6 +581,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         warned_sequence_uses: BTreeSet::new(),
         warned_scalar_filters: BTreeSet::new(),
         warned_join_controls: BTreeSet::new(),
+        warned_variable_constructions: BTreeSet::new(),
         rejected_join_paths: BTreeSet::new(),
         source_fields: BTreeMap::new(),
         json_serializer_nodes: BTreeMap::new(),

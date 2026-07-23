@@ -17,6 +17,7 @@ pub(super) struct GraphBuilder<'a> {
     pub(super) warned_sequence_uses: BTreeSet<usize>,
     pub(super) warned_scalar_filters: BTreeSet<usize>,
     pub(super) warned_join_controls: BTreeSet<mapping::JoinId>,
+    pub(super) warned_variable_constructions: BTreeSet<u32>,
     pub(super) rejected_join_paths: BTreeSet<Vec<String>>,
     pub(super) source_fields: BTreeMap<(Option<Vec<String>>, Vec<String>), NodeId>,
     pub(super) json_serializer_nodes: BTreeMap<u32, NodeId>,
