@@ -161,7 +161,12 @@ fn validate_function(id: FunctionId, function: &UserFunction) -> Result<(), MfdE
             Node::Unconnected
             | Node::Const {
                 value:
-                    Value::Null | Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::String(_),
+                    Value::Null
+                    | Value::XmlNil(_)
+                    | Value::Bool(_)
+                    | Value::Int(_)
+                    | Value::Float(_)
+                    | Value::String(_),
             }
             | Node::Call { .. }
             | Node::UserFunctionCall { .. }
@@ -476,12 +481,16 @@ fn render_constant(
 ) {
     *uid += 1;
     let (text, datatype) = constant_parts(value);
-    let name = if matches!(value, Value::Null) {
-        "set-empty"
-    } else {
-        "constant"
+    let (name, kind) = match value {
+        Value::Null => ("set-empty", 5),
+        Value::XmlNil(_) => ("set-xsi-nil", 5),
+        _ => ("constant", 2),
     };
-    let data = (!matches!(value, Value::Null)).then(|| {
+    let data = matches!(
+        value,
+        Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::String(_)
+    )
+    .then(|| {
         format!(
             "{indent}\t<data><constant value=\"{}\" datatype=\"{datatype}\"/></data>\n",
             xml_escape(&text)
@@ -492,7 +501,7 @@ fn render_constant(
         "{indent}<component name=\"{name}\" library=\"core\" uid=\"{uid}\" kind=\"{}\">\n\
          {indent}\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n{}\
          {indent}</component>\n",
-        if matches!(value, Value::Null) { 5 } else { 2 },
+        kind,
         data.unwrap_or_default()
     );
 }

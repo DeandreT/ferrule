@@ -413,6 +413,9 @@ impl DefinitionContext<'_> {
         };
         match (function.name.as_str(), function.kind) {
             ("set-empty", 5) if function.library == "core" => Ok(ScalarExpr::Const(Value::Null)),
+            ("set-xsi-nil", 5) if function.library == "core" => {
+                Ok(ScalarExpr::Const(Value::xml_nil()))
+            }
             (_, 3) => {
                 if function.library != "core" || function.inputs.len() != 2 {
                     return Err(
