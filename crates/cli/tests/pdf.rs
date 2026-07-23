@@ -15,6 +15,7 @@ fn layout() -> PdfLayout {
         vec![PdfCommand::Capture(PdfCapture {
             name: "Value".into(),
             region: PdfRegion::full(),
+            algorithm: Default::default(),
         })],
     )
     .unwrap()

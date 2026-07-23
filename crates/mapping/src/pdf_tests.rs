@@ -4,6 +4,7 @@ fn capture(name: &str) -> PdfCommand {
     PdfCommand::Capture(PdfCapture {
         name: name.into(),
         region: PdfRegion::full(),
+        algorithm: Default::default(),
     })
 }
 
@@ -37,6 +38,7 @@ fn layout_rejects_forward_and_wrong_axis_anchor_references() {
                 left: unknown,
                 ..PdfRegion::full()
             },
+            algorithm: Default::default(),
         })],
     );
     assert!(matches!(layout, Err(PdfLayoutError::UnknownAnchor(name)) if name == "Later"));
@@ -53,6 +55,7 @@ fn layout_rejects_nonfinite_coordinates_and_reversed_pages() {
                 left: PdfCoordinate::new(PdfReference::Left, f64::NAN),
                 ..PdfRegion::full()
             },
+            algorithm: Default::default(),
         })],
     );
     assert!(matches!(nonfinite, Err(PdfLayoutError::InvalidCoordinate)));

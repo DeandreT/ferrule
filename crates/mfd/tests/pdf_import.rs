@@ -71,6 +71,62 @@ fn has_text_rows(commands: &[PdfCommand]) -> bool {
 }
 
 #[test]
+fn unsupported_pdf_capture_algorithm_emits_one_actionable_warning() {
+    let temp = TempDir::new();
+    let design = temp.0.join("mapping.mfd");
+    let template = temp.0.join("unsupported.pxt");
+    assert!(std::fs::write(
+        &template,
+        r#"<Document><Template><Model><Root><Children><Capture><Label>Ignored</Label><Region>{ Left: Left, Top: Top, Right: Right, Bottom: Bottom }</Region><Algorithm><OpticalCharacterRecognition/></Algorithm></Capture></Children><Label>Pdf</Label></Root></Model></Template></Document>"#,
+    )
+    .is_ok());
+    assert!(std::fs::write(
+        &design,
+        r#"<mapping version="42">
+  <resources/>
+  <component name="warning-map" uid="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure>
+      <children>
+        <component name="rows-in" library="text" uid="2" kind="16">
+          <data>
+            <root><header><namespaces/></header><entry name="FileInstance"><entry name="document"><entry name="Rows" outkey="10"><entry name="Value" outkey="11"/></entry></entry></entry></root>
+            <text type="csv" inputinstance="input.csv"><settings separator="," firstrownames="true"><names root="Input" block="Rows"><field0 name="Value" type="string"/></names></settings></text>
+          </data>
+        </component>
+        <component name="unsupported-pdf" library="pdf" uid="3" kind="34">
+          <data><root><header><namespaces/></header><entry name="FileInstance"><file role="inputinstance" name="input.pdf"/><entry name="document" type="doc-pdf"><document schemafile="unsupported.pxt" root="Pdf"/><entry name="Pdf"><entry name="Ignored" outkey="30"/></entry></entry></entry></root></data>
+        </component>
+        <component name="rows-out" library="text" uid="4" kind="16">
+          <properties XSLTDefaultOutput="1"/>
+          <data>
+            <root><header><namespaces/></header><entry name="FileInstance"><entry name="document"><entry name="Rows" inpkey="20"><entry name="Value" inpkey="21"/></entry></entry></entry></root>
+            <text type="csv" outputinstance="output.csv"><settings separator="," firstrownames="true"><names root="Output" block="Rows"><field0 name="Value" type="string"/></names></settings></text>
+          </data>
+        </component>
+      </children>
+      <graph directed="1"><edges/><vertices><vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex><vertex vertexkey="11"><edges><edge vertexkey="21"/></edges></vertex></vertices></graph>
+    </structure>
+  </component>
+</mapping>"#,
+    )
+    .is_ok());
+
+    let Ok(imported) = mfd::import(&design) else {
+        panic!("a valid CSV mapping with one unsupported PDF component must still import");
+    };
+    let warnings = imported
+        .warnings
+        .iter()
+        .filter(|warning| warning.contains("unsupported-pdf"))
+        .collect::<Vec<_>>();
+    assert_eq!(warnings.len(), 1, "{:?}", imported.warnings);
+    assert!(warnings[0].contains("OpticalCharacterRecognition"));
+    assert!(warnings[0].contains("only <BasicVisual>"));
+    assert!(engine::validate(&imported.project).is_empty());
+}
+
+#[test]
 fn imports_case_insensitive_pdf_references_and_table_layout() {
     let temp = TempDir::new();
     std::fs::copy(fixture("pdf-table.mfd"), temp.0.join("mapping.mfd")).unwrap();
@@ -154,6 +210,9 @@ fn imports_case_insensitive_pdf_references_and_table_layout() {
     assert!(exported.contains("library=\"pdf\""));
     assert!(exported.contains("kind=\"34\""));
     assert!(temp.0.join("export-source.pxt").is_file());
+    let exported_template = std::fs::read_to_string(temp.0.join("export-source.pxt")).unwrap();
+    assert!(exported_template.contains("basic_visual"));
+    assert!(exported_template.contains("insert_space"));
     std::fs::remove_file(temp.0.join("Garden-Input.PDF")).unwrap();
 
     let reimported = mfd::import(&design).unwrap();

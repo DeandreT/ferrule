@@ -309,6 +309,7 @@ fn validates_pdf_direction_and_source_schema() {
         vec![PdfCommand::Capture(PdfCapture {
             name: "name".into(),
             region: PdfRegion::full(),
+            algorithm: Default::default(),
         })],
     )
     .unwrap();

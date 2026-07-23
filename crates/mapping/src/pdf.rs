@@ -161,6 +161,39 @@ impl PdfCommand {
 pub struct PdfCapture {
     pub name: String,
     pub region: PdfRegion,
+    #[serde(default)]
+    pub algorithm: PdfCaptureAlgorithm,
+}
+
+/// The bounded visual-text reconstruction policy for one capture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PdfCaptureAlgorithm {
+    BasicVisual {
+        separate_words: PdfWordSeparation,
+        whitespace: PdfWhitespaceMode,
+    },
+}
+
+impl Default for PdfCaptureAlgorithm {
+    fn default() -> Self {
+        Self::BasicVisual {
+            separate_words: PdfWordSeparation::InsertSpace,
+            whitespace: PdfWhitespaceMode::Default,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PdfWordSeparation {
+    InsertSpace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PdfWhitespaceMode {
+    Default,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

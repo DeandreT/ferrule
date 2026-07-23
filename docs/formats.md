@@ -19,7 +19,7 @@ layout and dialect details that an extension cannot express.
 | FlexText | Yes | Yes | Embedded recursive split/store/switch layouts, including fixed-width and delimited records |
 | Protocol Buffers | Yes | Yes | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |
 | XBRL | Yes | Yes | Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts |
-| PDF | Yes | No | Layout-driven visual extraction from positioned text and painted edges, normalized to the visible inherited CropBox and page rotation |
+| PDF | Yes | No | Layout-driven visual extraction from positioned text and painted edges, typed BasicVisual text capture, and visible inherited CropBox/page-rotation normalization |
 
 ## Important Boundaries
 

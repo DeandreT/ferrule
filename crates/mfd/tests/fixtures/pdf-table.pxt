@@ -17,6 +17,16 @@
               <Capture id="5">
                 <Label>Heading</Label>
                 <Region>{ Left: Left + 20pt, Top: Top + 20pt, Right: Right - 20pt, Bottom: Top + 60pt }</Region>
+                <Algorithm>
+                  <BasicVisual>
+                    <BaselineCapture/>
+                    <ParagraphSpacing/>
+                    <BaselineAngle/>
+                    <AngleDeviation/>
+                    <SeparateWords><InsertSpace/></SeparateWords>
+                    <WhitespaceMode><Default/></WhitespaceMode>
+                  </BasicVisual>
+                </Algorithm>
               </Capture>
               <Splitter id="6">
                 <Children>
