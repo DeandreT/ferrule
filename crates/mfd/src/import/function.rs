@@ -619,6 +619,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "string-length" => "length",
         "contains" => "contains",
         "starts-with" => "starts_with",
+        "ends-with" => "ends_with",
         "upper-case" | "uppercase" => "upper",
         "lower-case" | "lowercase" => "lower",
         "string" => "string",
@@ -682,6 +683,7 @@ mod tests {
         assert_eq!(map_name("numeric"), Some("is_numeric"));
         assert_eq!(map_name("format-number"), Some("format_number"));
         assert_eq!(map_name("normalize-space"), Some("normalize_space"));
+        assert_eq!(map_name("ends-with"), Some("ends_with"));
         assert_eq!(map_name("left"), Some("left"));
         assert_eq!(map_name("right"), Some("right"));
         assert_eq!(map_name("empty"), Some("is_empty"));

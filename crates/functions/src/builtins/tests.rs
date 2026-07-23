@@ -287,6 +287,21 @@ fn string_predicates() {
     );
     assert_eq!(
         call(
+            "ends_with",
+            &[
+                Value::String("Jane Doe".into()),
+                Value::String("Doe".into())
+            ]
+        )
+        .unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        call("ends_with", &[Value::Int(120), Value::Float(20.0)]).unwrap(),
+        Value::Bool(true)
+    );
+    assert_eq!(
+        call(
             "contains",
             &[Value::Bool(false), Value::String("als".into())]
         )

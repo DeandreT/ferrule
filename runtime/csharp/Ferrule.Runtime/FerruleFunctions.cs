@@ -74,6 +74,8 @@ public static partial class FerruleFunctions
             "is_empty" => IsEmpty(arguments),
             "starts_with" => BinaryScalarString(function, arguments, static (left, right) =>
                 left.StartsWith(right, StringComparison.Ordinal)),
+            "ends_with" => BinaryScalarString(function, arguments, static (left, right) =>
+                left.EndsWith(right, StringComparison.Ordinal)),
             "contains" => BinaryScalarString(function, arguments, static (left, right) =>
                 left.Contains(right, StringComparison.Ordinal)),
             "add" => Numeric(function, arguments, NumericOperation.Add),
