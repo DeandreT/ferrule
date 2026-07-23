@@ -40,6 +40,7 @@ pub struct Options {
 pub enum EmitError {
     InvalidProgram(ProgramValidationError),
     InvalidPackageName(String),
+    SchemaSerialization(String),
     ArtifactPath(ArtifactPathError),
     ArtifactSet(ArtifactSetError),
 }
@@ -50,6 +51,9 @@ impl fmt::Display for EmitError {
             Self::InvalidProgram(error) => error.fmt(formatter),
             Self::InvalidPackageName(name) => {
                 write!(formatter, "invalid generated Rust package name {name:?}")
+            }
+            Self::SchemaSerialization(message) => {
+                write!(formatter, "cannot serialize embedded XML schema: {message}")
             }
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),
@@ -63,7 +67,7 @@ impl std::error::Error for EmitError {
             Self::InvalidProgram(error) => Some(error),
             Self::ArtifactPath(error) => Some(error),
             Self::ArtifactSet(error) => Some(error),
-            Self::InvalidPackageName(_) => None,
+            Self::InvalidPackageName(_) | Self::SchemaSerialization(_) => None,
         }
     }
 }
@@ -145,7 +149,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              collection_find_selected, field, generate_sequence,\n\
              group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
-             sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
+             serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
          };\n\n",
     );
     source.push_str("pub use codegen_runtime::NamedInput;\n\n");
@@ -360,6 +364,30 @@ fn render_expression(
                     format!("context.resolve_scalar(&[{path}]).map_err(RuntimeError::from)")
                 }
             }
+        }
+        Expression::XmlSerialize {
+            frame,
+            path,
+            schema,
+            declaration,
+            indent,
+            namespace,
+        } => {
+            let schema = serde_json::to_string(schema)
+                .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+            let path = render_string_path(path);
+            let frame = frame.as_ref().map_or_else(
+                || "None".to_string(),
+                |frame| format!("Some(&[{}][..])", render_string_path(frame)),
+            );
+            let namespace = namespace.as_ref().map_or_else(
+                || "None".to_string(),
+                |namespace| format!("Some({})", rust_string(namespace)),
+            );
+            format!(
+                "{{\n        let instance = context.resolve_xml_instance({frame}, &[{path}])?;\n        serialize_xml({id}, {}, instance, {declaration}, {indent}, {namespace})\n    }}",
+                rust_string(&schema)
+            )
         }
         Expression::SourceDocumentPath => {
             "context.source_document_path().map_err(RuntimeError::from)".into()

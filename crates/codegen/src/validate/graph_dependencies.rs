@@ -5,6 +5,7 @@ use crate::Expression;
 pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
     match expression {
         Expression::SourceField { .. }
+        | Expression::XmlSerialize { .. }
         | Expression::SourceDocumentPath
         | Expression::Position { .. }
         | Expression::JoinField { .. }
