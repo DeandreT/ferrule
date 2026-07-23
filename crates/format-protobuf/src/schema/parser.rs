@@ -499,12 +499,19 @@ impl Parser {
         self.expect_symbol('{')?;
         let mut values = Vec::new();
         let mut reserved = RawReserved::new();
+        let mut allow_alias = None;
         while !self.consume_symbol('}') {
             if self.consume_symbol(';') {
                 continue;
             }
             if self.peek_identifier("option") {
-                self.skip_statement()?;
+                if let Some(value) = self.parse_enum_option()?
+                    && allow_alias.replace(value).is_some()
+                {
+                    return self.error(format!(
+                        "enum `{full_name}` declares `allow_alias` more than once"
+                    ));
+                }
                 continue;
             }
             if self.peek_identifier("reserved") {
@@ -533,8 +540,26 @@ impl Parser {
             full_name,
             values,
             reserved,
+            allow_alias: allow_alias.unwrap_or(false),
         });
         Ok(())
+    }
+
+    fn parse_enum_option(&mut self) -> Result<Option<bool>, ProtobufError> {
+        self.expect_identifier("option")?;
+        let option = self.parse_qualified_name(false)?;
+        if option != "allow_alias" {
+            self.skip_statement()?;
+            return Ok(None);
+        }
+        self.expect_symbol('=')?;
+        let value = match self.expect_any_identifier()?.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => return self.error("enum option `allow_alias` must be true or false"),
+        };
+        self.expect_symbol(';')?;
+        Ok(Some(value))
     }
 
     fn parse_message_reserved(&mut self) -> Result<RawReserved<u32>, ProtobufError> {

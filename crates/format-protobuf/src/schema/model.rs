@@ -222,6 +222,7 @@ pub struct Enum {
     pub(super) name: String,
     pub(super) full_name: String,
     pub(super) values: Vec<EnumValue>,
+    pub(super) allow_alias: bool,
 }
 
 impl Enum {
@@ -237,10 +238,16 @@ impl Enum {
         &self.values
     }
 
+    pub fn allows_aliases(&self) -> bool {
+        self.allow_alias
+    }
+
     pub fn value_by_name(&self, name: &str) -> Option<&EnumValue> {
         self.values.iter().find(|value| value.name == name)
     }
 
+    /// Returns the first declared name for `number`, making alias lookup
+    /// deterministic without discarding later names accepted by encoding.
     pub fn value_by_number(&self, number: i32) -> Option<&EnumValue> {
         self.values.iter().find(|value| value.number == number)
     }

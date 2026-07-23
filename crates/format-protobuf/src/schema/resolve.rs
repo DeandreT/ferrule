@@ -77,6 +77,7 @@ pub(super) struct RawEnum {
     pub(super) full_name: String,
     pub(super) values: Vec<EnumValue>,
     pub(super) reserved: RawReserved<i32>,
+    pub(super) allow_alias: bool,
 }
 
 impl RawSchema {
@@ -266,9 +267,9 @@ fn resolve_enum(raw: RawEnum) -> Result<Enum, ProtobufError> {
                 value.name()
             )));
         }
-        if !numbers.insert(value.number()) {
+        if !numbers.insert(value.number()) && !raw.allow_alias {
             return Err(ProtobufError::schema(format!(
-                "enum `{}` has duplicate number `{}`",
+                "enum `{}` has duplicate number `{}` without `option allow_alias = true`",
                 raw.full_name,
                 value.number()
             )));
@@ -293,6 +294,7 @@ fn resolve_enum(raw: RawEnum) -> Result<Enum, ProtobufError> {
         name: raw.name,
         full_name: raw.full_name,
         values: raw.values,
+        allow_alias: raw.allow_alias,
     })
 }
 
