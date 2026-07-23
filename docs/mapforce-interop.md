@@ -65,7 +65,7 @@ expected to re-import and validate as ferrule projects.
 ## Current Boundaries
 
 The main remaining gaps are general XML namespace identity and derived-type
-input, unrestricted JSON union composition, first-class sequence composition,
+input, scalar/array and cross-mode JSON union composition, first-class sequence composition,
 general SQL and database mutation, broader XLSX/PDF/FlexText configuration
 shapes, taxonomy-level XBRL execution, and direct execution of unrecognized or
 external-service user components.

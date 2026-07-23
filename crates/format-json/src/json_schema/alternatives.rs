@@ -93,6 +93,7 @@ pub(super) fn parse_object_alternatives(
                 "array alternatives are not supported",
             ));
         }
+        let nested_mode = parsed.alternative_mode();
         let SchemaKind::Group {
             children: variant_children,
             alternatives: nested_alternatives,
@@ -105,10 +106,35 @@ pub(super) fn parse_object_alternatives(
             ));
         };
         if !nested_alternatives.is_empty() {
-            return Err(unsupported_union(
-                name,
-                "nested oneOf or anyOf object alternatives are not supported",
-            ));
+            if nested_mode != mode {
+                return Err(unsupported_union(
+                    name,
+                    "nested object alternatives must use the same oneOf or anyOf mode",
+                ));
+            }
+            if resolved.get("properties").is_some()
+                || resolved.get("required").is_some()
+                || resolved.get("additionalProperties").is_some()
+            {
+                return Err(unsupported_union(
+                    name,
+                    "nested object alternatives cannot add wrapper-level object constraints",
+                ));
+            }
+            for mut nested in nested_alternatives {
+                nested.name = format!("{alternative_name}/{}", nested.name);
+                merge_nested_alternative(
+                    name,
+                    mode,
+                    &base_children,
+                    &base_required,
+                    &variant_children,
+                    nested,
+                    &mut merged,
+                    &mut metadata,
+                )?;
+            }
+            continue;
         }
         if resolved.get("additionalProperties") != Some(&serde_json::Value::Bool(false)) {
             return Err(unsupported_union(
@@ -145,42 +171,17 @@ pub(super) fn parse_object_alternatives(
             }
         }
         let constraints = required_scalar_constraints(name, resolved, &required, &merged)?;
-        if required
-            .iter()
-            .any(|field| !members.iter().any(|member| member == field))
-        {
-            return Err(unsupported_union(
-                name,
-                &format!("{keyword} requires a field not declared by that object alternative"),
-            ));
-        }
-        if mode == GroupAlternativeMode::Exclusive
-            && metadata.iter().any(|previous: &GroupAlternative| {
-                previous.members == members
-                    && previous.required == required
-                    && previous.constraints == constraints
-            })
-        {
-            return Err(unsupported_union(
-                name,
-                "alternatives are not distinguishable by supported object fields and requirements",
-            ));
-        }
-        if metadata
-            .iter()
-            .any(|previous: &GroupAlternative| previous.name == alternative_name)
-        {
-            return Err(unsupported_union(
-                name,
-                &format!("{keyword} alternatives must have distinct names"),
-            ));
-        }
-        metadata.push(GroupAlternative {
-            name: alternative_name,
-            members,
-            required,
-            constraints,
-        });
+        push_alternative(
+            name,
+            mode,
+            GroupAlternative {
+                name: alternative_name,
+                members,
+                required,
+                constraints,
+            },
+            &mut metadata,
+        )?;
     }
     let group = SchemaNode::group(name, merged);
     match mode {
@@ -188,6 +189,112 @@ pub(super) fn parse_object_alternatives(
         GroupAlternativeMode::Inclusive => group.with_inclusive_alternatives(metadata),
     }
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn merge_nested_alternative(
+    union_name: &str,
+    mode: GroupAlternativeMode,
+    base_children: &[SchemaNode],
+    base_required: &[String],
+    variant_children: &[SchemaNode],
+    alternative: GroupAlternative,
+    merged: &mut Vec<SchemaNode>,
+    metadata: &mut Vec<GroupAlternative>,
+) -> Result<(), JsonFormatError> {
+    let mut members = base_children
+        .iter()
+        .map(|child| child.name.clone())
+        .collect::<Vec<_>>();
+    for member in &alternative.members {
+        let child = variant_children
+            .iter()
+            .find(|child| child.name == *member)
+            .ok_or_else(|| {
+                unsupported_union(
+                    union_name,
+                    &format!("nested union member `{member}` has no declared field"),
+                )
+            })?;
+        if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
+            if existing != child {
+                return Err(unsupported_union(
+                    union_name,
+                    &format!(
+                        "field `{}` has incompatible schemas across alternatives",
+                        child.name
+                    ),
+                ));
+            }
+        } else {
+            merged.push(child.clone());
+        }
+        if !members.contains(member) {
+            members.push(member.clone());
+        }
+    }
+    let mut required = base_required.to_vec();
+    for member in alternative.required {
+        if !required.contains(&member) {
+            required.push(member);
+        }
+    }
+    push_alternative(
+        union_name,
+        mode,
+        GroupAlternative {
+            name: alternative.name,
+            members,
+            required,
+            constraints: alternative.constraints,
+        },
+        metadata,
+    )
+}
+
+fn push_alternative(
+    union_name: &str,
+    mode: GroupAlternativeMode,
+    alternative: GroupAlternative,
+    metadata: &mut Vec<GroupAlternative>,
+) -> Result<(), JsonFormatError> {
+    let keyword = match mode {
+        GroupAlternativeMode::Exclusive => "oneOf",
+        GroupAlternativeMode::Inclusive => "anyOf",
+    };
+    if alternative
+        .required
+        .iter()
+        .any(|field| !alternative.members.iter().any(|member| member == field))
+    {
+        return Err(unsupported_union(
+            union_name,
+            &format!("{keyword} requires a field not declared by that object alternative"),
+        ));
+    }
+    if mode == GroupAlternativeMode::Exclusive
+        && metadata.iter().any(|previous| {
+            previous.members == alternative.members
+                && previous.required == alternative.required
+                && previous.constraints == alternative.constraints
+        })
+    {
+        return Err(unsupported_union(
+            union_name,
+            "alternatives are not distinguishable by supported object fields and requirements",
+        ));
+    }
+    if metadata
+        .iter()
+        .any(|previous| previous.name == alternative.name)
+    {
+        return Err(unsupported_union(
+            union_name,
+            &format!("{keyword} alternatives must have distinct names"),
+        ));
+    }
+    metadata.push(alternative);
+    Ok(())
 }
 
 fn required_scalar_constraints(
