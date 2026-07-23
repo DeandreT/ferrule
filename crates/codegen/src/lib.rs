@@ -16,8 +16,7 @@ pub use artifact::{
     GeneratedFile,
 };
 pub use diagnostic::{
-    Diagnostic, FailureRuleFeature, LowerError, ScopeConstructionKind, ScopeFeature,
-    UnsupportedNodeKind, UnsupportedSequenceKind,
+    Diagnostic, LowerError, ScopeConstructionKind, ScopeFeature, UnsupportedNodeKind,
 };
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,

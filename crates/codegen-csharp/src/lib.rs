@@ -352,6 +352,24 @@ mod tests {
                     value: Value::Int(2),
                 },
             },
+            ExpressionNode {
+                id: 13,
+                expression: Expression::Const {
+                    value: Value::String("first|second".into()),
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::Const {
+                    value: Value::String("\\|".into()),
+                },
+            },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::Const {
+                    value: Value::String("i".into()),
+                },
+            },
         ]);
         program.failure_rules = vec![
             FailureRule {
@@ -360,9 +378,10 @@ mod tests {
                 message: Some(9),
             },
             FailureRule {
-                iteration: FailureIteration::Generated(GeneratedSequence::Range {
-                    from: None,
-                    to: 12,
+                iteration: FailureIteration::Generated(GeneratedSequence::TokenizeRegex {
+                    input: 13,
+                    pattern: 14,
+                    flags: Some(15),
                     item: 11,
                 }),
                 selection: FailureSelection::All,
@@ -391,6 +410,25 @@ mod tests {
             .find("Node_9(item_context_failure_0)")
             .expect("lazy message");
         assert!(selection < message);
+        let sequence_input = source
+            .find("Node_13(context)")
+            .expect("regex sequence input");
+        let sequence_pattern = source
+            .find("Node_14(context)")
+            .expect("regex sequence pattern");
+        let sequence_flags = source
+            .find("Node_15(context)")
+            .expect("regex sequence flags");
+        let materialize = source
+            .find("FerruleSequences.TokenizeRegex")
+            .expect("regex materialization");
+        let iterate = source
+            .find("context.IterateGenerated(sequence_values_failure_1)")
+            .expect("generated failure iteration");
+        assert!(sequence_input < sequence_pattern);
+        assert!(sequence_pattern < sequence_flags);
+        assert!(sequence_flags < materialize);
+        assert!(materialize < iterate);
         assert!(source.contains("context.IterateGenerated(sequence_values_failure_1)"));
         assert!(source.contains("FerruleFailures.MappingFailure(1, message_failure_0)"));
         assert!(source.contains("FerruleFailures.MappingFailure(2, message_failure_1)"));
