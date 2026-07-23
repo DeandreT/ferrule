@@ -456,6 +456,7 @@ pub(super) fn produces_scalar(component: &FnComponent) -> bool {
                 component.name.as_str(),
                 "xbrl-measure-currency" | "xbrl-measure-shares"
             )
+        || component.kind == 5 && component.library == "core" && component.name == "not-exists"
         || component.kind == 5 && aggregate_op(&component.name).is_some()
         || map_component_name(component).is_some()
 }
