@@ -471,6 +471,7 @@ fn parse_element(
         SchemaNode::scalar(name, ScalarType::String)
     };
     apply_exported_alternative_view(el, &mut node);
+    apply_fixed_value(el, &mut node);
     if el
         .attribute("nillable")
         .is_some_and(|value| matches!(value, "true" | "1"))
@@ -478,6 +479,20 @@ fn parse_element(
         node.nillable()
     } else {
         node
+    }
+}
+
+fn apply_fixed_value(declaration: &Node<'_, '_>, node: &mut SchemaNode) {
+    let Some(fixed) = declaration.attribute("fixed") else {
+        return;
+    };
+    match &mut node.kind {
+        SchemaKind::Scalar { .. } => node.fixed = Some(fixed.to_string()),
+        SchemaKind::Group { children, .. } => {
+            if let Some(text) = children.iter_mut().find(|child| child.text) {
+                text.fixed = Some(fixed.to_string());
+            }
+        }
     }
 }
 
@@ -1306,9 +1321,11 @@ fn parse_complex_type(
             .attribute("type")
             .map(map_xsd_type)
             .unwrap_or(ScalarType::String);
-        parsed
-            .children
-            .push(SchemaNode::scalar(name, ty).attribute());
+        let mut attribute = SchemaNode::scalar(name, ty).attribute();
+        if let Some(fixed) = attr.attribute("fixed") {
+            attribute.fixed = Some(fixed.to_string());
+        }
+        parsed.children.push(attribute);
     }
     parsed
 }

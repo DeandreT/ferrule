@@ -283,14 +283,17 @@ fn write_element_required(
     } else {
         ""
     };
+    let fixed = element_fixed(node).map_or_else(String::new, |value| {
+        format!(" fixed=\"{}\"", alternatives::xml_escape(value))
+    });
     if let Some(anchor) = node.recursive_ref.as_deref() {
         if anchor == root_name {
             out.push_str(&format!(
-                "{pad}<xs:element ref=\"{root_name}\"{occurs}{nillable}/>\n"
+                "{pad}<xs:element ref=\"{root_name}\"{occurs}{nillable}{fixed}/>\n"
             ));
         } else {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}{fixed}/>\n",
                 node.name,
                 recursive_type_name(anchor)
             ));
@@ -299,7 +302,7 @@ fn write_element_required(
     }
     if node.name != root_name && recursive_anchors.contains_key(&node.name) {
         out.push_str(&format!(
-            "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}/>\n",
+            "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}{fixed}/>\n",
             node.name,
             recursive_type_name(&node.name)
         ));
@@ -308,7 +311,7 @@ fn write_element_required(
     if let Some(type_name) = alternatives.type_for(node) {
         if let Some(view) = alternatives.restricted_view_for(node) {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}{fixed}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
                 node.name
             ));
             for name in view {
@@ -322,7 +325,7 @@ fn write_element_required(
             ));
         } else {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}{fixed}/>\n",
                 node.name
             ));
         }
@@ -331,14 +334,14 @@ fn write_element_required(
     match &node.kind {
         ir::SchemaKind::Scalar { ty } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}{fixed}/>\n",
                 node.name,
                 xsd_type_name(ty)
             ));
         }
         ir::SchemaKind::Group { .. } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\"{occurs}{nillable}>\n",
+                "{pad}<xs:element name=\"{}\"{occurs}{nillable}{fixed}>\n",
                 node.name
             ));
             write_complex_type(
@@ -354,6 +357,18 @@ fn write_element_required(
         }
     }
     Ok(())
+}
+
+fn element_fixed(node: &SchemaNode) -> Option<&str> {
+    node.fixed.as_deref().or_else(|| {
+        let ir::SchemaKind::Group { children, .. } = &node.kind else {
+            return None;
+        };
+        children
+            .iter()
+            .find(|child| child.text)
+            .and_then(|child| child.fixed.as_deref())
+    })
 }
 
 fn write_complex_type(
@@ -519,8 +534,14 @@ fn write_attribute(
         });
     };
     let pad = "  ".repeat(depth);
+    let fixed = attribute
+        .fixed
+        .as_deref()
+        .map_or_else(String::new, |value| {
+            format!(" fixed=\"{}\"", alternatives::xml_escape(value))
+        });
     out.push_str(&format!(
-        "{pad}<xs:attribute name=\"{}\" type=\"{}\"/>\n",
+        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{fixed}/>\n",
         attribute.name,
         xsd_type_name(ty)
     ));

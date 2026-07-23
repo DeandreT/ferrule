@@ -7,8 +7,8 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use super::{
-    XmlFormatError, format_scalar, parse_scalar, push_attribute, read_node, shape_error,
-    validate_group_fields, write_node, write_ordered_mixed_content,
+    XmlFormatError, format_schema_scalar, parse_schema_scalar, push_attribute, read_node,
+    shape_error, validate_group_fields, write_node, write_ordered_mixed_content,
 };
 
 pub(super) fn read_generic_element(
@@ -74,7 +74,7 @@ pub(super) fn read_group_fields(
             let text = element_string_value(element);
             fields.push((
                 child.name.clone(),
-                Instance::Scalar(parse_scalar(&child.name, ty, &text)?),
+                Instance::Scalar(parse_schema_scalar(child, ty, &text)?),
             ));
         } else if child.attribute {
             let value = match element.attribute(child.name.as_str()) {
@@ -82,7 +82,7 @@ pub(super) fn read_group_fields(
                     let SchemaKind::Scalar { ty } = child.kind else {
                         return Err(XmlFormatError::MissingElement(child.name.clone()));
                     };
-                    parse_scalar(&child.name, ty, text)?
+                    parse_schema_scalar(child, ty, text)?
                 }
                 None => Value::Null,
             };
@@ -92,7 +92,7 @@ pub(super) fn read_group_fields(
                 return Err(XmlFormatError::MissingElement(child.name.clone()));
             };
             let text = direct_text_value(element);
-            let value = parse_scalar(&child.name, ty, &text)?;
+            let value = parse_schema_scalar(child, ty, &text)?;
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.name == XML_ELEMENTS_FIELD {
             let items = element
@@ -332,7 +332,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                         child_instance,
                     ));
                 };
-                let text = format_scalar(&child_schema.name, ty, value)?;
+                let text = format_schema_scalar(child_schema, ty, value)?;
                 push_attribute(&mut start, &child_schema.name, &text);
             }
         }
@@ -360,7 +360,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                 let SchemaKind::Scalar { ty } = child_schema.kind else {
                     return Err(shape_error(child_schema, "a text scalar", child_instance));
                 };
-                let text = format_scalar(&child_schema.name, ty, value)?;
+                let text = format_schema_scalar(child_schema, ty, value)?;
                 writer.write_event(Event::Text(BytesText::new(&text)))?;
             }
         }

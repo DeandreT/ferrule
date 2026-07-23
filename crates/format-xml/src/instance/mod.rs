@@ -38,6 +38,12 @@ pub enum XmlFormatError {
         ty: ScalarType,
         value: String,
     },
+    #[error("element or attribute `{name}` requires fixed value `{expected}`, got `{got}`")]
+    FixedValue {
+        name: String,
+        expected: String,
+        got: String,
+    },
     #[error("element `{name}` expected {expected}, got {got}")]
     Shape {
         name: String,
@@ -181,7 +187,7 @@ fn read_node(
                 return Ok(Instance::Scalar(Value::xml_nil()));
             }
             let text = el.text().unwrap_or("");
-            Ok(Instance::Scalar(parse_scalar(&schema.name, *ty, text)?))
+            Ok(Instance::Scalar(parse_schema_scalar(schema, *ty, text)?))
         }
         SchemaKind::Group {
             children,
@@ -388,6 +394,44 @@ fn parse_scalar(name: &str, ty: ScalarType, text: &str) -> Result<Value, XmlForm
     })
 }
 
+fn parse_schema_scalar(
+    schema: &SchemaNode,
+    ty: ScalarType,
+    text: &str,
+) -> Result<Value, XmlFormatError> {
+    if let Some(expected) = schema.fixed.as_deref()
+        && text != expected
+    {
+        return Err(XmlFormatError::FixedValue {
+            name: schema.name.clone(),
+            expected: expected.to_string(),
+            got: text.to_string(),
+        });
+    }
+    parse_scalar(&schema.name, ty, text)
+}
+
+fn format_schema_scalar(
+    schema: &SchemaNode,
+    ty: ScalarType,
+    value: &Value,
+) -> Result<String, XmlFormatError> {
+    let text = format_scalar(&schema.name, ty, value)?;
+    if let Some(expected) = schema.fixed.as_deref() {
+        let expected_value = parse_scalar(&schema.name, ty, expected)?;
+        let actual_value = parse_scalar(&schema.name, ty, &text)?;
+        if actual_value != expected_value {
+            return Err(XmlFormatError::FixedValue {
+                name: schema.name.clone(),
+                expected: expected.to_string(),
+                got: text,
+            });
+        }
+        return Ok(expected.to_string());
+    }
+    Ok(text)
+}
+
 /// Writes an [`Instance`] tree shaped by `schema` to an XML file.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), XmlFormatError> {
     std::fs::write(path, to_string(schema, instance)?)?;
@@ -554,7 +598,7 @@ fn write_single_node<W: std::io::Write>(
                 start.push_attribute(("xmlns", namespace));
             }
             writer.write_event(Event::Start(start))?;
-            let text = format_scalar(&schema.name, *ty, value)?;
+            let text = format_schema_scalar(schema, *ty, value)?;
             writer.write_event(Event::Text(BytesText::new(&text)))?;
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
             Ok(())
@@ -603,7 +647,7 @@ fn write_single_node<W: std::io::Write>(
                                 child_instance,
                             ));
                         };
-                        let text = format_scalar(&child_schema.name, ty, value)?;
+                        let text = format_schema_scalar(child_schema, ty, value)?;
                         push_attribute(&mut start, &child_schema.name, &text);
                     }
                 }
@@ -637,7 +681,7 @@ fn write_single_node<W: std::io::Write>(
                         let SchemaKind::Scalar { ty } = child_schema.kind else {
                             return Err(shape_error(child_schema, "a text scalar", child_instance));
                         };
-                        let text = format_scalar(&child_schema.name, ty, value)?;
+                        let text = format_schema_scalar(child_schema, ty, value)?;
                         writer.write_event(Event::Text(BytesText::new(&text)))?;
                     }
                 }

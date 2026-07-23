@@ -1211,3 +1211,92 @@ fn imports_simple_content_as_text_plus_attributes() {
         }
     ));
 }
+
+#[test]
+fn fixed_elements_simple_content_and_attributes_roundtrip_and_validate() {
+    let path =
+        std::env::temp_dir().join(format!("ferrule_xsd_fixed_test_{}.xsd", std::process::id()));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Root"><xs:complexType><xs:sequence>
+    <xs:element name="Mode" type="xs:string" fixed="prod"/>
+    <xs:element name="Price" type="xs:decimal" fixed="2.0"/>
+    <xs:element name="Label" fixed="ready"><xs:complexType><xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute name="language" type="xs:string" fixed="en"/>
+      </xs:extension>
+    </xs:simpleContent></xs:complexType></xs:element>
+  </xs:sequence><xs:attribute name="version" type="xs:int" fixed="2"/>
+  </xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import(&path).unwrap();
+    assert_eq!(
+        schema.child("Mode").and_then(|node| node.fixed.as_deref()),
+        Some("prod")
+    );
+    let label = schema.child("Label").unwrap();
+    assert_eq!(
+        label.text_child().and_then(|node| node.fixed.as_deref()),
+        Some("ready")
+    );
+    assert_eq!(
+        label
+            .child("language")
+            .and_then(|node| node.fixed.as_deref()),
+        Some("en")
+    );
+    assert_eq!(
+        schema
+            .child("version")
+            .and_then(|node| node.fixed.as_deref()),
+        Some("2")
+    );
+
+    let mut instance = from_str(
+        r#"<Root version="2"><Mode>prod</Mode><Price>2.0</Price><Label language="en">ready</Label></Root>"#,
+        &schema,
+    )
+    .unwrap();
+    let output = to_string(&schema, &instance).unwrap();
+    assert_eq!(from_str(&output, &schema).unwrap(), instance);
+    assert!(matches!(
+        from_str(
+            r#"<Root version="3"><Mode>prod</Mode><Price>2.0</Price><Label language="en">ready</Label></Root>"#,
+            &schema,
+        ),
+        Err(XmlFormatError::FixedValue { name, .. }) if name == "version"
+    ));
+    assert!(matches!(
+        from_str(
+            r#"<Root version="2"><Mode>test</Mode><Price>2.0</Price><Label language="en">ready</Label></Root>"#,
+            &schema,
+        ),
+        Err(XmlFormatError::FixedValue { name, .. }) if name == "Mode"
+    ));
+
+    let Instance::Group(fields) = &mut instance else {
+        panic!("root should be a group")
+    };
+    let Some((_, Instance::Scalar(mode))) = fields.iter_mut().find(|(name, _)| name == "Mode")
+    else {
+        panic!("mode should be a scalar")
+    };
+    *mode = Value::String("test".into());
+    assert!(matches!(
+        to_string(&schema, &instance),
+        Err(XmlFormatError::FixedValue { name, .. }) if name == "Mode"
+    ));
+
+    let exported = export(&schema).unwrap();
+    assert!(exported.contains(r#"name="Mode" type="xs:string" fixed="prod""#));
+    assert!(exported.contains(r#"name="Price" type="xs:decimal" fixed="2.0""#));
+    assert!(exported.contains(r#"name="Label" fixed="ready""#));
+    assert!(exported.contains(r#"name="language" type="xs:string" fixed="en""#));
+    std::fs::write(&path, exported).unwrap();
+    assert_eq!(import(&path).unwrap(), schema);
+    std::fs::remove_file(path).unwrap();
+}
