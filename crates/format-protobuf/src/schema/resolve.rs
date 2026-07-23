@@ -13,6 +13,7 @@ pub(super) struct RawSchema {
     pub(super) package: Option<String>,
     pub(super) messages: Vec<RawMessage>,
     pub(super) enums: Vec<RawEnum>,
+    pub(super) proto3: bool,
 }
 
 #[derive(Debug)]
@@ -58,7 +59,7 @@ pub(super) struct RawField {
     pub(super) cardinality: Cardinality,
     pub(super) type_name: String,
     pub(super) scope: String,
-    pub(super) packed: bool,
+    pub(super) packed: Option<bool>,
     pub(super) default: Option<RawDefault>,
     pub(super) oneof: Option<String>,
     pub(super) map: bool,
@@ -112,7 +113,15 @@ impl RawSchema {
         let messages = self
             .messages
             .iter()
-            .map(|message| resolve_message(message, self.package.as_deref(), &names, &self.enums))
+            .map(|message| {
+                resolve_message(
+                    message,
+                    self.package.as_deref(),
+                    &names,
+                    &self.enums,
+                    self.proto3,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()?;
         let enums = self
             .enums
@@ -138,6 +147,7 @@ fn resolve_message(
     package: Option<&str>,
     names: &HashMap<&str, DeclId>,
     enums: &[RawEnum],
+    proto3: bool,
 ) -> Result<Message, ProtobufError> {
     let reserved = validate_reserved(
         "message",
@@ -197,11 +207,9 @@ fn resolve_message(
             Some(scalar) => FieldType::Scalar(scalar),
             None => resolve_named_type(&field.type_name, &field.scope, package, names)?,
         };
-        if field.packed
-            && (field.cardinality != Cardinality::Repeated
-                || !matches!(ty, FieldType::Scalar(scalar) if scalar.is_packable())
-                    && !matches!(ty, FieldType::Enum(_)))
-        {
+        let packable = matches!(ty, FieldType::Scalar(scalar) if scalar.is_packable())
+            || matches!(ty, FieldType::Enum(_));
+        if field.packed.is_some() && (field.cardinality != Cardinality::Repeated || !packable) {
             return Err(ProtobufError::schema(format!(
                 "field `{}.{}` uses packed encoding but is not a repeated numeric, bool, or enum field",
                 raw.full_name, field.name
@@ -235,12 +243,15 @@ fn resolve_message(
                 })
             })
             .transpose()?;
+        let packed = field.cardinality == Cardinality::Repeated
+            && packable
+            && field.packed.unwrap_or(proto3);
         fields.push(Field {
             name: field.name.clone(),
             number: field.number,
             cardinality: field.cardinality,
             ty,
-            packed: field.packed,
+            packed,
             default,
             oneof,
             map: field.map,

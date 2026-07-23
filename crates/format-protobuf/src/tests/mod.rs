@@ -6,6 +6,7 @@ use crate::{
 };
 
 mod aliases;
+mod packing;
 mod reserved;
 
 const CONTACT_SCHEMA: &str = r#"

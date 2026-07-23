@@ -272,6 +272,7 @@ impl Parser {
             package: self.package,
             messages: self.messages,
             enums: self.enums,
+            proto3: self.syntax == Syntax::Proto3,
         })
     }
 
@@ -418,7 +419,7 @@ impl Parser {
                     cardinality: Cardinality::Implicit,
                     type_name: key_type,
                     scope: entry_full_name.clone(),
-                    packed: false,
+                    packed: None,
                     default: None,
                     oneof: None,
                     map: false,
@@ -429,7 +430,7 @@ impl Parser {
                     cardinality: Cardinality::Implicit,
                     type_name: value_type,
                     scope: entry_full_name.clone(),
-                    packed: false,
+                    packed: None,
                     default: None,
                     oneof: None,
                     map: false,
@@ -445,7 +446,7 @@ impl Parser {
             cardinality: Cardinality::Repeated,
             type_name: format!(".{entry_full_name}"),
             scope: scope.to_string(),
-            packed: false,
+            packed: None,
             default: None,
             oneof: None,
             map: true,
@@ -481,7 +482,7 @@ impl Parser {
             if field.default.is_some() {
                 return self.error(format!("oneof `{name}` fields cannot declare defaults"));
             }
-            if field.packed {
+            if field.packed.is_some() {
                 return self.error(format!("oneof `{name}` fields cannot use packed encoding"));
             }
             fields.push(field);
@@ -652,7 +653,7 @@ impl Parser {
         let name = self.expect_any_identifier()?;
         self.expect_symbol('=')?;
         let number = self.parse_unsigned_number::<u32>("field number")?;
-        let mut packed = false;
+        let mut packed = None;
         let mut default = None;
         if self.consume_symbol('[') {
             loop {
@@ -660,11 +661,16 @@ impl Parser {
                 self.expect_symbol('=')?;
                 let value = self.parse_default()?;
                 match option.as_str() {
-                    "packed" => match value {
-                        RawDefault::Identifier(value) if value == "true" => packed = true,
-                        RawDefault::Identifier(value) if value == "false" => packed = false,
-                        _ => return self.error("`packed` must be true or false"),
-                    },
+                    "packed" => {
+                        let value = match value {
+                            RawDefault::Identifier(value) if value == "true" => true,
+                            RawDefault::Identifier(value) if value == "false" => false,
+                            _ => return self.error("`packed` must be true or false"),
+                        };
+                        if packed.replace(value).is_some() {
+                            return self.error("field declares `packed` more than once");
+                        }
+                    }
                     "default" => {
                         if self.syntax == Syntax::Proto3 {
                             return self.error("proto3 fields cannot declare explicit defaults");
