@@ -35,6 +35,7 @@ public enum FerruleRuntimeError
     ZeroWidthTokenizeRegex,
     TokenizeRegexTooLarge,
     UserFunctionType,
+    XmlSerialization,
 }
 
 /// <summary>An error with a machine-readable Ferrule runtime category.</summary>

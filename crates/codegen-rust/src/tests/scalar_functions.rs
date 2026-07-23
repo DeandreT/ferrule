@@ -60,6 +60,19 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 args: vec![100, 106],
             },
         },
+        ExpressionNode {
+            id: 108,
+            expression: Expression::Const {
+                value: Value::String("#".into()),
+            },
+        },
+        ExpressionNode {
+            id: 109,
+            expression: Expression::Call {
+                function: ScalarFunction::Replace,
+                args: vec![100, 106, 108],
+            },
+        },
     ]);
     let selected = program
         .root
@@ -90,6 +103,7 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         "to_number",
         "delay_passthrough",
         "matches",
+        "replace",
     ] {
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }

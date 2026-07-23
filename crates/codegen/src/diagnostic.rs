@@ -56,7 +56,6 @@ pub enum ScopeConstructionKind {
 pub enum UnsupportedNodeKind {
     DynamicSourceField,
     XmlMixedContent,
-    XmlSerialize,
     CorrelatedJoinAggregate,
 }
 
@@ -179,7 +178,6 @@ impl fmt::Display for UnsupportedNodeKind {
         formatter.write_str(match self {
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",
-            Self::XmlSerialize => "XML serialization",
             Self::CorrelatedJoinAggregate => "a join aggregate outside root source context",
         })
     }

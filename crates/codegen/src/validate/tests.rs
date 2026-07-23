@@ -15,6 +15,7 @@ mod invariants;
 mod joins;
 mod sources;
 mod user_functions;
+mod xml_serialize;
 
 fn program() -> Program {
     Program {

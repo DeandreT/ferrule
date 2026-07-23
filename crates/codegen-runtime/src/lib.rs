@@ -14,6 +14,7 @@ mod iteration;
 mod runtime_value;
 mod user_function;
 mod value_map;
+mod xml;
 
 use std::fmt;
 
@@ -36,6 +37,7 @@ pub use iteration::{
 pub use runtime_value::{ExecutionContext, RuntimeValue};
 pub use user_function::adapt_user_function_value;
 pub use value_map::value_map;
+pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
 
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]
@@ -109,6 +111,10 @@ pub enum RuntimeError {
         parameter: Option<u64>,
         expected: ScalarType,
         found: &'static str,
+    },
+    XmlSerialization {
+        node: u32,
+        message: String,
     },
 }
 
@@ -218,6 +224,12 @@ impl fmt::Display for RuntimeError {
                     "user function {function} output: expected {expected:?}, got {found}"
                 ),
             },
+            Self::XmlSerialization { node, message } => {
+                write!(
+                    formatter,
+                    "node {node}: XML serialization failed: {message}"
+                )
+            }
         }
     }
 }
@@ -246,7 +258,8 @@ impl std::error::Error for RuntimeError {
             | Self::NotABool { .. }
             | Self::NotAnItemCount { .. }
             | Self::InvalidBlockSize { .. }
-            | Self::UserFunctionType { .. } => None,
+            | Self::UserFunctionType { .. }
+            | Self::XmlSerialization { .. } => None,
         }
     }
 }
@@ -636,6 +649,29 @@ mod tests {
                 frame: vec!["Inactive".to_string()],
                 path: vec!["Name".to_string()],
             })
+        );
+    }
+
+    #[test]
+    fn pinned_structured_sources_select_the_innermost_matching_collection() {
+        let row = |name: &str| group([field("Name", scalar(string(name)))]);
+        let source = group([field(
+            "Rows",
+            repeated([group([
+                field("Name", scalar(string("outer"))),
+                field("Rows", repeated([row("inner-first"), row("inner-second")])),
+            ])]),
+        )]);
+
+        let outer = ScopeContext::new(&source).walk_source(&["Rows"]);
+        let inner = outer[0].walk_source(&["Rows"]);
+
+        assert_eq!(inner.len(), 2);
+        assert_eq!(
+            inner[1]
+                .resolve_xml_instance(Some(&["Rows"]), &[])
+                .and_then(|instance| resolve_scalar(instance, &["Name"])),
+            Ok(string("inner-second"))
         );
     }
 

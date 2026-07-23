@@ -83,6 +83,7 @@ pub enum ScalarFunction {
     EndsWith,
     Contains,
     Matches,
+    Replace,
     Concat,
     Upper,
     Lower,
@@ -152,6 +153,7 @@ impl ScalarFunction {
         Self::EndsWith,
         Self::Contains,
         Self::Matches,
+        Self::Replace,
         Self::Concat,
         Self::Upper,
         Self::Lower,
@@ -221,6 +223,7 @@ impl ScalarFunction {
             Self::EndsWith => "ends_with",
             Self::Contains => "contains",
             Self::Matches => "matches",
+            Self::Replace => "replace",
             Self::Concat => "concat",
             Self::Upper => "upper",
             Self::Lower => "lower",
@@ -291,6 +294,7 @@ impl ScalarFunction {
             "ends_with" => Some(Self::EndsWith),
             "contains" => Some(Self::Contains),
             "matches" => Some(Self::Matches),
+            "replace" => Some(Self::Replace),
             "concat" => Some(Self::Concat),
             "upper" => Some(Self::Upper),
             "lower" => Some(Self::Lower),
@@ -450,6 +454,16 @@ pub enum Expression {
     SourceField {
         frame: Option<Vec<String>>,
         path: Vec<String>,
+    },
+    /// Serializes one complete structured XML source element with its exact
+    /// static schema and document-level formatting policy.
+    XmlSerialize {
+        frame: Option<Vec<String>>,
+        path: Vec<String>,
+        schema: SchemaNode,
+        declaration: bool,
+        indent: bool,
+        namespace: Option<String>,
     },
     /// Reads the resolved path retained by the nearest source document.
     SourceDocumentPath,

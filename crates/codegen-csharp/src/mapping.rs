@@ -76,6 +76,37 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(");\n");
             }
+            Expression::XmlSerialize {
+                frame,
+                path,
+                schema,
+                declaration,
+                indent,
+                namespace,
+            } => {
+                let schema = serde_json::to_string(schema)
+                    .map_err(|error| EmitError::SchemaSerialization(error.to_string()))?;
+                output.push_str("\n    {\n        var instance = context.ResolveXmlInstance(");
+                match frame {
+                    Some(frame) => render_path(frame, &mut output),
+                    None => output.push_str("null"),
+                }
+                output.push_str(", ");
+                render_path(path, &mut output);
+                output.push_str("\n        );\n        return global::Ferrule.Runtime.FerruleXml.Serialize(\n            ");
+                output.push_str(&format!("{node}U, "));
+                output.push_str(&literal::string(&schema));
+                output.push_str(", instance, ");
+                output.push_str(if *declaration { "true" } else { "false" });
+                output.push_str(", ");
+                output.push_str(if *indent { "true" } else { "false" });
+                output.push_str(", ");
+                match namespace {
+                    Some(namespace) => output.push_str(&literal::string(namespace)),
+                    None => output.push_str("null"),
+                }
+                output.push_str(");\n    }\n");
+            }
             Expression::SourceDocumentPath => {
                 output.push_str(" =>\n        context.ResolveSourceDocumentPath();\n");
             }
