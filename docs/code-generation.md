@@ -118,6 +118,8 @@ The current portable model includes:
 - ordered mapping failure rules over source or generated sequences, with exact
   true/false selection, first-item short-circuiting, and lazy optional messages
 - source-backed empty, nested, and multi-hop iteration
+- ordered nonempty scope concatenation, with independently controlled branch
+  contexts and repeated or mapped-sequence output flattened in declaration order
 - exact first-seen key grouping, contiguous starting-marker grouping, and
   positive fixed-size block grouping over source or generated iteration;
   grouped bindings read the first member while aggregates and empty-path child

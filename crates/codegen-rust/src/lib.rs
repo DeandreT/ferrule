@@ -294,8 +294,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
     for (index, target) in program.extra_targets.iter().enumerate() {
         collect_scopes(&target.root, format!("scope_extra_{index}"), &mut scopes);
     }
-    for (name, scope, child_names) in scopes {
-        source.push_str(&render_scope(&name, scope, &child_names)?);
+    for (name, scope, child_names, segment_names) in scopes {
+        source.push_str(&render_scope(&name, scope, &child_names, &segment_names)?);
     }
     Ok(source)
 }
@@ -670,7 +670,7 @@ const fn runtime_value_name(value: RuntimeValue) -> &'static str {
 fn collect_scopes<'a>(
     scope: &'a TargetScope,
     name: String,
-    output: &mut Vec<(String, &'a TargetScope, Vec<String>)>,
+    output: &mut Vec<(String, &'a TargetScope, Vec<String>, Vec<String>)>,
 ) {
     let child_names = scope
         .children
@@ -678,7 +678,28 @@ fn collect_scopes<'a>(
         .enumerate()
         .map(|(index, _)| format!("{name}_{index}"))
         .collect::<Vec<_>>();
-    output.push((name, scope, child_names.clone()));
+    let segment_names = scope
+        .iteration
+        .as_ref()
+        .and_then(IterationPlan::concatenated)
+        .map(|sequence| {
+            sequence
+                .iter()
+                .enumerate()
+                .map(|(index, _)| format!("{name}_segment_{index}"))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    output.push((name, scope, child_names.clone(), segment_names.clone()));
+    if let Some(sequence) = scope
+        .iteration
+        .as_ref()
+        .and_then(IterationPlan::concatenated)
+    {
+        for (segment, segment_name) in sequence.iter().zip(segment_names) {
+            collect_scopes(segment, segment_name, output);
+        }
+    }
     for (child, child_name) in scope.children.iter().zip(child_names) {
         collect_scopes(child, child_name, output);
     }
@@ -688,11 +709,16 @@ fn render_scope(
     name: &str,
     scope: &TargetScope,
     child_names: &[String],
+    segment_names: &[String],
 ) -> Result<String, EmitError> {
     let mut output =
         format!("fn {name}(context: &ScopeContext<'_>) -> Result<Instance, RuntimeError> {{\n");
     if let Some(iteration) = &scope.iteration {
-        output.push_str(&render_iteration_scope(scope, iteration, child_names));
+        if iteration.concatenated().is_some() {
+            output.push_str(&render_concatenated_scope(iteration, segment_names));
+        } else {
+            output.push_str(&render_iteration_scope(scope, iteration, child_names));
+        }
     } else {
         output.push_str(&render_scope_item(scope, child_names, "    ", "context"));
         if scope.repeating {
@@ -703,6 +729,28 @@ fn render_scope(
     }
     output.push_str("}\n\n");
     Ok(output)
+}
+
+fn render_concatenated_scope(iteration: &IterationPlan, segment_names: &[String]) -> String {
+    let mut output = String::from("    let mut outputs = Vec::new();\n");
+    let variant = match iteration.output() {
+        IterationOutput::Repeated => "Repeated",
+        IterationOutput::MappedSequence => "MappedSequence",
+        IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
+    };
+    for (index, segment_name) in segment_names.iter().enumerate() {
+        output.push_str(&format!(
+            "    let segment_{index} = {segment_name}(context)?;\n    let Instance::{variant}(segment_{index}) = segment_{index} else {{\n        unreachable!(\"validated scope sequence segment output\");\n    }};\n    outputs.extend(segment_{index});\n"
+        ));
+    }
+    match iteration.output() {
+        IterationOutput::Repeated => output.push_str("    Ok(repeated(outputs))\n"),
+        IterationOutput::MappedSequence => {
+            output.push_str("    Ok(Instance::MappedSequence(outputs))\n");
+        }
+        IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
+    }
+    output
 }
 
 fn render_iteration_scope(
@@ -810,7 +858,9 @@ fn render_grouping(
             || "None".to_string(),
             |name| format!("Some({})", rust_string(name)),
         ),
-        IterationSource::Generated(_) | IterationSource::InnerJoin(_) => "None".to_string(),
+        IterationSource::Generated(_)
+        | IterationSource::InnerJoin(_)
+        | IterationSource::Concatenate(_) => "None".to_string(),
     };
     let binding = if candidates_are_reassigned {
         "let mut candidates"
@@ -867,6 +917,9 @@ fn render_iteration_candidates(
             );
         }
         IterationSource::InnerJoin(join) => render_inner_join(join, binding, output),
+        IterationSource::Concatenate(_) => {
+            unreachable!("concatenated scopes render before candidate iteration")
+        }
     }
 }
 

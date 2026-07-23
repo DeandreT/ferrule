@@ -70,6 +70,15 @@ fn collect_scope_sequence_items(
             owners,
         )?;
     }
+    if let Some(sequence) = scope
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.concatenated())
+    {
+        for segment in sequence.iter() {
+            collect_scope_sequence_items(expressions, segment, target_path, target_owner, owners)?;
+        }
+    }
     for child in &scope.children {
         target_path.push(child.target_field.clone());
         let result =

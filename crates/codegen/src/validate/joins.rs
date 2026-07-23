@@ -58,6 +58,15 @@ fn collect_owners(
     {
         return Err(ProgramValidationError::DuplicateJoinOwner { join: join.id() });
     }
+    if let Some(sequence) = scope
+        .iteration
+        .as_ref()
+        .and_then(|iteration| iteration.concatenated())
+    {
+        for segment in sequence.iter() {
+            collect_owners(segment, owners)?;
+        }
+    }
     for child in &scope.children {
         collect_owners(child, owners)?;
     }

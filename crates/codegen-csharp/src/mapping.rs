@@ -20,6 +20,7 @@ struct ScopePlan<'a> {
     evaluations: Vec<u32>,
     bindings: Vec<BindingPlan<'a>>,
     children: Vec<(&'a str, usize)>,
+    segments: Vec<usize>,
 }
 
 struct BindingPlan<'a> {
@@ -358,7 +359,11 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             "    private static global::Ferrule.Runtime.FerruleInstance Scope_{scope_index}(\n        global::Ferrule.Runtime.ScopeContext context)\n    {{\n"
         ));
         if let Some(iteration) = scope.iteration {
-            render_iteration_scope(scope_index, iteration, &mut output);
+            if iteration.concatenated().is_some() {
+                render_concatenated_scope(iteration, &scope.segments, &mut output);
+            } else {
+                render_iteration_scope(scope_index, iteration, &mut output);
+            }
         } else {
             output.push_str(&format!(
                 "        var item_{scope_index} = ScopeItem_{scope_index}(context);\n"
@@ -863,7 +868,7 @@ fn render_grouping_path(input: &IterationSource, output: &mut String) {
     match input {
         IterationSource::Source(source) => render_path(source.path(), output),
         IterationSource::Generated(_) => render_path(&[], output),
-        IterationSource::InnerJoin(_) => {
+        IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => {
             unreachable!("validated portable grouping cannot own an inner join")
         }
     }
@@ -886,7 +891,29 @@ fn render_iteration_candidates(scope: usize, input: &IterationSource, output: &m
             ));
         }
         IterationSource::InnerJoin(join) => render_inner_join(scope, join, output),
+        IterationSource::Concatenate(_) => {
+            unreachable!("concatenated scopes render before candidate iteration")
+        }
     }
+}
+
+fn render_concatenated_scope(iteration: &IterationPlan, segments: &[usize], output: &mut String) {
+    output.push_str(
+        "        var outputs = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n",
+    );
+    let variant = match iteration.output() {
+        IterationOutput::Repeated => "FerruleRepeated",
+        IterationOutput::MappedSequence => "FerruleMappedSequence",
+        IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
+    };
+    for segment in segments {
+        output.push_str(&format!(
+            "        outputs.AddRange(((global::Ferrule.Runtime.{variant})Scope_{segment}(context)).Items);\n"
+        ));
+    }
+    output.push_str(&format!(
+        "        return new global::Ferrule.Runtime.{variant}(outputs);\n"
+    ));
 }
 
 fn render_inner_join(scope: usize, join: &InnerJoin, output: &mut String) {
@@ -1102,6 +1129,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         evaluations: Vec::new(),
         bindings: Vec::new(),
         children: Vec::new(),
+        segments: Vec::new(),
     });
 
     let mut bindings = Vec::<BindingPlan<'a>>::new();
@@ -1125,6 +1153,17 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         let child_index = add_scope(child, scopes);
         children.push((child.target_field.as_str(), child_index));
     }
+    let segments = scope
+        .iteration
+        .as_ref()
+        .and_then(IterationPlan::concatenated)
+        .map(|sequence| {
+            sequence
+                .iter()
+                .map(|segment| add_scope(segment, scopes))
+                .collect()
+        })
+        .unwrap_or_default();
     scopes[scope_index] = ScopePlan {
         repeating: scope.repeating,
         iteration: scope.iteration.as_ref(),
@@ -1132,6 +1171,7 @@ fn add_scope<'a>(scope: &'a TargetScope, scopes: &mut Vec<ScopePlan<'a>>) -> usi
         evaluations,
         bindings,
         children,
+        segments,
     };
     scope_index
 }

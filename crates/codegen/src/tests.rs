@@ -13,6 +13,7 @@ use crate::{
 
 mod artifacts;
 mod collection_find;
+mod concatenate;
 mod extra_sources;
 mod failures;
 mod grouping;
