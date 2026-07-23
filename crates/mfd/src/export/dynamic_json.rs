@@ -807,6 +807,7 @@ fn node_dependencies(node: &Node) -> Vec<NodeId> {
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }

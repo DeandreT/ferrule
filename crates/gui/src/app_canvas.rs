@@ -15,6 +15,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
@@ -54,7 +55,10 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
 pub(super) fn build_function_snarl(function: &UserFunction) -> Snarl<CanvasNode> {
     let mut snarl = Snarl::new();
     let mut snarl_ids = std::collections::BTreeMap::new();
-    for &id in function.body.nodes.keys() {
+    for (&id, node) in &function.body.nodes {
+        if matches!(node, Node::Unconnected) {
+            continue;
+        }
         let snarl_id = snarl.insert_node(egui::Pos2::ZERO, CanvasNode::Graph(id));
         snarl_ids.insert(id, snarl_id);
     }
@@ -204,12 +208,10 @@ pub(super) fn build_snarl_with_layout(
         })
         .collect();
     let mut snarl_ids = std::collections::BTreeMap::new();
-    for &id in project
-        .graph
-        .nodes
-        .keys()
-        .filter(|id| !hidden.contains_key(id))
-    {
+    for (&id, node) in &project.graph.nodes {
+        if hidden.contains_key(&id) || matches!(node, Node::Unconnected) {
+            continue;
+        }
         let snarl_id = snarl.insert_node(
             egui::Pos2::ZERO,
             if placeholders.contains(&id) {

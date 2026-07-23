@@ -768,6 +768,9 @@ fn node_picker(
         .selected_text(current_label)
         .show_ui(ui, |ui| {
             for (&id, node) in &graph.nodes {
+                if matches!(node, mapping::Node::Unconnected) {
+                    continue;
+                }
                 let label = format!("{id}: {}", node_label(node));
                 ui.selectable_value(node_id, id, label);
             }
@@ -789,6 +792,7 @@ fn node_label(node: &mapping::Node) -> String {
             format!("joined field {}", display_path(&field))
         }
         mapping::Node::JoinPosition { join } => format!("join {} position", join.get()),
+        mapping::Node::Unconnected => "unconnected input".to_string(),
         mapping::Node::Const { value } => format!("constant {value:?}"),
         mapping::Node::FunctionParameter { parameter } => {
             format!("function input {}", parameter.get())

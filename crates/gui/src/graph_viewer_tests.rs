@@ -255,6 +255,79 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
 }
 
 #[test]
+fn lookup_node_width_stabilizes_across_repaints() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(1, Node::Unconnected);
+    fx.graph.nodes.insert(
+        2,
+        Node::Lookup {
+            collection: Vec::new(),
+            key: vec!["name".into()],
+            matches: 1,
+            value: vec!["age".into()],
+        },
+    );
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    snarl.insert_node(egui::pos2(250.0, 180.0), CanvasNode::Graph(2));
+    let mut node_sizes = std::collections::BTreeMap::new();
+    let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
+    let context = egui::Context::default();
+    let mut widths = Vec::new();
+
+    for _ in 0..8 {
+        let _ = context.run_ui(Default::default(), |ui| {
+            ui.set_min_size(egui::vec2(900.0, 700.0));
+            egui::CentralPanel::default().show(ui, |ui| {
+                let mut viewer = GraphViewer {
+                    graph: &mut fx.graph,
+                    root_scope: &mut fx.root_scope,
+                    extra_targets: &[],
+                    source_blocks: &fx.source_blocks,
+                    target_blocks: &fx.target_blocks,
+                    source_x12: false,
+                    target_x12: false,
+                    source_paths: &fx.source_paths,
+                    function_names: Default::default(),
+                    function_inputs: Default::default(),
+                    parameter_names: Default::default(),
+                    protected_output: None,
+                    requested_function_open: None,
+                    colors: crate::appearance::SemanticThemeColors::default(),
+                    wire_color_mode: crate::appearance::WireColorMode::Theme,
+                    endpoint_scroll: &mut endpoint_scroll,
+                    endpoint_search_match: None,
+                    node_sizes: Some(&mut node_sizes),
+                    hovered_node: None,
+                    hovered_node_this_frame: None,
+                    camera_pan: egui::Vec2::ZERO,
+                    camera_focus: None,
+                    canvas_transform: None,
+                    pin_interaction_ids: Vec::new(),
+                    error: None,
+                };
+                SnarlWidget::new()
+                    .id(egui::Id::new("lookup_width_regression"))
+                    .show(&mut snarl, &mut viewer, ui);
+            });
+        });
+        if let Some(size) = node_sizes.get(&CanvasNode::Graph(2)) {
+            widths.push(size.x);
+        }
+    }
+
+    let stable = &widths[widths.len().saturating_sub(3)..];
+    assert_eq!(stable.len(), 3, "Lookup node was not rendered: {widths:?}");
+    assert!(
+        stable.iter().all(|width| (*width - stable[0]).abs() < 0.5),
+        "Lookup node kept widening across repaints: {widths:?}"
+    );
+    assert!(
+        stable[0] < 400.0,
+        "Lookup node settled at an excessive width: {widths:?}"
+    );
+}
+
+#[test]
 fn source_pin_to_target_pin_creates_a_source_field_and_binding() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
@@ -420,63 +493,42 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
 }
 
 #[test]
-fn required_inputs_are_visible_wired_placeholders() {
+fn required_inputs_stay_visually_empty() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
     let pos = egui::pos2(600.0, 300.0);
-    let (_, if_node) = fx
+    let (if_id, _) = fx
         .viewer()
-        .insert_with_placeholders(&mut snarl, pos, 3, |inputs| Node::If {
+        .insert_with_unconnected_inputs(&mut snarl, pos, 3, |inputs| Node::If {
             condition: inputs[0],
             then: inputs[1],
             else_: inputs[2],
         });
 
-    let placeholders: Vec<_> = snarl
-        .nodes_pos()
-        .filter_map(|(pos, node)| match node {
-            CanvasNode::Placeholder(id) => Some((*id, pos)),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(placeholders.len(), 3);
-    assert_eq!(
-        snarl.wires().filter(|(_, to)| to.node == if_node).count(),
-        3
+    let inputs = node_inputs(&fx.graph.nodes[&if_id]);
+    assert_eq!(inputs.len(), 3);
+    assert!(
+        inputs
+            .iter()
+            .all(|id| matches!(fx.graph.nodes.get(id), Some(Node::Unconnected)))
     );
-    for (input, (_, placeholder_pos)) in placeholders.iter().enumerate() {
-        assert_eq!(
-            *placeholder_pos,
-            GraphViewer::placeholder_position(pos, input, 3)
-        );
-    }
-    assert!(placeholders.iter().all(|(id, _)| matches!(
-        fx.graph.nodes.get(id),
-        Some(Node::Const { value: Value::Null })
-    )));
+    assert!(
+        !snarl
+            .nodes()
+            .any(|node| matches!(node, CanvasNode::Placeholder(_)))
+    );
+    assert_eq!(snarl.wires().count(), 0);
 }
 
 #[test]
-fn reconnect_and_disconnect_replace_placeholders_without_orphans() {
+fn reconnect_and_disconnect_keep_the_input_pin_empty_without_visual_nodes() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
-    let (placeholder, placeholder_node) = fx
-        .viewer()
-        .insert_placeholder(&mut snarl, egui::pos2(40.0, 80.0));
+    let unconnected = fx.viewer().fresh_unconnected();
     let Node::Call { args, .. } = fx.graph.nodes.get_mut(&0).unwrap() else {
         panic!("fixture node should be a call");
     };
-    args.push(placeholder);
-    snarl.connect(
-        OutPinId {
-            node: placeholder_node,
-            output: 0,
-        },
-        InPinId {
-            node: fx.call,
-            input: 0,
-        },
-    );
+    args.push(unconnected);
 
     let from = snarl.out_pin(OutPinId {
         node: fx.source,
@@ -487,12 +539,7 @@ fn reconnect_and_disconnect_replace_placeholders_without_orphans() {
         input: 0,
     });
     fx.viewer().connect(&from, &to, &mut snarl);
-    assert!(!fx.graph.nodes.contains_key(&placeholder));
-    assert!(
-        !snarl
-            .nodes()
-            .any(|node| *node == CanvasNode::Placeholder(placeholder))
-    );
+    assert!(!fx.graph.nodes.contains_key(&unconnected));
 
     let source_field = fx
         .graph
@@ -511,26 +558,31 @@ fn reconnect_and_disconnect_replace_placeholders_without_orphans() {
     fx.viewer().disconnect(&from, &to, &mut snarl);
 
     assert!(!fx.graph.nodes.contains_key(&source_field));
-    let placeholders: Vec<_> = snarl
-        .nodes()
-        .filter(|node| matches!(node, CanvasNode::Placeholder(_)))
-        .collect();
-    assert_eq!(placeholders.len(), 1);
-    assert_eq!(snarl.wires().count(), 1);
-    assert_eq!(fx.graph.nodes.len(), 2, "call plus one live placeholder");
+    let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&0) else {
+        panic!("fixture call exists");
+    };
+    assert!(matches!(
+        fx.graph.nodes.get(&args[0]),
+        Some(Node::Unconnected)
+    ));
+    assert_eq!(snarl.wires().count(), 0);
+    assert_eq!(fx.graph.nodes.len(), 2, "call plus one hidden input value");
 }
 
 #[test]
-fn deleting_a_node_removes_its_owned_placeholders() {
+fn deleting_a_node_removes_its_hidden_input_values() {
     let mut fx = fixture();
     let mut snarl = std::mem::take(&mut fx.snarl);
-    let (if_id, if_node) =
-        fx.viewer()
-            .insert_with_placeholders(&mut snarl, egui::pos2(600.0, 300.0), 3, |inputs| Node::If {
-                condition: inputs[0],
-                then: inputs[1],
-                else_: inputs[2],
-            });
+    let (if_id, if_node) = fx.viewer().insert_with_unconnected_inputs(
+        &mut snarl,
+        egui::pos2(600.0, 300.0),
+        3,
+        |inputs| Node::If {
+            condition: inputs[0],
+            then: inputs[1],
+            else_: inputs[2],
+        },
+    );
     fx.viewer().remove_graph_node(if_id, if_node, &mut snarl);
 
     assert_eq!(fx.graph.nodes.len(), 1, "only the fixture call remains");
@@ -675,40 +727,65 @@ fn batch_removal_deletes_selected_dependency_chains_in_reference_order() {
 }
 
 #[test]
-fn batch_removal_uses_context_menu_reference_guards_and_placeholder_cleanup() {
+fn deleting_a_wired_node_leaves_downstream_input_empty() {
     let mut fx = fixture();
-    fx.graph.nodes.insert(1, Node::Const { value: Value::Null });
+    fx.graph.nodes.insert(
+        1,
+        Node::Call {
+            function: "upper".into(),
+            args: vec![0],
+        },
+    );
+    let mut snarl = std::mem::take(&mut fx.snarl);
+    let downstream = snarl.insert_node(egui::pos2(300.0, 100.0), CanvasNode::Graph(1));
+    snarl.connect(
+        OutPinId {
+            node: fx.call,
+            output: 0,
+        },
+        InPinId {
+            node: downstream,
+            input: 0,
+        },
+    );
+
+    let call = fx.call;
+    assert!(fx.viewer().remove_graph_node(0, call, &mut snarl));
+
+    let Some(Node::Call { args, .. }) = fx.graph.nodes.get(&1) else {
+        panic!("downstream call remains");
+    };
+    assert!(matches!(
+        fx.graph.nodes.get(&args[0]),
+        Some(Node::Unconnected)
+    ));
+    assert_eq!(snarl.wires().count(), 0);
+    assert_eq!(
+        snarl.nodes().count(),
+        3,
+        "source, target, and downstream call"
+    );
+}
+
+#[test]
+fn connected_node_removal_clears_target_binding_and_hidden_inputs() {
+    let mut fx = fixture();
+    fx.graph.nodes.insert(1, Node::Unconnected);
     let Some(Node::Call { args, .. }) = fx.graph.nodes.get_mut(&0) else {
         panic!("fixture call exists");
     };
     args.push(1);
     let mut snarl = std::mem::take(&mut fx.snarl);
-    let placeholder = snarl.insert_node(egui::pos2(100.0, 100.0), CanvasNode::Placeholder(1));
-    snarl.connect(
-        OutPinId {
-            node: placeholder,
-            output: 0,
-        },
-        InPinId {
-            node: fx.call,
-            input: 0,
-        },
-    );
     fx.root_scope.bindings.push(Binding {
         target_field: "out".into(),
         node: 0,
     });
     let call = fx.call;
 
-    assert_eq!(fx.viewer().remove_snarl_nodes(&[call], &mut snarl), 0);
-    assert!(fx.graph.nodes.contains_key(&0));
-    assert!(snarl.get_node(call).is_some());
-
-    fx.root_scope.bindings.clear();
     assert_eq!(fx.viewer().remove_snarl_nodes(&[call], &mut snarl), 1);
     assert!(fx.graph.nodes.is_empty());
+    assert!(fx.root_scope.bindings.is_empty());
     assert!(snarl.get_node(call).is_none());
-    assert!(snarl.get_node(placeholder).is_none());
 }
 
 #[test]
@@ -838,13 +915,13 @@ fn aggregate_argument_pins_match_the_operation() {
     let count = node_palette::aggregate_node(AggregateOp::Count, None);
     assert_eq!(GraphViewer::input_count(&count), 0);
 
-    let arg = fx.viewer().fresh_const();
+    let arg = fx.viewer().fresh_unconnected();
     let join = node_palette::aggregate_node(AggregateOp::Join, Some(arg));
     assert_eq!(GraphViewer::input_count(&join), 1);
     let Node::Aggregate { arg: Some(arg), .. } = join else {
-        panic!("join should get a separator placeholder");
+        panic!("join should get an unconnected separator");
     };
-    assert!(matches!(fx.graph.nodes[&arg], Node::Const { .. }));
+    assert!(matches!(fx.graph.nodes[&arg], Node::Unconnected));
 
     let computed = Node::Aggregate {
         function: AggregateOp::Sum,
@@ -866,7 +943,7 @@ fn aggregate_argument_pins_match_the_operation() {
 
 #[test]
 fn every_palette_template_creates_one_complete_atomic_node_unit() {
-    fn expected_placeholders(template: NodeTemplate) -> usize {
+    fn expected_unconnected_inputs(template: NodeTemplate) -> usize {
         match template {
             NodeTemplate::If => 3,
             NodeTemplate::ValueMap | NodeTemplate::Lookup => 1,
@@ -906,7 +983,7 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
         let graph_before = fx.graph.nodes.len();
         let snarl_before = snarl.nodes().count();
         let wire_before = snarl.wires().count();
-        let placeholders = expected_placeholders(template);
+        let unconnected = expected_unconnected_inputs(template);
 
         let (created, created_snarl) =
             fx.viewer()
@@ -914,15 +991,16 @@ fn every_palette_template_creates_one_complete_atomic_node_unit() {
 
         assert!(matches_template(template, &fx.graph.nodes[&created]));
         assert_eq!(snarl[created_snarl], CanvasNode::Graph(created));
-        assert_eq!(fx.graph.nodes.len(), graph_before + placeholders + 1);
-        assert_eq!(snarl.nodes().count(), snarl_before + placeholders + 1);
-        assert_eq!(snarl.wires().count(), wire_before + placeholders);
+        assert_eq!(fx.graph.nodes.len(), graph_before + unconnected + 1);
+        assert_eq!(snarl.nodes().count(), snarl_before + 1);
+        assert_eq!(snarl.wires().count(), wire_before);
         assert_eq!(
-            snarl
-                .nodes()
-                .filter(|node| matches!(node, CanvasNode::Placeholder(_)))
+            fx.graph
+                .nodes
+                .values()
+                .filter(|node| matches!(node, Node::Unconnected))
                 .count(),
-            placeholders
+            unconnected
         );
     }
 }

@@ -158,7 +158,8 @@ fn validate_function(id: FunctionId, function: &UserFunction) -> Result<(), MfdE
         })?;
         match node {
             Node::FunctionParameter { parameter } if parameter_ids.contains(parameter) => {}
-            Node::Const {
+            Node::Unconnected
+            | Node::Const {
                 value:
                     Value::Null | Value::Bool(_) | Value::Int(_) | Value::Float(_) | Value::String(_),
             }
@@ -316,6 +317,11 @@ fn render_definition(
                 if let Some(&output) = parameter_outputs.get(parameter) {
                     outputs.insert(id, output);
                 }
+            }
+            Node::Unconnected => {
+                let output = keys.next();
+                outputs.insert(id, output);
+                render_constant(&Value::Null, output, uid, &mut components, "\t\t\t\t");
             }
             Node::Const { value } => {
                 let output = keys.next();

@@ -1,6 +1,5 @@
 use super::*;
 
-use egui_snarl::{InPinId, OutPinId};
 use ir::{ScalarType, SchemaNode, Value};
 use mapping::{FunctionParameter, FunctionParameterId, Node, UserFunction};
 
@@ -708,35 +707,17 @@ fn insert_call(
         .map_or(0, |id| id.saturating_add(1));
     let position = egui::pos2(80.0, graph.nodes.len() as f32 * 24.0);
     let mut args = Vec::with_capacity(argument_count);
-    let mut placeholders = Vec::with_capacity(argument_count);
-    for input in 0..argument_count {
+    for _ in 0..argument_count {
         let id = next;
         next = next.saturating_add(1);
-        graph.nodes.insert(id, Node::Const { value: Value::Null });
-        let snarl_id = snarl.insert_node(
-            egui::pos2(position.x - 240.0, position.y + input as f32 * 70.0),
-            CanvasNode::Placeholder(id),
-        );
+        graph.nodes.insert(id, Node::Unconnected);
         args.push(id);
-        placeholders.push(snarl_id);
     }
     let call = next;
     graph
         .nodes
         .insert(call, Node::UserFunctionCall { function, args });
-    let call_snarl = snarl.insert_node(position, CanvasNode::Graph(call));
-    for (input, placeholder) in placeholders.into_iter().enumerate() {
-        snarl.connect(
-            OutPinId {
-                node: placeholder,
-                output: 0,
-            },
-            InPinId {
-                node: call_snarl,
-                input,
-            },
-        );
-    }
+    snarl.insert_node(position, CanvasNode::Graph(call));
 }
 
 fn function_label(function: &UserFunction) -> String {
@@ -813,7 +794,7 @@ mod tests {
     }
 
     #[test]
-    fn adding_a_function_call_creates_one_wired_placeholder_per_input() {
+    fn adding_a_function_call_leaves_each_input_visually_empty() {
         let mut app = FerruleApp::default();
         let id = app.create_function(&draft()).expect("valid function");
         app.insert_function_call(id);
@@ -831,10 +812,10 @@ mod tests {
             })
             .expect("call");
         assert_eq!(args.len(), 2);
-        assert!(args.iter().all(|node| matches!(
-            app.project.graph.nodes.get(node),
-            Some(Node::Const { value: Value::Null })
-        )));
+        assert!(
+            args.iter()
+                .all(|node| matches!(app.project.graph.nodes.get(node), Some(Node::Unconnected)))
+        );
         assert_eq!(
             app.main_canvas
                 .snarl
@@ -843,7 +824,7 @@ mod tests {
                     app.main_canvas.snarl[input.node] == CanvasNode::Graph(call_id)
                 })
                 .count(),
-            2
+            0
         );
     }
 

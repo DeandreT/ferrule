@@ -79,6 +79,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
     match node {
         Node::SourceField { .. }
         | Node::SourceDocumentPath
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
@@ -142,6 +143,7 @@ fn node_title(node: &Node) -> String {
             format!("join {} field · {}", join.get(), field.join("/"))
         }
         Node::JoinPosition { join } => format!("join {} position", join.get()),
+        Node::Unconnected => "unconnected".to_string(),
         Node::Const { .. } => "const".to_string(),
         Node::FunctionParameter { parameter } => {
             format!("function parameter {}", parameter.get())
@@ -214,7 +216,10 @@ pub(super) fn build_snarl(
     }
 
     let mut snarl_ids = BTreeMap::new();
-    for &id in project.graph.nodes.keys() {
+    for (&id, node) in &project.graph.nodes {
+        if matches!(node, Node::Unconnected) {
+            continue;
+        }
         let pos = positions
             .get(&id)
             .copied()
@@ -230,16 +235,16 @@ pub(super) fn build_snarl(
 
     for (&id, node) in &project.graph.nodes {
         for (input, feed) in node_inputs(node).into_iter().enumerate() {
-            if let Some(feed) = feed {
+            if let (Some(from), Some(&to)) = (
+                feed.and_then(|feed| snarl_ids.get(&feed).copied()),
+                snarl_ids.get(&id),
+            ) {
                 snarl.connect(
                     OutPinId {
-                        node: snarl_ids[&feed],
+                        node: from,
                         output: 0,
                     },
-                    InPinId {
-                        node: snarl_ids[&id],
-                        input,
-                    },
+                    InPinId { node: to, input },
                 );
             }
         }
