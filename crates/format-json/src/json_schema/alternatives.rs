@@ -211,8 +211,7 @@ pub(super) fn parse_object_alternatives(
             ));
         }
     };
-    let base_constraints =
-        required_scalar_constraints(name, schema, &base_required, &base_children)?;
+    let base_constraints = scalar_constraints(name, schema, &base_children)?;
     let mut merged = base_children.clone();
     let mut metadata = Vec::with_capacity(alternatives.len());
     for (index, alternative_schema) in alternatives.iter().enumerate() {
@@ -288,8 +287,7 @@ pub(super) fn parse_object_alternatives(
                 required.push(field);
             }
         }
-        let constraints =
-            required_scalar_constraints(name, resolved, &required, &variant_children)?;
+        let constraints = scalar_constraints(name, resolved, &variant_children)?;
         let constraints = merge_constraints(name, &base_constraints, constraints)?;
         let mut members = Vec::new();
         for child in variant_children {
@@ -467,6 +465,8 @@ fn alternatives_are_disjoint(left: &GroupAlternative, right: &GroupAlternative) 
             right.constraints.iter().any(|right_constraint| {
                 left_constraint.member == right_constraint.member
                     && left_constraint.value != right_constraint.value
+                    && (left.required.contains(&left_constraint.member)
+                        || right.required.contains(&right_constraint.member))
             })
         })
 }
@@ -592,10 +592,9 @@ fn push_alternative(
     Ok(())
 }
 
-fn required_scalar_constraints(
+fn scalar_constraints(
     union_name: &str,
     schema: &serde_json::Value,
-    required: &[String],
     children: &[SchemaNode],
 ) -> Result<Vec<GroupAlternativeConstraint>, JsonFormatError> {
     let Some(properties) = schema
@@ -608,12 +607,6 @@ fn required_scalar_constraints(
         .iter()
         .filter_map(|(member, property)| property.get("const").map(|value| (member, value)))
         .map(|(member, value)| {
-            if !required.iter().any(|required| required == member) {
-                return Err(unsupported_union(
-                    union_name,
-                    &format!("const discriminator `{member}` must be required"),
-                ));
-            }
             let child = children
                 .iter()
                 .find(|child| child.name == *member)

@@ -293,6 +293,50 @@ fn nested_union_flattening_preserves_base_fields_and_proves_cross_mode_safety() 
             .contains("provably mutually exclusive")
     );
 
+    let optional_constraint_overlap = import_str_result(
+        r#"{
+  "title":"OptionalConstraintOverlap",
+  "oneOf":[
+    {"anyOf":[
+      {"title":"alpha","type":"object","additionalProperties":false,
+        "properties":{"kind":{"type":"string","const":"alpha"}}},
+      {"title":"beta","type":"object","additionalProperties":false,
+        "properties":{"kind":{"type":"string","const":"beta"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["other"],
+      "properties":{"other":{"type":"string"}}}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(
+        optional_constraint_overlap
+            .to_string()
+            .contains("provably mutually exclusive")
+    );
+
+    let one_required_constraint = import_str(
+        r#"{
+  "title":"OneRequiredConstraint",
+  "oneOf":[
+    {"anyOf":[
+      {"title":"alpha","type":"object","additionalProperties":false,
+        "properties":{"kind":{"type":"string","const":"alpha"}}},
+      {"title":"beta","type":"object","additionalProperties":false,"required":["kind"],
+        "properties":{"kind":{"type":"string","const":"beta"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["other"],
+      "properties":{"other":{"type":"string"}}}
+  ]
+}"#,
+    );
+    assert!(crate::from_str("{}", &one_required_constraint).is_ok());
+    assert!(crate::from_str(r#"{"kind":"beta"}"#, &one_required_constraint).is_ok());
+    assert_eq!(
+        import_str(&export(&one_required_constraint)),
+        one_required_constraint
+    );
+
     let constrained = import_str(
         r#"{
   "title":"Constrained",
@@ -718,9 +762,131 @@ fn const_discriminators_infer_scalar_types() {
 }
 
 #[test]
+fn optional_const_discriminators_match_absence_or_the_exact_value() {
+    let schema = import_str(
+        r#"{
+  "title":"OptionalKind",
+  "oneOf":[
+    {"title":"alpha","type":"object","additionalProperties":false,
+      "required":["alpha"],
+      "properties":{"kind":{"type":"string","const":"alpha"},"alpha":{"type":"string"}}},
+    {"title":"beta","type":"object","additionalProperties":false,
+      "required":["beta"],
+      "properties":{"kind":{"type":"string","const":"beta"},"beta":{"type":"string"}}}
+  ]
+}"#,
+    );
+    for text in [
+        r#"{"alpha":"one"}"#,
+        r#"{"kind":"alpha","alpha":"one"}"#,
+        r#"{"beta":"two"}"#,
+        r#"{"kind":"beta","beta":"two"}"#,
+    ] {
+        let instance = crate::from_str(text, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(text).unwrap()
+        );
+    }
+    for text in [
+        r#"{"kind":"wrong","alpha":"one"}"#,
+        r#"{"kind":"beta","alpha":"one"}"#,
+    ] {
+        assert!(matches!(
+            crate::from_str(text, &schema),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+    }
+
+    let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+    assert_eq!(exported["oneOf"][0]["properties"]["kind"]["const"], "alpha");
+    assert_eq!(
+        exported["oneOf"][0]["required"],
+        serde_json::json!(["alpha"])
+    );
+    assert_eq!(import_str(&export(&schema)), schema);
+}
+
+#[test]
+fn optional_constraints_preserve_one_of_ambiguity_and_any_of_overlap() {
+    for (keyword, absent_result) in [("oneOf", "ambiguous"), ("anyOf", "accepted")] {
+        let schema = import_str(&format!(
+            r#"{{
+  "title":"OptionalOnly",
+  "{keyword}":[
+    {{"title":"alpha","type":"object","additionalProperties":false,
+      "properties":{{"kind":{{"type":"string","const":"alpha"}}}}}},
+    {{"title":"beta","type":"object","additionalProperties":false,
+      "properties":{{"kind":{{"type":"string","const":"beta"}}}}}}
+  ]
+}}"#
+        ));
+        match absent_result {
+            "ambiguous" => assert!(matches!(
+                crate::from_str("{}", &schema),
+                Err(JsonFormatError::AmbiguousAlternative { .. })
+            )),
+            "accepted" => assert!(crate::from_str("{}", &schema).is_ok()),
+            _ => unreachable!(),
+        }
+        assert!(crate::from_str(r#"{"kind":"alpha"}"#, &schema).is_ok());
+        assert!(matches!(
+            crate::from_str(r#"{"kind":"other"}"#, &schema),
+            Err(JsonFormatError::NoMatchingAlternative { .. })
+        ));
+        assert_eq!(import_str(&export(&schema)), schema);
+    }
+}
+
+#[test]
+fn optional_typed_null_constraints_distinguish_absence_presence_and_wrong_values() {
+    let schema = import_str(
+        r#"{
+  "title":"OptionalNull",
+  "oneOf":[
+    {"title":"null","type":"object","additionalProperties":false,
+      "required":["nullValue"],
+      "properties":{
+        "kind":{"type":["string","null"],"const":null},
+        "nullValue":{"type":"string"}
+      }},
+    {"title":"present","type":"object","additionalProperties":false,
+      "required":["presentValue"],
+      "properties":{
+        "kind":{"type":"string","const":"present"},
+        "presentValue":{"type":"string"}
+      }}
+  ]
+}"#,
+    );
+    for text in [
+        r#"{"nullValue":"absent kind"}"#,
+        r#"{"kind":null,"nullValue":"explicit null"}"#,
+        r#"{"presentValue":"absent kind"}"#,
+        r#"{"kind":"present","presentValue":"explicit"}"#,
+    ] {
+        let instance = crate::from_str(text, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(text).unwrap()
+        );
+    }
+    assert!(matches!(
+        crate::from_str(r#"{"kind":"wrong","nullValue":"bad"}"#, &schema),
+        Err(JsonFormatError::NoMatchingAlternative { .. })
+    ));
+    assert_eq!(import_str(&export(&schema)), schema);
+}
+
+#[test]
 fn unsupported_const_discriminators_are_rejected_actionably() {
     for (property, required, expected) in [
-        (r#"{"type":"string","const":"a"}"#, "", "must be required"),
         (
             r#"{"type":"string","const":1}"#,
             r#", "required":["kind"]"#,
@@ -781,19 +947,6 @@ fn unsupported_const_discriminators_are_rejected_actionably() {
         let error = import_str_result(&text).unwrap_err();
         assert!(error.to_string().contains(expected), "{error}");
     }
-    let optional_null = import_str_result(
-        r#"{
-  "title":"OptionalNull",
-  "oneOf":[
-    {"title":"null","type":"object","additionalProperties":false,
-      "properties":{"kind":{"type":["string","null"],"const":null}}},
-    {"title":"other","type":"object","additionalProperties":false,
-      "required":["other"],"properties":{"other":{"type":"string"}}}
-  ]
-}"#,
-    )
-    .unwrap_err();
-    assert!(optional_null.to_string().contains("must be required"));
 
     let ambiguous = import_str_result(
         r#"{

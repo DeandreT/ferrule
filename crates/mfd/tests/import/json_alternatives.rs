@@ -105,7 +105,7 @@ fn required_typed_and_null_const_json_alternatives_export_reimport_and_execute()
         GroupAlternative {
             name: "missing".into(),
             members: vec!["kind".into(), "value".into()],
-            required: vec!["kind".into(), "value".into()],
+            required: vec!["value".into()],
             constraints: vec![GroupAlternativeConstraint {
                 member: "kind".into(),
                 value: GroupAlternativeConstraintValue::JsonNull,
@@ -189,14 +189,15 @@ fn required_typed_and_null_const_json_alternatives_export_reimport_and_execute()
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(reimported.project.source, project.source);
     let source = format_json::from_str(
-        r#"{"Event":[{"kind":true,"value":"one"},{"kind":false,"value":"two"},{"kind":null,"value":"three"}]}"#,
+        r#"{"Event":[{"kind":true,"value":"one"},{"kind":false,"value":"two"},{"kind":null,"value":"three"},{"value":"four"}]}"#,
         &reimported.project.source,
     )
     .unwrap();
     let output = engine::run(&reimported.project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
-    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.len(), 4);
     assert_eq!(scalar(&rows[0], "Kind"), Value::Bool(true));
     assert_eq!(scalar(&rows[1], "Value"), Value::String("two".into()));
     assert_eq!(scalar(&rows[2], "Kind"), Value::json_null());
+    assert_eq!(scalar(&rows[3], "Kind"), Value::Null);
 }

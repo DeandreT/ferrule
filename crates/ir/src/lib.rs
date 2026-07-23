@@ -457,13 +457,13 @@ pub struct GroupAlternative {
     pub members: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub required: Vec<String>,
-    /// Required scalar values that distinguish this alternative from other
-    /// structurally identical projections.
+    /// Scalar values that constrain this alternative when their member is
+    /// present. Members listed in `required` must also be present.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<GroupAlternativeConstraint>,
 }
 
-/// One exact required scalar value used to select a group alternative.
+/// One exact scalar value used to select a group alternative when present.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GroupAlternativeConstraint {
     pub member: String,
@@ -979,7 +979,7 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
                         !alternative.constraints[..constraint_index]
                             .iter()
                             .any(|previous| previous.member == constraint.member)
-                            && alternative.required.contains(&constraint.member)
+                            && alternative.members.contains(&constraint.member)
                             && children.iter().any(|child| {
                                 child.name == constraint.member
                                     && !child.repeating
@@ -1369,18 +1369,26 @@ mod tests {
             discriminated
         );
 
-        let mut invalid = discriminated.alternatives().to_vec();
-        invalid[0].required.retain(|field| field != "kind");
+        let mut optional = discriminated.alternatives().to_vec();
+        optional[0].required.retain(|field| field != "kind");
+        let optional = SchemaNode::group(
+            "Event",
+            vec![
+                SchemaNode::scalar("kind", ScalarType::String),
+                SchemaNode::scalar("value", ScalarType::String),
+            ],
+        )
+        .with_alternatives(optional)
+        .unwrap();
         assert!(
-            SchemaNode::group(
-                "Event",
-                vec![
-                    SchemaNode::scalar("kind", ScalarType::String),
-                    SchemaNode::scalar("value", ScalarType::String),
-                ],
-            )
-            .with_alternatives(invalid)
-            .is_none()
+            !optional.alternatives()[0]
+                .required
+                .iter()
+                .any(|field| field == "kind")
+        );
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&serde_json::to_string(&optional).unwrap()).unwrap(),
+            optional
         );
 
         let mut duplicate = discriminated.alternatives().to_vec();
@@ -1481,7 +1489,7 @@ mod tests {
         .with_alternatives(vec![GroupAlternative {
             name: "missing".into(),
             members: vec!["kind".into()],
-            required: vec!["kind".into()],
+            required: Vec::new(),
             constraints: vec![GroupAlternativeConstraint {
                 member: "kind".into(),
                 value: GroupAlternativeConstraintValue::JsonNull,
