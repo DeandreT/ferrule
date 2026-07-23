@@ -26,6 +26,7 @@ mod recursive_filter;
 mod resolve;
 mod sequence;
 mod source_iteration;
+mod trace;
 mod user_function;
 mod validate;
 
@@ -34,6 +35,7 @@ use aggregate::{aggregate, value_ordering};
 use context::runtime_field;
 use eval_scope::eval_scope;
 
+pub use trace::{TraceEvent, TracePosition, TraceSink};
 pub use validate::{ValidationIssue, validate};
 
 /// One additional named target value produced by a project run.
@@ -271,6 +273,7 @@ pub struct ExecutionContext<'a> {
     main_mapping_file_path: &'a Path,
     current_datetime: Option<&'a str>,
     dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
+    trace_sink: Option<&'a dyn TraceSink>,
 }
 
 /// Host boundary for typed secondary sources whose path is computed during
@@ -286,6 +289,7 @@ impl<'a> ExecutionContext<'a> {
             main_mapping_file_path: mapping_file_path,
             current_datetime: None,
             dynamic_source_loader: None,
+            trace_sink: None,
         }
     }
 
@@ -299,6 +303,7 @@ impl<'a> ExecutionContext<'a> {
             main_mapping_file_path,
             current_datetime: None,
             dynamic_source_loader: None,
+            trace_sink: None,
         }
     }
 
@@ -311,6 +316,12 @@ impl<'a> ExecutionContext<'a> {
     /// Supplies lazy typed-source loading for dynamic secondary inputs.
     pub fn with_dynamic_source_loader(mut self, loader: &'a dyn DynamicSourceLoader) -> Self {
         self.dynamic_source_loader = Some(loader);
+        self
+    }
+
+    /// Supplies an optional synchronous observer for successful graph values.
+    pub fn with_trace_sink(mut self, sink: &'a dyn TraceSink) -> Self {
+        self.trace_sink = Some(sink);
         self
     }
 
@@ -396,7 +407,11 @@ fn run_outputs_internal(
     );
     let extras_frame = Instance::Group(extras);
     let context = [&runtime_frame, &extras_frame, source];
-    let program = eval_expr::EvalProgram::new(&project.graph, &project.user_functions);
+    let program = eval_expr::EvalProgram::new(
+        &project.graph,
+        &project.user_functions,
+        execution.and_then(|execution| execution.trace_sink),
+    );
     failure::evaluate(program, &project.failure_rules, &context)?;
     let primary = eval_scope(
         program,
@@ -488,6 +503,9 @@ mod sequence_item_at_tests;
 #[cfg(test)]
 #[path = "tests/sequence_windows.rs"]
 mod sequence_windows_tests;
+#[cfg(test)]
+#[path = "tests/trace.rs"]
+mod trace_tests;
 #[cfg(test)]
 #[path = "tests/user_function.rs"]
 mod user_function_tests;
