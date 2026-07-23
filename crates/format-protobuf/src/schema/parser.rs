@@ -308,6 +308,7 @@ impl Parser {
         let full_name = qualify(prefix, &name);
         self.expect_symbol('{')?;
         let mut fields = Vec::new();
+        let mut oneofs = Vec::new();
         while !self.consume_symbol('}') {
             if self.consume_symbol(';') {
                 continue;
@@ -318,6 +319,10 @@ impl Parser {
                 self.parse_enum(&full_name)?;
             } else if self.peek_identifier("option") {
                 self.skip_statement()?;
+            } else if self.peek_identifier("oneof") {
+                let (oneof, oneof_fields) = self.parse_oneof(&full_name)?;
+                oneofs.push(oneof);
+                fields.extend(oneof_fields);
             } else if self.peek_identifier("required")
                 || self.peek_identifier("optional")
                 || self.peek_identifier("repeated")
@@ -337,8 +342,48 @@ impl Parser {
             name,
             full_name,
             fields,
+            oneofs,
         });
         Ok(())
+    }
+
+    fn parse_oneof(&mut self, scope: &str) -> Result<(String, Vec<RawField>), ProtobufError> {
+        self.expect_identifier("oneof")?;
+        let name = self.expect_any_identifier()?;
+        self.expect_symbol('{')?;
+        let mut fields = Vec::new();
+        while !self.consume_symbol('}') {
+            if self.consume_symbol(';') {
+                continue;
+            }
+            if self.peek_identifier("option") {
+                self.skip_statement()?;
+                continue;
+            }
+            if self.peek_identifier("required")
+                || self.peek_identifier("optional")
+                || self.peek_identifier("repeated")
+            {
+                return self.error(format!(
+                    "oneof `{name}` fields cannot declare a cardinality label"
+                ));
+            }
+            if !matches!(self.peek().kind, TokenKind::Identifier(_)) {
+                return self.error(format!("expected a field in oneof `{name}`"));
+            }
+            let field = self.parse_field_tail(scope, Cardinality::Optional, Some(name.clone()))?;
+            if field.default.is_some() {
+                return self.error(format!("oneof `{name}` fields cannot declare defaults"));
+            }
+            if field.packed {
+                return self.error(format!("oneof `{name}` fields cannot use packed encoding"));
+            }
+            fields.push(field);
+        }
+        if fields.is_empty() {
+            return self.error(format!("oneof `{name}` must declare at least one field"));
+        }
+        Ok((name, fields))
     }
 
     fn parse_enum(&mut self, prefix: &str) -> Result<(), ProtobufError> {
@@ -406,17 +451,18 @@ impl Parser {
         {
             return self.error("field cannot declare more than one cardinality label");
         }
-        self.parse_field_tail(scope, cardinality)
+        self.parse_field_tail(scope, cardinality, None)
     }
 
     fn parse_implicit_field(&mut self, scope: &str) -> Result<RawField, ProtobufError> {
-        self.parse_field_tail(scope, Cardinality::Implicit)
+        self.parse_field_tail(scope, Cardinality::Implicit, None)
     }
 
     fn parse_field_tail(
         &mut self,
         scope: &str,
         cardinality: Cardinality,
+        oneof: Option<String>,
     ) -> Result<RawField, ProtobufError> {
         let type_name = self.parse_qualified_name(true)?;
         let name = self.expect_any_identifier()?;
@@ -461,6 +507,7 @@ impl Parser {
             scope: scope.to_string(),
             packed,
             default,
+            oneof,
         })
     }
 

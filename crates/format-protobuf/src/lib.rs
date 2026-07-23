@@ -21,7 +21,7 @@ pub const MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 
 pub use schema::{
     Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, Message,
-    MessageId, ScalarType,
+    MessageId, Oneof, OneofId, ScalarType,
 };
 
 /// Errors from schema parsing, layout validation, or instance encoding.
