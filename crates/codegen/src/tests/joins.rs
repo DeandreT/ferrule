@@ -1,3 +1,4 @@
+use crate::{AggregateFunction, ExpressionNode, UnsupportedNodeKind};
 use mapping::{
     JoinConditions as MappingJoinConditions, JoinId as MappingJoinId, JoinKey as MappingJoinKey,
     JoinPlan as MappingJoinPlan, JoinSource as MappingJoinSource, NamedSource,
@@ -261,7 +262,7 @@ fn rejects_join_below_an_active_iteration_at_its_target_path() {
 }
 
 #[test]
-fn rejects_join_aggregates_atomically() {
+fn lowers_root_join_aggregates_with_tuple_and_parent_expressions() {
     let mut project = join_project();
     let ScopeIteration::InnerJoin { id, plan } = &project.root.children[0].iteration else {
         panic!("join scope");
@@ -276,23 +277,120 @@ fn rejects_join_aggregates_atomically() {
             arg: None,
         },
     );
-    project.target = SchemaNode::group("Target", vec![typed_scalar("Count", ScalarType::Int)]);
+    project.graph.nodes.extend([
+        (
+            11,
+            Node::Call {
+                function: "concat".into(),
+                args: vec![1, 2],
+            },
+        ),
+        (
+            12,
+            Node::Const {
+                value: Value::String("|".into()),
+            },
+        ),
+        (
+            13,
+            Node::JoinAggregate {
+                function: mapping::AggregateOp::Join,
+                join: *id,
+                plan: plan.clone(),
+                expression: Some(11),
+                arg: Some(12),
+            },
+        ),
+    ]);
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            typed_scalar("Count", ScalarType::Int),
+            typed_scalar("Joined", ScalarType::String),
+        ],
+    );
     project.root = Scope {
-        bindings: vec![MappingBinding {
-            target_field: "Count".into(),
-            node: 10,
+        bindings: vec![
+            MappingBinding {
+                target_field: "Count".into(),
+                node: 10,
+            },
+            MappingBinding {
+                target_field: "Joined".into(),
+                node: 13,
+            },
+        ],
+        ..Scope::default()
+    };
+
+    let program = lower(&project).expect("root join aggregates lower");
+    assert!(matches!(
+        program.expressions.iter().find(|node| node.id == 10),
+        Some(ExpressionNode {
+            expression: Expression::JoinAggregate {
+                function: AggregateFunction::Count,
+                join,
+                expression: None,
+                arg: None,
+            },
+            ..
+        }) if join.id() == crate::JoinId::new(7) && join.plan().sources().count() == 3
+    ));
+    assert!(matches!(
+        program.expressions.iter().find(|node| node.id == 13),
+        Some(ExpressionNode {
+            expression: Expression::JoinAggregate {
+                function: AggregateFunction::Join,
+                join,
+                expression: Some(11),
+                arg: Some(12),
+            },
+            ..
+        }) if join.id() == crate::JoinId::new(7)
+    ));
+}
+
+#[test]
+fn reports_correlated_join_aggregates_at_the_owning_node() {
+    let mut project = join_project();
+    let ScopeIteration::InnerJoin { id, plan } = &project.root.children[0].iteration else {
+        panic!("join scope");
+    };
+    project.graph.nodes.insert(
+        10,
+        Node::JoinAggregate {
+            function: mapping::AggregateOp::Count,
+            join: *id,
+            plan: plan.clone(),
+            expression: None,
+            arg: None,
+        },
+    );
+    project.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::group("Outer", vec![typed_scalar("Count", ScalarType::Int)]).repeating()],
+    );
+    project.root = Scope {
+        children: vec![Scope {
+            target_field: "Outer".into(),
+            iteration: ScopeIteration::Source(vec!["A".into()]),
+            bindings: vec![MappingBinding {
+                target_field: "Count".into(),
+                node: 10,
+            }],
+            ..Scope::default()
         }],
         ..Scope::default()
     };
 
     let diagnostics = lower(&project)
-        .expect_err("join aggregates are rejected before artifacts")
+        .expect_err("correlated join aggregate remains interpreter-only")
         .into_diagnostics();
     assert_eq!(
         diagnostics,
         vec![Diagnostic::UnsupportedNode {
             node: 10,
-            kind: UnsupportedNodeKind::JoinAggregate,
+            kind: UnsupportedNodeKind::CorrelatedJoinAggregate,
         }]
     );
 }

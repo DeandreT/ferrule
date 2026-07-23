@@ -3,9 +3,9 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, InnerJoin, IterationOutput, IterationPlan, JoinConditions,
-    JoinId, JoinKey, JoinPlan, JoinSource, NamedSourceProgram, Program, ScalarFunction,
-    SequenceWindow, SortFilterOrder, SortKey, SortPlan, TargetScope,
+    AggregateFunction, Binding, Expression, ExpressionNode, InnerJoin, IterationOutput,
+    IterationPlan, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, NamedSourceProgram,
+    Program, ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan, TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -14,6 +14,21 @@ const JOIN: JoinId = JoinId::new(77);
 #[test]
 fn generated_inner_join_preserves_tuple_and_control_semantics() {
     let artifacts = codegen_csharp::emit(&fixture()).expect("inner-join fixture emits");
+    let generated = artifacts
+        .files()
+        .iter()
+        .filter_map(|file| std::str::from_utf8(&file.contents).ok())
+        .find(|source| source.contains("tuple_contexts_17"))
+        .expect("generated mapping source");
+    assert!(generated.contains("values_17.Add(Node_15(tuple_context_17));"));
+    assert!(generated.contains("values_18.Add(global::Ferrule.Runtime.FerruleValue.Null);"));
+    let tuple_value = generated
+        .find("values_19.Add(Node_1(tuple_context_19));")
+        .expect("join aggregate tuple expression");
+    let parent_arg = generated
+        .find("argument_19 = Node_16(context);")
+        .expect("join aggregate parent argument");
+    assert!(tuple_value < parent_arg);
     let directory = TempDirectory::new("inner-join-dotnet");
     for file in artifacts.files() {
         let path = directory.path().join(file.path.as_str());
@@ -117,12 +132,15 @@ fn fixture() -> Program {
     .repeating();
 
     Program {
-        source: SchemaNode::group("Source", vec![a, c]),
+        source: SchemaNode::group("Source", vec![a, c, string("Separator")]),
         extra_sources: vec![NamedSourceProgram {
             name: "catalog".into(),
             source: SchemaNode::group("Catalog", vec![b]),
         }],
-        target: SchemaNode::group("Target", vec![row]),
+        target: SchemaNode::group(
+            "Target",
+            vec![int("Count"), int("Total"), string("Joined"), row],
+        ),
         expressions: vec![
             join_field(1, &["A"], &["Label"]),
             join_field(2, &["catalog", "B"], &["Tag"]),
@@ -152,6 +170,48 @@ fn fixture() -> Program {
                     args: vec![1, 12, 3],
                 },
             },
+            join_field(14, &["A"], &["Id"]),
+            ExpressionNode {
+                id: 15,
+                expression: Expression::Call {
+                    function: ScalarFunction::Multiply,
+                    args: vec![14, 4],
+                },
+            },
+            ExpressionNode {
+                id: 16,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Separator".into()],
+                },
+            },
+            ExpressionNode {
+                id: 17,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Sum,
+                    join: InnerJoin::new(JOIN, plan.clone()),
+                    expression: Some(15),
+                    arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 18,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Count,
+                    join: InnerJoin::new(JOIN, plan.clone()),
+                    expression: None,
+                    arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 19,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Join,
+                    join: InnerJoin::new(JOIN, plan.clone()),
+                    expression: Some(1),
+                    arg: Some(16),
+                },
+            },
         ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
@@ -160,7 +220,11 @@ fn fixture() -> Program {
             repeating: false,
             iteration: None,
             construction: Default::default(),
-            bindings: Vec::new(),
+            bindings: vec![
+                binding("Count", 18, ScalarType::Int),
+                binding("Total", 17, ScalarType::Int),
+                binding("Joined", 19, ScalarType::String),
+            ],
             children: vec![TargetScope {
                 target_field: "Row".into(),
                 repeating: true,
@@ -284,7 +348,8 @@ var source = Group(
         Record(("Id", FerruleValue.XmlNil), ("Region", Text("west")), ("Label", Text("nil"))))),
     Field("C", Repeated(
         Record(("Code", Text("X")), ("Region", Text("west")), ("Value", Text("C1"))),
-        Record(("Code", Text("X")), ("Region", Text("west")), ("Value", Text("C2"))))));
+        Record(("Code", Text("X")), ("Region", Text("west")), ("Value", Text("C2"))))),
+    Field("Separator", Scalar(Text("|"))));
 var catalog = Group(Field("B", Repeated(
     Record(("Aid", Text("1")), ("Region", Text("west")), ("Code", Text("X")), ("Tag", Text("low")), ("Rank", Int(5))),
     Record(("Aid", Text("1")), ("Region", Text("west")), ("Code", Text("X")), ("Tag", Text("high")), ("Rank", Int(30))),
@@ -295,6 +360,11 @@ var catalog = Group(Field("B", Repeated(
 var output = (FerruleGroup)GeneratedMapping.ExecuteWithSources(
     source,
     new[] { new NamedInput("catalog", catalog) });
+Equal(12L, Value(output, "Count").Int64Value);
+Equal(220L, Value(output, "Total").Int64Value);
+Equal(
+    "A1|A1|A1|A1|A1|A1|A2|A2|A2|A2|A2|A2",
+    Value(output, "Joined").StringValue);
 var rows = (FerruleRepeated)output.Fields.Single(field => field.Name == "Row").Value;
 Equal(4, rows.Items.Count);
 var actual = rows.Items.Cast<FerruleGroup>().Select(row => string.Join('|',
@@ -310,6 +380,22 @@ Equal(
     "A1|high|C1|1|1|2|1|A1:C1;A1|high|C2|2|1|2|2|A1:C2;A2|high|C1|3|2|2|1|A2:C1;A2|high|C2|4|2|2|2|A2:C2",
     string.Join(';', actual));
 
+var empty = (FerruleGroup)GeneratedMapping.ExecuteWithSources(
+    source,
+    new[] { new NamedInput("catalog", Group(Field("B", Repeated()))) });
+Equal(0L, Value(empty, "Count").Int64Value);
+Equal(0L, Value(empty, "Total").Int64Value);
+Equal(string.Empty, Value(empty, "Joined").StringValue);
+
+var overflowCatalog = Group(Field("B", Repeated(
+    Record(("Aid", Text("1")), ("Region", Text("west")), ("Code", Text("X")), ("Tag", Text("overflow")), ("Rank", Int(long.MaxValue))))));
+var overflow = Error(
+    FerruleRuntimeError.AggregateIntegerOverflow,
+    () => GeneratedMapping.ExecuteWithSources(
+        source,
+        new[] { new NamedInput("catalog", overflowCatalog) }));
+Equal(FerruleAggregateOperation.Sum, overflow.AggregateOperation);
+
 Console.WriteLine("generated inner join passed");
 
 static FerruleGroup Record(params (string Name, FerruleValue Value)[] fields) =>
@@ -324,6 +410,20 @@ static void Equal<T>(T expected, T actual)
     {
         throw new InvalidOperationException($"Expected '{expected}', found '{actual}'.");
     }
+}
+
+static FerruleRuntimeException Error(FerruleRuntimeError expected, Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        Equal(expected, exception.Error);
+        return exception;
+    }
+    throw new InvalidOperationException($"Expected runtime error '{expected}'.");
 }
 
 static FerruleValue Text(string value) => FerruleValue.FromString(value);

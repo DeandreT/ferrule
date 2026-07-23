@@ -8,7 +8,7 @@ use mapping::{
 
 use crate::{
     Diagnostic, Expression, GeneratedSequence, IterationPlan, SUPPORTED_SCALAR_CALLS,
-    ScalarFunction, ScopeFeature, UnsupportedNodeKind, lower,
+    ScalarFunction, ScopeFeature, lower,
 };
 
 mod artifacts;
@@ -370,6 +370,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "starts_with",
         "ends_with",
         "contains",
+        "matches",
         "concat",
         "upper",
         "lower",

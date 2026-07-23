@@ -265,6 +265,40 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     aggregate_function_name(*function)
                 ));
             }
+            Expression::JoinAggregate {
+                function,
+                join,
+                expression,
+                arg,
+            } => {
+                output.push_str("\n    {\n");
+                output.push_str(&format!("        var tuple_contexts_{node} = "));
+                render_inner_join_call(join, &mut output);
+                output.push_str(&format!(
+                    ";\n        var values_{node} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>(tuple_contexts_{node}.Count);\n        foreach (var tuple_context_{node} in tuple_contexts_{node})\n        {{\n"
+                ));
+                match expression {
+                    Some(expression) => output.push_str(&format!(
+                        "            values_{node}.Add(Node_{expression}(tuple_context_{node}));\n"
+                    )),
+                    None => output.push_str(&format!(
+                        "            values_{node}.Add(global::Ferrule.Runtime.FerruleValue.Null);\n"
+                    )),
+                }
+                output.push_str("        }\n");
+                match arg {
+                    Some(arg) => output.push_str(&format!(
+                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = Node_{arg}(context);\n"
+                    )),
+                    None => output.push_str(&format!(
+                        "        global::Ferrule.Runtime.FerruleValue? argument_{node} = null;\n"
+                    )),
+                }
+                output.push_str(&format!(
+                    "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, values_{node}, argument_{node});\n    }}\n",
+                    aggregate_function_name(*function)
+                ));
+            }
             Expression::SequenceExists {
                 sequence,
                 predicate,
@@ -825,12 +859,20 @@ fn render_iteration_candidates(scope: usize, input: &IterationSource, output: &m
 }
 
 fn render_inner_join(scope: usize, join: &InnerJoin, output: &mut String) {
+    output.push_str(&format!(
+        "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>("
+    ));
+    render_inner_join_call(join, output);
+    output.push_str(");\n");
+}
+
+fn render_inner_join_call(join: &InnerJoin, output: &mut String) {
     let mut sources = join.plan().sources();
     let Some(first) = sources.next() else {
         unreachable!("validated inner joins contain a first source");
     };
     output.push_str(&format!(
-        "        var candidates_{scope} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.ScopeContext>(context.InnerJoin({}UL,\n            new global::Ferrule.Runtime.FerruleJoinPlan(\n                ",
+        "context.InnerJoin({}UL,\n            new global::Ferrule.Runtime.FerruleJoinPlan(\n                ",
         join.id().get()
     ));
     render_join_source(first, output);
@@ -852,7 +894,7 @@ fn render_inner_join(scope: usize, join: &InnerJoin, output: &mut String) {
         }
         output.push_str("                        }),\n");
     }
-    output.push_str("                })));\n");
+    output.push_str("                }))");
 }
 
 fn render_join_source(source: &JoinSource, output: &mut String) {

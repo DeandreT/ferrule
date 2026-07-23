@@ -241,6 +241,117 @@ fn validates_join_field_owner_collection_and_scalar_path() {
 }
 
 #[test]
+fn validates_root_join_aggregate_plan_tuple_expression_and_parent_argument() {
+    let mut program = join_program();
+    let join = program.root.children[0]
+        .iteration
+        .as_ref()
+        .and_then(IterationPlan::inner_join)
+        .cloned()
+        .expect("join fixture");
+    program.expressions.push(ExpressionNode {
+        id: 12,
+        expression: Expression::JoinAggregate {
+            function: AggregateFunction::Sum,
+            join: join.clone(),
+            expression: Some(1),
+            arg: None,
+        },
+    });
+    let row = program.target.child("Row").cloned().expect("row target");
+    program.target = SchemaNode::group(
+        "Target",
+        vec![row, SchemaNode::scalar("Total", ScalarType::Int)],
+    );
+    program.root.bindings.push(Binding {
+        target_field: "Total".into(),
+        expression: 12,
+        target_type: ScalarType::Int,
+        repeating: false,
+    });
+    assert_eq!(validate_program(&program), Ok(()));
+
+    let mut tuple_argument = program.clone();
+    let Some(ExpressionNode {
+        expression: Expression::JoinAggregate { arg, .. },
+        ..
+    }) = tuple_argument
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 12)
+    else {
+        panic!("join aggregate fixture");
+    };
+    *arg = Some(1);
+    assert_eq!(
+        validate_program(&tuple_argument),
+        Err(ProgramValidationError::InactiveJoinExpression {
+            node: 1,
+            join: JoinId::new(7),
+        })
+    );
+
+    let mut invalid_plan = program.clone();
+    let Some(ExpressionNode {
+        expression: Expression::JoinAggregate {
+            join: invalid_join, ..
+        },
+        ..
+    }) = invalid_plan
+        .expressions
+        .iter_mut()
+        .find(|node| node.id == 12)
+    else {
+        panic!("join aggregate fixture");
+    };
+    *invalid_join = InnerJoin::new(
+        JoinId::new(7),
+        plan(&["id"], &["Catalog", "Missing"], &["aid"]),
+    );
+    assert!(matches!(
+        validate_program(&invalid_plan),
+        Err(ProgramValidationError::InvalidJoinSource { join, .. })
+            if join == JoinId::new(7)
+    ));
+
+    let mut nested_reducer = program.clone();
+    nested_reducer.expressions.push(ExpressionNode {
+        id: 13,
+        expression: Expression::Aggregate {
+            function: AggregateFunction::Count,
+            collection: vec!["A".into()],
+            value: AggregateValue::Expression(12),
+            arg: None,
+        },
+    });
+    nested_reducer.root.bindings[0].expression = 13;
+    assert_eq!(
+        validate_program(&nested_reducer),
+        Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node: 12,
+            join: JoinId::new(7),
+        })
+    );
+
+    let mut correlated = program;
+    correlated.root.bindings.clear();
+    correlated.root.children[0].iteration = Some(IterationPlan::new(
+        join,
+        Some(12),
+        None,
+        Vec::new(),
+        IterationOutput::Repeated,
+    ));
+    assert_eq!(
+        validate_program(&correlated),
+        Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node: 12,
+            join: JoinId::new(7),
+        })
+    );
+}
+
+#[test]
 fn join_windows_and_failure_rules_use_the_parent_context() {
     let mut program = join_program();
     let iteration = program.root.children[0]

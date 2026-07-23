@@ -57,7 +57,7 @@ pub enum UnsupportedNodeKind {
     DynamicSourceField,
     XmlMixedContent,
     XmlSerialize,
-    JoinAggregate,
+    CorrelatedJoinAggregate,
 }
 
 /// Complete deterministic diagnostic set for one failed lowering attempt.
@@ -180,7 +180,7 @@ impl fmt::Display for UnsupportedNodeKind {
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",
             Self::XmlSerialize => "XML serialization",
-            Self::JoinAggregate => "a join aggregate",
+            Self::CorrelatedJoinAggregate => "a join aggregate outside root source context",
         })
     }
 }

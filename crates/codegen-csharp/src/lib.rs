@@ -744,6 +744,19 @@ mod tests {
                     else_: 2,
                 },
             },
+            ExpressionNode {
+                id: 13,
+                expression: Expression::Const {
+                    value: Value::String("\\d+".into()),
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::Call {
+                    function: ScalarFunction::Matches,
+                    args: vec![2, 13],
+                },
+            },
         ]);
         program.root.bindings[0].expression = 12;
 
@@ -761,6 +774,9 @@ mod tests {
         assert!(source.contains("RequireBoolean(condition_12, 10U)"));
         assert!(source.contains("return Node_9(context);"));
         assert!(source.contains("return Node_2(context);"));
+        assert!(source.contains(
+            "FerruleFunctions.Call(\"matches\", new global::Ferrule.Runtime.FerruleValue[] { Node_2(context), Node_13(context) })"
+        ));
     }
 
     #[test]

@@ -556,6 +556,34 @@ fn render_expression(
             ));
             body
         }
+        Expression::JoinAggregate {
+            function,
+            join,
+            expression,
+            arg,
+        } => {
+            let tuples = render_inner_join_call(join).unwrap_or_else(|| "Vec::new()".into());
+            let mut body = format!("{{\n        let tuple_contexts = {tuples};\n");
+            match expression {
+                Some(expression) => body.push_str(&format!(
+                    "        let mut values = Vec::with_capacity(tuple_contexts.len());\n        for tuple_context in tuple_contexts {{\n            values.push(expression_{expression}(&tuple_context)?);\n        }}\n"
+                )),
+                None => body.push_str(
+                    "        let values = vec![Value::Null; tuple_contexts.len()];\n",
+                ),
+            }
+            match arg {
+                Some(arg) => body.push_str(&format!(
+                    "        let arg = Some(expression_{arg}(context)?);\n"
+                )),
+                None => body.push_str("        let arg = None;\n"),
+            }
+            body.push_str(&format!(
+                "        aggregate(AggregateFunction::{}, &values, arg)\n    }}",
+                aggregate_function_name(*function)
+            ));
+            body
+        }
         Expression::SequenceExists {
             sequence,
             predicate,
@@ -815,26 +843,28 @@ fn render_iteration_candidates(
 }
 
 fn render_inner_join(join: &InnerJoin, binding: &str, output: &mut String) {
+    let Some(call) = render_inner_join_call(join) else {
+        output.push_str(&format!("    {binding} = Vec::new();\n"));
+        return;
+    };
+    output.push_str(&format!("    {binding} = {call};\n"));
+}
+
+fn render_inner_join_call(join: &InnerJoin) -> Option<String> {
     let mut sources = join.plan().sources();
-    let Some(first) = sources.next() else {
-        output.push_str(&format!("    {binding} = Vec::new();\n"));
-        return;
-    };
+    let first = sources.next()?;
     let mut stages = join.plan().stages();
-    let Some((second_source, second_conditions)) = stages.next() else {
-        output.push_str(&format!("    {binding} = Vec::new();\n"));
-        return;
-    };
+    let (second_source, second_conditions) = stages.next()?;
     let first = render_string_path(first.collection());
     let second = render_inner_join_stage(second_source, second_conditions);
     let rest = stages
         .map(|(source, conditions)| render_inner_join_stage(source, conditions))
         .collect::<Vec<_>>()
         .join(", ");
-    output.push_str(&format!(
-        "    {binding} = context.inner_join({}, &[{first}], {second}, &[{rest}])?;\n",
+    Some(format!(
+        "context.inner_join({}, &[{first}], {second}, &[{rest}])?",
         join.id().get()
-    ));
+    ))
 }
 
 fn render_inner_join_stage(

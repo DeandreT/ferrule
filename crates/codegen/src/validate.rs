@@ -132,6 +132,10 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         join: crate::JoinId,
     },
+    JoinAggregateRequiresRootContext {
+        node: NodeId,
+        join: crate::JoinId,
+    },
     InvalidJoinSource {
         join: crate::JoinId,
         collection: Vec<String>,
@@ -486,6 +490,7 @@ fn validate_expression_context(
     sequence_items: &BTreeSet<NodeId>,
     active_sequence_items: &[NodeId],
     active_joins: &[joins::ActiveJoin],
+    root_context: bool,
     owner: &SequenceOwner,
 ) -> Result<(), ProgramValidationError> {
     sequences::validate_context(
@@ -495,7 +500,13 @@ fn validate_expression_context(
         active_sequence_items,
         owner,
     )?;
-    joins::validate_expression(expression, expressions, schemas.sources, active_joins)
+    joins::validate_expression(
+        expression,
+        expressions,
+        schemas.sources,
+        active_joins,
+        root_context,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -512,6 +523,7 @@ fn validate_scope(
     let sequence_owner = schemas.target_owner.sequence_owner(target_path);
     let mut item_context = active_sequence_items.to_vec();
     let mut scope_joins = active_joins.to_vec();
+    let item_root_context = root_context && scope.iteration.is_none();
     let mut scope_source = schemas.current_source;
     let Some(target_node) =
         follow_schema_from(schemas.target_root, schemas.target_root, target_path)
@@ -562,6 +574,7 @@ fn validate_scope(
                         sequence_items,
                         active_sequence_items,
                         active_joins,
+                        root_context,
                         &sequence_owner,
                     )?;
                 }
@@ -598,6 +611,11 @@ fn validate_scope(
                 sequence_items,
                 grouping_items,
                 grouping_joins,
+                if grouping_expression.is_parent_context() {
+                    root_context
+                } else {
+                    item_root_context
+                },
                 &sequence_owner,
             )?;
         }
@@ -617,6 +635,7 @@ fn validate_scope(
                 sequence_items,
                 &item_context,
                 &scope_joins,
+                item_root_context,
                 &sequence_owner,
             )?;
         }
@@ -636,6 +655,7 @@ fn validate_scope(
                     sequence_items,
                     &item_context,
                     &scope_joins,
+                    item_root_context,
                     &sequence_owner,
                 )?;
             }
@@ -657,6 +677,7 @@ fn validate_scope(
                     sequence_items,
                     active_sequence_items,
                     active_joins,
+                    root_context,
                     &sequence_owner,
                 )?;
             }
@@ -753,6 +774,7 @@ fn validate_scope(
                 sequence_items,
                 &item_context,
                 &scope_joins,
+                item_root_context,
                 &sequence_owner,
             )?;
         }
@@ -774,6 +796,7 @@ fn validate_scope(
             sequence_items,
             &item_context,
             &scope_joins,
+            item_root_context,
             &sequence_owner,
         )?;
         if let Some(&(first_binding, repeating, target_type)) =
@@ -1009,6 +1032,11 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "target scope {} join {} requires a root source context",
                 display_path(target_path),
+                join.get()
+            ),
+            Self::JoinAggregateRequiresRootContext { node, join } => write!(
+                formatter,
+                "compiled mapping join-aggregate expression {node} for join {} requires a root source context",
                 join.get()
             ),
             Self::InvalidJoinSource {

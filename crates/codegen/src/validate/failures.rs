@@ -66,7 +66,7 @@ pub(super) fn validate(
                         &[],
                         &owner,
                     )?;
-                    joins::validate_expression(expression, expressions, sources, &[])?;
+                    joins::validate_expression(expression, expressions, sources, &[], true)?;
                 }
                 recursive_sequence::validate(sources, sequence, &owner)?;
                 Some(sequence.item())
@@ -87,7 +87,7 @@ pub(super) fn validate(
                 active_items,
                 &owner,
             )?;
-            joins::validate_expression(predicate, expressions, sources, &[])?;
+            joins::validate_expression(predicate, expressions, sources, &[], false)?;
         }
         if let Some(message) = rule.message {
             if !expressions.contains_key(&message) {
@@ -103,7 +103,7 @@ pub(super) fn validate(
                 active_items,
                 &owner,
             )?;
-            joins::validate_expression(message, expressions, sources, &[])?;
+            joins::validate_expression(message, expressions, sources, &[], false)?;
         }
     }
     Ok(())
