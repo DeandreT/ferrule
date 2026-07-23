@@ -17,6 +17,62 @@ use super::iteration::{
 };
 use super::schema::{self, SchemaComponent};
 
+struct VariableConstructionIssue {
+    component_key: u32,
+    component: String,
+    reason: &'static str,
+}
+
+fn validate_bounded_repeating_construction(
+    component: &SchemaComponent,
+    output_path: &[String],
+    projections: &[(Vec<String>, u32)],
+) -> Result<(), &'static str> {
+    if component.schema.repeating || output_path.len() != 1 {
+        return Err("only one immediate repeating child of a non-repeating record is supported");
+    }
+    let SchemaKind::Group { children, .. } = &component.schema.kind else {
+        return Err("the variable root is not a record");
+    };
+    let repeated_children = children.iter().filter(|child| child.repeating).count();
+    if repeated_children != 1 {
+        return Err("the variable record has multiple or ambiguous repeating children");
+    }
+    let Some(output) = schema::schema_node_at(&component.schema, output_path) else {
+        return Err("the repeated child is absent from the variable schema");
+    };
+    if has_repeating_descendant(output) {
+        return Err("deeper nested repetition is not supported");
+    }
+    for (relative, _) in projections {
+        let mut absolute = output_path.to_vec();
+        absolute.extend(relative.iter().cloned());
+        let Some(projected) = schema::schema_node_at(&component.schema, &absolute) else {
+            return Err("a constructed descendant is absent from the variable schema");
+        };
+        if !matches!(projected.kind, SchemaKind::Scalar { .. }) {
+            return Err("only scalar bindings below the repeated child are supported");
+        }
+        for depth in output_path.len() + 1..=absolute.len() {
+            if schema::schema_node_at(&component.schema, &absolute[..depth])
+                .is_some_and(|node| node.repeating)
+            {
+                return Err("deeper nested repetition is not supported");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn has_repeating_descendant(node: &ir::SchemaNode) -> bool {
+    let SchemaKind::Group { children, .. } = &node.kind else {
+        return false;
+    };
+    children
+        .iter()
+        .any(|child| child.repeating || has_repeating_descendant(child))
+}
+
 impl GraphBuilder<'_> {
     pub(super) fn static_component_input_path(
         &self,
@@ -74,16 +130,48 @@ impl GraphBuilder<'_> {
     }
 
     /// Resolves one output of a variable schema component to the connected
-    /// input that supplies it plus the output's path below that input. An
+    /// input that supplies it plus the output's path below that input.
     /// Connected descendant inputs are returned as scalar projections so a
     /// constructed group can become ordinary target bindings.
     pub(super) fn intermediate_feed(&self, output_key: u32) -> Option<IntermediateFeed> {
+        self.intermediate_feed_result(output_key).ok().flatten()
+    }
+
+    pub(super) fn reject_unsupported_variable_construction(
+        &mut self,
+        output_key: u32,
+        target_path: &[String],
+    ) -> bool {
+        let Err(issue) = self.intermediate_feed_result(output_key) else {
+            return false;
+        };
+        if self
+            .warned_variable_constructions
+            .insert(issue.component_key)
+        {
+            self.warnings.push(format!(
+                "variable `{}` cannot construct repeating target `{}`: {}; iteration skipped",
+                issue.component,
+                target_path.join("/"),
+                issue.reason
+            ));
+        }
+        true
+    }
+
+    fn intermediate_feed_result(
+        &self,
+        output_key: u32,
+    ) -> Result<Option<IntermediateFeed>, VariableConstructionIssue> {
         for component in self.intermediates {
             if !component.output_keys.contains(&output_key) {
                 continue;
             }
-            let output_path = component.ports.get(&output_key)?;
-            let (input_key, input_path) = component
+            let Some(output_path) = component.ports.get(&output_key) else {
+                return Ok(None);
+            };
+            let component_key = component.output_keys.first().copied().unwrap_or(output_key);
+            let candidates = component
                 .ports
                 .iter()
                 .filter(|(key, path)| {
@@ -91,8 +179,10 @@ impl GraphBuilder<'_> {
                         && self.edge_from.contains_key(key)
                         && output_path.starts_with(path)
                 })
-                .max_by_key(|(_, path)| path.len())?;
-            let feed = *self.edge_from.get(input_key)?;
+                .collect::<Vec<_>>();
+            let Some(max_depth) = candidates.iter().map(|(_, path)| path.len()).max() else {
+                return Ok(None);
+            };
             let control = component
                 .compute_when_key
                 .and_then(|key| self.edge_from.get(&key).copied());
@@ -112,16 +202,79 @@ impl GraphBuilder<'_> {
                     }
                 })
                 .collect::<Vec<_>>();
+            let constructed_repeating = schema::schema_node_at(&component.schema, output_path)
+                .is_some_and(|node| {
+                    !component.is_pass_through
+                        && !output_path.is_empty()
+                        && node.repeating
+                        && matches!(node.kind, SchemaKind::Group { .. })
+                        && !ordered_projections.is_empty()
+                });
+            if constructed_repeating {
+                validate_bounded_repeating_construction(
+                    component,
+                    output_path,
+                    &ordered_projections,
+                )
+                .map_err(|reason| VariableConstructionIssue {
+                    component_key,
+                    component: component.name.clone(),
+                    reason,
+                })?;
+                if candidates
+                    .iter()
+                    .filter(|(_, path)| path.len() == max_depth)
+                    .count()
+                    != 1
+                {
+                    return Err(VariableConstructionIssue {
+                        component_key,
+                        component: component.name.clone(),
+                        reason: "its repeated child has multiple equally specific structural drivers",
+                    });
+                }
+            }
+            let Some((input_key, input_path)) = candidates
+                .into_iter()
+                .rev()
+                .find(|(_, path)| path.len() == max_depth)
+            else {
+                return Ok(None);
+            };
+            let Some(feed) = self.edge_from.get(input_key).copied() else {
+                return Ok(None);
+            };
+            if constructed_repeating {
+                let source_is_repeating_group = self
+                    .source_abs_path(feed)
+                    .map(|mut source| {
+                        source
+                            .path
+                            .extend(output_path[input_path.len()..].iter().cloned());
+                        source
+                    })
+                    .and_then(|source| self.schema_node(&source))
+                    .is_some_and(|node| {
+                        node.repeating && matches!(node.kind, SchemaKind::Group { .. })
+                    });
+                if !source_is_repeating_group {
+                    return Err(VariableConstructionIssue {
+                        component_key,
+                        component: component.name.clone(),
+                        reason: "its repeated child does not resolve to one source collection",
+                    });
+                }
+            }
             let projections = ordered_projections.iter().cloned().collect();
-            return Some(IntermediateFeed {
+            return Ok(Some(IntermediateFeed {
                 feed,
                 suffix: output_path[input_path.len()..].to_vec(),
                 control,
                 projections,
                 ordered_projections,
-            });
+            }));
         }
-        None
+        Ok(None)
     }
 
     /// The ferrule node producing the value at output-port `key`, creating
