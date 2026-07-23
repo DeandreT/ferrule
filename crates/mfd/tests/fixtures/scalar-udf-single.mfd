@@ -40,14 +40,28 @@
           <sources><datapoint pos="0" key="1001"/></sources>
           <targets><datapoint pos="0" key="1002"/></targets>
         </component>
+        <component name="present" library="core" uid="103" kind="2">
+          <targets><datapoint pos="0" key="1004"/></targets>
+          <data><constant value="true" datatype="boolean"/></data>
+        </component>
+        <component name="set-empty" library="core" uid="104" kind="5">
+          <targets><datapoint pos="0" key="1005"/></targets>
+        </component>
+        <component name="if-else" library="core" uid="105" kind="4">
+          <sources><datapoint pos="0" key="1006"/><datapoint pos="1" key="1007"/><datapoint pos="2" key="1008"/></sources>
+          <targets><datapoint pos="0" key="1009"/></targets>
+        </component>
         <component name="Normalized" library="core" uid="101" kind="7">
-          <sources><datapoint pos="0" key="1003"/></sources>
+          <sources><datapoint pos="0" key="1010"/></sources>
           <data><output datatype="string"/></data>
         </component>
       </children>
       <graph><vertices>
         <vertex vertexkey="1000"><edges><edge vertexkey="1001"/></edges></vertex>
-        <vertex vertexkey="1002"><edges><edge vertexkey="1003"/></edges></vertex>
+        <vertex vertexkey="1002"><edges><edge vertexkey="1007"/></edges></vertex>
+        <vertex vertexkey="1004"><edges><edge vertexkey="1006"/></edges></vertex>
+        <vertex vertexkey="1005"><edges><edge vertexkey="1008"/></edges></vertex>
+        <vertex vertexkey="1009"><edges><edge vertexkey="1010"/></edges></vertex>
       </vertices></graph>
     </structure>
   </component>
