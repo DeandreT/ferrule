@@ -8,8 +8,9 @@ use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use super::{
     NodeWriteContext, XmlFormatError, attribute_value, element_matches_schema,
-    format_schema_scalar, parse_schema_scalar, push_attribute, push_schema_attribute, read_node,
-    shape_error, validate_group_fields, write_node, write_ordered_mixed_content,
+    format_schema_scalar, parse_input_schema_scalar, parse_schema_scalar, push_attribute,
+    push_schema_attribute, read_node, shape_error, validate_group_fields, write_node,
+    write_ordered_mixed_content,
 };
 
 pub(super) fn read_generic_element(
@@ -75,7 +76,7 @@ pub(super) fn read_group_fields(
             let text = element_string_value(element);
             fields.push((
                 child.name.clone(),
-                Instance::Scalar(parse_schema_scalar(child, ty, &text)?),
+                Instance::Scalar(parse_input_schema_scalar(child, ty, &text)?),
             ));
         } else if child.attribute {
             let value = match attribute_value(element, child) {
@@ -85,7 +86,15 @@ pub(super) fn read_group_fields(
                     };
                     parse_schema_scalar(child, ty, text)?
                 }
-                None => Value::Null,
+                None => match child.default.as_deref() {
+                    Some(default) => {
+                        let SchemaKind::Scalar { ty } = child.kind else {
+                            return Err(XmlFormatError::MissingElement(child.name.clone()));
+                        };
+                        parse_schema_scalar(child, ty, default)?
+                    }
+                    None => Value::Null,
+                },
             };
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.text {
@@ -93,7 +102,7 @@ pub(super) fn read_group_fields(
                 return Err(XmlFormatError::MissingElement(child.name.clone()));
             };
             let text = direct_text_value(element);
-            let value = parse_schema_scalar(child, ty, &text)?;
+            let value = parse_input_schema_scalar(child, ty, &text)?;
             fields.push((child.name.clone(), Instance::Scalar(value)));
         } else if child.name == XML_ELEMENTS_FIELD {
             let items = element
