@@ -178,7 +178,7 @@ impl fmt::Display for UnsupportedNodeKind {
         formatter.write_str(match self {
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",
-            Self::CorrelatedJoinAggregate => "a join aggregate outside root source context",
+            Self::CorrelatedJoinAggregate => "an unsupported correlated join aggregate",
         })
     }
 }

@@ -38,7 +38,7 @@ pub(super) fn validate(
     for (index, rule) in program.failure_rules.iter().enumerate() {
         let number = index + 1;
         let owner = SequenceOwner::FailureRule(number);
-        let active_item = match &rule.iteration {
+        let (active_item, current_source) = match &rule.iteration {
             FailureIteration::Source(source) => {
                 if !source.path().is_empty()
                     && !sources.path_matches(source.path(), |node| node.repeating)
@@ -48,7 +48,7 @@ pub(super) fn validate(
                         source_path: source.path().to_vec(),
                     });
                 }
-                None
+                (None, sources.schema_at(None, source.path()))
             }
             FailureIteration::Generated(sequence) => {
                 for (input, expression) in sequence.inputs().enumerate() {
@@ -66,10 +66,17 @@ pub(super) fn validate(
                         &[],
                         &owner,
                     )?;
-                    joins::validate_expression(expression, expressions, sources, &[], true)?;
+                    joins::validate_expression(
+                        expression,
+                        expressions,
+                        sources,
+                        Some(sources.primary()),
+                        &[],
+                        true,
+                    )?;
                 }
                 recursive_sequence::validate(sources, sequence, &owner)?;
-                Some(sequence.item())
+                (Some(sequence.item()), None)
             }
         };
         let active_items = active_item.as_slice();
@@ -87,7 +94,14 @@ pub(super) fn validate(
                 active_items,
                 &owner,
             )?;
-            joins::validate_expression(predicate, expressions, sources, &[], false)?;
+            joins::validate_expression(
+                predicate,
+                expressions,
+                sources,
+                current_source,
+                &[],
+                false,
+            )?;
         }
         if let Some(message) = rule.message {
             if !expressions.contains_key(&message) {
@@ -103,7 +117,7 @@ pub(super) fn validate(
                 active_items,
                 &owner,
             )?;
-            joins::validate_expression(message, expressions, sources, &[], false)?;
+            joins::validate_expression(message, expressions, sources, current_source, &[], false)?;
         }
     }
     Ok(())

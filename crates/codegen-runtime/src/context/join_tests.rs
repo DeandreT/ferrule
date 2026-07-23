@@ -227,3 +227,80 @@ fn singleton_scalar_sources_receive_a_stable_raw_position() {
     assert_eq!(tuples[0].position(&["CustomerNumber"]), 1);
     assert_eq!(tuples[0].position(&["Customers"]), 2);
 }
+
+#[test]
+fn active_item_singletons_correlate_with_named_repeating_sources() {
+    let source = group([field(
+        "Lines",
+        repeated([
+            row([("Sku", text("1"))]),
+            row([("Sku", Value::Null)]),
+            row([("Sku", Value::xml_nil())]),
+        ]),
+    )]);
+    let catalog = group([field(
+        "Products",
+        repeated([
+            row([("Sku", Value::Int(1)), ("Label", text("first"))]),
+            row([("Sku", text("1")), ("Label", text("second"))]),
+            row([("Sku", Value::Null), ("Label", text("null"))]),
+            row([("Sku", Value::xml_nil()), ("Label", text("xml-nil"))]),
+        ]),
+    )]);
+    let inputs = [NamedInput {
+        name: "Catalog",
+        instance: &catalog,
+    }];
+    let lines = ScopeContext::with_named_inputs(&source, &inputs).walk_source(&["Lines"]);
+    let keys = [InnerJoinKey {
+        left_collection: &["Sku"],
+        left_path: &[],
+        right_path: &["Sku"],
+    }];
+
+    let matching = lines[0]
+        .inner_join(
+            13,
+            &["Sku"],
+            InnerJoinStage {
+                collection: &["Catalog", "Products"],
+                keys: &keys,
+            },
+            &[],
+        )
+        .expect("correlated join succeeds");
+    let labels = matching
+        .iter()
+        .map(|context| context.resolve_join_scalar(13, &["Catalog", "Products"], &["Label"]))
+        .collect::<Result<Vec<_>, _>>()
+        .expect("joined labels resolve");
+    assert_eq!(labels, vec![text("first"), text("second")]);
+    assert!(
+        lines[1]
+            .inner_join(
+                13,
+                &["Sku"],
+                InnerJoinStage {
+                    collection: &["Catalog", "Products"],
+                    keys: &keys,
+                },
+                &[],
+            )
+            .expect("null join succeeds")
+            .is_empty()
+    );
+    assert!(
+        lines[2]
+            .inner_join(
+                13,
+                &["Sku"],
+                InnerJoinStage {
+                    collection: &["Catalog", "Products"],
+                    keys: &keys,
+                },
+                &[],
+            )
+            .expect("XML-nil join succeeds")
+            .is_empty()
+    );
+}
