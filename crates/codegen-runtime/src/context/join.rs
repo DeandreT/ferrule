@@ -19,7 +19,7 @@ pub struct InnerJoinStage<'a> {
 }
 
 impl<'a> ScopeContext<'a> {
-    /// Executes a root-context left-deep inner join.
+    /// Executes a context-relative left-deep inner join.
     ///
     /// `second` is separate from `rest`, so callers must supply at least two
     /// sources. Source order and duplicate multiplicity are retained.

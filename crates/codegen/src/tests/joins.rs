@@ -193,6 +193,95 @@ fn join_project() -> Project {
     }
 }
 
+fn correlated_aggregate_project() -> Project {
+    let join = MappingJoinId::new(8);
+    let plan = MappingJoinPlan::new(
+        MappingJoinSource::singleton(vec!["Sku".into()]),
+        MappingJoinSource::new(vec!["Catalog".into(), "Product".into()]),
+        MappingJoinConditions::new(MappingJoinKey::new(
+            vec!["Sku".into()],
+            Vec::new(),
+            vec!["Sku".into()],
+        )),
+    )
+    .expect("correlated join plan");
+    Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group(
+                    "Line",
+                    vec![scalar("Sku"), typed_scalar("Quantity", ScalarType::Int)],
+                )
+                .repeating(),
+            ],
+        ),
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group("Row", vec![typed_scalar("Total", ScalarType::Int)]).repeating(),
+            ],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: vec![NamedSource {
+            name: "Catalog".into(),
+            path: "catalog.json".into(),
+            schema: SchemaNode::group(
+                "Catalog",
+                vec![
+                    SchemaNode::group(
+                        "Product",
+                        vec![scalar("Sku"), typed_scalar("Price", ScalarType::Int)],
+                    )
+                    .repeating(),
+                ],
+            ),
+            options: Default::default(),
+            dynamic_path: None,
+        }],
+        extra_targets: Vec::new(),
+        user_functions: BTreeMap::new(),
+        failure_rules: Vec::new(),
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    20,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Catalog".into(), "Product".into()],
+                        path: vec!["Price".into()],
+                    },
+                ),
+                (
+                    21,
+                    Node::JoinAggregate {
+                        function: mapping::AggregateOp::Sum,
+                        join,
+                        plan,
+                        expression: Some(20),
+                        arg: None,
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            children: vec![Scope {
+                target_field: "Row".into(),
+                iteration: ScopeIteration::Source(vec!["Line".into()]),
+                bindings: vec![MappingBinding {
+                    target_field: "Total".into(),
+                    node: 21,
+                }],
+                ..Scope::default()
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
 #[test]
 fn lowers_left_deep_composite_named_join_and_tuple_expressions() {
     let project = join_project();
@@ -229,6 +318,29 @@ fn lowers_left_deep_composite_named_join_and_tuple_expressions() {
         program.root.children[0].children[0].bindings[0].expression,
         1
     );
+}
+
+#[test]
+fn lowers_bounded_correlated_join_aggregates() {
+    let program = lower(&correlated_aggregate_project()).expect("correlated aggregate lowers");
+
+    assert!(matches!(
+        program.expressions.iter().find(|node| node.id == 21),
+        Some(ExpressionNode {
+            expression: Expression::JoinAggregate {
+                function: AggregateFunction::Sum,
+                join,
+                expression: Some(20),
+                arg: None,
+            },
+            ..
+        }) if join.id() == crate::JoinId::new(8)
+            && join.plan().sources().count() == 2
+            && join.plan().sources().any(|source| {
+                source.cardinality() == crate::JoinSourceCardinality::Singleton
+                    && source.collection() == ["Sku"]
+            })
+    ));
 }
 
 #[test]
@@ -384,7 +496,7 @@ fn reports_correlated_join_aggregates_at_the_owning_node() {
     };
 
     let diagnostics = lower(&project)
-        .expect_err("correlated join aggregate remains interpreter-only")
+        .expect_err("unbounded correlated join aggregate remains interpreter-only")
         .into_diagnostics();
     assert_eq!(
         diagnostics,

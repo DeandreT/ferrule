@@ -1,7 +1,8 @@
 use super::*;
 use crate::{
-    FailureIteration, FailureRule, FailureSelection, InnerJoin, JoinConditions, JoinId, JoinKey,
-    JoinKeySide, JoinPlan, JoinPlanError, JoinSource, NamedSourceProgram, NamedTargetProgram,
+    FailureIteration, FailureRule, FailureSelection, GroupingPlan, InnerJoin, JoinConditions,
+    JoinId, JoinKey, JoinKeySide, JoinPlan, JoinPlanError, JoinSource, NamedSourceProgram,
+    NamedTargetProgram,
 };
 
 fn plan(left_path: &[&str], right_collection: &[&str], right_path: &[&str]) -> JoinPlan {
@@ -161,9 +162,192 @@ fn set_join(program: &mut Program, join_plan: JoinPlan) {
     )));
 }
 
+fn correlated_join_aggregate_program() -> Program {
+    let join = InnerJoin::new(
+        JoinId::new(8),
+        JoinPlan::new(
+            JoinSource::singleton(vec!["Sku".into()]),
+            JoinSource::new(vec!["Catalog".into(), "Product".into()]),
+            JoinConditions::new(JoinKey::new(
+                vec!["Sku".into()],
+                Vec::new(),
+                vec!["Sku".into()],
+            )),
+        )
+        .expect("correlated join plan"),
+    );
+    Program {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::group(
+                    "Line",
+                    vec![
+                        SchemaNode::scalar("Sku", ScalarType::String),
+                        SchemaNode::scalar("Quantity", ScalarType::Int),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        extra_sources: vec![NamedSourceProgram {
+            name: "Catalog".into(),
+            source: SchemaNode::group(
+                "Catalog",
+                vec![
+                    SchemaNode::group(
+                        "Product",
+                        vec![
+                            SchemaNode::scalar("Sku", ScalarType::String),
+                            SchemaNode::scalar("Price", ScalarType::Int),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            ),
+        }],
+        target: SchemaNode::group(
+            "Target",
+            vec![
+                SchemaNode::group("Row", vec![SchemaNode::scalar("Total", ScalarType::Int)])
+                    .repeating(),
+            ],
+        ),
+        expressions: vec![
+            ExpressionNode {
+                id: 20,
+                expression: Expression::JoinField {
+                    join: JoinId::new(8),
+                    collection: vec!["Catalog".into(), "Product".into()],
+                    path: vec!["Price".into()],
+                },
+            },
+            ExpressionNode {
+                id: 21,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Sum,
+                    join,
+                    expression: Some(20),
+                    arg: None,
+                },
+            },
+        ],
+        user_functions: Vec::new(),
+        failure_rules: Vec::new(),
+        root: TargetScope {
+            target_field: String::new(),
+            repeating: false,
+            iteration: None,
+            construction: TargetConstruction::Group,
+            bindings: Vec::new(),
+            children: vec![TargetScope {
+                target_field: "Row".into(),
+                repeating: true,
+                iteration: Some(IterationPlan::source(vec!["Line".into()])),
+                construction: TargetConstruction::Group,
+                bindings: vec![Binding {
+                    target_field: "Total".into(),
+                    expression: 21,
+                    target_type: ScalarType::Int,
+                    repeating: false,
+                }],
+                children: Vec::new(),
+            }],
+        },
+        extra_targets: Vec::new(),
+    }
+}
+
 #[test]
 fn validates_root_join_controls_and_static_descendants() {
     assert_eq!(validate_program(&join_program()), Ok(()));
+}
+
+#[test]
+fn validates_only_bounded_correlated_join_aggregates() {
+    let program = correlated_join_aggregate_program();
+    assert_eq!(validate_program(&program), Ok(()));
+
+    let mut grouped = program.clone();
+    grouped.expressions.push(ExpressionNode {
+        id: 24,
+        expression: Expression::SourceField {
+            frame: None,
+            path: vec!["Sku".into()],
+        },
+    });
+    grouped.root.children[0].iteration = Some(
+        IterationPlan::source(vec!["Line".into()]).with_grouping(GroupingPlan::By { key: 24 }),
+    );
+    assert_eq!(
+        validate_program(&grouped),
+        Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node: 21,
+            join: JoinId::new(8),
+        })
+    );
+
+    let mut all_repeating = program.clone();
+    let Some(ExpressionNode {
+        expression: Expression::JoinAggregate { join, .. },
+        ..
+    }) = all_repeating
+        .expressions
+        .iter_mut()
+        .find(|expression| expression.id == 21)
+    else {
+        panic!("correlated join aggregate fixture");
+    };
+    *join = InnerJoin::new(
+        JoinId::new(8),
+        JoinPlan::new(
+            JoinSource::new(vec!["Line".into()]),
+            JoinSource::new(vec!["Catalog".into(), "Product".into()]),
+            JoinConditions::new(JoinKey::new(
+                vec!["Line".into()],
+                vec!["Sku".into()],
+                vec!["Sku".into()],
+            )),
+        )
+        .expect("all-repeating join plan"),
+    );
+    assert_eq!(
+        validate_program(&all_repeating),
+        Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node: 21,
+            join: JoinId::new(8),
+        })
+    );
+
+    let mut generated = program;
+    generated.expressions.extend([
+        ExpressionNode {
+            id: 22,
+            expression: Expression::Const {
+                value: Value::Int(1),
+            },
+        },
+        ExpressionNode {
+            id: 23,
+            expression: Expression::SourceField {
+                frame: None,
+                path: Vec::new(),
+            },
+        },
+    ]);
+    generated.root.children[0].iteration =
+        Some(IterationPlan::generated(crate::GeneratedSequence::Range {
+            from: Some(22),
+            to: 22,
+            item: 23,
+        }));
+    assert_eq!(
+        validate_program(&generated),
+        Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node: 21,
+            join: JoinId::new(8),
+        })
+    );
 }
 
 #[test]

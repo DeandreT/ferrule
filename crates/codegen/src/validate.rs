@@ -497,6 +497,7 @@ fn find_concrete_schema_group<'a>(current: &'a SchemaNode, anchor: &str) -> Opti
 struct ScopeSchemas<'a> {
     sources: SourceCatalog<'a>,
     current_source: Option<SchemaCursor<'a>>,
+    active_source: Option<SchemaCursor<'a>>,
     target_root: &'a SchemaNode,
     target_owner: TargetOwner<'a>,
 }
@@ -523,6 +524,7 @@ fn validate_expression_context(
         expression,
         expressions,
         schemas.sources,
+        schemas.active_source,
         active_joins,
         root_context,
     )
@@ -544,6 +546,7 @@ fn validate_scope(
     let mut scope_joins = active_joins.to_vec();
     let item_root_context = root_context && scope.iteration.is_none();
     let mut scope_source = schemas.current_source;
+    let mut active_source = schemas.active_source;
     let Some(target_node) =
         follow_schema_from(schemas.target_root, schemas.target_root, target_path)
     else {
@@ -575,9 +578,11 @@ fn validate_scope(
                 scope_source = schemas
                     .sources
                     .schema_at(schemas.current_source, source_iteration.path());
+                active_source = scope_source;
             }
             IterationSource::Generated(sequence) => {
                 scope_source = None;
+                active_source = None;
                 for (input, expression) in sequence.inputs().enumerate() {
                     if !expressions.contains_key(&expression) {
                         return Err(ProgramValidationError::MissingSequenceExpression {
@@ -609,9 +614,15 @@ fn validate_scope(
                 }
                 joins::validate_plan(schemas.sources, join)?;
                 scope_source = None;
+                active_source = None;
                 scope_joins.push(joins::ActiveJoin::new(join));
             }
         }
+        let candidate_schemas = ScopeSchemas {
+            current_source: scope_source,
+            active_source,
+            ..schemas
+        };
         if let Some(grouping_expression) = grouping_expression {
             let grouping_items = if grouping_expression.is_parent_context() {
                 active_sequence_items
@@ -626,7 +637,11 @@ fn validate_scope(
             validate_expression_context(
                 grouping_expression.node(),
                 expressions,
-                schemas,
+                if grouping_expression.is_parent_context() {
+                    schemas
+                } else {
+                    candidate_schemas
+                },
                 sequence_items,
                 grouping_items,
                 grouping_joins,
@@ -650,7 +665,7 @@ fn validate_scope(
             validate_expression_context(
                 expression,
                 expressions,
-                schemas,
+                candidate_schemas,
                 sequence_items,
                 &item_context,
                 &scope_joins,
@@ -670,7 +685,7 @@ fn validate_scope(
                 validate_expression_context(
                     sort_key.expression,
                     expressions,
-                    schemas,
+                    candidate_schemas,
                     sequence_items,
                     &item_context,
                     &scope_joins,
@@ -715,6 +730,9 @@ fn validate_scope(
                 target_path: target_path.clone(),
                 output: iteration.output(),
             });
+        }
+        if iteration.grouping().is_some() {
+            active_source = None;
         }
     }
 
@@ -789,7 +807,11 @@ fn validate_scope(
             validate_expression_context(
                 expression,
                 expressions,
-                schemas,
+                ScopeSchemas {
+                    current_source: scope_source,
+                    active_source,
+                    ..schemas
+                },
                 sequence_items,
                 &item_context,
                 &scope_joins,
@@ -811,7 +833,11 @@ fn validate_scope(
         validate_expression_context(
             binding.expression,
             expressions,
-            schemas,
+            ScopeSchemas {
+                current_source: scope_source,
+                active_source,
+                ..schemas
+            },
             sequence_items,
             &item_context,
             &scope_joins,
@@ -866,6 +892,7 @@ fn validate_scope(
             expressions,
             ScopeSchemas {
                 current_source: scope_source,
+                active_source,
                 ..schemas
             },
             target_path,
