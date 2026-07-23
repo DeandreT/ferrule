@@ -108,8 +108,8 @@ fn row_fields(schema: &SchemaNode) -> Result<Vec<(&str, ScalarType)>, CsvFormatE
 
 /// Reads a CSV file into one [`Instance::Group`] per row, parsing each
 /// column according to its declared scalar type (columns are positional;
-/// when `has_headers` the first row is skipped). `delimiter` defaults to
-/// `,`.
+/// when `has_headers` the first row is skipped). Missing trailing columns
+/// are represented as [`Value::Null`]. `delimiter` defaults to `,`.
 pub fn read(
     path: &Path,
     schema: &SchemaNode,
@@ -119,6 +119,7 @@ pub fn read(
     let fields = row_fields(schema)?;
     let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
+        .flexible(true)
         .delimiter(delimiter_byte(delimiter)?)
         .from_path(path)?;
     read_records(reader, &fields)
@@ -137,6 +138,7 @@ pub fn from_str(
     let fields = row_fields(schema)?;
     let reader = csv::ReaderBuilder::new()
         .has_headers(has_headers)
+        .flexible(true)
         .delimiter(delimiter_byte(delimiter)?)
         .from_reader(text.as_bytes());
     read_records(reader, &fields)
@@ -149,7 +151,7 @@ fn read_records<R: std::io::Read>(
     let mut out = Vec::new();
     for (row_idx, result) in reader.records().enumerate() {
         let raw = result?;
-        if raw.len() != fields.len() {
+        if raw.len() > fields.len() {
             return Err(CsvFormatError::ColumnCount {
                 row: row_idx,
                 expected: fields.len(),
@@ -157,7 +159,8 @@ fn read_records<R: std::io::Read>(
             });
         }
         let mut row = Vec::with_capacity(fields.len());
-        for ((name, ty), cell) in fields.iter().zip(raw.iter()) {
+        for (column, (name, ty)) in fields.iter().enumerate() {
+            let cell = raw.get(column).unwrap_or_default();
             row.push((
                 name.to_string(),
                 Instance::Scalar(parse_value(name, *ty, cell, row_idx)?),
@@ -444,6 +447,31 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn missing_trailing_columns_are_null() {
+        let rows = from_str("Jane,29\nJohn\n", &schema(), None, false).unwrap();
+
+        assert_eq!(
+            rows,
+            vec![
+                Instance::Group(vec![
+                    (
+                        "name".into(),
+                        Instance::Scalar(Value::String("Jane".into())),
+                    ),
+                    ("age".into(), Instance::Scalar(Value::Int(29))),
+                ]),
+                Instance::Group(vec![
+                    (
+                        "name".into(),
+                        Instance::Scalar(Value::String("John".into())),
+                    ),
+                    ("age".into(), Instance::Scalar(Value::Null)),
+                ]),
+            ]
+        );
     }
 
     #[test]
