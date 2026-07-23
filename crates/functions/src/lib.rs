@@ -61,6 +61,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "right_trim",
     "length",
     "starts_with",
+    "ends_with",
     "contains",
     "sql_like",
     "pad_string_left",

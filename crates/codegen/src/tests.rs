@@ -368,6 +368,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "exists",
         "is_empty",
         "starts_with",
+        "ends_with",
         "contains",
         "concat",
         "upper",

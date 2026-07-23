@@ -25,6 +25,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         }),
         "length" => length(args),
         "starts_with" => binary_scalar_string(args, "starts_with", |a, b| a.starts_with(b)),
+        "ends_with" => binary_scalar_string(args, "ends_with", |a, b| a.ends_with(b)),
         "contains" => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
         "sql_like" => binary_string(args, "sql_like", sql_like),
         "pad_string_left" => pad_string(args, "pad_string_left", true),
