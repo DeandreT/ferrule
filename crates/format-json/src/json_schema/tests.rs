@@ -364,6 +364,40 @@ fn alternative_wrappers_apply_closed_branch_field_intersections() {
 }
 
 #[test]
+fn typed_alternative_wrappers_accept_only_identical_branch_field_schemas() {
+    let schema = import_str(
+        r#"{
+  "title":"TypedWrapper",
+  "additionalProperties":{"type":"string"},
+  "oneOf":[
+    {"title":"a","type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
+    {"title":"b","type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}
+  ]
+}"#,
+    );
+    assert!(crate::from_str(r#"{"a":"one"}"#, &schema).is_ok());
+    assert!(crate::from_str(r#"{"b":"two"}"#, &schema).is_ok());
+    assert_eq!(import_str(&export(&schema)), schema);
+
+    let mismatch = import_str_result(
+        r#"{
+  "title":"TypedMismatch",
+  "additionalProperties":{"type":"string"},
+  "oneOf":[
+    {"type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
+    {"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"integer"}}}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(
+        mismatch
+            .to_string()
+            .contains("typed additionalProperties schema")
+    );
+}
+
+#[test]
 fn incompatible_and_scalar_one_of_are_rejected() {
     let incompatible = import_str_result(
             r#"{
