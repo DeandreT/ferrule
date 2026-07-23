@@ -9,7 +9,7 @@ use crate::{
     JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
     ProgramValidationError, ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow,
     SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
-    UserFunctionProgram, XmlMixedContentReplacement, validate_program,
+    UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -218,12 +218,23 @@ fn lower_scope(
         roots.extend(sequence.inputs());
         roots.push(sequence.item());
     }
-    let construction = match scope.construction {
+    let construction = match &scope.construction {
         ScopeConstruction::Scalar { value } => {
-            roots.push(value);
-            crate::TargetConstruction::Scalar { expression: value }
+            roots.push(*value);
+            crate::TargetConstruction::Scalar { expression: *value }
         }
         ScopeConstruction::CopyCurrentSource => crate::TargetConstruction::CopyCurrentSource,
+        ScopeConstruction::XmlMixedContent { elements } => {
+            crate::TargetConstruction::XmlMixedContent {
+                elements: elements
+                    .iter()
+                    .map(|element| XmlMixedContentElement {
+                        source: element.source.clone(),
+                        target: element.target.clone(),
+                    })
+                    .collect(),
+            }
+        }
         _ => crate::TargetConstruction::Group,
     };
 
@@ -465,7 +476,7 @@ fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructi
         ScopeConstruction::Constructed => None,
         ScopeConstruction::CopyCurrentSource => None,
         ScopeConstruction::Scalar { .. } => None,
-        ScopeConstruction::XmlMixedContent { .. } => Some(ScopeConstructionKind::XmlMixedContent),
+        ScopeConstruction::XmlMixedContent { .. } => None,
         ScopeConstruction::RecursiveFilter { .. } => Some(ScopeConstructionKind::RecursiveFilter),
         ScopeConstruction::PathHierarchy { .. } => Some(ScopeConstructionKind::PathHierarchy),
         ScopeConstruction::AdjacencyTree { .. } => Some(ScopeConstructionKind::AdjacencyTree),
