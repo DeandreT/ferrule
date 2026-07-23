@@ -102,6 +102,35 @@ fn pcdata_with_attributes_becomes_simple_content_group() {
 }
 
 #[test]
+fn tokenized_attributes_preserve_their_lexical_values() {
+    let schema = import_root_str(
+        r#"
+            <!ELEMENT Item EMPTY>
+            <!ATTLIST Item
+                id ID #REQUIRED
+                owner IDREF #IMPLIED
+                related IDREFS #IMPLIED
+                category NMTOKEN #IMPLIED
+                tags NMTOKENS #IMPLIED>
+        "#,
+        Some("Item"),
+    )
+    .unwrap();
+    for name in ["id", "owner", "related", "category", "tags"] {
+        assert!(schema.child(name).is_some_and(|child| child.attribute));
+    }
+
+    let input =
+        r#"<Item id="row-1" owner="root" related="a b" category="primary" tags="hot new"/>"#;
+    let instance = from_str(input, &schema).unwrap();
+    let output = to_string(&schema, &instance).unwrap();
+    assert_eq!(from_str(&output, &schema).unwrap(), instance);
+    for value in ["row-1", "root", "a b", "primary", "hot new"] {
+        assert!(output.contains(value), "{output}");
+    }
+}
+
+#[test]
 fn mixed_content_preserves_interleaved_text_and_typed_children() {
     let schema = import_root_str(
         r#"

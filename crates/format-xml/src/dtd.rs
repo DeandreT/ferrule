@@ -4,7 +4,7 @@
 //! content-model particles, but never loads external entities or subsets. It
 //! supports `ELEMENT` and `ATTLIST` declarations, child sequences and choices,
 //! the standard occurrence suffixes, `EMPTY`, text and mixed content, and
-//! CDATA/enumeration attributes.
+//! CDATA, tokenized, and enumeration attributes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -516,8 +516,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_attribute_type(&mut self) -> Result<(), DtdError> {
-        if self.consume_keyword("CDATA") {
-            return Ok(());
+        for ty in ["CDATA", "ID", "IDREF", "IDREFS", "NMTOKEN", "NMTOKENS"] {
+            if self.consume_keyword(ty) {
+                return Ok(());
+            }
         }
         if self.consume("(") {
             self.skip_whitespace();
