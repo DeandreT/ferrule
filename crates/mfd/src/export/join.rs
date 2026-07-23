@@ -857,7 +857,7 @@ fn validate_join_expression(
             true
         }
         Node::JoinPosition { join: owner } if *owner == join => true,
-        Node::Const { .. } | Node::RuntimeValue { .. } => false,
+        Node::Unconnected | Node::Const { .. } | Node::RuntimeValue { .. } => false,
         Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. } => {
             let mut owns_join = false;
             for dependency in node_inputs(node) {
@@ -920,7 +920,7 @@ fn validate_parent_expression(
                 }
             }
         }
-        Node::Const { .. } | Node::RuntimeValue { .. } => {}
+        Node::Unconnected | Node::Const { .. } | Node::RuntimeValue { .. } => {}
         Node::Call { .. } | Node::If { .. } | Node::ValueMap { .. } => {
             for dependency in node_inputs(node) {
                 validate_parent_expression(dependency, graph, sources, visited, active)?;
@@ -1011,6 +1011,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }

@@ -706,7 +706,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     aggregate_component_name(*function)
                 );
             }
-            Node::Const { value: Value::Null } => {
+            Node::Unconnected | Node::Const { value: Value::Null } => {
                 let out = keys.next();
                 node_out_key.insert(id, out);
                 *uid += 1;

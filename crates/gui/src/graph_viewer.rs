@@ -12,7 +12,7 @@
 
 use egui::Ui;
 use egui_snarl::ui::{PinInfo, SnarlViewer};
-use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, OutPinId, Snarl};
+use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, Snarl};
 use ir::Value;
 use mapping::{
     AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId, Scope,
@@ -39,6 +39,7 @@ use node_palette::NodeTemplate;
 const ENDPOINT_LABEL_CHAR_LIMIT: usize = 30;
 const GRAPH_TITLE_CHAR_LIMIT: usize = 36;
 const SOURCE_FIELD_EDIT_WIDTH: f32 = 170.0;
+const PATH_EDITOR_WIDTH: f32 = 250.0;
 
 #[cfg(test)]
 fn compact_endpoint_label(path: &str) -> String {
@@ -323,11 +324,9 @@ impl GraphViewer<'_> {
         self.graph.nodes.keys().next_back().map_or(0, |max| max + 1)
     }
 
-    fn fresh_const(&mut self) -> NodeId {
+    fn fresh_unconnected(&mut self) -> NodeId {
         let id = self.fresh_id();
-        self.graph
-            .nodes
-            .insert(id, Node::Const { value: Value::Null });
+        self.graph.nodes.insert(id, Node::Unconnected);
         id
     }
 
@@ -373,21 +372,6 @@ impl GraphViewer<'_> {
         self.endpoint_scroll.display_pin(node, displayed_pin, total)
     }
 
-    fn placeholder_position(owner: egui::Pos2, input: usize, inputs: usize) -> egui::Pos2 {
-        let offset = input as f32 - (inputs.saturating_sub(1) as f32 / 2.0);
-        egui::pos2(owner.x - 260.0, owner.y + offset * 90.0)
-    }
-
-    fn insert_placeholder(
-        &mut self,
-        snarl: &mut Snarl<CanvasNode>,
-        pos: egui::Pos2,
-    ) -> (NodeId, SnarlNodeId) {
-        let id = self.fresh_const();
-        let snarl_id = snarl.insert_node(pos, CanvasNode::Placeholder(id));
-        (id, snarl_id)
-    }
-
     fn insert_palette_node(
         &mut self,
         snarl: &mut Snarl<CanvasNode>,
@@ -419,13 +403,15 @@ impl GraphViewer<'_> {
                     args: Vec::new(),
                 },
             ),
-            NodeTemplate::If => self.insert_with_placeholders(snarl, pos, 3, |inputs| Node::If {
-                condition: inputs[0],
-                then: inputs[1],
-                else_: inputs[2],
-            }),
+            NodeTemplate::If => {
+                self.insert_with_unconnected_inputs(snarl, pos, 3, |inputs| Node::If {
+                    condition: inputs[0],
+                    then: inputs[1],
+                    else_: inputs[2],
+                })
+            }
             NodeTemplate::ValueMap => {
-                self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::ValueMap {
+                self.insert_with_unconnected_inputs(snarl, pos, 1, |inputs| Node::ValueMap {
                     input: inputs[0],
                     input_type: None,
                     table: Vec::new(),
@@ -433,7 +419,7 @@ impl GraphViewer<'_> {
                 })
             }
             NodeTemplate::Lookup => {
-                self.insert_with_placeholders(snarl, pos, 1, |inputs| Node::Lookup {
+                self.insert_with_unconnected_inputs(snarl, pos, 1, |inputs| Node::Lookup {
                     collection: Vec::new(),
                     key: Vec::new(),
                     matches: inputs[0],
@@ -441,7 +427,7 @@ impl GraphViewer<'_> {
                 })
             }
             NodeTemplate::CollectionFind => {
-                self.insert_with_placeholders(snarl, pos, 2, |inputs| Node::CollectionFind {
+                self.insert_with_unconnected_inputs(snarl, pos, 2, |inputs| Node::CollectionFind {
                     collection: Vec::new(),
                     predicate: inputs[0],
                     value: inputs[1],
@@ -449,7 +435,7 @@ impl GraphViewer<'_> {
             }
             NodeTemplate::Aggregate(function) => {
                 let inputs = usize::from(node_palette::aggregate_needs_arg(function));
-                self.insert_with_placeholders(snarl, pos, inputs, |ids| {
+                self.insert_with_unconnected_inputs(snarl, pos, inputs, |ids| {
                     node_palette::aggregate_node(function, ids.first().copied())
                 })
             }
@@ -468,33 +454,17 @@ impl GraphViewer<'_> {
         (id, snarl_id)
     }
 
-    fn insert_with_placeholders(
+    fn insert_with_unconnected_inputs(
         &mut self,
         snarl: &mut Snarl<CanvasNode>,
         pos: egui::Pos2,
         input_count: usize,
         build: impl FnOnce(&[NodeId]) -> Node,
     ) -> (NodeId, SnarlNodeId) {
-        let placeholders: Vec<_> = (0..input_count)
-            .map(|input| {
-                self.insert_placeholder(snarl, Self::placeholder_position(pos, input, input_count))
-            })
-            .collect();
-        let ids: Vec<_> = placeholders.iter().map(|(id, _)| *id).collect();
-        let result = self.insert(snarl, pos, build(&ids));
-        for (input, (_, placeholder)) in placeholders.into_iter().enumerate() {
-            snarl.connect(
-                OutPinId {
-                    node: placeholder,
-                    output: 0,
-                },
-                InPinId {
-                    node: result.1,
-                    input,
-                },
-            );
-        }
-        result
+        let inputs = (0..input_count)
+            .map(|_| self.fresh_unconnected())
+            .collect::<Vec<_>>();
+        self.insert(snarl, pos, build(&inputs))
     }
 
     /// Reuses an existing `SourceField` with this exact frame and relative
@@ -631,6 +601,7 @@ impl GraphViewer<'_> {
             | Node::Position { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
+            | Node::Unconnected
             | Node::Const { .. }
             | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
@@ -711,8 +682,48 @@ impl GraphViewer<'_> {
         references
     }
 
-    fn remove_orphaned_placeholder(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
+    fn blocking_references_to(&self, needle: NodeId) -> Vec<String> {
+        let removable =
+            graph_references::removable_wire_references(self.graph, self.root_scope, needle);
+        self.references_to(needle)
+            .into_iter()
+            .filter(|reference| !removable.contains(reference))
+            .collect()
+    }
+
+    fn disconnect_graph_consumers(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
+        let consumers =
+            self.graph
+                .nodes
+                .iter()
+                .filter(|(owner, _)| **owner != needle)
+                .flat_map(|(&owner, node)| {
+                    node_inputs(node).into_iter().enumerate().filter_map(
+                        move |(input, dependency)| (dependency == needle).then_some((owner, input)),
+                    )
+                })
+                .collect::<Vec<_>>();
+        for (owner, input) in consumers {
+            let unconnected = self.fresh_unconnected();
+            self.set_input(owner, input, unconnected);
+            let Some(node) = snarl.node_ids().find_map(|(node, canvas)| {
+                (Self::mapping_id(*canvas) == Some(owner)).then_some(node)
+            }) else {
+                continue;
+            };
+            let input = InPinId { node, input };
+            for remote in snarl.in_pin(input).remotes {
+                snarl.disconnect(remote, input);
+            }
+        }
+    }
+
+    fn remove_orphaned_input(&mut self, needle: NodeId, snarl: &mut Snarl<CanvasNode>) {
         if !self.references_to(needle).is_empty() {
+            return;
+        }
+        if matches!(self.graph.nodes.get(&needle), Some(Node::Unconnected)) {
+            self.graph.nodes.remove(&needle);
             return;
         }
         let placeholder = snarl
@@ -744,7 +755,7 @@ impl GraphViewer<'_> {
         node: SnarlNodeId,
         snarl: &mut Snarl<CanvasNode>,
     ) -> bool {
-        let references = self.references_to(mapping_id);
+        let references = self.blocking_references_to(mapping_id);
         if !references.is_empty() {
             self.error = Some(format!(
                 "mapping node {mapping_id} is still used by {}",
@@ -752,6 +763,8 @@ impl GraphViewer<'_> {
             ));
             return false;
         }
+        self.disconnect_graph_consumers(mapping_id, snarl);
+        graph_references::remove_bindings_to(self.root_scope, mapping_id);
         let inputs = self
             .graph
             .nodes
@@ -761,7 +774,7 @@ impl GraphViewer<'_> {
         self.graph.nodes.remove(&mapping_id);
         snarl.remove_node(node);
         for input in inputs {
-            self.remove_orphaned_placeholder(input, snarl);
+            self.remove_orphaned_input(input, snarl);
         }
         true
     }
@@ -783,7 +796,7 @@ impl GraphViewer<'_> {
         let mut removed = 0;
         loop {
             let removable = pending.iter().find_map(|(&mapping, &node)| {
-                self.references_to(mapping)
+                self.blocking_references_to(mapping)
                     .is_empty()
                     .then_some((mapping, node))
             });
@@ -802,7 +815,7 @@ impl GraphViewer<'_> {
                 .collect::<Vec<_>>()
                 .join(", ");
             self.error = Some(format!(
-                "selected mapping node(s) {blocked} are still referenced; disconnect them first"
+                "selected mapping node(s) {blocked} are still owned by a mapping control"
             ));
         }
         removed
@@ -815,6 +828,7 @@ impl GraphViewer<'_> {
             | Node::Position { .. }
             | Node::JoinField { .. }
             | Node::JoinPosition { .. }
+            | Node::Unconnected
             | Node::Const { .. }
             | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
@@ -891,6 +905,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     Some(Node::JoinPosition { join }) => {
                         format!("Join position #{}", join.get())
                     }
+                    Some(Node::Unconnected) => "Unconnected".to_string(),
                     Some(Node::Const { value }) => {
                         format!("Const: {}", crate::value_editor::display_string(value))
                     }
@@ -1427,6 +1442,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ui.label(format!("#{}", join.get()))
                         .on_hover_text("flattened inner-join position");
                 }
+                Node::Unconnected => {
+                    ui.weak("unconnected input");
+                }
                 Node::Const { value } => show_value_editor(ui, value),
                 Node::FunctionParameter { parameter } => {
                     ui.label(
@@ -1479,33 +1497,39 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     value,
                     ..
                 } => {
-                    ui.vertical(|ui| {
-                        egui::Grid::new(ui.id().with("lookup_paths")).show(ui, |ui| {
-                            ui.label("collection");
-                            self.source_paths.show_collection_picker(
-                                ui,
-                                ui.id().with("lookup_collection"),
-                                collection,
-                            );
-                            ui.end_row();
-                            ui.label("");
-                            self.source_paths.show_value_picker(
-                                ui,
-                                ui.id().with("lookup_key"),
-                                collection,
-                                key,
-                            );
-                            ui.end_row();
-                            ui.label("value");
-                            self.source_paths.show_value_picker(
-                                ui,
-                                ui.id().with("lookup_value"),
-                                collection,
-                                value,
-                            );
-                            ui.end_row();
-                        });
-                    });
+                    // Snarl reuses the prior node width while measuring pin payloads.
+                    // Keep path controls bounded so that width cannot feed back each frame.
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(PATH_EDITOR_WIDTH, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            egui::Grid::new(ui.id().with("lookup_paths")).show(ui, |ui| {
+                                ui.label("collection");
+                                self.source_paths.show_collection_picker(
+                                    ui,
+                                    ui.id().with("lookup_collection"),
+                                    collection,
+                                );
+                                ui.end_row();
+                                ui.label("");
+                                self.source_paths.show_value_picker(
+                                    ui,
+                                    ui.id().with("lookup_key"),
+                                    collection,
+                                    key,
+                                );
+                                ui.end_row();
+                                ui.label("value");
+                                self.source_paths.show_value_picker(
+                                    ui,
+                                    ui.id().with("lookup_value"),
+                                    collection,
+                                    value,
+                                );
+                                ui.end_row();
+                            });
+                        },
+                    );
                 }
                 Node::DynamicSourceField { object, frame, .. } => {
                     ui.label(format!(
@@ -1581,56 +1605,60 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     arg,
                 } => {
                     let previous = *function;
-                    ui.vertical(|ui| {
-                        egui::Grid::new(ui.id().with("aggregate_paths")).show(ui, |ui| {
-                            ui.label("collection");
-                            self.source_paths.show_collection_picker(
-                                ui,
-                                ui.id().with("aggregate_collection"),
-                                collection,
-                            );
-                            ui.end_row();
-                            if expression.is_some() || arg.is_some() {
-                                ui.label("");
-                            } else {
-                                ui.label("operation");
-                            }
-                            egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
-                                .selected_text(
-                                    node_palette::AGGREGATE_OPS
-                                        .iter()
-                                        .find(|(op, _)| op == function)
-                                        .map_or("Aggregate", |(_, label)| *label),
-                                )
-                                .show_ui(ui, |ui| {
-                                    for (op, label) in node_palette::AGGREGATE_OPS {
-                                        ui.selectable_value(function, op, label);
-                                    }
-                                });
-                            ui.end_row();
-                            if expression.is_some() {
-                                ui.label("value");
-                                ui.label("computed");
-                                ui.end_row();
-                            } else if *function != AggregateOp::Count {
-                                ui.label("value");
-                                self.source_paths.show_value_picker(
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(PATH_EDITOR_WIDTH, 0.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            egui::Grid::new(ui.id().with("aggregate_paths")).show(ui, |ui| {
+                                ui.label("collection");
+                                self.source_paths.show_collection_picker(
                                     ui,
-                                    ui.id().with("aggregate_value"),
+                                    ui.id().with("aggregate_collection"),
                                     collection,
-                                    value,
                                 );
                                 ui.end_row();
-                            }
-                        });
-                        if previous != *function {
-                            if node_palette::aggregate_needs_arg(*function) && arg.is_none() {
-                                new_aggregate_arg_needed = true;
-                            } else if !node_palette::aggregate_needs_arg(*function) {
-                                remove_aggregate_wire = arg.take();
-                            }
+                                if expression.is_some() || arg.is_some() {
+                                    ui.label("");
+                                } else {
+                                    ui.label("operation");
+                                }
+                                egui::ComboBox::from_id_salt(ui.id().with("aggregate_op"))
+                                    .selected_text(
+                                        node_palette::AGGREGATE_OPS
+                                            .iter()
+                                            .find(|(op, _)| op == function)
+                                            .map_or("Aggregate", |(_, label)| *label),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        for (op, label) in node_palette::AGGREGATE_OPS {
+                                            ui.selectable_value(function, op, label);
+                                        }
+                                    });
+                                ui.end_row();
+                                if expression.is_some() {
+                                    ui.label("value");
+                                    ui.label("computed");
+                                    ui.end_row();
+                                } else if *function != AggregateOp::Count {
+                                    ui.label("value");
+                                    self.source_paths.show_value_picker(
+                                        ui,
+                                        ui.id().with("aggregate_value"),
+                                        collection,
+                                        value,
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                        },
+                    );
+                    if previous != *function {
+                        if node_palette::aggregate_needs_arg(*function) && arg.is_none() {
+                            new_aggregate_arg_needed = true;
+                        } else if !node_palette::aggregate_needs_arg(*function) {
+                            remove_aggregate_wire = arg.take();
                         }
-                    });
+                    }
                 }
                 Node::JoinAggregate {
                     function,
@@ -1649,25 +1677,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             }
         }
         if new_call_arg_needed {
-            let input = self.graph.nodes.get(&node_id).map_or(0, Self::input_count);
-            let owner = snarl
-                .get_node_info(pin.id.node)
-                .map_or(egui::Pos2::ZERO, |node| node.pos);
-            let (new_id, placeholder) =
-                self.insert_placeholder(snarl, Self::placeholder_position(owner, input, input + 1));
+            let new_id = self.fresh_unconnected();
             if let Some(Node::Call { args, .. }) = self.graph.nodes.get_mut(&node_id) {
                 args.push(new_id);
             }
-            snarl.connect(
-                OutPinId {
-                    node: placeholder,
-                    output: 0,
-                },
-                InPinId {
-                    node: pin.id.node,
-                    input,
-                },
-            );
         }
         if let Some((input_index, removed)) = remove_call_wire {
             let input = InPinId {
@@ -1678,28 +1691,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             for remote in remotes {
                 snarl.disconnect(remote, input);
             }
-            self.remove_orphaned_placeholder(removed, snarl);
+            self.remove_orphaned_input(removed, snarl);
         }
         if new_aggregate_arg_needed {
-            let input = self.graph.nodes.get(&node_id).map_or(0, Self::input_count);
-            let owner = snarl
-                .get_node_info(pin.id.node)
-                .map_or(egui::Pos2::ZERO, |node| node.pos);
-            let (new_id, placeholder) =
-                self.insert_placeholder(snarl, Self::placeholder_position(owner, input, input + 1));
+            let new_id = self.fresh_unconnected();
             if let Some(Node::Aggregate { arg, .. }) = self.graph.nodes.get_mut(&node_id) {
                 *arg = Some(new_id);
             }
-            snarl.connect(
-                OutPinId {
-                    node: placeholder,
-                    output: 0,
-                },
-                InPinId {
-                    node: pin.id.node,
-                    input,
-                },
-            );
         }
         if let Some(removed) = remove_aggregate_wire {
             let expression_input = self.graph.nodes.get(&node_id).is_some_and(|node| {
@@ -1719,7 +1717,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             for remote in remotes {
                 snarl.disconnect(remote, input);
             }
-            self.remove_orphaned_placeholder(removed, snarl);
+            self.remove_orphaned_input(removed, snarl);
         }
         self.record_pin_interaction_id(ui);
         PinInfo::circle()
@@ -1758,7 +1756,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     let field =
                         self.source_field_for(source_leaf.frame.clone(), source_leaf.path.clone());
                     if !self.set_input(to_id, to.id.input, field) {
-                        self.remove_orphaned_placeholder(field, snarl);
+                        self.remove_orphaned_input(field, snarl);
                         return Err(format!(
                             "input {} could not be updated on mapping node {to_id}",
                             to.id.input
@@ -1850,7 +1848,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         }
         snarl.connect(from.id, to.id);
         if let Some(displaced) = displaced {
-            self.remove_orphaned_placeholder(displaced, snarl);
+            self.remove_orphaned_input(displaced, snarl);
         }
     }
 
@@ -1872,28 +1870,11 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
             }
             (_, CanvasNode::Graph(to_id) | CanvasNode::Placeholder(to_id)) => {
-                let owner = snarl
-                    .get_node_info(to.id.node)
-                    .map_or(egui::Pos2::ZERO, |node| node.pos);
                 snarl.disconnect(from.id, to.id);
-                let (placeholder, placeholder_node) = self.insert_placeholder(
-                    snarl,
-                    Self::placeholder_position(
-                        owner,
-                        to.id.input,
-                        self.graph.nodes.get(&to_id).map_or(1, Self::input_count),
-                    ),
-                );
-                self.set_input(to_id, to.id.input, placeholder);
-                snarl.connect(
-                    OutPinId {
-                        node: placeholder_node,
-                        output: 0,
-                    },
-                    to.id,
-                );
+                let unconnected = self.fresh_unconnected();
+                self.set_input(to_id, to.id.input, unconnected);
                 if let Some(disconnected) = disconnected {
-                    self.remove_orphaned_placeholder(disconnected, snarl);
+                    self.remove_orphaned_input(disconnected, snarl);
                 }
                 return;
             }
@@ -1901,7 +1882,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         }
         snarl.disconnect(from.id, to.id);
         if let Some(disconnected) = disconnected {
-            self.remove_orphaned_placeholder(disconnected, snarl);
+            self.remove_orphaned_input(disconnected, snarl);
         }
     }
 
@@ -1931,10 +1912,10 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let Some(mapping_id) = Self::mapping_id(snarl[node]) else {
             return;
         };
-        let references = self.references_to(mapping_id);
+        let references = self.blocking_references_to(mapping_id);
         let remove = ui
             .add_enabled(references.is_empty(), egui::Button::new("Remove"))
-            .on_disabled_hover_text(format!("Disconnect first: {}", references.join(", ")));
+            .on_disabled_hover_text(format!("Used by: {}", references.join(", ")));
         if remove.clicked() {
             self.remove_graph_node(mapping_id, node, snarl);
             ui.close();
