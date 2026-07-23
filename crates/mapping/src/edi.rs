@@ -90,8 +90,8 @@ impl<'de> Deserialize<'de> for EdiLexicalFormat {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EdiValueConstraint {
     path: Vec<String>,
-    min_chars: u16,
-    max_chars: u16,
+    min_chars: u32,
+    max_chars: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     allowed_values: Vec<String>,
 }
@@ -99,8 +99,8 @@ pub struct EdiValueConstraint {
 impl EdiValueConstraint {
     pub fn new(
         path: Vec<String>,
-        min_chars: u16,
-        max_chars: u16,
+        min_chars: u32,
+        max_chars: u32,
         mut allowed_values: Vec<String>,
     ) -> Option<Self> {
         allowed_values.sort();
@@ -122,11 +122,11 @@ impl EdiValueConstraint {
         &self.path
     }
 
-    pub const fn min_chars(&self) -> u16 {
+    pub const fn min_chars(&self) -> u32 {
         self.min_chars
     }
 
-    pub const fn max_chars(&self) -> u16 {
+    pub const fn max_chars(&self) -> u32 {
         self.max_chars
     }
 
@@ -143,8 +143,8 @@ impl<'de> Deserialize<'de> for EdiValueConstraint {
         #[derive(Deserialize)]
         struct Wire {
             path: Vec<String>,
-            min_chars: u16,
-            max_chars: u16,
+            min_chars: u32,
+            max_chars: u32,
             #[serde(default)]
             allowed_values: Vec<String>,
         }

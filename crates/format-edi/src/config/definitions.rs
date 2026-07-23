@@ -44,15 +44,15 @@ pub(super) struct DataDef {
 
 #[derive(Clone, Default)]
 struct ValueConstraintSpec {
-    min_chars: Option<u16>,
-    max_chars: Option<u16>,
+    min_chars: Option<u32>,
+    max_chars: Option<u32>,
     allowed_values: Option<Vec<String>>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
 struct ValueConstraintDef {
-    min_chars: u16,
-    max_chars: u16,
+    min_chars: u32,
+    max_chars: u32,
     allowed_values: Vec<String>,
 }
 
@@ -74,7 +74,7 @@ impl ValueConstraintSpec {
             max_chars: self
                 .max_chars
                 .or_else(|| inherited.and_then(|constraint| constraint.max_chars))
-                .unwrap_or(u16::MAX),
+                .unwrap_or(u32::MAX),
             allowed_values: self
                 .allowed_values
                 .clone()
@@ -407,7 +407,7 @@ fn read_value_constraint(
     let read_width = |attribute| {
         node.attribute(attribute)
             .map(|raw| {
-                raw.parse::<u16>().map_err(|_| {
+                raw.parse::<u32>().map_err(|_| {
                     ConfigError::Invalid(format!("Data field has invalid {attribute} `{raw}`"))
                 })
             })
