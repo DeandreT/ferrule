@@ -1,8 +1,13 @@
+using System.Text;
+using System.Text.RegularExpressions;
+
 namespace Ferrule.Runtime;
 
 /// <summary>Scalar functions supported by generated mappings.</summary>
 public static partial class FerruleFunctions
 {
+    private const int MaximumRegexPatternBytes = 64 * 1024;
+
     public static FerruleValue Call(string function, IReadOnlyList<FerruleValue> arguments)
     {
         ArgumentNullException.ThrowIfNull(function);
@@ -78,6 +83,7 @@ public static partial class FerruleFunctions
                 left.EndsWith(right, StringComparison.Ordinal)),
             "contains" => BinaryScalarString(function, arguments, static (left, right) =>
                 left.Contains(right, StringComparison.Ordinal)),
+            "matches" => Matches(arguments),
             "add" => Numeric(function, arguments, NumericOperation.Add),
             "subtract" => Numeric(function, arguments, NumericOperation.Subtract),
             "multiply" => Numeric(function, arguments, NumericOperation.Multiply),
@@ -119,6 +125,43 @@ public static partial class FerruleFunctions
     {
         RequireArity("is_empty", arguments, 1);
         return FerruleValue.FromBoolean(ScalarText(arguments[0]).Length == 0);
+    }
+
+    private static FerruleValue Matches(IReadOnlyList<FerruleValue> arguments)
+    {
+        if (arguments.Count is not (2 or 3))
+        {
+            throw Arity("matches", 2, arguments.Count);
+        }
+        var input = ScalarText(arguments[0]);
+        var pattern = ScalarText(arguments[1]);
+        if (Encoding.UTF8.GetByteCount(pattern) > MaximumRegexPatternBytes)
+        {
+            throw InvalidArgument("matches", "pattern exceeds 64 KiB");
+        }
+        var flags = arguments.Count == 3 ? ScalarText(arguments[2]) : string.Empty;
+        var options = RegexOptions.CultureInvariant | RegexOptions.NonBacktracking;
+        foreach (var flag in flags)
+        {
+            options |= flag switch
+            {
+                'i' => RegexOptions.IgnoreCase,
+                'm' => RegexOptions.Multiline,
+                's' => RegexOptions.Singleline,
+                'x' => RegexOptions.IgnorePatternWhitespace,
+                _ => throw InvalidArgument("matches", "flags contain an unsupported value"),
+            };
+        }
+        try
+        {
+            return FerruleValue.FromBoolean(Regex.IsMatch(input, pattern, options));
+        }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException)
+        {
+            throw InvalidArgument(
+                "matches",
+                "pattern is invalid or exceeds the compiled-size limit");
+        }
     }
 
     private static FerruleValue UnaryBoolean(

@@ -11,5 +11,6 @@ ir = { workspace = true }
 format-json = { workspace = true }
 format-flextext = { workspace = true }
 mapping = { workspace = true }
+regex = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -5,6 +5,9 @@ use super::{
     scalar::text as scalar_text,
 };
 
+mod isbn;
+mod regex_match;
+
 const MAX_GENERATED_PADDING_CHARS: i64 = 1_000_000;
 
 pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
@@ -27,6 +30,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "starts_with" => binary_scalar_string(args, "starts_with", |a, b| a.starts_with(b)),
         "ends_with" => binary_scalar_string(args, "ends_with", |a, b| a.ends_with(b)),
         "contains" => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
+        "matches" => regex_match::matches(args),
         "sql_like" => binary_string(args, "sql_like", sql_like),
         "pad_string_left" => pad_string(args, "pad_string_left", true),
         "pad_string_right" => pad_string(args, "pad_string_right", false),
@@ -80,74 +84,12 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "get_fileext" => filepath::get_fileext(args),
         "resolve_filepath" => filepath::resolve_filepath(args),
         "is_xml_nil" => is_xml_nil(args),
-        "isbn10_to_isbn13" => isbn10_to_isbn13(args),
+        "isbn10_to_isbn13" => isbn::isbn10_to_isbn13(args),
         "json_serialize_object" => json::serialize_object(args),
         "json_parse_field" => json::parse_field(args),
         "flextext_parse_field" => flextext::parse_field(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
-}
-
-/// Converts a validated ISBN-10 into its equivalent Bookland ISBN-13/EAN-13.
-/// ASCII spaces and hyphens are accepted as presentation separators.
-fn isbn10_to_isbn13(args: &[Value]) -> Result<Value, FunctionError> {
-    let [Value::String(input)] = args else {
-        return match args {
-            [_] => Err(FunctionError::TypeMismatch {
-                function: "isbn10_to_isbn13",
-                got: args[0].type_name(),
-            }),
-            _ => Err(FunctionError::ArityMismatch {
-                function: "isbn10_to_isbn13",
-                expected: 1,
-                got: args.len(),
-            }),
-        };
-    };
-    let normalized = input
-        .bytes()
-        .filter(|byte| !matches!(byte, b' ' | b'-'))
-        .collect::<Vec<_>>();
-    if normalized.len() != 10
-        || !normalized[..9].iter().all(u8::is_ascii_digit)
-        || !(normalized[9].is_ascii_digit() || normalized[9].eq_ignore_ascii_case(&b'X'))
-    {
-        return Err(FunctionError::InvalidArgument {
-            function: "isbn10_to_isbn13",
-            message: "expected a 10-character ISBN with an optional final X check digit",
-        });
-    }
-    let isbn10_sum = normalized[..9]
-        .iter()
-        .enumerate()
-        .map(|(index, byte)| u32::from(byte - b'0') * (10 - index as u32))
-        .sum::<u32>()
-        + if normalized[9].eq_ignore_ascii_case(&b'X') {
-            10
-        } else {
-            u32::from(normalized[9] - b'0')
-        };
-    if isbn10_sum % 11 != 0 {
-        return Err(FunctionError::InvalidArgument {
-            function: "isbn10_to_isbn13",
-            message: "ISBN-10 check digit is invalid",
-        });
-    }
-
-    let mut output = Vec::with_capacity(13);
-    output.extend_from_slice(b"978");
-    output.extend_from_slice(&normalized[..9]);
-    let weighted = output
-        .iter()
-        .enumerate()
-        .map(|(index, byte)| u32::from(byte - b'0') * if index % 2 == 0 { 1 } else { 3 })
-        .sum::<u32>();
-    output.push(b'0' + ((10 - weighted % 10) % 10) as u8);
-    let converted = String::from_utf8(output).map_err(|_| FunctionError::InvalidArgument {
-        function: "isbn10_to_isbn13",
-        message: "converted ISBN was not valid UTF-8",
-    })?;
-    Ok(Value::String(converted))
 }
 
 fn is_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {

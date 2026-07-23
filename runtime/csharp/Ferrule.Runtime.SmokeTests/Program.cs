@@ -225,6 +225,8 @@ internal static partial class Program
         CallEquals(FerruleValue.FromBoolean(true), "starts_with", Text("120"), FerruleValue.FromDouble(1.0));
         CallEquals(FerruleValue.FromBoolean(true), "ends_with", Text("ferrule"), Text("rule"));
         CallEquals(FerruleValue.FromBoolean(true), "ends_with", Text("120"), FerruleValue.FromDouble(20.0));
+        CallEquals(FerruleValue.FromBoolean(true), "matches", Text("Ferrule 2026"), Text(@"^ferrule\s+\d+$"), Text("i"));
+        CallEquals(FerruleValue.FromBoolean(true), "matches", FerruleValue.FromInt64(120), Text(@"2\d"));
         CallEquals(FerruleValue.FromBoolean(true), "contains", Text("ferrule"), Text("rul"));
 
         CallEquals(
@@ -290,6 +292,28 @@ internal static partial class Program
                 "add",
                 new[] { FerruleValue.FromInt64(long.MaxValue), FerruleValue.FromInt64(1) }));
         Equal("add", overflow.Function);
+
+        var invalidRegex = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleFunctions.Call("matches", new[] { Text("value"), Text("[") }));
+        Equal("matches", invalidRegex.Function);
+        Equal(
+            "pattern is invalid or exceeds the compiled-size limit",
+            invalidRegex.Detail);
+        var invalidRegexFlags = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleFunctions.Call(
+                "matches",
+                new[] { Text("value"), Text("value"), Text("q") }));
+        Equal("matches", invalidRegexFlags.Function);
+        Equal("flags contain an unsupported value", invalidRegexFlags.Detail);
+        var oversizedRegex = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleFunctions.Call(
+                "matches",
+                new[] { Text("value"), Text(new string('a', 64 * 1024 + 1)) }));
+        Equal("matches", oversizedRegex.Function);
+        Equal("pattern exceeds 64 KiB", oversizedRegex.Detail);
 
         var unknown = Error(
             FerruleRuntimeError.UnknownFunction,
