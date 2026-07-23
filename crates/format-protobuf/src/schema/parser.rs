@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::ProtobufError;
 
-use super::model::{Cardinality, EnumValue, Layout};
+use super::model::{Cardinality, EnumValue, Layout, ScalarType};
 use super::resolve::{RawDefault, RawEnum, RawField, RawMessage, RawSchema};
 
 const MAX_SCHEMA_TOKENS: usize = 100_000;
@@ -63,7 +63,7 @@ impl<'a> Lexer<'a> {
                 TokenKind::Number(self.number())
             } else if ch == '"' || ch == '\'' {
                 TokenKind::String(self.string(ch)?)
-            } else if "{}[]=;.,-".contains(ch) {
+            } else if "{}[]=;.,-<>".contains(ch) {
                 self.next();
                 TokenKind::Symbol(ch)
             } else {
@@ -323,6 +323,10 @@ impl Parser {
                 let (oneof, oneof_fields) = self.parse_oneof(&full_name)?;
                 oneofs.push(oneof);
                 fields.extend(oneof_fields);
+            } else if self.peek_identifier("map") {
+                let (entry, field) = self.parse_map_field(&full_name)?;
+                self.messages.push(entry);
+                fields.push(field);
             } else if self.peek_identifier("required")
                 || self.peek_identifier("optional")
                 || self.peek_identifier("repeated")
@@ -343,8 +347,105 @@ impl Parser {
             full_name,
             fields,
             oneofs,
+            map_entry: false,
         });
         Ok(())
+    }
+
+    fn parse_map_field(&mut self, scope: &str) -> Result<(RawMessage, RawField), ProtobufError> {
+        self.expect_identifier("map")?;
+        self.expect_symbol('<')?;
+        let key_type = self.parse_qualified_name(false)?;
+        let key_scalar = ScalarType::parse(&key_type).ok_or_else(|| {
+            self.error_value(format!(
+                "map key type `{key_type}` is not a scalar key type"
+            ))
+        })?;
+        if !matches!(
+            key_scalar,
+            ScalarType::Int32
+                | ScalarType::Int64
+                | ScalarType::Uint32
+                | ScalarType::Uint64
+                | ScalarType::Sint32
+                | ScalarType::Sint64
+                | ScalarType::Fixed32
+                | ScalarType::Fixed64
+                | ScalarType::Sfixed32
+                | ScalarType::Sfixed64
+                | ScalarType::Bool
+                | ScalarType::String
+        ) {
+            return self.error(format!(
+                "map key type `{key_type}` must be an integer, bool, or string"
+            ));
+        }
+        self.expect_symbol(',')?;
+        let value_type = self.parse_qualified_name(true)?;
+        self.expect_symbol('>')?;
+        let name = self.expect_any_identifier()?;
+        self.expect_symbol('=')?;
+        let number = self.parse_unsigned_number::<u32>("field number")?;
+        if self.consume_symbol('[') {
+            loop {
+                let option = self.parse_qualified_name(false)?;
+                self.expect_symbol('=')?;
+                let _ = self.parse_default()?;
+                if option != "deprecated" {
+                    return self.error(format!("map field cannot use option `{option}`"));
+                }
+                if self.consume_symbol(']') {
+                    break;
+                }
+                self.expect_symbol(',')?;
+            }
+        }
+        self.expect_symbol(';')?;
+
+        let entry_name = map_entry_name(&name);
+        let entry_full_name = qualify(scope, &entry_name);
+        let entry = RawMessage {
+            name: entry_name,
+            full_name: entry_full_name.clone(),
+            fields: vec![
+                RawField {
+                    name: "key".to_string(),
+                    number: 1,
+                    cardinality: Cardinality::Implicit,
+                    type_name: key_type,
+                    scope: entry_full_name.clone(),
+                    packed: false,
+                    default: None,
+                    oneof: None,
+                    map: false,
+                },
+                RawField {
+                    name: "value".to_string(),
+                    number: 2,
+                    cardinality: Cardinality::Implicit,
+                    type_name: value_type,
+                    scope: entry_full_name.clone(),
+                    packed: false,
+                    default: None,
+                    oneof: None,
+                    map: false,
+                },
+            ],
+            oneofs: Vec::new(),
+            map_entry: true,
+        };
+        let field = RawField {
+            name,
+            number,
+            cardinality: Cardinality::Repeated,
+            type_name: format!(".{entry_full_name}"),
+            scope: scope.to_string(),
+            packed: false,
+            default: None,
+            oneof: None,
+            map: true,
+        };
+        Ok((entry, field))
     }
 
     fn parse_oneof(&mut self, scope: &str) -> Result<(String, Vec<RawField>), ProtobufError> {
@@ -508,6 +609,7 @@ impl Parser {
             packed,
             default,
             oneof,
+            map: false,
         })
     }
 
@@ -669,4 +771,21 @@ fn qualify(prefix: &str, name: &str) -> String {
     } else {
         format!("{prefix}.{name}")
     }
+}
+
+fn map_entry_name(field: &str) -> String {
+    let mut name = String::new();
+    let mut uppercase = true;
+    for character in field.chars() {
+        if character == '_' {
+            uppercase = true;
+        } else if uppercase {
+            name.extend(character.to_uppercase());
+            uppercase = false;
+        } else {
+            name.push(character);
+        }
+    }
+    name.push_str("Entry");
+    name
 }

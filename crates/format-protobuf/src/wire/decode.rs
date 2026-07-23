@@ -187,6 +187,9 @@ fn materialize_message(
                         budget,
                     )?);
                 }
+                if field.is_map() {
+                    decoded = deduplicate_map_entries(decoded, &field_path)?;
+                }
                 fields.push((field.name().to_string(), Instance::Repeated(decoded)));
             }
             Cardinality::Required => {
@@ -240,6 +243,46 @@ fn materialize_message(
         }
     }
     Ok(Instance::Group(fields))
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum MapKey {
+    Bool(bool),
+    Int(i64),
+    String(String),
+}
+
+fn deduplicate_map_entries(
+    entries: Vec<Instance>,
+    path: &str,
+) -> Result<Vec<Instance>, ProtobufError> {
+    let mut positions = HashMap::with_capacity(entries.len());
+    let mut ordered = Vec::with_capacity(entries.len());
+    for (index, entry) in entries.into_iter().enumerate() {
+        let key = decoded_map_key(&entry, &format!("{path}[{index}].key"))?;
+        if let Some(previous) = positions.insert(key, ordered.len()) {
+            ordered[previous] = None;
+        }
+        ordered.push(Some(entry));
+    }
+    Ok(ordered.into_iter().flatten().collect())
+}
+
+fn decoded_map_key(entry: &Instance, path: &str) -> Result<MapKey, ProtobufError> {
+    let Some(value) = entry.field("key").and_then(Instance::as_scalar) else {
+        return Err(ProtobufError::schema(
+            "decoded map entry does not contain a scalar key",
+        ));
+    };
+    match value {
+        Value::Bool(value) => Ok(MapKey::Bool(*value)),
+        Value::Int(value) => Ok(MapKey::Int(*value)),
+        Value::String(value) => Ok(MapKey::String(value.clone())),
+        Value::Null | Value::XmlNil(_) | Value::Float(_) => Err(ProtobufError::instance(
+            path,
+            "decoded map key has an invalid type",
+        )),
+    }
 }
 
 fn materialize_singular(
