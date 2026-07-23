@@ -131,6 +131,17 @@ impl GraphBuilder<'_> {
             ("set-xsi-nil", _) => Node::Const {
                 value: Value::xml_nil(),
             },
+            ("not-exists", 5) if fc.library == "core" => {
+                let input = input_or_null(self, 0);
+                let exists = self.alloc(Node::Call {
+                    function: "exists".to_string(),
+                    args: vec![input],
+                });
+                Node::Call {
+                    function: "not".to_string(),
+                    args: vec![exists],
+                }
+            }
             ("if-else", _) => self.if_else_node(&input_ids),
             ("value-map", _) => {
                 let value_map = fc.valuemap.clone().unwrap_or_default();
