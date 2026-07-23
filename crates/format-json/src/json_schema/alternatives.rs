@@ -6,6 +6,12 @@ use ir::{
 use super::{parse, parse_properties, resolve_ref, unsupported_union};
 use crate::JsonFormatError;
 
+enum WrapperAdditional {
+    Open,
+    Closed,
+    Typed(Box<SchemaNode>),
+}
+
 pub(super) fn parse_inferred_const_scalar(
     name: &str,
     value: &serde_json::Value,
@@ -66,19 +72,16 @@ pub(super) fn parse_object_alternatives(
         })?;
     let base_children = parse_properties(schema, doc, active_refs)?;
     let base_required = required_names(schema);
-    let base_closed = match schema.get("additionalProperties") {
-        None | Some(serde_json::Value::Bool(true)) => false,
-        Some(serde_json::Value::Bool(false)) => true,
-        Some(serde_json::Value::Object(_)) => {
-            return Err(unsupported_union(
-                name,
-                "typed additionalProperties on an alternative wrapper are not supported",
-            ));
+    let base_additional = match schema.get("additionalProperties") {
+        None | Some(serde_json::Value::Bool(true)) => WrapperAdditional::Open,
+        Some(serde_json::Value::Bool(false)) => WrapperAdditional::Closed,
+        Some(additional @ serde_json::Value::Object(_)) => {
+            WrapperAdditional::Typed(Box::new(parse("*", additional, doc, active_refs)?))
         }
         Some(_) => {
             return Err(unsupported_union(
                 name,
-                "alternative wrapper additionalProperties must be a boolean",
+                "alternative wrapper additionalProperties must be a boolean or schema",
             ));
         }
     };
@@ -138,7 +141,7 @@ pub(super) fn parse_object_alternatives(
                     &base_children,
                     &base_required,
                     &base_constraints,
-                    base_closed,
+                    &base_additional,
                     &variant_children,
                     nested,
                     &mut merged,
@@ -166,7 +169,7 @@ pub(super) fn parse_object_alternatives(
                     ),
                 ));
             }
-            let allowed = !base_closed || base_children.iter().any(|base| base.name == child.name);
+            let allowed = wrapper_allows(name, &base_children, &base_additional, &child)?;
             if allowed {
                 if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
                     if existing != &child {
@@ -246,6 +249,36 @@ fn merge_constraints(
     Ok(merged)
 }
 
+fn wrapper_allows(
+    union_name: &str,
+    base_children: &[SchemaNode],
+    additional: &WrapperAdditional,
+    child: &SchemaNode,
+) -> Result<bool, JsonFormatError> {
+    if base_children.iter().any(|base| base.name == child.name) {
+        return Ok(true);
+    }
+    match additional {
+        WrapperAdditional::Open => Ok(true),
+        WrapperAdditional::Closed => Ok(false),
+        WrapperAdditional::Typed(expected) => {
+            let mut expected = expected.as_ref().clone();
+            expected.name = child.name.clone();
+            if expected == *child {
+                Ok(true)
+            } else {
+                Err(unsupported_union(
+                    union_name,
+                    &format!(
+                        "field `{}` does not match the alternative wrapper's typed additionalProperties schema",
+                        child.name
+                    ),
+                ))
+            }
+        }
+    }
+}
+
 fn alternatives_are_pairwise_disjoint(alternatives: &[GroupAlternative]) -> bool {
     alternatives.iter().enumerate().all(|(index, left)| {
         alternatives[index + 1..]
@@ -277,7 +310,7 @@ fn merge_nested_alternative(
     base_children: &[SchemaNode],
     base_required: &[String],
     base_constraints: &[GroupAlternativeConstraint],
-    base_closed: bool,
+    base_additional: &WrapperAdditional,
     variant_children: &[SchemaNode],
     alternative: GroupAlternative,
     merged: &mut Vec<SchemaNode>,
@@ -305,7 +338,7 @@ fn merge_nested_alternative(
                 ),
             ));
         }
-        let allowed = !base_closed || base_children.iter().any(|base| base.name == child.name);
+        let allowed = wrapper_allows(union_name, base_children, base_additional, child)?;
         if !allowed {
             continue;
         }
