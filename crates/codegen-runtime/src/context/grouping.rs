@@ -24,6 +24,7 @@ struct GroupBucket<'a, K> {
     key: K,
     first: ScopeContext<'a>,
     members: Vec<Instance>,
+    retained: bool,
 }
 
 impl<'a> GroupedItems<'a> {
@@ -42,6 +43,33 @@ impl<'a> GroupedItems<'a> {
                     key,
                     first: candidate,
                     members: vec![member],
+                    retained: true,
+                });
+            }
+        }
+        Self::from_buckets(groups, wrapper_name)
+    }
+
+    /// Partitions by key and retains a group when any member's predicate
+    /// result is true.
+    pub fn by_where_any(
+        candidates: Vec<(ScopeContext<'a>, Value, bool)>,
+        wrapper_name: Option<&str>,
+    ) -> Self {
+        let mut groups: Vec<GroupBucket<'a, Value>> = Vec::new();
+        for (candidate, key, retained) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if let Some(group) = groups.iter_mut().find(|group| group.key == key) {
+                group.members.push(member);
+                group.retained |= retained;
+            } else {
+                groups.push(GroupBucket {
+                    key,
+                    first: candidate,
+                    members: vec![member],
+                    retained,
                 });
             }
         }
@@ -66,6 +94,33 @@ impl<'a> GroupedItems<'a> {
                     key,
                     first: candidate,
                     members: vec![member],
+                    retained: true,
+                });
+            }
+        }
+        Self::from_buckets(groups, wrapper_name)
+    }
+
+    /// Partitions consecutive equal keys and retains a group when any member's
+    /// predicate result is true.
+    pub fn adjacent_by_where_any(
+        candidates: Vec<(ScopeContext<'a>, Value, bool)>,
+        wrapper_name: Option<&str>,
+    ) -> Self {
+        let mut groups: Vec<GroupBucket<'a, Value>> = Vec::new();
+        for (candidate, key, retained) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if let Some(group) = groups.last_mut().filter(|group| group.key == key) {
+                group.members.push(member);
+                group.retained |= retained;
+            } else {
+                groups.push(GroupBucket {
+                    key,
+                    first: candidate,
+                    members: vec![member],
+                    retained,
                 });
             }
         }
@@ -90,6 +145,33 @@ impl<'a> GroupedItems<'a> {
                     key: (),
                     first: candidate,
                     members: vec![member],
+                    retained: true,
+                });
+            }
+        }
+        Self::from_buckets(groups, wrapper_name)
+    }
+
+    /// Starts groups at true boundary predicates and retains a group when any
+    /// member's independent retention predicate is true.
+    pub fn starting_with_where_any(
+        candidates: Vec<(ScopeContext<'a>, bool, bool)>,
+        wrapper_name: Option<&str>,
+    ) -> Self {
+        let mut groups: Vec<GroupBucket<'a, ()>> = Vec::new();
+        for (candidate, starts_group, retained) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if !starts_group && let Some(group) = groups.last_mut() {
+                group.members.push(member);
+                group.retained |= retained;
+            } else {
+                groups.push(GroupBucket {
+                    key: (),
+                    first: candidate,
+                    members: vec![member],
+                    retained,
                 });
             }
         }
@@ -114,9 +196,38 @@ impl<'a> GroupedItems<'a> {
                     key: (),
                     first: candidate,
                     members: vec![member],
+                    retained: true,
                 });
             } else if let Some(group) = groups.last_mut() {
                 group.members.push(member);
+            }
+            previous_ended_group = ends_group;
+        }
+        Self::from_buckets(groups, wrapper_name)
+    }
+
+    /// Ends groups at true boundary predicates and retains a group when any
+    /// member's independent retention predicate is true.
+    pub fn ending_with_where_any(
+        candidates: Vec<(ScopeContext<'a>, bool, bool)>,
+        wrapper_name: Option<&str>,
+    ) -> Self {
+        let mut groups: Vec<GroupBucket<'a, ()>> = Vec::new();
+        let mut previous_ended_group = true;
+        for (candidate, ends_group, retained) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if previous_ended_group {
+                groups.push(GroupBucket {
+                    key: (),
+                    first: candidate,
+                    members: vec![member],
+                    retained,
+                });
+            } else if let Some(group) = groups.last_mut() {
+                group.members.push(member);
+                group.retained |= retained;
             }
             previous_ended_group = ends_group;
         }
@@ -146,6 +257,39 @@ impl<'a> GroupedItems<'a> {
                     key: (),
                     first: candidate,
                     members: vec![member],
+                    retained: true,
+                });
+            }
+        }
+        Ok(Self::from_buckets(groups, wrapper_name))
+    }
+
+    /// Chunks candidates into fixed-size groups and retains a group when any
+    /// member's predicate result is true.
+    pub fn into_blocks_where_any(
+        candidates: Vec<(ScopeContext<'a>, bool)>,
+        wrapper_name: Option<&str>,
+        size: usize,
+        node: u32,
+    ) -> Result<Self, RuntimeError> {
+        if size == 0 {
+            return Err(RuntimeError::InvalidBlockSize { node });
+        }
+
+        let mut groups: Vec<GroupBucket<'a, ()>> = Vec::new();
+        for (candidate, retained) in candidates {
+            let Some(member) = candidate.current_instance().cloned() else {
+                continue;
+            };
+            if let Some(group) = groups.last_mut().filter(|group| group.members.len() < size) {
+                group.members.push(member);
+                group.retained |= retained;
+            } else {
+                groups.push(GroupBucket {
+                    key: (),
+                    first: candidate,
+                    members: vec![member],
+                    retained,
                 });
             }
         }
@@ -204,6 +348,7 @@ impl<'a> GroupedItems<'a> {
         Self {
             groups: groups
                 .into_iter()
+                .filter(|group| group.retained)
                 .filter_map(|group| {
                     let terminal = group.first.frames.last()?;
                     let collection = terminal

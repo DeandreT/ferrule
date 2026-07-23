@@ -41,7 +41,6 @@ pub enum ScopeFeature {
     DynamicBindings,
     DynamicChildren,
     DynamicFieldMerge,
-    PostGroupFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +156,6 @@ impl fmt::Display for ScopeFeature {
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
             Self::DynamicChildren => formatter.write_str("dynamic target child scopes"),
             Self::DynamicFieldMerge => formatter.write_str("dynamic-field merging"),
-            Self::PostGroupFilter => formatter.write_str("post-group filtering"),
         }
     }
 }
