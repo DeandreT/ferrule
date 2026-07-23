@@ -439,3 +439,295 @@ fn nillable_elements_import_and_export() {
     let exported = export(&schema).unwrap();
     assert!(exported.contains(r#"name="Value" type="xs:string" nillable="true""#));
 }
+
+#[test]
+fn qualified_schema_export_preserves_element_and_attribute_forms() {
+    let namespace = "urn:ferrule:qualified";
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::scalar("Qualified", ScalarType::String)
+                .xml_qualified(namespace)
+                .unwrap(),
+            SchemaNode::scalar("Plain", ScalarType::String).xml_unqualified(),
+            SchemaNode::scalar("qualifiedAttribute", ScalarType::String)
+                .xml_qualified(namespace)
+                .unwrap()
+                .attribute(),
+            SchemaNode::scalar("plainAttribute", ScalarType::String)
+                .xml_unqualified()
+                .attribute(),
+        ],
+    )
+    .xml_qualified(namespace)
+    .unwrap();
+
+    let xsd = export(&schema).unwrap();
+    assert!(
+        xsd.contains(r#"targetNamespace="urn:ferrule:qualified""#),
+        "{xsd}"
+    );
+    assert!(
+        xsd.contains(r#"name="Qualified" type="xs:string" form="qualified""#),
+        "{xsd}"
+    );
+    assert!(xsd.contains(r#"name="Plain" type="xs:string""#), "{xsd}");
+    assert!(
+        xsd.contains(r#"name="qualifiedAttribute" type="xs:string" form="qualified""#),
+        "{xsd}"
+    );
+
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_qualified_export_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_set_partitions_and_deduplicates_recursive_namespace_boundaries() {
+    let qualified = |node: SchemaNode, namespace: &str| node.xml_qualified(namespace).unwrap();
+    let shared = || {
+        qualified(
+            SchemaNode::group(
+                "Shared",
+                vec![qualified(
+                    SchemaNode::scalar("Token", ScalarType::String),
+                    "urn:ferrule:third",
+                )],
+            ),
+            "urn:ferrule:foreign",
+        )
+    };
+    let schema = qualified(
+        SchemaNode::group(
+            "Root",
+            vec![
+                qualified(
+                    SchemaNode::group("Left", vec![shared()]),
+                    "urn:ferrule:root",
+                ),
+                qualified(
+                    SchemaNode::group("Right", vec![shared().repeating()]),
+                    "urn:ferrule:root",
+                ),
+            ],
+        ),
+        "urn:ferrule:root",
+    );
+
+    let set = export_set(&schema, "mapping-source.xsd").unwrap();
+    assert_eq!(set.dependencies.len(), 2);
+    assert_eq!(set.dependencies[0].filename, "mapping-source-ns1.xsd");
+    assert_eq!(set.dependencies[1].filename, "mapping-source-ns2.xsd");
+    assert!(
+        set.root
+            .contains(r#"schemaLocation="mapping-source-ns1.xsd""#)
+    );
+    assert!(set.root.contains(r#"ref="ns1:Shared""#));
+    assert!(
+        set.dependencies[0]
+            .contents
+            .contains(r#"schemaLocation="mapping-source-ns2.xsd""#)
+    );
+    assert!(set.dependencies[0].contents.contains(r#"ref="ns1:Token""#));
+
+    let dir = std::env::temp_dir().join(format!("ferrule_xsd_export_set_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("mapping-source.xsd"), &set.root).unwrap();
+    for dependency in &set.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents).unwrap();
+    }
+    let imported = import(&dir.join("mapping-source.xsd")).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_set_supports_qualified_attribute_dependencies() {
+    let attribute = SchemaNode::scalar("token", ScalarType::String)
+        .attribute()
+        .xml_qualified("urn:ferrule:metadata")
+        .unwrap();
+    let schema = SchemaNode::group("Root", vec![attribute])
+        .xml_qualified("urn:ferrule:document")
+        .unwrap();
+
+    let set = export_set(&schema, "document.xsd").unwrap();
+    assert_eq!(set.dependencies.len(), 1);
+    assert!(set.root.contains(r#"<xs:attribute ref="ns1:token"/>"#));
+    assert!(
+        set.dependencies[0]
+            .contents
+            .contains(r#"<xs:attribute name="token" type="xs:string"/>"#)
+    );
+}
+
+#[test]
+fn export_set_supports_multiple_declarations_in_one_foreign_namespace() {
+    let qualified = |node: SchemaNode, namespace: &str| node.xml_qualified(namespace).unwrap();
+    let schema = qualified(
+        SchemaNode::group(
+            "Root",
+            vec![
+                qualified(
+                    SchemaNode::scalar("First", ScalarType::String),
+                    "urn:ferrule:shared",
+                ),
+                qualified(
+                    SchemaNode::scalar("Second", ScalarType::Int),
+                    "urn:ferrule:shared",
+                ),
+            ],
+        ),
+        "urn:ferrule:root",
+    );
+
+    let set = export_set(&schema, "shared.xsd").unwrap();
+    assert_eq!(set.dependencies.len(), 2);
+    assert!(set.root.contains(r#"schemaLocation="shared-ns1.xsd""#));
+    assert!(set.root.contains(r#"schemaLocation="shared-ns2.xsd""#));
+    assert!(set.root.contains(r#"ref="ns1:First""#));
+    assert!(set.root.contains(r#"ref="ns1:Second""#));
+
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_shared_namespace_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("shared.xsd"), &set.root).unwrap();
+    for dependency in &set.dependencies {
+        std::fs::write(dir.join(&dependency.filename), &dependency.contents).unwrap();
+    }
+    let imported = import(&dir.join("shared.xsd")).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    assert_eq!(imported, schema);
+}
+
+#[test]
+fn export_set_materializes_a_foreign_recursive_occurrence() {
+    let recursive = SchemaNode::recursive_group("Emphasis", "Paragraph")
+        .xml_qualified("urn:ferrule:markup")
+        .unwrap();
+    let paragraph = SchemaNode::group(
+        "Paragraph",
+        vec![
+            SchemaNode::scalar("Text", ScalarType::String).xml_unqualified(),
+            recursive,
+        ],
+    )
+    .xml_qualified("urn:ferrule:document")
+    .unwrap();
+    let schema = SchemaNode::group("Document", vec![paragraph])
+        .xml_qualified("urn:ferrule:document")
+        .unwrap();
+
+    let set = export_set(&schema, "recursive.xsd").unwrap();
+    assert_eq!(set.dependencies.len(), 1);
+    let dependency = &set.dependencies[0].contents;
+    assert!(dependency.contains(r#"<xs:element name="Emphasis""#));
+    assert!(dependency.contains(r#"<xs:element ref="tns:Emphasis""#));
+    assert!(set.root.contains(r#"ref="ns1:Emphasis""#));
+}
+
+#[test]
+fn export_set_rejects_conflicts_cycles_limits_and_unsafe_names() {
+    let qualified = |node: SchemaNode, namespace: &str| node.xml_qualified(namespace).unwrap();
+    let conflict = qualified(
+        SchemaNode::group(
+            "Root",
+            vec![
+                SchemaNode::group(
+                    "Left",
+                    vec![qualified(
+                        SchemaNode::scalar("Shared", ScalarType::String),
+                        "urn:ferrule:foreign",
+                    )],
+                ),
+                SchemaNode::group(
+                    "Right",
+                    vec![qualified(
+                        SchemaNode::scalar("Shared", ScalarType::Int),
+                        "urn:ferrule:foreign",
+                    )],
+                ),
+            ],
+        ),
+        "urn:ferrule:root",
+    );
+    assert!(matches!(
+        export_set(&conflict, "root.xsd"),
+        Err(XmlFormatError::ConflictingNamespaceDeclaration { name, .. })
+            if name == "Shared"
+    ));
+
+    let cycle = qualified(
+        SchemaNode::group(
+            "Root",
+            vec![qualified(
+                SchemaNode::group(
+                    "Other",
+                    vec![qualified(
+                        SchemaNode::scalar("Root", ScalarType::String),
+                        "urn:ferrule:root",
+                    )],
+                ),
+                "urn:ferrule:foreign",
+            )],
+        ),
+        "urn:ferrule:root",
+    );
+    assert!(matches!(
+        export_set(&cycle, "root.xsd"),
+        Err(XmlFormatError::NamespaceDependencyCycle { name, .. }) if name == "Root"
+    ));
+
+    let many = qualified(
+        SchemaNode::group(
+            "Root",
+            (0..=64)
+                .map(|index| {
+                    qualified(
+                        SchemaNode::scalar(format!("Value{index}"), ScalarType::String),
+                        &format!("urn:ferrule:namespace:{index}"),
+                    )
+                })
+                .collect(),
+        ),
+        "urn:ferrule:root",
+    );
+    assert!(matches!(
+        export_set(&many, "root.xsd"),
+        Err(XmlFormatError::NamespaceArtifactLimit { limit: 64 })
+    ));
+    assert!(matches!(
+        export_set(&SchemaNode::group("Root", Vec::new()), "../root.xsd"),
+        Err(XmlFormatError::InvalidXsdArtifactName { .. })
+    ));
+
+    let ambiguous = qualified(
+        SchemaNode::group(
+            "Root",
+            vec![
+                qualified(
+                    SchemaNode::scalar("Code", ScalarType::String),
+                    "urn:ferrule:first",
+                ),
+                qualified(
+                    SchemaNode::scalar("Code", ScalarType::String),
+                    "urn:ferrule:second",
+                ),
+            ],
+        ),
+        "urn:ferrule:root",
+    );
+    assert!(matches!(
+        export_set(&ambiguous, "root.xsd"),
+        Err(XmlFormatError::AmbiguousNamespaceSiblings { name, .. }) if name == "Code"
+    ));
+}

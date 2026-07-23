@@ -779,6 +779,82 @@ fn xml_nil_requires_nillable_schema_and_no_content() {
 }
 
 #[test]
+fn explicit_xml_namespaces_match_and_render_expanded_names() {
+    let qualified = |name: &str, namespace: &str| {
+        SchemaNode::scalar(name, ScalarType::String)
+            .xml_qualified(namespace)
+            .unwrap()
+    };
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            qualified("Code", "urn:ferrule:document"),
+            SchemaNode::scalar("Plain", ScalarType::String).xml_unqualified(),
+            qualified("token", "urn:ferrule:metadata").attribute(),
+        ],
+    )
+    .xml_qualified("urn:ferrule:document")
+    .unwrap();
+    let xml = r#"<Root xmlns="urn:ferrule:document" xmlns:o="urn:ferrule:other" xmlns:m="urn:ferrule:metadata" m:token="A1"><o:Code>foreign</o:Code><Code>selected</Code><Plain xmlns="">plain</Plain></Root>"#;
+
+    let instance = from_str(xml, &schema).unwrap();
+    assert_eq!(
+        instance.field("Code").and_then(Instance::as_scalar),
+        Some(&Value::String("selected".into()))
+    );
+    assert_eq!(
+        instance.field("Plain").and_then(Instance::as_scalar),
+        Some(&Value::String("plain".into()))
+    );
+    assert_eq!(
+        instance.field("token").and_then(Instance::as_scalar),
+        Some(&Value::String("A1".into()))
+    );
+
+    let rendered = to_string(&schema, &instance).unwrap();
+    assert!(
+        rendered.contains(r#"<Root xmlns="urn:ferrule:document""#),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(r#"xmlns:fns1="urn:ferrule:metadata" fns1:token="A1""#),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(r#"<Plain xmlns="">plain</Plain>"#),
+        "{rendered}"
+    );
+    assert_eq!(from_str(&rendered, &schema).unwrap(), instance);
+
+    assert!(matches!(
+        from_str(
+            r#"<o:Root xmlns:o="urn:ferrule:other"><o:Code>wrong</o:Code></o:Root>"#,
+            &schema,
+        ),
+        Err(XmlFormatError::UnexpectedRoot { expected, found })
+            if expected == "{urn:ferrule:document}Root"
+                && found == "{urn:ferrule:other}Root"
+    ));
+}
+
+#[test]
+fn legacy_xml_names_remain_local_name_matches() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![SchemaNode::scalar("Value", ScalarType::String)],
+    );
+    let instance = from_str(
+        r#"<x:Root xmlns:x="urn:ferrule:legacy"><x:Value>kept</x:Value></x:Root>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        instance.field("Value").and_then(Instance::as_scalar),
+        Some(&Value::String("kept".into()))
+    );
+}
+
+#[test]
 fn recursive_groups_round_trip_and_export_as_root_references() {
     let schema = SchemaNode::group(
         "directory",

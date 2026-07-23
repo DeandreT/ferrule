@@ -7,7 +7,7 @@ layout and dialect details that an extension cannot express.
 
 | Format | Source | Target | Current scope |
 | --- | :---: | :---: | --- |
-| XML | Yes | Yes | Hierarchical instance I/O; XSD-lite and bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
+| XML | Yes | Yes | Hierarchical instance I/O; namespace-aware element and attribute names; XSD-lite with local import graphs; bounded DTD import with internal content-model parameter entities; attributes, `xsi:nil`, generic elements, and ordered mixed content; external DTD identifiers are never loaded |
 | JSON | Yes | Yes | Hierarchical instance I/O and JSON Lines; JSON Schema local references, compatible closed-object alternatives, and typed dynamic properties |
 | CSV | Yes | Yes | Delimited flat rows with configurable delimiter and headers |
 | Fixed-width | Yes | Yes | Validated Unicode-scalar column layouts, configurable fill, record separators, and empty-value handling |
@@ -26,8 +26,13 @@ layout and dialect details that an extension cannot express.
 - PDF targets are not supported.
 - XBRL taxonomy formula, presentation, calculation, and linkbase execution are
   outside the current runtime.
-- XML supports a practical schema and namespace subset, not arbitrary namespace
-  identity or every `xsi:type` input shape.
+- XML preserves declared expanded-name identity for elements and attributes.
+  MFD export partitions foreign declarations into deterministic local XSD
+  siblings and publishes the complete graph atomically. General `xsi:type`,
+  substitution-group, and namespace-dependent wildcard semantics remain outside
+  the supported schema subset. Because mapping paths use local field names,
+  sibling declarations cannot differ only by namespace; XSD import rejects that
+  ambiguous shape explicitly.
 - JSON Schema supports selected object alternatives, not general scalar, array,
   or nested union composition.
 - Database execution is SQLite-specific and does not yet provide a general SQL

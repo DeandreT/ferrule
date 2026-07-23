@@ -60,6 +60,68 @@ pub enum ValueGeneration {
     MaxNumber,
 }
 
+/// Validated namespace URI used by an XML expanded name.
+///
+/// The inner string is private so a qualified namespace can never carry the
+/// empty URI; an absent namespace is represented by
+/// [`XmlNamespace::Unqualified`] instead.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct XmlNamespaceUri(String);
+
+impl XmlNamespaceUri {
+    pub fn new(uri: impl Into<String>) -> Option<Self> {
+        let uri = uri.into();
+        (!uri.is_empty()).then_some(Self(uri))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for XmlNamespaceUri {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let uri = String::deserialize(deserializer)?;
+        Self::new(uri).ok_or_else(|| serde::de::Error::custom("XML namespace URI cannot be empty"))
+    }
+}
+
+/// Exact namespace identity for one XML element or attribute name.
+///
+/// `SchemaNode::xml_namespace == None` remains the legacy, format-agnostic
+/// behavior. Explicit metadata distinguishes a truly unqualified name from a
+/// name in a non-empty namespace.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "uri", rename_all = "snake_case")]
+pub enum XmlNamespace {
+    Unqualified,
+    Qualified(XmlNamespaceUri),
+}
+
+impl XmlNamespace {
+    pub fn qualified(uri: impl Into<String>) -> Option<Self> {
+        XmlNamespaceUri::new(uri).map(Self::Qualified)
+    }
+
+    pub fn uri(&self) -> Option<&str> {
+        match self {
+            Self::Unqualified => None,
+            Self::Qualified(uri) => Some(uri.as_str()),
+        }
+    }
+
+    pub fn matches(&self, namespace: Option<&str>) -> bool {
+        match self {
+            Self::Unqualified => namespace.is_none_or(str::is_empty),
+            Self::Qualified(uri) => namespace == Some(uri.as_str()),
+        }
+    }
+}
+
 /// Which table owns the foreign-key column for a declared database relation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -150,6 +212,11 @@ impl Value {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SchemaNode {
     pub name: String,
+    /// Exact XML namespace identity for this local name. `None` preserves the
+    /// legacy behavior: readers match by local name and writers inherit the
+    /// current default namespace. Non-XML formats ignore this metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml_namespace: Option<XmlNamespace>,
     #[serde(default)]
     pub repeating: bool,
     /// Reuses the shape of the nearest concrete group with this name.
@@ -213,6 +280,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
         struct Repr {
             name: String,
             #[serde(default)]
+            xml_namespace: Option<XmlNamespace>,
+            #[serde(default)]
             repeating: bool,
             #[serde(default)]
             recursive_ref: Option<String>,
@@ -238,6 +307,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         let repr = Repr::deserialize(deserializer)?;
         let node = Self {
             name: repr.name,
+            xml_namespace: repr.xml_namespace,
             repeating: repr.repeating,
             recursive_ref: repr.recursive_ref,
             attribute: repr.attribute,
@@ -402,6 +472,7 @@ impl SchemaNode {
     pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
         Self {
             name: name.into(),
+            xml_namespace: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -419,6 +490,7 @@ impl SchemaNode {
     pub fn group(name: impl Into<String>, children: Vec<SchemaNode>) -> Self {
         Self {
             name: name.into(),
+            xml_namespace: None,
             repeating: false,
             recursive_ref: None,
             attribute: false,
@@ -461,6 +533,18 @@ impl SchemaNode {
                 } if children.is_empty() && alternatives.is_empty() && dynamic.is_none()
             )
             && self.alternative_mode.is_exclusive()
+    }
+
+    /// Marks this XML name as explicitly unqualified.
+    pub fn xml_unqualified(mut self) -> Self {
+        self.xml_namespace = Some(XmlNamespace::Unqualified);
+        self
+    }
+
+    /// Marks this XML name as belonging to a non-empty namespace URI.
+    pub fn xml_qualified(mut self, uri: impl Into<String>) -> Option<Self> {
+        self.xml_namespace = Some(XmlNamespace::qualified(uri)?);
+        Some(self)
     }
 
     /// Checks that generated-value metadata remains scalar-only and cannot
@@ -1313,6 +1397,41 @@ mod tests {
         let old_json = r#"{"name":"value","kind":{"kind":"scalar","ty":"string"}}"#;
         let old = serde_json::from_str::<SchemaNode>(old_json).unwrap();
         assert!(!old.text);
+    }
+
+    #[test]
+    fn xml_namespace_identity_is_validated_and_serde_defaulted() {
+        let qualified = SchemaNode::scalar("Code", ScalarType::String)
+            .xml_qualified("urn:ferrule:test")
+            .unwrap();
+        let encoded = serde_json::to_string(&qualified).unwrap();
+        assert!(encoded.contains(r#""kind":"qualified""#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            qualified
+        );
+
+        let unqualified = SchemaNode::scalar("Plain", ScalarType::String).xml_unqualified();
+        assert!(
+            unqualified
+                .xml_namespace
+                .as_ref()
+                .is_some_and(|namespace| namespace.matches(None))
+        );
+        assert!(
+            SchemaNode::scalar("Invalid", ScalarType::String)
+                .xml_qualified("")
+                .is_none()
+        );
+
+        let legacy: SchemaNode =
+            serde_json::from_str(r#"{"name":"Code","kind":{"kind":"scalar","ty":"string"}}"#)
+                .unwrap();
+        assert!(legacy.xml_namespace.is_none());
+        assert!(serde_json::from_str::<SchemaNode>(
+            r#"{"name":"Code","xml_namespace":{"kind":"qualified","uri":""},"kind":{"kind":"scalar","ty":"string"}}"#,
+        )
+        .is_err());
     }
 
     #[test]

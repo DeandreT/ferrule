@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::{from_str, to_string};
-use ir::{Instance, SchemaKind, Value};
+use ir::{Instance, SchemaKind, Value, XmlNamespace};
 
 #[test]
 fn imports_utf16_schemas_with_or_without_a_bom() {
@@ -334,7 +334,7 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
     std::fs::write(
         &root,
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                xmlns:o="urn:ferrule:orders" targetNamespace="urn:ferrule:orders">
+                xmlns:o="urn:ferrule:orders" targetNamespace="urn:ferrule:orders" elementFormDefault="qualified">
           <xs:include schemaLocation="addresses.xsd"/>
           <xs:element name="Order"><xs:complexType><xs:sequence>
             <xs:element name="shipTo" type="o:Address"/>
@@ -345,7 +345,7 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
     std::fs::write(
         dir.join("addresses.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                xmlns:o="urn:ferrule:orders" targetNamespace="urn:ferrule:orders">
+                xmlns:o="urn:ferrule:orders" targetNamespace="urn:ferrule:orders" elementFormDefault="qualified">
           <xs:complexType name="Address"><xs:sequence>
             <xs:element name="name" type="xs:string"/>
           </xs:sequence></xs:complexType>
@@ -435,7 +435,7 @@ fn imports_transitive_derived_types_through_an_abstract_intermediate() {
     std::fs::write(
         &root,
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                xmlns:o="urn:ferrule:transitive" targetNamespace="urn:ferrule:transitive">
+                xmlns:o="urn:ferrule:transitive" targetNamespace="urn:ferrule:transitive" elementFormDefault="qualified">
           <xs:include schemaLocation="address-types.xsd"/>
           <xs:element name="Order"><xs:complexType><xs:sequence>
             <xs:element name="shipTo" type="o:Address"/>
@@ -446,7 +446,7 @@ fn imports_transitive_derived_types_through_an_abstract_intermediate() {
     std::fs::write(
         dir.join("address-types.xsd"),
         r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
-                xmlns:o="urn:ferrule:transitive" targetNamespace="urn:ferrule:transitive">
+                xmlns:o="urn:ferrule:transitive" targetNamespace="urn:ferrule:transitive" elementFormDefault="qualified">
           <xs:complexType name="Address" abstract="true"><xs:sequence>
             <xs:element name="name" type="xs:string"/>
           </xs:sequence></xs:complexType>
@@ -1299,4 +1299,97 @@ fn fixed_elements_simple_content_and_attributes_roundtrip_and_validate() {
     std::fs::write(&path, exported).unwrap();
     assert_eq!(import(&path).unwrap(), schema);
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn imports_cross_namespace_element_and_attribute_references_exactly() {
+    let dir =
+        std::env::temp_dir().join(format!("ferrule_xsd_expanded_names_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let main = dir.join("document.xsd");
+    let metadata = dir.join("metadata.xsd");
+    std::fs::write(
+        &metadata,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:ferrule:metadata"><xs:element name="Label" type="xs:string"/><xs:attribute name="token" type="xs:string"/></xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        &main,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:m="urn:ferrule:metadata" targetNamespace="urn:ferrule:document" elementFormDefault="qualified"><xs:import namespace="urn:ferrule:metadata" schemaLocation="metadata.xsd"/><xs:element name="Root"><xs:complexType><xs:sequence><xs:element ref="m:Label"/><xs:element name="Local" type="xs:string" form="unqualified"/></xs:sequence><xs:attribute ref="m:token"/></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import(&main).unwrap();
+    assert!(matches!(
+        schema.xml_namespace,
+        Some(XmlNamespace::Qualified(ref namespace))
+            if namespace.as_str() == "urn:ferrule:document"
+    ));
+    assert!(matches!(
+        schema.child("Label").and_then(|node| node.xml_namespace.as_ref()),
+        Some(XmlNamespace::Qualified(namespace))
+            if namespace.as_str() == "urn:ferrule:metadata"
+    ));
+    assert!(matches!(
+        schema
+            .child("Local")
+            .and_then(|node| node.xml_namespace.as_ref()),
+        Some(XmlNamespace::Unqualified)
+    ));
+    assert!(matches!(
+        schema.child("token").and_then(|node| node.xml_namespace.as_ref()),
+        Some(XmlNamespace::Qualified(namespace))
+            if namespace.as_str() == "urn:ferrule:metadata"
+    ));
+
+    let instance = from_str(
+        r#"<Root xmlns="urn:ferrule:document" xmlns:m="urn:ferrule:metadata" m:token="T"><m:Label>cross</m:Label><Local xmlns="">plain</Local></Root>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        instance.field("Label").and_then(Instance::as_scalar),
+        Some(&Value::String("cross".into()))
+    );
+    let rendered = to_string(&schema, &instance).unwrap();
+    assert_eq!(from_str(&rendered, &schema).unwrap(), instance);
+    assert!(matches!(
+        export(&schema),
+        Err(XmlFormatError::UnsupportedNamespaceExport { node, .. }) if node == "Label"
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn rejects_sibling_expanded_names_that_share_one_local_mapping_name() {
+    let dir = std::env::temp_dir().join(format!(
+        "ferrule_xsd_namespace_collision_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("first.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:ferrule:first"><xs:element name="Code" type="xs:string"/></xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("second.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" targetNamespace="urn:ferrule:second"><xs:element name="Code" type="xs:string"/></xs:schema>"#,
+    )
+    .unwrap();
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:a="urn:ferrule:first" xmlns:b="urn:ferrule:second" targetNamespace="urn:ferrule:root"><xs:import namespace="urn:ferrule:first" schemaLocation="first.xsd"/><xs:import namespace="urn:ferrule:second" schemaLocation="second.xsd"/><xs:element name="Root"><xs:complexType><xs:sequence><xs:element ref="a:Code"/><xs:element ref="b:Code"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+    )
+    .unwrap();
+
+    assert!(matches!(
+        import(&root),
+        Err(XmlFormatError::AmbiguousNamespaceSiblings { group, name, .. })
+            if group == "Root" && name == "Code"
+    ));
+    std::fs::remove_dir_all(dir).unwrap();
 }

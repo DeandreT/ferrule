@@ -4,29 +4,53 @@ mod alternatives;
 
 use alternatives::AlternativeExportPlan;
 
+mod set;
+
+pub use set::{XsdExportArtifact, XsdExportSet, export_set};
+
+#[derive(Clone)]
+pub(super) struct ExternalReference {
+    attribute: bool,
+    namespace: String,
+    name: String,
+    prefix: String,
+    location: String,
+}
+
 /// Renders a [`SchemaNode`] as XSD text -- the inverse of [`import`],
 /// producing the same `xs:element`/`xs:complexType`/`xs:sequence` subset it
 /// reads (repeating nodes get `maxOccurs="unbounded"`). Returns an error when
 /// XML role flags describe a shape this subset cannot preserve.
 pub fn export_namespace(schema: &SchemaNode) -> Result<Option<String>, XmlFormatError> {
-    Ok(AlternativeExportPlan::build(schema)?
-        .namespace()
-        .map(str::to_string))
+    let alternatives = AlternativeExportPlan::build(schema, &[])?;
+    export_target_namespace(schema, &alternatives)
 }
 
 pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
+    export_document(schema, &[])
+}
+
+pub(super) fn export_document(
+    schema: &SchemaNode,
+    external_references: &[ExternalReference],
+) -> Result<String, XmlFormatError> {
+    crate::instance::validate_namespace_siblings(schema)?;
     let recursive_anchors = recursive_export_anchors(schema)?;
-    let alternatives = AlternativeExportPlan::build(schema)?;
+    let mut alternatives = AlternativeExportPlan::build(schema, external_references)?;
+    let namespace = export_target_namespace(schema, &alternatives)?;
+    alternatives.set_export_namespace(namespace.clone());
+    validate_namespace_tree(schema, namespace.as_deref(), &alternatives)?;
     validate_export_node(schema, true, &schema.name, &recursive_anchors)?;
-    let element_form = if alternatives.namespace().is_some() {
-        "unqualified"
+    let legacy_name_namespace = if namespace.is_some() && has_legacy_xml_names(schema) {
+        format!(" xmlns:ferruleName=\"{LEGACY_NAME_NAMESPACE}\"")
     } else {
-        "qualified"
+        String::new()
     };
     let mut out = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"{} elementFormDefault=\"{element_form}\">\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"{}{legacy_name_namespace} elementFormDefault=\"unqualified\" attributeFormDefault=\"unqualified\">\n",
         alternatives.schema_attributes(),
     );
+    alternatives.write_imports(&mut out);
     for (anchor, node) in &recursive_anchors {
         write_complex_type(
             node,
@@ -49,6 +73,78 @@ pub fn export(schema: &SchemaNode) -> Result<String, XmlFormatError> {
     )?;
     out.push_str("</xs:schema>\n");
     Ok(out)
+}
+
+fn has_legacy_xml_names(node: &SchemaNode) -> bool {
+    (!node.text && node.xml_namespace.is_none())
+        || matches!(
+            &node.kind,
+            ir::SchemaKind::Group { children, .. }
+                if children.iter().any(has_legacy_xml_names)
+        )
+}
+
+fn export_target_namespace(
+    schema: &SchemaNode,
+    alternatives: &AlternativeExportPlan<'_>,
+) -> Result<Option<String>, XmlFormatError> {
+    let alternative_namespace = alternatives.namespace();
+    match &schema.xml_namespace {
+        Some(XmlNamespace::Qualified(namespace)) => {
+            if let Some(alternative_namespace) = alternative_namespace
+                && alternative_namespace != namespace.as_str()
+            {
+                return Err(namespace_export_error(
+                    schema,
+                    alternative_namespace,
+                    namespace.as_str(),
+                ));
+            }
+            Ok(Some(namespace.as_str().to_string()))
+        }
+        Some(XmlNamespace::Unqualified) if alternative_namespace.is_some() => Err(
+            namespace_export_error(schema, "", alternative_namespace.unwrap_or_default()),
+        ),
+        Some(XmlNamespace::Unqualified) => Ok(None),
+        None => Ok(alternative_namespace.map(str::to_string)),
+    }
+}
+
+fn validate_namespace_tree(
+    node: &SchemaNode,
+    target_namespace: Option<&str>,
+    alternatives: &AlternativeExportPlan<'_>,
+) -> Result<(), XmlFormatError> {
+    if let Some(XmlNamespace::Qualified(namespace)) = &node.xml_namespace
+        && Some(namespace.as_str()) != target_namespace
+    {
+        if alternatives.external_prefix(node).is_some() {
+            return Ok(());
+        }
+        return Err(namespace_export_error(
+            node,
+            namespace.as_str(),
+            target_namespace.unwrap_or_default(),
+        ));
+    }
+    if let ir::SchemaKind::Group { children, .. } = &node.kind {
+        for child in children {
+            validate_namespace_tree(child, target_namespace, alternatives)?;
+        }
+    }
+    Ok(())
+}
+
+fn namespace_export_error(
+    node: &SchemaNode,
+    namespace: &str,
+    target_namespace: &str,
+) -> XmlFormatError {
+    XmlFormatError::UnsupportedNamespaceExport {
+        node: node.name.clone(),
+        namespace: namespace.to_string(),
+        target_namespace: target_namespace.to_string(),
+    }
 }
 
 fn recursive_export_anchors(
@@ -77,6 +173,7 @@ fn recursive_export_anchors(
 
 fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bool {
     left.name == right.name
+        && left.xml_namespace == right.xml_namespace
         && left.recursive_ref == right.recursive_ref
         && left.attribute == right.attribute
         && left.text == right.text
@@ -278,6 +375,13 @@ fn write_element_required(
     } else {
         ""
     };
+    if let Some(prefix) = alternatives.external_prefix(node) {
+        out.push_str(&format!(
+            "{pad}<xs:element ref=\"{prefix}:{}\"{occurs}/>\n",
+            node.name
+        ));
+        return Ok(());
+    }
     let nillable = if node.nillable {
         " nillable=\"true\""
     } else {
@@ -286,14 +390,29 @@ fn write_element_required(
     let fixed = element_fixed(node).map_or_else(String::new, |value| {
         format!(" fixed=\"{}\"", alternatives::xml_escape(value))
     });
+    let form = if depth > 1 && matches!(node.xml_namespace, Some(XmlNamespace::Qualified(_))) {
+        " form=\"qualified\""
+    } else {
+        ""
+    };
+    let legacy_name = if node.xml_namespace.is_none() && alternatives.needs_legacy_name_markers() {
+        " ferruleName:namespace=\"legacy\""
+    } else {
+        ""
+    };
     if let Some(anchor) = node.recursive_ref.as_deref() {
         if anchor == root_name {
+            let reference = if matches!(node.xml_namespace, Some(XmlNamespace::Qualified(_))) {
+                format!("tns:{root_name}")
+            } else {
+                root_name.to_string()
+            };
             out.push_str(&format!(
-                "{pad}<xs:element ref=\"{root_name}\"{occurs}{nillable}{fixed}/>\n"
+                "{pad}<xs:element ref=\"{reference}\"{legacy_name}{occurs}{nillable}{fixed}/>\n"
             ));
         } else {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}{fixed}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
                 node.name,
                 recursive_type_name(anchor)
             ));
@@ -302,7 +421,7 @@ fn write_element_required(
     }
     if node.name != root_name && recursive_anchors.contains_key(&node.name) {
         out.push_str(&format!(
-            "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}{fixed}/>\n",
+            "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
             node.name,
             recursive_type_name(&node.name)
         ));
@@ -311,7 +430,7 @@ fn write_element_required(
     if let Some(type_name) = alternatives.type_for(node) {
         if let Some(view) = alternatives.restricted_view_for(node) {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}{fixed}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{fixed}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
                 node.name
             ));
             for name in view {
@@ -325,7 +444,7 @@ fn write_element_required(
             ));
         } else {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{occurs}{nillable}{fixed}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
                 node.name
             ));
         }
@@ -334,14 +453,14 @@ fn write_element_required(
     match &node.kind {
         ir::SchemaKind::Scalar { ty } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{occurs}{nillable}{fixed}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
                 node.name,
                 xsd_type_name(ty)
             ));
         }
         ir::SchemaKind::Group { .. } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\"{occurs}{nillable}{fixed}>\n",
+                "{pad}<xs:element name=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}>\n",
                 node.name
             ));
             write_complex_type(
@@ -411,7 +530,7 @@ fn write_complex_type(
             xsd_type_name(ty)
         ));
         for attr in attrs {
-            write_attribute(attr, depth + 3, out)?;
+            write_attribute(attr, depth + 3, alternatives, out)?;
         }
         out.push_str(&format!(
             "{pad}    </xs:extension>\n{pad}  </xs:simpleContent>\n{pad}</xs:complexType>\n"
@@ -437,7 +556,7 @@ fn write_complex_type(
     )?;
     out.push_str(&format!("{pad}  </xs:sequence>\n"));
     for attr in attrs {
-        write_attribute(attr, depth + 1, out)?;
+        write_attribute(attr, depth + 1, alternatives, out)?;
     }
     out.push_str(&format!("{pad}</xs:complexType>\n"));
     Ok(())
@@ -524,8 +643,17 @@ fn write_nested_elements(
 fn write_attribute(
     attribute: &SchemaNode,
     depth: usize,
+    alternatives: &AlternativeExportPlan<'_>,
     out: &mut String,
 ) -> Result<(), XmlFormatError> {
+    if let Some(prefix) = alternatives.external_prefix(attribute) {
+        let pad = "  ".repeat(depth);
+        out.push_str(&format!(
+            "{pad}<xs:attribute ref=\"{prefix}:{}\"/>\n",
+            attribute.name
+        ));
+        return Ok(());
+    }
     let ir::SchemaKind::Scalar { ty } = &attribute.kind else {
         return Err(XmlFormatError::UnsupportedSchemaRole {
             node: attribute.name.clone(),
@@ -540,8 +668,19 @@ fn write_attribute(
         .map_or_else(String::new, |value| {
             format!(" fixed=\"{}\"", alternatives::xml_escape(value))
         });
+    let form = if matches!(attribute.xml_namespace, Some(XmlNamespace::Qualified(_))) {
+        " form=\"qualified\""
+    } else {
+        ""
+    };
+    let legacy_name =
+        if attribute.xml_namespace.is_none() && alternatives.needs_legacy_name_markers() {
+            " ferruleName:namespace=\"legacy\""
+        } else {
+            ""
+        };
     out.push_str(&format!(
-        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{fixed}/>\n",
+        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{form}{legacy_name}{fixed}/>\n",
         attribute.name,
         xsd_type_name(ty)
     ));

@@ -9,7 +9,7 @@ use std::path::Path;
 use ir::{
     Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD,
     XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
-    XML_TYPE_FIELD,
+    XML_TYPE_FIELD, XmlNamespace,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
@@ -112,6 +112,43 @@ pub enum XmlFormatError {
     #[error("schema group `{group}` has invalid XML repeating-sequence metadata")]
     InvalidRepeatingSequenceSchema { group: String },
     #[error(
+        "schema XML name `{node}` uses namespace `{namespace}`, which cannot be emitted in a single XSD whose target namespace is `{target_namespace}`"
+    )]
+    UnsupportedNamespaceExport {
+        node: String,
+        namespace: String,
+        target_namespace: String,
+    },
+    #[error("generated XSD root filename `{name}` must be one traversal-safe `.xsd` filename")]
+    InvalidXsdArtifactName { name: String },
+    #[error("cross-namespace XSD export exceeds the {limit}-artifact limit")]
+    NamespaceArtifactLimit { limit: usize },
+    #[error("cross-namespace XSD export exceeds the {limit}-reference limit")]
+    NamespaceReferenceLimit { limit: usize },
+    #[error(
+        "conflicting {role} declarations for expanded XML name `{{{namespace}}}{name}` cannot share one schema set"
+    )]
+    ConflictingNamespaceDeclaration {
+        role: &'static str,
+        namespace: String,
+        name: String,
+    },
+    #[error("cross-namespace XSD dependency cycle reaches {role} `{{{namespace}}}{name}`")]
+    NamespaceDependencyCycle {
+        role: &'static str,
+        namespace: String,
+        name: String,
+    },
+    #[error(
+        "schema group `{group}` has sibling XML name `{name}` in both `{first_namespace}` and `{second_namespace}`; mapping fields require distinct local names"
+    )]
+    AmbiguousNamespaceSiblings {
+        group: String,
+        name: String,
+        first_namespace: String,
+        second_namespace: String,
+    },
+    #[error(
         "schema group `{group}` has alternatives whose xsi:type identity XML input cannot preserve"
     )]
     UnsupportedAlternativeRead { group: String },
@@ -141,6 +178,7 @@ pub fn read(path: &Path, schema: &SchemaNode) -> Result<Instance, XmlFormatError
 /// in-memory form of [`read`] (useful where there is no filesystem, e.g.
 /// wasm).
 pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatError> {
+    validate_namespace_siblings(schema)?;
     let doc = roxmltree::Document::parse_with_options(
         text,
         roxmltree::ParsingOptions {
@@ -150,10 +188,10 @@ pub fn from_str(text: &str, schema: &SchemaNode) -> Result<Instance, XmlFormatEr
         },
     )?;
     let root = doc.root_element();
-    if root.tag_name().name() != schema.name {
+    if !element_matches_schema(&root, schema) {
         return Err(XmlFormatError::UnexpectedRoot {
-            expected: schema.name.clone(),
-            found: root.tag_name().name().to_string(),
+            expected: schema_xml_name(schema),
+            found: expanded_node_name(&root),
         });
     }
     read_node(&root, schema, schema, 0)
@@ -317,9 +355,54 @@ fn resolve_recursive_schema(
         .cloned()
         .ok_or_else(|| XmlFormatError::MissingElement(format!("recursive anchor `{anchor}`")))?;
     resolved.name.clone_from(&occurrence.name);
+    resolved.xml_namespace.clone_from(&occurrence.xml_namespace);
     resolved.repeating = occurrence.repeating;
     resolved.nillable = occurrence.nillable;
     Ok(resolved)
+}
+
+pub(super) fn element_matches_schema(
+    element: &roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+) -> bool {
+    element.tag_name().name() == schema.name
+        && schema
+            .xml_namespace
+            .as_ref()
+            .is_none_or(|namespace| namespace.matches(element.tag_name().namespace()))
+}
+
+pub(super) fn attribute_value<'a>(
+    element: &'a roxmltree::Node<'_, '_>,
+    schema: &SchemaNode,
+) -> Option<&'a str> {
+    match &schema.xml_namespace {
+        None => element.attribute(schema.name.as_str()),
+        Some(namespace) => element
+            .attributes()
+            .find(|attribute| {
+                attribute.name() == schema.name && namespace.matches(attribute.namespace())
+            })
+            .map(|attribute| attribute.value()),
+    }
+}
+
+fn schema_xml_name(schema: &SchemaNode) -> String {
+    schema.xml_namespace.as_ref().map_or_else(
+        || schema.name.clone(),
+        |namespace| expanded_name(namespace.uri(), &schema.name),
+    )
+}
+
+fn expanded_node_name(element: &roxmltree::Node<'_, '_>) -> String {
+    expanded_name(element.tag_name().namespace(), element.tag_name().name())
+}
+
+fn expanded_name(namespace: Option<&str>, local: &str) -> String {
+    namespace.map_or_else(
+        || local.to_string(),
+        |namespace| format!("{{{namespace}}}{local}"),
+    )
 }
 
 fn find_concrete_group<'a>(schema: &'a SchemaNode, anchor: &str) -> Option<&'a SchemaNode> {
@@ -470,6 +553,7 @@ pub fn to_string_with_options(
     instance: &Instance,
     options: &XmlWriteOptions,
 ) -> Result<String, XmlFormatError> {
+    validate_namespace_siblings(schema)?;
     let cursor = Cursor::new(Vec::new());
     let mut writer = if options.indent {
         Writer::new_with_indent(cursor, b' ', 2)
@@ -489,11 +573,50 @@ pub fn to_string_with_options(
         schema,
         instance,
         true,
-        0,
-        options.default_namespace.as_deref(),
+        NodeWriteContext {
+            recursion_depth: 0,
+            inherited_namespace: None,
+            legacy_root_namespace: options.default_namespace.as_deref(),
+        },
     )?;
     let bytes = writer.into_inner().into_inner();
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), XmlFormatError> {
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        return Ok(());
+    };
+    for (index, child) in children.iter().enumerate() {
+        if let Some(other) = children[..index]
+            .iter()
+            .find(|other| other.name == child.name && other.xml_namespace != child.xml_namespace)
+        {
+            return Err(XmlFormatError::AmbiguousNamespaceSiblings {
+                group: schema.name.clone(),
+                name: child.name.clone(),
+                first_namespace: namespace_label(other.xml_namespace.as_ref()),
+                second_namespace: namespace_label(child.xml_namespace.as_ref()),
+            });
+        }
+        validate_namespace_siblings(child)?;
+    }
+    Ok(())
+}
+
+fn namespace_label(namespace: Option<&XmlNamespace>) -> String {
+    match namespace {
+        None => "legacy/unspecified".to_string(),
+        Some(XmlNamespace::Unqualified) => "unqualified".to_string(),
+        Some(XmlNamespace::Qualified(namespace)) => namespace.as_str().to_string(),
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct NodeWriteContext<'a> {
+    pub(super) recursion_depth: usize,
+    pub(super) inherited_namespace: Option<&'a str>,
+    pub(super) legacy_root_namespace: Option<&'a str>,
 }
 
 fn write_node<W: std::io::Write>(
@@ -502,9 +625,13 @@ fn write_node<W: std::io::Write>(
     root_schema: &SchemaNode,
     instance: &Instance,
     is_root: bool,
-    recursion_depth: usize,
-    root_namespace: Option<&str>,
+    context: NodeWriteContext<'_>,
 ) -> Result<(), XmlFormatError> {
+    let NodeWriteContext {
+        recursion_depth,
+        inherited_namespace,
+        legacy_root_namespace,
+    } = context;
     let resolved;
     let schema = if let Some(anchor) = &schema.recursive_ref {
         if recursion_depth >= MAX_XML_RECURSION_DEPTH {
@@ -523,7 +650,14 @@ fn write_node<W: std::io::Write>(
             other => return Err(shape_error(schema, "generic XML elements", other)),
         };
         for item in items {
-            write_generic_element(writer, schema, root_schema, item, recursion_depth)?;
+            write_generic_element(
+                writer,
+                schema,
+                root_schema,
+                item,
+                recursion_depth,
+                inherited_namespace,
+            )?;
         }
         return Ok(());
     }
@@ -537,7 +671,15 @@ fn write_node<W: std::io::Write>(
             return Err(shape_error(schema, expected, instance));
         }
         for item in items {
-            write_single_node(writer, schema, root_schema, item, recursion_depth, None)?;
+            write_single_node(
+                writer,
+                schema,
+                root_schema,
+                item,
+                recursion_depth,
+                inherited_namespace,
+                None,
+            )?;
         }
         return Ok(());
     }
@@ -546,7 +688,15 @@ fn write_node<W: std::io::Write>(
             return Err(shape_error(schema, "repeating elements", instance));
         };
         for item in items {
-            write_single_node(writer, schema, root_schema, item, recursion_depth, None)?;
+            write_single_node(
+                writer,
+                schema,
+                root_schema,
+                item,
+                recursion_depth,
+                inherited_namespace,
+                None,
+            )?;
         }
         return Ok(());
     }
@@ -564,7 +714,8 @@ fn write_node<W: std::io::Write>(
         root_schema,
         instance,
         recursion_depth,
-        is_root.then_some(root_namespace).flatten(),
+        inherited_namespace,
+        is_root.then_some(legacy_root_namespace).flatten(),
     )
 }
 
@@ -574,8 +725,15 @@ fn write_single_node<W: std::io::Write>(
     root_schema: &SchemaNode,
     instance: &Instance,
     recursion_depth: usize,
-    default_namespace: Option<&str>,
+    inherited_namespace: Option<&str>,
+    legacy_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
+    let default_namespace = match &schema.xml_namespace {
+        Some(XmlNamespace::Qualified(namespace)) => Some(namespace.as_str()),
+        Some(XmlNamespace::Unqualified) => None,
+        None => legacy_namespace.or(inherited_namespace),
+    };
+    let namespace_changed = default_namespace != inherited_namespace;
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             if value.is_xml_nil() {
@@ -585,18 +743,14 @@ fn write_single_node<W: std::io::Write>(
                     });
                 }
                 let mut start = BytesStart::new(schema.name.clone());
-                if let Some(namespace) = default_namespace {
-                    start.push_attribute(("xmlns", namespace));
-                }
+                push_element_namespace(&mut start, default_namespace, namespace_changed);
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 start.push_attribute(("xsi:nil", "true"));
                 writer.write_event(Event::Empty(start))?;
                 return Ok(());
             }
             let mut start = BytesStart::new(schema.name.clone());
-            if let Some(namespace) = default_namespace {
-                start.push_attribute(("xmlns", namespace));
-            }
+            push_element_namespace(&mut start, default_namespace, namespace_changed);
             writer.write_event(Event::Start(start))?;
             let text = format_schema_scalar(schema, *ty, value)?;
             writer.write_event(Event::Text(BytesText::new(&text)))?;
@@ -613,9 +767,7 @@ fn write_single_node<W: std::io::Write>(
         ) => {
             validate_group_fields(schema, children, alternatives, fields)?;
             let mut start = BytesStart::new(schema.name.clone());
-            if let Some(namespace) = default_namespace {
-                start.push_attribute(("xmlns", namespace));
-            }
+            push_element_namespace(&mut start, default_namespace, namespace_changed);
             if let Some(alternative) = select_group_alternative(schema, alternatives, fields)? {
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 let (namespace, local) = split_expanded_name(&alternative.name);
@@ -628,6 +780,7 @@ fn write_single_node<W: std::io::Write>(
                 };
                 start.push_attribute(("xsi:type", type_name.as_str()));
             }
+            let mut attribute_namespaces = Vec::<&str>::new();
             for child_schema in children.iter().filter(|child| child.attribute) {
                 if let Some((_, child_instance)) =
                     fields.iter().find(|(name, _)| name == &child_schema.name)
@@ -648,7 +801,12 @@ fn write_single_node<W: std::io::Write>(
                             ));
                         };
                         let text = format_schema_scalar(child_schema, ty, value)?;
-                        push_attribute(&mut start, &child_schema.name, &text);
+                        push_schema_attribute(
+                            &mut start,
+                            child_schema,
+                            &text,
+                            &mut attribute_namespaces,
+                        );
                     }
                 }
             }
@@ -666,6 +824,7 @@ fn write_single_node<W: std::io::Write>(
                 root_schema,
                 fields,
                 recursion_depth,
+                default_namespace,
             )? {
                 writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
                 return Ok(());
@@ -691,7 +850,14 @@ fn write_single_node<W: std::io::Write>(
                     .iter()
                     .filter(|child| !child.attribute && !child.text)
                 {
-                    write_group_child(writer, child_schema, root_schema, fields, recursion_depth)?;
+                    write_group_child(
+                        writer,
+                        child_schema,
+                        root_schema,
+                        fields,
+                        recursion_depth,
+                        default_namespace,
+                    )?;
                 }
             } else {
                 write_repeating_sequence_children(
@@ -701,6 +867,7 @@ fn write_single_node<W: std::io::Write>(
                     root_schema,
                     fields,
                     recursion_depth,
+                    default_namespace,
                 )?;
             }
             writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
@@ -717,6 +884,7 @@ fn write_group_child<W: std::io::Write>(
     root_schema: &SchemaNode,
     fields: &[(String, Instance)],
     recursion_depth: usize,
+    inherited_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
     let Some((_, child_instance)) = fields.iter().find(|(name, _)| name == &child_schema.name)
     else {
@@ -734,8 +902,11 @@ fn write_group_child<W: std::io::Write>(
         root_schema,
         child_instance,
         false,
-        recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
-        None,
+        NodeWriteContext {
+            recursion_depth: recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
+            inherited_namespace,
+            legacy_root_namespace: None,
+        },
     )
 }
 
@@ -746,6 +917,7 @@ fn write_repeating_sequence_children<W: std::io::Write>(
     root_schema: &SchemaNode,
     fields: &[(String, Instance)],
     recursion_depth: usize,
+    inherited_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
     for child in children
         .iter()
@@ -765,7 +937,10 @@ fn write_repeating_sequence_children<W: std::io::Write>(
                 sequence,
                 root_schema,
                 fields,
-                recursion_depth,
+                SequenceWriteContext {
+                    recursion_depth,
+                    inherited_namespace,
+                },
             )?;
             continue;
         }
@@ -778,9 +953,22 @@ fn write_repeating_sequence_children<W: std::io::Write>(
         }) {
             continue;
         }
-        write_group_child(writer, child, root_schema, fields, recursion_depth)?;
+        write_group_child(
+            writer,
+            child,
+            root_schema,
+            fields,
+            recursion_depth,
+            inherited_namespace,
+        )?;
     }
     Ok(())
+}
+
+#[derive(Clone, Copy)]
+struct SequenceWriteContext<'a> {
+    recursion_depth: usize,
+    inherited_namespace: Option<&'a str>,
 }
 
 fn write_constructed_repeating_sequence<W: std::io::Write>(
@@ -790,8 +978,12 @@ fn write_constructed_repeating_sequence<W: std::io::Write>(
     sequence: &ir::XmlRepeatingSequence,
     root_schema: &SchemaNode,
     fields: &[(String, Instance)],
-    recursion_depth: usize,
+    context: SequenceWriteContext<'_>,
 ) -> Result<(), XmlFormatError> {
+    let SequenceWriteContext {
+        recursion_depth,
+        inherited_namespace,
+    } = context;
     let items_for = |name: &str| -> Result<&[Instance], XmlFormatError> {
         let instance = fields
             .iter()
@@ -874,7 +1066,14 @@ fn write_constructed_repeating_sequence<W: std::io::Write>(
             if member.repeating {
                 if cycles == 1 {
                     for item in items {
-                        write_sequence_item(writer, child, root_schema, item, recursion_depth)?;
+                        write_sequence_item(
+                            writer,
+                            child,
+                            root_schema,
+                            item,
+                            recursion_depth,
+                            inherited_namespace,
+                        )?;
                     }
                 } else if member.required {
                     write_sequence_item(
@@ -883,10 +1082,18 @@ fn write_constructed_repeating_sequence<W: std::io::Write>(
                         root_schema,
                         &items[cycle],
                         recursion_depth,
+                        inherited_namespace,
                     )?;
                 }
             } else if let Some(item) = items.get(cycle) {
-                write_sequence_item(writer, child, root_schema, item, recursion_depth)?;
+                write_sequence_item(
+                    writer,
+                    child,
+                    root_schema,
+                    item,
+                    recursion_depth,
+                    inherited_namespace,
+                )?;
             }
         }
     }
@@ -899,6 +1106,7 @@ fn write_sequence_item<W: std::io::Write>(
     root_schema: &SchemaNode,
     item: &Instance,
     recursion_depth: usize,
+    inherited_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
     let child_depth = recursion_depth + usize::from(child.recursive_ref.is_some());
     let resolved;
@@ -913,7 +1121,15 @@ fn write_sequence_item<W: std::io::Write>(
     } else {
         child
     };
-    write_single_node(writer, child, root_schema, item, child_depth, None)
+    write_single_node(
+        writer,
+        child,
+        root_schema,
+        item,
+        child_depth,
+        inherited_namespace,
+        None,
+    )
 }
 
 fn instance_kind(instance: &Instance) -> &'static str {
@@ -933,6 +1149,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
     root_schema: &SchemaNode,
     fields: &[(String, Instance)],
     recursion_depth: usize,
+    inherited_namespace: Option<&str>,
 ) -> Result<bool, XmlFormatError> {
     let Some((_, mixed_content)) = fields
         .iter()
@@ -1015,6 +1232,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 root_schema,
                 child_instance,
                 recursion_depth,
+                inherited_namespace,
             )?;
         } else {
             let child_depth = recursion_depth + usize::from(child_schema.recursive_ref.is_some());
@@ -1036,6 +1254,7 @@ pub(crate) fn write_ordered_mixed_content<W: std::io::Write>(
                 root_schema,
                 child_instance,
                 child_depth,
+                inherited_namespace,
                 None,
             )?;
         }
@@ -1105,6 +1324,51 @@ fn push_attribute(start: &mut BytesStart<'_>, name: &str, value: &str) {
         }
     }
     start.push_attribute((name.as_bytes(), escaped.as_bytes()));
+}
+
+pub(super) fn push_schema_attribute<'a>(
+    start: &mut BytesStart<'_>,
+    schema: &'a SchemaNode,
+    value: &str,
+    namespaces: &mut Vec<&'a str>,
+) {
+    let name = match &schema.xml_namespace {
+        Some(XmlNamespace::Qualified(namespace))
+            if namespace.as_str() == "http://www.w3.org/XML/1998/namespace" =>
+        {
+            format!("xml:{}", schema.name)
+        }
+        Some(XmlNamespace::Qualified(namespace)) => {
+            let (prefix_index, new_namespace) = namespaces
+                .iter()
+                .position(|existing| *existing == namespace.as_str())
+                .map_or_else(
+                    || {
+                        namespaces.push(namespace.as_str());
+                        (namespaces.len() - 1, true)
+                    },
+                    |index| (index, false),
+                );
+            let prefix = format!("fns{}", prefix_index + 1);
+            if new_namespace {
+                let declaration = format!("xmlns:{prefix}");
+                push_attribute(start, &declaration, namespace.as_str());
+            }
+            format!("{prefix}:{}", schema.name)
+        }
+        Some(XmlNamespace::Unqualified) | None => schema.name.clone(),
+    };
+    push_attribute(start, &name, value);
+}
+
+fn push_element_namespace(
+    start: &mut BytesStart<'_>,
+    default_namespace: Option<&str>,
+    changed: bool,
+) {
+    if changed {
+        start.push_attribute(("xmlns", default_namespace.unwrap_or_default()));
+    }
 }
 
 fn select_group_alternative<'a>(

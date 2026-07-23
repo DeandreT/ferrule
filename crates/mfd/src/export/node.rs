@@ -517,7 +517,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     .and_then(|stem| stem.to_str())
                     .unwrap_or("mapping");
                 let schema_file = format!("{stem}-serializer-{id}.xsd");
-                let schema_text = match format_xml::xsd::export(schema) {
+                let schema_export = match format_xml::xsd::export_set(schema, &schema_file) {
                     Ok(schema) => schema,
                     Err(error) => {
                         warnings.push(format!(
@@ -531,8 +531,17 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                         .parent()
                         .unwrap_or_else(|| Path::new("."))
                         .join(&schema_file),
-                    contents: schema_text,
+                    contents: schema_export.root,
                 });
+                siblings.extend(schema_export.dependencies.into_iter().map(|dependency| {
+                    GeneratedSibling {
+                        path: mfd_path
+                            .parent()
+                            .unwrap_or_else(|| Path::new("."))
+                            .join(dependency.filename),
+                        contents: dependency.contents,
+                    }
+                }));
                 let entries = serializer_ports.entries_xml(
                     schema,
                     "inpkey",
