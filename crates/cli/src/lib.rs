@@ -617,13 +617,21 @@ fn formatted_edi_output<'a>(
     instance: &'a Instance,
     options: &FormatOptions,
 ) -> anyhow::Result<Cow<'a, Instance>> {
-    if options.edi_lexical_formats.is_empty() {
-        return Ok(Cow::Borrowed(instance));
+    let formatted = if options.edi_lexical_formats.is_empty() {
+        Cow::Borrowed(instance)
+    } else {
+        let mut formatted = instance.clone();
+        format_edi::apply_output_lexical_formats(&mut formatted, &options.edi_lexical_formats)
+            .context("applying EDI output lexical formats")?;
+        Cow::Owned(formatted)
+    };
+    let report = format_edi::validate_values(&formatted, &options.edi_value_constraints)
+        .context("validating EDI output values")?;
+    if !report.is_empty() {
+        return Err(format_edi::EdiFormatError::Validation(report))
+            .context("validating EDI output values");
     }
-    let mut formatted = instance.clone();
-    format_edi::apply_output_lexical_formats(&mut formatted, &options.edi_lexical_formats)
-        .context("applying EDI output lexical formats")?;
-    Ok(Cow::Owned(formatted))
+    Ok(formatted)
 }
 
 /// Reads any supported instance file into an [`Instance`], shaped by `schema`.

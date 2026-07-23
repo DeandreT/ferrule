@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, SchemaNode};
-use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind};
+use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind, EdiValueConstraint};
 
 use super::files::{Files, parse_document, resolve_sibling};
 use super::{CompiledConfig, ConfigError};
@@ -24,6 +24,7 @@ pub(super) struct FieldDef {
     pub(super) inline_type: Option<ScalarType>,
     pub(super) inline_implicit_decimals: Option<u8>,
     pub(super) inline_lexical_kind: Option<EdiLexicalKind>,
+    inline_value_constraint: ValueConstraintSpec,
 }
 
 #[derive(Clone, Copy)]
@@ -38,6 +39,49 @@ pub(super) struct DataDef {
     pub(super) ty: ScalarType,
     implicit_decimals: Option<u8>,
     lexical_kind: Option<EdiLexicalKind>,
+    value_constraint: ValueConstraintSpec,
+}
+
+#[derive(Clone, Default)]
+struct ValueConstraintSpec {
+    min_chars: Option<u16>,
+    max_chars: Option<u16>,
+    allowed_values: Option<Vec<String>>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+struct ValueConstraintDef {
+    min_chars: u16,
+    max_chars: u16,
+    allowed_values: Vec<String>,
+}
+
+impl ValueConstraintSpec {
+    fn merged_with(&self, inherited: Option<&Self>) -> Option<ValueConstraintDef> {
+        let has_constraint = self.min_chars.is_some()
+            || self.max_chars.is_some()
+            || self.allowed_values.is_some()
+            || inherited.is_some_and(|constraint| {
+                constraint.min_chars.is_some()
+                    || constraint.max_chars.is_some()
+                    || constraint.allowed_values.is_some()
+            });
+        has_constraint.then(|| ValueConstraintDef {
+            min_chars: self
+                .min_chars
+                .or_else(|| inherited.and_then(|constraint| constraint.min_chars))
+                .unwrap_or(0),
+            max_chars: self
+                .max_chars
+                .or_else(|| inherited.and_then(|constraint| constraint.max_chars))
+                .unwrap_or(u16::MAX),
+            allowed_values: self
+                .allowed_values
+                .clone()
+                .or_else(|| inherited.and_then(|constraint| constraint.allowed_values.clone()))
+                .unwrap_or_default(),
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -92,7 +136,7 @@ impl Definitions {
         let mut ambiguous = BTreeSet::new();
         for data in self.data.values() {
             if let Some(kind) = data.lexical_kind {
-                insert_named_format(&mut names, &mut ambiguous, &data.name, kind);
+                insert_unambiguous_name(&mut names, &mut ambiguous, &data.name, kind);
             }
         }
         for fields in self
@@ -106,6 +150,29 @@ impl Definitions {
             )
         {
             collect_lexical_aliases(fields, self, &mut names, &mut ambiguous);
+        }
+        names
+    }
+
+    fn value_constraint_names(&self) -> BTreeMap<String, ValueConstraintDef> {
+        let mut names = BTreeMap::new();
+        let mut ambiguous = BTreeSet::new();
+        for data in self.data.values() {
+            if let Some(constraint) = data.value_constraint.merged_with(None) {
+                insert_unambiguous_name(&mut names, &mut ambiguous, &data.name, constraint);
+            }
+        }
+        for fields in self
+            .segments
+            .values()
+            .map(|segment| segment.fields.as_slice())
+            .chain(
+                self.composites
+                    .values()
+                    .map(|composite| composite.fields.as_slice()),
+            )
+        {
+            collect_constraint_aliases(fields, self, &mut names, &mut ambiguous);
         }
         names
     }
@@ -141,6 +208,7 @@ pub(super) fn load_definitions(
                             ty: scalar_type(node.attribute("type").unwrap_or("string")),
                             implicit_decimals: read_implicit_decimals(node)?,
                             lexical_kind: read_lexical_kind(node)?,
+                            value_constraint: read_value_constraint(node)?,
                         },
                     );
                 }
@@ -233,6 +301,7 @@ pub(super) fn read_field_defs(node: roxmltree::Node<'_, '_>) -> Result<Vec<Field
                 inline_type: child.attribute("type").map(scalar_type),
                 inline_implicit_decimals: read_implicit_decimals(child)?,
                 inline_lexical_kind: read_lexical_kind(child)?,
+                inline_value_constraint: read_value_constraint(child)?,
             })
         })
         .collect()
@@ -332,6 +401,53 @@ fn single_allowed_value(node: roxmltree::Node<'_, '_>) -> Option<String> {
     codes.next().is_none().then(|| only.to_string())
 }
 
+fn read_value_constraint(
+    node: roxmltree::Node<'_, '_>,
+) -> Result<ValueConstraintSpec, ConfigError> {
+    let read_width = |attribute| {
+        node.attribute(attribute)
+            .map(|raw| {
+                raw.parse::<u16>().map_err(|_| {
+                    ConfigError::Invalid(format!("Data field has invalid {attribute} `{raw}`"))
+                })
+            })
+            .transpose()
+    };
+    let min_chars = read_width("minLength")?;
+    let max_chars = read_width("maxLength")?;
+    if max_chars == Some(0) || min_chars.zip(max_chars).is_some_and(|(min, max)| min > max) {
+        return Err(ConfigError::Invalid(
+            "Data field requires 0 <= minLength <= maxLength and a positive maxLength".into(),
+        ));
+    }
+    let allowed_values = node
+        .children()
+        .find(|child| child.has_tag_name("Values"))
+        .map(|values| {
+            let mut codes = values
+                .children()
+                .filter(|child| child.has_tag_name("Value"))
+                .filter_map(|child| child.attribute("Code"))
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            codes.sort();
+            codes.dedup();
+            codes
+        })
+        .filter(|codes| !codes.is_empty());
+    if allowed_values
+        .as_ref()
+        .is_some_and(|codes| codes.len() > 4096)
+    {
+        return Err(ConfigError::Limit("allowed values per Data field"));
+    }
+    Ok(ValueConstraintSpec {
+        min_chars,
+        max_chars,
+        allowed_values,
+    })
+}
+
 fn scalar_type(name: &str) -> ScalarType {
     match name.to_ascii_lowercase().as_str() {
         "decimal" | "float" | "double" | "number" => ScalarType::Float,
@@ -360,10 +476,54 @@ pub(super) fn compiled_config(schema: SchemaNode, definitions: &Definitions) -> 
         true,
         &mut lexical_formats,
     );
+    let constraint_names = definitions.value_constraint_names();
+    let mut value_constraints = Vec::new();
+    collect_value_constraint_paths(
+        &schema,
+        &constraint_names,
+        &mut Vec::new(),
+        true,
+        &mut value_constraints,
+    );
     CompiledConfig {
         schema,
         implied_decimals,
         lexical_formats,
+        value_constraints,
+    }
+}
+
+fn collect_value_constraint_paths(
+    node: &SchemaNode,
+    names: &BTreeMap<String, ValueConstraintDef>,
+    path: &mut Vec<String>,
+    root: bool,
+    output: &mut Vec<EdiValueConstraint>,
+) {
+    if !root {
+        path.push(node.name.clone());
+    }
+    match &node.kind {
+        SchemaKind::Scalar { .. } => {
+            if let Some(constraint) = names.get(&node.name)
+                && let Some(constraint) = EdiValueConstraint::new(
+                    path.clone(),
+                    constraint.min_chars,
+                    constraint.max_chars,
+                    constraint.allowed_values.clone(),
+                )
+            {
+                output.push(constraint);
+            }
+        }
+        SchemaKind::Group { children, .. } => {
+            for child in children {
+                collect_value_constraint_paths(child, names, path, false, output);
+            }
+        }
+    }
+    if !root {
+        path.pop();
     }
 }
 
@@ -483,12 +643,46 @@ fn collect_lexical_aliases(
                     } else {
                         format!("{base_name}_{}", index + 1)
                     };
-                    insert_named_format(names, ambiguous, &name, kind);
+                    insert_unambiguous_name(names, ambiguous, &name, kind);
                 }
             }
         }
         if let Some(inline) = &field.inline_fields {
             collect_lexical_aliases(inline, definitions, names, ambiguous);
+        }
+    }
+}
+
+fn collect_constraint_aliases(
+    fields: &[FieldDef],
+    definitions: &Definitions,
+    names: &mut BTreeMap<String, ValueConstraintDef>,
+    ambiguous: &mut BTreeSet<String>,
+) {
+    for field in fields {
+        if matches!(field.kind, FieldKind::Data) {
+            let data = definitions.data.get(&field.reference);
+            let constraint = field
+                .inline_value_constraint
+                .merged_with(data.map(|data| &data.value_constraint));
+            if let Some(constraint) = constraint {
+                let base_name = field
+                    .node_name
+                    .as_deref()
+                    .or_else(|| data.map(|data| data.name.as_str()))
+                    .unwrap_or(&field.reference);
+                for index in 0..field.merged_entries {
+                    let name = if index == 0 {
+                        base_name.to_string()
+                    } else {
+                        format!("{base_name}_{}", index + 1)
+                    };
+                    insert_unambiguous_name(names, ambiguous, &name, constraint.clone());
+                }
+            }
+        }
+        if let Some(inline) = &field.inline_fields {
+            collect_constraint_aliases(inline, definitions, names, ambiguous);
         }
     }
 }
@@ -514,7 +708,7 @@ fn insert_decimal_name(
     }
 }
 
-fn insert_named_format<T: Copy + Eq>(
+fn insert_unambiguous_name<T: Clone + Eq>(
     names: &mut BTreeMap<String, T>,
     ambiguous: &mut BTreeSet<String>,
     name: &str,
