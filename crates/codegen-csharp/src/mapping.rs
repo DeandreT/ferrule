@@ -412,6 +412,23 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             ));
             continue;
         }
+        if let TargetConstruction::RecursiveFilter {
+            children,
+            items,
+            predicate,
+        } = scope.construction
+        {
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerruleRecursiveFilter.Apply(\n            context,\n            ",
+            );
+            output.push_str(&literal::string(children));
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(items));
+            output.push_str(&format!(
+                ",\n            {predicate}U,\n            Node_{predicate});\n    }}\n"
+            ));
+            continue;
+        }
         if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
             output.push_str("        return context.CopyCurrentGroup();\n    }\n");
             continue;
