@@ -61,11 +61,11 @@ pub use model::{
 };
 pub use path_hierarchy::PathHierarchyPlan;
 pub use pdf::{
-    PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCommand, PdfCoordinate, PdfEdgeFind,
-    PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeComposition,
+    PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCaptureAlgorithm, PdfCommand, PdfCoordinate,
+    PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfLayoutError, PdfMerge, PdfMergeComposition,
     PdfMergeSource, PdfMetricMatch, PdfPageSelection, PdfPages, PdfReference, PdfRegion,
     PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextProperties,
-    PdfTextRows, PdfVerticalBoundaryFind,
+    PdfTextRows, PdfVerticalBoundaryFind, PdfWhitespaceMode, PdfWordSeparation,
 };
 pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;

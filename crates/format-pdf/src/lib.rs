@@ -92,6 +92,7 @@ mod tests {
             vec![PdfCommand::Capture(PdfCapture {
                 name: "Value".into(),
                 region: PdfRegion::full(),
+                algorithm: Default::default(),
             })],
         ) else {
             panic!("bounded-read test layout must validate");

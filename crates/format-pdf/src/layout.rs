@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use ir::{Instance, Value};
 use mapping::{
-    PdfCommand, PdfCoordinate, PdfEdgeFind, PdfLayout, PdfMerge, PdfMergeComposition, PdfReference,
-    PdfRegion, PdfTextCase, PdfTextGroupOutput, PdfTextGroups, PdfTextProperties,
+    PdfCaptureAlgorithm, PdfCommand, PdfCoordinate, PdfEdgeFind, PdfLayout, PdfMerge,
+    PdfMergeComposition, PdfReference, PdfRegion, PdfTextCase, PdfTextGroupOutput, PdfTextGroups,
+    PdfTextProperties, PdfWhitespaceMode, PdfWordSeparation,
 };
 
 use crate::extract::{Glyph, Page, Rect};
@@ -259,7 +260,7 @@ fn evaluate_commands(
         match command {
             PdfCommand::Capture(capture) => {
                 let region = resolve_region(&capture.region, current, anchors)?;
-                let value = capture_text(page, region, &capture.name, budget)?;
+                let value = capture_text(page, region, capture.algorithm, &capture.name, budget)?;
                 budget.node()?;
                 fields.push((capture.name.clone(), Instance::Scalar(value)));
             }
@@ -949,6 +950,21 @@ fn page_has_text(page: &Page, region: Rect) -> bool {
 }
 
 fn capture_text(
+    page: &Page,
+    region: Rect,
+    algorithm: PdfCaptureAlgorithm,
+    path: &str,
+    budget: &mut OutputBudget,
+) -> Result<Value, PdfError> {
+    match algorithm {
+        PdfCaptureAlgorithm::BasicVisual {
+            separate_words: PdfWordSeparation::InsertSpace,
+            whitespace: PdfWhitespaceMode::Default,
+        } => capture_basic_visual_text(page, region, path, budget),
+    }
+}
+
+fn capture_basic_visual_text(
     page: &Page,
     region: Rect,
     path: &str,
