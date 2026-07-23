@@ -1077,7 +1077,7 @@ fn coerce_value(value: Value, ty: ScalarType) -> Result<Value, String> {
             .filter(|value| value.is_finite())
             .map(Value::Float)
             .ok_or_else(|| "query operand is not a finite number".to_string()),
-        (Value::Null, _) => Err("query parameters cannot be null".to_string()),
+        (Value::Null | Value::JsonNull(_), _) => Err("query parameters cannot be null".to_string()),
         (value, expected) => Err(format!(
             "query operand has type {}, expected {expected:?}",
             value.type_name()

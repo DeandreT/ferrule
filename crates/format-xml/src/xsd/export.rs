@@ -5,6 +5,9 @@ mod alternatives;
 use alternatives::AlternativeExportPlan;
 
 mod set;
+mod substitution;
+
+use substitution::SubstitutionExportPlan;
 
 pub use set::{XsdExportArtifact, XsdExportSet, export_set};
 
@@ -37,6 +40,7 @@ pub(super) fn export_document(
     crate::instance::validate_namespace_siblings(schema)?;
     let recursive_anchors = recursive_export_anchors(schema)?;
     let mut alternatives = AlternativeExportPlan::build(schema, external_references)?;
+    let substitutions = SubstitutionExportPlan::build(schema, &alternatives)?;
     let namespace = export_target_namespace(schema, &alternatives)?;
     alternatives.set_export_namespace(namespace.clone());
     validate_namespace_tree(schema, namespace.as_deref(), &alternatives)?;
@@ -63,14 +67,17 @@ pub(super) fn export_document(
         )?;
     }
     alternatives.write_definitions(&schema.name, &recursive_anchors, &mut out)?;
-    write_element(
-        schema,
-        1,
-        &schema.name,
-        &recursive_anchors,
-        &alternatives,
-        &mut out,
-    )?;
+    substitutions.write_declarations(&alternatives, &mut out)?;
+    if !substitutions.contains(schema) {
+        write_element(
+            schema,
+            1,
+            &schema.name,
+            &recursive_anchors,
+            &alternatives,
+            &mut out,
+        )?;
+    }
     out.push_str("</xs:schema>\n");
     Ok(out)
 }
@@ -180,6 +187,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.fixed == right.fixed
         && left.value_generation == right.value_generation
         && left.alternative_mode == right.alternative_mode
+        && left.xml_alternative_kind == right.xml_alternative_kind
         && left.xml_repeating_sequences == right.xml_repeating_sequences
         && left.kind == right.kind
 }
@@ -380,6 +388,14 @@ fn write_element_required(
             "{pad}<xs:element ref=\"{prefix}:{}\"{occurs}/>\n",
             node.name
         ));
+        return Ok(());
+    }
+    if node.xml_alternative_kind == ir::XmlAlternativeKind::SubstitutionGroup {
+        let reference = match &node.xml_namespace {
+            Some(XmlNamespace::Qualified(_)) => format!("tns:{}", node.name),
+            Some(XmlNamespace::Unqualified) | None => node.name.clone(),
+        };
+        out.push_str(&format!("{pad}<xs:element ref=\"{reference}\"{occurs}/>\n"));
         return Ok(());
     }
     let nillable = if node.nillable {

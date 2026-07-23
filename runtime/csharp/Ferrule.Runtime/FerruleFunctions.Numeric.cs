@@ -23,7 +23,7 @@ public static partial class FerruleFunctions
     {
         RequireArity("to_number", arguments, 1);
         var value = arguments[0];
-        if (value.Kind == FerruleValueKind.Null)
+        if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
         {
             return value;
         }
@@ -159,8 +159,8 @@ public static partial class FerruleFunctions
         RequireArity(function, arguments, 2);
         var left = arguments[0];
         var right = arguments[1];
-        if (left.Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil ||
-            right.Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil)
+        if (left.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil ||
+            right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
         {
             return FerruleValue.FromBoolean(false);
         }
@@ -355,7 +355,7 @@ public static partial class FerruleFunctions
 
     internal static string ScalarText(FerruleValue value) => value.Kind switch
     {
-        FerruleValueKind.Null or FerruleValueKind.XmlNil => string.Empty,
+        FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil => string.Empty,
         FerruleValueKind.Bool => value.BooleanValue ? "true" : "false",
         FerruleValueKind.Int64 => value.Int64Value.ToString(CultureInfo.InvariantCulture),
         FerruleValueKind.Double => DoubleText(value.DoubleValue),

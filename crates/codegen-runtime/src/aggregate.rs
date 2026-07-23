@@ -66,7 +66,7 @@ pub fn aggregate(
             Ok(Value::String(
                 values
                     .iter()
-                    .filter(|value| !matches!(value, Value::Null))
+                    .filter(|value| !matches!(value, Value::Null | Value::JsonNull(_)))
                     .map(value_text)
                     .collect::<Vec<_>>()
                     .join(&separator),
@@ -77,7 +77,7 @@ pub fn aggregate(
                 Value::Int(value) => Some(*value),
                 Value::Float(value) => Some(value.round() as i64),
                 Value::String(value) => value.trim().parse().ok(),
-                Value::Null | Value::XmlNil(_) | Value::Bool(_) => None,
+                Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) => None,
             });
             Ok(match index {
                 Some(index) if index >= 1 => values
@@ -143,7 +143,7 @@ fn numeric_value(value: &Value) -> Result<Option<NumericValue>, ()> {
                 Err(_) => Ok(None),
             }
         }
-        Value::Null | Value::XmlNil(_) | Value::Bool(_) => Ok(None),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Bool(_) => Ok(None),
     }
 }
 
@@ -249,7 +249,7 @@ fn compensated_average(values: &[NumericValue]) -> Result<f64, RuntimeError> {
 
 fn value_text(value: &Value) -> String {
     match value {
-        Value::Null | Value::XmlNil(_) => String::new(),
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => String::new(),
         Value::Bool(value) => value.to_string(),
         Value::Int(value) => value.to_string(),
         Value::Float(value) => value.to_string(),

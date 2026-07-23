@@ -23,6 +23,7 @@ pub fn value_map(
 fn coerce_input(value: &Value, target: ScalarType) -> Option<Value> {
     match (target, value) {
         (_, Value::Null) => Some(Value::Null),
+        (_, Value::JsonNull(value)) => Some(Value::JsonNull(*value)),
         (_, Value::XmlNil(value)) => Some(Value::XmlNil(*value)),
         (ScalarType::String, Value::String(value)) => Some(Value::String(value.clone())),
         (ScalarType::String, Value::Bool(value)) => Some(Value::String(value.to_string())),

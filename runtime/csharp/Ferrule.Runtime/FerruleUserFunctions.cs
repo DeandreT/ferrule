@@ -11,7 +11,7 @@ public static class FerruleUserFunctions
         ulong function,
         ulong? parameter)
     {
-        if (value.Kind is FerruleValueKind.Null or FerruleValueKind.XmlNil ||
+        if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil ||
             Matches(value.Kind, expected))
         {
             return value;

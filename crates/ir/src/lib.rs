@@ -18,6 +18,10 @@ pub const XML_TEXT_FIELD: &str = "#text";
 /// an ordinary schema child.
 pub const XML_TYPE_FIELD: &str = "\u{1f}ferrule-xml-type";
 
+/// Reserved instance-group field carrying the selected expanded element QName
+/// for one XSD substitution-group occurrence.
+pub const XML_SUBSTITUTION_FIELD: &str = "\u{1f}ferrule-xml-substitution";
+
 /// Reserved instance-group field retaining the direct text and element nodes
 /// of mixed XML content in document order. The field is format metadata and
 /// is deliberately absent from [`SchemaNode`] trees.
@@ -144,6 +148,7 @@ pub struct DatabaseRelation {
 #[serde(untagged)]
 pub enum Value {
     Null,
+    JsonNull(JsonNull),
     Bool(bool),
     Int(i64),
     Float(f64),
@@ -154,6 +159,45 @@ pub enum Value {
 /// Marker for an XML element that is present with `xsi:nil="true"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct XmlNil;
+
+/// Marker for an explicit JSON `null`.
+///
+/// [`Value::Null`] remains boundary-level absence. Keeping the two values
+/// distinct lets optional nullable object properties round-trip without
+/// turning an omitted property into an explicit null.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JsonNull;
+
+impl Serialize for JsonNull {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("JsonNull", 1)?;
+        state.serialize_field("$json_null", &true)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for JsonNull {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Repr {
+            #[serde(rename = "$json_null")]
+            json_null: bool,
+        }
+
+        let repr = Repr::deserialize(deserializer)?;
+        if !repr.json_null {
+            return Err(serde::de::Error::custom("$json_null must be true"));
+        }
+        Ok(Self)
+    }
+}
 
 impl Serialize for XmlNil {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -190,6 +234,7 @@ impl Value {
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::Null => "null",
+            Value::JsonNull(_) => "json null",
             Value::Bool(_) => "bool",
             Value::Int(_) => "int",
             Value::Float(_) => "float",
@@ -202,8 +247,20 @@ impl Value {
         Self::XmlNil(XmlNil)
     }
 
+    pub fn json_null() -> Self {
+        Self::JsonNull(JsonNull)
+    }
+
+    pub fn is_json_null(&self) -> bool {
+        matches!(self, Self::JsonNull(_))
+    }
+
     pub fn is_xml_nil(&self) -> bool {
         matches!(self, Self::XmlNil(_))
+    }
+
+    pub fn is_null_like(&self) -> bool {
+        matches!(self, Self::Null | Self::JsonNull(_) | Self::XmlNil(_))
     }
 }
 
@@ -242,6 +299,13 @@ pub struct SchemaNode {
     /// This XML element may be present with `xsi:nil="true"`.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub nillable: bool,
+    /// This JSON scalar may be the explicit `null` value.
+    ///
+    /// Missing object properties remain boundary-level absence and do not
+    /// require this flag. Repeating scalar nodes apply it to each array item,
+    /// not to the array itself.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub nullable: bool,
     /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
     /// Schema's `const`), compared against the raw text before parsing.
     /// Format adapters use it both to validate and to disambiguate --
@@ -258,6 +322,9 @@ pub struct SchemaNode {
     /// model the bounded object-only JSON Schema `anyOf` subset.
     #[serde(default, skip_serializing_if = "GroupAlternativeMode::is_exclusive")]
     pub alternative_mode: GroupAlternativeMode,
+    /// How XML boundaries encode this group's exclusive alternatives.
+    #[serde(default, skip_serializing_if = "XmlAlternativeKind::is_xsi_type")]
+    pub xml_alternative_kind: XmlAlternativeKind,
     /// Repeating anonymous XML sequences flattened into this group's named
     /// children for mapping-port compatibility. XML adapters use this metadata
     /// to retain document order and recreate the original compositor.
@@ -292,11 +359,15 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             nillable: bool,
             #[serde(default)]
+            nullable: bool,
+            #[serde(default)]
             fixed: Option<String>,
             #[serde(default)]
             value_generation: Option<ValueGeneration>,
             #[serde(default)]
             alternative_mode: GroupAlternativeMode,
+            #[serde(default)]
+            xml_alternative_kind: XmlAlternativeKind,
             #[serde(default)]
             xml_repeating_sequences: Vec<XmlRepeatingSequence>,
             #[serde(default)]
@@ -313,9 +384,11 @@ impl<'de> Deserialize<'de> for SchemaNode {
             attribute: repr.attribute,
             text: repr.text,
             nillable: repr.nillable,
+            nullable: repr.nullable,
             fixed: repr.fixed,
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
+            xml_alternative_kind: repr.xml_alternative_kind,
             xml_repeating_sequences: repr.xml_repeating_sequences,
             database_relation: repr.database_relation,
             kind: repr.kind,
@@ -324,11 +397,13 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.recursive_ref_is_valid()
             || !node.value_generation_is_valid()
             || !node.alternative_mode_is_valid()
+            || !node.xml_alternative_kind_is_valid()
             || !node.xml_repeating_sequences_are_valid()
             || !node.database_relation_is_valid()
+            || !node.nullable_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, value generation, alternative mode, XML repeating sequences, or database relation",
+                "schema metadata contains invalid alternatives, recursion, value generation, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -468,6 +543,21 @@ impl GroupAlternativeMode {
     }
 }
 
+/// XML wire representation for one exclusive group-alternative set.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XmlAlternativeKind {
+    #[default]
+    XsiType,
+    SubstitutionGroup,
+}
+
+impl XmlAlternativeKind {
+    fn is_xsi_type(&self) -> bool {
+        matches!(self, Self::XsiType)
+    }
+}
+
 impl SchemaNode {
     pub fn scalar(name: impl Into<String>, ty: ScalarType) -> Self {
         Self {
@@ -478,9 +568,11 @@ impl SchemaNode {
             attribute: false,
             text: false,
             nillable: false,
+            nullable: false,
             fixed: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
+            xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_repeating_sequences: Vec::new(),
             database_relation: None,
             kind: SchemaKind::Scalar { ty },
@@ -496,9 +588,11 @@ impl SchemaNode {
             attribute: false,
             text: false,
             nillable: false,
+            nullable: false,
             fixed: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
+            xml_alternative_kind: XmlAlternativeKind::XsiType,
             xml_repeating_sequences: Vec::new(),
             database_relation: None,
             kind: SchemaKind::Group {
@@ -533,6 +627,7 @@ impl SchemaNode {
                 } if children.is_empty() && alternatives.is_empty() && dynamic.is_none()
             )
             && self.alternative_mode.is_exclusive()
+            && self.xml_alternative_kind.is_xsi_type()
     }
 
     /// Marks this XML name as explicitly unqualified.
@@ -554,6 +649,11 @@ impl SchemaNode {
             || (!self.repeating
                 && self.fixed.is_none()
                 && matches!(self.kind, SchemaKind::Scalar { .. }))
+    }
+
+    /// Checks that explicit JSON nullability remains scalar-only.
+    pub fn nullable_is_valid(&self) -> bool {
+        !self.nullable || matches!(self.kind, SchemaKind::Scalar { .. })
     }
 
     /// Checks that declared database relation metadata belongs to this nested table.
@@ -638,19 +738,49 @@ impl SchemaNode {
         mut self,
         alternatives: Vec<GroupAlternative>,
     ) -> Option<Self> {
-        self.set_group_alternatives(alternatives, GroupAlternativeMode::Inclusive)
-            .then_some(self)
+        self.set_group_alternatives(
+            alternatives,
+            GroupAlternativeMode::Inclusive,
+            XmlAlternativeKind::XsiType,
+        )
+        .then_some(self)
     }
 
     /// Replaces alternative membership when it is valid for this group.
     pub fn set_alternatives(&mut self, alternatives: Vec<GroupAlternative>) -> bool {
-        self.set_group_alternatives(alternatives, GroupAlternativeMode::Exclusive)
+        self.set_group_alternatives(
+            alternatives,
+            GroupAlternativeMode::Exclusive,
+            XmlAlternativeKind::XsiType,
+        )
+    }
+
+    /// Attaches exclusive alternatives represented by concrete XML element
+    /// names from one XSD substitution group.
+    pub fn with_substitution_group_alternatives(
+        mut self,
+        alternatives: Vec<GroupAlternative>,
+    ) -> Option<Self> {
+        self.set_substitution_group_alternatives(alternatives)
+            .then_some(self)
+    }
+
+    pub fn set_substitution_group_alternatives(
+        &mut self,
+        alternatives: Vec<GroupAlternative>,
+    ) -> bool {
+        self.set_group_alternatives(
+            alternatives,
+            GroupAlternativeMode::Exclusive,
+            XmlAlternativeKind::SubstitutionGroup,
+        )
     }
 
     fn set_group_alternatives(
         &mut self,
         alternatives: Vec<GroupAlternative>,
         mode: GroupAlternativeMode,
+        xml_kind: XmlAlternativeKind,
     ) -> bool {
         let SchemaKind::Group {
             children,
@@ -665,6 +795,7 @@ impl SchemaNode {
         }
         *target = alternatives;
         self.alternative_mode = mode;
+        self.xml_alternative_kind = xml_kind;
         true
     }
 
@@ -691,6 +822,23 @@ impl SchemaNode {
                 !alternatives.is_empty() || self.alternative_mode.is_exclusive()
             }
             SchemaKind::Scalar { .. } => self.alternative_mode.is_exclusive(),
+        }
+    }
+
+    /// Checks that element-name alternatives stay exclusive and group-scoped.
+    pub fn xml_alternative_kind_is_valid(&self) -> bool {
+        match self.xml_alternative_kind {
+            XmlAlternativeKind::XsiType => true,
+            XmlAlternativeKind::SubstitutionGroup => {
+                self.alternative_mode.is_exclusive()
+                    && self.recursive_ref.is_none()
+                    && !self.attribute
+                    && !self.text
+                    && matches!(
+                        &self.kind,
+                        SchemaKind::Group { alternatives, .. } if !alternatives.is_empty()
+                    )
+            }
         }
     }
 
@@ -767,6 +915,12 @@ impl SchemaNode {
     pub fn nillable(mut self) -> Self {
         self.nillable = true;
         self
+    }
+
+    /// Marks this scalar as accepting an explicit JSON `null`.
+    pub fn nullable(mut self) -> Option<Self> {
+        self.nullable = true;
+        self.nullable_is_valid().then_some(self)
     }
 
     /// Requires this scalar to hold `value` (builder-style).
@@ -1030,6 +1184,13 @@ mod tests {
             Value::String("hi".to_string())
         );
         assert_eq!(serde_json::from_str::<Value>("null").unwrap(), Value::Null);
+        let json_null = serde_json::to_string(&Value::json_null()).unwrap();
+        assert_eq!(json_null, r#"{"$json_null":true}"#);
+        assert_eq!(
+            serde_json::from_str::<Value>(&json_null).unwrap(),
+            Value::json_null()
+        );
+        assert!(serde_json::from_str::<Value>(r#"{"$json_null":false}"#).is_err());
         let nil = serde_json::to_string(&Value::xml_nil()).unwrap();
         assert_eq!(nil, r#"{"$xml_nil":true}"#);
         assert_eq!(
@@ -1312,6 +1473,42 @@ mod tests {
     }
 
     #[test]
+    fn xml_substitution_alternatives_are_typed_validated_and_serde_defaulted() {
+        let substitution = SchemaNode::group(
+            "Creature",
+            vec![SchemaNode::scalar("name", ScalarType::String)],
+        )
+        .with_substitution_group_alternatives(vec![GroupAlternative {
+            name: "{urn:ferrule:creatures}Cat".into(),
+            members: vec!["name".into()],
+            required: Vec::new(),
+            constraints: Vec::new(),
+        }])
+        .unwrap();
+        assert_eq!(
+            substitution.xml_alternative_kind,
+            XmlAlternativeKind::SubstitutionGroup
+        );
+        let encoded = serde_json::to_string(&substitution).unwrap();
+        assert!(encoded.contains(r#""xml_alternative_kind":"substitution_group""#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            substitution
+        );
+
+        let legacy: SchemaNode =
+            serde_json::from_str(r#"{"name":"Legacy","kind":{"kind":"group","children":[]}}"#)
+                .unwrap();
+        assert_eq!(legacy.xml_alternative_kind, XmlAlternativeKind::XsiType);
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"Invalid","xml_alternative_kind":"substitution_group","kind":{"kind":"scalar","ty":"string"}}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
     fn dynamic_group_metadata_is_typed_exclusive_and_serde_defaulted() {
         let value = SchemaNode::scalar("value", ScalarType::String);
         let open = SchemaNode::group("Object", Vec::new())
@@ -1407,6 +1604,30 @@ mod tests {
         let old_json = r#"{"name":"value","kind":{"kind":"scalar","ty":"string"}}"#;
         let old = serde_json::from_str::<SchemaNode>(old_json).unwrap();
         assert!(!old.text);
+    }
+
+    #[test]
+    fn json_nullability_is_scalar_only_and_serde_defaulted() {
+        let nullable = SchemaNode::scalar("value", ScalarType::String)
+            .nullable()
+            .unwrap();
+        let encoded = serde_json::to_string(&nullable).unwrap();
+        assert!(encoded.contains("\"nullable\":true"));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            nullable
+        );
+
+        let old_json = r#"{"name":"value","kind":{"kind":"scalar","ty":"string"}}"#;
+        let old = serde_json::from_str::<SchemaNode>(old_json).unwrap();
+        assert!(!old.nullable);
+        assert!(SchemaNode::group("object", Vec::new()).nullable().is_none());
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"object","nullable":true,"kind":{"kind":"group","children":[]}}"#
+            )
+            .is_err()
+        );
     }
 
     #[test]

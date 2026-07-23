@@ -1036,7 +1036,7 @@ fn render_scalar(instance: &Instance, ty: ScalarType, path: &str) -> Result<Stri
         return Err(data_error(path, "expected a scalar"));
     };
     let rendered = match (ty, value) {
-        (_, Value::Null) => String::new(),
+        (_, Value::Null | Value::JsonNull(_)) => String::new(),
         (ScalarType::String, Value::String(value)) => value.clone(),
         (ScalarType::Int, Value::Int(value)) => value.to_string(),
         (ScalarType::Int, Value::String(value)) => value

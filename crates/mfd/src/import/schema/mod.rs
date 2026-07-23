@@ -696,10 +696,10 @@ pub(super) fn collect_json_ports(
                 }
             }
             _ => {
-                // Ferrule represents nullable scalar values with `Value::Null`
-                // rather than a second target port. When both alternatives are
-                // connected, keep the typed port and discard the redundant
-                // explicit-null port so one schema field receives one binding.
+                // Ferrule carries explicit JSON null through the nullable
+                // typed value rather than a second target port. When both
+                // alternatives are connected, keep the typed port and discard
+                // the redundant null port so one field receives one binding.
                 if child.attribute("name") == Some("null")
                     && child.attribute("inpkey").is_some()
                     && entry.children().any(|sibling| {

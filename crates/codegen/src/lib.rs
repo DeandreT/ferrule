@@ -29,7 +29,7 @@ pub use model::{
     IterationSource, NamedSourceProgram, NamedTargetProgram, Program, RuntimeValue,
     SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeSequence, SequenceWindow, SortFilterOrder,
     SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter,
-    UserFunctionProgram,
+    UserFunctionProgram, XmlMixedContentReplacement,
 };
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,

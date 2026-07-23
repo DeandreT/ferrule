@@ -356,7 +356,12 @@ fn insert_row(
                 .iter()
                 .find(|(field, _)| field == name)
                 .map(|(_, value)| value);
-            if value.is_some_and(|value| !matches!(value, Instance::Scalar(ir::Value::Null))) {
+            if value.is_some_and(|value| {
+                !matches!(
+                    value,
+                    Instance::Scalar(ir::Value::Null | ir::Value::JsonNull(_))
+                )
+            }) {
                 return Err(DbFormatError::GeneratedFieldSupplied {
                     row: row_index,
                     column: (*name).to_string(),
@@ -387,7 +392,7 @@ fn insert_row(
                 row: row_index,
                 column: (*name).to_string(),
             })?;
-        if *value != ir::Value::Null {
+        if !matches!(value, ir::Value::Null | ir::Value::JsonNull(_)) {
             columns.push((*name).to_string());
             values.push(super::to_sql_value(name, *ty, value)?);
         }

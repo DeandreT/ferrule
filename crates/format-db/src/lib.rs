@@ -536,7 +536,9 @@ fn row_values(
                 .find(|(field, _)| field == name)
                 .map(|(_, value)| value);
             if generated.contains(name) {
-                if value.is_some_and(|value| !matches!(value, Instance::Scalar(Value::Null))) {
+                if value.is_some_and(|value| {
+                    !matches!(value, Instance::Scalar(Value::Null | Value::JsonNull(_)))
+                }) {
                     return Err(DbFormatError::GeneratedFieldSupplied {
                         row,
                         column: (*name).to_string(),
@@ -664,7 +666,7 @@ fn to_sql_value(
         got: value.type_name(),
     };
     match (ty, value) {
-        (_, Value::Null) => Ok(Sql::Null),
+        (_, Value::Null | Value::JsonNull(_)) => Ok(Sql::Null),
         (ScalarType::Int, Value::Int(i)) => Ok(Sql::Integer(*i)),
         (ScalarType::Int, Value::String(value)) => value
             .trim()

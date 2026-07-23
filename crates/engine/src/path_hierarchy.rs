@@ -124,7 +124,7 @@ pub(super) fn build(
         .filter_map(|extension| extension.instances.last().copied())
         .map(|instance| match instance.as_scalar() {
             Some(Value::String(value)) => Ok(value.as_str()),
-            Some(Value::Null | Value::XmlNil(_)) => Ok(""),
+            Some(Value::Null | Value::JsonNull(_) | Value::XmlNil(_)) => Ok(""),
             Some(value) => Err(EngineError::PathHierarchyValueType {
                 found: value.type_name(),
             }),

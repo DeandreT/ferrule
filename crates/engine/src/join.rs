@@ -208,5 +208,5 @@ fn row_value<'a>(
 }
 
 fn is_null_like(value: &Value) -> bool {
-    *value == Value::Null || value.is_xml_nil()
+    value.is_null_like()
 }

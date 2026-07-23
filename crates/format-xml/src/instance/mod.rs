@@ -8,8 +8,8 @@ use std::path::Path;
 
 use ir::{
     Instance, ScalarType, SchemaKind, SchemaNode, Value, XML_ELEMENTS_FIELD,
-    XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD, XML_TEXT_FIELD,
-    XML_TYPE_FIELD, XmlNamespace,
+    XML_MIXED_CONTENT_FIELD, XML_MIXED_CONTENT_VALUE_FIELD, XML_NODE_NAME_FIELD,
+    XML_SUBSTITUTION_FIELD, XML_TEXT_FIELD, XML_TYPE_FIELD, XmlAlternativeKind, XmlNamespace,
 };
 use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
@@ -156,6 +156,22 @@ pub enum XmlFormatError {
     InvalidXmlType { name: String, value: String },
     #[error("element `{name}` has undeclared xsi:type `{value}`")]
     UnknownXmlType { name: String, value: String },
+    #[error("element `{name}` has invalid substitution member marker `{value}`")]
+    InvalidSubstitutionMember { name: String, value: String },
+    #[error("element `{name}` has undeclared substitution member `{value}`")]
+    UnknownSubstitutionMember { name: String, value: String },
+    #[error("substitution group `{head}` contains a derivation cycle at `{member}`")]
+    SubstitutionGroupCycle { head: String, member: String },
+    #[error("substitution group `{head}` contains conflicting declarations for `{member}`")]
+    ConflictingSubstitutionMember { head: String, member: String },
+    #[error("substitution group discovery exceeds the {limit}-declaration limit")]
+    SubstitutionGroupLimit { limit: usize },
+    #[error("substitution group `{head}` member `{member}` cannot be represented: {reason}")]
+    UnsupportedSubstitutionGroup {
+        head: String,
+        member: String,
+        reason: &'static str,
+    },
     #[error("generic XML element item has no non-empty LocalName or NodeName field")]
     MissingGenericElementName,
     #[error("recursive schema reference `{node}` has no unique concrete group anchor `{anchor}`")]
@@ -252,8 +268,12 @@ fn read_node(
             let Instance::Group(fields) = &mut instance else {
                 unreachable!("read_group_fields always returns a group")
             };
+            let marker = match schema.xml_alternative_kind {
+                XmlAlternativeKind::XsiType => XML_TYPE_FIELD,
+                XmlAlternativeKind::SubstitutionGroup => XML_SUBSTITUTION_FIELD,
+            };
             fields.push((
-                XML_TYPE_FIELD.to_string(),
+                marker.to_string(),
                 Instance::Scalar(Value::String(alternative.name.clone())),
             ));
             Ok(instance)
@@ -269,6 +289,18 @@ fn input_group_alternative<'a>(
 ) -> Result<&'a ir::GroupAlternative, XmlFormatError> {
     const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
     let fields = group_fields(instance);
+    if schema.xml_alternative_kind == XmlAlternativeKind::SubstitutionGroup {
+        let identity = expanded_node_name(element);
+        let selected = alternatives
+            .iter()
+            .find(|alternative| alternative.name == identity)
+            .ok_or_else(|| XmlFormatError::UnknownSubstitutionMember {
+                name: schema.name.clone(),
+                value: identity,
+            })?;
+        validate_alternative_fields(schema, selected, fields)?;
+        return Ok(selected);
+    }
     let selected = match element.attribute((XSI, "type")) {
         Some(value) => {
             let expanded = expand_xml_qname(element, schema, value)?;
@@ -365,6 +397,13 @@ pub(super) fn element_matches_schema(
     element: &roxmltree::Node<'_, '_>,
     schema: &SchemaNode,
 ) -> bool {
+    if schema.xml_alternative_kind == XmlAlternativeKind::SubstitutionGroup {
+        let identity = expanded_node_name(element);
+        return schema
+            .alternatives()
+            .iter()
+            .any(|alternative| alternative.name == identity);
+    }
     element.tag_name().name() == schema.name
         && schema
             .xml_namespace
@@ -766,9 +805,24 @@ fn write_single_node<W: std::io::Write>(
             Instance::Group(fields),
         ) => {
             validate_group_fields(schema, children, alternatives, fields)?;
-            let mut start = BytesStart::new(schema.name.clone());
-            push_element_namespace(&mut start, default_namespace, namespace_changed);
-            if let Some(alternative) = select_group_alternative(schema, alternatives, fields)? {
+            let selected = select_group_alternative(schema, alternatives, fields)?;
+            let (element_namespace, element_name) =
+                if schema.xml_alternative_kind == XmlAlternativeKind::SubstitutionGroup {
+                    let Some(alternative) = selected else {
+                        return Err(XmlFormatError::NoMatchingAlternative {
+                            name: schema.name.clone(),
+                        });
+                    };
+                    split_expanded_name(&alternative.name)
+                } else {
+                    (default_namespace, schema.name.as_str())
+                };
+            let namespace_changed = element_namespace != inherited_namespace;
+            let mut start = BytesStart::new(element_name);
+            push_element_namespace(&mut start, element_namespace, namespace_changed);
+            if schema.xml_alternative_kind == XmlAlternativeKind::XsiType
+                && let Some(alternative) = selected
+            {
                 start.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
                 let (namespace, local) = split_expanded_name(&alternative.name);
                 let type_name = match namespace {
@@ -792,7 +846,7 @@ fn write_single_node<W: std::io::Write>(
                             child_instance,
                         ));
                     };
-                    if !matches!(value, Value::Null) {
+                    if !matches!(value, Value::Null | Value::JsonNull(_)) {
                         let SchemaKind::Scalar { ty } = child_schema.kind else {
                             return Err(shape_error(
                                 child_schema,
@@ -824,9 +878,9 @@ fn write_single_node<W: std::io::Write>(
                 root_schema,
                 fields,
                 recursion_depth,
-                default_namespace,
+                element_namespace,
             )? {
-                writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
+                writer.write_event(Event::End(BytesEnd::new(element_name)))?;
                 return Ok(());
             }
             for child_schema in children.iter().filter(|child| child.text) {
@@ -836,7 +890,7 @@ fn write_single_node<W: std::io::Write>(
                     let Instance::Scalar(value) = child_instance else {
                         return Err(shape_error(child_schema, "a text scalar", child_instance));
                     };
-                    if !matches!(value, Value::Null) {
+                    if !matches!(value, Value::Null | Value::JsonNull(_)) {
                         let SchemaKind::Scalar { ty } = child_schema.kind else {
                             return Err(shape_error(child_schema, "a text scalar", child_instance));
                         };
@@ -856,7 +910,7 @@ fn write_single_node<W: std::io::Write>(
                         root_schema,
                         fields,
                         recursion_depth,
-                        default_namespace,
+                        element_namespace,
                     )?;
                 }
             } else {
@@ -867,10 +921,10 @@ fn write_single_node<W: std::io::Write>(
                     root_schema,
                     fields,
                     recursion_depth,
-                    default_namespace,
+                    element_namespace,
                 )?;
             }
-            writer.write_event(Event::End(BytesEnd::new(schema.name.clone())))?;
+            writer.write_event(Event::End(BytesEnd::new(element_name)))?;
             Ok(())
         }
         (SchemaKind::Scalar { .. }, other) => Err(shape_error(schema, "a scalar", other)),
@@ -892,7 +946,10 @@ fn write_group_child<W: std::io::Write>(
     };
     if !child_schema.repeating
         && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
-        && matches!(child_instance, Instance::Scalar(Value::Null))
+        && matches!(
+            child_instance,
+            Instance::Scalar(Value::Null | Value::JsonNull(_))
+        )
     {
         return Ok(());
     }
@@ -1285,13 +1342,13 @@ fn group_has_serialized_content(children: &[SchemaNode], fields: &[(String, Inst
             };
             if child.text {
                 return match instance {
-                    Instance::Scalar(Value::Null) => false,
+                    Instance::Scalar(Value::Null | Value::JsonNull(_)) => false,
                     Instance::Scalar(Value::String(value)) if value.is_empty() => false,
                     _ => true,
                 };
             }
             match instance {
-                Instance::Scalar(Value::Null) => false,
+                Instance::Scalar(Value::Null | Value::JsonNull(_)) => false,
                 Instance::Repeated(items)
                     if items.is_empty()
                         && (child.repeating || child.name == XML_ELEMENTS_FIELD) =>
@@ -1379,19 +1436,39 @@ fn select_group_alternative<'a>(
     if alternatives.is_empty() {
         return Ok(None);
     }
-    if let Some((_, marker)) = fields.iter().find(|(name, _)| name == XML_TYPE_FIELD) {
+    let marker_name = match schema.xml_alternative_kind {
+        XmlAlternativeKind::XsiType => XML_TYPE_FIELD,
+        XmlAlternativeKind::SubstitutionGroup => XML_SUBSTITUTION_FIELD,
+    };
+    if let Some((_, marker)) = fields.iter().find(|(name, _)| name == marker_name) {
         let Instance::Scalar(Value::String(type_name)) = marker else {
-            return Err(XmlFormatError::InvalidXmlType {
-                name: schema.name.clone(),
-                value: "non-string internal marker".to_string(),
+            return Err(match schema.xml_alternative_kind {
+                XmlAlternativeKind::XsiType => XmlFormatError::InvalidXmlType {
+                    name: schema.name.clone(),
+                    value: "non-string internal marker".to_string(),
+                },
+                XmlAlternativeKind::SubstitutionGroup => {
+                    XmlFormatError::InvalidSubstitutionMember {
+                        name: schema.name.clone(),
+                        value: "non-string internal marker".to_string(),
+                    }
+                }
             });
         };
         let selected = alternatives
             .iter()
             .find(|alternative| alternative.name == *type_name)
-            .ok_or_else(|| XmlFormatError::UnknownXmlType {
-                name: schema.name.clone(),
-                value: type_name.clone(),
+            .ok_or_else(|| match schema.xml_alternative_kind {
+                XmlAlternativeKind::XsiType => XmlFormatError::UnknownXmlType {
+                    name: schema.name.clone(),
+                    value: type_name.clone(),
+                },
+                XmlAlternativeKind::SubstitutionGroup => {
+                    XmlFormatError::UnknownSubstitutionMember {
+                        name: schema.name.clone(),
+                        value: type_name.clone(),
+                    }
+                }
             })?;
         validate_alternative_fields(schema, selected, fields)?;
         return Ok(Some(selected));
@@ -1436,7 +1513,7 @@ fn select_group_alternative<'a>(
 
 fn instance_has_value(instance: &Instance) -> bool {
     match instance {
-        Instance::Scalar(Value::Null) => false,
+        Instance::Scalar(Value::Null | Value::JsonNull(_)) => false,
         Instance::Scalar(Value::XmlNil(_)) => true,
         Instance::Scalar(_) => true,
         Instance::Group(fields) => fields.iter().any(|(_, value)| instance_has_value(value)),
@@ -1461,11 +1538,15 @@ fn validate_group_fields(
     fields: &[(String, Instance)],
 ) -> Result<(), XmlFormatError> {
     for (index, (name, _)) in fields.iter().enumerate() {
-        let xml_type_marker = name == XML_TYPE_FIELD && !alternatives.is_empty();
+        let xml_alternative_marker = !alternatives.is_empty()
+            && match schema.xml_alternative_kind {
+                XmlAlternativeKind::XsiType => name == XML_TYPE_FIELD,
+                XmlAlternativeKind::SubstitutionGroup => name == XML_SUBSTITUTION_FIELD,
+            };
         let mixed_content_marker = name == XML_MIXED_CONTENT_FIELD
             && (children.iter().any(|child| child.text)
                 || !schema.xml_repeating_sequences.is_empty());
-        if !xml_type_marker
+        if !xml_alternative_marker
             && !mixed_content_marker
             && !children.iter().any(|child| child.name == *name)
         {
@@ -1485,7 +1566,10 @@ fn validate_group_fields(
 }
 
 fn is_xml_metadata_field(name: &str) -> bool {
-    matches!(name, XML_TYPE_FIELD | XML_MIXED_CONTENT_FIELD)
+    matches!(
+        name,
+        XML_TYPE_FIELD | XML_SUBSTITUTION_FIELD | XML_MIXED_CONTENT_FIELD
+    )
 }
 
 fn shape_error(schema: &SchemaNode, expected: &'static str, instance: &Instance) -> XmlFormatError {
@@ -1511,6 +1595,7 @@ fn format_scalar(name: &str, ty: ScalarType, value: &Value) -> Result<String, Xm
     };
     match (ty, value) {
         (_, Value::Null) => Err(incompatible("null")),
+        (_, Value::JsonNull(_)) => Err(incompatible("json null")),
         (ScalarType::String, Value::Bool(value)) => Ok(value.to_string()),
         (ScalarType::String, Value::Int(value)) => Ok(value.to_string()),
         (ScalarType::String, Value::Float(value)) if value.is_finite() => Ok(value.to_string()),

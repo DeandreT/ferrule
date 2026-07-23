@@ -234,7 +234,7 @@ pub(super) fn datetime_from_date_and_time(args: &[Value]) -> Result<Value, Funct
     let (date, time) = match args {
         [Value::String(date)] => (date.as_str(), "00:00:00"),
         [Value::String(date), Value::String(time)] => (date.as_str(), time.as_str()),
-        [Value::String(date), Value::Null] => (date.as_str(), "00:00:00"),
+        [Value::String(date), Value::Null | Value::JsonNull(_)] => (date.as_str(), "00:00:00"),
         [first, second] => {
             let bad = if matches!(first, Value::String(_)) {
                 second
@@ -285,7 +285,7 @@ pub(super) fn datetime_from_date_and_time(args: &[Value]) -> Result<Value, Funct
 pub(super) fn coerce_datetime(args: &[Value]) -> Result<Value, FunctionError> {
     const FUNCTION: &str = "coerce_datetime";
     let value = match args {
-        [Value::Null] => return Ok(Value::Null),
+        [Value::Null | Value::JsonNull(_)] => return Ok(Value::Null),
         [Value::XmlNil(nil)] => return Ok(Value::XmlNil(*nil)),
         [Value::String(value)] => value,
         [other] => {
@@ -333,7 +333,7 @@ pub(super) fn datetime_from_parts(args: &[Value]) -> Result<Value, FunctionError
     let day = integer_part(&args[2], FUNCTION)?;
     let optional = |index: usize| -> Result<i64, FunctionError> {
         match args.get(index) {
-            None | Some(Value::Null) => Ok(0),
+            None | Some(Value::Null | Value::JsonNull(_)) => Ok(0),
             Some(value) => integer_part(value, FUNCTION),
         }
     };
@@ -341,11 +341,11 @@ pub(super) fn datetime_from_parts(args: &[Value]) -> Result<Value, FunctionError
     let minute = optional(4)?;
     let second = optional(5)?;
     let millisecond = match args.get(6) {
-        None | Some(Value::Null) => 0.0,
+        None | Some(Value::Null | Value::JsonNull(_)) => 0.0,
         Some(value) => decimal_part(value, FUNCTION)?,
     };
     let timezone = match args.get(7) {
-        None | Some(Value::Null) => None,
+        None | Some(Value::Null | Value::JsonNull(_)) => None,
         Some(value) => Some(integer_part(value, FUNCTION)?),
     };
 
@@ -412,7 +412,7 @@ pub(super) fn duration_from_parts(args: &[Value]) -> Result<Value, FunctionError
     ];
     let optional_integer = |index: usize| -> Result<i64, FunctionError> {
         match args.get(index) {
-            None | Some(Value::Null) => Ok(0),
+            None | Some(Value::Null | Value::JsonNull(_)) => Ok(0),
             Some(value) => integer_part(value, FUNCTION),
         }
     };
@@ -420,11 +420,11 @@ pub(super) fn duration_from_parts(args: &[Value]) -> Result<Value, FunctionError
     let minute = optional_integer(4)?;
     let second = optional_integer(5)?;
     let millisecond = match args.get(6) {
-        None | Some(Value::Null) => 0.0,
+        None | Some(Value::Null | Value::JsonNull(_)) => 0.0,
         Some(value) => decimal_part(value, FUNCTION)?,
     };
     let negative = match args.get(7) {
-        None | Some(Value::Null) => false,
+        None | Some(Value::Null | Value::JsonNull(_)) => false,
         Some(Value::Bool(value)) => *value,
         Some(value) => {
             return Err(FunctionError::TypeMismatch {

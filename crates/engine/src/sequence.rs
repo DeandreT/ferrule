@@ -291,12 +291,12 @@ fn scalar_text(value: &Value) -> Result<String, EngineError> {
         Value::Int(value) => Ok(value.to_string()),
         Value::Float(value) if value.is_finite() => Ok(value.to_string()),
         Value::String(value) => Ok(value.clone()),
-        Value::Null | Value::XmlNil(_) | Value::Float(_) => Err(EngineError::Function(
-            functions::FunctionError::TypeMismatch {
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) | Value::Float(_) => Err(
+            EngineError::Function(functions::FunctionError::TypeMismatch {
                 function: "recursive-collect",
                 got: value.type_name(),
-            },
-        )),
+            }),
+        ),
     }
 }
 
@@ -368,7 +368,7 @@ fn eval_sequence_arg(
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Option<Value>, EngineError> {
     let value = eval_expr(program, node, context, positions, in_progress)?;
-    Ok((value != Value::Null).then_some(value))
+    Ok((!matches!(value, Value::Null | Value::JsonNull(_))).then_some(value))
 }
 
 pub(super) fn generate_sequence(from: Option<Value>, to: Value) -> Result<Vec<Value>, EngineError> {

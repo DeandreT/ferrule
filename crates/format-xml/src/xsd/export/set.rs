@@ -324,6 +324,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.fixed == right.fixed
         && left.value_generation == right.value_generation
         && left.alternative_mode == right.alternative_mode
+        && left.xml_alternative_kind == right.xml_alternative_kind
         && left.xml_repeating_sequences == right.xml_repeating_sequences
         && left.kind == right.kind
 }

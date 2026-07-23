@@ -26,7 +26,7 @@ pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
         });
     };
     let Value::String(input) = input else {
-        if matches!(input, Value::Null) {
+        if matches!(input, Value::Null | Value::JsonNull(_)) {
             return Ok(Value::Null);
         }
         return Err(FunctionError::TypeMismatch {
@@ -114,6 +114,9 @@ fn scalar_value(scalar_type: &str, value: &Value) -> Result<serde_json::Value, F
         got: value.type_name(),
     };
     match (scalar_type, value) {
+        ("string" | "integer" | "number" | "boolean", Value::JsonNull(_)) => {
+            Ok(serde_json::Value::Null)
+        }
         ("string", Value::String(value)) => Ok(serde_json::Value::String(value.clone())),
         ("string", Value::Bool(value)) => Ok(serde_json::Value::String(value.to_string())),
         ("string", Value::Int(value)) => Ok(serde_json::Value::String(value.to_string())),

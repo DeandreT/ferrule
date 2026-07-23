@@ -25,7 +25,7 @@ pub(super) fn parse_field(args: &[Value]) -> Result<Value, FunctionError> {
         });
     };
     let Value::String(input) = input else {
-        if matches!(input, Value::Null) {
+        if matches!(input, Value::Null | Value::JsonNull(_)) {
             return Ok(Value::Null);
         }
         return Err(FunctionError::TypeMismatch {
