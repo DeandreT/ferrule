@@ -396,11 +396,16 @@ impl Parser {
         let cardinality = match self.expect_any_identifier()?.as_str() {
             "required" if self.syntax == Syntax::Proto2 => Cardinality::Required,
             "required" => return self.error("proto3 fields cannot be `required`"),
-            "optional" if self.syntax == Syntax::Proto2 => Cardinality::Optional,
-            "optional" => return self.error("explicit proto3 `optional` fields are not supported"),
+            "optional" => Cardinality::Optional,
             "repeated" => Cardinality::Repeated,
             _ => return self.error("field must be required, optional, or repeated"),
         };
+        if self.peek_identifier("required")
+            || self.peek_identifier("optional")
+            || self.peek_identifier("repeated")
+        {
+            return self.error("field cannot declare more than one cardinality label");
+        }
         self.parse_field_tail(scope, cardinality)
     }
 
