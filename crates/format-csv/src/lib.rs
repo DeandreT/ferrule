@@ -205,7 +205,7 @@ fn parse_present_value(
             }
             Value::Float(value)
         }
-        ScalarType::Bool => Value::Bool(cell.parse().map_err(|_| bad())?),
+        ScalarType::Bool => Value::Bool(boolean_lexical(cell).ok_or_else(bad)?),
     })
 }
 
@@ -355,12 +355,18 @@ fn format_value(
             .map(|value| value.to_string())
             .ok_or_else(incompatible),
         (ScalarType::Bool, Value::Bool(value)) => Ok(value.to_string()),
-        (ScalarType::Bool, Value::String(value)) => value
-            .trim()
-            .parse::<bool>()
+        (ScalarType::Bool, Value::String(value)) => boolean_lexical(value)
             .map(|value| value.to_string())
-            .map_err(|_| incompatible()),
+            .ok_or_else(incompatible),
         _ => Err(incompatible()),
+    }
+}
+
+fn boolean_lexical(value: &str) -> Option<bool> {
+    match value.trim() {
+        "true" | "1" => Some(true),
+        "false" | "0" => Some(false),
+        _ => None,
     }
 }
 
@@ -667,6 +673,47 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
 
         assert_eq!(read_back, vec![row]);
+    }
+
+    #[test]
+    fn boolean_columns_accept_word_and_numeric_lexicals() {
+        let schema = SchemaNode::group(
+            "row",
+            vec![
+                SchemaNode::scalar("left", ScalarType::Bool),
+                SchemaNode::scalar("right", ScalarType::Bool),
+            ],
+        );
+        assert_eq!(
+            from_str("1,false\n0,true\n", &schema, None, false).unwrap(),
+            vec![
+                Instance::Group(vec![
+                    ("left".into(), Instance::Scalar(Value::Bool(true))),
+                    ("right".into(), Instance::Scalar(Value::Bool(false))),
+                ]),
+                Instance::Group(vec![
+                    ("left".into(), Instance::Scalar(Value::Bool(false))),
+                    ("right".into(), Instance::Scalar(Value::Bool(true))),
+                ]),
+            ]
+        );
+
+        let row = Instance::Group(vec![
+            ("left".into(), Instance::Scalar(Value::String(" 1 ".into()))),
+            ("right".into(), Instance::Scalar(Value::String("0".into()))),
+        ]);
+        assert_eq!(
+            to_string(&schema, &[row], None, false).unwrap(),
+            "true,false\n"
+        );
+        assert!(matches!(
+            from_str("yes,no\n", &schema, None, false),
+            Err(CsvFormatError::Parse {
+                row: 0,
+                expected: ScalarType::Bool,
+                ..
+            })
+        ));
     }
 
     #[test]
