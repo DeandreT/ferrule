@@ -93,6 +93,14 @@ pub enum XmlFormatError {
     UnsupportedNestedRepeatingSequence { element_count: usize },
     #[error("XSD expansion exceeds the {limit}-element materialization limit")]
     SchemaMaterializationLimit { limit: usize },
+    #[error("named xs:{kind} `{name}` contains a reference cycle")]
+    SchemaGroupCycle { kind: &'static str, name: String },
+    #[error("named xs:{kind} `{name}` cannot be represented: {reason}")]
+    UnsupportedSchemaGroup {
+        kind: &'static str,
+        name: String,
+        reason: &'static str,
+    },
     #[error("schema node `{node}` cannot be both XML text and an attribute")]
     ConflictingSchemaRoles { node: String },
     #[error("schema {kind} `{node}` cannot be serialized as XML {role}")]

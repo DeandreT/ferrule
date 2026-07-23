@@ -1617,3 +1617,222 @@ fn rejects_sibling_expanded_names_that_share_one_local_mapping_name() {
     ));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn imports_named_sequence_and_attribute_groups_across_an_include() {
+    let dir = std::env::temp_dir().join(format!("ferrule_xsd_named_groups_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let shared = dir.join("shared.xsd");
+    std::fs::write(
+        &shared,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:named-groups"
+                targetNamespace="urn:ferrule:named-groups"
+                elementFormDefault="qualified">
+          <xs:group name="ActorFields"><xs:sequence>
+            <xs:element name="Actor" type="xs:string"/>
+          </xs:sequence></xs:group>
+          <xs:group name="AuditFields"><xs:sequence>
+            <xs:element name="CreatedAt" type="xs:string"/>
+            <xs:group ref="t:ActorFields"/>
+          </xs:sequence></xs:group>
+          <xs:attributeGroup name="VersionAttribute">
+            <xs:attribute name="version" type="xs:integer"/>
+          </xs:attributeGroup>
+          <xs:attributeGroup name="Identifiers">
+            <xs:attribute name="id" type="xs:string"/>
+            <xs:attributeGroup ref="t:VersionAttribute"/>
+          </xs:attributeGroup>
+        </xs:schema>"#,
+    )
+    .unwrap();
+    let root = dir.join("root.xsd");
+    std::fs::write(
+        &root,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:named-groups"
+                targetNamespace="urn:ferrule:named-groups"
+                elementFormDefault="qualified">
+          <xs:include schemaLocation="shared.xsd"/>
+          <xs:element name="Envelope"><xs:complexType>
+            <xs:sequence>
+              <xs:element name="Name" type="xs:string"/>
+              <xs:group ref="t:AuditFields"/>
+            </xs:sequence>
+            <xs:attributeGroup ref="t:Identifiers"/>
+          </xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&root, Some("{urn:ferrule:named-groups}Envelope")).unwrap();
+    let SchemaKind::Group { children, .. } = &schema.kind else {
+        panic!("named groups must import into a group schema");
+    };
+    assert_eq!(
+        children
+            .iter()
+            .map(|child| child.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Name", "CreatedAt", "Actor", "id", "version"]
+    );
+    assert!(matches!(
+        schema.child("version").unwrap().kind,
+        SchemaKind::Scalar {
+            ty: ScalarType::Int
+        }
+    ));
+    assert!(schema.child("id").unwrap().attribute);
+    assert!(matches!(
+        schema.child("Actor").unwrap().xml_namespace,
+        Some(XmlNamespace::Qualified(ref namespace))
+            if namespace.as_str() == "urn:ferrule:named-groups"
+    ));
+
+    let input = from_str(
+        r#"<Envelope xmlns="urn:ferrule:named-groups" id="A-17" version="3">
+          <Name>Report</Name><CreatedAt>2026-07-22</CreatedAt><Actor>Ada</Actor>
+        </Envelope>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        input.field("Actor").and_then(Instance::as_scalar),
+        Some(&Value::String("Ada".into()))
+    );
+    assert_eq!(
+        input.field("version").and_then(Instance::as_scalar),
+        Some(&Value::Int(3))
+    );
+    let rendered = to_string(&schema, &input).unwrap();
+    assert_eq!(from_str(&rendered, &schema).unwrap(), input);
+
+    let normalized = export(&schema).unwrap();
+    let normalized_path = dir.join("normalized.xsd");
+    std::fs::write(&normalized_path, normalized).unwrap();
+    assert_eq!(
+        import_root(&normalized_path, Some("{urn:ferrule:named-groups}Envelope")).unwrap(),
+        schema
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn named_schema_groups_reject_unrepresentable_shapes_explicitly() {
+    let cases = [
+        (
+            "repeated",
+            r#"<xs:group name="Fields"><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:group>
+               <xs:element name="Root"><xs:complexType><xs:sequence>
+                 <xs:group ref="Fields" maxOccurs="2"/>
+               </xs:sequence></xs:complexType></xs:element>"#,
+            "repeating xs:group references are not supported",
+        ),
+        (
+            "choice",
+            r#"<xs:group name="Fields"><xs:choice><xs:element name="Left" type="xs:string"/><xs:element name="Right" type="xs:string"/></xs:choice></xs:group>
+               <xs:element name="Root"><xs:complexType><xs:sequence>
+                 <xs:group ref="Fields"/>
+               </xs:sequence></xs:complexType></xs:element>"#,
+            "xs:choice and xs:all model groups are not supported",
+        ),
+        (
+            "any-attribute",
+            r#"<xs:attributeGroup name="Metadata"><xs:anyAttribute/></xs:attributeGroup>
+               <xs:element name="Root"><xs:complexType>
+                 <xs:attributeGroup ref="Metadata"/>
+               </xs:complexType></xs:element>"#,
+            "xs:anyAttribute is not supported",
+        ),
+    ];
+    for (label, declarations, reason) in cases {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_named_group_{label}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">{declarations}</xs:schema>"#
+            ),
+        )
+        .unwrap();
+        let error = import_root(&path, Some("Root")).unwrap_err();
+        std::fs::remove_file(path).unwrap();
+        assert!(matches!(
+            error,
+            XmlFormatError::UnsupportedSchemaGroup {
+                reason: actual,
+                ..
+            } if actual == reason
+        ));
+    }
+
+    for (kind, declarations) in [
+        (
+            "group",
+            r#"<xs:group name="First"><xs:sequence><xs:group ref="Second"/></xs:sequence></xs:group>
+               <xs:group name="Second"><xs:sequence><xs:group ref="First"/></xs:sequence></xs:group>
+               <xs:element name="Root"><xs:complexType><xs:sequence><xs:group ref="First"/></xs:sequence></xs:complexType></xs:element>"#,
+        ),
+        (
+            "attributeGroup",
+            r#"<xs:attributeGroup name="First"><xs:attributeGroup ref="Second"/></xs:attributeGroup>
+               <xs:attributeGroup name="Second"><xs:attributeGroup ref="First"/></xs:attributeGroup>
+               <xs:element name="Root"><xs:complexType><xs:attributeGroup ref="First"/></xs:complexType></xs:element>"#,
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_named_group_cycle_{kind}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">{declarations}</xs:schema>"#
+            ),
+        )
+        .unwrap();
+        let error = import_root(&path, Some("Root")).unwrap_err();
+        std::fs::remove_file(path).unwrap();
+        assert!(matches!(
+            error,
+            XmlFormatError::SchemaGroupCycle {
+                kind: actual,
+                ..
+            } if actual == kind
+        ));
+    }
+}
+
+#[test]
+fn named_model_group_expansion_obeys_the_schema_materialization_limit() {
+    let elements = (0..MAX_MATERIALIZED_SCHEMA_ELEMENTS)
+        .map(|index| format!(r#"<xs:element name="Value{index}" type="xs:string"/>"#))
+        .collect::<String>();
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_named_group_limit_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        format!(
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+              <xs:group name="Fields"><xs:sequence>{elements}</xs:sequence></xs:group>
+              <xs:element name="Root"><xs:complexType><xs:sequence>
+                <xs:group ref="Fields"/>
+              </xs:sequence></xs:complexType></xs:element>
+            </xs:schema>"#
+        ),
+    )
+    .unwrap();
+    let error = import_root(&path, Some("Root")).unwrap_err();
+    std::fs::remove_file(path).unwrap();
+    assert!(matches!(
+        error,
+        XmlFormatError::SchemaMaterializationLimit {
+            limit: MAX_MATERIALIZED_SCHEMA_ELEMENTS
+        }
+    ));
+}
