@@ -12,8 +12,8 @@ const MAX_VALIDATION_ISSUES: usize = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdiConstraintViolation {
-    TooShort { minimum: u16, actual: usize },
-    TooLong { maximum: u16, actual: usize },
+    TooShort { minimum: u32, actual: usize },
+    TooLong { maximum: u32, actual: usize },
     NotAllowed { allowed_count: usize },
 }
 
@@ -180,7 +180,7 @@ fn validate_at(
                 return Ok(());
             };
             let length = lexical.chars().count();
-            if length < usize::from(constraint.min_chars()) {
+            if length < constraint.min_chars() as usize {
                 push_issue(
                     report,
                     location,
@@ -189,7 +189,7 @@ fn validate_at(
                         actual: length,
                     },
                 );
-            } else if length > usize::from(constraint.max_chars()) {
+            } else if length > constraint.max_chars() as usize {
                 push_issue(
                     report,
                     location,
