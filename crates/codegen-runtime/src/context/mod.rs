@@ -57,6 +57,7 @@ pub struct ScopeContext<'a> {
 struct ScopeFrame<'a> {
     instance: &'a Instance,
     collection: Option<CollectionIdentity>,
+    document_path: Option<&'a str>,
     join: Option<u64>,
     join_position: Option<(u64, usize)>,
 }
@@ -107,6 +108,7 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                document_path: None,
                 join: None,
                 join_position: None,
             }],
@@ -122,6 +124,7 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                document_path: None,
                 join: None,
                 join_position: None,
             }],
@@ -138,6 +141,7 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                document_path: None,
                 join: None,
                 join_position: None,
             }],
@@ -156,6 +160,7 @@ impl<'a> ScopeContext<'a> {
             frames: vec![ScopeFrame {
                 instance: source,
                 collection: None,
+                document_path: None,
                 join: None,
                 join_position: None,
             }],
@@ -170,6 +175,25 @@ impl<'a> ScopeContext<'a> {
         self.execution
             .and_then(|execution| execution.value(value))
             .ok_or(RuntimeError::MissingRuntimeValue { value })
+    }
+
+    /// Returns the resolved path of the nearest active source document.
+    pub fn source_document_path(&self) -> Result<Value, SourcePathError> {
+        self.frames
+            .iter()
+            .rev()
+            .find_map(|frame| frame.document_path)
+            .or_else(|| {
+                self.frames.iter().rev().find_map(|frame| {
+                    frame
+                        .instance
+                        .as_document_set()?
+                        .first()
+                        .map(ir::DocumentMember::source_path)
+                })
+            })
+            .map(|path| Value::String(path.to_string()))
+            .ok_or(SourcePathError::MissingDocumentPath)
     }
 
     /// Clones the innermost source group for independent target ownership.
@@ -259,6 +283,7 @@ impl<'a> ScopeContext<'a> {
                 .map(|frame| ScopeFrame {
                     instance: frame.instance,
                     collection: frame.collection.clone(),
+                    document_path: frame.document_path,
                     join: frame.join,
                     join_position: frame.join_position,
                 })
@@ -299,6 +324,21 @@ fn collection_frame<'a>(instance: &'a Instance, collection: CollectionIdentity) 
     ScopeFrame {
         instance,
         collection: Some(collection),
+        document_path: None,
+        join: None,
+        join_position: None,
+    }
+}
+
+fn document_frame<'a>(
+    instance: &'a Instance,
+    collection: CollectionIdentity,
+    source_path: &'a str,
+) -> ScopeFrame<'a> {
+    ScopeFrame {
+        instance,
+        collection: Some(collection),
+        document_path: Some(source_path),
         join: None,
         join_position: None,
     }

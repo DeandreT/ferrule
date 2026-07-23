@@ -891,6 +891,17 @@ mod tests {
         assert!(generated_source(&artifacts).contains("7FF8000000000000"));
     }
 
+    #[test]
+    fn source_document_path_uses_runtime_document_context() {
+        let mut program = program();
+        program.expressions[0].expression = Expression::SourceDocumentPath;
+
+        let Ok(artifacts) = emit(&program) else {
+            panic!("source document paths emit")
+        };
+        assert!(generated_source(&artifacts).contains("context.ResolveSourceDocumentPath();"));
+    }
+
     fn generated_source(artifacts: &ArtifactSet) -> &str {
         let file = artifacts
             .files()
