@@ -70,7 +70,6 @@ pub enum ScopeConstructionKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnsupportedNodeKind {
-    SourceDocumentPath,
     DynamicSourceField,
     XmlMixedContent,
     XmlSerialize,
@@ -219,7 +218,6 @@ impl fmt::Display for ScopeConstructionKind {
 impl fmt::Display for UnsupportedNodeKind {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
-            Self::SourceDocumentPath => "current-document-path",
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",
             Self::XmlSerialize => "XML serialization",

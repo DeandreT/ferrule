@@ -76,6 +76,9 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(");\n");
             }
+            Expression::SourceDocumentPath => {
+                output.push_str(" =>\n        context.ResolveSourceDocumentPath();\n");
+            }
             Expression::Position { collection } => {
                 output.push_str(
                     " =>\n        global::Ferrule.Runtime.FerruleValue.FromInt64(context.Position(",

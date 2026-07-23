@@ -402,6 +402,68 @@ mod tests {
     }
 
     #[test]
+    fn source_document_path_tracks_active_documents_and_root_fallback() {
+        let document = |name: &str| {
+            group([field(
+                "Rows",
+                repeated([group([field("Name", scalar(string(name)))])]),
+            )])
+        };
+        let Some(first) = DocumentMember::new_source(
+            "portable/first.xml",
+            "/inputs/first.xml",
+            document("first"),
+        ) else {
+            panic!("valid first document member")
+        };
+        let Some(second) = DocumentMember::new("portable/second.xml", document("second")) else {
+            panic!("valid second document member")
+        };
+        let documents = Instance::DocumentSet(vec![first, second]);
+        let root = ScopeContext::new(&documents);
+
+        assert_eq!(root.source_document_path(), Ok(string("/inputs/first.xml")));
+        let document_contexts = root.walk_source(&[]);
+        assert_eq!(
+            document_contexts[0].source_document_path(),
+            Ok(string("/inputs/first.xml"))
+        );
+        assert_eq!(
+            document_contexts[1].source_document_path(),
+            Ok(string("portable/second.xml"))
+        );
+
+        let row_contexts = document_contexts[1].walk_source(&["Rows"]);
+        assert_eq!(row_contexts.len(), 1);
+        assert_eq!(
+            row_contexts[0].source_document_path(),
+            Ok(string("portable/second.xml"))
+        );
+
+        let grouped = GroupedItems::by(
+            document_contexts
+                .into_iter()
+                .enumerate()
+                .map(|(index, context)| (context, integer(index as i64)))
+                .collect(),
+            None,
+        );
+        let grouped_contexts = grouped.contexts();
+        assert_eq!(
+            grouped_contexts[0].source_document_path(),
+            Ok(string("/inputs/first.xml"))
+        );
+        assert_eq!(
+            grouped_contexts[1].source_document_path(),
+            Ok(string("portable/second.xml"))
+        );
+        assert_eq!(
+            ScopeContext::new(&group([])).source_document_path(),
+            Err(SourcePathError::MissingDocumentPath)
+        );
+    }
+
+    #[test]
     fn generated_items_retain_parent_fallback_and_independent_positions() {
         let source = group([field(
             "Rows",

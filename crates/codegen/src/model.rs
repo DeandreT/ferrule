@@ -443,6 +443,8 @@ pub enum Expression {
         frame: Option<Vec<String>>,
         path: Vec<String>,
     },
+    /// Reads the resolved path retained by the nearest source document.
+    SourceDocumentPath,
     Position {
         collection: Vec<String>,
     },

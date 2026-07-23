@@ -530,6 +530,7 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             frame: frame.clone(),
             path: path.clone(),
         },
+        Node::SourceDocumentPath => Expression::SourceDocumentPath,
         Node::Position { collection } => Expression::Position {
             collection: collection.clone(),
         },
@@ -657,7 +658,6 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
 
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
     match node {
-        Node::SourceDocumentPath => UnsupportedNodeKind::SourceDocumentPath,
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
         Node::XmlSerialize { .. } => UnsupportedNodeKind::XmlSerialize,
@@ -665,6 +665,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::SequenceItemAt { .. } => UnsupportedNodeKind::SequenceItemAt,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
         Node::SourceField { .. }
+        | Node::SourceDocumentPath
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }

@@ -232,6 +232,54 @@ internal static partial class Program
         Throws<ArgumentNullException>(() => new FerruleExecutionContext("active", null!));
     }
 
+    private static void SourceDocumentPath()
+    {
+        var documents = new FerruleDocumentSet(new[]
+        {
+            new FerruleDocument(
+                "portable/first.xml",
+                Group(Field(
+                    "Rows",
+                    new FerruleRepeated(new[]
+                    {
+                        Group(Field("Name", Scalar(Text("first")))),
+                    }))),
+                "/inputs/first.xml"),
+            new FerruleDocument(
+                "portable/second.xml",
+                Group(Field(
+                    "Rows",
+                    new FerruleRepeated(new[]
+                    {
+                        Group(Field("Name", Scalar(Text("second")))),
+                    })))),
+        });
+        var root = ScopeContext.FromSource(documents);
+
+        Equal(Text("/inputs/first.xml"), root.ResolveSourceDocumentPath());
+        var documentContexts = root.IterateSource();
+        Equal(Text("/inputs/first.xml"), documentContexts[0].ResolveSourceDocumentPath());
+        Equal(
+            Text("portable/second.xml"),
+            documentContexts[1].ResolveSourceDocumentPath());
+        Equal(
+            Text("portable/second.xml"),
+            documentContexts[1].IterateSource("Rows")[0].ResolveSourceDocumentPath());
+        var groupedContexts = root.GroupBy(
+            documentContexts,
+            Array.Empty<string>(),
+            context => context.ResolveSourceDocumentPath());
+        Equal(Text("/inputs/first.xml"), groupedContexts[0].ResolveSourceDocumentPath());
+        Equal(
+            Text("portable/second.xml"),
+            groupedContexts[1].ResolveSourceDocumentPath());
+
+        var missing = Error(
+            FerruleRuntimeError.MissingSourceField,
+            () => ScopeContext.FromSource(Group()).ResolveSourceDocumentPath());
+        Equal("<document-path>", missing.Detail);
+    }
+
     private static void MapEquals(
         FerruleValue expected,
         FerruleValue input,

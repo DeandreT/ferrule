@@ -19,6 +19,7 @@ mod grouping;
 mod joins;
 mod scalar_functions;
 mod sequences;
+mod source_document_path;
 mod user_functions;
 
 fn scalar(name: &str) -> SchemaNode {

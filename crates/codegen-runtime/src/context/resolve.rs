@@ -41,6 +41,8 @@ impl fmt::Display for InstanceKind {
 /// Failure to resolve a generated mapping's static scalar source path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourcePathError {
+    /// A current-document-path expression had no active document boundary.
+    MissingDocumentPath,
     /// A lookup collection path was absent or did not end in a repetition.
     MissingCollection { path: Vec<String> },
     /// A join-owned scalar field was evaluated outside its exact tuple frame.
@@ -78,6 +80,9 @@ pub enum SourcePathError {
 impl fmt::Display for SourcePathError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::MissingDocumentPath => {
+                formatter.write_str("no source document is active in the scope context")
+            }
             Self::MissingCollection { path } => write!(
                 formatter,
                 "source collection {} does not exist in the active scope context",

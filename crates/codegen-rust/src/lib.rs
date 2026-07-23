@@ -361,6 +361,9 @@ fn render_expression(
                 }
             }
         }
+        Expression::SourceDocumentPath => {
+            "context.source_document_path().map_err(RuntimeError::from)".into()
+        }
         Expression::Position { collection } => {
             let collection = collection
                 .iter()

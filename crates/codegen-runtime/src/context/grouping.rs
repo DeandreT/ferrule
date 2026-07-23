@@ -17,6 +17,7 @@ struct OwnedGroup<'a> {
     wrapper: Option<Instance>,
     members: Instance,
     collection: Vec<String>,
+    document_path: Option<&'a str>,
 }
 
 struct GroupBucket<'a, K> {
@@ -167,6 +168,7 @@ impl<'a> GroupedItems<'a> {
                     .map(|frame| ScopeFrame {
                         instance: frame.instance,
                         collection: frame.collection.clone(),
+                        document_path: frame.document_path,
                         join: frame.join,
                         join_position: frame.join_position,
                     })
@@ -175,17 +177,20 @@ impl<'a> GroupedItems<'a> {
                     frames.push(ScopeFrame {
                         instance: wrapper,
                         collection: None,
+                        document_path: None,
                         join: None,
                         join_position: None,
                     });
                 }
-                frames.push(collection_frame(
+                let mut grouped_frame = collection_frame(
                     &group.members,
                     CollectionIdentity::Grouped {
                         path: group.collection.clone(),
                         index: index + 1,
                     },
-                ));
+                );
+                grouped_frame.document_path = group.document_path;
+                frames.push(grouped_frame);
                 ScopeContext {
                     frames,
                     named_inputs: group.named_inputs,
@@ -217,6 +222,7 @@ impl<'a> GroupedItems<'a> {
                         wrapper,
                         members,
                         collection,
+                        document_path: terminal.document_path,
                     })
                 })
                 .collect(),

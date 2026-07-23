@@ -1,6 +1,8 @@
 use crate::{Instance, Value};
 
-use super::{CollectionIdentity, ScopeContext, ScopeFrame, SourcePathError, collection_frame};
+use super::{
+    CollectionIdentity, ScopeContext, ScopeFrame, SourcePathError, collection_frame, document_frame,
+};
 
 impl<'a> ScopeContext<'a> {
     /// Produces one child context for every item selected by `path`.
@@ -221,12 +223,13 @@ fn walk_source_frames<'a>(
                 .enumerate()
                 .map(|(index, document)| {
                     let mut next = acc.to_vec();
-                    next.push(collection_frame(
+                    next.push(document_frame(
                         document.value(),
                         CollectionIdentity::Document {
                             path: prefix.to_vec(),
                             index: index + 1,
                         },
+                        document.source_path(),
                     ));
                     next
                 })
@@ -251,6 +254,7 @@ fn walk_source_frames<'a>(
                 next.push(ScopeFrame {
                     instance: base,
                     collection: None,
+                    document_path: None,
                     join: None,
                     join_position: None,
                 });
@@ -264,12 +268,13 @@ fn walk_source_frames<'a>(
                     .enumerate()
                     .flat_map(|(index, document)| {
                         let mut next = acc.to_vec();
-                        next.push(collection_frame(
+                        next.push(document_frame(
                             document.value(),
                             CollectionIdentity::Document {
                                 path: prefix.to_vec(),
                                 index: index + 1,
                             },
+                            document.source_path(),
                         ));
                         walk_source_frames(document.value(), path, prefix, &next)
                     })

@@ -68,6 +68,31 @@ public sealed partial class ScopeContext
         return FerruleValue.FromString(resolved);
     }
 
+    /// <summary>Returns the resolved path of the nearest active source document.</summary>
+    public FerruleValue ResolveSourceDocumentPath()
+    {
+        for (var index = _collections.Count - 1; index >= 0; index--)
+        {
+            var path = _collections[index].DocumentPath;
+            if (path is not null)
+            {
+                return FerruleValue.FromString(path);
+            }
+        }
+        for (var index = _frames.Count - 1; index >= 0; index--)
+        {
+            if (_frames[index] is FerruleDocumentSet { Documents.Count: > 0 } documents)
+            {
+                var document = documents.Documents[0];
+                return FerruleValue.FromString(document.ResolvedSourcePath ?? document.Path);
+            }
+        }
+        throw new FerruleRuntimeException(
+            FerruleRuntimeError.MissingSourceField,
+            "No source document is active in the scope context.",
+            detail: "<document-path>");
+    }
+
     /// <summary>
     /// Follows a source path and returns one context per flattened candidate.
     /// Repeated and document-set boundaries retain their collection identity.
@@ -542,7 +567,13 @@ public sealed partial class ScopeContext
                     for (var index = 0; index < documents.Documents.Count; index++)
                     {
                         var document = documents.Documents[index];
-                        PushCollection(document.Value, prefix, index + 1, frames, collections);
+                        PushCollection(
+                            document.Value,
+                            prefix,
+                            index + 1,
+                            frames,
+                            collections,
+                            document.ResolvedSourcePath ?? document.Path);
                         AddCandidate(frames, collections, output);
                         PopCollection(frames, collections);
                     }
@@ -569,7 +600,13 @@ public sealed partial class ScopeContext
             for (var index = 0; index < documentSet.Documents.Count; index++)
             {
                 var document = documentSet.Documents[index];
-                PushCollection(document.Value, prefix, index + 1, frames, collections);
+                PushCollection(
+                    document.Value,
+                    prefix,
+                    index + 1,
+                    frames,
+                    collections,
+                    document.ResolvedSourcePath ?? document.Path);
                 Walk(document.Value, path, pathIndex, prefix, frames, collections, output);
                 PopCollection(frames, collections);
             }
@@ -626,10 +663,15 @@ public sealed partial class ScopeContext
         IReadOnlyList<string> path,
         int index,
         ICollection<FerruleInstance> frames,
-        ICollection<CollectionIdentity> collections)
+        ICollection<CollectionIdentity> collections,
+        string? documentPath = null)
     {
         frames.Add(item);
-        collections.Add(new CollectionIdentity(path.ToArray(), item, index));
+        collections.Add(new CollectionIdentity(
+            path.ToArray(),
+            item,
+            index,
+            DocumentPath: documentPath));
     }
 
     private static void PopCollection(
@@ -756,7 +798,8 @@ public sealed partial class ScopeContext
         int Index,
         ulong? Join = null,
         int? JoinPosition = null,
-        bool Grouped = false);
+        bool Grouped = false,
+        string? DocumentPath = null);
 
     private readonly record struct ScalarResolution(bool Found, FerruleValue Value)
     {
