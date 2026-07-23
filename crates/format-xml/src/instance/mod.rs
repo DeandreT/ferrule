@@ -44,6 +44,8 @@ pub enum XmlFormatError {
         expected: String,
         got: String,
     },
+    #[error("XSD default on `{name}` cannot be represented: {reason}")]
+    UnsupportedSchemaDefault { name: String, reason: &'static str },
     #[error("element `{name}` expected {expected}, got {got}")]
     Shape {
         name: String,
@@ -249,7 +251,9 @@ fn read_node(
                 return Ok(Instance::Scalar(Value::xml_nil()));
             }
             let text = el.text().unwrap_or("");
-            Ok(Instance::Scalar(parse_schema_scalar(schema, *ty, text)?))
+            Ok(Instance::Scalar(parse_input_schema_scalar(
+                schema, *ty, text,
+            )?))
         }
         SchemaKind::Group {
             children,
@@ -541,6 +545,19 @@ fn parse_schema_scalar(
     parse_scalar(&schema.name, ty, text)
 }
 
+fn parse_input_schema_scalar(
+    schema: &SchemaNode,
+    ty: ScalarType,
+    text: &str,
+) -> Result<Value, XmlFormatError> {
+    let text = if text.is_empty() {
+        schema.default.as_deref().unwrap_or(text)
+    } else {
+        text
+    };
+    parse_schema_scalar(schema, ty, text)
+}
+
 fn format_schema_scalar(
     schema: &SchemaNode,
     ty: ScalarType,
@@ -631,6 +648,7 @@ pub fn to_string_with_options(
 }
 
 pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), XmlFormatError> {
+    validate_schema_default(schema)?;
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Ok(());
     };
@@ -647,6 +665,39 @@ pub(crate) fn validate_namespace_siblings(schema: &SchemaNode) -> Result<(), Xml
             });
         }
         validate_namespace_siblings(child)?;
+    }
+    Ok(())
+}
+
+fn validate_schema_default(schema: &SchemaNode) -> Result<(), XmlFormatError> {
+    if schema.default.is_some() {
+        let reason = if schema.fixed.is_some() {
+            Some("fixed and default value constraints are mutually exclusive")
+        } else if schema.value_generation.is_some() {
+            Some("generated and default values are mutually exclusive")
+        } else if schema.repeating {
+            Some("repeating elements cannot carry a default value")
+        } else if !matches!(schema.kind, SchemaKind::Scalar { .. }) {
+            Some("only scalar elements, simple content, and attributes support defaults")
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            return Err(XmlFormatError::UnsupportedSchemaDefault {
+                name: schema.name.clone(),
+                reason,
+            });
+        }
+    }
+    if schema.repeating
+        && schema
+            .text_child()
+            .is_some_and(|text| text.default.is_some())
+    {
+        return Err(XmlFormatError::UnsupportedSchemaDefault {
+            name: schema.name.clone(),
+            reason: "repeating simple-content elements cannot carry a default value",
+        });
     }
     Ok(())
 }

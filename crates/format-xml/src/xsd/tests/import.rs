@@ -1526,6 +1526,169 @@ fn fixed_elements_simple_content_and_attributes_roundtrip_and_validate() {
 }
 
 #[test]
+fn defaults_materialize_at_xml_boundaries_and_roundtrip_through_xsd() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_default_test_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Root"><xs:complexType><xs:sequence>
+    <xs:element name="Count" type="xs:integer" default="7" minOccurs="0"/>
+    <xs:element name="Label" type="xs:string" default="fallback" minOccurs="0"/>
+    <xs:element name="NilCount" type="xs:integer" default="9" nillable="true" minOccurs="0"/>
+    <xs:element name="Price" default="12.5" minOccurs="0"><xs:complexType><xs:simpleContent>
+      <xs:extension base="xs:decimal">
+        <xs:attribute name="currency" type="xs:string" default="USD"/>
+      </xs:extension>
+    </xs:simpleContent></xs:complexType></xs:element>
+  </xs:sequence><xs:attribute name="enabled" type="xs:boolean" default="true"/>
+  </xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import(&path).unwrap();
+    assert_eq!(
+        schema
+            .child("Count")
+            .and_then(|node| node.default.as_deref()),
+        Some("7")
+    );
+    assert_eq!(
+        schema
+            .child("Price")
+            .and_then(SchemaNode::text_child)
+            .and_then(|node| node.default.as_deref()),
+        Some("12.5")
+    );
+    assert_eq!(
+        schema
+            .child("Price")
+            .and_then(|node| node.child("currency"))
+            .and_then(|node| node.default.as_deref()),
+        Some("USD")
+    );
+
+    let materialized = from_str(
+        r#"<Root xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Count/><Label></Label><NilCount xsi:nil="true"/><Price/></Root>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        materialized.field("Count").and_then(Instance::as_scalar),
+        Some(&Value::Int(7))
+    );
+    assert_eq!(
+        materialized.field("Label").and_then(Instance::as_scalar),
+        Some(&Value::String("fallback".to_string()))
+    );
+    assert_eq!(
+        materialized.field("NilCount").and_then(Instance::as_scalar),
+        Some(&Value::xml_nil())
+    );
+    let price = materialized.field("Price").unwrap();
+    assert_eq!(
+        price.field(XML_TEXT_FIELD).and_then(Instance::as_scalar),
+        Some(&Value::Float(12.5))
+    );
+    assert_eq!(
+        price.field("currency").and_then(Instance::as_scalar),
+        Some(&Value::String("USD".to_string()))
+    );
+    assert_eq!(
+        materialized.field("enabled").and_then(Instance::as_scalar),
+        Some(&Value::Bool(true))
+    );
+
+    let absent = from_str("<Root/>", &schema).unwrap();
+    assert_eq!(
+        absent.field("Count").and_then(Instance::as_scalar),
+        Some(&Value::Null)
+    );
+    assert_eq!(
+        absent.field("Label").and_then(Instance::as_scalar),
+        Some(&Value::Null)
+    );
+    assert!(absent.field("Price").is_none());
+    assert_eq!(
+        absent.field("enabled").and_then(Instance::as_scalar),
+        Some(&Value::Bool(true))
+    );
+
+    let explicit = from_str(
+        r#"<Root enabled="false"><Count>11</Count><Label>set</Label><Price currency="EUR">4.5</Price></Root>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        explicit.field("Count").and_then(Instance::as_scalar),
+        Some(&Value::Int(11))
+    );
+    assert_eq!(
+        explicit.field("enabled").and_then(Instance::as_scalar),
+        Some(&Value::Bool(false))
+    );
+
+    let rendered = to_string(&schema, &materialized).unwrap();
+    assert_eq!(from_str(&rendered, &schema).unwrap(), materialized);
+    let exported = export(&schema).unwrap();
+    assert!(
+        exported.contains(r#"name="Count" type="xs:integer" default="7""#),
+        "{exported}"
+    );
+    assert!(
+        exported.contains(r#"name="Price" default="12.5""#),
+        "{exported}"
+    );
+    assert!(
+        exported.contains(r#"name="currency" type="xs:string" default="USD""#),
+        "{exported}"
+    );
+    assert!(
+        exported.contains(r#"name="enabled" type="xs:boolean" default="true""#),
+        "{exported}"
+    );
+    std::fs::write(&path, exported).unwrap();
+    assert_eq!(import(&path).unwrap(), schema);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn rejects_unrepresentable_xsd_defaults() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_invalid_default_test_{}.xsd",
+        std::process::id()
+    ));
+    let cases = [
+        (
+            "group",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Root" default="x"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        ),
+        (
+            "repeating",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Root"><xs:complexType><xs:sequence><xs:element name="Value" type="xs:string" default="x" maxOccurs="unbounded"/></xs:sequence></xs:complexType></xs:element></xs:schema>"#,
+        ),
+        (
+            "fixed-and-default",
+            r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element name="Root" type="xs:string" fixed="x" default="x"/></xs:schema>"#,
+        ),
+    ];
+    for (label, text) in cases {
+        std::fs::write(&path, text).unwrap();
+        assert!(
+            matches!(
+                import(&path),
+                Err(XmlFormatError::UnsupportedSchemaDefault { .. })
+            ),
+            "{label}"
+        );
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn imports_cross_namespace_element_and_attribute_references_exactly() {
     let dir =
         std::env::temp_dir().join(format!("ferrule_xsd_expanded_names_{}", std::process::id()));

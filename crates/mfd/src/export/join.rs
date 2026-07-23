@@ -790,6 +790,7 @@ fn structurally_compatible(source: &SchemaNode, target: &SchemaNode) -> bool {
         && source.nillable == target.nillable
         && source.text == target.text
         && source.fixed == target.fixed
+        && source.default == target.default
         && !target.repeating
         && source.kind == target.kind
 }

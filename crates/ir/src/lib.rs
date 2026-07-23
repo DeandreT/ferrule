@@ -313,6 +313,10 @@ pub struct SchemaNode {
     /// with an `HL` segment are told apart by `HL03` being `20` vs `22`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// An XML Schema default lexical value for a scalar element, simple
+    /// content value, or ordinary attribute.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
     /// The owning format generates this scalar when no mapped value is
     /// supplied. Generated values and fixed literals are mutually exclusive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -363,6 +367,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             fixed: Option<String>,
             #[serde(default)]
+            default: Option<String>,
+            #[serde(default)]
             value_generation: Option<ValueGeneration>,
             #[serde(default)]
             alternative_mode: GroupAlternativeMode,
@@ -386,6 +392,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             nillable: repr.nillable,
             nullable: repr.nullable,
             fixed: repr.fixed,
+            default: repr.default,
             value_generation: repr.value_generation,
             alternative_mode: repr.alternative_mode,
             xml_alternative_kind: repr.xml_alternative_kind,
@@ -396,6 +403,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
         if !node.alternatives_are_valid()
             || !node.recursive_ref_is_valid()
             || !node.value_generation_is_valid()
+            || !node.default_is_valid()
             || !node.alternative_mode_is_valid()
             || !node.xml_alternative_kind_is_valid()
             || !node.xml_repeating_sequences_are_valid()
@@ -403,7 +411,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.nullable_is_valid()
         {
             return Err(serde::de::Error::custom(
-                "schema metadata contains invalid alternatives, recursion, value generation, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
+                "schema metadata contains invalid alternatives, recursion, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
             ));
         }
         Ok(node)
@@ -572,6 +580,7 @@ impl SchemaNode {
             nillable: false,
             nullable: false,
             fixed: None,
+            default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
@@ -592,6 +601,7 @@ impl SchemaNode {
             nillable: false,
             nullable: false,
             fixed: None,
+            default: None,
             value_generation: None,
             alternative_mode: GroupAlternativeMode::Exclusive,
             xml_alternative_kind: XmlAlternativeKind::XsiType,
@@ -650,6 +660,17 @@ impl SchemaNode {
         self.value_generation.is_none()
             || (!self.repeating
                 && self.fixed.is_none()
+                && self.default.is_none()
+                && matches!(self.kind, SchemaKind::Scalar { .. }))
+    }
+
+    /// Checks that XML default metadata remains non-repeating, scalar, and
+    /// mutually exclusive with fixed and generated values.
+    pub fn default_is_valid(&self) -> bool {
+        self.default.is_none()
+            || (!self.repeating
+                && self.fixed.is_none()
+                && self.value_generation.is_none()
                 && matches!(self.kind, SchemaKind::Scalar { .. }))
     }
 
@@ -929,6 +950,11 @@ impl SchemaNode {
     pub fn fixed(mut self, value: impl Into<String>) -> Self {
         self.fixed = Some(value.into());
         self
+    }
+
+    pub fn with_default(mut self, value: impl Into<String>) -> Option<Self> {
+        self.default = Some(value.into());
+        self.default_is_valid().then_some(self)
     }
 
     pub fn child(&self, name: &str) -> Option<&SchemaNode> {
@@ -1633,6 +1659,54 @@ mod tests {
         assert!(
             serde_json::from_str::<SchemaNode>(
                 r#"{"name":"Rows","value_generation":"max_number","kind":{"kind":"group","children":[]}}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn xml_defaults_are_scalar_only_exclusive_and_serde_defaulted() {
+        let defaulted = SchemaNode::scalar("Count", ScalarType::Int)
+            .with_default("7")
+            .unwrap();
+        let encoded = serde_json::to_string(&defaulted).unwrap();
+        assert!(encoded.contains(r#""default":"7""#));
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+            defaulted
+        );
+
+        let legacy: SchemaNode =
+            serde_json::from_str(r#"{"name":"Count","kind":{"kind":"scalar","ty":"int"}}"#)
+                .unwrap();
+        assert!(legacy.default.is_none());
+        assert!(
+            SchemaNode::group("Count", Vec::new())
+                .with_default("7")
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Count", ScalarType::Int)
+                .repeating()
+                .with_default("7")
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Count", ScalarType::Int)
+                .fixed("7")
+                .with_default("7")
+                .is_none()
+        );
+        assert!(
+            SchemaNode::scalar("Count", ScalarType::Int)
+                .with_default("7")
+                .unwrap()
+                .with_value_generation(ValueGeneration::MaxNumber)
+                .is_none()
+        );
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"Count","fixed":"7","default":"7","kind":{"kind":"scalar","ty":"int"}}"#
             )
             .is_err()
         );

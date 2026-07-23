@@ -185,6 +185,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.attribute == right.attribute
         && left.text == right.text
         && left.fixed == right.fixed
+        && left.default == right.default
         && left.value_generation == right.value_generation
         && left.alternative_mode == right.alternative_mode
         && left.xml_alternative_kind == right.xml_alternative_kind
@@ -403,9 +404,10 @@ fn write_element_required(
     } else {
         ""
     };
-    let fixed = element_fixed(node).map_or_else(String::new, |value| {
-        format!(" fixed=\"{}\"", alternatives::xml_escape(value))
-    });
+    let value_constraint = element_value_constraint(node)
+        .map_or_else(String::new, |(kind, value)| {
+            format!(" {kind}=\"{}\"", alternatives::xml_escape(value))
+        });
     let form = if depth > 1 && matches!(node.xml_namespace, Some(XmlNamespace::Qualified(_))) {
         " form=\"qualified\""
     } else {
@@ -424,11 +426,11 @@ fn write_element_required(
                 root_name.to_string()
             };
             out.push_str(&format!(
-                "{pad}<xs:element ref=\"{reference}\"{legacy_name}{occurs}{nillable}{fixed}/>\n"
+                "{pad}<xs:element ref=\"{reference}\"{legacy_name}{occurs}{nillable}{value_constraint}/>\n"
             ));
         } else {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}/>\n",
                 node.name,
                 recursive_type_name(anchor)
             ));
@@ -437,7 +439,7 @@ fn write_element_required(
     }
     if node.name != root_name && recursive_anchors.contains_key(&node.name) {
         out.push_str(&format!(
-            "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
+            "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}/>\n",
             node.name,
             recursive_type_name(&node.name)
         ));
@@ -446,7 +448,7 @@ fn write_element_required(
     if let Some(type_name) = alternatives.type_for(node) {
         if let Some(view) = alternatives.restricted_view_for(node) {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{fixed}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}>\n{pad}  <xs:annotation>\n{pad}    <xs:appinfo source=\"{ALTERNATIVE_VIEW_NAMESPACE}\">\n",
                 node.name
             ));
             for name in view {
@@ -460,7 +462,7 @@ fn write_element_required(
             ));
         } else {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{type_name}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}/>\n",
                 node.name
             ));
         }
@@ -469,14 +471,14 @@ fn write_element_required(
     match &node.kind {
         ir::SchemaKind::Scalar { ty } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}/>\n",
+                "{pad}<xs:element name=\"{}\" type=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}/>\n",
                 node.name,
                 xsd_type_name(ty)
             ));
         }
         ir::SchemaKind::Group { .. } => {
             out.push_str(&format!(
-                "{pad}<xs:element name=\"{}\"{form}{legacy_name}{occurs}{nillable}{fixed}>\n",
+                "{pad}<xs:element name=\"{}\"{form}{legacy_name}{occurs}{nillable}{value_constraint}>\n",
                 node.name
             ));
             write_complex_type(
@@ -504,6 +506,24 @@ fn element_fixed(node: &SchemaNode) -> Option<&str> {
             .find(|child| child.text)
             .and_then(|child| child.fixed.as_deref())
     })
+}
+
+fn element_default(node: &SchemaNode) -> Option<&str> {
+    node.default.as_deref().or_else(|| {
+        let ir::SchemaKind::Group { children, .. } = &node.kind else {
+            return None;
+        };
+        children
+            .iter()
+            .find(|child| child.text)
+            .and_then(|child| child.default.as_deref())
+    })
+}
+
+fn element_value_constraint(node: &SchemaNode) -> Option<(&'static str, &str)> {
+    element_fixed(node)
+        .map(|value| ("fixed", value))
+        .or_else(|| element_default(node).map(|value| ("default", value)))
 }
 
 fn write_complex_type(
@@ -678,11 +698,9 @@ fn write_attribute(
         });
     };
     let pad = "  ".repeat(depth);
-    let fixed = attribute
-        .fixed
-        .as_deref()
-        .map_or_else(String::new, |value| {
-            format!(" fixed=\"{}\"", alternatives::xml_escape(value))
+    let value_constraint = attribute_value_constraint(attribute)
+        .map_or_else(String::new, |(kind, value)| {
+            format!(" {kind}=\"{}\"", alternatives::xml_escape(value))
         });
     let form = if matches!(attribute.xml_namespace, Some(XmlNamespace::Qualified(_))) {
         " form=\"qualified\""
@@ -696,9 +714,17 @@ fn write_attribute(
             ""
         };
     out.push_str(&format!(
-        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{form}{legacy_name}{fixed}/>\n",
+        "{pad}<xs:attribute name=\"{}\" type=\"{}\"{form}{legacy_name}{value_constraint}/>\n",
         attribute.name,
         xsd_type_name(ty)
     ));
     Ok(())
+}
+
+pub(super) fn attribute_value_constraint(attribute: &SchemaNode) -> Option<(&'static str, &str)> {
+    attribute
+        .fixed
+        .as_deref()
+        .map(|value| ("fixed", value))
+        .or_else(|| attribute.default.as_deref().map(|value| ("default", value)))
 }

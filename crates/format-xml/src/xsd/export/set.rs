@@ -5,7 +5,10 @@ use ir::{SchemaKind, SchemaNode, XmlNamespace};
 
 use crate::XmlFormatError;
 
-use super::{ExternalReference, alternatives, export_document, export_namespace, xsd_type_name};
+use super::{
+    ExternalReference, alternatives, attribute_value_constraint, export_document, export_namespace,
+    xsd_type_name,
+};
 
 const MAX_NAMESPACE_ARTIFACTS: usize = 64;
 const MAX_NAMESPACE_REFERENCES: usize = 4_096;
@@ -262,6 +265,7 @@ impl<'a> ExportSetPlanner<'a> {
         declaration.text = occurrence.text;
         declaration.nillable = occurrence.nillable;
         declaration.fixed.clone_from(&occurrence.fixed);
+        declaration.default.clone_from(&occurrence.default);
         declaration.value_generation = occurrence.value_generation;
         declaration.recursive_ref = None;
         rebase_recursive_anchor(&mut declaration, anchor, &occurrence.name);
@@ -322,6 +326,7 @@ fn same_recursive_anchor_definition(left: &SchemaNode, right: &SchemaNode) -> bo
         && left.attribute == right.attribute
         && left.text == right.text
         && left.fixed == right.fixed
+        && left.default == right.default
         && left.value_generation == right.value_generation
         && left.alternative_mode == right.alternative_mode
         && left.xml_alternative_kind == right.xml_alternative_kind
@@ -362,14 +367,12 @@ fn export_attribute_document(
             role: "attribute",
         });
     }
-    let fixed = attribute
-        .fixed
-        .as_deref()
-        .map_or_else(String::new, |value| {
-            format!(" fixed=\"{}\"", alternatives::xml_escape(value))
+    let value_constraint = attribute_value_constraint(attribute)
+        .map_or_else(String::new, |(kind, value)| {
+            format!(" {kind}=\"{}\"", alternatives::xml_escape(value))
         });
     Ok(format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:tns=\"{}\" targetNamespace=\"{}\" elementFormDefault=\"unqualified\" attributeFormDefault=\"unqualified\">\n  <xs:attribute name=\"{}\" type=\"{}\"{fixed}/>\n</xs:schema>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" xmlns:tns=\"{}\" targetNamespace=\"{}\" elementFormDefault=\"unqualified\" attributeFormDefault=\"unqualified\">\n  <xs:attribute name=\"{}\" type=\"{}\"{value_constraint}/>\n</xs:schema>\n",
         alternatives::xml_escape(&key.namespace),
         alternatives::xml_escape(&key.namespace),
         alternatives::xml_escape(&attribute.name),
