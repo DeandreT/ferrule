@@ -61,6 +61,7 @@ struct ParseState {
     materialized_elements: usize,
     materialization_limit_reached: bool,
     unsupported_particle: Option<XmlFormatError>,
+    unsupported_default: Option<XmlFormatError>,
     unsupported_schema_group: Option<XmlFormatError>,
     unsupported_substitution: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
@@ -167,6 +168,9 @@ impl ParseState {
         if let Some(error) = self.unsupported_particle {
             return Err(error);
         }
+        if let Some(error) = self.unsupported_default {
+            return Err(error);
+        }
         if let Some(error) = self.unsupported_schema_group {
             return Err(error);
         }
@@ -189,6 +193,10 @@ impl ParseState {
 
     fn reject_repeating_particle(&mut self, error: XmlFormatError) {
         self.unsupported_particle.get_or_insert(error);
+    }
+
+    fn reject_default(&mut self, error: XmlFormatError) {
+        self.unsupported_default.get_or_insert(error);
     }
 
     fn reject_schema_group(&mut self, error: XmlFormatError) {
@@ -505,6 +513,7 @@ fn parse_element(
     node.xml_namespace = declaration_namespace(el, schema_el, false);
     apply_exported_alternative_view(el, &mut node);
     apply_fixed_value(el, &mut node);
+    apply_default_value(el, &mut node, state);
     if el
         .attribute("nillable")
         .is_some_and(|value| matches!(value, "true" | "1"))
@@ -565,6 +574,25 @@ fn apply_fixed_value(declaration: &Node<'_, '_>, node: &mut SchemaNode) {
         SchemaKind::Group { children, .. } => {
             if let Some(text) = children.iter_mut().find(|child| child.text) {
                 text.fixed = Some(fixed.to_string());
+            }
+        }
+    }
+}
+
+fn apply_default_value(declaration: &Node<'_, '_>, node: &mut SchemaNode, state: &mut ParseState) {
+    let Some(default) = declaration.attribute("default") else {
+        return;
+    };
+    match &mut node.kind {
+        SchemaKind::Scalar { .. } => node.default = Some(default.to_string()),
+        SchemaKind::Group { children, .. } => {
+            if let Some(text) = children.iter_mut().find(|child| child.text) {
+                text.default = Some(default.to_string());
+            } else {
+                state.reject_default(XmlFormatError::UnsupportedSchemaDefault {
+                    name: node.name.clone(),
+                    reason: "only scalar elements and simple-content elements support defaults",
+                });
             }
         }
     }
@@ -1197,6 +1225,7 @@ fn attach_substitution_alternatives(
         }
         if member.nillable
             || member.fixed != node.fixed
+            || member.default != node.default
             || member.xml_repeating_sequences != original_sequences
         {
             return Err(unsupported_substitution(
@@ -1648,6 +1677,9 @@ fn parse_attribute(
             if let Some(fixed) = declaration.attribute("fixed") {
                 attribute.fixed = Some(fixed.to_string());
             }
+            if let Some(default) = declaration.attribute("default") {
+                attribute.default = Some(default.to_string());
+            }
             return attribute;
         }
         let mut attribute =
@@ -1673,6 +1705,9 @@ fn parse_attribute(
     attribute.xml_namespace = declaration_namespace(declaration, schema, true);
     if let Some(fixed) = declaration.attribute("fixed") {
         attribute.fixed = Some(fixed.to_string());
+    }
+    if let Some(default) = declaration.attribute("default") {
+        attribute.default = Some(default.to_string());
     }
     attribute
 }
