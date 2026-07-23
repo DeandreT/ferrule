@@ -28,6 +28,7 @@ use roxmltree::Node;
 use crate::XmlFormatError;
 
 mod export;
+mod groups;
 mod substitution;
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
@@ -60,6 +61,7 @@ struct ParseState {
     materialized_elements: usize,
     materialization_limit_reached: bool,
     unsupported_particle: Option<XmlFormatError>,
+    unsupported_schema_group: Option<XmlFormatError>,
     unsupported_substitution: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
 }
@@ -165,6 +167,9 @@ impl ParseState {
         if let Some(error) = self.unsupported_particle {
             return Err(error);
         }
+        if let Some(error) = self.unsupported_schema_group {
+            return Err(error);
+        }
         if let Some(error) = self.unsupported_substitution {
             return Err(error);
         }
@@ -184,6 +189,10 @@ impl ParseState {
 
     fn reject_repeating_particle(&mut self, error: XmlFormatError) {
         self.unsupported_particle.get_or_insert(error);
+    }
+
+    fn reject_schema_group(&mut self, error: XmlFormatError) {
+        self.unsupported_schema_group.get_or_insert(error);
     }
 
     fn reject_substitution(&mut self, error: XmlFormatError) {
@@ -1605,15 +1614,23 @@ fn parse_complex_type(
             _ => {}
         }
     }
-    for attr in complex_type
-        .children()
-        .filter(|n| n.is_element() && n.tag_name().name() == "attribute")
-    {
-        if attr.attribute("use") == Some("prohibited") {
-            continue;
+    for attr in complex_type.children().filter(|node| {
+        node.is_element() && matches!(node.tag_name().name(), "attribute" | "attributeGroup")
+    }) {
+        match attr.tag_name().name() {
+            "attribute" if attr.attribute("use") == Some("prohibited") => continue,
+            "attribute" => {
+                let attribute = parse_attribute(&attr, schema_el, schema_path, state);
+                parsed.children.push(attribute);
+            }
+            "attributeGroup" => {
+                match groups::resolve_attribute_group(&attr, schema_el, schema_path, state) {
+                    Ok(attributes) => parsed.children.extend(attributes),
+                    Err(error) => state.reject_schema_group(error),
+                }
+            }
+            _ => {}
         }
-        let attribute = parse_attribute(&attr, schema_el, schema_path, state);
-        parsed.children.push(attribute);
     }
     parsed
 }
@@ -1833,6 +1850,10 @@ fn collect_sequence(
                     out,
                 );
             }
+            "group" => match groups::resolve_model_group(&child, schema_el, schema_path, state) {
+                Ok(children) => out.extend(children),
+                Err(error) => state.reject_schema_group(error),
+            },
             _ => {}
         }
     }
