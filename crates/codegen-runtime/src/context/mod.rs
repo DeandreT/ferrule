@@ -353,6 +353,40 @@ impl<'a> ScopeContext<'a> {
         }
     }
 
+    pub(crate) fn with_recursive_filter_item<'b>(
+        &'b self,
+        item: &'b Instance,
+        collection: &str,
+        index: usize,
+    ) -> ScopeContext<'b>
+    where
+        'a: 'b,
+    {
+        let mut frames = self
+            .frames
+            .iter()
+            .map(|frame| ScopeFrame {
+                instance: frame.instance,
+                collection: frame.collection.clone(),
+                document_path: frame.document_path,
+                join: frame.join,
+                join_position: frame.join_position,
+            })
+            .collect::<Vec<_>>();
+        frames.push(collection_frame(
+            item,
+            CollectionIdentity::Repeated {
+                path: vec![collection.to_string()],
+                index,
+            },
+        ));
+        ScopeContext {
+            frames,
+            named_inputs: self.named_inputs,
+            execution: self.execution,
+        }
+    }
+
     fn named_input(&self, name: &str) -> Option<&'a Instance> {
         self.named_inputs
             .iter()

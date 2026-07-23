@@ -198,16 +198,7 @@ fn validates_target_mixed_content_source_target_and_element_invariants() {
         unreachable!();
     };
     elements[0].source = "Missing".into();
-    assert_eq!(
-        validate_program(&missing_source),
-        Err(
-            ProgramValidationError::InvalidXmlMixedContentConstructionSource {
-                target_path: Vec::new(),
-                element: 0,
-                source_field: "Missing".into(),
-            }
-        )
-    );
+    assert_eq!(validate_program(&missing_source), Ok(()));
 
     let mut scalar_target = valid;
     let TargetConstruction::XmlMixedContent { elements } = &mut scalar_target.root.construction

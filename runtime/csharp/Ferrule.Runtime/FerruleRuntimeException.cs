@@ -25,6 +25,9 @@ public enum FerruleRuntimeError
     AggregateIntegerOverflow,
     AggregateNonFinite,
     CopyCurrentSourceRequiresGroup,
+    RecursiveFilterDepth,
+    RecursiveFilterRequiresGroup,
+    RecursiveFilterRequiresCollection,
     MissingRuntimeValue,
     GeneratedSequenceTooLarge,
     RecursiveSequenceDepth,
@@ -60,7 +63,9 @@ public sealed class FerruleRuntimeException : Exception
         ulong? join = null,
         ulong? userFunction = null,
         ulong? functionParameter = null,
-        FerruleScalarType? expectedScalarType = null)
+        FerruleScalarType? expectedScalarType = null,
+        string? sourceField = null,
+        string? foundInstance = null)
         : base(message)
     {
         Error = error;
@@ -81,6 +86,8 @@ public sealed class FerruleRuntimeException : Exception
         UserFunction = userFunction;
         FunctionParameter = functionParameter;
         ExpectedScalarType = expectedScalarType;
+        SourceField = sourceField;
+        FoundInstance = foundInstance;
     }
 
     public FerruleRuntimeException(
@@ -103,7 +110,9 @@ public sealed class FerruleRuntimeException : Exception
         ulong? join = null,
         ulong? userFunction = null,
         ulong? functionParameter = null,
-        FerruleScalarType? expectedScalarType = null)
+        FerruleScalarType? expectedScalarType = null,
+        string? sourceField = null,
+        string? foundInstance = null)
         : base(message, innerException)
     {
         Error = error;
@@ -124,6 +133,8 @@ public sealed class FerruleRuntimeException : Exception
         UserFunction = userFunction;
         FunctionParameter = functionParameter;
         ExpectedScalarType = expectedScalarType;
+        SourceField = sourceField;
+        FoundInstance = foundInstance;
     }
 
     public FerruleRuntimeError Error { get; }
@@ -161,4 +172,8 @@ public sealed class FerruleRuntimeException : Exception
     public ulong? FunctionParameter { get; }
 
     public FerruleScalarType? ExpectedScalarType { get; }
+
+    public string? SourceField { get; }
+
+    public string? FoundInstance { get; }
 }
