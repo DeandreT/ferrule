@@ -21,6 +21,7 @@ mod scalar_functions;
 mod sequences;
 mod source_document_path;
 mod user_functions;
+mod xml_serialize;
 
 fn scalar(name: &str) -> SchemaNode {
     SchemaNode::scalar(name, ScalarType::String)
@@ -371,6 +372,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "ends_with",
         "contains",
         "matches",
+        "replace",
         "concat",
         "upper",
         "lower",

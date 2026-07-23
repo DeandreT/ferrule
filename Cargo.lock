@@ -965,17 +965,21 @@ name = "codegen-csharp"
 version = "0.1.0"
 dependencies = [
  "codegen",
+ "engine",
  "ir",
  "mapping",
+ "serde_json",
 ]
 
 [[package]]
 name = "codegen-runtime"
 version = "0.1.0"
 dependencies = [
+ "format-xml",
  "functions",
  "ir",
  "regex",
+ "serde_json",
 ]
 
 [[package]]
@@ -983,8 +987,10 @@ name = "codegen-rust"
 version = "0.1.0"
 dependencies = [
  "codegen",
+ "engine",
  "ir",
  "mapping",
+ "serde_json",
 ]
 
 [[package]]

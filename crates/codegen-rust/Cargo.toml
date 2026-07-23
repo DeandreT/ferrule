@@ -10,3 +10,7 @@ description = "Rust source generator for compiled ferrule mappings"
 codegen = { workspace = true }
 ir = { workspace = true }
 mapping = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+engine = { workspace = true }

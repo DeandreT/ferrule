@@ -45,6 +45,8 @@ pub enum SourcePathError {
     MissingDocumentPath,
     /// A lookup collection path was absent or did not end in a repetition.
     MissingCollection { path: Vec<String> },
+    /// A structured source path was absent or selected an empty repetition.
+    MissingInstance { path: Vec<String> },
     /// A join-owned scalar field was evaluated outside its exact tuple frame.
     MissingJoinField {
         join: u64,
@@ -86,6 +88,11 @@ impl fmt::Display for SourcePathError {
             Self::MissingCollection { path } => write!(
                 formatter,
                 "source collection {} does not exist in the active scope context",
+                display_path(path)
+            ),
+            Self::MissingInstance { path } => write!(
+                formatter,
+                "structured source {} does not exist in the active scope context",
                 display_path(path)
             ),
             Self::MissingJoinField {
@@ -137,6 +144,85 @@ impl fmt::Display for SourcePathError {
 impl std::error::Error for SourcePathError {}
 
 impl ScopeContext<'_> {
+    /// Resolves a complete structured source using active collection identity
+    /// before ordinary innermost-to-outermost fallback.
+    pub fn resolve_instance(&self, path: &[&str]) -> Result<&Instance, SourcePathError> {
+        let owned_path = owned_path(path);
+        let mut first_error = None;
+
+        for frame in self.frames.iter().rev() {
+            let Some(collection) = &frame.collection else {
+                continue;
+            };
+            let prefix = collection.path();
+            if prefix.is_empty() || !has_prefix(path, prefix) {
+                continue;
+            }
+            match resolve_instance_in(
+                frame.instance,
+                &path[prefix.len()..],
+                &owned_path,
+                prefix.len(),
+            ) {
+                Ok(instance) => return Ok(instance),
+                Err(error) => first_error.get_or_insert(error),
+            };
+        }
+
+        for frame in self.frames.iter().rev() {
+            match resolve_instance_in(frame.instance, path, &owned_path, 0) {
+                Ok(instance) => return Ok(instance),
+                Err(error) => first_error.get_or_insert(error),
+            };
+        }
+
+        if let Some((name, rest)) = path.split_first()
+            && let Some(input) = self.named_input(name)
+        {
+            match resolve_instance_in(input, rest, &owned_path, 1) {
+                Ok(instance) => return Ok(instance),
+                Err(error) => first_error.get_or_insert(error),
+            };
+        }
+
+        Err(first_error.unwrap_or(SourcePathError::MissingInstance { path: owned_path }))
+    }
+
+    /// Resolves a complete structured source only within one active frame.
+    pub fn resolve_instance_in_frame(
+        &self,
+        frame: &[&str],
+        path: &[&str],
+    ) -> Result<&Instance, SourcePathError> {
+        let mut absolute_path = owned_path(frame);
+        absolute_path.extend(path.iter().map(|segment| (*segment).to_string()));
+        let Some(owner) = self.frames.iter().rev().find(|scope_frame| {
+            scope_frame.collection.as_ref().is_some_and(|collection| {
+                same_path(frame, collection.path())
+                    || !collection.path().is_empty() && has_suffix(frame, collection.path())
+            })
+        }) else {
+            return Err(SourcePathError::MissingFrame {
+                frame: owned_path(frame),
+                path: owned_path(path),
+            });
+        };
+        resolve_instance_in(owner.instance, path, &absolute_path, frame.len())
+    }
+
+    /// Selects the framed or ordinary structured source used by generated XML
+    /// serialization expressions.
+    pub fn resolve_xml_instance(
+        &self,
+        frame: Option<&[&str]>,
+        path: &[&str],
+    ) -> Result<&Instance, SourcePathError> {
+        match frame {
+            Some(frame) => self.resolve_instance_in_frame(frame, path),
+            None => self.resolve_instance(path),
+        }
+    }
+
     /// Resolves a scalar using active collection identity before ordinary
     /// innermost-to-outermost fallback.
     ///
@@ -280,6 +366,39 @@ fn resolve_scalar_in(
             path: owned_path.to_vec(),
             found: InstanceKind::of(current),
         })
+}
+
+fn resolve_instance_in<'a>(
+    source: &'a Instance,
+    path: &[&str],
+    owned_path: &[String],
+    segment_offset: usize,
+) -> Result<&'a Instance, SourcePathError> {
+    let mut current = source;
+    for (segment, field_name) in path.iter().enumerate() {
+        current = first_repeated(current).ok_or_else(|| SourcePathError::MissingInstance {
+            path: owned_path.to_vec(),
+        })?;
+        current = current.field(field_name).ok_or_else(|| {
+            let found = InstanceKind::of(current);
+            if matches!(found, InstanceKind::Group | InstanceKind::DocumentSet) {
+                SourcePathError::MissingField {
+                    path: owned_path.to_vec(),
+                    segment: segment_offset + segment,
+                    field: field_name.to_string(),
+                }
+            } else {
+                SourcePathError::CannotTraverse {
+                    path: owned_path.to_vec(),
+                    segment: segment_offset + segment,
+                    found,
+                }
+            }
+        })?;
+    }
+    first_repeated(current).ok_or_else(|| SourcePathError::MissingInstance {
+        path: owned_path.to_vec(),
+    })
 }
 
 fn owned_path(path: &[&str]) -> Vec<String> {

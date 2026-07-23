@@ -757,6 +757,19 @@ mod tests {
                     args: vec![2, 13],
                 },
             },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::Const {
+                    value: Value::String("#".into()),
+                },
+            },
+            ExpressionNode {
+                id: 16,
+                expression: Expression::Call {
+                    function: ScalarFunction::Replace,
+                    args: vec![2, 13, 15],
+                },
+            },
         ]);
         program.root.bindings[0].expression = 12;
 
@@ -776,6 +789,9 @@ mod tests {
         assert!(source.contains("return Node_2(context);"));
         assert!(source.contains(
             "FerruleFunctions.Call(\"matches\", new global::Ferrule.Runtime.FerruleValue[] { Node_2(context), Node_13(context) })"
+        ));
+        assert!(source.contains(
+            "FerruleFunctions.Call(\"replace\", new global::Ferrule.Runtime.FerruleValue[] { Node_2(context), Node_13(context), Node_15(context) })"
         ));
     }
 

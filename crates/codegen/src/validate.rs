@@ -20,6 +20,7 @@ mod sequences;
 mod sources;
 mod targets;
 mod user_functions;
+mod xml;
 
 pub use context::{
     GroupingExpressionRole, JoinKeySide, RecursiveSequencePathRole, SequenceExpressionRole,
@@ -124,6 +125,23 @@ pub enum ProgramValidationError {
         node: NodeId,
         collection: Vec<String>,
         value: Vec<String>,
+    },
+    InvalidXmlSerializeSource {
+        node: NodeId,
+        path: Vec<String>,
+        schema: String,
+    },
+    RepeatingXmlSerializeSchema {
+        node: NodeId,
+        schema: String,
+    },
+    EmptyXmlSerializeNamespace {
+        node: NodeId,
+    },
+    UnsupportedXmlSerializeSchema {
+        node: NodeId,
+        schema: String,
+        feature: &'static str,
     },
     DuplicateJoinOwner {
         join: crate::JoinId,
@@ -307,6 +325,7 @@ pub fn validate_program(program: &Program) -> Result<(), ProgramValidationError>
     validate_dependencies(&expressions)?;
     validate_cycles(&expressions)?;
     user_functions::validate(program, &expressions)?;
+    xml::validate(sources, &expressions)?;
     validate_aggregate_paths(sources, &expressions)?;
     collection_find::validate(sources, &expressions)?;
     lookup::validate(sources, &expressions)?;
@@ -1022,6 +1041,27 @@ impl fmt::Display for ProgramValidationError {
                 "compiled mapping lookup expression {node} value {} is not a scalar under collection {}",
                 display_path(value),
                 display_path(collection)
+            ),
+            Self::InvalidXmlSerializeSource { node, path, schema } => write!(
+                formatter,
+                "compiled mapping XML serializer expression {node} source {} does not match schema {schema:?}",
+                display_path(path)
+            ),
+            Self::RepeatingXmlSerializeSchema { node, schema } => write!(
+                formatter,
+                "compiled mapping XML serializer expression {node} schema {schema:?} must describe one document element"
+            ),
+            Self::EmptyXmlSerializeNamespace { node } => write!(
+                formatter,
+                "compiled mapping XML serializer expression {node} default namespace cannot be empty"
+            ),
+            Self::UnsupportedXmlSerializeSchema {
+                node,
+                schema,
+                feature,
+            } => write!(
+                formatter,
+                "compiled mapping XML serializer expression {node} schema {schema:?} uses unsupported {feature}"
             ),
             Self::DuplicateJoinOwner { join } => write!(
                 formatter,

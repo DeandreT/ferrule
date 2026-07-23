@@ -80,10 +80,11 @@ The current portable model includes:
   positions
 - explicit active/main mapping paths and an optional stable current date-time
   supplied by the execution host
-- lazy conditionals and a closed set of 65 boolean, arithmetic, comparison,
+- lazy conditionals and a closed set of 66 boolean, arithmetic, comparison,
   scalar text, Unicode whitespace/substring/padding, finite numeric detection,
-  integer-first conversion, numeric picture formatting, SQL LIKE, ISBN, rounding, date extraction,
-  composition, picture parsing, exact duration arithmetic, and EDIFACT date-time conversion,
+  integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
+  matching/replacement, ISBN, rounding, date extraction, composition, picture parsing, exact
+  duration arithmetic, and EDIFACT date-time conversion,
   missing-value, XML-nil, lexical path, and validated pure delay-pass-through
   functions
 - ordered value maps with optional declared-input coercion, first-match wins,
@@ -92,6 +93,11 @@ The current portable model includes:
   static named source, with strict scalar-tag equality and Null on a miss
 - expression-driven collection search over flattened source paths, with
   nullable predicates, raw nested positions, lazy values, and first-match wins
+- complete structured XML source serialization from ordinary or frame-pinned
+  paths, with an embedded closed schema, document declaration/indent/default-
+  namespace controls, attributes, text, repetition, Null omission, recursive
+  groups, and XML nil; advanced alternative/generic/mixed schemas reject before
+  artifact creation
 - root-context static inner joins across two or more primary or named-source
   collections, with left-deep composite equality, scalar coercion, stable
   duplicate-preserving order, Null/XML-nil exclusion, exact joined fields, raw
