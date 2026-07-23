@@ -1,6 +1,30 @@
+use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
+
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new() -> Result<Self, std::io::Error> {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_mfd_fixed_width_parser_{}_{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&path);
+        std::fs::create_dir_all(&path)?;
+        Ok(Self(path))
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -99,8 +123,9 @@ fn unsupported_text_modes_have_specific_warnings() {
 }
 
 #[test]
-fn imports_inline_fixed_width_string_parser_and_executes_per_source_row() {
-    let imported = mfd::import(&fixture("fixed-width-string-parser.mfd")).unwrap();
+fn imports_inline_fixed_width_string_parser_and_executes_per_source_row()
+-> Result<(), Box<dyn Error>> {
+    let imported = mfd::import(&fixture("fixed-width-string-parser.mfd"))?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
 
@@ -114,7 +139,7 @@ fn imports_inline_fixed_width_string_parser_and_executes_per_source_row() {
             Instance::Scalar(Value::String("012Grace".into())),
         )]),
     ]);
-    let output = engine::run(&imported.project, &source).unwrap();
+    let output = engine::run(&imported.project, &source)?;
     let rows = output.as_repeated().unwrap();
     assert_eq!(rows.len(), 2);
     assert_eq!(
@@ -125,4 +150,29 @@ fn imports_inline_fixed_width_string_parser_and_executes_per_source_row() {
         rows[1].field("Name").and_then(Instance::as_scalar),
         Some(&Value::String("Grace".into()))
     );
+
+    let dir = TempDir::new()?;
+    let design = dir.0.join("fixed-width-parser.mfd");
+    let warnings = mfd::export(&imported.project, &design)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&design)?;
+    assert_eq!(xml.matches("usageKind=\"stringparse\"").count(), 1);
+    assert!(xml.contains("<text type=\"flf\""));
+    assert!(!xml.contains("name=\"flextext_parse_field\""));
+
+    let reimported = mfd::import(&design)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+    let output = engine::run(&reimported.project, &source)?;
+    let rows = output.as_repeated().unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(
+        rows[0].field("Code").and_then(Instance::as_scalar),
+        Some(&Value::Int(7))
+    );
+    assert_eq!(
+        rows[1].field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Grace".into()))
+    );
+    Ok(())
 }

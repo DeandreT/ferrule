@@ -19,6 +19,7 @@ mod edi;
 mod exception;
 mod external_source;
 mod flextext;
+mod flextext_parser;
 mod function;
 mod join;
 mod json_parser;
