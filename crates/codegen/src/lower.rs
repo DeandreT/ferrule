@@ -126,7 +126,7 @@ fn lower_failure_rule(
         mapping::FailureIteration::Sequence { sequence } => {
             roots.extend(sequence.inputs());
             roots.push(sequence.item());
-            let Some(sequence) = lower_generated_sequence(sequence) else {
+            if matches!(sequence, mapping::SequenceExpr::TokenizeRegex { .. }) {
                 diagnostics.push(Diagnostic::UnsupportedFailureRule {
                     rule: index + 1,
                     feature: FailureRuleFeature::GeneratedSequence(
@@ -134,8 +134,8 @@ fn lower_failure_rule(
                     ),
                 });
                 return None;
-            };
-            FailureIteration::Generated(sequence)
+            }
+            FailureIteration::Generated(lower_generated_sequence(sequence))
         }
     };
     let selection = match rule.selection {
@@ -253,7 +253,7 @@ fn lower_scope(
 fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
     let input: IterationSource = match &scope.iteration {
         ScopeIteration::Source(path) => SourceIteration::new(path.clone()).into(),
-        ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence)?.into(),
+        ScopeIteration::Sequence(sequence) => lower_generated_sequence(sequence).into(),
         ScopeIteration::InnerJoin { id, plan } => {
             InnerJoin::new(JoinId::from(*id), JoinPlan::from_mapping(plan)).into()
         }
@@ -303,55 +303,7 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
     ))
 }
 
-fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> Option<GeneratedSequence> {
-    match sequence {
-        mapping::SequenceExpr::Tokenize {
-            input,
-            delimiter,
-            item,
-        } => Some(GeneratedSequence::Tokenize {
-            input: *input,
-            delimiter: *delimiter,
-            item: *item,
-        }),
-        mapping::SequenceExpr::TokenizeByLength {
-            input,
-            length,
-            item,
-        } => Some(GeneratedSequence::TokenizeByLength {
-            input: *input,
-            length: *length,
-            item: *item,
-        }),
-        mapping::SequenceExpr::RecursiveCollect {
-            collection,
-            children,
-            descent_value,
-            values,
-            value,
-            prefix,
-            separator,
-            item,
-        } => Some(GeneratedSequence::RecursiveCollect {
-            collection: collection.clone(),
-            children: children.clone(),
-            descent_value: descent_value.clone(),
-            values: values.clone(),
-            value: value.clone(),
-            prefix: *prefix,
-            separator: *separator,
-            item: *item,
-        }),
-        mapping::SequenceExpr::Generate { from, to, item } => Some(GeneratedSequence::Range {
-            from: *from,
-            to: *to,
-            item: *item,
-        }),
-        mapping::SequenceExpr::TokenizeRegex { .. } => None,
-    }
-}
-
-fn lower_item_at_sequence(sequence: &mapping::SequenceExpr) -> GeneratedSequence {
+fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> GeneratedSequence {
     match sequence {
         mapping::SequenceExpr::Tokenize {
             input,
@@ -438,17 +390,7 @@ fn inspect_scope_features(
         });
     };
     match &scope.iteration {
-        ScopeIteration::None
-        | ScopeIteration::Source(_)
-        | ScopeIteration::Sequence(
-            mapping::SequenceExpr::Tokenize { .. }
-            | mapping::SequenceExpr::TokenizeByLength { .. }
-            | mapping::SequenceExpr::RecursiveCollect { .. }
-            | mapping::SequenceExpr::Generate { .. },
-        ) => {}
-        ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeRegex { .. }) => report(
-            ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex),
-        ),
+        ScopeIteration::None | ScopeIteration::Source(_) | ScopeIteration::Sequence(_) => {}
         ScopeIteration::InnerJoin { .. } if root_context => {}
         ScopeIteration::InnerJoin { .. } => report(ScopeFeature::CorrelatedInnerJoin),
         ScopeIteration::DynamicDocuments { .. } | ScopeIteration::Concatenate(_) => {
@@ -691,14 +633,11 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             sequence,
             predicate,
         } => Expression::SequenceExists {
-            sequence: lower_generated_sequence(sequence).ok_or(Diagnostic::UnsupportedNode {
-                node: id,
-                kind: UnsupportedNodeKind::SequenceExists,
-            })?,
+            sequence: lower_generated_sequence(sequence),
             predicate: *predicate,
         },
         Node::SequenceItemAt { sequence, index } => Expression::SequenceItemAt {
-            sequence: lower_item_at_sequence(sequence),
+            sequence: lower_generated_sequence(sequence),
             index: *index,
         },
         node => {
@@ -716,7 +655,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
         Node::XmlSerialize { .. } => UnsupportedNodeKind::XmlSerialize,
-        Node::SequenceExists { .. } => UnsupportedNodeKind::SequenceExists,
         Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
         Node::SourceField { .. }
         | Node::SourceDocumentPath
@@ -733,6 +671,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::ValueMap { .. }
         | Node::Lookup { .. }
         | Node::CollectionFind { .. }
+        | Node::SequenceExists { .. }
         | Node::SequenceItemAt { .. }
         | Node::Aggregate { .. } => {
             unreachable!("portable expressions are handled above")

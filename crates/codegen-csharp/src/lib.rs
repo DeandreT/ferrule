@@ -764,9 +764,10 @@ mod tests {
             ExpressionNode {
                 id: 15,
                 expression: Expression::SequenceExists {
-                    sequence: GeneratedSequence::Tokenize {
+                    sequence: GeneratedSequence::TokenizeRegex {
                         input: 11,
-                        delimiter: 12,
+                        pattern: 12,
+                        flags: Some(31),
                         item: 10,
                     },
                     predicate: 14,
@@ -815,13 +816,20 @@ mod tests {
                     path: Vec::new(),
                 },
             },
+            ExpressionNode {
+                id: 31,
+                expression: Expression::Const {
+                    value: Value::String("i".into()),
+                },
+            },
         ]);
         program.root.bindings[0].expression = 15;
         program.root.bindings[0].target_type = ScalarType::Bool;
         program.root.children[0].iteration =
-            Some(IterationPlan::generated(GeneratedSequence::Tokenize {
+            Some(IterationPlan::generated(GeneratedSequence::TokenizeRegex {
                 input: 11,
-                delimiter: 12,
+                pattern: 12,
+                flags: Some(31),
                 item: 30,
             }));
         program.root.children[0].bindings[0].expression = 30;
@@ -837,6 +845,10 @@ mod tests {
         let exists = &source[exists_start..exists_end];
         let exists_input = exists.find("Node_11(context)").expect("exists input");
         let exists_parameter = exists.find("Node_12(context)").expect("exists parameter");
+        let exists_flags = exists.find("Node_31(context)").expect("exists flags");
+        let exists_materialization = exists
+            .find("FerruleSequences.TokenizeRegex")
+            .expect("regex materialization");
         let exists_iteration = exists
             .find("context.EnumerateGenerated(sequence_values_node_15)")
             .expect("exists item contexts");
@@ -845,7 +857,9 @@ mod tests {
             .expect("exists predicate");
         assert!(
             exists_input < exists_parameter
-                && exists_parameter < exists_iteration
+                && exists_parameter < exists_flags
+                && exists_flags < exists_materialization
+                && exists_materialization < exists_iteration
                 && exists_iteration < exists_predicate
         );
         assert!(exists.contains("RequireBoolean(sequence_predicate_node_15, 14U)"));
@@ -876,6 +890,7 @@ mod tests {
         assert!(item_at.contains("sequence_values_node_24, sequence_index_node_24"));
 
         assert!(source.contains("sequence_values_scope_1"));
+        assert!(source.contains("FerruleSequences.TokenizeRegex"));
         assert!(source.contains("context.IterateGenerated(sequence_values_scope_1)"));
         assert!(!source.contains("context.EnumerateGenerated(sequence_values_scope_1)"));
     }
