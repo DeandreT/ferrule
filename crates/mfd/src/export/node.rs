@@ -199,6 +199,28 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut position_inputs = BTreeMap::new();
     let mut sequence_exists_pins = Vec::new();
     let mut siblings = Vec::new();
+    let excluded_json_parsers = project
+        .graph
+        .nodes
+        .keys()
+        .copied()
+        .filter(|node| joins.node_blocked(*node) || blocked_nodes.contains(node))
+        .collect::<BTreeSet<_>>();
+    let json_parsers = super::json_parser::render(
+        &project.graph,
+        &excluded_json_parsers,
+        keys,
+        uid,
+        mfd_path,
+        warnings,
+    );
+    node_out_key.extend(
+        json_parsers
+            .outputs
+            .iter()
+            .map(|(&node, &port)| (node, port)),
+    );
+    components.push_str(&json_parsers.components);
     for (&id, node) in &project.graph.nodes {
         if joins.node_blocked(id) || blocked_nodes.contains(&id) {
             continue;
@@ -764,6 +786,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 );
             }
             Node::Call { function, args } => {
+                if json_parsers.handles(id) {
+                    continue;
+                }
                 if function == "json_serialize_object" {
                     match super::json_serializer::render(
                         id,
@@ -931,12 +956,20 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         warnings,
     );
     connect_deferred_inputs(
+        "JSON string parser",
+        &json_parsers.inputs,
+        node_out_key,
+        edges,
+        warnings,
+    );
+    connect_deferred_inputs(
         "JSON string serializer",
         &json_serializer_inputs,
         node_out_key,
         edges,
         warnings,
     );
+    siblings.extend(json_parsers.siblings);
     for inputs in auto_number_inputs {
         for (node, input) in [inputs.start, inputs.increment] {
             match node_out_key.get(&node) {

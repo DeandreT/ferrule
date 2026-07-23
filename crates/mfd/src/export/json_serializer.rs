@@ -90,8 +90,7 @@ pub(super) fn render(
             (field.value, input)
         })
         .collect::<Vec<_>>();
-    let mut entries = String::new();
-    render_value(&schema, &mut Vec::new(), &inputs_by_path, 10, &mut entries);
+    let entries = entries_xml(&schema, &inputs_by_path, "inpkey", 10);
 
     let stem = mfd_path
         .file_stem()
@@ -181,23 +180,60 @@ fn insert_field(
     insert_field(child, rest, scalar_type)
 }
 
+pub(super) fn entries_xml(
+    schema: &SchemaNode,
+    ports: &BTreeMap<Vec<String>, u32>,
+    attr: &str,
+    indent: usize,
+) -> String {
+    let mut out = String::new();
+    render_value(schema, &mut Vec::new(), ports, attr, indent, &mut out);
+    out
+}
+
 fn render_value(
     schema: &SchemaNode,
     path: &mut Vec<String>,
-    inputs: &BTreeMap<Vec<String>, u32>,
+    ports: &BTreeMap<Vec<String>, u32>,
+    attr: &str,
+    indent: usize,
+    out: &mut String,
+) {
+    let pad = "\t".repeat(indent);
+    if schema.repeating {
+        let _ = writeln!(out, "{pad}<entry name=\"array\" expanded=\"1\">");
+        let _ = writeln!(
+            out,
+            "{pad}\t<entry name=\"item\" type=\"json-item\" expanded=\"1\">"
+        );
+        render_shape(schema, path, ports, attr, indent + 2, out);
+        let _ = writeln!(out, "{pad}\t</entry>");
+        let _ = writeln!(out, "{pad}</entry>");
+    } else {
+        render_shape(schema, path, ports, attr, indent, out);
+    }
+}
+
+fn render_shape(
+    schema: &SchemaNode,
+    path: &mut Vec<String>,
+    ports: &BTreeMap<Vec<String>, u32>,
+    attr: &str,
     indent: usize,
     out: &mut String,
 ) {
     let pad = "\t".repeat(indent);
     match &schema.kind {
         SchemaKind::Scalar { ty } => {
-            if let Some(input) = inputs.get(path) {
-                let _ = writeln!(
-                    out,
-                    "{pad}<entry name=\"{}\" inpkey=\"{input}\"/>",
-                    scalar_type_name(*ty)
-                );
-            }
+            let port = ports
+                .get(path)
+                .map(|key| format!(" {attr}=\"{key}\""))
+                .unwrap_or_default();
+            let _ = writeln!(
+                out,
+                "{pad}<entry name=\"{}\"{port}/>",
+                scalar_type_name(*ty)
+            );
         }
         SchemaKind::Group { children, .. } => {
             let _ = writeln!(out, "{pad}<entry name=\"object\" expanded=\"1\">");
@@ -208,7 +244,7 @@ fn render_value(
                     xml_escape(&child.name)
                 );
                 path.push(child.name.clone());
-                render_value(child, path, inputs, indent + 2, out);
+                render_value(child, path, ports, attr, indent + 2, out);
                 path.pop();
                 let _ = writeln!(out, "{pad}\t</entry>");
             }

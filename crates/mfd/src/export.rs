@@ -21,6 +21,7 @@ mod external_source;
 mod flextext;
 mod function;
 mod join;
+mod json_parser;
 mod json_serializer;
 mod mapped_sequence;
 mod node;

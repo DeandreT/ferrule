@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use ir::{Instance, Value};
+use mapping::Node;
 
 struct TempDir(PathBuf);
 
@@ -31,7 +32,7 @@ fn write(path: &Path, contents: &str) {
 }
 
 #[test]
-fn imports_and_executes_a_connected_json_string_parser() {
+fn imports_executes_and_round_trips_a_connected_json_string_parser() {
     let dir = TempDir::new();
     write(
         &dir.0.join("source.xsd"),
@@ -84,5 +85,57 @@ fn imports_and_executes_a_connected_json_string_parser() {
     assert_eq!(
         rows[0].field("Total").and_then(Instance::as_scalar),
         Some(&Value::Float(3.5))
+    );
+
+    let roundtrip_path = dir.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &roundtrip_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let design = std::fs::read_to_string(&roundtrip_path).unwrap();
+    assert_eq!(design.matches("usageKind=\"stringparse\"").count(), 1);
+    assert!(design.contains("library=\"json\""));
+    assert!(design.contains("roundtrip-json-parser-"));
+    assert!(!design.contains("name=\"json_parse_field\""));
+    assert!(
+        std::fs::read_dir(&dir.0)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| {
+                entry.file_name().to_str().is_some_and(|name| {
+                    name.starts_with("roundtrip-json-parser-") && name.ends_with(".schema.json")
+                })
+            })
+    );
+
+    let roundtrip = mfd::import(&roundtrip_path).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(engine::run(&roundtrip.project, &input).unwrap(), output);
+
+    let mut unsupported = imported.project;
+    let Some((_, Node::Call { args, .. })) = unsupported.graph.nodes.iter().find(|(_, node)| {
+        matches!(
+            node,
+            Node::Call { function, .. } if function == "json_parse_field"
+        )
+    }) else {
+        panic!("imported project must contain a parser field call");
+    };
+    let descriptor = args[2];
+    unsupported.graph.nodes.insert(
+        descriptor,
+        Node::SourceField {
+            path: vec!["Payload".into()],
+            frame: Some(vec!["Row".into()]),
+        },
+    );
+    let unsupported_path = dir.0.join("unsupported.mfd");
+    let warnings = mfd::export(&unsupported, &unsupported_path).unwrap();
+    assert!(
+        warnings.iter().any(|warning| {
+            warning.contains("JSON string parser")
+                && warning.contains("field path descriptor")
+                && warning.contains("not a string literal")
+        }),
+        "{warnings:?}"
     );
 }
