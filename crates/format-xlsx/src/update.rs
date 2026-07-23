@@ -173,6 +173,12 @@ fn replace_table(
 }
 
 fn clear_cell(worksheet: &mut Worksheet, column: u32, row: u32) {
+    if worksheet
+        .cell((column, row))
+        .is_some_and(|cell| cell.is_formula())
+    {
+        return;
+    }
     let style = worksheet
         .cell((column, row))
         .map(|cell| cell.style().clone());
@@ -260,7 +266,7 @@ fn replace_value(
 #[cfg(test)]
 mod tests {
     use calamine::{Data, Reader};
-    use rust_xlsxwriter::Workbook;
+    use rust_xlsxwriter::{Format, Formula, Workbook};
 
     use super::*;
 
@@ -282,7 +288,9 @@ mod tests {
         let mut workbook = Workbook::new();
         let sales = workbook.add_worksheet();
         sales.set_name("Sales").unwrap();
-        sales.write_string(0, 0, "Report title").unwrap();
+        sales
+            .merge_range(0, 0, 0, 1, "Report title", &Format::new())
+            .unwrap();
         sales.write_string(4, 0, "Old month").unwrap();
         sales.write_string(4, 1, "Old west").unwrap();
         sales.write_string(5, 0, "Old row").unwrap();
@@ -290,6 +298,12 @@ mod tests {
         sales.write_string(6, 0, "Stale row").unwrap();
         sales.write_number(6, 1, 2.0).unwrap();
         sales.write_string(5, 3, "Preserve beside table").unwrap();
+        sales
+            .write_formula(7, 1, Formula::new("=SUM(B6:B7)"))
+            .unwrap();
+        sales
+            .write_formula(7, 2, Formula::new("=SUM(B6:B7)"))
+            .unwrap();
         let keep = workbook.add_worksheet();
         keep.set_name("Keep").unwrap();
         keep.write_string(0, 0, "Preserve other sheet").unwrap();
@@ -317,6 +331,25 @@ mod tests {
         )
         .unwrap();
 
+        let preserved = umya_spreadsheet::reader::xlsx::read(&path).unwrap();
+        let preserved_sales = preserved.sheet_by_name("Sales").unwrap();
+        assert!(
+            preserved_sales
+                .cell((2, 8))
+                .is_some_and(|cell| cell.is_formula())
+        );
+        assert!(
+            preserved_sales
+                .cell((3, 8))
+                .is_some_and(|cell| cell.is_formula())
+        );
+        assert!(
+            preserved_sales
+                .merge_cells()
+                .iter()
+                .any(|range| range.range() == "A1:B1")
+        );
+
         let mut result: calamine::Xlsx<_> = calamine::open_workbook(&path).unwrap();
         let sales = result.worksheet_range("Sales").unwrap();
         let keep = result.worksheet_range("Keep").unwrap();
@@ -338,7 +371,7 @@ mod tests {
             Some(&Data::String("January".into()))
         );
         assert_eq!(sales.get_value((5, 1)), Some(&Data::Float(4.5)));
-        assert_eq!(sales.get_value((6, 0)), None);
+        assert!(matches!(sales.get_value((6, 0)), None | Some(Data::Empty)));
         assert_eq!(
             sales.get_value((5, 3)),
             Some(&Data::String("Preserve beside table".into()))
