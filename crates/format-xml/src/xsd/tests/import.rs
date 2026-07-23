@@ -1167,6 +1167,94 @@ fn resolves_named_types_extensions_and_choices() {
 }
 
 #[test]
+fn narrows_complex_content_restriction_particles_and_attributes() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_complex_restriction_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:complexType name="Base">
+            <xs:sequence>
+              <xs:element name="Keep" type="xs:string" maxOccurs="unbounded"/>
+              <xs:element name="Remove" type="xs:int" minOccurs="0"/>
+            </xs:sequence>
+            <xs:attribute name="kept" type="xs:string"/>
+            <xs:attribute name="removed" type="xs:string"/>
+          </xs:complexType>
+          <xs:complexType name="Narrow"><xs:complexContent>
+            <xs:restriction base="Base">
+              <xs:sequence><xs:element name="Keep" type="xs:string"/></xs:sequence>
+              <xs:attribute name="kept" type="xs:string" use="required"/>
+              <xs:attribute name="removed" use="prohibited"/>
+            </xs:restriction>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Root" type="Narrow"/>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("Root")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let keep = schema.child("Keep").unwrap();
+    assert!(!keep.repeating, "restriction narrows unbounded to one");
+    assert!(schema.child("Remove").is_none());
+    assert!(schema.child("kept").is_some_and(|child| child.attribute));
+    assert!(schema.child("removed").is_none());
+}
+
+#[test]
+fn rejects_incompatible_complex_content_restrictions_explicitly() {
+    for (label, body, reason) in [
+        (
+            "added",
+            r#"<xs:sequence><xs:element name="Other" type="xs:string"/></xs:sequence>"#,
+            "restricted particles must be an ordered subset of the base particle",
+        ),
+        (
+            "widened",
+            r#"<xs:sequence><xs:element name="Value" type="xs:string" maxOccurs="unbounded"/></xs:sequence>"#,
+            "a restricted particle changes an incompatible field shape or widens repetition",
+        ),
+        (
+            "wildcard",
+            r#"<xs:sequence><xs:element name="Value" type="xs:string"/></xs:sequence><xs:anyAttribute/>"#,
+            "wildcard restriction particles and attributes are not supported",
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_xsd_complex_restriction_{label}_{}.xsd",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            format!(
+                r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+                  <xs:complexType name="Base"><xs:sequence>
+                    <xs:element name="Value" type="xs:string"/>
+                  </xs:sequence></xs:complexType>
+                  <xs:complexType name="Narrow"><xs:complexContent>
+                    <xs:restriction base="Base">{body}</xs:restriction>
+                  </xs:complexContent></xs:complexType>
+                  <xs:element name="Root" type="Narrow"/>
+                </xs:schema>"#
+            ),
+        )
+        .unwrap();
+        let error = import_root(&path, Some("Root")).unwrap_err();
+        std::fs::remove_file(path).unwrap();
+        assert!(matches!(
+            error,
+            XmlFormatError::UnsupportedComplexContentRestriction {
+                reason: actual,
+                ..
+            } if actual == reason
+        ));
+    }
+}
+
+#[test]
 fn resolves_declarations_across_includes_with_cycles() {
     let dir = std::env::temp_dir().join(format!("ferrule_xsd_include_test_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
