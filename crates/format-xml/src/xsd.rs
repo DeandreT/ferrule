@@ -29,6 +29,7 @@ use crate::XmlFormatError;
 
 mod export;
 mod groups;
+mod restriction;
 mod substitution;
 
 pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
@@ -63,6 +64,7 @@ struct ParseState {
     unsupported_particle: Option<XmlFormatError>,
     unsupported_default: Option<XmlFormatError>,
     unsupported_schema_group: Option<XmlFormatError>,
+    unsupported_restriction: Option<XmlFormatError>,
     unsupported_substitution: Option<XmlFormatError>,
     substitutions: substitution::SubstitutionIndex,
 }
@@ -174,6 +176,9 @@ impl ParseState {
         if let Some(error) = self.unsupported_schema_group {
             return Err(error);
         }
+        if let Some(error) = self.unsupported_restriction {
+            return Err(error);
+        }
         if let Some(error) = self.unsupported_substitution {
             return Err(error);
         }
@@ -201,6 +206,10 @@ impl ParseState {
 
     fn reject_schema_group(&mut self, error: XmlFormatError) {
         self.unsupported_schema_group.get_or_insert(error);
+    }
+
+    fn reject_restriction(&mut self, error: XmlFormatError) {
+        self.unsupported_restriction.get_or_insert(error);
     }
 
     fn reject_substitution(&mut self, error: XmlFormatError) {
@@ -1609,6 +1618,24 @@ fn parse_complex_type(
                         parsed.extend(base_group);
                     }
                     parsed.extend(parse_complex_type(&ext, schema_el, schema_path, state));
+                } else if let Some(restriction) = child
+                    .children()
+                    .find(|n| n.is_element() && n.tag_name().name() == "restriction")
+                    && let Some(base) = restriction.attribute("base")
+                    && let Some(ComplexTypeResolution::Group(base_group)) =
+                        resolve_complex_type(base, schema_el, schema_path, state, None)
+                {
+                    match restriction::apply(
+                        base,
+                        base_group,
+                        &restriction,
+                        schema_el,
+                        schema_path,
+                        state,
+                    ) {
+                        Ok(group) => parsed.extend(group),
+                        Err(error) => state.reject_restriction(error),
+                    }
                 }
             }
             "simpleContent" => {

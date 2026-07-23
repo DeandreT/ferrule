@@ -103,6 +103,8 @@ pub enum XmlFormatError {
         name: String,
         reason: &'static str,
     },
+    #[error("xs:complexContent restriction of `{base}` cannot be represented: {reason}")]
+    UnsupportedComplexContentRestriction { base: String, reason: &'static str },
     #[error("schema node `{node}` cannot be both XML text and an attribute")]
     ConflictingSchemaRoles { node: String },
     #[error("schema {kind} `{node}` cannot be serialized as XML {role}")]
