@@ -227,6 +227,19 @@ internal static partial class Program
         CallEquals(FerruleValue.FromBoolean(true), "ends_with", Text("120"), FerruleValue.FromDouble(20.0));
         CallEquals(FerruleValue.FromBoolean(true), "matches", Text("Ferrule 2026"), Text(@"^ferrule\s+\d+$"), Text("i"));
         CallEquals(FerruleValue.FromBoolean(true), "matches", FerruleValue.FromInt64(120), Text(@"2\d"));
+        CallEquals(
+            Text("abbraccaddabbra"),
+            "replace",
+            Text("abracadabra"),
+            Text("a(.)"),
+            Text("a$1$1"));
+        CallEquals(
+            Text(@"2026:$1=\Ferrule"),
+            "replace",
+            Text("Ferrule 2026"),
+            Text(@"(ferrule)\s+(\d+)"),
+            Text(@"$2:\$1=\\$1"),
+            Text("i"));
         CallEquals(FerruleValue.FromBoolean(true), "contains", Text("ferrule"), Text("rul"));
 
         CallEquals(
@@ -314,6 +327,29 @@ internal static partial class Program
                 new[] { Text("value"), Text(new string('a', 64 * 1024 + 1)) }));
         Equal("matches", oversizedRegex.Function);
         Equal("pattern exceeds 64 KiB", oversizedRegex.Detail);
+        var zeroWidthReplace = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleFunctions.Call(
+                "replace",
+                new[] { Text("abc"), Text("a*"), Text("x") }));
+        Equal("replace", zeroWidthReplace.Function);
+        Equal("pattern matches a zero-length string", zeroWidthReplace.Detail);
+        var invalidReplacement = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleFunctions.Call(
+                "replace",
+                new[] { Text("abc"), Text("a"), Text("$x") }));
+        Equal("replace", invalidReplacement.Function);
+        Equal(
+            "replacement has an invalid dollar or backslash escape",
+            invalidReplacement.Detail);
+        var oversizedReplacement = Error(
+            FerruleRuntimeError.FunctionInvalidArgument,
+            () => FerruleFunctions.Call(
+                "replace",
+                new[] { Text("abc"), Text("a"), Text(new string('x', 64 * 1024 + 1)) }));
+        Equal("replace", oversizedReplacement.Function);
+        Equal("replacement exceeds 64 KiB", oversizedReplacement.Detail);
 
         var unknown = Error(
             FerruleRuntimeError.UnknownFunction,

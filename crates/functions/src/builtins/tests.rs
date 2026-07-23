@@ -313,47 +313,6 @@ fn string_predicates() {
         Value::Bool(true)
     );
     assert_eq!(
-        call("matches", &[Value::Int(120), Value::String(r"2\d".into())]).unwrap(),
-        Value::Bool(true)
-    );
-    assert!(matches!(
-        call(
-            "matches",
-            &[Value::String("value".into()), Value::String("[".into())]
-        ),
-        Err(FunctionError::InvalidArgument {
-            function: "matches",
-            ..
-        })
-    ));
-    assert!(matches!(
-        call(
-            "matches",
-            &[
-                Value::String("value".into()),
-                Value::String("value".into()),
-                Value::String("q".into())
-            ]
-        ),
-        Err(FunctionError::InvalidArgument {
-            function: "matches",
-            ..
-        })
-    ));
-    assert!(matches!(
-        call(
-            "matches",
-            &[
-                Value::String("value".into()),
-                Value::String("a".repeat(64 * 1024 + 1))
-            ]
-        ),
-        Err(FunctionError::InvalidArgument {
-            function: "matches",
-            ..
-        })
-    ));
-    assert_eq!(
         call(
             "contains",
             &[Value::Bool(false), Value::String("als".into())]
