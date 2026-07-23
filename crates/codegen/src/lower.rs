@@ -545,6 +545,9 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         Node::JoinPosition { join } => Expression::JoinPosition {
             join: JoinId::from(*join),
         },
+        Node::Unconnected => Expression::Const {
+            value: ir::Value::Null,
+        },
         Node::Const { value } => Expression::Const {
             value: value.clone(),
         },
@@ -665,6 +668,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }

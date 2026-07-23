@@ -61,6 +61,7 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }

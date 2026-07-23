@@ -82,6 +82,45 @@ fn output_value(output: &Instance) -> Option<&Value> {
 }
 
 #[test]
+fn unconnected_inputs_evaluate_to_null_in_main_and_function_graphs() {
+    let direct = project(
+        Graph {
+            nodes: BTreeMap::from([(0, Node::Unconnected)]),
+        },
+        BTreeMap::new(),
+        0,
+    );
+    let direct_output = run(&direct, &source("unused")).unwrap();
+    assert_eq!(output_value(&direct_output), Some(&Value::Null));
+
+    let function_id = FunctionId::new(1);
+    let called = project(
+        Graph {
+            nodes: BTreeMap::from([(
+                0,
+                Node::UserFunctionCall {
+                    function: function_id,
+                    args: Vec::new(),
+                },
+            )]),
+        },
+        BTreeMap::from([(
+            function_id,
+            function(
+                "empty",
+                Vec::new(),
+                ScalarType::String,
+                [(0, Node::Unconnected)],
+                0,
+            ),
+        )]),
+        0,
+    );
+    let called_output = run(&called, &source("unused")).unwrap();
+    assert_eq!(output_value(&called_output), Some(&Value::Null));
+}
+
+#[test]
 fn evaluates_nested_functions_with_isolated_parameters_and_coercion() {
     let increment = FunctionId::new(2);
     let parse_and_increment = FunctionId::new(1);

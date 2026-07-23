@@ -87,6 +87,7 @@ pub(crate) fn eval_expr(
                     .map(|(_, index)| Value::Int(index as i64))
             })
             .ok_or(EngineError::MissingJoinContext { join: *join }),
+        Node::Unconnected => Ok(Value::Null),
         Node::Const { value } => Ok(value.clone()),
         Node::FunctionParameter { .. } => {
             Err(EngineError::FunctionParameterOutsideFunction { node: node_id })

@@ -5,6 +5,25 @@ use mapping::{FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, U
 use super::*;
 
 #[test]
+fn lowers_unconnected_inputs_as_null_constants() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(40, Node::Unconnected);
+    project.root.bindings[0].node = 40;
+
+    let program = lower(&project).expect("unconnected inputs lower as null");
+
+    let expression = program
+        .expressions
+        .iter()
+        .find(|expression| expression.id == 40)
+        .expect("unconnected expression is reachable");
+    assert_eq!(
+        expression.expression,
+        Expression::Const { value: Value::Null }
+    );
+}
+
+#[test]
 fn lowers_only_reachable_functions_with_isolated_node_ids() {
     let increment = FunctionId::new(1);
     let twice = FunctionId::new(2);

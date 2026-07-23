@@ -59,6 +59,9 @@ pub enum Node {
     },
     /// Returns the flattened 1-based output position of an inner join.
     JoinPosition { join: JoinId },
+    /// Editor-owned `Null` value for a required input that has no wire.
+    /// Canvas renderers hide this node so an empty pin remains visually empty.
+    Unconnected,
     /// A literal value.
     Const { value: Value },
     /// Reads one input from the isolated context of a user-defined function.
@@ -207,6 +210,7 @@ impl Node {
             | Self::Position { .. }
             | Self::JoinField { .. }
             | Self::JoinPosition { .. }
+            | Self::Unconnected
             | Self::Const { .. }
             | Self::FunctionParameter { .. }
             | Self::RuntimeValue { .. }

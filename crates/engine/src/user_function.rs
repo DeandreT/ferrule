@@ -102,6 +102,7 @@ fn evaluate_body_node(
             node: node_id,
         })?;
     let result = match node {
+        Node::Unconnected => Ok(Value::Null),
         Node::Const { value } => Ok(value.clone()),
         Node::FunctionParameter { parameter } => parameters
             .iter()

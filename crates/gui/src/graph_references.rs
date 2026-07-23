@@ -7,6 +7,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
+        | Node::Unconnected
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
@@ -40,6 +41,68 @@ pub(super) fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::JoinAggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
+    }
+}
+
+pub(super) fn removable_wire_references(
+    graph: &Graph,
+    root_scope: &Scope,
+    needle: NodeId,
+) -> std::collections::BTreeSet<String> {
+    fn scope_bindings(
+        scope: &Scope,
+        path: &mut Vec<String>,
+        needle: NodeId,
+        found: &mut std::collections::BTreeSet<String>,
+    ) {
+        let label = if path.is_empty() {
+            "root scope".to_string()
+        } else {
+            format!("scope {}", path.join("/"))
+        };
+        for binding in &scope.bindings {
+            if binding.node == needle {
+                found.insert(format!("{label} binding {}", binding.target_field));
+            }
+        }
+        if let Some(segments) = scope.concatenated() {
+            for (index, segment) in segments.iter().enumerate() {
+                path.push(format!("<segment {}>", index + 1));
+                scope_bindings(segment, path, needle, found);
+                path.pop();
+            }
+        }
+        for child in &scope.children {
+            path.push(child.target_field.clone());
+            scope_bindings(child, path, needle, found);
+            path.pop();
+        }
+    }
+
+    let mut found = graph
+        .nodes
+        .iter()
+        .filter_map(|(&owner, node)| {
+            if owner != needle && node_inputs(node).contains(&needle) {
+                Some(format!("graph node {owner}"))
+            } else {
+                None
+            }
+        })
+        .collect::<std::collections::BTreeSet<_>>();
+    scope_bindings(root_scope, &mut Vec::new(), needle, &mut found);
+    found
+}
+
+pub(super) fn remove_bindings_to(scope: &mut Scope, needle: NodeId) {
+    scope.bindings.retain(|binding| binding.node != needle);
+    if let Some(segments) = scope.concatenated_mut() {
+        for segment in segments.iter_mut() {
+            remove_bindings_to(segment, needle);
+        }
+    }
+    for child in &mut scope.children {
+        remove_bindings_to(child, needle);
     }
 }
 
