@@ -11,6 +11,7 @@ use crate::MfdError;
 
 mod component;
 
+use super::position::connect_position_roots;
 use super::schema::{KeyAlloc, PortTree, RenderedSchemaComponent, SideFormat, xml_escape};
 use super::source::SourceExports;
 use component::{JsonComponentArgs, JsonSide, render_json_component};
@@ -86,11 +87,15 @@ struct DynamicTargetField {
 
 pub(super) struct ConnectArgs<'a> {
     pub(super) sources: &'a SourceExports<'a>,
+    pub(super) graph: &'a Graph,
     pub(super) node_out_key: &'a BTreeMap<NodeId, u32>,
+    pub(super) position_inputs: &'a BTreeMap<NodeId, u32>,
+    pub(super) position_contexts: &'a mut BTreeMap<NodeId, Option<u32>>,
     pub(super) keys: &'a mut KeyAlloc,
     pub(super) uid: &'a mut u32,
     pub(super) components: &'a mut String,
     pub(super) edges: &'a mut Vec<(u32, u32)>,
+    pub(super) warnings: &'a mut Vec<String>,
 }
 
 pub(super) struct RenderTargetArgs<'a> {
@@ -331,7 +336,6 @@ impl TargetPlan {
             schema,
             root,
             sources,
-            graph,
             keys,
             &mut Vec::new(),
             &[],
@@ -374,7 +378,7 @@ impl TargetPlan {
 
 impl RootTarget {
     fn connect(&self, args: ConnectArgs<'_>) -> Result<(), MfdError> {
-        let mut driver = args
+        let outer_driver = args
             .sources
             .key_for_abs(&self.outer_source)
             .ok_or_else(|| {
@@ -383,6 +387,7 @@ impl RootTarget {
                     self.outer_source.join("/")
                 ))
             })?;
+        let mut driver = outer_driver;
         if let Some(group_by) = self.group_by {
             let group_key = required_node_output(args.node_out_key, group_by, "dynamic group key")?;
             let nodes_input = args.keys.next();
@@ -407,37 +412,77 @@ impl RootTarget {
             required_node_output(args.node_out_key, self.property_key, "dynamic property key")?,
             self.property_key_input,
         ));
-        args.edges.push((
-            args.sources.key_for_abs(&self.item_source).ok_or_else(|| {
-                MfdError::Unsupported(format!(
-                    "dynamic root item source `{}` has no exported port",
-                    self.item_source.join("/")
-                ))
-            })?,
-            self.item_input,
-        ));
+        let item_driver = args.sources.key_for_abs(&self.item_source).ok_or_else(|| {
+            MfdError::Unsupported(format!(
+                "dynamic root item source `{}` has no exported port",
+                self.item_source.join("/")
+            ))
+        })?;
+        args.edges.push((item_driver, self.item_input));
         for field in &self.fields {
             connect_field(field, args.node_out_key, args.edges)?;
         }
+        if self.group_by.is_none() {
+            connect_position_roots(
+                [self.property_key],
+                Some(&self.outer_source),
+                true,
+                outer_driver,
+                args.graph,
+                args.position_inputs,
+                args.position_contexts,
+                args.edges,
+                args.warnings,
+            );
+        }
+        connect_position_roots(
+            self.fields
+                .iter()
+                .flat_map(|field| [field.key, field.value]),
+            Some(&self.item_source),
+            true,
+            item_driver,
+            args.graph,
+            args.position_inputs,
+            args.position_contexts,
+            args.edges,
+            args.warnings,
+        );
         Ok(())
     }
 }
 
 impl NestedTarget {
     fn connect(&self, args: &mut ConnectArgs<'_>) -> Result<(), MfdError> {
-        let driver = match &self.driver {
-            DynamicDriver::Source(path) => args.sources.key_for_abs(path).ok_or_else(|| {
-                MfdError::Unsupported(format!(
-                    "dynamic property source `{}` has no exported port",
-                    path.join("/")
-                ))
-            })?,
-            DynamicDriver::Sequence(item) => {
-                required_node_output(args.node_out_key, *item, "dynamic sequence item")?
-            }
+        let (driver, source_collection) = match &self.driver {
+            DynamicDriver::Source(path) => (
+                args.sources.key_for_abs(path).ok_or_else(|| {
+                    MfdError::Unsupported(format!(
+                        "dynamic property source `{}` has no exported port",
+                        path.join("/")
+                    ))
+                })?,
+                Some(path.as_slice()),
+            ),
+            DynamicDriver::Sequence(item) => (
+                required_node_output(args.node_out_key, *item, "dynamic sequence item")?,
+                None,
+            ),
         };
         args.edges.push((driver, self.property_input));
-        connect_field(&self.field, args.node_out_key, args.edges)
+        connect_field(&self.field, args.node_out_key, args.edges)?;
+        connect_position_roots(
+            [self.field.key, self.field.value],
+            source_collection,
+            true,
+            driver,
+            args.graph,
+            args.position_inputs,
+            args.position_contexts,
+            args.edges,
+            args.warnings,
+        );
+        Ok(())
     }
 }
 
@@ -581,15 +626,9 @@ fn build_root_target(
             "computed array item collection is missing",
         ));
     }
-    reject_position_dependencies(
-        graph,
-        root.group_by.into_iter().chain([child.key]).chain(
-            item_scope
-                .dynamic_bindings
-                .iter()
-                .flat_map(|binding| [binding.key, binding.value]),
-        ),
-    )?;
+    if root.group_by.is_some() {
+        reject_position_dependencies(graph, root.group_by.into_iter().chain([child.key]))?;
+    }
     let fields = item_scope
         .dynamic_bindings
         .iter()
@@ -618,7 +657,6 @@ fn collect_nested_targets(
     schema: &SchemaNode,
     scope: &Scope,
     sources: &SourceExports<'_>,
-    graph: &Graph,
     keys: &mut KeyAlloc,
     path: &mut Vec<String>,
     anchor: &[String],
@@ -695,7 +733,6 @@ fn collect_nested_targets(
             ));
         }
         let binding = &scope.dynamic_bindings[0];
-        reject_position_dependencies(graph, [binding.key, binding.value])?;
         targets.push(NestedTarget {
             owner: path.clone(),
             driver,
@@ -717,16 +754,7 @@ fn collect_nested_targets(
     }
     for child in &scope.children {
         path.push(child.target_field.clone());
-        collect_nested_targets(
-            schema,
-            child,
-            sources,
-            graph,
-            keys,
-            path,
-            &current_anchor,
-            targets,
-        )?;
+        collect_nested_targets(schema, child, sources, keys, path, &current_anchor, targets)?;
         path.pop();
     }
     Ok(())

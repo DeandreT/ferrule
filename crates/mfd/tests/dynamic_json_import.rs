@@ -336,6 +336,44 @@ fn nested_computed_objects_merge_per_parent_without_leaking_fields() {
 }
 
 #[test]
+fn nested_dynamic_values_preserve_source_position_on_export() {
+    let dir = TempDir::new("nested_position");
+    let design = write_nested_fixture(&dir.0);
+    let mut project = mfd::import(&design).unwrap().project;
+    let position = project
+        .graph
+        .nodes
+        .keys()
+        .next_back()
+        .copied()
+        .map_or(0, |id| id + 1);
+    project.graph.nodes.insert(
+        position,
+        Node::Position {
+            collection: vec!["Availability".into()],
+        },
+    );
+    let available = project.root.children[0]
+        .children
+        .iter_mut()
+        .find(|scope| scope.target_field == "Available")
+        .unwrap();
+    available.dynamic_bindings[0].value = position;
+    assert!(engine::validate(&project).is_empty());
+
+    let source = format_json::read(&dir.0.join("inventory.json"), &project.source).unwrap();
+    let expected = engine::run(&project, &source).unwrap();
+    let export_path = dir.0.join("nested-position-export.mfd");
+    let warnings = mfd::export(&project, &export_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let roundtrip = mfd::import(&export_path).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(expected, engine::run(&roundtrip.project, &source).unwrap());
+}
+
+#[test]
 fn late_nested_failure_does_not_reframe_ordinary_source_fields() {
     let dir = TempDir::new("nested_atomic");
     let design = write_nested_fixture(&dir.0);
@@ -447,4 +485,36 @@ fn grouped_dynamic_mapping_exports_reimports_and_executes() {
         engine::run(&project, &source).unwrap(),
         engine::run(&roundtrip.project, &source).unwrap()
     );
+}
+
+#[test]
+fn grouped_dynamic_item_fields_preserve_position_on_export() {
+    let dir = TempDir::new("grouped_position_export");
+    let mut project = mfd::import(&write_fixture(&dir.0)).unwrap().project;
+    let position = project
+        .graph
+        .nodes
+        .keys()
+        .next_back()
+        .copied()
+        .map_or(0, |id| id + 1);
+    project.graph.nodes.insert(
+        position,
+        Node::Position {
+            collection: Vec::new(),
+        },
+    );
+    project.root.dynamic_children[0].scope.dynamic_bindings[0].value = position;
+    assert!(engine::validate(&project).is_empty());
+
+    let source = format_json::read(&dir.0.join("departments.json"), &project.source).unwrap();
+    let expected = engine::run(&project, &source).unwrap();
+    let output = dir.0.join("grouped-position-export.mfd");
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let roundtrip = mfd::import(&output).unwrap();
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(expected, engine::run(&roundtrip.project, &source).unwrap());
 }
