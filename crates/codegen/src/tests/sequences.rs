@@ -93,6 +93,45 @@ fn lowers_portable_generated_sequences_and_their_item_roots() {
         ))
     );
 
+    let regex = project(
+        mapping::SequenceExpr::TokenizeRegex {
+            input: 40,
+            pattern: 41,
+            flags: Some(43),
+            item: 42,
+        },
+        vec![
+            (
+                40,
+                Node::Const {
+                    value: Value::String("Alpha--beta".into()),
+                },
+            ),
+            (
+                41,
+                Node::Const {
+                    value: Value::String("-+".into()),
+                },
+            ),
+            (42, item()),
+            (
+                43,
+                Node::Const {
+                    value: Value::String("i".into()),
+                },
+            ),
+        ],
+    );
+    assert_eq!(
+        lower(&regex).expect("regex tokenize lowers").root.children[0].iteration,
+        Some(IterationPlan::generated(GeneratedSequence::TokenizeRegex {
+            input: 40,
+            pattern: 41,
+            flags: Some(43),
+            item: 42,
+        }))
+    );
+
     let range = project(
         mapping::SequenceExpr::Generate {
             from: Some(40),
@@ -312,9 +351,10 @@ fn lowers_portable_sequence_reducers_and_private_item_roots() {
         (
             45,
             Node::SequenceExists {
-                sequence: mapping::SequenceExpr::Tokenize {
+                sequence: mapping::SequenceExpr::TokenizeRegex {
                     input: 40,
-                    delimiter: 41,
+                    pattern: 41,
+                    flags: Some(49),
                     item: 42,
                 },
                 predicate: 44,
@@ -370,9 +410,10 @@ fn lowers_portable_sequence_reducers_and_private_item_roots() {
         node.id == 45
             && node.expression
                 == Expression::SequenceExists {
-                    sequence: GeneratedSequence::Tokenize {
+                    sequence: GeneratedSequence::TokenizeRegex {
                         input: 40,
-                        delimiter: 41,
+                        pattern: 41,
+                        flags: Some(49),
                         item: 42,
                     },
                     predicate: 44,
@@ -396,7 +437,7 @@ fn lowers_portable_sequence_reducers_and_private_item_roots() {
 }
 
 #[test]
-fn reports_other_iteration_forms_at_the_static_target_path() {
+fn reports_unsupported_functions_inside_regex_generated_scopes() {
     let mut project = supported_project();
     project.root.children[0].iteration =
         ScopeIteration::Sequence(mapping::SequenceExpr::TokenizeRegex {
@@ -422,21 +463,20 @@ fn reports_other_iteration_forms_at_the_static_target_path() {
     project.root.children[0].filter = Some(41);
 
     let diagnostics = lower(&project)
-        .expect_err("regex tokenize remains outside the portable subset")
+        .expect_err("unsupported functions remain diagnostic inside regex scopes")
         .into_diagnostics();
 
-    assert!(diagnostics.contains(&Diagnostic::UnsupportedScope {
-        target_path: vec!["Details".into()],
-        feature: ScopeFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex),
-    }));
-    assert!(diagnostics.contains(&Diagnostic::UnsupportedFunction {
-        node: 41,
-        function: "json_parse_field".into(),
-    }));
+    assert_eq!(
+        diagnostics,
+        vec![Diagnostic::UnsupportedFunction {
+            node: 41,
+            function: "json_parse_field".into(),
+        }]
+    );
 }
 
 #[test]
-fn reports_nonportable_sequence_reducers_without_partial_lowering() {
+fn lowers_regex_sequence_exists_without_partial_diagnostics() {
     let mut project = supported_project();
     project.graph.nodes.extend([
         (
@@ -473,15 +513,18 @@ fn reports_nonportable_sequence_reducers_without_partial_lowering() {
     ]);
     project.root.bindings[1].node = 43;
 
-    let diagnostics = lower(&project)
-        .expect_err("regex-backed reducers remain outside the portable subset")
-        .into_diagnostics();
-
-    assert_eq!(
-        diagnostics,
-        vec![Diagnostic::UnsupportedNode {
-            node: 43,
-            kind: UnsupportedNodeKind::SequenceExists,
-        }]
-    );
+    let program = lower(&project).expect("regex-backed sequence-exists lowers");
+    assert!(program.expressions.iter().any(|expression| {
+        expression.id == 43
+            && expression.expression
+                == Expression::SequenceExists {
+                    sequence: GeneratedSequence::TokenizeRegex {
+                        input: 20,
+                        pattern: 40,
+                        flags: None,
+                        item: 41,
+                    },
+                    predicate: 42,
+                }
+    }));
 }

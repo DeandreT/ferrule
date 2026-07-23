@@ -277,9 +277,10 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 24,
                 expression: Expression::SequenceExists {
-                    sequence: GeneratedSequence::Tokenize {
+                    sequence: GeneratedSequence::TokenizeRegex {
                         input: 20,
-                        delimiter: 21,
+                        pattern: 21,
+                        flags: Some(48),
                         item: 19,
                     },
                     predicate: 23,

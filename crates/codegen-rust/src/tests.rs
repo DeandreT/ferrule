@@ -1072,6 +1072,14 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             vec![
                 SchemaNode::scalar("Selected", ScalarType::String),
                 SchemaNode::scalar("Exists", ScalarType::Bool),
+                SchemaNode::group(
+                    "Rows",
+                    vec![
+                        SchemaNode::scalar("Value", ScalarType::String),
+                        SchemaNode::scalar("Position", ScalarType::Int),
+                    ],
+                )
+                .repeating(),
             ],
         ),
         expressions: vec![
@@ -1139,9 +1147,10 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             ExpressionNode {
                 id: 10,
                 expression: Expression::SequenceExists {
-                    sequence: GeneratedSequence::Tokenize {
+                    sequence: GeneratedSequence::TokenizeRegex {
                         input: 1,
-                        delimiter: 2,
+                        pattern: 2,
+                        flags: Some(16),
                         item: 3,
                     },
                     predicate: 9,
@@ -1195,6 +1204,19 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                     path: vec!["Flags".into()],
                 },
             },
+            ExpressionNode {
+                id: 17,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 18,
+                expression: Expression::Position {
+                    collection: Vec::new(),
+                },
+            },
         ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
@@ -1217,7 +1239,32 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                     repeating: false,
                 },
             ],
-            children: Vec::new(),
+            children: vec![TargetScope {
+                target_field: "Rows".into(),
+                repeating: true,
+                iteration: Some(IterationPlan::generated(GeneratedSequence::TokenizeRegex {
+                    input: 1,
+                    pattern: 2,
+                    flags: Some(16),
+                    item: 17,
+                })),
+                construction: TargetConstruction::Group,
+                bindings: vec![
+                    Binding {
+                        target_field: "Value".into(),
+                        expression: 17,
+                        target_type: ScalarType::String,
+                        repeating: false,
+                    },
+                    Binding {
+                        target_field: "Position".into(),
+                        expression: 18,
+                        target_type: ScalarType::Int,
+                        repeating: false,
+                    },
+                ],
+                children: Vec::new(),
+            }],
         },
         extra_targets: Vec::new(),
     };
@@ -1237,12 +1284,14 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
     else {
         panic!("generated Rust source artifact")
     };
+    assert!(generated_source.contains("tokenize_regex("));
     assert!(generated_source.contains("context.generated_item_contexts(&generated_items)"));
+    assert!(generated_source.contains("context.generated_items(&generated_items)"));
     write_artifacts(output.path(), &artifacts);
     fs::write(
         output.path().join("src/main.rs"),
         r#"use codegen_runtime::{
-    FunctionError, Instance, RuntimeError, Value, field, group, scalar,
+    FunctionError, Instance, RuntimeError, Value, field, group, repeated, scalar,
 };
 
 fn main() {
@@ -1252,6 +1301,16 @@ fn main() {
         group([
             field("Selected", scalar(Value::String("bad".into()))),
             field("Exists", scalar(Value::Bool(true))),
+            field("Rows", repeated([
+                group([
+                    field("Value", scalar(Value::String("hit".into()))),
+                    field("Position", scalar(Value::Int(1))),
+                ]),
+                group([
+                    field("Value", scalar(Value::String("bad".into()))),
+                    field("Position", scalar(Value::Int(2))),
+                ]),
+            ])),
         ]),
     );
 
@@ -1261,6 +1320,7 @@ fn main() {
         group([
             field("Selected", scalar(Value::Null)),
             field("Exists", scalar(Value::Bool(false))),
+            field("Rows", repeated([])),
         ]),
     );
 
@@ -1270,6 +1330,16 @@ fn main() {
         group([
             field("Selected", scalar(Value::Null)),
             field("Exists", scalar(Value::Bool(true))),
+            field("Rows", repeated([
+                group([
+                    field("Value", scalar(Value::String("hit".into()))),
+                    field("Position", scalar(Value::Int(1))),
+                ]),
+                group([
+                    field("Value", scalar(Value::String("bad".into()))),
+                    field("Position", scalar(Value::Int(2))),
+                ]),
+            ])),
         ]),
     );
 
@@ -1278,6 +1348,12 @@ fn main() {
         generated_sequence_reducers::execute(&failing_index),
         Err(RuntimeError::Function(FunctionError::DivideByZero)),
     );
+
+    let invalid_pattern = input(Value::String("hit,bad".into()), "(", 2, false);
+    assert!(matches!(
+        generated_sequence_reducers::execute(&invalid_pattern),
+        Err(RuntimeError::InvalidTokenizeRegex { .. }),
+    ));
 }
 
 fn input(text: Value, delimiter: &str, index: i64, fail_index: bool) -> Instance {

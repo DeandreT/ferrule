@@ -139,9 +139,10 @@ fn fixture() -> Program {
                 target_field: "Group".into(),
                 repeating: true,
                 iteration: Some(
-                    IterationPlan::generated(GeneratedSequence::Tokenize {
+                    IterationPlan::generated(GeneratedSequence::TokenizeRegex {
                         input: 1,
-                        delimiter: 2,
+                        pattern: 2,
+                        flags: None,
                         item: 3,
                     })
                     .with_grouping(GroupingPlan::By { key: 3 }),

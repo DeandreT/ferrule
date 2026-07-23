@@ -42,7 +42,6 @@ pub enum Diagnostic {
 pub enum ScopeFeature {
     Iteration,
     CorrelatedInnerJoin,
-    GeneratedSequence(UnsupportedSequenceKind),
     Construction(ScopeConstructionKind),
     DynamicBindings,
     DynamicChildren,
@@ -73,7 +72,6 @@ pub enum UnsupportedNodeKind {
     DynamicSourceField,
     XmlMixedContent,
     XmlSerialize,
-    SequenceExists,
     JoinAggregate,
 }
 
@@ -183,9 +181,6 @@ impl fmt::Display for ScopeFeature {
             Self::CorrelatedInnerJoin => {
                 formatter.write_str("an inner join below an active iteration")
             }
-            Self::GeneratedSequence(kind) => {
-                write!(formatter, "{kind} generated-sequence iteration")
-            }
             Self::Construction(kind) => write!(formatter, "{kind} construction"),
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
             Self::DynamicChildren => formatter.write_str("dynamic target child scopes"),
@@ -220,7 +215,6 @@ impl fmt::Display for UnsupportedNodeKind {
             Self::DynamicSourceField => "a dynamic source field",
             Self::XmlMixedContent => "XML mixed content",
             Self::XmlSerialize => "XML serialization",
-            Self::SequenceExists => "sequence-exists",
             Self::JoinAggregate => "a join aggregate",
         })
     }
