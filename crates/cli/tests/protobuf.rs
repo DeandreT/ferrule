@@ -27,9 +27,48 @@ fn protobuf_directory() -> ir::Instance {
 #[test]
 fn imported_protobuf_source_reads_binary_independent_of_extension() {
     let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../mfd/tests/fixtures");
-    let project = mfd::import(&fixture_dir.join("protobuf-source.mfd"))
+    let mut project = mfd::import(&fixture_dir.join("protobuf-source.mfd"))
         .unwrap()
         .project;
+    let protobuf = project.source_options.protobuf.as_mut().unwrap();
+    protobuf.schema = r#"
+syntax = "proto2";
+package ferrule.fixture;
+import "model.proto";
+message Directory {
+  optional string title = 1;
+  repeated Record records = 2;
+}
+"#
+    .to_string();
+    protobuf.schema_path = Some("api/root.proto".to_string());
+    protobuf.imports = vec![
+        mapping::ProtobufSchemaFile {
+            path: "model.proto".to_string(),
+            source: r#"
+syntax = "proto2";
+package ferrule.fixture;
+import public "rank.proto";
+message Note { required string text = 1; }
+message Record {
+  required int32 code = 1;
+  required string label = 2;
+  optional Rank rank = 3;
+  repeated Note notes = 4;
+}
+"#
+            .to_string(),
+        },
+        mapping::ProtobufSchemaFile {
+            path: "rank.proto".to_string(),
+            source: r#"
+syntax = "proto2";
+package ferrule.fixture;
+enum Rank { STANDARD = 0; PRIORITY = 1; }
+"#
+            .to_string(),
+        },
+    ];
     let tag = format!("protobuf_source_{}", std::process::id());
     let project_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.json"));
     let input_path = std::env::temp_dir().join(format!("ferrule_cli_{tag}.data"));
@@ -37,7 +76,15 @@ fn imported_protobuf_source_reads_binary_independent_of_extension() {
     std::fs::write(&project_path, serde_json::to_vec(&project).unwrap()).unwrap();
 
     let protobuf = project.source_options.protobuf.as_ref().unwrap();
-    let layout = format_protobuf::Layout::parse(&protobuf.schema).unwrap();
+    let layout = format_protobuf::Layout::parse_files(
+        protobuf.schema_path.as_deref().unwrap(),
+        &protobuf.schema,
+        protobuf
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
+    .unwrap();
     format_protobuf::write(
         &input_path,
         &layout,
