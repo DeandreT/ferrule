@@ -857,8 +857,9 @@ pub struct TargetScope {
     /// Non-iterating scopes targeting a repeating group still produce one
     /// repeated item, matching the engine's target-boundary cardinality.
     pub repeating: bool,
-    /// Source-backed or generated iteration evaluated relative to the parent
-    /// scope's current item. Absence means the scope runs exactly once.
+    /// Source-backed, generated, or statically joined iteration evaluated
+    /// relative to the parent scope's current item. Absence means the scope
+    /// runs exactly once.
     pub iteration: Option<IterationPlan>,
     pub construction: TargetConstruction,
     /// Declaration order is semantically significant and is preserved.
