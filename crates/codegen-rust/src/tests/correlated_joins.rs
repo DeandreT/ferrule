@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use codegen::{
-    InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource, ProgramValidationError,
+    InnerJoin, IterationPlan, JoinConditions, JoinId, JoinKey, JoinPlan, JoinSource,
+    ProgramValidationError,
 };
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
@@ -49,6 +50,21 @@ fn project() -> Project {
                         SchemaNode::scalar("Total", ScalarType::Int),
                         SchemaNode::scalar("Matches", ScalarType::Int),
                         SchemaNode::scalar("Labels", ScalarType::String),
+                        SchemaNode::group(
+                            "MatchedProduct",
+                            vec![
+                                SchemaNode::scalar("Label", ScalarType::String),
+                                SchemaNode::scalar("Price", ScalarType::Int),
+                                SchemaNode::scalar("JoinPosition", ScalarType::Int),
+                                SchemaNode::scalar("ProductPosition", ScalarType::Int),
+                                SchemaNode::scalar("OuterQuantity", ScalarType::Int),
+                                SchemaNode::group(
+                                    "Details",
+                                    vec![SchemaNode::scalar("Summary", ScalarType::String)],
+                                ),
+                            ],
+                        )
+                        .repeating(),
                     ],
                 )
                 .repeating(),
@@ -70,6 +86,7 @@ fn project() -> Project {
                             SchemaNode::scalar("Sku", ScalarType::String),
                             SchemaNode::scalar("Price", ScalarType::Int),
                             SchemaNode::scalar("Label", ScalarType::String),
+                            SchemaNode::scalar("Rank", ScalarType::Int),
                         ],
                     )
                     .repeating(),
@@ -145,7 +162,7 @@ fn project() -> Project {
                     Node::JoinAggregate {
                         function: mapping::AggregateOp::Join,
                         join,
-                        plan,
+                        plan: plan.clone(),
                         expression: Some(6),
                         arg: Some(7),
                     },
@@ -155,6 +172,47 @@ fn project() -> Project {
                     Node::SourceField {
                         frame: Some(vec!["Line".into()]),
                         path: vec!["Sku".into()],
+                    },
+                ),
+                (
+                    10,
+                    Node::JoinField {
+                        join,
+                        collection: vec!["Catalog".into(), "Product".into()],
+                        path: vec!["Rank".into()],
+                    },
+                ),
+                (
+                    11,
+                    Node::Const {
+                        value: Value::Int(9),
+                    },
+                ),
+                (
+                    12,
+                    Node::Call {
+                        function: "greater_than".into(),
+                        args: vec![10, 11],
+                    },
+                ),
+                (13, Node::JoinPosition { join }),
+                (
+                    14,
+                    Node::Position {
+                        collection: vec!["Catalog".into(), "Product".into()],
+                    },
+                ),
+                (
+                    15,
+                    Node::Call {
+                        function: "concat".into(),
+                        args: vec![6, 7, 9],
+                    },
+                ),
+                (
+                    16,
+                    Node::Const {
+                        value: Value::Int(2),
                     },
                 ),
             ]),
@@ -181,6 +239,45 @@ fn project() -> Project {
                         node: 8,
                     },
                 ],
+                children: vec![Scope {
+                    target_field: "MatchedProduct".into(),
+                    iteration: ScopeIteration::InnerJoin { id: join, plan },
+                    filter: Some(12),
+                    sort_by: Some(10),
+                    sort_descending: true,
+                    windows: vec![mapping::SequenceWindow::First { count: 16 }],
+                    bindings: vec![
+                        MappingBinding {
+                            target_field: "Label".into(),
+                            node: 6,
+                        },
+                        MappingBinding {
+                            target_field: "Price".into(),
+                            node: 2,
+                        },
+                        MappingBinding {
+                            target_field: "JoinPosition".into(),
+                            node: 13,
+                        },
+                        MappingBinding {
+                            target_field: "ProductPosition".into(),
+                            node: 14,
+                        },
+                        MappingBinding {
+                            target_field: "OuterQuantity".into(),
+                            node: 1,
+                        },
+                    ],
+                    children: vec![Scope {
+                        target_field: "Details".into(),
+                        bindings: vec![MappingBinding {
+                            target_field: "Summary".into(),
+                            node: 15,
+                        }],
+                        ..Scope::default()
+                    }],
+                    ..Scope::default()
+                }],
                 ..Scope::default()
             }],
             ..Scope::default()
@@ -249,40 +346,45 @@ fn catalog() -> Instance {
                 field("Sku", scalar(Value::Int(1))),
                 field("Price", scalar(Value::Int(10))),
                 field("Label", scalar(string("first"))),
+                field("Rank", scalar(Value::Int(10))),
             ]),
             group([
                 field("Sku", scalar(string("1"))),
                 field("Price", scalar(Value::Int(20))),
                 field("Label", scalar(string("second"))),
+                field("Rank", scalar(Value::Int(30))),
             ]),
             group([
                 field("Sku", scalar(string("2"))),
                 field("Price", scalar(Value::Int(5))),
                 field("Label", scalar(string("third"))),
+                field("Rank", scalar(Value::Int(5))),
             ]),
             group([
                 field("Sku", scalar(Value::Null)),
                 field("Price", scalar(Value::Int(100))),
                 field("Label", scalar(string("null"))),
+                field("Rank", scalar(Value::Int(99))),
             ]),
             group([
                 field("Sku", scalar(Value::xml_nil())),
                 field("Price", scalar(Value::Int(100))),
                 field("Label", scalar(string("xml-nil"))),
+                field("Rank", scalar(Value::Int(99))),
             ]),
         ]),
     )])
 }
 
 #[test]
-fn generated_correlated_join_aggregates_match_engine_and_retain_typed_failures() {
+fn generated_correlated_joins_match_engine_and_retain_typed_failures() {
     let project = project();
     let input = source();
     let named = catalog();
     let expected =
         engine::run_with_sources(&project, &input, vec![("Catalog".into(), named.clone())])
-            .expect("engine executes correlated join aggregates");
-    let program = codegen::lower(&project).expect("correlated aggregates lower");
+            .expect("engine executes correlated joins");
+    let program = codegen::lower(&project).expect("correlated joins lower");
     let runtime_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../codegen-runtime")
         .canonicalize()
@@ -296,7 +398,7 @@ fn generated_correlated_join_aggregates_match_engine_and_retain_typed_failures()
             ),
         },
     )
-    .expect("correlated aggregate package emits");
+    .expect("correlated join package emits");
     let output = TempDir::new("rust_correlated_join_codegen");
     write_artifacts(output.path(), &artifacts);
     fs::write(
@@ -316,11 +418,11 @@ fn main() {
         row([("Sku", string("9")), ("Quantity", Value::Int(6)), ("Separator", string("-"))]),
     ]))]);
     let catalog = group([field("Product", repeated([
-        row([("Sku", Value::Int(1)), ("Price", Value::Int(10)), ("Label", string("first"))]),
-        row([("Sku", string("1")), ("Price", Value::Int(20)), ("Label", string("second"))]),
-        row([("Sku", string("2")), ("Price", Value::Int(5)), ("Label", string("third"))]),
-        row([("Sku", Value::Null), ("Price", Value::Int(100)), ("Label", string("null"))]),
-        row([("Sku", Value::xml_nil()), ("Price", Value::Int(100)), ("Label", string("xml-nil"))]),
+        row([("Sku", Value::Int(1)), ("Price", Value::Int(10)), ("Label", string("first")), ("Rank", Value::Int(10))]),
+        row([("Sku", string("1")), ("Price", Value::Int(20)), ("Label", string("second")), ("Rank", Value::Int(30))]),
+        row([("Sku", string("2")), ("Price", Value::Int(5)), ("Label", string("third")), ("Rank", Value::Int(5))]),
+        row([("Sku", Value::Null), ("Price", Value::Int(100)), ("Label", string("null")), ("Rank", Value::Int(99))]),
+        row([("Sku", Value::xml_nil()), ("Price", Value::Int(100)), ("Label", string("xml-nil")), ("Rank", Value::Int(99))]),
     ]))]);
     let inputs = [NamedInput { name: "Catalog", instance: &catalog }];
     let output = correlated_join_map::execute_with_sources(&source, &inputs).unwrap();
@@ -328,7 +430,8 @@ fn main() {
 
     let malformed_catalog = group([field("Product", repeated([row([
         ("Sku", Value::Int(1)),
-        ("Label", string("missing-price")),
+        ("Price", Value::Int(10)),
+        ("Label", string("missing-rank")),
     ])]))]);
     let malformed_inputs = [NamedInput { name: "Catalog", instance: &malformed_catalog }];
     assert!(matches!(
@@ -397,5 +500,52 @@ fn rejects_unbounded_correlated_join_aggregate_before_artifact_creation() {
                 join,
             }
         )) if join == JoinId::new(8)
+    ));
+}
+
+#[test]
+fn rejects_unbounded_correlated_join_scope_before_artifact_creation() {
+    let mut program = codegen::lower(&project()).expect("fixture lowers");
+    let Some(iteration) = program.root.children[0].children[0].iteration.as_mut() else {
+        panic!("fixture contains correlated join scope");
+    };
+    let filter = iteration.filter();
+    let sort = iteration.sort().cloned();
+    let windows = iteration.windows().to_vec();
+    let output = iteration.output();
+    *iteration = IterationPlan::new(
+        InnerJoin::new(
+            JoinId::new(8),
+            JoinPlan::new(
+                JoinSource::new(vec!["Line".into()]),
+                JoinSource::new(vec!["Catalog".into(), "Product".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Line".into()],
+                    vec!["Sku".into()],
+                    vec!["Sku".into()],
+                )),
+            )
+            .expect("unbounded plan remains structurally valid"),
+        ),
+        filter,
+        sort,
+        windows,
+        output,
+    );
+
+    assert!(matches!(
+        emit(
+            &program,
+            &Options {
+                package_name: "invalid-correlated-join-scope".into(),
+                runtime_dependency: RuntimeDependency::Version("1".into()),
+            }
+        ),
+        Err(EmitError::InvalidProgram(
+            ProgramValidationError::JoinRequiresRootContext {
+                target_path,
+                join,
+            }
+        )) if target_path == ["Row", "MatchedProduct"] && join == JoinId::new(8)
     ));
 }

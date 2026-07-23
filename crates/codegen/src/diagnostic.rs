@@ -151,7 +151,7 @@ impl fmt::Display for ScopeFeature {
         match self {
             Self::Iteration => formatter.write_str("scope iteration"),
             Self::CorrelatedInnerJoin => {
-                formatter.write_str("an inner join below an active iteration")
+                formatter.write_str("an unsupported correlated inner join")
             }
             Self::Construction(kind) => write!(formatter, "{kind} construction"),
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
