@@ -47,6 +47,19 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 args: vec![104, 101],
             },
         },
+        ExpressionNode {
+            id: 106,
+            expression: Expression::Const {
+                value: Value::String("\\d+".into()),
+            },
+        },
+        ExpressionNode {
+            id: 107,
+            expression: Expression::Call {
+                function: ScalarFunction::Matches,
+                args: vec![100, 106],
+            },
+        },
     ]);
     let selected = program
         .root
@@ -71,7 +84,13 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         .and_then(|file| std::str::from_utf8(&file.contents).ok())
         .expect("generated Rust source");
 
-    for name in ["trim", "is_numeric", "to_number", "delay_passthrough"] {
+    for name in [
+        "trim",
+        "is_numeric",
+        "to_number",
+        "delay_passthrough",
+        "matches",
+    ] {
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }
 }

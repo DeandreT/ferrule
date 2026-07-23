@@ -6,9 +6,10 @@ use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
     FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
-    JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program, ScalarFunction,
-    ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration,
-    TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
+    JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
+    ProgramValidationError, ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow,
+    SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
+    UserFunctionProgram, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -81,19 +82,40 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     }
     let user_functions = lower_user_functions(project, &reachable, &mut diagnostics);
 
-    if diagnostics.is_empty() {
-        Ok(Program {
-            source: project.source.clone(),
-            extra_sources,
-            target: project.target.clone(),
-            expressions,
-            user_functions,
-            failure_rules,
-            root,
-            extra_targets,
-        })
-    } else {
-        Err(LowerError::new(diagnostics))
+    if !diagnostics.is_empty() {
+        return Err(LowerError::new(diagnostics));
+    }
+    let program = Program {
+        source: project.source.clone(),
+        extra_sources,
+        target: project.target.clone(),
+        expressions,
+        user_functions,
+        failure_rules,
+        root,
+        extra_targets,
+    };
+    if let Err(error) = validate_program(&program) {
+        let diagnostic = join_aggregate_context_error(&error).map_or_else(
+            || Diagnostic::Validation {
+                location: "code generation".into(),
+                message: error.to_string(),
+            },
+            |node| Diagnostic::UnsupportedNode {
+                node,
+                kind: UnsupportedNodeKind::CorrelatedJoinAggregate,
+            },
+        );
+        return Err(LowerError::new(vec![diagnostic]));
+    }
+    Ok(program)
+}
+
+fn join_aggregate_context_error(error: &ProgramValidationError) -> Option<NodeId> {
+    match error {
+        ProgramValidationError::JoinAggregateRequiresRootContext { node, .. } => Some(*node),
+        ProgramValidationError::NamedTarget { error, .. } => join_aggregate_context_error(error),
+        _ => None,
     }
 }
 
@@ -613,6 +635,18 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             ),
             arg: *arg,
         },
+        Node::JoinAggregate {
+            function,
+            join,
+            plan,
+            expression,
+            arg,
+        } => Expression::JoinAggregate {
+            function: (*function).into(),
+            join: InnerJoin::new(JoinId::from(*join), JoinPlan::from_mapping(plan)),
+            expression: *expression,
+            arg: *arg,
+        },
         Node::SequenceExists {
             sequence,
             predicate,
@@ -639,7 +673,6 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
         Node::XmlMixedContent { .. } => UnsupportedNodeKind::XmlMixedContent,
         Node::XmlSerialize { .. } => UnsupportedNodeKind::XmlSerialize,
-        Node::JoinAggregate { .. } => UnsupportedNodeKind::JoinAggregate,
         Node::SourceField { .. }
         | Node::SourceDocumentPath
         | Node::Position { .. }
@@ -657,7 +690,8 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::CollectionFind { .. }
         | Node::SequenceExists { .. }
         | Node::SequenceItemAt { .. }
-        | Node::Aggregate { .. } => {
+        | Node::Aggregate { .. }
+        | Node::JoinAggregate { .. } => {
             unreachable!("portable expressions are handled above")
         }
     }

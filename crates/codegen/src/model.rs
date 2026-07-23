@@ -82,6 +82,7 @@ pub enum ScalarFunction {
     StartsWith,
     EndsWith,
     Contains,
+    Matches,
     Concat,
     Upper,
     Lower,
@@ -150,6 +151,7 @@ impl ScalarFunction {
         Self::StartsWith,
         Self::EndsWith,
         Self::Contains,
+        Self::Matches,
         Self::Concat,
         Self::Upper,
         Self::Lower,
@@ -218,6 +220,7 @@ impl ScalarFunction {
             Self::StartsWith => "starts_with",
             Self::EndsWith => "ends_with",
             Self::Contains => "contains",
+            Self::Matches => "matches",
             Self::Concat => "concat",
             Self::Upper => "upper",
             Self::Lower => "lower",
@@ -287,6 +290,7 @@ impl ScalarFunction {
             "starts_with" => Some(Self::StartsWith),
             "ends_with" => Some(Self::EndsWith),
             "contains" => Some(Self::Contains),
+            "matches" => Some(Self::Matches),
             "concat" => Some(Self::Concat),
             "upper" => Some(Self::Upper),
             "lower" => Some(Self::Lower),
@@ -517,6 +521,15 @@ pub enum Expression {
         function: AggregateFunction,
         collection: Vec<String>,
         value: AggregateValue,
+        arg: Option<NodeId>,
+    },
+    /// Reduces the tuples produced by a locally owned root-context inner join.
+    /// The value expression executes once per tuple with the join active;
+    /// `arg` executes once afterward in the unchanged parent context.
+    JoinAggregate {
+        function: AggregateFunction,
+        join: InnerJoin,
+        expression: Option<NodeId>,
         arg: Option<NodeId>,
     },
     /// Generates a private scalar sequence and returns whether its predicate

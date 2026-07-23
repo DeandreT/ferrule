@@ -80,7 +80,7 @@ The current portable model includes:
   positions
 - explicit active/main mapping paths and an optional stable current date-time
   supplied by the execution host
-- lazy conditionals and a closed set of 64 boolean, arithmetic, comparison,
+- lazy conditionals and a closed set of 65 boolean, arithmetic, comparison,
   scalar text, Unicode whitespace/substring/padding, finite numeric detection,
   integer-first conversion, numeric picture formatting, SQL LIKE, ISBN, rounding, date extraction,
   composition, picture parsing, exact duration arithmetic, and EDIFACT date-time conversion,
@@ -96,6 +96,8 @@ The current portable model includes:
   collections, with left-deep composite equality, scalar coercion, stable
   duplicate-preserving order, Null/XML-nil exclusion, exact joined fields, raw
   source positions, compacted tuple positions, and ordinary scope controls
+- root-context inner-join aggregates with direct tuple counts, computed
+  per-tuple values, and parent-context scalar arguments
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings

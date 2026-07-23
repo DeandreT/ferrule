@@ -26,6 +26,9 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         Expression::Aggregate { value, arg, .. } => {
             value.expression().into_iter().chain(*arg).collect()
         }
+        Expression::JoinAggregate {
+            expression, arg, ..
+        } => expression.iter().copied().chain(*arg).collect(),
         Expression::SequenceExists {
             sequence,
             predicate,
