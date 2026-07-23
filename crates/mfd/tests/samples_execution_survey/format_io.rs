@@ -352,13 +352,21 @@ fn formatted_edi_output<'a>(
     instance: &'a Instance,
     options: &FormatOptions,
 ) -> Result<Cow<'a, Instance>, String> {
-    if options.edi_lexical_formats.is_empty() {
-        return Ok(Cow::Borrowed(instance));
-    }
-    let mut formatted = instance.clone();
-    format_edi::apply_output_lexical_formats(&mut formatted, &options.edi_lexical_formats)
+    let formatted = if options.edi_lexical_formats.is_empty() {
+        Cow::Borrowed(instance)
+    } else {
+        let mut formatted = instance.clone();
+        format_edi::apply_output_lexical_formats(&mut formatted, &options.edi_lexical_formats)
+            .map_err(|error| error.to_string())?;
+        Cow::Owned(formatted)
+    };
+    let report = format_edi::validate_values(&formatted, &options.edi_value_constraints)
         .map_err(|error| error.to_string())?;
-    Ok(Cow::Owned(formatted))
+    if report.is_empty() {
+        Ok(formatted)
+    } else {
+        Err(report.to_string())
+    }
 }
 
 fn write_x12(

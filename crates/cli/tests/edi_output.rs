@@ -1,7 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::{Binding, EdiBoundaryKind, FormatOptions, Graph, Node, Project, Scope};
+use mapping::{
+    Binding, EdiBoundaryKind, EdiValueConstraint, FormatOptions, Graph, Node, Project, Scope,
+};
 
 fn test_dir(label: &str) -> Result<PathBuf, std::io::Error> {
     let path = std::env::temp_dir().join(format!(
@@ -182,6 +184,52 @@ fn tradacoms_target_identity_writes_a_neutral_output_path() -> Result<(), Box<dy
         std::fs::read_to_string(&output)?,
         "STX=ANA:1+A?+B'\nEND=1'\n"
     );
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn invalid_edi_values_report_all_issues_before_output_is_replaced()
+-> Result<(), Box<dyn std::error::Error>> {
+    let target = SchemaNode::group(
+        "Message",
+        vec![SchemaNode::group(
+            "PID",
+            vec![SchemaNode::scalar("PID-1", ScalarType::String)],
+        )],
+    );
+    let root = Scope {
+        children: vec![Scope {
+            target_field: "PID".into(),
+            bindings: vec![binding("PID-1", 0)],
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let mut project = project(target, EdiBoundaryKind::Hl7, constant_graph(&["X"]), root);
+    let Some(constraint) = EdiValueConstraint::new(
+        vec!["PID".into(), "PID-1".into()],
+        2,
+        3,
+        vec!["AA".into(), "BB".into()],
+    ) else {
+        return Err("test constraint must be valid".into());
+    };
+    project.target_options.edi_value_constraints = vec![constraint];
+
+    let directory = test_dir("validation")?;
+    let project_path = write_project(&directory, &project)?;
+    let input = directory.join("input.capture");
+    let output = directory.join("output.capture");
+    std::fs::write(&input, "{}")?;
+    std::fs::write(&output, "preserved")?;
+
+    let error = cli::run_project(&project_path, &input, &output)
+        .expect_err("invalid values must prevent EDI output");
+    let message = format!("{error:#}");
+    assert!(message.contains("minimum is 2"), "{message}");
+    assert!(message.contains("configured code-list"), "{message}");
+    assert_eq!(std::fs::read_to_string(&output)?, "preserved");
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
