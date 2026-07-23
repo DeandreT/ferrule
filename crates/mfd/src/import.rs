@@ -30,6 +30,7 @@ mod function;
 mod generated_occurrence;
 mod graph;
 mod group_projection;
+mod instance_path;
 mod iteration;
 mod join;
 mod json_parser;
@@ -725,7 +726,17 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
         }
         extra_sources.push(NamedSource {
             name: source_names[index].clone(),
-            path: extra.input_instance.clone().unwrap_or_default(),
+            path: extra
+                .input_instance
+                .as_deref()
+                .map(|stored| {
+                    if dynamic_path.is_none() {
+                        instance_path::resolve_static_input(path, stored)
+                    } else {
+                        stored.to_string()
+                    }
+                })
+                .unwrap_or_default(),
             schema: extra.schema.clone(),
             options: extra.options.clone(),
             dynamic_path,
@@ -735,7 +746,8 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
     let source_path = primary
         .input_instance
         .clone()
-        .or_else(|| builder.static_component_input_path(primary));
+        .or_else(|| builder.static_component_input_path(primary))
+        .map(|stored| instance_path::resolve_static_input(path, &stored));
     let target_path = if root.output_path().is_some() {
         None
     } else {
