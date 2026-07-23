@@ -108,5 +108,6 @@ fn constraint_value_to_json(value: &GroupAlternativeConstraintValue) -> serde_js
         GroupAlternativeConstraintValue::Int(value) => (*value).into(),
         GroupAlternativeConstraintValue::Float(value) => value.get().into(),
         GroupAlternativeConstraintValue::Bool(value) => (*value).into(),
+        GroupAlternativeConstraintValue::JsonNull => serde_json::Value::Null,
     }
 }

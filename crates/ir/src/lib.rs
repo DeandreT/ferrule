@@ -479,16 +479,18 @@ pub enum GroupAlternativeConstraintValue {
     Int(i64),
     Float(FiniteF64),
     Bool(bool),
+    JsonNull,
 }
 
 impl GroupAlternativeConstraintValue {
-    fn is_valid_for(&self, ty: ScalarType) -> bool {
+    fn is_valid_for(&self, ty: ScalarType, nullable: bool) -> bool {
         matches!(
             (self, ty),
             (Self::String(_), ScalarType::String)
                 | (Self::Int(_), ScalarType::Int)
                 | (Self::Bool(_), ScalarType::Bool)
         ) || matches!((self, ty), (Self::Float(_), ScalarType::Float))
+            || matches!(self, Self::JsonNull) && nullable
     }
 }
 
@@ -984,7 +986,7 @@ fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAltern
                                     && matches!(
                                         child.kind,
                                         SchemaKind::Scalar { ty }
-                                            if constraint.value.is_valid_for(ty)
+                                            if constraint.value.is_valid_for(ty, child.nullable)
                                     )
                             })
                     },
@@ -1465,6 +1467,40 @@ mod tests {
                 ],
             )
             .with_alternatives(wrong_type)
+            .is_none()
+        );
+
+        let nullable_discriminator = SchemaNode::group(
+            "Nullable",
+            vec![
+                SchemaNode::scalar("kind", ScalarType::String)
+                    .nullable()
+                    .unwrap(),
+            ],
+        )
+        .with_alternatives(vec![GroupAlternative {
+            name: "missing".into(),
+            members: vec!["kind".into()],
+            required: vec!["kind".into()],
+            constraints: vec![GroupAlternativeConstraint {
+                member: "kind".into(),
+                value: GroupAlternativeConstraintValue::JsonNull,
+            }],
+        }])
+        .unwrap();
+        assert_eq!(
+            serde_json::from_str::<SchemaNode>(
+                &serde_json::to_string(&nullable_discriminator).unwrap()
+            )
+            .unwrap(),
+            nullable_discriminator
+        );
+        assert!(
+            SchemaNode::group(
+                "NonNullable",
+                vec![SchemaNode::scalar("kind", ScalarType::String)],
+            )
+            .with_alternatives(nullable_discriminator.alternatives().to_vec())
             .is_none()
         );
 

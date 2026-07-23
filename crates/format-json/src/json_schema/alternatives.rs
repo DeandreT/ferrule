@@ -162,7 +162,7 @@ pub(super) fn parse_inferred_const_scalar(
         serde_json::Value::Null => {
             return Err(unsupported_union(
                 name,
-                "null const cannot distinguish required fields because JSON null and absence share one IR value",
+                "null const requires an explicitly typed nullable scalar discriminator",
             ));
         }
         serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
@@ -282,6 +282,15 @@ pub(super) fn parse_object_alternatives(
                 "object alternatives must declare additionalProperties false",
             ));
         }
+        let mut required = base_required.clone();
+        for field in required_names(resolved) {
+            if !required.contains(&field) {
+                required.push(field);
+            }
+        }
+        let constraints =
+            required_scalar_constraints(name, resolved, &required, &variant_children)?;
+        let constraints = merge_constraints(name, &base_constraints, constraints)?;
         let mut members = Vec::new();
         for child in variant_children {
             if let Some(base) = base_children.iter().find(|base| base.name == child.name)
@@ -297,8 +306,18 @@ pub(super) fn parse_object_alternatives(
             }
             let allowed = wrapper_allows(name, &base_children, &base_additional, &child)?;
             if allowed {
-                if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
-                    if existing != &child {
+                if let Some(existing) = merged
+                    .iter_mut()
+                    .find(|existing| existing.name == child.name)
+                {
+                    if existing != &child
+                        && !merge_exact_constrained_nullability(
+                            existing,
+                            &child,
+                            &constraints,
+                            &metadata,
+                        )
+                    {
                         return Err(unsupported_union(
                             name,
                             &format!(
@@ -315,14 +334,6 @@ pub(super) fn parse_object_alternatives(
                 }
             }
         }
-        let mut required = base_required.clone();
-        for field in required_names(resolved) {
-            if !required.contains(&field) {
-                required.push(field);
-            }
-        }
-        let constraints = required_scalar_constraints(name, resolved, &required, &merged)?;
-        let constraints = merge_constraints(name, &base_constraints, constraints)?;
         push_alternative(
             name,
             mode,
@@ -346,6 +357,37 @@ pub(super) fn parse_object_alternatives(
         GroupAlternativeMode::Inclusive => group.with_inclusive_alternatives(metadata),
     }
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
+}
+
+fn merge_exact_constrained_nullability(
+    existing: &mut SchemaNode,
+    incoming: &SchemaNode,
+    incoming_constraints: &[GroupAlternativeConstraint],
+    previous: &[GroupAlternative],
+) -> bool {
+    if existing.nullable == incoming.nullable
+        || !incoming_constraints
+            .iter()
+            .any(|constraint| constraint.member == incoming.name)
+        || previous.iter().any(|alternative| {
+            alternative.members.contains(&incoming.name)
+                && !alternative
+                    .constraints
+                    .iter()
+                    .any(|constraint| constraint.member == incoming.name)
+        })
+    {
+        return false;
+    }
+    let mut normalized_existing = existing.clone();
+    normalized_existing.nullable = false;
+    let mut normalized_incoming = incoming.clone();
+    normalized_incoming.nullable = false;
+    if normalized_existing != normalized_incoming {
+        return false;
+    }
+    existing.nullable = true;
+    true
 }
 
 fn merge_constraints(
@@ -593,7 +635,7 @@ fn required_scalar_constraints(
                     &format!("const discriminator `{member}` must be a scalar field"),
                 ));
             };
-            let value = constraint_value(union_name, member, value, ty)?;
+            let value = constraint_value(union_name, member, value, ty, child.nullable)?;
             Ok(GroupAlternativeConstraint {
                 member: member.clone(),
                 value,
@@ -607,6 +649,7 @@ fn constraint_value(
     member: &str,
     value: &serde_json::Value,
     ty: ScalarType,
+    nullable: bool,
 ) -> Result<GroupAlternativeConstraintValue, JsonFormatError> {
     let unsupported = |reason: &str| {
         unsupported_union(
@@ -629,8 +672,9 @@ fn constraint_value(
         (ScalarType::Bool, serde_json::Value::Bool(value)) => {
             Ok(GroupAlternativeConstraintValue::Bool(*value))
         }
+        (_, serde_json::Value::Null) if nullable => Ok(GroupAlternativeConstraintValue::JsonNull),
         (_, serde_json::Value::Null) => Err(unsupported(
-            "cannot be null because JSON null and absence share one IR value",
+            "can be null only when its scalar type explicitly includes null",
         )),
         _ => Err(unsupported("does not match its declared scalar type")),
     }

@@ -509,6 +509,98 @@ fn required_scalar_const_discriminators_roundtrip_and_validate_instances() {
 }
 
 #[test]
+fn typed_null_const_discriminators_roundtrip_and_validate_instances() {
+    for keyword in ["oneOf", "anyOf"] {
+        let alternatives = if keyword == "oneOf" {
+            r#"
+    {"title":"missing","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{
+        "kind":{"type":["string","null"],"const":null},
+        "value":{"type":"string"}
+      }},
+    {"title":"present","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{
+        "kind":{"type":"string","const":"present"},
+        "value":{"type":"string"}
+      }}"#
+        } else {
+            r#"
+    {"title":"present","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{
+        "kind":{"type":"string","const":"present"},
+        "value":{"type":"string"}
+      }},
+    {"title":"missing","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{
+        "kind":{"type":["string","null"],"const":null},
+        "value":{"type":"string"}
+      }}"#
+        };
+        let schema = import_str(&format!(
+            r#"{{
+  "title":"NullableEvent",
+  "{keyword}":[{alternatives}
+  ]
+}}"#
+        ));
+        let kind = schema.child("kind").unwrap();
+        assert!(kind.nullable);
+        assert!(matches!(
+            kind.kind,
+            SchemaKind::Scalar {
+                ty: ScalarType::String
+            }
+        ));
+        assert!(schema.alternatives().iter().any(|alternative| {
+            alternative.constraints.iter().any(|constraint| {
+                constraint.member == "kind"
+                    && constraint.value == GroupAlternativeConstraintValue::JsonNull
+            })
+        }));
+
+        for text in [
+            r#"{"kind":null,"value":"none"}"#,
+            r#"{"kind":"present","value":"some"}"#,
+        ] {
+            let instance = crate::from_str(text, &schema).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(
+                    &crate::to_string(&schema, &instance).unwrap()
+                )
+                .unwrap(),
+                serde_json::from_str::<serde_json::Value>(text).unwrap()
+            );
+        }
+        for text in [
+            r#"{"value":"absent"}"#,
+            r#"{"kind":"other","value":"wrong"}"#,
+        ] {
+            assert!(matches!(
+                crate::from_str(text, &schema),
+                Err(JsonFormatError::NoMatchingAlternative { .. })
+            ));
+        }
+
+        let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+        let alternatives = exported[keyword].as_array().unwrap();
+        let missing = alternatives
+            .iter()
+            .find(|alternative| alternative["title"] == "missing")
+            .unwrap();
+        assert_eq!(
+            missing["properties"]["kind"]["type"],
+            serde_json::json!(["string", "null"])
+        );
+        assert!(missing["properties"]["kind"]["const"].is_null());
+        assert_eq!(import_str(&export(&schema)), schema);
+    }
+}
+
+#[test]
 fn inclusive_alternatives_honor_required_scalar_const_discriminators() {
     let schema = import_str(
         r#"{
@@ -637,7 +729,7 @@ fn unsupported_const_discriminators_are_rejected_actionably() {
         (
             r#"{"type":"string","const":null}"#,
             r#", "required":["kind"]"#,
-            "cannot be null",
+            "explicitly includes null",
         ),
         (
             r#"{"type":"integer","const":9223372036854775808}"#,
@@ -662,6 +754,46 @@ fn unsupported_const_discriminators_are_rejected_actionably() {
         let error = import_str_result(&text).unwrap_err();
         assert!(error.to_string().contains(expected), "{error}");
     }
+
+    for (first, second, expected) in [
+        (
+            r#"{"type":["string","null"],"const":null}"#,
+            r#"{"type":"string"}"#,
+            "incompatible schemas across alternatives",
+        ),
+        (
+            r#"{"type":["string","null"],"const":null}"#,
+            r#"{"type":"integer","const":1}"#,
+            "incompatible schemas across alternatives",
+        ),
+    ] {
+        let text = format!(
+            r#"{{
+  "title":"UnsupportedNullableConstraint",
+  "oneOf":[
+    {{"title":"first","type":"object","additionalProperties":false,
+      "required":["kind"],"properties":{{"kind":{first}}}}},
+    {{"title":"second","type":"object","additionalProperties":false,
+      "required":["kind"],"properties":{{"kind":{second}}}}}
+  ]
+}}"#
+        );
+        let error = import_str_result(&text).unwrap_err();
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+    let optional_null = import_str_result(
+        r#"{
+  "title":"OptionalNull",
+  "oneOf":[
+    {"title":"null","type":"object","additionalProperties":false,
+      "properties":{"kind":{"type":["string","null"],"const":null}}},
+    {"title":"other","type":"object","additionalProperties":false,
+      "required":["other"],"properties":{"other":{"type":"string"}}}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(optional_null.to_string().contains("must be required"));
 
     let ambiguous = import_str_result(
         r#"{

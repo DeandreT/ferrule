@@ -460,6 +460,7 @@ fn constraint_matches(
         (GroupAlternativeConstraintValue::Bool(expected), serde_json::Value::Bool(actual)) => {
             expected == actual
         }
+        (GroupAlternativeConstraintValue::JsonNull, serde_json::Value::Null) => true,
         _ => false,
     }
 }

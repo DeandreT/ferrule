@@ -73,11 +73,13 @@ fn object_one_of_subtypes_import_execute_and_select_xml_types() {
 }
 
 #[test]
-fn required_typed_const_json_alternatives_export_reimport_and_execute() {
+fn required_typed_and_null_const_json_alternatives_export_reimport_and_execute() {
     let event = SchemaNode::group(
         "Event",
         vec![
-            SchemaNode::scalar("kind", ScalarType::Bool),
+            SchemaNode::scalar("kind", ScalarType::Bool)
+                .nullable()
+                .unwrap(),
             SchemaNode::scalar("value", ScalarType::String),
         ],
     )
@@ -98,6 +100,15 @@ fn required_typed_const_json_alternatives_export_reimport_and_execute() {
             constraints: vec![GroupAlternativeConstraint {
                 member: "kind".into(),
                 value: GroupAlternativeConstraintValue::Bool(false),
+            }],
+        },
+        GroupAlternative {
+            name: "missing".into(),
+            members: vec!["kind".into(), "value".into()],
+            required: vec!["kind".into(), "value".into()],
+            constraints: vec![GroupAlternativeConstraint {
+                member: "kind".into(),
+                value: GroupAlternativeConstraintValue::JsonNull,
             }],
         },
     ])
@@ -171,19 +182,21 @@ fn required_typed_const_json_alternatives_export_reimport_and_execute() {
     let schema_text = std::fs::read_to_string(temp.0.join("events-source.schema.json")).unwrap();
     assert!(schema_text.contains(r#""const": true"#));
     assert!(schema_text.contains(r#""const": false"#));
+    assert!(schema_text.contains(r#""const": null"#));
 
     let reimported = mfd::import(&design).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert!(engine::validate(&reimported.project).is_empty());
     assert_eq!(reimported.project.source, project.source);
     let source = format_json::from_str(
-        r#"{"Event":[{"kind":true,"value":"one"},{"kind":false,"value":"two"}]}"#,
+        r#"{"Event":[{"kind":true,"value":"one"},{"kind":false,"value":"two"},{"kind":null,"value":"three"}]}"#,
         &reimported.project.source,
     )
     .unwrap();
     let output = engine::run(&reimported.project, &source).unwrap();
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
-    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.len(), 3);
     assert_eq!(scalar(&rows[0], "Kind"), Value::Bool(true));
     assert_eq!(scalar(&rows[1], "Value"), Value::String("two".into()));
+    assert_eq!(scalar(&rows[2], "Kind"), Value::json_null());
 }
