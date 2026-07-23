@@ -1,10 +1,63 @@
 //! Last-run summary and bounded output previews for the native GUI.
 
+use std::cell::{Cell, RefCell};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub const MAX_PREVIEW_BYTES: usize = 1024 * 1024;
+pub const MAX_TRACE_EVENTS: usize = 50_000;
+
+#[derive(Debug, Default)]
+pub struct TraceReport {
+    pub events: Vec<cli::TraceEvent>,
+    pub dropped: usize,
+}
+
+/// Bounded synchronous trace collector used by native runs.
+pub struct TraceCollector {
+    events: RefCell<Vec<cli::TraceEvent>>,
+    dropped: Cell<usize>,
+    limit: usize,
+}
+
+impl TraceCollector {
+    pub fn new() -> Self {
+        Self::with_limit(MAX_TRACE_EVENTS)
+    }
+
+    fn with_limit(limit: usize) -> Self {
+        Self {
+            events: RefCell::new(Vec::with_capacity(limit.min(1024))),
+            dropped: Cell::new(0),
+            limit,
+        }
+    }
+
+    pub fn finish(self) -> TraceReport {
+        TraceReport {
+            events: self.events.into_inner(),
+            dropped: self.dropped.get(),
+        }
+    }
+}
+
+impl Default for TraceCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl cli::TraceSink for TraceCollector {
+    fn record(&self, event: cli::TraceEvent) {
+        let mut events = self.events.borrow_mut();
+        if events.len() < self.limit {
+            events.push(event);
+        } else {
+            self.dropped.set(self.dropped.get().saturating_add(1));
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct RunReport {
@@ -12,10 +65,15 @@ pub struct RunReport {
     pub records_written: usize,
     pub input_path: PathBuf,
     pub outputs: Vec<RunOutput>,
+    pub trace: TraceReport,
 }
 
 impl RunReport {
-    pub fn from_outcome(outcome: cli::RunOutcome, duration: Duration) -> Self {
+    pub fn from_outcome_with_trace(
+        outcome: cli::RunOutcome,
+        duration: Duration,
+        trace: TraceReport,
+    ) -> Self {
         let mut outputs = if outcome.primary_outputs.is_empty() {
             vec![RunOutput::new(
                 "Primary".to_string(),
@@ -35,14 +93,23 @@ impl RunReport {
             records_written: outcome.records_written,
             input_path: outcome.input_path,
             outputs,
+            trace,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReportPage {
+    Output,
+    Trace,
 }
 
 #[derive(Debug)]
 pub struct RunReportView {
     pub report: RunReport,
     selected_output: usize,
+    page: ReportPage,
+    trace_filter: String,
 }
 
 impl RunReportView {
@@ -50,6 +117,8 @@ impl RunReportView {
         Self {
             report,
             selected_output: 0,
+            page: ReportPage::Output,
+            trace_filter: String::new(),
         }
     }
 
@@ -168,6 +237,8 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
             "{output_count} output{}",
             if output_count == 1 { "" } else { "s" }
         ));
+        ui.separator();
+        ui.label(format!("{} trace events", view.report.trace.events.len()));
     });
     ui.horizontal(|ui| {
         ui.weak("Input");
@@ -181,6 +252,19 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
     });
     ui.separator();
 
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut view.page, ReportPage::Output, "Output");
+        ui.selectable_value(&mut view.page, ReportPage::Trace, "Trace");
+    });
+    ui.separator();
+
+    match view.page {
+        ReportPage::Output => show_outputs(ui, view),
+        ReportPage::Trace => show_trace(ui, view),
+    }
+}
+
+fn show_outputs(ui: &mut egui::Ui, view: &mut RunReportView) {
     view.selected_output = view
         .selected_output
         .min(view.report.outputs.len().saturating_sub(1));
@@ -279,6 +363,100 @@ fn show_report(ui: &mut egui::Ui, view: &mut RunReportView) {
     }
 }
 
+fn show_trace(ui: &mut egui::Ui, view: &mut RunReportView) {
+    ui.horizontal(|ui| {
+        ui.add(
+            egui::TextEdit::singleline(&mut view.trace_filter)
+                .hint_text("Filter trace")
+                .desired_width(280.0),
+        );
+        if !view.trace_filter.is_empty()
+            && crate::icons::button(ui, true, lucide_icons::Icon::X, "Clear trace filter").clicked()
+        {
+            view.trace_filter.clear();
+        }
+        if view.report.trace.dropped > 0 {
+            ui.weak(format!(
+                "{} later events omitted",
+                view.report.trace.dropped
+            ));
+        }
+    });
+    ui.separator();
+
+    let filter = view.trace_filter.trim().to_lowercase();
+    let rows = view
+        .report
+        .trace
+        .events
+        .iter()
+        .enumerate()
+        .filter_map(|(index, event)| {
+            (filter.is_empty() || trace_row(index, event).to_lowercase().contains(&filter))
+                .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    if rows.is_empty() {
+        ui.weak("No matching trace events.");
+        return;
+    }
+
+    let row_height = ui.text_style_height(&egui::TextStyle::Monospace) + 6.0;
+    egui::ScrollArea::vertical()
+        .id_salt("run_trace")
+        .auto_shrink([false, false])
+        .show_rows(ui, row_height, rows.len(), |ui, range| {
+            for index in &rows[range] {
+                let row = trace_row(*index, &view.report.trace.events[*index]);
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&row).monospace())
+                        .selectable(true)
+                        .wrap_mode(egui::TextWrapMode::Truncate),
+                )
+                .on_hover_text(row);
+            }
+        });
+}
+
+fn trace_row(index: usize, event: &cli::TraceEvent) -> String {
+    match event {
+        cli::TraceEvent::NodeValue {
+            node,
+            positions,
+            value,
+        } => {
+            let context = positions
+                .iter()
+                .map(format_trace_position)
+                .collect::<Vec<_>>()
+                .join(" > ");
+            let value = serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"));
+            if context.is_empty() {
+                format!("{:>6}  node {node:<6}  {value}", index + 1)
+            } else {
+                format!("{:>6}  node {node:<6}  {context}  {value}", index + 1)
+            }
+        }
+    }
+}
+
+fn format_trace_position(position: &cli::TracePosition) -> String {
+    let collection = if position.collection.is_empty() {
+        "<root>".to_string()
+    } else {
+        position.collection.join("/")
+    };
+    let mut text = format!("{collection}[{}]", position.index);
+    if position.grouped {
+        text.push_str(" group");
+    }
+    if let Some(path) = &position.document_path {
+        text.push_str(" @");
+        text.push_str(path);
+    }
+    text
+}
+
 fn read_preview(path: &Path) -> std::io::Result<OutputPreview> {
     let mut file = std::fs::File::open(path)?;
     let total_bytes = file.metadata()?.len();
@@ -341,6 +519,14 @@ fn format_bytes(bytes: u64) -> String {
 mod tests {
     use super::*;
 
+    fn trace_event(node: mapping::NodeId, value: ir::Value) -> cli::TraceEvent {
+        cli::TraceEvent::NodeValue {
+            node,
+            positions: Vec::new(),
+            value,
+        }
+    }
+
     fn temporary_path(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
             "ferrule_gui_run_report_{name}_{}",
@@ -396,7 +582,11 @@ mod tests {
             extra_outputs: Vec::new(),
         };
 
-        let mut report = RunReport::from_outcome(outcome, Duration::from_millis(12));
+        let mut report = RunReport::from_outcome_with_trace(
+            outcome,
+            Duration::from_millis(12),
+            TraceReport::default(),
+        );
 
         assert!(report.outputs[0].preview.is_none());
         assert!(matches!(
@@ -423,7 +613,11 @@ mod tests {
             }],
         };
 
-        let report = RunReport::from_outcome(outcome, Duration::from_millis(4));
+        let report = RunReport::from_outcome_with_trace(
+            outcome,
+            Duration::from_millis(4),
+            TraceReport::default(),
+        );
 
         assert_eq!(
             report
@@ -445,6 +639,19 @@ mod tests {
     }
 
     #[test]
+    fn trace_collection_is_bounded_and_reports_omissions() {
+        let collector = TraceCollector::with_limit(2);
+        cli::TraceSink::record(&collector, trace_event(1, ir::Value::Int(10)));
+        cli::TraceSink::record(&collector, trace_event(2, ir::Value::String("kept".into())));
+        cli::TraceSink::record(&collector, trace_event(3, ir::Value::Bool(false)));
+
+        let trace = collector.finish();
+        assert_eq!(trace.events.len(), 2);
+        assert_eq!(trace.dropped, 1);
+        assert!(trace_row(1, &trace.events[1]).contains("node 2"));
+    }
+
+    #[test]
     fn results_window_renders_and_loads_only_the_selected_preview() {
         let first = temporary_path("window-first");
         let second = temporary_path("window-second");
@@ -458,6 +665,10 @@ mod tests {
                 RunOutput::new("Primary".into(), 1, first.clone()),
                 RunOutput::new("Audit".into(), 1, second.clone()),
             ],
+            trace: TraceReport {
+                events: vec![trace_event(7, ir::Value::String("ok".into()))],
+                dropped: 0,
+            },
         };
         let mut view = RunReportView::new(report);
         let mut open = true;
@@ -472,6 +683,12 @@ mod tests {
         assert!(!output.shapes.is_empty());
         assert!(view.report.outputs[0].preview.is_some());
         assert!(view.report.outputs[1].preview.is_none());
+
+        view.page = ReportPage::Trace;
+        let output = context.run_ui(Default::default(), |ui| {
+            show(ui.ctx(), &mut open, &mut view);
+        });
+        assert!(!output.shapes.is_empty());
         std::fs::remove_file(first).expect("first output is removed");
         std::fs::remove_file(second).expect("second output is removed");
     }
