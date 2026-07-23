@@ -1,4 +1,4 @@
-use ir::{Instance, SchemaKind, Value};
+use ir::{Instance, ScalarType, SchemaKind, SchemaNode, Value};
 
 use super::*;
 use crate::{from_str, to_string};
@@ -128,6 +128,89 @@ fn tokenized_attributes_preserve_their_lexical_values() {
     for value in ["row-1", "root", "a b", "primary", "hot new"] {
         assert!(output.contains(value), "{output}");
     }
+}
+
+#[test]
+fn imports_only_fixed_attribute_defaults_as_schema_constraints() {
+    let schema = import_root_str(
+        r#"
+            <!ELEMENT Config EMPTY>
+            <!ATTLIST Config
+                mode CDATA #FIXED "production"
+                locale CDATA "en-US"
+                optional CDATA #IMPLIED
+                identifier ID #REQUIRED>
+        "#,
+        Some("Config"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        schema.child("mode").and_then(|node| node.fixed.as_deref()),
+        Some("production")
+    );
+    for name in ["locale", "optional", "identifier"] {
+        assert_eq!(
+            schema.child(name).and_then(|node| node.fixed.as_deref()),
+            None
+        );
+    }
+}
+
+#[test]
+fn fixed_dtd_attributes_reject_lexical_input_mismatches() {
+    let schema = import_root_str(
+        r#"<!ELEMENT Config EMPTY><!ATTLIST Config mode CDATA #FIXED "production">"#,
+        Some("Config"),
+    )
+    .unwrap();
+
+    assert!(matches!(
+        from_str(r#"<Config mode="development"/>"#, &schema),
+        Err(crate::XmlFormatError::FixedValue {
+            name,
+            expected,
+            got,
+        }) if name == "mode" && expected == "production" && got == "development"
+    ));
+}
+
+#[test]
+fn fixed_attribute_writes_preserve_lexical_form_after_typed_validation() {
+    let lexical_schema = import_root_str(
+        r#"<!ELEMENT Record EMPTY><!ATTLIST Record code CDATA #FIXED "007">"#,
+        Some("Record"),
+    )
+    .unwrap();
+    let lexical_instance = Instance::Group(vec![(
+        "code".to_string(),
+        Instance::Scalar(Value::String("007".to_string())),
+    )]);
+    let lexical_xml = to_string(&lexical_schema, &lexical_instance).unwrap();
+    assert!(lexical_xml.contains(r#"code="007""#), "{lexical_xml}");
+    assert!(matches!(
+        to_string(
+            &lexical_schema,
+            &Instance::Group(vec![(
+                "code".to_string(),
+                Instance::Scalar(Value::String("7".to_string())),
+            )]),
+        ),
+        Err(crate::XmlFormatError::FixedValue { name, .. }) if name == "code"
+    ));
+
+    let typed_schema = SchemaNode::group(
+        "Record",
+        vec![
+            SchemaNode::scalar("code", ScalarType::Int)
+                .attribute()
+                .fixed("007"),
+        ],
+    );
+    let typed_instance =
+        Instance::Group(vec![("code".to_string(), Instance::Scalar(Value::Int(7)))]);
+    let typed_xml = to_string(&typed_schema, &typed_instance).unwrap();
+    assert!(typed_xml.contains(r#"code="007""#), "{typed_xml}");
 }
 
 #[test]

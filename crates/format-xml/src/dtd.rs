@@ -4,7 +4,9 @@
 //! content-model particles, but never loads external entities or subsets. It
 //! supports `ELEMENT` and `ATTLIST` declarations, child sequences and choices,
 //! the standard occurrence suffixes, `EMPTY`, text and mixed content, and
-//! CDATA, tokenized, and enumeration attributes.
+//! CDATA, tokenized, and enumeration attributes. Fixed attribute declarations
+//! become schema constraints; ordinary attribute defaults are accepted but are
+//! not materialized by the format-neutral schema.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -127,6 +129,24 @@ struct ElementDecl {
 #[derive(Debug)]
 struct AttributeDecl {
     name: String,
+    default: AttributeDefault,
+}
+
+#[derive(Debug)]
+enum AttributeDefault {
+    Required,
+    Implied,
+    Value,
+    Fixed(String),
+}
+
+impl AttributeDefault {
+    fn fixed(&self) -> Option<&str> {
+        match self {
+            Self::Fixed(value) => Some(value),
+            Self::Required | Self::Implied | Self::Value => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -423,7 +443,7 @@ impl<'a> Parser<'a> {
             self.require_whitespace("attribute type")?;
             self.parse_attribute_type()?;
             self.require_whitespace("attribute default declaration")?;
-            self.parse_attribute_default()?;
+            let default = self.parse_attribute_default()?;
             if self
                 .peek_byte()
                 .is_some_and(|byte| !byte.is_ascii_whitespace() && byte != b'>')
@@ -442,7 +462,7 @@ impl<'a> Parser<'a> {
                     attribute: name,
                 });
             }
-            parsed.push(AttributeDecl { name });
+            parsed.push(AttributeDecl { name, default });
             let existing = self.attributes.get(&owner).map_or(0, Vec::len);
             if existing + parsed.len() > MAX_ATTRIBUTES_PER_ELEMENT {
                 return Err(DtdError::LimitExceeded {
@@ -485,14 +505,18 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_attribute_default(&mut self) -> Result<(), DtdError> {
-        if self.consume("#REQUIRED") || self.consume("#IMPLIED") {
-            return Ok(());
+    fn parse_attribute_default(&mut self) -> Result<AttributeDefault, DtdError> {
+        if self.consume("#REQUIRED") {
+            return Ok(AttributeDefault::Required);
+        }
+        if self.consume("#IMPLIED") {
+            return Ok(AttributeDefault::Implied);
         }
         if self.consume("#FIXED") {
             self.require_whitespace("fixed attribute value")?;
+            return self.parse_quoted_value().map(AttributeDefault::Fixed);
         }
-        self.parse_quoted_value().map(|_| ())
+        self.parse_quoted_value().map(|_| AttributeDefault::Value)
     }
 
     fn parse_quoted_value(&mut self) -> Result<String, DtdError> {
@@ -890,7 +914,11 @@ impl<'a> Expander<'a> {
         let mut result = Vec::with_capacity(attributes.len());
         for attribute in attributes {
             self.bump_node_count()?;
-            result.push(SchemaNode::scalar(&attribute.name, ScalarType::String).attribute());
+            let mut node = SchemaNode::scalar(&attribute.name, ScalarType::String).attribute();
+            if let Some(fixed) = attribute.default.fixed() {
+                node.fixed = Some(fixed.to_string());
+            }
+            result.push(node);
         }
         Ok(result)
     }
