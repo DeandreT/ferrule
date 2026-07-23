@@ -115,9 +115,9 @@ The current portable model includes:
 - literal and bounded regular-expression tokenization, Unicode-scalar
   fixed-length tokenization, bounded inclusive integer ranges, and bounded
   recursive depth-first collection
-- ordinary scope iteration, existential predicates, and 1-based scalar
-  `item-at` over those generated sequences; predicates short-circuit after the
-  sequence has been materialized
+- ordinary scope iteration, failure rules, existential predicates, and
+  1-based scalar `item-at` over those generated sequences; predicates
+  short-circuit after the sequence has been materialized
 - active collection identity, outward source-field fallback, and compacted
   output positions
 
@@ -142,16 +142,16 @@ Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
 function implementations preserve the interpreter's typed arity, type, and
 invalid-argument failures, including the one-million-character padding bound.
-Generated scopes and sequence reducers support bounded regex tokenization with
-the common `i`, `m`, `s`, and `x` flags. Rust and .NET still expose materially
-different regex dialects and Unicode behavior, so patterns outside the shared
-non-backtracking dialect can produce a backend-specific invalid-pattern error;
-exact cross-backend support needs a Ferrule-owned matcher. Regex-backed failure
-rules remain interpreter-only. Recursive-filter, path-hierarchy, and
-adjacency-tree target construction remain interpreter-only. Per-item dynamic
-named sources remain interpreter-only because their graph-computed paths require
-a typed host loader contract during scope evaluation. Correlated or nested join
-plans and joined-tuple aggregates also remain interpreter-only; their ownership and
+Generated scopes, failure rules, and sequence reducers support bounded regex
+tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
+expose materially different regex dialects and Unicode behavior, so patterns
+outside the shared non-backtracking dialect can produce a backend-specific
+invalid-pattern error; exact cross-backend support needs a Ferrule-owned
+matcher. Recursive-filter, path-hierarchy, and adjacency-tree target
+construction remain interpreter-only. Per-item dynamic named sources remain
+interpreter-only because their graph-computed paths require a typed host loader
+contract during scope evaluation. Correlated or nested join plans and
+joined-tuple aggregates also remain interpreter-only; their ownership and
 parent-context rules need a broader portable join model. Code generation is
 expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
