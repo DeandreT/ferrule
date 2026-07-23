@@ -199,20 +199,6 @@ pub(super) fn validate_scope(
                 ));
                 break;
             }
-            if current_source
-                .and_then(|node| node.child(&element.source))
-                .is_none_or(|node| {
-                    !node.repeating || !matches!(node.kind, SchemaKind::Scalar { .. })
-                })
-            {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "XML mixed-content source `{}` must be a repeating scalar field",
-                        element.source
-                    ),
-                ));
-            }
             if target
                 .and_then(|node| node.child(&element.target))
                 .is_none_or(|node| {
