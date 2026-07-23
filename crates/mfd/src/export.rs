@@ -710,7 +710,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     }
     // Publish the design after its schema siblings reach their final paths.
     artifacts.push((path.to_path_buf(), out));
-    write_artifacts(artifacts)?;
+    write_artifacts(path.parent().unwrap_or_else(|| Path::new(".")), artifacts)?;
     Ok(warnings)
 }
 

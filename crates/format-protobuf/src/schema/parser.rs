@@ -1,15 +1,15 @@
 use crate::ProtobufError;
 
-use super::model::{Cardinality, EnumValue, Layout, MAX_FIELD_NUMBER, ScalarType};
+use super::model::{Cardinality, EnumValue, MAX_FIELD_NUMBER, ScalarType};
 use super::resolve::{
-    RawDefault, RawEnum, RawField, RawMessage, RawReserved, RawReservedRange, RawSchema,
+    RawDefault, RawEnum, RawField, RawFile, RawImport, RawMessage, RawReserved, RawReservedRange,
 };
 
 const MAX_SCHEMA_TOKENS: usize = 100_000;
 const MAX_MESSAGE_NESTING: usize = 128;
 
-pub(super) fn parse(source: &str) -> Result<Layout, ProtobufError> {
-    Parser::new(source)?.parse()?.resolve()
+pub(super) fn parse_file(source: &str) -> Result<RawFile, ProtobufError> {
+    Parser::new(source)?.parse()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +220,7 @@ struct Parser {
     package: Option<String>,
     messages: Vec<RawMessage>,
     enums: Vec<RawEnum>,
+    imports: Vec<RawImport>,
     syntax: Syntax,
 }
 
@@ -237,11 +238,12 @@ impl Parser {
             package: None,
             messages: Vec::new(),
             enums: Vec::new(),
+            imports: Vec::new(),
             syntax: Syntax::Proto2,
         })
     }
 
-    fn parse(mut self) -> Result<RawSchema, ProtobufError> {
+    fn parse(mut self) -> Result<RawFile, ProtobufError> {
         if self.peek_identifier("syntax") {
             self.parse_syntax()?;
         }
@@ -251,6 +253,8 @@ impl Parser {
             }
             if self.peek_identifier("package") {
                 self.parse_package()?;
+            } else if self.peek_identifier("import") {
+                self.parse_import()?;
             } else if self.peek_identifier("message") {
                 let prefix = self.package.clone().unwrap_or_default();
                 self.parse_message(&prefix, 1)?;
@@ -260,20 +264,32 @@ impl Parser {
             } else if self.peek_identifier("option") {
                 self.skip_statement()?;
             } else {
-                return self.error("expected `package`, `message`, or `enum`");
+                return self.error("expected `import`, `package`, `message`, or `enum`");
             }
         }
-        if self.messages.is_empty() {
-            return Err(ProtobufError::schema(
-                "schema must declare at least one message",
-            ));
-        }
-        Ok(RawSchema {
+        Ok(RawFile {
             package: self.package,
+            imports: self.imports,
             messages: self.messages,
             enums: self.enums,
             proto3: self.syntax == Syntax::Proto3,
         })
+    }
+
+    fn parse_import(&mut self) -> Result<(), ProtobufError> {
+        self.expect_identifier("import")?;
+        let public = if self.peek_identifier("public") {
+            self.advance();
+            true
+        } else if self.peek_identifier("weak") {
+            return self.error("weak protobuf imports are unsupported");
+        } else {
+            false
+        };
+        let path = self.expect_string()?;
+        self.expect_symbol(';')?;
+        self.imports.push(RawImport { path, public });
+        Ok(())
     }
 
     fn parse_syntax(&mut self) -> Result<(), ProtobufError> {
@@ -337,7 +353,10 @@ impl Parser {
             {
                 fields.push(self.parse_field(&full_name)?);
             } else if self.syntax == Syntax::Proto3
-                && matches!(self.peek().kind, TokenKind::Identifier(_))
+                && matches!(
+                    self.peek().kind,
+                    TokenKind::Identifier(_) | TokenKind::Symbol('.')
+                )
             {
                 fields.push(self.parse_implicit_field(&full_name)?);
             } else {
@@ -353,6 +372,7 @@ impl Parser {
             oneofs,
             reserved,
             map_entry: false,
+            file: 0,
         });
         Ok(())
     }
@@ -439,6 +459,7 @@ impl Parser {
             oneofs: Vec::new(),
             reserved: RawReserved::new(),
             map_entry: true,
+            file: 0,
         };
         let field = RawField {
             name,
@@ -542,6 +563,7 @@ impl Parser {
             values,
             reserved,
             allow_alias: allow_alias.unwrap_or(false),
+            file: 0,
         });
         Ok(())
     }

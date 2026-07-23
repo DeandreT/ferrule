@@ -274,6 +274,11 @@ fn protobuf_format_option_roundtrips_embedded_schema() {
         protobuf: Some(ProtobufOptions {
             schema: "message Result { required string value = 1; }".into(),
             root_message: "Result".into(),
+            schema_path: Some("api/result.proto".into()),
+            imports: vec![crate::ProtobufSchemaFile {
+                path: "shared/value.proto".into(),
+                source: "message Value { optional string text = 1; }".into(),
+            }],
         }),
         ..FormatOptions::default()
     };
