@@ -96,25 +96,30 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         extra_targets,
     };
     if let Err(error) = validate_program(&program) {
-        let diagnostic = join_aggregate_context_error(&error).map_or_else(
-            || Diagnostic::Validation {
-                location: "code generation".into(),
-                message: error.to_string(),
-            },
-            |node| Diagnostic::UnsupportedNode {
-                node,
-                kind: UnsupportedNodeKind::CorrelatedJoinAggregate,
-            },
-        );
+        let diagnostic = portable_context_error(&error).unwrap_or_else(|| Diagnostic::Validation {
+            location: "code generation".into(),
+            message: error.to_string(),
+        });
         return Err(LowerError::new(vec![diagnostic]));
     }
     Ok(program)
 }
 
-fn join_aggregate_context_error(error: &ProgramValidationError) -> Option<NodeId> {
+fn portable_context_error(error: &ProgramValidationError) -> Option<Diagnostic> {
     match error {
-        ProgramValidationError::JoinAggregateRequiresRootContext { node, .. } => Some(*node),
-        ProgramValidationError::NamedTarget { error, .. } => join_aggregate_context_error(error),
+        ProgramValidationError::JoinRequiresRootContext { target_path, .. } => {
+            Some(Diagnostic::UnsupportedScope {
+                target_path: target_path.clone(),
+                feature: ScopeFeature::CorrelatedInnerJoin,
+            })
+        }
+        ProgramValidationError::JoinAggregateRequiresRootContext { node, .. } => {
+            Some(Diagnostic::UnsupportedNode {
+                node: *node,
+                kind: UnsupportedNodeKind::CorrelatedJoinAggregate,
+            })
+        }
+        ProgramValidationError::NamedTarget { error, .. } => portable_context_error(error),
         _ => None,
     }
 }
@@ -166,7 +171,7 @@ fn lower_scope(
     diagnostics: &mut Vec<Diagnostic>,
     root_context: bool,
 ) -> TargetScope {
-    inspect_scope_features(scope, target_path, diagnostics, root_context);
+    inspect_scope_features(scope, target_path, diagnostics);
     let iteration = lower_iteration(scope);
     roots.extend(scope.filter);
     roots.extend(scope.post_group_filter);
@@ -387,7 +392,6 @@ fn inspect_scope_features(
     scope: &Scope,
     target_path: &[String],
     diagnostics: &mut Vec<Diagnostic>,
-    root_context: bool,
 ) {
     let mut report = |feature| {
         diagnostics.push(Diagnostic::UnsupportedScope {
@@ -396,9 +400,10 @@ fn inspect_scope_features(
         });
     };
     match &scope.iteration {
-        ScopeIteration::None | ScopeIteration::Source(_) | ScopeIteration::Sequence(_) => {}
-        ScopeIteration::InnerJoin { .. } if root_context => {}
-        ScopeIteration::InnerJoin { .. } => report(ScopeFeature::CorrelatedInnerJoin),
+        ScopeIteration::None
+        | ScopeIteration::Source(_)
+        | ScopeIteration::Sequence(_)
+        | ScopeIteration::InnerJoin { .. } => {}
         ScopeIteration::DynamicDocuments { .. } | ScopeIteration::Concatenate(_) => {
             report(ScopeFeature::Iteration);
         }

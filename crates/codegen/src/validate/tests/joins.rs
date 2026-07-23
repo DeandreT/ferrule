@@ -258,6 +258,140 @@ fn correlated_join_aggregate_program() -> Program {
     }
 }
 
+fn correlated_join_scope_program() -> Program {
+    let mut program = correlated_join_aggregate_program();
+    let join = match &program.expressions[1].expression {
+        Expression::JoinAggregate { join, .. } => join.clone(),
+        _ => panic!("correlated aggregate fixture"),
+    };
+    program.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::group(
+                "Row",
+                vec![
+                    SchemaNode::scalar("Total", ScalarType::Int),
+                    SchemaNode::group(
+                        "Match",
+                        vec![
+                            SchemaNode::scalar("Price", ScalarType::Int),
+                            SchemaNode::scalar("JoinPosition", ScalarType::Int),
+                            SchemaNode::scalar("ProductPosition", ScalarType::Int),
+                            SchemaNode::scalar("Quantity", ScalarType::Int),
+                            SchemaNode::group(
+                                "Details",
+                                vec![SchemaNode::scalar("Summary", ScalarType::Int)],
+                            ),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    program.expressions.extend([
+        ExpressionNode {
+            id: 25,
+            expression: Expression::JoinField {
+                join: JoinId::new(8),
+                collection: vec!["Catalog".into(), "Product".into()],
+                path: vec!["Price".into()],
+            },
+        },
+        ExpressionNode {
+            id: 26,
+            expression: Expression::JoinPosition {
+                join: JoinId::new(8),
+            },
+        },
+        ExpressionNode {
+            id: 27,
+            expression: Expression::Position {
+                collection: vec!["Catalog".into(), "Product".into()],
+            },
+        },
+        ExpressionNode {
+            id: 28,
+            expression: Expression::SourceField {
+                frame: Some(vec!["Line".into()]),
+                path: vec!["Quantity".into()],
+            },
+        },
+        ExpressionNode {
+            id: 29,
+            expression: Expression::Const {
+                value: Value::Bool(true),
+            },
+        },
+        ExpressionNode {
+            id: 30,
+            expression: Expression::Const {
+                value: Value::Int(2),
+            },
+        },
+    ]);
+    program.root.children[0].children.push(TargetScope {
+        target_field: "Match".into(),
+        repeating: true,
+        iteration: Some(IterationPlan::new(
+            join,
+            Some(29),
+            Some(crate::SortPlan::new(
+                crate::SortKey {
+                    expression: 25,
+                    descending: true,
+                },
+                Vec::new(),
+                crate::SortFilterOrder::SortThenFilter,
+            )),
+            vec![crate::SequenceWindow::First { count: 30 }],
+            IterationOutput::Repeated,
+        )),
+        construction: TargetConstruction::Group,
+        bindings: vec![
+            Binding {
+                target_field: "Price".into(),
+                expression: 25,
+                target_type: ScalarType::Int,
+                repeating: false,
+            },
+            Binding {
+                target_field: "JoinPosition".into(),
+                expression: 26,
+                target_type: ScalarType::Int,
+                repeating: false,
+            },
+            Binding {
+                target_field: "ProductPosition".into(),
+                expression: 27,
+                target_type: ScalarType::Int,
+                repeating: false,
+            },
+            Binding {
+                target_field: "Quantity".into(),
+                expression: 28,
+                target_type: ScalarType::Int,
+                repeating: false,
+            },
+        ],
+        children: vec![TargetScope {
+            target_field: "Details".into(),
+            repeating: false,
+            iteration: None,
+            construction: TargetConstruction::Group,
+            bindings: vec![Binding {
+                target_field: "Summary".into(),
+                expression: 25,
+                target_type: ScalarType::Int,
+                repeating: false,
+            }],
+            children: Vec::new(),
+        }],
+    });
+    program
+}
+
 #[test]
 fn validates_root_join_controls_and_static_descendants() {
     assert_eq!(validate_program(&join_program()), Ok(()));
@@ -346,6 +480,216 @@ fn validates_only_bounded_correlated_join_aggregates() {
         Err(ProgramValidationError::JoinAggregateRequiresRootContext {
             node: 21,
             join: JoinId::new(8),
+        })
+    );
+}
+
+#[test]
+fn validates_bounded_correlated_join_scopes_with_tuple_controls_and_children() {
+    let program = correlated_join_scope_program();
+    assert_eq!(validate_program(&program), Ok(()));
+
+    let mut unbounded = program;
+    let Some(iteration) = unbounded.root.children[0].children[0].iteration.as_mut() else {
+        panic!("correlated join iteration");
+    };
+    let Some(join) = iteration.inner_join().cloned() else {
+        panic!("correlated join plan");
+    };
+    let filter = iteration.filter();
+    let sort = iteration.sort().cloned();
+    let windows = iteration.windows().to_vec();
+    let output = iteration.output();
+    *iteration = IterationPlan::new(
+        InnerJoin::new(
+            join.id(),
+            JoinPlan::new(
+                JoinSource::new(vec!["Line".into()]),
+                JoinSource::new(vec!["Catalog".into(), "Product".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Line".into()],
+                    vec!["Sku".into()],
+                    vec!["Sku".into()],
+                )),
+            )
+            .expect("unbounded plan"),
+        ),
+        filter,
+        sort,
+        windows,
+        output,
+    );
+    assert_eq!(
+        validate_program(&unbounded),
+        Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: vec!["Row".into(), "Match".into()],
+            join: JoinId::new(8),
+        })
+    );
+}
+
+#[test]
+fn rejects_correlated_join_scopes_that_reach_an_ancestor_collection() {
+    let mut program = correlated_join_scope_program();
+    let row_schema = program.target.child("Row").expect("row schema").clone();
+    program.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Order",
+                vec![
+                    SchemaNode::group(
+                        "Line",
+                        vec![
+                            SchemaNode::scalar("Sku", ScalarType::String),
+                            SchemaNode::scalar("Quantity", ScalarType::Int),
+                        ],
+                    )
+                    .repeating(),
+                    SchemaNode::group(
+                        "Product",
+                        vec![
+                            SchemaNode::scalar("Sku", ScalarType::String),
+                            SchemaNode::scalar("Price", ScalarType::Int),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    program.extra_sources.clear();
+    program.target = SchemaNode::group(
+        "Target",
+        vec![SchemaNode::group("Order", vec![row_schema]).repeating()],
+    );
+    let mut row_scope = program.root.children.remove(0);
+    row_scope.bindings.clear();
+    let match_scope = &mut row_scope.children[0];
+    let Some(iteration) = match_scope.iteration.as_mut() else {
+        panic!("correlated join iteration");
+    };
+    *iteration = IterationPlan::new(
+        InnerJoin::new(
+            JoinId::new(8),
+            JoinPlan::new(
+                JoinSource::singleton(vec!["Sku".into()]),
+                JoinSource::new(vec!["Product".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Sku".into()],
+                    Vec::new(),
+                    vec!["Sku".into()],
+                )),
+            )
+            .expect("ancestor-correlated plan"),
+        ),
+        None,
+        None,
+        Vec::new(),
+        IterationOutput::Repeated,
+    );
+    for expression in &mut program.expressions {
+        match &mut expression.expression {
+            Expression::JoinField { collection, .. } | Expression::Position { collection }
+                if collection == &["Catalog", "Product"] =>
+            {
+                *collection = vec!["Product".into()];
+            }
+            _ => {}
+        }
+    }
+    program.root.children.push(TargetScope {
+        target_field: "Order".into(),
+        repeating: true,
+        iteration: Some(IterationPlan::source(vec!["Order".into()])),
+        construction: TargetConstruction::Group,
+        bindings: Vec::new(),
+        children: vec![row_scope],
+    });
+
+    assert_eq!(
+        validate_program(&program),
+        Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: vec!["Order".into(), "Row".into(), "Match".into()],
+            join: JoinId::new(8),
+        })
+    );
+}
+
+#[test]
+fn singleton_join_paths_cannot_bind_to_a_same_named_global_group() {
+    let collision = || {
+        let mut program = correlated_join_scope_program();
+        let SchemaKind::Group { children, .. } = &mut program.source.kind else {
+            panic!("source group");
+        };
+        children.push(SchemaNode::group(
+            "Sku",
+            vec![SchemaNode::scalar("Code", ScalarType::String)],
+        ));
+        program
+    };
+
+    let mut invalid_key = collision();
+    let Some(iteration) = invalid_key.root.children[0].children[0].iteration.as_mut() else {
+        panic!("correlated join iteration");
+    };
+    let filter = iteration.filter();
+    let sort = iteration.sort().cloned();
+    let windows = iteration.windows().to_vec();
+    let output = iteration.output();
+    *iteration = IterationPlan::new(
+        InnerJoin::new(
+            JoinId::new(8),
+            JoinPlan::new(
+                JoinSource::singleton(vec!["Sku".into()]),
+                JoinSource::new(vec!["Catalog".into(), "Product".into()]),
+                JoinConditions::new(JoinKey::new(
+                    vec!["Sku".into()],
+                    vec!["Code".into()],
+                    vec!["Sku".into()],
+                )),
+            )
+            .expect("colliding singleton key plan"),
+        ),
+        filter,
+        sort,
+        windows,
+        output,
+    );
+    assert_eq!(
+        validate_program(&invalid_key),
+        Err(ProgramValidationError::InvalidJoinKey {
+            join: JoinId::new(8),
+            side: JoinKeySide::Left,
+            collection: vec!["Sku".into()],
+            path: vec!["Code".into()],
+        })
+    );
+
+    let mut invalid_projection = collision();
+    let Some(ExpressionNode {
+        expression: Expression::JoinField {
+            collection, path, ..
+        },
+        ..
+    }) = invalid_projection
+        .expressions
+        .iter_mut()
+        .find(|expression| expression.id == 25)
+    else {
+        panic!("joined price expression");
+    };
+    *collection = vec!["Sku".into()];
+    *path = vec!["Code".into()];
+    assert_eq!(
+        validate_program(&invalid_projection),
+        Err(ProgramValidationError::InvalidJoinFieldPath {
+            node: 25,
+            join: JoinId::new(8),
+            collection: vec!["Sku".into()],
+            path: vec!["Code".into()],
         })
     );
 }

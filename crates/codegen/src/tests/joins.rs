@@ -282,6 +282,112 @@ fn correlated_aggregate_project() -> Project {
     }
 }
 
+fn correlated_scope_project() -> Project {
+    let mut project = correlated_aggregate_project();
+    let (join, plan) = match project.graph.nodes.get(&21) {
+        Some(Node::JoinAggregate { join, plan, .. }) => (*join, plan.clone()),
+        _ => panic!("correlated aggregate fixture"),
+    };
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::group(
+                "Row",
+                vec![
+                    typed_scalar("Total", ScalarType::Int),
+                    SchemaNode::group(
+                        "Match",
+                        vec![
+                            typed_scalar("Price", ScalarType::Int),
+                            typed_scalar("JoinPosition", ScalarType::Int),
+                            typed_scalar("ProductPosition", ScalarType::Int),
+                            typed_scalar("Quantity", ScalarType::Int),
+                            SchemaNode::group(
+                                "Details",
+                                vec![typed_scalar("Summary", ScalarType::Int)],
+                            ),
+                        ],
+                    )
+                    .repeating(),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    project.graph.nodes.extend([
+        (
+            22,
+            Node::JoinField {
+                join,
+                collection: vec!["Catalog".into(), "Product".into()],
+                path: vec!["Price".into()],
+            },
+        ),
+        (23, Node::JoinPosition { join }),
+        (
+            24,
+            Node::Position {
+                collection: vec!["Catalog".into(), "Product".into()],
+            },
+        ),
+        (
+            25,
+            Node::SourceField {
+                frame: Some(vec!["Line".into()]),
+                path: vec!["Quantity".into()],
+            },
+        ),
+        (
+            26,
+            Node::Const {
+                value: Value::Bool(true),
+            },
+        ),
+        (
+            27,
+            Node::Const {
+                value: Value::Int(2),
+            },
+        ),
+    ]);
+    project.root.children[0].children.push(Scope {
+        target_field: "Match".into(),
+        iteration: ScopeIteration::InnerJoin { id: join, plan },
+        filter: Some(26),
+        sort_by: Some(22),
+        sort_descending: true,
+        windows: vec![mapping::SequenceWindow::First { count: 27 }],
+        bindings: vec![
+            MappingBinding {
+                target_field: "Price".into(),
+                node: 22,
+            },
+            MappingBinding {
+                target_field: "JoinPosition".into(),
+                node: 23,
+            },
+            MappingBinding {
+                target_field: "ProductPosition".into(),
+                node: 24,
+            },
+            MappingBinding {
+                target_field: "Quantity".into(),
+                node: 25,
+            },
+        ],
+        children: vec![Scope {
+            target_field: "Details".into(),
+            bindings: vec![MappingBinding {
+                target_field: "Summary".into(),
+                node: 22,
+            }],
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    });
+    project
+}
+
 #[test]
 fn lowers_left_deep_composite_named_join_and_tuple_expressions() {
     let project = join_project();
@@ -341,6 +447,21 @@ fn lowers_bounded_correlated_join_aggregates() {
                     && source.collection() == ["Sku"]
             })
     ));
+}
+
+#[test]
+fn lowers_bounded_correlated_join_scopes_with_controls_and_static_children() {
+    let program = lower(&correlated_scope_project()).expect("correlated scope lowers");
+    let scope = &program.root.children[0].children[0];
+    let iteration = scope.iteration.as_ref().expect("correlated iteration");
+    let join = iteration.inner_join().expect("correlated inner join");
+
+    assert_eq!(join.id(), crate::JoinId::new(8));
+    assert_eq!(join.plan().sources().count(), 2);
+    assert_eq!(iteration.filter(), Some(26));
+    assert_eq!(iteration.windows().len(), 1);
+    assert_eq!(scope.bindings.len(), 4);
+    assert_eq!(scope.children[0].bindings[0].expression, 22);
 }
 
 #[test]

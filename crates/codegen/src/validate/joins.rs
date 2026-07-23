@@ -15,19 +15,25 @@ use super::{
 #[derive(Debug, Clone)]
 pub(super) struct ActiveJoin {
     id: JoinId,
-    collections: Vec<Vec<String>>,
+    sources: Vec<(Vec<String>, JoinSourceCardinality)>,
 }
 
 impl ActiveJoin {
     pub(super) fn new(join: &InnerJoin) -> Self {
         Self {
             id: join.id(),
-            collections: join
+            sources: join
                 .plan()
                 .sources()
-                .map(|source| source.collection().to_vec())
+                .map(|source| (source.collection().to_vec(), source.cardinality()))
                 .collect(),
         }
+    }
+
+    fn cardinality(&self, collection: &[String]) -> Option<JoinSourceCardinality> {
+        self.sources
+            .iter()
+            .find_map(|(candidate, cardinality)| (candidate == collection).then_some(*cardinality))
     }
 }
 
@@ -86,12 +92,17 @@ pub(super) fn validate_plan(
     }
     for (right, conditions) in join.plan().stages() {
         for key in conditions.iter() {
+            let left_is_singleton = join.plan().sources().any(|source| {
+                source.collection() == key.left_collection()
+                    && source.cardinality() == JoinSourceCardinality::Singleton
+            });
             validate_key(
                 sources,
                 join.id(),
                 key.left_collection(),
                 key.left_path(),
                 JoinKeySide::Left,
+                left_is_singleton,
             )?;
             validate_key(
                 sources,
@@ -99,6 +110,7 @@ pub(super) fn validate_plan(
                 right.collection(),
                 key.right_path(),
                 JoinKeySide::Right,
+                right.cardinality() == JoinSourceCardinality::Singleton,
             )?;
         }
     }
@@ -111,8 +123,9 @@ fn validate_key(
     collection: &[String],
     path: &[String],
     side: JoinKeySide,
+    singleton: bool,
 ) -> Result<(), ProgramValidationError> {
-    if scalar_below(sources, collection, path) {
+    if (!singleton || path.is_empty()) && scalar_below(sources, collection, path) {
         Ok(())
     } else {
         Err(ProgramValidationError::InvalidJoinKey {
@@ -153,14 +166,16 @@ pub(super) fn validate_expression(
                         join: *join,
                     });
                 };
-                if !owner.collections.contains(collection) {
+                let Some(cardinality) = owner.cardinality(collection) else {
                     return Err(ProgramValidationError::InvalidJoinFieldCollection {
                         node,
                         join: *join,
                         collection: collection.clone(),
                     });
-                }
-                if !scalar_below(sources, collection, path) {
+                };
+                if (cardinality == JoinSourceCardinality::Singleton && !path.is_empty())
+                    || !scalar_below(sources, collection, path)
+                {
                     return Err(ProgramValidationError::InvalidJoinFieldPath {
                         node,
                         join: *join,
@@ -255,36 +270,70 @@ fn validate_correlated_aggregate(
     current_source: Option<SchemaCursor<'_>>,
     join: &InnerJoin,
 ) -> Result<(), ProgramValidationError> {
-    let unsupported = || ProgramValidationError::JoinAggregateRequiresRootContext {
-        node,
-        join: join.id(),
-    };
     let Some(current_source) = current_source else {
-        return Err(unsupported());
+        return Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node,
+            join: join.id(),
+        });
     };
+    if !is_bounded_correlated_plan(sources, current_source, join) {
+        return Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+            node,
+            join: join.id(),
+        });
+    }
+    validate_plan(sources, join)
+}
+
+pub(super) fn validate_correlated_scope(
+    target_path: &[String],
+    sources: SourceCatalog<'_>,
+    current_source: Option<SchemaCursor<'_>>,
+    join: &InnerJoin,
+) -> Result<(), ProgramValidationError> {
+    let Some(current_source) = current_source else {
+        return Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: target_path.to_vec(),
+            join: join.id(),
+        });
+    };
+    if !is_bounded_correlated_plan(sources, current_source, join) {
+        return Err(ProgramValidationError::JoinRequiresRootContext {
+            target_path: target_path.to_vec(),
+            join: join.id(),
+        });
+    }
+    validate_plan(sources, join)
+}
+
+fn is_bounded_correlated_plan(
+    sources: SourceCatalog<'_>,
+    current_source: SchemaCursor<'_>,
+    join: &InnerJoin,
+) -> bool {
     let join_sources = join.plan().sources().collect::<Vec<_>>();
     if join_sources.len() != 2 {
-        return Err(unsupported());
+        return false;
     }
     let mut singleton_sources = join_sources
         .iter()
         .copied()
         .filter(|source| source.cardinality() == JoinSourceCardinality::Singleton);
     let Some(singleton) = singleton_sources.next() else {
-        return Err(unsupported());
+        return false;
     };
     if singleton_sources.next().is_some() {
-        return Err(unsupported());
+        return false;
     }
     let mut repeating_sources = join_sources
         .iter()
         .copied()
         .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating);
     let Some(repeating) = repeating_sources.next() else {
-        return Err(unsupported());
+        return false;
     };
     if repeating_sources.next().is_some() {
-        return Err(unsupported());
+        return false;
     }
     let singleton_is_current_scalar = current_source
         .follow(singleton.collection())
@@ -293,10 +342,11 @@ fn validate_correlated_aggregate(
             !candidate.node().repeating
                 && matches!(candidate.node().kind, SchemaKind::Scalar { .. })
         });
-    if !singleton_is_current_scalar || current_source.follow(repeating.collection()).is_some() {
-        return Err(unsupported());
-    }
-    validate_plan(sources, join)
+    singleton_is_current_scalar
+        && current_source.follow(repeating.collection()).is_none()
+        && sources
+            .root_schema_at(repeating.collection())
+            .is_some_and(|candidate| candidate.node().repeating)
 }
 
 fn scalar_below(sources: SourceCatalog<'_>, collection: &[String], path: &[String]) -> bool {

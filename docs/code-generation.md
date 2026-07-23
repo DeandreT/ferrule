@@ -99,9 +99,11 @@ The current portable model includes:
   groups, and XML nil; advanced alternative/generic/mixed schemas reject before
   artifact creation
 - root-context static inner joins across two or more primary or named-source
-  collections, with left-deep composite equality, scalar coercion, stable
-  duplicate-preserving order, Null/XML-nil exclusion, exact joined fields, raw
-  source positions, compacted tuple positions, and ordinary scope controls
+  collections plus bounded per-item scopes joining one active singleton scalar
+  to one ordinary primary/named repeating source, with left-deep composite
+  equality, scalar coercion, stable duplicate-preserving order, Null/XML-nil
+  exclusion, exact joined fields, raw source positions, compacted tuple
+  positions, ordinary scope controls, and nested target construction
 - root-context inner-join aggregates plus bounded per-item correlated reductions
   joining one active singleton scalar to one ordinary primary/named repeating
   source, with direct tuple counts, computed per-tuple values, and parent-context
@@ -160,10 +162,10 @@ invalid-pattern error; exact cross-backend support needs a Ferrule-owned
 matcher. Recursive-filter, path-hierarchy, and adjacency-tree target
 construction remain interpreter-only. Per-item dynamic named sources remain
 interpreter-only because their graph-computed paths require a typed host loader
-contract during scope evaluation. Direct correlated join scopes and joined-tuple
-aggregates beyond the exact active-singleton-to-repeating two-source shape remain
-interpreter-only; their ownership and parent-context rules need a broader
-portable join model. Code generation is
+contract during scope evaluation. Direct correlated join scopes and
+joined-tuple aggregates beyond the exact active-singleton-to-repeating
+two-source shape remain interpreter-only; their ownership and parent-context
+rules need a broader portable join model. Code generation is
 expanding incrementally toward interpreter parity; see the
 [roadmap](../ROADMAP.md) for the broader direction.
 

@@ -73,6 +73,13 @@ impl<'a> SourceCatalog<'a> {
         SchemaCursor::new(self.primary, self.primary)
     }
 
+    /// Resolves an ordinary collection from an explicit document root without
+    /// recursive descendant fallback.
+    pub(super) fn root_schema_at(self, path: &[String]) -> Option<SchemaCursor<'a>> {
+        self.explicit_target(path, false)
+            .or_else(|| self.primary().follow(path))
+    }
+
     /// Resolves a scope iteration like the engine: current frame, explicit
     /// named source, primary fallback, then named sources in declaration order.
     pub(super) fn schema_at(

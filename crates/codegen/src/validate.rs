@@ -606,13 +606,16 @@ fn validate_scope(
                 item_context.push(sequence.item());
             }
             IterationSource::InnerJoin(join) => {
-                if !root_context {
-                    return Err(ProgramValidationError::JoinRequiresRootContext {
-                        target_path: target_path.clone(),
-                        join: join.id(),
-                    });
+                if root_context {
+                    joins::validate_plan(schemas.sources, join)?;
+                } else {
+                    joins::validate_correlated_scope(
+                        target_path,
+                        schemas.sources,
+                        schemas.active_source,
+                        join,
+                    )?;
                 }
-                joins::validate_plan(schemas.sources, join)?;
                 scope_source = None;
                 active_source = None;
                 scope_joins.push(joins::ActiveJoin::new(join));
