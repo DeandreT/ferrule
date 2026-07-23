@@ -98,6 +98,8 @@ The current portable model includes:
   namespace controls, attributes, text, repetition, Null omission, recursive
   groups, and XML nil; advanced alternative/generic/mixed schemas reject before
   artifact creation
+- ordered XML mixed-content reconstruction with graph-computed direct-child
+  replacements evaluated in each original occurrence context
 - root-context static inner joins across two or more primary or named-source
   collections plus bounded per-item scopes joining one active singleton scalar
   to one ordinary primary/named repeating source, with left-deep composite
@@ -123,7 +125,8 @@ The current portable model includes:
 - exact first-seen key grouping, contiguous starting-marker grouping, and
   positive fixed-size block grouping over source or generated iteration;
   grouped bindings read the first member while aggregates and empty-path child
-  scopes retain the complete member collection
+  scopes retain the complete member collection, and post-group filters keep a
+  group when any member satisfies the predicate
 - filters, stable multi-key sorting, ordered sequence windows, and mapped output;
   grouping runs after the declared filter/sort order and before windows
 - literal and bounded regular-expression tokenization, Unicode-scalar
