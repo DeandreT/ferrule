@@ -7,7 +7,8 @@ use quick_xml::Writer;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use super::{
-    XmlFormatError, format_schema_scalar, parse_schema_scalar, push_attribute, read_node,
+    NodeWriteContext, XmlFormatError, attribute_value, element_matches_schema,
+    format_schema_scalar, parse_schema_scalar, push_attribute, push_schema_attribute, read_node,
     shape_error, validate_group_fields, write_node, write_ordered_mixed_content,
 };
 
@@ -77,7 +78,7 @@ pub(super) fn read_group_fields(
                 Instance::Scalar(parse_schema_scalar(child, ty, &text)?),
             ));
         } else if child.attribute {
-            let value = match element.attribute(child.name.as_str()) {
+            let value = match attribute_value(element, child) {
                 Some(text) => {
                     let SchemaKind::Scalar { ty } = child.kind else {
                         return Err(XmlFormatError::MissingElement(child.name.clone()));
@@ -121,7 +122,7 @@ pub(super) fn read_group_fields(
         } else if child.repeating {
             let items = element
                 .children()
-                .filter(|node| node.is_element() && node.tag_name().name() == child.name)
+                .filter(|node| node.is_element() && element_matches_schema(node, child))
                 .map(|element| {
                     read_node(
                         &element,
@@ -135,7 +136,7 @@ pub(super) fn read_group_fields(
         } else {
             let matched = element
                 .children()
-                .find(|node| node.is_element() && node.tag_name().name() == child.name);
+                .find(|node| node.is_element() && element_matches_schema(node, child));
             match matched {
                 Some(element) => {
                     fields.push((
@@ -215,7 +216,7 @@ fn mixed_content_items(
                 let text = element_string_value(&node);
                 let value = children
                     .iter()
-                    .find(|child| child.name == name)
+                    .find(|child| child.name == name && element_matches_schema(&node, child))
                     .and_then(|child| {
                         let instance = fields
                             .iter()
@@ -266,6 +267,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
     root_schema: &SchemaNode,
     instance: &Instance,
     recursion_depth: usize,
+    inherited_namespace: Option<&str>,
 ) -> Result<(), XmlFormatError> {
     let SchemaKind::Group { children, .. } = &schema.kind else {
         return Err(shape_error(schema, "a generic XML element group", instance));
@@ -313,6 +315,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
             push_attribute(&mut start, attribute_name, attribute_value);
         }
     }
+    let mut attribute_namespaces = Vec::<&str>::new();
     for child_schema in children.iter().filter(|child| child.attribute) {
         if let Some((_, child_instance)) =
             fields.iter().find(|(field, _)| field == &child_schema.name)
@@ -333,7 +336,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                     ));
                 };
                 let text = format_schema_scalar(child_schema, ty, value)?;
-                push_attribute(&mut start, &child_schema.name, &text);
+                push_schema_attribute(&mut start, child_schema, &text, &mut attribute_namespaces);
             }
         }
     }
@@ -345,6 +348,7 @@ pub(super) fn write_generic_element<W: std::io::Write>(
         root_schema,
         fields,
         recursion_depth,
+        inherited_namespace,
     )? {
         writer.write_event(Event::End(BytesEnd::new(name)))?;
         return Ok(());
@@ -388,8 +392,12 @@ pub(super) fn write_generic_element<W: std::io::Write>(
                 root_schema,
                 child_instance,
                 false,
-                recursion_depth + usize::from(child_schema.recursive_ref.is_some()),
-                None,
+                NodeWriteContext {
+                    recursion_depth: recursion_depth
+                        + usize::from(child_schema.recursive_ref.is_some()),
+                    inherited_namespace,
+                    legacy_root_namespace: None,
+                },
             )?;
         }
     }
