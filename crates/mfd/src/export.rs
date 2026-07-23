@@ -379,11 +379,15 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
         if let Some(plan) = &target.dynamic_json {
             plan.connect(dynamic_json::ConnectArgs {
                 sources: &sources,
+                graph: &project.graph,
                 node_out_key: &node_out_key,
+                position_inputs: &position_inputs,
+                position_contexts: &mut position_contexts,
                 keys: &mut keys,
                 uid: &mut uid,
                 components: &mut scope_components,
                 edges: &mut edges,
+                warnings: &mut warnings,
             })?;
         }
         if target_index > 0
