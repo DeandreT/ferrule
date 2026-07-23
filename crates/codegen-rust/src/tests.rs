@@ -271,6 +271,34 @@ fn program() -> Program {
 }
 
 #[test]
+fn source_document_path_uses_runtime_document_context() {
+    let mut program = program();
+    program.expressions[0].expression = Expression::SourceDocumentPath;
+    let options = Options {
+        package_name: "source-document-path".to_string(),
+        runtime_dependency: RuntimeDependency::Version("0.1.0".to_string()),
+    };
+
+    let Ok(artifacts) = emit(&program, &options) else {
+        panic!("source document paths emit")
+    };
+    let Some(generated_source) = artifacts
+        .files()
+        .iter()
+        .find(|file| file.path.as_str() == "src/lib.rs")
+    else {
+        panic!("generated Rust source artifact")
+    };
+    let Ok(generated_source) = std::str::from_utf8(&generated_source.contents) else {
+        panic!("generated Rust source is UTF-8")
+    };
+
+    assert!(
+        generated_source.contains("context.source_document_path().map_err(RuntimeError::from)")
+    );
+}
+
+#[test]
 fn emits_deterministic_rust_project() {
     let options = Options {
         package_name: "sample-map".to_string(),

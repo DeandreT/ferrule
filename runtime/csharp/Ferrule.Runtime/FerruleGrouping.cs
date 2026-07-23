@@ -188,7 +188,8 @@ public sealed partial class ScopeContext
             frames[^1],
             frames[..^1],
             collections[..^1],
-            terminal.Path);
+            terminal.Path,
+            terminal.DocumentPath);
     }
 
     private IReadOnlyList<ScopeContext> BuildGroupedContexts(
@@ -221,7 +222,8 @@ public sealed partial class ScopeContext
                 group.CollectionPath,
                 members,
                 index + 1,
-                Grouped: sourcePath.Count != 0));
+                Grouped: sourcePath.Count != 0,
+                DocumentPath: group.DocumentPath));
             contexts[index] = new ScopeContext(
                 new ReadOnlyCollection<FerruleInstance>(frames),
                 new ReadOnlyCollection<CollectionIdentity>(collections),
@@ -239,6 +241,7 @@ public sealed partial class ScopeContext
             IntermediateFrames = first.IntermediateFrames;
             IntermediateCollections = first.IntermediateCollections;
             CollectionPath = first.CollectionPath;
+            DocumentPath = first.DocumentPath;
         }
 
         internal FerruleValue? Key { get; }
@@ -251,6 +254,8 @@ public sealed partial class ScopeContext
 
         internal IReadOnlyList<string> CollectionPath { get; }
 
+        internal string? DocumentPath { get; }
+
         internal void Add(GroupMember member) => Members.Add(member.Member);
     }
 
@@ -258,5 +263,6 @@ public sealed partial class ScopeContext
         FerruleInstance Member,
         IReadOnlyList<FerruleInstance> IntermediateFrames,
         IReadOnlyList<CollectionIdentity> IntermediateCollections,
-        IReadOnlyList<string> CollectionPath);
+        IReadOnlyList<string> CollectionPath,
+        string? DocumentPath);
 }
