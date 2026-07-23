@@ -227,6 +227,77 @@ mod tests {
     }
 
     #[test]
+    fn lenient_partial_schema_reads_multiple_message_families_behind_headers()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let query = SchemaNode::group(
+            "Message_VXQ_V01",
+            vec![
+                SchemaNode::group("QRD", vec![SchemaNode::scalar("QRD-1", ScalarType::String)]),
+                SchemaNode::group("QRF", vec![SchemaNode::scalar("QRF-1", ScalarType::String)]),
+            ],
+        )
+        .repeating();
+        let update = SchemaNode::group(
+            "Message_VXU_V04",
+            vec![
+                SchemaNode::group("PID", vec![SchemaNode::scalar("PID-1", ScalarType::String)]),
+                SchemaNode::group("RXA", vec![SchemaNode::scalar("RXA-1", ScalarType::String)]),
+            ],
+        )
+        .repeating();
+        let schema = SchemaNode::group(
+            "HL7",
+            vec![SchemaNode::group("GroupBHS", vec![query, update]).repeating()],
+        );
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_hl7_partial_multi_message_{}.hl7",
+            std::process::id()
+        ));
+        std::fs::write(
+            &path,
+            "FHS|^~\\&\rBHS|^~\\&\r\
+             MSH|^~\\&|APP\rQRD|query\rQRF|filter\r\
+             MSH|^~\\&|APP\rPID|one\rRXA|dose-one\r\
+             MSH|^~\\&|APP\rPID|two\rRXA|dose-two\r\
+             BTS|3\rFTS|1",
+        )?;
+
+        let result = read(&path, &schema, true);
+        std::fs::remove_file(path)?;
+        let instance = result?;
+        let Some(batch) = instance
+            .field("GroupBHS")
+            .and_then(Instance::as_repeated)
+            .and_then(|batches| batches.first())
+        else {
+            panic!("partial HL7 schema must materialize one batch");
+        };
+        assert_eq!(
+            batch
+                .field("Message_VXQ_V01")
+                .and_then(Instance::as_repeated)
+                .map(<[Instance]>::len),
+            Some(1)
+        );
+        let Some(updates) = batch
+            .field("Message_VXU_V04")
+            .and_then(Instance::as_repeated)
+        else {
+            panic!("partial HL7 schema must materialize update messages");
+        };
+        assert_eq!(updates.len(), 2);
+        assert_eq!(
+            updates
+                .get(1)
+                .and_then(|message| message.field("PID"))
+                .and_then(|pid| pid.field("PID-1"))
+                .and_then(Instance::as_scalar),
+            Some(&Value::String("two".into()))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn reads_nested_subcomponents() {
         let schema = SchemaNode::group(
             "ADT_A28",
