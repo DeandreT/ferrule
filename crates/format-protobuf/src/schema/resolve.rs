@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 
 use crate::ProtobufError;
 
 use super::model::{
-    Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, Message,
-    MessageId, Oneof, OneofId, ScalarType,
+    Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, MAX_FIELD_NUMBER,
+    Message, MessageId, Oneof, OneofId, ScalarType,
 };
 
 #[derive(Debug)]
@@ -20,7 +21,34 @@ pub(super) struct RawMessage {
     pub(super) full_name: String,
     pub(super) fields: Vec<RawField>,
     pub(super) oneofs: Vec<String>,
+    pub(super) reserved: RawReserved<u32>,
     pub(super) map_entry: bool,
+}
+
+#[derive(Debug)]
+pub(super) struct RawReserved<T> {
+    pub(super) names: Vec<String>,
+    pub(super) ranges: Vec<RawReservedRange<T>>,
+}
+
+impl<T> RawReserved<T> {
+    pub(super) fn new() -> Self {
+        Self {
+            names: Vec::new(),
+            ranges: Vec::new(),
+        }
+    }
+
+    pub(super) fn extend(&mut self, other: Self) {
+        self.names.extend(other.names);
+        self.ranges.extend(other.ranges);
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct RawReservedRange<T> {
+    pub(super) start: T,
+    pub(super) end: T,
 }
 
 #[derive(Debug)]
@@ -48,6 +76,7 @@ pub(super) struct RawEnum {
     pub(super) name: String,
     pub(super) full_name: String,
     pub(super) values: Vec<EnumValue>,
+    pub(super) reserved: RawReserved<i32>,
 }
 
 impl RawSchema {
@@ -87,12 +116,8 @@ impl RawSchema {
         let enums = self
             .enums
             .into_iter()
-            .map(|enumeration| Enum {
-                name: enumeration.name,
-                full_name: enumeration.full_name,
-                values: enumeration.values,
-            })
-            .collect();
+            .map(resolve_enum)
+            .collect::<Result<Vec<_>, _>>()?;
         Ok(Layout {
             package: self.package,
             messages,
@@ -113,6 +138,13 @@ fn resolve_message(
     names: &HashMap<&str, DeclId>,
     enums: &[RawEnum],
 ) -> Result<Message, ProtobufError> {
+    let reserved = validate_reserved(
+        "message",
+        &raw.full_name,
+        &raw.reserved,
+        1,
+        MAX_FIELD_NUMBER,
+    )?;
     let mut oneof_ids = HashMap::new();
     let mut oneofs = Vec::with_capacity(raw.oneofs.len());
     for name in &raw.oneofs {
@@ -148,6 +180,18 @@ fn resolve_message(
             )));
         }
         validate_field_number(raw, field)?;
+        if reserved.names.contains(field.name.as_str()) {
+            return Err(ProtobufError::schema(format!(
+                "field `{}.{}` uses a reserved name",
+                raw.full_name, field.name
+            )));
+        }
+        if reserved.contains_number(field.number) {
+            return Err(ProtobufError::schema(format!(
+                "field `{}.{}` uses reserved number {}",
+                raw.full_name, field.name, field.number
+            )));
+        }
         let ty = match ScalarType::parse(&field.type_name) {
             Some(scalar) => FieldType::Scalar(scalar),
             None => resolve_named_type(&field.type_name, &field.scope, package, names)?,
@@ -210,6 +254,115 @@ fn resolve_message(
     })
 }
 
+fn resolve_enum(raw: RawEnum) -> Result<Enum, ProtobufError> {
+    let reserved = validate_reserved("enum", &raw.full_name, &raw.reserved, i32::MIN, i32::MAX)?;
+    let mut names = HashSet::new();
+    let mut numbers = HashSet::new();
+    for value in &raw.values {
+        if !names.insert(value.name()) {
+            return Err(ProtobufError::schema(format!(
+                "enum `{}` has duplicate value `{}`",
+                raw.full_name,
+                value.name()
+            )));
+        }
+        if !numbers.insert(value.number()) {
+            return Err(ProtobufError::schema(format!(
+                "enum `{}` has duplicate number `{}`",
+                raw.full_name,
+                value.number()
+            )));
+        }
+        if reserved.names.contains(value.name()) {
+            return Err(ProtobufError::schema(format!(
+                "enum value `{}.{}` uses a reserved name",
+                raw.full_name,
+                value.name()
+            )));
+        }
+        if reserved.contains_number(value.number()) {
+            return Err(ProtobufError::schema(format!(
+                "enum value `{}.{}` uses reserved number {}",
+                raw.full_name,
+                value.name(),
+                value.number()
+            )));
+        }
+    }
+    Ok(Enum {
+        name: raw.name,
+        full_name: raw.full_name,
+        values: raw.values,
+    })
+}
+
+struct ReservedSet<'a, T> {
+    names: HashSet<&'a str>,
+    ranges: Vec<&'a RawReservedRange<T>>,
+}
+
+impl<T: Copy + Ord> ReservedSet<'_, T> {
+    fn contains_number(&self, number: T) -> bool {
+        let insertion = self.ranges.partition_point(|range| range.start <= number);
+        insertion > 0 && self.ranges[insertion - 1].end >= number
+    }
+}
+
+fn validate_reserved<'a, T>(
+    kind: &str,
+    owner: &str,
+    raw: &'a RawReserved<T>,
+    minimum: T,
+    maximum: T,
+) -> Result<ReservedSet<'a, T>, ProtobufError>
+where
+    T: Copy + Display + Ord,
+{
+    let mut names = HashSet::with_capacity(raw.names.len());
+    for name in &raw.names {
+        if !names.insert(name.as_str()) {
+            return Err(ProtobufError::schema(format!(
+                "{kind} `{owner}` has duplicate reserved name `{name}`"
+            )));
+        }
+    }
+
+    for range in &raw.ranges {
+        if range.start < minimum || range.end > maximum {
+            return Err(ProtobufError::schema(format!(
+                "{kind} `{owner}` has reserved range {} to {} outside {minimum} to {maximum}",
+                range.start, range.end
+            )));
+        }
+        if range.start > range.end {
+            return Err(ProtobufError::schema(format!(
+                "{kind} `{owner}` has descending reserved range {} to {}",
+                range.start, range.end
+            )));
+        }
+    }
+
+    let mut ranges = raw.ranges.iter().collect::<Vec<_>>();
+    ranges.sort_by_key(|range| range.start);
+    for pair in ranges.windows(2) {
+        let [previous, current] = pair else {
+            continue;
+        };
+        if current.start <= previous.end {
+            let description = if current.start == previous.start && current.end == previous.end {
+                "duplicate"
+            } else {
+                "overlapping"
+            };
+            return Err(ProtobufError::schema(format!(
+                "{kind} `{owner}` has {description} reserved ranges {} to {} and {} to {}",
+                previous.start, previous.end, current.start, current.end
+            )));
+        }
+    }
+    Ok(ReservedSet { names, ranges })
+}
+
 fn implicit_default(
     ty: FieldType,
     enums: &[RawEnum],
@@ -255,7 +408,6 @@ fn implicit_default(
 }
 
 fn validate_field_number(message: &RawMessage, field: &RawField) -> Result<(), ProtobufError> {
-    const MAX_FIELD_NUMBER: u32 = (1 << 29) - 1;
     if field.number == 0
         || field.number > MAX_FIELD_NUMBER
         || (19_000..=19_999).contains(&field.number)

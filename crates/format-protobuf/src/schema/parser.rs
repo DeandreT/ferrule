@@ -1,9 +1,9 @@
-use std::collections::HashSet;
-
 use crate::ProtobufError;
 
-use super::model::{Cardinality, EnumValue, Layout, ScalarType};
-use super::resolve::{RawDefault, RawEnum, RawField, RawMessage, RawSchema};
+use super::model::{Cardinality, EnumValue, Layout, MAX_FIELD_NUMBER, ScalarType};
+use super::resolve::{
+    RawDefault, RawEnum, RawField, RawMessage, RawReserved, RawReservedRange, RawSchema,
+};
 
 const MAX_SCHEMA_TOKENS: usize = 100_000;
 const MAX_MESSAGE_NESTING: usize = 128;
@@ -309,6 +309,7 @@ impl Parser {
         self.expect_symbol('{')?;
         let mut fields = Vec::new();
         let mut oneofs = Vec::new();
+        let mut reserved = RawReserved::new();
         while !self.consume_symbol('}') {
             if self.consume_symbol(';') {
                 continue;
@@ -319,6 +320,8 @@ impl Parser {
                 self.parse_enum(&full_name)?;
             } else if self.peek_identifier("option") {
                 self.skip_statement()?;
+            } else if self.peek_identifier("reserved") {
+                reserved.extend(self.parse_message_reserved()?);
             } else if self.peek_identifier("oneof") {
                 let (oneof, oneof_fields) = self.parse_oneof(&full_name)?;
                 oneofs.push(oneof);
@@ -347,6 +350,7 @@ impl Parser {
             full_name,
             fields,
             oneofs,
+            reserved,
             map_entry: false,
         });
         Ok(())
@@ -432,6 +436,7 @@ impl Parser {
                 },
             ],
             oneofs: Vec::new(),
+            reserved: RawReserved::new(),
             map_entry: true,
         };
         let field = RawField {
@@ -493,8 +498,7 @@ impl Parser {
         let full_name = qualify(prefix, &name);
         self.expect_symbol('{')?;
         let mut values = Vec::new();
-        let mut names = HashSet::new();
-        let mut numbers = HashSet::new();
+        let mut reserved = RawReserved::new();
         while !self.consume_symbol('}') {
             if self.consume_symbol(';') {
                 continue;
@@ -503,20 +507,14 @@ impl Parser {
                 self.skip_statement()?;
                 continue;
             }
+            if self.peek_identifier("reserved") {
+                reserved.extend(self.parse_enum_reserved()?);
+                continue;
+            }
             let value_name = self.expect_any_identifier()?;
             self.expect_symbol('=')?;
             let number = self.parse_signed_number::<i32>("enum value")?;
             self.expect_symbol(';')?;
-            if !names.insert(value_name.clone()) {
-                return self.error(format!(
-                    "enum `{full_name}` has duplicate value `{value_name}`"
-                ));
-            }
-            if !numbers.insert(number) {
-                return self.error(format!(
-                    "enum `{full_name}` has duplicate number `{number}`"
-                ));
-            }
             values.push(EnumValue {
                 name: value_name,
                 number,
@@ -534,8 +532,68 @@ impl Parser {
             name,
             full_name,
             values,
+            reserved,
         });
         Ok(())
+    }
+
+    fn parse_message_reserved(&mut self) -> Result<RawReserved<u32>, ProtobufError> {
+        self.parse_reserved(MAX_FIELD_NUMBER, |parser| {
+            parser.parse_unsigned_number("reserved field number")
+        })
+    }
+
+    fn parse_enum_reserved(&mut self) -> Result<RawReserved<i32>, ProtobufError> {
+        self.parse_reserved(i32::MAX, |parser| {
+            parser.parse_signed_number("reserved enum number")
+        })
+    }
+
+    fn parse_reserved<T>(
+        &mut self,
+        maximum: T,
+        mut parse_number: impl FnMut(&mut Self) -> Result<T, ProtobufError>,
+    ) -> Result<RawReserved<T>, ProtobufError>
+    where
+        T: Copy,
+    {
+        self.expect_identifier("reserved")?;
+        let mut reserved = RawReserved::new();
+        if matches!(self.peek().kind, TokenKind::String(_)) {
+            loop {
+                let name = self.expect_string()?;
+                if !is_identifier(&name) {
+                    return self.error(format!(
+                        "reserved name `{name}` must be a protobuf identifier"
+                    ));
+                }
+                reserved.names.push(name);
+                if !self.consume_symbol(',') {
+                    break;
+                }
+            }
+        } else {
+            loop {
+                let start = parse_number(self)?;
+                let end = if self.peek_identifier("to") {
+                    self.advance();
+                    if self.peek_identifier("max") {
+                        self.advance();
+                        maximum
+                    } else {
+                        parse_number(self)?
+                    }
+                } else {
+                    start
+                };
+                reserved.ranges.push(RawReservedRange { start, end });
+                if !self.consume_symbol(',') {
+                    break;
+                }
+            }
+        }
+        self.expect_symbol(';')?;
+        Ok(reserved)
     }
 
     fn parse_field(&mut self, scope: &str) -> Result<RawField, ProtobufError> {
@@ -771,6 +829,15 @@ fn qualify(prefix: &str, name: &str) -> String {
     } else {
         format!("{prefix}.{name}")
     }
+}
+
+fn is_identifier(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    (first.is_ascii_alphabetic() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
 fn map_entry_name(field: &str) -> String {
