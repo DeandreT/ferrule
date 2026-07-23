@@ -2,12 +2,13 @@ use std::num::NonZeroU32;
 
 use ir::{Instance, Value};
 use mapping::{
-    PdfCapture, PdfCommand, PdfCoordinate, PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfMerge,
-    PdfMergeComposition, PdfMergeSource, PdfPageSelection, PdfPages, PdfReference, PdfRegion,
-    PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextRows,
+    PdfCapture, PdfCaptureAlgorithm, PdfCommand, PdfCoordinate, PdfEdgeFind, PdfEdgeRows, PdfGroup,
+    PdfLayout, PdfMerge, PdfMergeComposition, PdfMergeSource, PdfPageSelection, PdfPages,
+    PdfReference, PdfRegion, PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups,
+    PdfTextMatch, PdfTextRows, PdfWhitespaceMode, PdfWordSeparation,
 };
 
-use super::{evaluate, instance_has_content};
+use super::{OutputBudget, capture_text, evaluate, instance_has_content};
 use crate::PdfError;
 use crate::extract::{Glyph, HorizontalEdge, Page, Rect};
 
@@ -33,6 +34,39 @@ fn fixed_region(left: f64, top: f64, right: f64, bottom: f64) -> PdfRegion {
         right: PdfCoordinate::new(PdfReference::Left, right),
         bottom: PdfCoordinate::new(PdfReference::Top, bottom),
     }
+}
+
+#[test]
+fn basic_visual_capture_policy_inserts_word_and_line_separators() {
+    let page = Page {
+        number: 1,
+        bounds: Rect {
+            left: 0.0,
+            top: 0.0,
+            right: 100.0,
+            bottom: 100.0,
+        },
+        glyphs: vec![
+            glyph("A", 0.0, 0.0, 5.0, 10.0),
+            glyph("B", 10.0, 0.0, 15.0, 10.0),
+            glyph("C", 0.0, 20.0, 5.0, 30.0),
+        ],
+        horizontal_edges: Vec::new(),
+    };
+    let algorithm = PdfCaptureAlgorithm::BasicVisual {
+        separate_words: PdfWordSeparation::InsertSpace,
+        whitespace: PdfWhitespaceMode::Default,
+    };
+    let Ok(value) = capture_text(
+        &page,
+        page.bounds,
+        algorithm,
+        "Value",
+        &mut OutputBudget::default(),
+    ) else {
+        panic!("bounded BasicVisual capture should evaluate");
+    };
+    assert_eq!(value, Value::String("A B\nC".into()));
 }
 
 #[test]
@@ -70,6 +104,7 @@ fn edge_rows_capture_repeated_columns_and_discard_empty_bands() {
                 right: PdfCoordinate::new(PdfReference::Left, right),
                 bottom: PdfCoordinate::edge(PdfReference::Bottom),
             },
+            algorithm: Default::default(),
         })
     };
     let Ok(layout) = PdfLayout::new(
@@ -137,6 +172,7 @@ fn unruled_rows_fold_wrapped_lines_around_a_trailing_column() {
                 right: PdfCoordinate::new(PdfReference::Left, right),
                 bottom: PdfCoordinate::edge(PdfReference::Bottom),
             },
+            algorithm: Default::default(),
         })
     };
     let Ok(layout) = PdfLayout::new(
@@ -210,6 +246,7 @@ fn page_blocks_and_merge_sources_preserve_page_and_source_order() {
                 children: vec![PdfCommand::Capture(PdfCapture {
                     name: "Company".into(),
                     region: fixed_region(0.0, 0.0, 100.0, 40.0),
+                    algorithm: Default::default(),
                 })],
             }),
             PdfCommand::Merge(PdfMerge {
@@ -239,6 +276,7 @@ fn page_blocks_and_merge_sources_preserve_page_and_source_order() {
                         children: vec![PdfCommand::Capture(PdfCapture {
                             name: "Value".into(),
                             region: PdfRegion::full(),
+                            algorithm: Default::default(),
                         })],
                     })],
                 })],
@@ -300,6 +338,7 @@ fn root_anchors_survive_intervening_page_blocks_per_physical_page() {
                 children: vec![PdfCommand::Capture(PdfCapture {
                     name: "Heading".into(),
                     region: fixed_region(0.0, 0.0, 50.0, 30.0),
+                    algorithm: Default::default(),
                 })],
             }),
             PdfCommand::GroupPerPage(PdfGroup {
@@ -313,6 +352,7 @@ fn root_anchors_survive_intervening_page_blocks_per_physical_page() {
                 children: vec![PdfCommand::Capture(PdfCapture {
                     name: "Value".into(),
                     region: PdfRegion::full(),
+                    algorithm: Default::default(),
                 })],
             }),
         ],
@@ -382,6 +422,7 @@ fn vertical_collage_text_groups_keep_nested_records_open_across_pages() {
         PdfCommand::Capture(PdfCapture {
             name: name.into(),
             region: fixed_region(left, top, right, bottom),
+            algorithm: Default::default(),
         })
     };
     let row_capture = |name: &str, left: f64, right: f64| {
@@ -393,6 +434,7 @@ fn vertical_collage_text_groups_keep_nested_records_open_across_pages() {
                 right: PdfCoordinate::new(PdfReference::Left, right),
                 bottom: PdfCoordinate::edge(PdfReference::Bottom),
             },
+            algorithm: Default::default(),
         })
     };
     let stock = PdfCommand::GroupPerPage(PdfGroup {
@@ -551,6 +593,7 @@ fn text_rows_reject_dense_sort_preprocessing() {
                 children: vec![PdfCommand::Capture(PdfCapture {
                     name: "Value".into(),
                     region: PdfRegion::full(),
+                    algorithm: Default::default(),
                 })],
             })],
         })],
@@ -597,6 +640,7 @@ fn nested_text_groups_charge_each_parent_page_rescan() {
             children: vec![PdfCommand::Capture(PdfCapture {
                 name: "Value".into(),
                 region: PdfRegion::full(),
+                algorithm: Default::default(),
             })],
         }],
     });

@@ -3,8 +3,8 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use mapping::{
-    FormatOptions, PdfAnchorAssignment, PdfAnchorAxis, PdfCapture, PdfCommand, PdfCoordinate,
-    PdfEdgeFind, PdfEdgeRows, PdfGroup, PdfLayout, PdfMerge, PdfMergeComposition, PdfMergeSource,
+    FormatOptions, PdfAnchorAssignment, PdfAnchorAxis, PdfCommand, PdfCoordinate, PdfEdgeFind,
+    PdfEdgeRows, PdfGroup, PdfLayout, PdfMerge, PdfMergeComposition, PdfMergeSource,
     PdfPageSelection, PdfPages, PdfReference, PdfRegion, PdfVerticalBoundaryFind,
 };
 
@@ -12,8 +12,10 @@ use super::{
     ComponentFormat, SchemaComponent, entry_key_sets, is_default_output, parse_u32, schema_node_at,
 };
 
+mod capture;
 mod text;
 
+use capture::parse as parse_capture;
 use text::{parse_object_find_splitter, parse_text_find_splitter};
 
 const MAX_PXT_BYTES: usize = 1024 * 1024;
@@ -248,10 +250,7 @@ fn parse_command(
     context: &mut ParseContext,
 ) -> Result<Vec<PdfCommand>, String> {
     match node.tag_name().name() {
-        "Capture" => Ok(vec![PdfCommand::Capture(PdfCapture {
-            name: required_text_child(node, "Label")?,
-            region: parse_required_region(node)?,
-        })]),
+        "Capture" => Ok(vec![PdfCommand::Capture(parse_capture(node)?)]),
         "Grouping" => parse_group(node, document_level, context),
         "Splitter" => {
             let feature = child(node, "FeatureFind")
@@ -1060,6 +1059,7 @@ mod tests {
             children: vec![PdfCommand::Capture(PdfCapture {
                 name: "Value".into(),
                 region: PdfRegion::full(),
+                algorithm: Default::default(),
             })],
         });
         assert!(last_capture_region(&[command]).is_none());
