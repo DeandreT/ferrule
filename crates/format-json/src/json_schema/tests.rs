@@ -231,7 +231,7 @@ fn pure_nested_one_of_wrappers_flatten_and_roundtrip() {
 }
 
 #[test]
-fn nested_union_flattening_requires_matching_modes_and_pure_wrappers() {
+fn nested_union_flattening_preserves_base_fields_and_requires_matching_modes() {
     let inclusive = import_str(
         r#"{
   "title":"Inclusive",
@@ -267,11 +267,47 @@ fn nested_union_flattening_requires_matching_modes_and_pure_wrappers() {
     .unwrap_err();
     assert!(mixed_mode.to_string().contains("must use the same"));
 
-    let constrained = import_str_result(
+    let constrained = import_str(
         r#"{
   "title":"Constrained",
   "anyOf":[
     {"required":["base"],"properties":{"base":{"type":"string"}},"anyOf":[
+      {"type":"object","additionalProperties":false,"required":["base","a"],"properties":{"base":{"type":"string"},"a":{"type":"string"}}},
+      {"type":"object","additionalProperties":false,"required":["base","b"],"properties":{"base":{"type":"string"},"b":{"type":"string"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["c"],"properties":{"c":{"type":"string"}}}
+  ]
+}"#,
+    );
+    assert_eq!(constrained.alternatives().len(), 3);
+    assert!(crate::from_str(r#"{"base":"root","a":"one"}"#, &constrained).is_ok());
+    assert!(matches!(
+        crate::from_str(r#"{"a":"missing base"}"#, &constrained),
+        Err(JsonFormatError::NoMatchingAlternative { .. })
+    ));
+    assert_eq!(import_str(&export(&constrained)), constrained);
+
+    let closed_wrapper = import_str(
+        r#"{
+  "title":"ClosedWrapper",
+  "oneOf":[
+    {"additionalProperties":false,"properties":{"a":{"type":"string"},"b":{"type":"string"}},"oneOf":[
+      {"type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
+      {"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["c"],"properties":{"c":{"type":"string"}}}
+  ]
+}"#,
+    );
+    assert!(crate::from_str(r#"{"a":"one"}"#, &closed_wrapper).is_ok());
+    assert!(crate::from_str(r#"{"b":"two"}"#, &closed_wrapper).is_ok());
+    assert_eq!(import_str(&export(&closed_wrapper)), closed_wrapper);
+
+    let impossible_closure = import_str_result(
+        r#"{
+  "title":"Impossible",
+  "oneOf":[
+    {"additionalProperties":false,"oneOf":[
       {"type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
       {"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}
     ]},
@@ -280,11 +316,28 @@ fn nested_union_flattening_requires_matching_modes_and_pure_wrappers() {
 }"#,
     )
     .unwrap_err();
-    assert!(
-        constrained
-            .to_string()
-            .contains("wrapper-level object constraints")
+    assert!(impossible_closure.to_string().contains("requires a field"));
+}
+
+#[test]
+fn alternative_wrappers_apply_closed_branch_field_intersections() {
+    let schema = import_str(
+        r#"{
+  "title":"Intersection",
+  "properties":{"wrapperOnly":{"type":"string"}},
+  "oneOf":[
+    {"title":"a","type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
+    {"title":"b","type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}
+  ]
+}"#,
     );
+    assert!(schema.child("wrapperOnly").is_none());
+    assert!(crate::from_str(r#"{"a":"one"}"#, &schema).is_ok());
+    assert!(matches!(
+        crate::from_str(r#"{"wrapperOnly":"x","a":"one"}"#, &schema),
+        Err(JsonFormatError::NoMatchingAlternative { .. })
+    ));
+    assert_eq!(import_str(&export(&schema)), schema);
 }
 
 #[test]

@@ -66,6 +66,24 @@ pub(super) fn parse_object_alternatives(
         })?;
     let base_children = parse_properties(schema, doc, active_refs)?;
     let base_required = required_names(schema);
+    let base_closed = match schema.get("additionalProperties") {
+        None | Some(serde_json::Value::Bool(true)) => false,
+        Some(serde_json::Value::Bool(false)) => true,
+        Some(serde_json::Value::Object(_)) => {
+            return Err(unsupported_union(
+                name,
+                "typed additionalProperties on an alternative wrapper are not supported",
+            ));
+        }
+        Some(_) => {
+            return Err(unsupported_union(
+                name,
+                "alternative wrapper additionalProperties must be a boolean",
+            ));
+        }
+    };
+    let base_constraints =
+        required_scalar_constraints(name, schema, &base_required, &base_children)?;
     let mut merged = base_children.clone();
     let mut metadata = Vec::with_capacity(alternatives.len());
     for (index, alternative_schema) in alternatives.iter().enumerate() {
@@ -112,15 +130,6 @@ pub(super) fn parse_object_alternatives(
                     "nested object alternatives must use the same oneOf or anyOf mode",
                 ));
             }
-            if resolved.get("properties").is_some()
-                || resolved.get("required").is_some()
-                || resolved.get("additionalProperties").is_some()
-            {
-                return Err(unsupported_union(
-                    name,
-                    "nested object alternatives cannot add wrapper-level object constraints",
-                ));
-            }
             for mut nested in nested_alternatives {
                 nested.name = format!("{alternative_name}/{}", nested.name);
                 merge_nested_alternative(
@@ -128,6 +137,8 @@ pub(super) fn parse_object_alternatives(
                     mode,
                     &base_children,
                     &base_required,
+                    &base_constraints,
+                    base_closed,
                     &variant_children,
                     nested,
                     &mut merged,
@@ -142,26 +153,37 @@ pub(super) fn parse_object_alternatives(
                 "object alternatives must declare additionalProperties false",
             ));
         }
-        let mut members: Vec<String> = base_children
-            .iter()
-            .map(|child| child.name.clone())
-            .collect();
+        let mut members = Vec::new();
         for child in variant_children {
-            if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
-                if existing != &child {
-                    return Err(unsupported_union(
-                        name,
-                        &format!(
-                            "field `{}` has incompatible schemas across alternatives",
-                            child.name
-                        ),
-                    ));
-                }
-            } else {
-                merged.push(child.clone());
+            if let Some(base) = base_children.iter().find(|base| base.name == child.name)
+                && base != &child
+            {
+                return Err(unsupported_union(
+                    name,
+                    &format!(
+                        "field `{}` has incompatible wrapper and alternative schemas",
+                        child.name
+                    ),
+                ));
             }
-            if !members.contains(&child.name) {
-                members.push(child.name);
+            let allowed = !base_closed || base_children.iter().any(|base| base.name == child.name);
+            if allowed {
+                if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
+                    if existing != &child {
+                        return Err(unsupported_union(
+                            name,
+                            &format!(
+                                "field `{}` has incompatible schemas across alternatives",
+                                child.name
+                            ),
+                        ));
+                    }
+                } else {
+                    merged.push(child.clone());
+                }
+                if !members.contains(&child.name) {
+                    members.push(child.name);
+                }
             }
         }
         let mut required = base_required.clone();
@@ -171,6 +193,7 @@ pub(super) fn parse_object_alternatives(
             }
         }
         let constraints = required_scalar_constraints(name, resolved, &required, &merged)?;
+        let constraints = merge_constraints(name, &base_constraints, constraints)?;
         push_alternative(
             name,
             mode,
@@ -183,6 +206,11 @@ pub(super) fn parse_object_alternatives(
             &mut metadata,
         )?;
     }
+    merged.retain(|child| {
+        metadata
+            .iter()
+            .any(|alternative| alternative.members.contains(&child.name))
+    });
     let group = SchemaNode::group(name, merged);
     match mode {
         GroupAlternativeMode::Exclusive => group.with_alternatives(metadata),
@@ -191,21 +219,47 @@ pub(super) fn parse_object_alternatives(
     .ok_or_else(|| unsupported_union(name, "alternative metadata is internally inconsistent"))
 }
 
+fn merge_constraints(
+    union_name: &str,
+    base: &[GroupAlternativeConstraint],
+    nested: Vec<GroupAlternativeConstraint>,
+) -> Result<Vec<GroupAlternativeConstraint>, JsonFormatError> {
+    let mut merged = base.to_vec();
+    for constraint in nested {
+        if let Some(previous) = merged
+            .iter()
+            .find(|previous| previous.member == constraint.member)
+        {
+            if previous.value != constraint.value {
+                return Err(unsupported_union(
+                    union_name,
+                    &format!(
+                        "const discriminator `{}` conflicts with its wrapper constraint",
+                        constraint.member
+                    ),
+                ));
+            }
+        } else {
+            merged.push(constraint);
+        }
+    }
+    Ok(merged)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn merge_nested_alternative(
     union_name: &str,
     mode: GroupAlternativeMode,
     base_children: &[SchemaNode],
     base_required: &[String],
+    base_constraints: &[GroupAlternativeConstraint],
+    base_closed: bool,
     variant_children: &[SchemaNode],
     alternative: GroupAlternative,
     merged: &mut Vec<SchemaNode>,
     metadata: &mut Vec<GroupAlternative>,
 ) -> Result<(), JsonFormatError> {
-    let mut members = base_children
-        .iter()
-        .map(|child| child.name.clone())
-        .collect::<Vec<_>>();
+    let mut members = Vec::new();
     for member in &alternative.members {
         let child = variant_children
             .iter()
@@ -216,6 +270,21 @@ fn merge_nested_alternative(
                     &format!("nested union member `{member}` has no declared field"),
                 )
             })?;
+        if let Some(base) = base_children.iter().find(|base| base.name == child.name)
+            && base != child
+        {
+            return Err(unsupported_union(
+                union_name,
+                &format!(
+                    "field `{}` has incompatible wrapper and alternative schemas",
+                    child.name
+                ),
+            ));
+        }
+        let allowed = !base_closed || base_children.iter().any(|base| base.name == child.name);
+        if !allowed {
+            continue;
+        }
         if let Some(existing) = merged.iter().find(|existing| existing.name == child.name) {
             if existing != child {
                 return Err(unsupported_union(
@@ -239,6 +308,7 @@ fn merge_nested_alternative(
             required.push(member);
         }
     }
+    let constraints = merge_constraints(union_name, base_constraints, alternative.constraints)?;
     push_alternative(
         union_name,
         mode,
@@ -246,7 +316,7 @@ fn merge_nested_alternative(
             name: alternative.name,
             members,
             required,
-            constraints: alternative.constraints,
+            constraints,
         },
         metadata,
     )
