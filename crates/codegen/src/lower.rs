@@ -172,7 +172,37 @@ fn lower_scope(
     root_context: bool,
 ) -> TargetScope {
     inspect_scope_features(scope, target_path, diagnostics);
-    let iteration = lower_iteration(scope);
+    let iteration = if let Some(sequence) = scope.concatenated() {
+        let mut segments = sequence
+            .iter()
+            .map(|segment| {
+                lower_scope(
+                    segment,
+                    target,
+                    target_path,
+                    roots,
+                    diagnostics,
+                    root_context,
+                )
+            })
+            .collect::<Vec<_>>();
+        if segments.is_empty() {
+            diagnostics.push(Diagnostic::Validation {
+                location: display_target_scope(target_path),
+                message: "validated concatenated scope has no segments".into(),
+            });
+            None
+        } else {
+            let first = segments.remove(0);
+            Some(IterationPlan::concatenate(
+                first,
+                segments,
+                scope.iteration_output.into(),
+            ))
+        }
+    } else {
+        lower_iteration(scope)
+    };
     roots.extend(scope.filter);
     roots.extend(scope.post_group_filter);
     roots.extend(scope.sort_keys().map(|key| key.node));
@@ -404,9 +434,10 @@ fn inspect_scope_features(
         | ScopeIteration::Source(_)
         | ScopeIteration::Sequence(_)
         | ScopeIteration::InnerJoin { .. } => {}
-        ScopeIteration::DynamicDocuments { .. } | ScopeIteration::Concatenate(_) => {
+        ScopeIteration::DynamicDocuments { .. } => {
             report(ScopeFeature::Iteration);
         }
+        ScopeIteration::Concatenate(_) => {}
     }
     if let Some(kind) = construction_kind(&scope.construction) {
         report(ScopeFeature::Construction(kind));

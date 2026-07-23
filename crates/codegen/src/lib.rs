@@ -27,8 +27,9 @@ pub use model::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, FailureIteration,
     FailureRule, FailureSelection, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
     IterationSource, NamedSourceProgram, NamedTargetProgram, Program, RuntimeValue,
-    SUPPORTED_SCALAR_CALLS, ScalarFunction, SequenceWindow, SortFilterOrder, SortKey, SortPlan,
-    SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
+    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeSequence, SequenceWindow, SortFilterOrder,
+    SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter,
+    UserFunctionProgram,
 };
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,

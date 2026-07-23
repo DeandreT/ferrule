@@ -9,6 +9,7 @@ use crate::{
 
 mod collection_find;
 mod collections;
+mod concatenate;
 mod failures;
 mod grouping;
 mod invariants;

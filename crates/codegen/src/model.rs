@@ -744,12 +744,41 @@ impl GeneratedSequence {
     }
 }
 
+/// A non-empty ordered composition of independently evaluated target scopes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScopeSequence {
+    first: Box<TargetScope>,
+    rest: Vec<TargetScope>,
+}
+
+impl ScopeSequence {
+    pub fn new(first: TargetScope, rest: Vec<TargetScope>) -> Self {
+        Self {
+            first: Box::new(first),
+            rest,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &TargetScope> {
+        std::iter::once(self.first.as_ref()).chain(&self.rest)
+    }
+
+    pub fn len(&self) -> usize {
+        self.rest.len() + 1
+    }
+
+    pub const fn is_empty(&self) -> bool {
+        false
+    }
+}
+
 /// Exactly one candidate source for an iterating scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IterationSource {
     Source(SourceIteration),
     Generated(GeneratedSequence),
     InnerJoin(InnerJoin),
+    Concatenate(ScopeSequence),
 }
 
 /// One mutually exclusive grouping operation in an iteration pipeline.
@@ -813,6 +842,12 @@ impl From<InnerJoin> for IterationSource {
     }
 }
 
+impl From<ScopeSequence> for IterationSource {
+    fn from(sequence: ScopeSequence) -> Self {
+        Self::Concatenate(sequence)
+    }
+}
+
 impl SequenceWindow {
     pub fn nodes(self) -> impl Iterator<Item = NodeId> {
         let nodes = match self {
@@ -857,9 +892,9 @@ pub struct TargetScope {
     /// Non-iterating scopes targeting a repeating group still produce one
     /// repeated item, matching the engine's target-boundary cardinality.
     pub repeating: bool,
-    /// Source-backed, generated, or statically joined iteration evaluated
-    /// relative to the parent scope's current item. Absence means the scope
-    /// runs exactly once.
+    /// Source-backed, generated, statically joined, or ordered concatenated
+    /// iteration evaluated relative to the parent scope's current item.
+    /// Absence means the scope runs exactly once.
     pub iteration: Option<IterationPlan>,
     pub construction: TargetConstruction,
     /// Declaration order is semantically significant and is preserved.
@@ -892,6 +927,20 @@ impl IterationPlan {
 
     pub fn generated(sequence: GeneratedSequence) -> Self {
         Self::new(sequence, None, None, Vec::new(), IterationOutput::Repeated)
+    }
+
+    pub fn concatenate(
+        first: TargetScope,
+        rest: Vec<TargetScope>,
+        output: IterationOutput,
+    ) -> Self {
+        Self::new(
+            ScopeSequence::new(first, rest),
+            None,
+            None,
+            Vec::new(),
+            output,
+        )
     }
 
     pub fn join(join: InnerJoin) -> Self {
@@ -938,7 +987,9 @@ impl IterationPlan {
     pub const fn source_iteration(&self) -> Option<&SourceIteration> {
         match &self.input {
             IterationSource::Source(source) => Some(source),
-            IterationSource::Generated(_) | IterationSource::InnerJoin(_) => None,
+            IterationSource::Generated(_)
+            | IterationSource::InnerJoin(_)
+            | IterationSource::Concatenate(_) => None,
         }
     }
 
@@ -946,14 +997,25 @@ impl IterationPlan {
         match &self.input {
             IterationSource::Source(_) => None,
             IterationSource::Generated(sequence) => Some(sequence),
-            IterationSource::InnerJoin(_) => None,
+            IterationSource::InnerJoin(_) | IterationSource::Concatenate(_) => None,
         }
     }
 
     pub const fn inner_join(&self) -> Option<&InnerJoin> {
         match &self.input {
             IterationSource::InnerJoin(join) => Some(join),
-            IterationSource::Source(_) | IterationSource::Generated(_) => None,
+            IterationSource::Source(_)
+            | IterationSource::Generated(_)
+            | IterationSource::Concatenate(_) => None,
+        }
+    }
+
+    pub const fn concatenated(&self) -> Option<&ScopeSequence> {
+        match &self.input {
+            IterationSource::Concatenate(sequence) => Some(sequence),
+            IterationSource::Source(_)
+            | IterationSource::Generated(_)
+            | IterationSource::InnerJoin(_) => None,
         }
     }
 

@@ -13,6 +13,7 @@ use ir::{SchemaKind, SchemaNode};
 use mapping::{FunctionId, FunctionParameterId};
 
 mod collection_find;
+mod concatenate;
 mod correlated_joins;
 mod extra_sources;
 mod extra_targets;

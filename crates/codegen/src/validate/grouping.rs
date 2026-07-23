@@ -39,6 +39,11 @@ pub(super) fn validate(
             join: join.id(),
         });
     }
+    if matches!(iteration.input(), IterationSource::Concatenate(_)) {
+        return Err(ProgramValidationError::InvalidScopeSequenceWrapper {
+            target_path: target_path.to_vec(),
+        });
+    }
     let (role, context) = match grouping {
         GroupingPlan::By { key } => (
             GroupingExpressionRole::Key,
