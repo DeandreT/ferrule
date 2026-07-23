@@ -16,22 +16,26 @@ use crate::resolve::{
 };
 use crate::sequence::{eval_sequence_exists, eval_sequence_item_at};
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
+use crate::trace::{TraceSink, record_node_value};
 use crate::user_function;
 
 #[derive(Clone, Copy)]
 pub(crate) struct EvalProgram<'a> {
     pub(crate) graph: &'a Graph,
     pub(crate) user_functions: &'a BTreeMap<FunctionId, UserFunction>,
+    trace_sink: Option<&'a dyn TraceSink>,
 }
 
 impl<'a> EvalProgram<'a> {
     pub(crate) fn new(
         graph: &'a Graph,
         user_functions: &'a BTreeMap<FunctionId, UserFunction>,
+        trace_sink: Option<&'a dyn TraceSink>,
     ) -> Self {
         Self {
             graph,
             user_functions,
+            trace_sink,
         }
     }
 }
@@ -300,6 +304,9 @@ pub(crate) fn eval_expr(
     };
 
     in_progress.remove(&node_id);
+    if let Ok(value) = &result {
+        record_node_value(program.trace_sink, node_id, positions, value);
+    }
     result
 }
 
