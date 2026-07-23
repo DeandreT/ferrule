@@ -1,4 +1,4 @@
-//! GS1 TRADACOMS input.
+//! GS1 TRADACOMS input and output.
 //!
 //! Segments use `TAG=...` with `+` elements, `:` components, `'` segment
 //! terminators, and `?` release escaping. Hierarchy comes from the imported
@@ -8,8 +8,18 @@ use std::path::Path;
 
 use ir::{Instance, SchemaNode};
 
-use crate::segments::{Segment, read_segments};
+use crate::segments::{Segment, WriteOptions, WriteStyle, read_segments, write_segments};
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
+
+const WRITE_OPTIONS: WriteOptions = WriteOptions {
+    element: '+',
+    component: ':',
+    terminator: '\'',
+    release: Some('?'),
+    repetition: None,
+    style: WriteStyle::Assigned,
+    interchange_version: None,
+};
 
 /// Tokenizes one TRADACOMS interchange.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
@@ -117,6 +127,13 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
         .map_err(|_| EdiFormatError::NotTradacoms("input is not UTF-8"))?;
     let segments = tokenize(text)?;
     read_segments(schema, &segments, ':', None, lenient)
+}
+
+/// Writes a schema-shaped TRADACOMS interchange using `TAG=...` segments.
+pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
+    let output = write_segments(schema, instance, &WRITE_OPTIONS)?;
+    std::fs::write(path, output)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -247,5 +264,63 @@ mod tests {
                 .and_then(Instance::as_scalar),
             Some(&Value::Int(250101))
         );
+    }
+
+    #[test]
+    fn writes_assignment_syntax_and_release_escapes() {
+        let schema = SchemaNode::group(
+            "Envelope",
+            vec![
+                SchemaNode::group(
+                    "STX",
+                    vec![
+                        SchemaNode::group(
+                            "Syntax",
+                            vec![
+                                SchemaNode::scalar("Code", ScalarType::String),
+                                SchemaNode::scalar("Version", ScalarType::Int),
+                            ],
+                        ),
+                        SchemaNode::scalar("Sender", ScalarType::String),
+                    ],
+                ),
+                SchemaNode::group("END", vec![SchemaNode::scalar("Count", ScalarType::Int)]),
+            ],
+        );
+        let instance = Instance::Group(vec![
+            (
+                "STX".into(),
+                Instance::Group(vec![
+                    (
+                        "Syntax".into(),
+                        Instance::Group(vec![
+                            ("Code".into(), Instance::Scalar(Value::String("ANA".into()))),
+                            ("Version".into(), Instance::Scalar(Value::Int(1))),
+                        ]),
+                    ),
+                    (
+                        "Sender".into(),
+                        Instance::Scalar(Value::String("A+B=C?'".into())),
+                    ),
+                ]),
+            ),
+            (
+                "END".into(),
+                Instance::Group(vec![("Count".into(), Instance::Scalar(Value::Int(1)))]),
+            ),
+        ]);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_tradacoms_write_{}.edi",
+            std::process::id()
+        ));
+        assert!(write(&path, &schema, &instance).is_ok());
+        let output = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(output, "STX=ANA:1+A?+B?=C???''\nEND=1'\n");
+        let roundtrip = read(&path, &schema, false);
+        let _ = std::fs::remove_file(path);
+        let Ok(roundtrip) = roundtrip else {
+            panic!("written TRADACOMS must read back");
+        };
+        assert_eq!(roundtrip, instance);
     }
 }

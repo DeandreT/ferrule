@@ -14,7 +14,7 @@ layout and dialect details that an extension cannot express.
 | XLSX | Yes | Yes | Typed worksheets, flat and selected composite/grid source shapes, hierarchical targets, and update-existing writes |
 | SQLite | Yes | Yes | Table introspection, typed reads, imported relational query shapes, validated declared relations, structured XML text columns, and idempotent full-replace writes |
 | X12 / EDIFACT | Yes | Yes | Schema-guided interchange I/O, custom syntax separators, repetitions, qualifier loops, and optional lenient parsing |
-| HL7 v2 / TRADACOMS | Yes | Yes | Bounded schema-guided message I/O |
+| HL7 v2 / TRADACOMS | Yes | Yes | Bounded schema-guided message I/O, including HL7 escapes/subcomponents and TRADACOMS release escaping |
 | IDoc / SWIFT MT | Yes | Yes | Runtime I/O through embedded imported layouts |
 | FlexText | Yes | Yes | Embedded recursive split/store/switch layouts, including fixed-width and delimited records |
 | Protocol Buffers | Yes | Yes | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |

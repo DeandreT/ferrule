@@ -14,7 +14,9 @@ use std::path::Path;
 use ir::{Instance, SchemaNode};
 
 use crate::autocomplete as envelope;
-use crate::segments::{Segment, WriteOptions, read_segments, serialize_segments, write_segments};
+use crate::segments::{
+    Segment, WriteOptions, WriteStyle, read_segments, serialize_segments, write_segments,
+};
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
 // No repetition separator: EDIFACT syntax v4 defines `*`, but most traffic
@@ -26,6 +28,7 @@ const WRITE_OPTIONS: WriteOptions = WriteOptions {
     terminator: '\'',
     release: Some('?'),
     repetition: None,
+    style: WriteStyle::Delimited,
     interchange_version: None,
 };
 

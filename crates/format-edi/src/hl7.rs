@@ -1,4 +1,4 @@
-//! HL7 v2 pipe-encoding input.
+//! HL7 v2 pipe-encoding input and output.
 //!
 //! HL7 declares its delimiters in the first header (`FHS`, `BHS`, or
 //! `MSH`). Fields repeat with the repetition character, split into
@@ -9,7 +9,9 @@ use std::path::Path;
 
 use ir::{Instance, SchemaNode};
 
-use crate::segments::{Segment, read_segments_with_subcomponent_escape};
+use crate::segments::{
+    Segment, WriteOptions, WriteStyle, read_segments_with_subcomponent_escape, write_segments,
+};
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -20,6 +22,16 @@ struct Separators {
     escape: char,
     subcomponent: char,
 }
+
+const WRITE_OPTIONS: WriteOptions = WriteOptions {
+    element: '|',
+    component: '^',
+    terminator: '\r',
+    release: Some('\\'),
+    repetition: Some('~'),
+    style: WriteStyle::Hl7 { subcomponent: '&' },
+    interchange_version: None,
+};
 
 /// Tokenizes an HL7 v2 file into the dialect-neutral segment model.
 pub fn tokenize(text: &str) -> Result<Vec<Segment>, EdiFormatError> {
@@ -180,6 +192,15 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
     )
 }
 
+/// Writes an HL7 v2 message stream using the standard `|^~\\&` encoding.
+/// Header separator fields are derived from that encoding when absent and
+/// rejected when a supplied value disagrees.
+pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
+    let output = write_segments(schema, instance, &WRITE_OPTIONS)?;
+    std::fs::write(path, output)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +312,141 @@ mod tests {
                 .and_then(Instance::as_scalar),
             Some(&Value::Null)
         );
+    }
+
+    #[test]
+    fn writes_headers_repetitions_subcomponents_and_escape_codes() {
+        let mut repetitions = SchemaNode::scalar("PID-3", ScalarType::String);
+        repetitions.repeating = true;
+        let schema = SchemaNode::group(
+            "ADT_A28",
+            vec![
+                SchemaNode::group(
+                    "MSH",
+                    vec![
+                        SchemaNode::scalar("MSH-1", ScalarType::String),
+                        SchemaNode::scalar("MSH-2", ScalarType::String),
+                        SchemaNode::scalar("MSH-3", ScalarType::String),
+                    ],
+                ),
+                SchemaNode::group(
+                    "PID",
+                    vec![
+                        SchemaNode::scalar("PID-1", ScalarType::Int),
+                        SchemaNode::scalar("PID-2", ScalarType::String),
+                        repetitions,
+                        SchemaNode::group(
+                            "PID-4",
+                            vec![
+                                SchemaNode::group(
+                                    "CX-1",
+                                    vec![
+                                        SchemaNode::scalar("Part-1", ScalarType::String),
+                                        SchemaNode::scalar("Part-2", ScalarType::String),
+                                    ],
+                                ),
+                                SchemaNode::scalar("CX-2", ScalarType::String),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        );
+        let instance = Instance::Group(vec![
+            (
+                "MSH".into(),
+                Instance::Group(vec![
+                    ("MSH-1".into(), Instance::Scalar(Value::String("|".into()))),
+                    (
+                        "MSH-2".into(),
+                        Instance::Scalar(Value::String("^~\\&".into())),
+                    ),
+                    (
+                        "MSH-3".into(),
+                        Instance::Scalar(Value::String("SEND|APP^~\\&".into())),
+                    ),
+                ]),
+            ),
+            (
+                "PID".into(),
+                Instance::Group(vec![
+                    ("PID-1".into(), Instance::Scalar(Value::Int(1))),
+                    ("PID-2".into(), Instance::Scalar(Value::Null)),
+                    (
+                        "PID-3".into(),
+                        Instance::Repeated(vec![
+                            Instance::Scalar(Value::String("A".into())),
+                            Instance::Scalar(Value::String("B".into())),
+                        ]),
+                    ),
+                    (
+                        "PID-4".into(),
+                        Instance::Group(vec![
+                            (
+                                "CX-1".into(),
+                                Instance::Group(vec![
+                                    (
+                                        "Part-1".into(),
+                                        Instance::Scalar(Value::String("Family&Prefix".into())),
+                                    ),
+                                    (
+                                        "Part-2".into(),
+                                        Instance::Scalar(Value::String("Given".into())),
+                                    ),
+                                ]),
+                            ),
+                            (
+                                "CX-2".into(),
+                                Instance::Scalar(Value::String("AUTH".into())),
+                            ),
+                        ]),
+                    ),
+                ]),
+            ),
+        ]);
+        let path = std::env::temp_dir().join(format!(
+            "ferrule_hl7_write_{}_{}.hl7",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test")
+        ));
+        assert!(write(&path, &schema, &instance).is_ok());
+        let output = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(
+            output,
+            "MSH|^~\\&|SEND\\F\\APP\\S\\\\R\\\\E\\\\T\\\rPID|1||A~B|Family\\T\\Prefix&Given^AUTH\r"
+        );
+        let roundtrip = read(&path, &schema, false);
+        let _ = std::fs::remove_file(path);
+        let Ok(roundtrip) = roundtrip else {
+            panic!("written HL7 must read back");
+        };
+        assert_eq!(roundtrip, instance);
+    }
+
+    #[test]
+    fn rejects_conflicting_header_separators() {
+        let schema = SchemaNode::group(
+            "Message",
+            vec![SchemaNode::group(
+                "MSH",
+                vec![
+                    SchemaNode::scalar("MSH-1", ScalarType::String),
+                    SchemaNode::scalar("MSH-2", ScalarType::String),
+                ],
+            )],
+        );
+        let instance = Instance::Group(vec![(
+            "MSH".into(),
+            Instance::Group(vec![
+                ("MSH-1".into(), Instance::Scalar(Value::String("*".into()))),
+                ("MSH-2".into(), Instance::Scalar(Value::Null)),
+            ]),
+        )]);
+        let path =
+            std::env::temp_dir().join(format!("ferrule_hl7_separator_{}.hl7", std::process::id()));
+        assert!(matches!(
+            write(&path, &schema, &instance),
+            Err(EdiFormatError::InvalidEnvelopeElement { element, .. }) if element == "MSH-1"
+        ));
     }
 }
