@@ -1,6 +1,6 @@
 # Ferrule MapForce Workflow-Parity Roadmap
 
-Updated: 2026-07-19
+Updated: 2026-07-22
 
 ## Goal
 
@@ -37,11 +37,12 @@ clean-room interoperability, and extensible adapters.
   playground.
 - `.mfd` survey: all 186 designs in the local ReferenceSamples corpus import
   warning-free and engine-valid, then export, re-import, and validate
-  warning-free. The safe execution profile runs 113 of its 120 top-level
-  designs without network access or writes to the read-only sample tree;
-  all 113 execute and all 113 export, re-import, validate, and execute with zero
-  semantic output drifts. Across the current isolated behavioral manifests, all 79
-  available deterministic references match exactly.
+  warning-free. The broad read-only execution profile attempts 179 designs and
+  all 179 pass; seven external-network or opaque-service cases are skipped. The
+  stricter export/re-import profile runs 113 of 120 top-level designs, and all
+  113 execute before and after round trip with zero semantic output drifts.
+  Across the current isolated behavioral manifests, all 79 available
+  deterministic references match exactly.
   These measurements describe the local sample profile, not commercial-product parity.
 - Known architectural constraints: one primary driver input per run, scalar graph
   outputs, no general endpoint/stage DAG, no trace API, and no project-level
@@ -51,7 +52,7 @@ clean-room interoperability, and extensible adapters.
 
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
-| XML | XSD subset, includes/imports, attributes, simple and ordered mixed content, `xsi:nil`, generic elements, and bounded transitive derived-type input/output | Namespace identity and remaining derived-type input shapes |
+| XML | XSD subset, local include/import graphs, expanded-name identity for elements and attributes, simple and ordered mixed content, `xsi:nil`, generic elements, and bounded transitive derived-type input/output | Remaining derived-type input shapes, substitution groups, and namespace-dependent wildcards |
 | JSON | JSON Schema subset, local refs, compatible closed-object `oneOf`/`anyOf` with required string, boolean, signed-integer, or finite-number `const` discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed dynamic properties | Scalar/array, overlapping cross-mode or incompatible typed-wrapper union composition, optional or null discriminators, mixed arrays, unconstrained dynamic values |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
@@ -62,7 +63,7 @@ clean-room interoperability, and extensible adapters.
 | Execution | Native interpreter, explicit host-value context, CLI, GUI, browser demo | Packaged runtime, documented library/HTTP APIs, deterministic traces |
 | Authoring | Existing-project graph/scope editor plus XSD/JSON blank-project setup, scope management, extra-source CRUD, undo, and layout | Complete schema/format wizards, extra-target editing, auto-connect, and preview |
 | Debugging | Static validation and runtime errors | Connector history, context/row inspection, stepping, breakpoints |
-| `.mfd` | 186/186 warning-free import/export/re-import validation, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
+| `.mfd` | 186/186 warning-free import/export/re-import validation, 179/179 attempted read-only executions, 113/113 safe original and round-trip executions without semantic drift, and 79/79 available deterministic references exact | Broader behavioral-reference coverage and lossless execution for the remaining supported edge profiles |
 | Code generation | [Portable Rust and package-free C# libraries](docs/code-generation.md) with shared lowering, 66 scalar functions, typed failures and ordered failure rules, host runtime values, ordered value maps, static named inputs, cross-source lookups, expression-driven collection search, structured XML serialization, root-context static inner joins, bounded per-item correlated join scopes and joined-tuple reductions, multiple mapped outputs, scalar/group targets, exact whole-group copies, source/generated iteration and ordered scope concatenation, keyed/marker/block grouping, controls, aggregates, recursive-collect generated sequences, and generated-sequence reducers | Broaden toward interpreter parity, publish the Rust runtime, and consider optional XML-specific XSLT |
 
 ## Workstreams
@@ -111,12 +112,14 @@ Named static XML, JSON, flat-file, and database sources now retain separate comp
 during export; per-item dynamic XML sources and captured HTTP POST response
 boundaries also round-trip with their typed contracts.
 The versioned compatibility survey records import, engine validation, export,
-re-import, and post-export validation separately. All 120 local designs now pass
-those structural stages without warnings. A separate isolated execution survey runs
-113 safe originals successfully; all 113 exportable/re-importable executions match
-semantically. The current isolated manifests provide 79 deterministic references, all
-of which match exactly. Reference manifests remain a separate behavioral measure and
-are not inferred from structural success.
+re-import, and post-export validation separately. All 186 local designs pass
+those structural stages without warnings. A broad isolated execution survey
+runs all 179 attempted originals successfully, with seven external-network or
+opaque-service cases skipped. The stricter top-level round-trip profile executes
+113 safe originals; all 113 exportable/re-importable executions match
+semantically. The current isolated manifests provide 79 deterministic
+references, all of which match exactly. Reference manifests remain a separate
+behavioral measure and are not inferred from structural success.
 
 - Preserve complete warning-free, engine-valid import coverage while expanding
   the supported component surface.
@@ -126,8 +129,8 @@ are not inferred from structural success.
   cases, especially workflows whose vendor outputs require unavailable services.
 - Add general sequence composition and reusable graph-backed UDFs instead of further
   one-off lowering paths.
-- Complete namespace identity, remaining derived-type input shapes, and the remaining
-  scalar/array/nested or optional/null-discriminated JSON union semantics.
+- Complete remaining derived-type input shapes and the remaining scalar/array/
+  nested or optional/null-discriminated JSON union semantics.
 - Keep every fixture self-authored; use vendor samples only as black-box
   behavioral references.
 
@@ -228,7 +231,7 @@ Exit criteria:
 Prioritize connectors that align existing strengths before product-catalog
 breadth.
 
-1. Complete namespace identity, remaining `xsi:type` shapes, and remaining JSON union semantics.
+1. Complete remaining `xsi:type` shapes and JSON union semantics.
 2. Add a general query/database mutation IR and PostgreSQL adapter.
 3. Expand remaining XLSX, FlexText, EDI, and PDF layout variants by measured demand.
 4. Add generic HTTP/OpenAPI/GraphQL endpoints and dynamic protobuf document sources.
@@ -298,7 +301,8 @@ Update these numbers with each parity increment:
 - `.mfd` validation: all 186 imported projects are engine-valid.
 - `.mfd` export/re-import: all 186 designs export, re-import, and validate without
   warnings in the structural survey.
-- `.mfd` execution: all 113 network-independent, non-mutating originals execute.
+- `.mfd` execution: all 179 attempted read-only executions pass; seven
+  external-network or opaque-service cases are skipped.
 - `.mfd` execution round trips: all 113 safe projects export, re-import, validate,
   execute, and produce semantically identical outputs.
 - Behavioral references: 79/79 available deterministic outputs across the current
