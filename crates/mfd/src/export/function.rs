@@ -61,6 +61,7 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "not" => "logical-not",
         "length" => "string-length",
         "starts_with" => "starts-with",
+        "ends_with" => "ends-with",
         "upper" => "upper-case",
         "lower" => "lower-case",
         "left_trim" => "left-trim",
@@ -138,6 +139,7 @@ mod tests {
     #[test]
     fn internal_whitespace_function_names_export_canonically() {
         assert_eq!(unmap_function_name("normalize_space"), "normalize-space");
+        assert_eq!(unmap_function_name("ends_with"), "ends-with");
         assert_eq!(function_library("normalize_space"), "core");
         assert_eq!(unmap_function_name("is_numeric"), "numeric");
         assert_eq!(function_library("is_numeric"), "lang");
