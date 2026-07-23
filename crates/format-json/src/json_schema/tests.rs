@@ -231,7 +231,7 @@ fn pure_nested_one_of_wrappers_flatten_and_roundtrip() {
 }
 
 #[test]
-fn nested_union_flattening_preserves_base_fields_and_requires_matching_modes() {
+fn nested_union_flattening_preserves_base_fields_and_proves_cross_mode_safety() {
     let inclusive = import_str(
         r#"{
   "title":"Inclusive",
@@ -252,7 +252,7 @@ fn nested_union_flattening_preserves_base_fields_and_requires_matching_modes() {
     assert!(crate::from_str(r#"{"beta":"yes"}"#, &inclusive).is_ok());
     assert_eq!(import_str(&export(&inclusive)), inclusive);
 
-    let mixed_mode = import_str_result(
+    let disjoint_mixed_mode = import_str(
         r#"{
   "title":"Mixed",
   "oneOf":[
@@ -263,9 +263,32 @@ fn nested_union_flattening_preserves_base_fields_and_requires_matching_modes() {
     {"type":"object","additionalProperties":false,"required":["c"],"properties":{"c":{"type":"string"}}}
   ]
 }"#,
+    );
+    assert_eq!(disjoint_mixed_mode.alternatives().len(), 3);
+    assert!(crate::from_str(r#"{"a":"one"}"#, &disjoint_mixed_mode).is_ok());
+    assert_eq!(
+        import_str(&export(&disjoint_mixed_mode)),
+        disjoint_mixed_mode
+    );
+
+    let overlapping_mixed_mode = import_str_result(
+        r#"{
+  "title":"Overlapping",
+  "oneOf":[
+    {"anyOf":[
+      {"title":"plain","type":"object","additionalProperties":false,"required":["value"],"properties":{"value":{"type":"string"}}},
+      {"title":"tagged","type":"object","additionalProperties":false,"required":["value"],"properties":{"value":{"type":"string"},"tag":{"type":"string"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["other"],"properties":{"other":{"type":"string"}}}
+  ]
+}"#,
     )
     .unwrap_err();
-    assert!(mixed_mode.to_string().contains("must use the same"));
+    assert!(
+        overlapping_mixed_mode
+            .to_string()
+            .contains("provably mutually exclusive")
+    );
 
     let constrained = import_str(
         r#"{
