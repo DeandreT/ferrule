@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ir::{Instance, Value};
 
@@ -159,6 +159,9 @@ fn encode_repeated(
             ));
         }
     };
+    if field.is_map() {
+        validate_map_entries(layout, field, values, path)?;
+    }
     if field.packed() {
         let mut payload = Vec::new();
         for (index, value) in values.iter().enumerate() {
@@ -183,6 +186,126 @@ fn encode_repeated(
         )?;
     }
     Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+enum MapKey {
+    Bool(bool),
+    Int(i64),
+    String(String),
+}
+
+fn validate_map_entries(
+    layout: &Layout,
+    field: &Field,
+    entries: &[Instance],
+    path: &str,
+) -> Result<(), ProtobufError> {
+    let FieldType::Message(entry_id) = field.ty() else {
+        return Err(ProtobufError::schema(
+            "map field does not reference a message",
+        ));
+    };
+    let entry = layout
+        .message(entry_id)
+        .filter(|message| message.is_map_entry())
+        .ok_or_else(|| ProtobufError::schema("map field does not reference a map entry"))?;
+    let key_field = entry
+        .field("key")
+        .ok_or_else(|| ProtobufError::schema("map entry has no key field"))?;
+    let mut keys = HashSet::with_capacity(entries.len());
+    for (index, instance) in entries.iter().enumerate() {
+        let entry_path = indexed_path(path, index);
+        let Instance::Group(fields) = instance else {
+            return Err(ProtobufError::instance(
+                entry_path,
+                format!("expected a group, got {}", instance_kind(instance)),
+            ));
+        };
+        let mut values = fields
+            .iter()
+            .filter(|(name, _)| name == key_field.name())
+            .map(|(_, value)| value);
+        let value = values.next();
+        if values.next().is_some() {
+            return Err(ProtobufError::instance(
+                join_path(&entry_path, key_field.name()),
+                "map key occurs more than once",
+            ));
+        }
+        let key = encoded_map_key(key_field, value, &join_path(&entry_path, key_field.name()))?;
+        if !keys.insert(key) {
+            return Err(ProtobufError::instance(
+                join_path(&entry_path, key_field.name()),
+                "map key occurs more than once",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn encoded_map_key(
+    field: &Field,
+    instance: Option<&Instance>,
+    path: &str,
+) -> Result<MapKey, ProtobufError> {
+    let value = match instance {
+        None | Some(Instance::Scalar(Value::Null)) => None,
+        Some(Instance::Scalar(value)) => Some(value),
+        Some(other) => {
+            return Err(ProtobufError::instance(
+                path,
+                format!("expected a scalar, got {}", instance_kind(other)),
+            ));
+        }
+    };
+    let FieldType::Scalar(ty) = field.ty() else {
+        return Err(ProtobufError::schema("map key is not a scalar"));
+    };
+    match ty {
+        ScalarType::Bool => match value {
+            None => Ok(MapKey::Bool(false)),
+            Some(Value::Bool(value)) => Ok(MapKey::Bool(*value)),
+            Some(value) => Err(type_error(path, "bool", value)),
+        },
+        ScalarType::String => match value {
+            None => Ok(MapKey::String(String::new())),
+            Some(Value::String(value)) => Ok(MapKey::String(value.clone())),
+            Some(Value::Int(value)) => Ok(MapKey::String(value.to_string())),
+            Some(Value::Float(value)) if value.is_finite() => Ok(MapKey::String(value.to_string())),
+            Some(Value::Bool(value)) => Ok(MapKey::String(value.to_string())),
+            Some(value) => Err(type_error(path, "finite scalar", value)),
+        },
+        ScalarType::Int32 | ScalarType::Sint32 | ScalarType::Sfixed32 => {
+            let value = value.map_or(Ok(0), |value| integer(value, path))?;
+            i32::try_from(value).map_err(|_| {
+                integer_range(path, scalar_name(ty), i32::MIN as i64, i32::MAX as i64)
+            })?;
+            Ok(MapKey::Int(value))
+        }
+        ScalarType::Int64 | ScalarType::Sint64 | ScalarType::Sfixed64 => Ok(MapKey::Int(
+            value.map_or(Ok(0), |value| integer(value, path))?,
+        )),
+        ScalarType::Uint32 | ScalarType::Fixed32 => {
+            let value = value.map_or(Ok(0), |value| unsigned(value, path))?;
+            u32::try_from(value).map_err(|_| {
+                ProtobufError::instance(
+                    path,
+                    format!("value is outside the {} range", scalar_name(ty)),
+                )
+            })?;
+            Ok(MapKey::Int(value as i64))
+        }
+        ScalarType::Uint64 | ScalarType::Fixed64 => {
+            let value = value.map_or(Ok(0), |value| unsigned(value, path))?;
+            Ok(MapKey::Int(i64::try_from(value).map_err(|_| {
+                ProtobufError::instance(path, "map key is outside ferrule's signed integer range")
+            })?))
+        }
+        ScalarType::Double | ScalarType::Float | ScalarType::Bytes => {
+            Err(ProtobufError::schema("map key has a forbidden scalar type"))
+        }
+    }
 }
 
 fn encode_occurrence(
