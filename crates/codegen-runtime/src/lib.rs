@@ -27,7 +27,7 @@ pub use functions::FunctionError;
 pub use generated_sequence::{
     MAX_GENERATED_SEQUENCE_ITEMS, MAX_RECURSIVE_SEQUENCE_DEPTH, RecursiveCollectPaths,
     generate_sequence, recursive_collect, recursive_sequence_parameter, tokenize,
-    tokenize_by_length,
+    tokenize_by_length, tokenize_regex,
 };
 pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
@@ -59,6 +59,20 @@ pub enum RuntimeError {
         limit: usize,
     },
     RecursiveSequenceTooLarge {
+        max: u128,
+    },
+    TokenizeRegexPatternTooLarge {
+        bytes: usize,
+        max: usize,
+    },
+    InvalidTokenizeRegexFlags {
+        flags: String,
+    },
+    InvalidTokenizeRegex {
+        message: String,
+    },
+    ZeroWidthTokenizeRegex,
+    TokenizeRegexTooLarge {
         max: u128,
     },
     MissingRuntimeValue {
@@ -133,6 +147,27 @@ impl fmt::Display for RuntimeError {
                     "recursive sequence produced more than {max} items"
                 )
             }
+            Self::TokenizeRegexPatternTooLarge { bytes, max } => {
+                write!(
+                    formatter,
+                    "tokenize-regexp pattern is {bytes} bytes; maximum is {max}"
+                )
+            }
+            Self::InvalidTokenizeRegexFlags { flags } => {
+                write!(
+                    formatter,
+                    "tokenize-regexp flags `{flags}` contain an unsupported flag"
+                )
+            }
+            Self::InvalidTokenizeRegex { message } => {
+                write!(formatter, "tokenize-regexp pattern is invalid: {message}")
+            }
+            Self::ZeroWidthTokenizeRegex => {
+                formatter.write_str("tokenize-regexp pattern matches a zero-width string")
+            }
+            Self::TokenizeRegexTooLarge { max } => {
+                write!(formatter, "tokenize-regexp produced more than {max} items")
+            }
             Self::MissingRuntimeValue { value } => {
                 write!(formatter, "execution context does not provide {value:?}")
             }
@@ -198,6 +233,11 @@ impl std::error::Error for RuntimeError {
             | Self::GeneratedSequenceTooLarge { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }
+            | Self::TokenizeRegexPatternTooLarge { .. }
+            | Self::InvalidTokenizeRegexFlags { .. }
+            | Self::InvalidTokenizeRegex { .. }
+            | Self::ZeroWidthTokenizeRegex
+            | Self::TokenizeRegexTooLarge { .. }
             | Self::MissingRuntimeValue { .. }
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }

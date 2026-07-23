@@ -307,9 +307,10 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 28,
                 expression: Expression::SequenceItemAt {
-                    sequence: GeneratedSequence::Range {
-                        from: None,
-                        to: 26,
+                    sequence: GeneratedSequence::TokenizeRegex {
+                        input: 20,
+                        pattern: 21,
+                        flags: Some(48),
                         item: 25,
                     },
                     index: 27,
@@ -445,6 +446,12 @@ fn fixture() -> Program {
                 id: 47,
                 expression: Expression::Const {
                     value: Value::Bool(false),
+                },
+            },
+            ExpressionNode {
+                id: 48,
+                expression: Expression::Const {
+                    value: Value::String("i".into()),
                 },
             },
         ],
@@ -583,7 +590,7 @@ fn fixture() -> Program {
             bindings: vec![
                 binding("RootInt", 2, ScalarType::Int, false),
                 binding("Exists", 24, ScalarType::Bool, false),
-                binding("Selected", 28, ScalarType::Int, false),
+                binding("Selected", 28, ScalarType::String, false),
             ],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
@@ -687,7 +694,7 @@ var output = (FerruleGroup)outputRows.Items[0];
 Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "Nested" }));
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromInt64(7));
 Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.FromBoolean(true));
-Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.FromInt64(2));
+Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.FromString("beta"));
 
 var nestedRows = (FerruleRepeated)output.Fields[3].Value;
 Assert(nestedRows.Items.Count == 3);

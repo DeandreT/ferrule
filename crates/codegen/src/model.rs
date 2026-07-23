@@ -654,6 +654,12 @@ pub enum GeneratedSequence {
         length: NodeId,
         item: NodeId,
     },
+    TokenizeRegex {
+        input: NodeId,
+        pattern: NodeId,
+        flags: Option<NodeId>,
+        item: NodeId,
+    },
     RecursiveCollect {
         collection: Vec<String>,
         children: Vec<String>,
@@ -676,6 +682,7 @@ impl GeneratedSequence {
         match self {
             Self::Tokenize { item, .. }
             | Self::TokenizeByLength { item, .. }
+            | Self::TokenizeRegex { item, .. }
             | Self::RecursiveCollect { item, .. }
             | Self::Range { item, .. } => *item,
         }
@@ -685,12 +692,18 @@ impl GeneratedSequence {
         let inputs = match self {
             Self::Tokenize {
                 input, delimiter, ..
-            } => [Some(*input), Some(*delimiter)],
-            Self::TokenizeByLength { input, length, .. } => [Some(*input), Some(*length)],
+            } => [Some(*input), Some(*delimiter), None],
+            Self::TokenizeByLength { input, length, .. } => [Some(*input), Some(*length), None],
+            Self::TokenizeRegex {
+                input,
+                pattern,
+                flags,
+                ..
+            } => [Some(*input), Some(*pattern), *flags],
             Self::RecursiveCollect {
                 prefix, separator, ..
-            } => [Some(*prefix), Some(*separator)],
-            Self::Range { from, to, .. } => [*from, Some(*to)],
+            } => [Some(*prefix), Some(*separator), None],
+            Self::Range { from, to, .. } => [*from, Some(*to), None],
         };
         inputs.into_iter().flatten()
     }

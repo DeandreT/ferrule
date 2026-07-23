@@ -879,6 +879,25 @@ fn render_generated_values(identifier: &str, sequence: &GeneratedSequence, outpu
         GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
             "        var sequence_input_{identifier} = Node_{input}(context);\n        if (sequence_input_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_parameter_{identifier} = Node_{length}(context);\n            if (sequence_parameter_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n                sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.TokenizeByLength(sequence_input_{identifier}, sequence_parameter_{identifier});\n            }}\n        }}\n"
         )),
+        GeneratedSequence::TokenizeRegex {
+            input,
+            pattern,
+            flags,
+            ..
+        } => {
+            output.push_str(&format!(
+                "        var sequence_input_{identifier} = Node_{input}(context);\n        if (sequence_input_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n        {{\n            var sequence_pattern_{identifier} = Node_{pattern}(context);\n            if (sequence_pattern_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n            {{\n"
+            ));
+            match flags {
+                Some(flags) => output.push_str(&format!(
+                    "                var sequence_flags_{identifier} = Node_{flags}(context);\n                if (sequence_flags_{identifier}.Kind != global::Ferrule.Runtime.FerruleValueKind.Null)\n                {{\n                    sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.TokenizeRegex(sequence_input_{identifier}, sequence_pattern_{identifier}, sequence_flags_{identifier});\n                }}\n"
+                )),
+                None => output.push_str(&format!(
+                    "                sequence_values_{identifier} = global::Ferrule.Runtime.FerruleSequences.TokenizeRegex(sequence_input_{identifier}, sequence_pattern_{identifier}, null);\n"
+                )),
+            }
+            output.push_str("            }\n        }\n");
+        }
         GeneratedSequence::RecursiveCollect {
             collection,
             children,

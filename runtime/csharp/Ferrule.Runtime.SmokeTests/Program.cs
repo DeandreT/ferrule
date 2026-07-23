@@ -813,6 +813,21 @@ internal static partial class Program
             "aé|🙂z",
             string.Join('|', FerruleSequences.TokenizeByLength(Text("aé🙂z"), FerruleValue.FromDouble(2.9)).Select(ValueText)));
         Equal(
+            "Alpha|GAMMA",
+            string.Join('|', FerruleSequences.TokenizeRegex(
+                Text("Alpha--beta---GAMMA"),
+                Text("-+ BETA -+"),
+                Text("ix")).Select(ValueText)));
+        Equal(
+            "|a|",
+            string.Join('|', FerruleSequences.TokenizeRegex(
+                Text("--a--"),
+                Text("-+"),
+                null).Select(ValueText)));
+        Equal(
+            0,
+            FerruleSequences.TokenizeRegex(Text(string.Empty), Text(","), null).Count);
+        Equal(
             "1,2,3",
             string.Join(',', FerruleSequences.GenerateRange(null, FerruleValue.FromInt64(3)).Select(ValueText)));
         Equal(
@@ -865,6 +880,26 @@ internal static partial class Program
         Error(
             FerruleRuntimeError.FunctionInvalidArgument,
             () => FerruleSequences.TokenizeByLength(Text("abc"), Text("2.0")));
+
+        var regexType = Error(
+            FerruleRuntimeError.FunctionType,
+            () => FerruleSequences.TokenizeRegex(FerruleValue.XmlNil, Text(","), null));
+        Equal("tokenize-regexp", regexType.Function);
+        Error(
+            FerruleRuntimeError.InvalidTokenizeRegexFlags,
+            () => FerruleSequences.TokenizeRegex(Text("abc"), Text("a"), Text("q")));
+        Error(
+            FerruleRuntimeError.InvalidTokenizeRegex,
+            () => FerruleSequences.TokenizeRegex(Text("abc"), Text("("), null));
+        Error(
+            FerruleRuntimeError.ZeroWidthTokenizeRegex,
+            () => FerruleSequences.TokenizeRegex(Text("abc"), Text(@"\b"), null));
+        Error(
+            FerruleRuntimeError.TokenizeRegexPatternTooLarge,
+            () => FerruleSequences.TokenizeRegex(
+                Text("abc"),
+                Text(new string('a', 64 * 1024 + 1)),
+                null));
 
         var tooLarge = Error(
             FerruleRuntimeError.GeneratedSequenceTooLarge,

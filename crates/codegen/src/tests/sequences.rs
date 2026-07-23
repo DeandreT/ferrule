@@ -336,12 +336,19 @@ fn lowers_portable_sequence_reducers_and_private_item_roots() {
         (
             48,
             Node::SequenceItemAt {
-                sequence: mapping::SequenceExpr::Tokenize {
+                sequence: mapping::SequenceExpr::TokenizeRegex {
                     input: 40,
-                    delimiter: 41,
+                    pattern: 41,
+                    flags: Some(49),
                     item: 46,
                 },
                 index: 47,
+            },
+        ),
+        (
+            49,
+            Node::Const {
+                value: Value::String("i".into()),
             },
         ),
     ]);
@@ -375,9 +382,10 @@ fn lowers_portable_sequence_reducers_and_private_item_roots() {
         node.id == 48
             && node.expression
                 == Expression::SequenceItemAt {
-                    sequence: GeneratedSequence::Tokenize {
+                    sequence: GeneratedSequence::TokenizeRegex {
                         input: 40,
-                        delimiter: 41,
+                        pattern: 41,
+                        flags: Some(49),
                         item: 46,
                     },
                     index: 47,

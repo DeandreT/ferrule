@@ -145,7 +145,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              collection_find_selected, field, generate_sequence,\n\
              group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
-             sort_candidates, tokenize, tokenize_by_length, value_map,\n\
+             sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
          };\n\n",
     );
     source.push_str("pub use codegen_runtime::NamedInput;\n\n");
@@ -867,6 +867,25 @@ fn render_generated_values(sequence: &GeneratedSequence, indent: &str, output: &
         GeneratedSequence::TokenizeByLength { input, length, .. } => output.push_str(&format!(
             "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_parameter = expression_{length}(context)?;\n{indent}    if sequence_parameter == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n{indent}        tokenize_by_length(sequence_input, sequence_parameter)?\n{indent}    }}\n{indent}}};\n"
         )),
+        GeneratedSequence::TokenizeRegex {
+            input,
+            pattern,
+            flags,
+            ..
+        } => {
+            output.push_str(&format!(
+                "{indent}let sequence_input = expression_{input}(context)?;\n{indent}let sequence_values = if sequence_input == Value::Null {{\n{indent}    Vec::new()\n{indent}}} else {{\n{indent}    let sequence_pattern = expression_{pattern}(context)?;\n{indent}    if sequence_pattern == Value::Null {{\n{indent}        Vec::new()\n{indent}    }} else {{\n"
+            ));
+            match flags {
+                Some(flags) => output.push_str(&format!(
+                    "{indent}        let sequence_flags = expression_{flags}(context)?;\n{indent}        if sequence_flags == Value::Null {{\n{indent}            Vec::new()\n{indent}        }} else {{\n{indent}            tokenize_regex(sequence_input, sequence_pattern, Some(sequence_flags))?\n{indent}        }}\n"
+                )),
+                None => output.push_str(&format!(
+                    "{indent}        tokenize_regex(sequence_input, sequence_pattern, None)?\n"
+                )),
+            }
+            output.push_str(&format!("{indent}    }}\n{indent}}};\n"));
+        }
         GeneratedSequence::RecursiveCollect {
             collection,
             children,
