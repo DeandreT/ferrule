@@ -187,6 +187,107 @@ fn incompatible_object_any_of_is_rejected_actionably() {
 }
 
 #[test]
+fn pure_nested_one_of_wrappers_flatten_and_roundtrip() {
+    let schema = import_str(
+        r##"{
+  "title":"Event",
+  "oneOf":[
+    {"$ref":"#/$defs/action"},
+    {"title":"heartbeat","type":"object","additionalProperties":false,
+      "required":["kind"],"properties":{"kind":{"const":"heartbeat"}}}
+  ],
+  "$defs":{"action":{"title":"action","oneOf":[
+    {"title":"created","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{"kind":{"const":"created"},"value":{"type":"string"}}},
+    {"title":"deleted","type":"object","additionalProperties":false,
+      "required":["kind","value"],
+      "properties":{"kind":{"const":"deleted"},"value":{"type":"string"}}}
+  ]}}
+}"##,
+    );
+    assert_eq!(
+        schema
+            .alternatives()
+            .iter()
+            .map(|alternative| alternative.name.as_str())
+            .collect::<Vec<_>>(),
+        ["action/created", "action/deleted", "heartbeat"]
+    );
+    for value in [
+        r#"{"kind":"created","value":"one"}"#,
+        r#"{"kind":"deleted","value":"two"}"#,
+        r#"{"kind":"heartbeat"}"#,
+    ] {
+        assert!(crate::from_str(value, &schema).is_ok(), "{value}");
+    }
+    assert!(matches!(
+        crate::from_str(r#"{"kind":"unknown"}"#, &schema),
+        Err(JsonFormatError::NoMatchingAlternative { .. })
+    ));
+
+    let roundtrip = import_str(&export(&schema));
+    assert_eq!(roundtrip, schema);
+}
+
+#[test]
+fn nested_union_flattening_requires_matching_modes_and_pure_wrappers() {
+    let inclusive = import_str(
+        r#"{
+  "title":"Inclusive",
+  "anyOf":[
+    {"title":"nested","anyOf":[
+      {"title":"alpha","type":"object","additionalProperties":false,"required":["alpha"],"properties":{"alpha":{"type":"string"}}},
+      {"title":"beta","type":"object","additionalProperties":false,"required":["beta"],"properties":{"beta":{"type":"string"}}}
+    ]},
+    {"title":"gamma","type":"object","additionalProperties":false,"required":["gamma"],"properties":{"gamma":{"type":"string"}}}
+  ]
+}"#,
+    );
+    assert_eq!(
+        inclusive.alternative_mode(),
+        GroupAlternativeMode::Inclusive
+    );
+    assert_eq!(inclusive.alternatives().len(), 3);
+    assert!(crate::from_str(r#"{"beta":"yes"}"#, &inclusive).is_ok());
+    assert_eq!(import_str(&export(&inclusive)), inclusive);
+
+    let mixed_mode = import_str_result(
+        r#"{
+  "title":"Mixed",
+  "oneOf":[
+    {"anyOf":[
+      {"type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
+      {"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["c"],"properties":{"c":{"type":"string"}}}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(mixed_mode.to_string().contains("must use the same"));
+
+    let constrained = import_str_result(
+        r#"{
+  "title":"Constrained",
+  "anyOf":[
+    {"required":["base"],"properties":{"base":{"type":"string"}},"anyOf":[
+      {"type":"object","additionalProperties":false,"required":["a"],"properties":{"a":{"type":"string"}}},
+      {"type":"object","additionalProperties":false,"required":["b"],"properties":{"b":{"type":"string"}}}
+    ]},
+    {"type":"object","additionalProperties":false,"required":["c"],"properties":{"c":{"type":"string"}}}
+  ]
+}"#,
+    )
+    .unwrap_err();
+    assert!(
+        constrained
+            .to_string()
+            .contains("wrapper-level object constraints")
+    );
+}
+
+#[test]
 fn incompatible_and_scalar_one_of_are_rejected() {
     let incompatible = import_str_result(
             r#"{
