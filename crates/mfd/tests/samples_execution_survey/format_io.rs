@@ -232,25 +232,46 @@ fn read_xlsx(
 }
 
 fn read_edi(path: &Path, schema: &SchemaNode, options: &FormatOptions) -> Result<Instance, String> {
-    let mut instance = match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
-        format_edi::Dialect::X12 => format_edi::x12::read_with_separators(
+    let mut instance = match edi_boundary_kind(schema, options)? {
+        EdiBoundaryKind::X12 => format_edi::x12::read_with_separators(
             path,
             schema,
             options.lenient_segments,
             options.x12_separators.map(x12_separators),
         ),
-        format_edi::Dialect::Edifact => {
+        EdiBoundaryKind::Edifact => {
             format_edi::edifact::read(path, schema, options.lenient_segments)
         }
-        format_edi::Dialect::Hl7 => format_edi::hl7::read(path, schema, options.lenient_segments),
-        format_edi::Dialect::Tradacoms => {
+        EdiBoundaryKind::Hl7 => format_edi::hl7::read(path, schema, options.lenient_segments),
+        EdiBoundaryKind::Tradacoms => {
             format_edi::tradacoms::read(path, schema, options.lenient_segments)
+        }
+        EdiBoundaryKind::Idoc => {
+            return Err("SAP IDoc input has no embedded layout".to_string());
+        }
+        EdiBoundaryKind::SwiftMt => {
+            return Err("SWIFT MT input has no embedded layout".to_string());
         }
     }
     .map_err(|error| error.to_string())?;
     format_edi::apply_implied_decimals(&mut instance, &options.edi_implied_decimals)
         .map_err(|error| error.to_string())?;
     Ok(instance)
+}
+
+fn edi_boundary_kind(
+    schema: &SchemaNode,
+    options: &FormatOptions,
+) -> Result<EdiBoundaryKind, String> {
+    if let Some(kind) = options.edi_kind {
+        return Ok(kind);
+    }
+    match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
+        format_edi::Dialect::X12 => Ok(EdiBoundaryKind::X12),
+        format_edi::Dialect::Edifact => Ok(EdiBoundaryKind::Edifact),
+        format_edi::Dialect::Hl7 => Ok(EdiBoundaryKind::Hl7),
+        format_edi::Dialect::Tradacoms => Ok(EdiBoundaryKind::Tradacoms),
+    }
 }
 
 pub(super) fn write_instance(
@@ -318,12 +339,18 @@ pub(super) fn write_instance(
         }
         "edi" | "x12" | "edifact" => {
             let formatted = formatted_edi_output(instance, options)?;
-            match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
-                format_edi::Dialect::X12 => write_x12(path, schema, &formatted, options),
-                format_edi::Dialect::Edifact => write_edifact(path, schema, &formatted, options),
-                format_edi::Dialect::Hl7 => format_edi::hl7::write(path, schema, &formatted),
-                format_edi::Dialect::Tradacoms => {
+            match edi_boundary_kind(schema, options)? {
+                EdiBoundaryKind::X12 => write_x12(path, schema, &formatted, options),
+                EdiBoundaryKind::Edifact => write_edifact(path, schema, &formatted, options),
+                EdiBoundaryKind::Hl7 => format_edi::hl7::write(path, schema, &formatted),
+                EdiBoundaryKind::Tradacoms => {
                     format_edi::tradacoms::write(path, schema, &formatted)
+                }
+                EdiBoundaryKind::Idoc => {
+                    return Err("SAP IDoc output is not supported".to_string());
+                }
+                EdiBoundaryKind::SwiftMt => {
+                    return Err("SWIFT MT output is not supported".to_string());
                 }
             }
             .map_err(|error| error.to_string())
@@ -546,4 +573,35 @@ pub(super) fn output_path(
     let extension = inferred_extension(options)
         .ok_or_else(|| format!("{label} has no stored output path or retained format marker"))?;
     Ok(sample_dir.join(format!("{label}.{extension}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use ir::ScalarType;
+
+    use super::*;
+
+    #[test]
+    fn retained_edi_boundary_kind_overrides_a_partial_schema_trigger() {
+        let schema = SchemaNode::group(
+            "HL7",
+            vec![SchemaNode::group(
+                "Message",
+                vec![SchemaNode::group(
+                    "QRD",
+                    vec![SchemaNode::scalar("QRD-1", ScalarType::String)],
+                )],
+            )],
+        );
+        assert!(format_edi::dialect_of(&schema).is_err());
+        let options = FormatOptions {
+            edi_kind: Some(EdiBoundaryKind::Hl7),
+            ..FormatOptions::default()
+        };
+
+        assert_eq!(
+            edi_boundary_kind(&schema, &options),
+            Ok(EdiBoundaryKind::Hl7)
+        );
+    }
 }
