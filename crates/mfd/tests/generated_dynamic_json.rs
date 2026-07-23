@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use mapping::SequenceExpr;
+use mapping::{Node, SequenceExpr};
 
 struct TempDir(PathBuf);
 
@@ -153,6 +153,52 @@ fn generated_tokens_build_a_nested_dynamic_object() -> Result<(), Box<dyn std::e
         engine::run(&roundtrip.project, &source)?,
         "generated dynamic object changed after export/re-import"
     );
+    Ok(())
+}
+
+#[test]
+fn generated_dynamic_values_preserve_the_sequence_position_on_export()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new("position")?;
+    let mut imported = mfd::import(&write_design(&dir.0)?)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+
+    let position = imported
+        .project
+        .graph
+        .nodes
+        .keys()
+        .next_back()
+        .copied()
+        .map_or(0, |id| id + 1);
+    imported.project.graph.nodes.insert(
+        position,
+        Node::Position {
+            collection: Vec::new(),
+        },
+    );
+    let Some(rates) = imported
+        .project
+        .root
+        .children
+        .iter_mut()
+        .find(|scope| scope.target_field == "rates")
+    else {
+        return Err("rates target scope was not imported".into());
+    };
+    rates.dynamic_bindings[0].value = position;
+    assert!(engine::validate(&imported.project).is_empty());
+
+    let source = format_json::read(&dir.0.join("rates.json"), &imported.project.source)?;
+    let expected = engine::run(&imported.project, &source)?;
+    let export_path = dir.0.join("generated-position-export.mfd");
+    let warnings = mfd::export(&imported.project, &export_path)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let roundtrip = mfd::import(&export_path)?;
+    assert!(roundtrip.warnings.is_empty(), "{:?}", roundtrip.warnings);
+    assert!(engine::validate(&roundtrip.project).is_empty());
+    assert_eq!(expected, engine::run(&roundtrip.project, &source)?);
     Ok(())
 }
 
