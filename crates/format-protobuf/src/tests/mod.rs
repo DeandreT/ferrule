@@ -274,11 +274,11 @@ fn rejects_invalid_schemas_before_encoding() {
             "cannot be `required`",
         ),
         (
-            r#"syntax = "proto3"; message M { optional string value = 1; }"#,
-            "explicit proto3 `optional`",
+            r#"syntax = "proto3"; message M { string value = 1 [default = "x"]; }"#,
+            "cannot declare explicit defaults",
         ),
         (
-            r#"syntax = "proto3"; message M { string value = 1 [default = "x"]; }"#,
+            r#"syntax = "proto3"; message M { optional int32 value = 1 [default = 1]; }"#,
             "cannot declare explicit defaults",
         ),
         (
@@ -306,6 +306,14 @@ fn rejects_invalid_schemas_before_encoding() {
             "message M { required int32 value = 19000; }",
             "invalid or reserved number",
         ),
+        (
+            r#"syntax = "proto3"; message M { optional repeated string value = 1; }"#,
+            "more than one cardinality label",
+        ),
+        (
+            "message M { required optional string value = 1; }",
+            "more than one cardinality label",
+        ),
     ];
     for (source, expected) in cases {
         let error = error_text(Layout::parse(source));
@@ -314,6 +322,102 @@ fn rejects_invalid_schemas_before_encoding() {
             "`{error}` should contain `{expected}`"
         );
     }
+}
+
+#[test]
+fn proto3_optional_preserves_scalar_and_message_presence() {
+    let layout = parse(
+        r#"
+        syntax = "proto3";
+        message Child { optional string name = 1; }
+        enum State { UNKNOWN = 0; READY = 1; }
+        message Root {
+          optional int32 tracked = 1;
+          int32 implicit_count = 2;
+          optional string label = 3;
+          optional State state = 4;
+          optional Child child = 5;
+        }
+        "#,
+    );
+    let root_id = layout.resolve_message("Root").unwrap();
+    let root = layout.message(root_id).unwrap();
+    assert_eq!(
+        root.field("tracked").unwrap().cardinality(),
+        Cardinality::Optional
+    );
+    assert_eq!(root.field("tracked").unwrap().default(), None);
+    assert_eq!(
+        root.field("implicit_count").unwrap().cardinality(),
+        Cardinality::Implicit
+    );
+    assert_eq!(
+        root.field("implicit_count").unwrap().default(),
+        Some(&DefaultValue::Signed(0))
+    );
+    assert_eq!(
+        root.field("child").unwrap().cardinality(),
+        Cardinality::Optional
+    );
+
+    let schema = to_ir_schema(&layout, "Root").unwrap();
+    let ir::SchemaKind::Group { children, .. } = schema.kind else {
+        panic!("protobuf message should project to a group");
+    };
+    assert_eq!(
+        children
+            .iter()
+            .map(|child| child.name.as_str())
+            .collect::<Vec<_>>(),
+        ["tracked", "implicit_count", "label", "state", "child"]
+    );
+    assert!(children.iter().all(|child| !child.repeating));
+
+    assert_eq!(
+        decode(&layout, "Root", &[]),
+        group(vec![
+            ("tracked", scalar(Value::Null)),
+            ("implicit_count", scalar(Value::Int(0))),
+            ("label", scalar(Value::Null)),
+            ("state", scalar(Value::Null)),
+        ])
+    );
+
+    let present_defaults = group(vec![
+        ("tracked", scalar(Value::Int(0))),
+        ("implicit_count", scalar(Value::Int(0))),
+        ("label", scalar(Value::String(String::new()))),
+        ("state", scalar(Value::Int(0))),
+        ("child", Instance::Group(vec![])),
+    ]);
+    assert_eq!(
+        encode(&layout, "Root", &present_defaults),
+        vec![0x08, 0x00, 0x1a, 0x00, 0x20, 0x00, 0x2a, 0x00]
+    );
+    let decoded = decode(
+        &layout,
+        "Root",
+        &[0x08, 0x00, 0x1a, 0x00, 0x20, 0x00, 0x2a, 0x00],
+    );
+    assert_eq!(
+        decoded.field("tracked").and_then(Instance::as_scalar),
+        Some(&Value::Int(0))
+    );
+    assert_eq!(
+        decoded
+            .field("implicit_count")
+            .and_then(Instance::as_scalar),
+        Some(&Value::Int(0))
+    );
+    assert_eq!(
+        decoded.field("label").and_then(Instance::as_scalar),
+        Some(&Value::String(String::new()))
+    );
+    assert_eq!(
+        decoded.field("state").and_then(Instance::as_scalar),
+        Some(&Value::Int(0))
+    );
+    assert!(decoded.field("child").is_some());
 }
 
 #[test]

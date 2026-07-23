@@ -85,9 +85,17 @@ fn encode_message(
                 }
                 encode_occurrence(layout, field, value, &field_path, depth, output)?;
             }
-            Cardinality::Optional | Cardinality::Implicit => {
+            Cardinality::Optional => {
                 if let Some(value) = value
                     && !is_null(value)
+                {
+                    encode_occurrence(layout, field, value, &field_path, depth, output)?;
+                }
+            }
+            Cardinality::Implicit => {
+                if let Some(value) = value
+                    && !is_null(value)
+                    && !is_implicit_default(layout, field, value, &field_path)?
                 {
                     encode_occurrence(layout, field, value, &field_path, depth, output)?;
                 }
@@ -205,6 +213,30 @@ fn encode_scalar_or_enum_payload(
         }
         FieldType::Scalar(scalar) => encode_scalar(scalar, value, path, output),
     }
+}
+
+fn is_implicit_default(
+    layout: &Layout,
+    field: &Field,
+    instance: &Instance,
+    path: &str,
+) -> Result<bool, ProtobufError> {
+    let ty = field.ty();
+    if matches!(ty, FieldType::Message(_)) {
+        return Ok(false);
+    }
+    let mut payload = Vec::new();
+    encode_scalar_or_enum_payload(layout, ty, instance, path, &mut payload)?;
+    let zero = match (ty, instance) {
+        (FieldType::Scalar(ScalarType::Double), Instance::Scalar(value)) => {
+            numeric_float(value, path)? == 0.0
+        }
+        (FieldType::Scalar(ScalarType::Float), Instance::Scalar(value)) => {
+            (numeric_float(value, path)? as f32) == 0.0
+        }
+        _ => payload.iter().all(|byte| *byte == 0),
+    };
+    Ok(zero)
 }
 
 fn encode_scalar(
