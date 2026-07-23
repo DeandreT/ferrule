@@ -562,7 +562,7 @@ fn apply_exported_alternative_view(el: &Node, node: &mut SchemaNode) {
         })
         .filter_map(|child| child.attribute("name").map(str::to_string))
         .collect::<Vec<_>>();
-    if names.len() < 2 {
+    if names.is_empty() {
         return;
     }
     let SchemaKind::Group {
@@ -683,9 +683,6 @@ fn attach_type_alternatives(
         resolved.push((derived.identity, group.children));
     }
     let alternative_count = resolved.len() + usize::from(!base_is_abstract);
-    if alternative_count < 2 {
-        return;
-    }
 
     let mut merged = base_children.clone();
     for (_, children) in &resolved {

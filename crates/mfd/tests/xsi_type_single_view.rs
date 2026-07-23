@@ -175,3 +175,106 @@ fn conditioned_transitive_derived_view_executes_and_roundtrips() {
         Some(&Value::String("AB12".into()))
     );
 }
+
+#[test]
+fn lone_concrete_type_from_abstract_base_executes_and_roundtrips() {
+    let directory = TempDir::new();
+    write(
+        &directory.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:single-party" targetNamespace="urn:ferrule:single-party"
+                elementFormDefault="qualified">
+          <xs:complexType name="AbstractParty" abstract="true"><xs:sequence>
+            <xs:element name="id" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="Person"><xs:complexContent>
+            <xs:extension base="t:AbstractParty"><xs:sequence>
+              <xs:element name="displayName" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Directory"><xs:complexType><xs:sequence>
+            <xs:element name="party" type="t:AbstractParty"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    );
+    write(
+        &directory.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:element name="Result"><xs:complexType><xs:sequence>
+            <xs:element name="Name" type="xs:string"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    );
+    write(
+        &directory.0.join("mapping.mfd"),
+        r#"<mapping version="26"><component name="map"><structure><children>
+          <component name="source" library="xml" kind="14"><data><root>
+            <entry name="FileInstance"><entry name="document"><entry name="Directory">
+              <entry name="party" displayselectionmode="all"/>
+              <entry name="party">
+                <condition><expression><function name="equal" library="core">
+                  <expression><attribute ns="http://www.w3.org/2001/XMLSchema-instance" name="type"/></expression>
+                  <expression><constant value="{urn:ferrule:single-party}Person" datatype="QName"/></expression>
+                </function></expression></condition>
+                <entry name="id"/>
+                <entry name="displayName" outkey="10"/>
+              </entry>
+            </entry></entry></entry>
+          </root><document schema="source.xsd" inputinstance="source.xml"
+            instanceroot="{urn:ferrule:single-party}Directory"/></data></component>
+          <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root>
+            <entry name="FileInstance"><entry name="document"><entry name="Result">
+              <entry name="Name" inpkey="20"/>
+            </entry></entry></entry>
+          </root><document schema="target.xsd" outputinstance="target.xml"
+            instanceroot="{}Result"/></data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    );
+
+    let imported = mfd::import(&directory.0.join("mapping.mfd")).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    let party = imported.project.source.child("party").unwrap();
+    assert_eq!(party.alternatives().len(), 1);
+    assert_eq!(
+        party.alternatives()[0].name,
+        "{urn:ferrule:single-party}Person"
+    );
+    let source_xml = r#"<Directory xmlns="urn:ferrule:single-party"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xmlns:t="urn:ferrule:single-party">
+          <party xsi:type="t:Person"><id>p-1</id><displayName>Ada</displayName></party>
+        </Directory>"#;
+    let source = format_xml::from_str(source_xml, &imported.project.source).unwrap();
+    let target = engine::run(&imported.project, &source).unwrap();
+    assert_eq!(
+        target.field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Ada".into()))
+    );
+
+    let exported_path = directory.0.join("roundtrip.mfd");
+    let warnings = mfd::export(&imported.project, &exported_path).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let roundtripped = mfd::import(&exported_path).unwrap();
+    assert!(
+        roundtripped.warnings.is_empty(),
+        "{:?}",
+        roundtripped.warnings
+    );
+    assert_eq!(
+        roundtripped
+            .project
+            .source
+            .child("party")
+            .unwrap()
+            .alternatives(),
+        party.alternatives()
+    );
+    let source = format_xml::from_str(source_xml, &roundtripped.project.source).unwrap();
+    let target = engine::run(&roundtripped.project, &source).unwrap();
+    assert_eq!(
+        target.field("Name").and_then(Instance::as_scalar),
+        Some(&Value::String("Ada".into()))
+    );
+}
