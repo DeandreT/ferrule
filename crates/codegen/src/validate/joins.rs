@@ -7,7 +7,10 @@ use crate::{
     Expression, InnerJoin, JoinId, JoinKeySide, JoinSourceCardinality, Program, TargetScope,
 };
 
-use super::{ProgramValidationError, graph_dependencies, sources::SourceCatalog};
+use super::{
+    ProgramValidationError, graph_dependencies,
+    sources::{SchemaCursor, SourceCatalog},
+};
 
 #[derive(Debug, Clone)]
 pub(super) struct ActiveJoin {
@@ -125,6 +128,7 @@ pub(super) fn validate_expression(
     root: NodeId,
     expressions: &BTreeMap<NodeId, &Expression>,
     sources: SourceCatalog<'_>,
+    current_source: Option<SchemaCursor<'_>>,
     active_joins: &[ActiveJoin],
     root_context: bool,
 ) -> Result<(), ProgramValidationError> {
@@ -177,52 +181,122 @@ pub(super) fn validate_expression(
                 ..
             } => {
                 if !root_context {
-                    return Err(ProgramValidationError::JoinAggregateRequiresRootContext {
-                        node,
-                        join: join.id(),
-                    });
+                    validate_correlated_aggregate(node, sources, current_source, join)?;
+                } else {
+                    validate_plan(sources, join)?;
                 }
-                validate_plan(sources, join)?;
                 if let Some(expression) = expression {
                     validate_expression(
                         *expression,
                         expressions,
                         sources,
+                        None,
                         &[ActiveJoin::new(join)],
                         false,
                     )?;
                 }
                 if let Some(arg) = arg {
-                    validate_expression(*arg, expressions, sources, active_joins, root_context)?;
+                    validate_expression(
+                        *arg,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
                 }
             }
             Expression::Aggregate { value, arg, .. } => {
                 if let Some(value) = value.expression() {
-                    validate_expression(value, expressions, sources, active_joins, false)?;
+                    validate_expression(value, expressions, sources, None, active_joins, false)?;
                 }
                 if let Some(arg) = arg {
-                    validate_expression(*arg, expressions, sources, active_joins, root_context)?;
+                    validate_expression(
+                        *arg,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
                 }
             }
             Expression::CollectionFind {
                 predicate, value, ..
             } => {
-                validate_expression(*predicate, expressions, sources, active_joins, false)?;
-                validate_expression(*value, expressions, sources, active_joins, false)?;
+                validate_expression(*predicate, expressions, sources, None, active_joins, false)?;
+                validate_expression(*value, expressions, sources, None, active_joins, false)?;
             }
             Expression::SequenceExists {
                 sequence,
                 predicate,
             } => {
                 for input in sequence.inputs() {
-                    validate_expression(input, expressions, sources, active_joins, root_context)?;
+                    validate_expression(
+                        input,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
                 }
-                validate_expression(*predicate, expressions, sources, active_joins, false)?;
+                validate_expression(*predicate, expressions, sources, None, active_joins, false)?;
             }
             _ => pending.extend(graph_dependencies::of(expression)),
         }
     }
     Ok(())
+}
+
+fn validate_correlated_aggregate(
+    node: NodeId,
+    sources: SourceCatalog<'_>,
+    current_source: Option<SchemaCursor<'_>>,
+    join: &InnerJoin,
+) -> Result<(), ProgramValidationError> {
+    let unsupported = || ProgramValidationError::JoinAggregateRequiresRootContext {
+        node,
+        join: join.id(),
+    };
+    let Some(current_source) = current_source else {
+        return Err(unsupported());
+    };
+    let join_sources = join.plan().sources().collect::<Vec<_>>();
+    if join_sources.len() != 2 {
+        return Err(unsupported());
+    }
+    let mut singleton_sources = join_sources
+        .iter()
+        .copied()
+        .filter(|source| source.cardinality() == JoinSourceCardinality::Singleton);
+    let Some(singleton) = singleton_sources.next() else {
+        return Err(unsupported());
+    };
+    if singleton_sources.next().is_some() {
+        return Err(unsupported());
+    }
+    let mut repeating_sources = join_sources
+        .iter()
+        .copied()
+        .filter(|source| source.cardinality() == JoinSourceCardinality::Repeating);
+    let Some(repeating) = repeating_sources.next() else {
+        return Err(unsupported());
+    };
+    if repeating_sources.next().is_some() {
+        return Err(unsupported());
+    }
+    let singleton_is_current_scalar = current_source
+        .follow(singleton.collection())
+        .and_then(SchemaCursor::resolved)
+        .is_some_and(|candidate| {
+            !candidate.node().repeating
+                && matches!(candidate.node().kind, SchemaKind::Scalar { .. })
+        });
+    if !singleton_is_current_scalar || current_source.follow(repeating.collection()).is_some() {
+        return Err(unsupported());
+    }
+    validate_plan(sources, join)
 }
 
 fn scalar_below(sources: SourceCatalog<'_>, collection: &[String], path: &[String]) -> bool {

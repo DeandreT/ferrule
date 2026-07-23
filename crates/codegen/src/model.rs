@@ -537,7 +537,7 @@ pub enum Expression {
         value: AggregateValue,
         arg: Option<NodeId>,
     },
-    /// Reduces the tuples produced by a locally owned root-context inner join.
+    /// Reduces the tuples produced by a locally owned static inner join.
     /// The value expression executes once per tuple with the join active;
     /// `arg` executes once afterward in the unchanged parent context.
     JoinAggregate {

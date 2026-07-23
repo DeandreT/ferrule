@@ -92,6 +92,7 @@ pub(super) fn validate(
         ScopeSchemas {
             sources,
             current_source: Some(sources.primary()),
+            active_source: None,
             target_root: &program.target,
             target_owner: TargetOwner::Primary,
         },
@@ -108,6 +109,7 @@ pub(super) fn validate(
             ScopeSchemas {
                 sources,
                 current_source: Some(sources.primary()),
+                active_source: None,
                 target_root: &target.target,
                 target_owner: TargetOwner::Named(&target.name),
             },
