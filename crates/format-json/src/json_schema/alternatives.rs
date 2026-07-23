@@ -124,10 +124,10 @@ pub(super) fn parse_object_alternatives(
             ));
         };
         if !nested_alternatives.is_empty() {
-            if nested_mode != mode {
+            if nested_mode != mode && !alternatives_are_pairwise_disjoint(&nested_alternatives) {
                 return Err(unsupported_union(
                     name,
-                    "nested object alternatives must use the same oneOf or anyOf mode",
+                    "cross-mode nested object alternatives must be provably mutually exclusive",
                 ));
             }
             for mut nested in nested_alternatives {
@@ -244,6 +244,30 @@ fn merge_constraints(
         }
     }
     Ok(merged)
+}
+
+fn alternatives_are_pairwise_disjoint(alternatives: &[GroupAlternative]) -> bool {
+    alternatives.iter().enumerate().all(|(index, left)| {
+        alternatives[index + 1..]
+            .iter()
+            .all(|right| alternatives_are_disjoint(left, right))
+    })
+}
+
+fn alternatives_are_disjoint(left: &GroupAlternative, right: &GroupAlternative) -> bool {
+    left.required
+        .iter()
+        .any(|required| !right.members.contains(required))
+        || right
+            .required
+            .iter()
+            .any(|required| !left.members.contains(required))
+        || left.constraints.iter().any(|left_constraint| {
+            right.constraints.iter().any(|right_constraint| {
+                left_constraint.member == right_constraint.member
+                    && left_constraint.value != right_constraint.value
+            })
+        })
 }
 
 #[allow(clippy::too_many_arguments)]
