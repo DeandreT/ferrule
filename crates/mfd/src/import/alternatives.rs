@@ -222,9 +222,6 @@ fn merge_alternatives_at(
             }
         }
     }
-    if metadata.len() < 2 {
-        return Err("a lone derived type has no resolvable complex-content base".to_string());
-    }
     node.set_alternatives(metadata)
         .then_some(())
         .ok_or_else(|| "the derived type alternatives have inconsistent metadata".to_string())

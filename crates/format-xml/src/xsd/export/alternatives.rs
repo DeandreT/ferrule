@@ -255,14 +255,22 @@ impl<'a> AlternativeExportPlan<'a> {
             None => self.saw_unqualified = true,
         }
 
-        let common = children
-            .iter()
-            .filter(|child| {
-                alternatives
-                    .iter()
-                    .all(|alternative| alternative.members.contains(&child.name))
-            })
-            .collect::<Vec<_>>();
+        // One concrete alternative still needs a distinct declared base so
+        // export/reimport retains its xsi:type identity. With no observable
+        // base member split in the IR, use an empty abstract base and put the
+        // complete projection on the concrete derived type.
+        let common = if alternatives.len() == 1 {
+            Vec::new()
+        } else {
+            children
+                .iter()
+                .filter(|child| {
+                    alternatives
+                        .iter()
+                        .all(|alternative| alternative.members.contains(&child.name))
+                })
+                .collect::<Vec<_>>()
+        };
         let common_names = common
             .iter()
             .map(|child| child.name.as_str())

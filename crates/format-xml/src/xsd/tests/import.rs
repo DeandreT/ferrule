@@ -424,6 +424,65 @@ fn imported_derived_types_select_xsi_type_across_an_include() {
 }
 
 #[test]
+fn imports_one_concrete_type_derived_from_an_abstract_base() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_single_concrete_type_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                xmlns:t="urn:ferrule:single-type" targetNamespace="urn:ferrule:single-type"
+                elementFormDefault="qualified">
+          <xs:complexType name="AbstractParty" abstract="true"><xs:sequence>
+            <xs:element name="id" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+          <xs:complexType name="Person"><xs:complexContent>
+            <xs:extension base="t:AbstractParty"><xs:sequence>
+              <xs:element name="displayName" type="xs:string"/>
+            </xs:sequence></xs:extension>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Directory"><xs:complexType><xs:sequence>
+            <xs:element name="party" type="t:AbstractParty"/>
+          </xs:sequence></xs:complexType></xs:element>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("{urn:ferrule:single-type}Directory")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    let party = schema.child("party").unwrap();
+    assert_eq!(party.alternatives().len(), 1);
+    assert_eq!(
+        party.alternatives()[0].name,
+        "{urn:ferrule:single-type}Person"
+    );
+    assert_eq!(
+        party.alternatives()[0].members,
+        vec!["id".to_string(), "displayName".to_string()]
+    );
+
+    let input = from_str(
+        r#"<Directory xmlns="urn:ferrule:single-type"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:t="urn:ferrule:single-type">
+          <party xsi:type="t:Person"><id>p-1</id><displayName>Ada</displayName></party>
+        </Directory>"#,
+        &schema,
+    )
+    .unwrap();
+    assert_eq!(
+        input
+            .field("party")
+            .and_then(|party| party.field(ir::XML_TYPE_FIELD))
+            .and_then(ir::Instance::as_scalar),
+        Some(&ir::Value::String("{urn:ferrule:single-type}Person".into()))
+    );
+    let output = crate::to_string(&schema, &input).unwrap();
+    assert!(output.contains("xsi:type=\"ft:Person\""), "{output}");
+}
+
+#[test]
 fn imports_transitive_derived_types_through_an_abstract_intermediate() {
     let dir = std::env::temp_dir().join(format!(
         "ferrule_xsd_transitive_alternatives_{}",

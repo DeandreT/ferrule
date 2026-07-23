@@ -791,7 +791,7 @@ impl SchemaNode {
 }
 
 fn valid_group_alternatives(children: &[SchemaNode], alternatives: &[GroupAlternative]) -> bool {
-    alternatives.len() >= 2
+    !alternatives.is_empty()
         && children.iter().enumerate().all(|(index, child)| {
             !children[..index]
                 .iter()
@@ -1093,6 +1093,16 @@ mod tests {
             ],
         );
         assert!(group.clone().with_alternatives(Vec::new()).is_none());
+        let singleton = group
+            .clone()
+            .with_alternatives(vec![GroupAlternative {
+                name: "domestic".into(),
+                members: vec!["state".into()],
+                required: Vec::new(),
+                constraints: Vec::new(),
+            }])
+            .unwrap();
+        assert_eq!(singleton.alternatives().len(), 1);
         assert!(
             group
                 .clone()

@@ -125,6 +125,41 @@ fn export_roundtrips_named_base_and_derived_group_alternatives() {
 }
 
 #[test]
+fn export_roundtrips_one_concrete_xsi_type_through_an_abstract_base() {
+    let address = SchemaNode::group(
+        "Address",
+        vec![
+            SchemaNode::scalar("id", ScalarType::String),
+            SchemaNode::scalar("displayName", ScalarType::String),
+        ],
+    )
+    .with_alternatives(vec![ir::GroupAlternative {
+        name: "Person".into(),
+        members: vec!["id".into(), "displayName".into()],
+        required: Vec::new(),
+        constraints: Vec::new(),
+    }])
+    .unwrap();
+    let schema = SchemaNode::group("Directory", vec![address]);
+    let xsd = export(&schema).unwrap();
+    assert!(xsd.contains(r#"abstract="true""#), "{xsd}");
+    assert!(xsd.contains(r#"<xs:complexType name="Person">"#), "{xsd}");
+    assert!(xsd.contains("<xs:extension base="), "{xsd}");
+
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_single_alternative_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(&path, xsd).unwrap();
+    let imported = import(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(
+        imported.child("Address").unwrap().alternatives(),
+        schema.child("Address").unwrap().alternatives()
+    );
+}
+
+#[test]
 fn export_uses_an_abstract_common_base_for_sibling_alternatives() {
     let choice = SchemaNode::group(
         "Address",
