@@ -228,12 +228,7 @@ fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(
     let warnings = mfd::export(&project, &design)?;
     assert!(warnings.is_empty(), "{warnings:?}");
     let xml = std::fs::read_to_string(&design)?;
-    for function in [
-        "isbn10_to_isbn13",
-        "sql_like",
-        "to_number",
-        "flextext_parse_field",
-    ] {
+    for function in ["isbn10_to_isbn13", "sql_like", "to_number"] {
         assert!(
             xml.contains(&format!("name=\"{function}\" library=\"ferrule\"")),
             "missing canonical component for {function}"
@@ -242,11 +237,38 @@ fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(
     assert!(xml.contains("library=\"json\""));
     assert!(xml.contains("usageKind=\"stringserialize\""));
     assert!(!xml.contains("name=\"json_serialize_object\" library=\"ferrule\""));
+    assert!(xml.contains("library=\"text\""));
+    assert!(xml.contains("usageKind=\"stringparse\""));
+    assert!(!xml.contains("name=\"flextext_parse_field\" library=\"ferrule\""));
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert!(engine::validate(&imported.project).is_empty());
     assert_output(&engine::run(&imported.project, &source())?);
+    Ok(())
+}
+
+#[test]
+fn invalid_flextext_parser_descriptor_warns_without_generic_fallback() -> Result<(), Box<dyn Error>>
+{
+    let dir = TempDir::new()?;
+    let design = dir.0.join("invalid-flextext-parser.mfd");
+    let mut project = project()?;
+    project.graph.nodes.insert(
+        12,
+        Node::Const {
+            value: Value::String("not-json".into()),
+        },
+    );
+
+    let warnings = mfd::export(&project, &design)?;
+    assert!(warnings.iter().any(|warning| {
+        warning.contains("FlexText string parser node 14")
+            && warning.contains("layout descriptor is invalid")
+    }));
+    let xml = std::fs::read_to_string(&design)?;
+    assert!(!xml.contains("name=\"flextext_parse_field\""));
+    assert!(!xml.contains("usageKind=\"stringparse\""));
     Ok(())
 }
 

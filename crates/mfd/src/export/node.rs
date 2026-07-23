@@ -199,7 +199,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut position_inputs = BTreeMap::new();
     let mut sequence_exists_pins = Vec::new();
     let mut siblings = Vec::new();
-    let excluded_json_parsers = project
+    let excluded_native_parsers = project
         .graph
         .nodes
         .keys()
@@ -208,7 +208,15 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         .collect::<BTreeSet<_>>();
     let json_parsers = super::json_parser::render(
         &project.graph,
-        &excluded_json_parsers,
+        &excluded_native_parsers,
+        keys,
+        uid,
+        mfd_path,
+        warnings,
+    );
+    let flextext_parsers = super::flextext_parser::render(
+        &project.graph,
+        &excluded_native_parsers,
         keys,
         uid,
         mfd_path,
@@ -221,6 +229,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
             .map(|(&node, &port)| (node, port)),
     );
     components.push_str(&json_parsers.components);
+    node_out_key.extend(
+        flextext_parsers
+            .outputs
+            .iter()
+            .map(|(&node, &port)| (node, port)),
+    );
+    components.push_str(&flextext_parsers.components);
     for (&id, node) in &project.graph.nodes {
         if joins.node_blocked(id) || blocked_nodes.contains(&id) {
             continue;
@@ -786,7 +801,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 );
             }
             Node::Call { function, args } => {
-                if json_parsers.handles(id) {
+                if json_parsers.handles(id) || flextext_parsers.handles(id) {
                     continue;
                 }
                 if function == "json_serialize_object" {
@@ -963,6 +978,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         warnings,
     );
     connect_deferred_inputs(
+        "FlexText string parser",
+        &flextext_parsers.inputs,
+        node_out_key,
+        edges,
+        warnings,
+    );
+    connect_deferred_inputs(
         "JSON string serializer",
         &json_serializer_inputs,
         node_out_key,
@@ -970,6 +992,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         warnings,
     );
     siblings.extend(json_parsers.siblings);
+    siblings.extend(flextext_parsers.siblings);
     for inputs in auto_number_inputs {
         for (node, input) in [inputs.start, inputs.increment] {
             match node_out_key.get(&node) {
