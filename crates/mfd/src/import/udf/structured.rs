@@ -1147,6 +1147,8 @@ impl ExprContext<'_> {
                 })
         };
         match (function.name.as_str(), function.kind) {
+            ("set-empty", 5) if function.library == "core" => Ok(Expr::Const(Value::Null)),
+            ("set-xsi-nil", 5) if function.library == "core" => Ok(Expr::Const(Value::xml_nil())),
             (_, 2) => {
                 let (value, datatype) = function
                     .constant
