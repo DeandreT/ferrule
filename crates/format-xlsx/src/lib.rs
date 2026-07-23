@@ -167,6 +167,9 @@ fn column_indexes(field_count: usize, columns: &[u32]) -> Result<Vec<u32>, XlsxF
 }
 
 /// Reads the selected worksheet table into one group per data row.
+/// When `has_header` is false, a first row whose selected cells exactly match
+/// every schema field name is still recognized as an unmarked title row when
+/// the schema contains at least one typed non-string field.
 pub fn read(
     path: &Path,
     schema: &SchemaNode,
@@ -221,6 +224,9 @@ fn rows_from_range(
             .iter()
             .map(|column| range.get_value((row, *column)).unwrap_or(&Data::Empty))
             .collect::<Vec<_>>();
+        if !has_header && row == first_data_row && is_unmarked_header(fields, &cells) {
+            continue;
+        }
         if cells.iter().all(|cell| matches!(cell, Data::Empty)) {
             continue;
         }
@@ -235,6 +241,14 @@ fn rows_from_range(
         rows.push(Instance::Group(values));
     }
     Ok(rows)
+}
+
+fn is_unmarked_header(fields: &[(&str, ScalarType)], cells: &[&Data]) -> bool {
+    fields.iter().any(|(_, ty)| *ty != ScalarType::String)
+        && fields
+            .iter()
+            .zip(cells)
+            .all(|((name, _), cell)| matches!(cell, Data::String(value) if value == name))
 }
 
 /// Reads selected worksheet rows as fields and aligned columns as records.
@@ -784,6 +798,59 @@ mod tests {
         let actual = from_bytes(&bytes, &schema(), Some("Revenue"), 3, &[2, 4, 6], true).unwrap();
 
         assert_eq!(actual, vec![rows().remove(0)]);
+    }
+
+    #[test]
+    fn byte_reader_recognizes_an_unmarked_typed_header_row() {
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.set_name("Revenue").unwrap();
+        worksheet.write_string(0, 1, "month").unwrap();
+        worksheet.write_string(0, 3, "amount").unwrap();
+        worksheet.write_string(0, 5, "closed").unwrap();
+        worksheet.write_string(1, 1, "Jan").unwrap();
+        worksheet.write_number(1, 3, 12.5).unwrap();
+        worksheet.write_boolean(1, 5, true).unwrap();
+        let bytes = workbook.save_to_buffer().unwrap();
+
+        let actual = from_bytes(&bytes, &schema(), Some("Revenue"), 1, &[2, 4, 6], false).unwrap();
+
+        assert_eq!(actual, vec![rows().remove(0)]);
+    }
+
+    #[test]
+    fn byte_reader_keeps_an_unmarked_all_string_row() {
+        let schema = SchemaNode::group(
+            "rows",
+            vec![
+                SchemaNode::scalar("left", ScalarType::String),
+                SchemaNode::scalar("right", ScalarType::String),
+            ],
+        );
+        let mut workbook = Workbook::new();
+        let worksheet = workbook.add_worksheet();
+        worksheet.write_string(0, 0, "left").unwrap();
+        worksheet.write_string(0, 1, "right").unwrap();
+        worksheet.write_string(1, 0, "A").unwrap();
+        worksheet.write_string(1, 1, "B").unwrap();
+        let bytes = workbook.save_to_buffer().unwrap();
+
+        let actual = from_bytes(&bytes, &schema, None, 1, &[], false).unwrap();
+
+        assert_eq!(actual.len(), 2);
+        assert_eq!(
+            actual[0],
+            Instance::Group(vec![
+                (
+                    "left".into(),
+                    Instance::Scalar(Value::String("left".into())),
+                ),
+                (
+                    "right".into(),
+                    Instance::Scalar(Value::String("right".into())),
+                ),
+            ])
+        );
     }
 
     #[test]
