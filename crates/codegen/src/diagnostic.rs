@@ -74,7 +74,6 @@ pub enum UnsupportedNodeKind {
     XmlMixedContent,
     XmlSerialize,
     SequenceExists,
-    SequenceItemAt,
     JoinAggregate,
 }
 
@@ -222,7 +221,6 @@ impl fmt::Display for UnsupportedNodeKind {
             Self::XmlMixedContent => "XML mixed content",
             Self::XmlSerialize => "XML serialization",
             Self::SequenceExists => "sequence-exists",
-            Self::SequenceItemAt => "sequence item-at",
             Self::JoinAggregate => "a join aggregate",
         })
     }
