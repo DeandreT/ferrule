@@ -11,7 +11,7 @@
 //! non-iterating scopes for nested target groups.
 
 use egui::Ui;
-use egui_snarl::ui::{PinInfo, SnarlViewer};
+use egui_snarl::ui::{NodeLayout, PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, Snarl};
 use ir::Value;
 use mapping::{
@@ -87,6 +87,28 @@ fn compact_graph_title(label: &str) -> String {
         .rev()
         .collect::<String>();
     format!("...{suffix}")
+}
+
+fn show_lookup_editor(
+    ui: &mut Ui,
+    source_paths: &SourcePathCatalog,
+    collection: &mut Vec<String>,
+    key: &mut Vec<String>,
+    value: &mut Vec<String>,
+) {
+    ui.set_min_width(PATH_EDITOR_WIDTH);
+    ui.set_max_width(PATH_EDITOR_WIDTH);
+    egui::Grid::new(ui.id().with("lookup_paths")).show(ui, |ui| {
+        ui.label("collection");
+        source_paths.show_collection_picker(ui, ui.id().with("lookup_collection"), collection);
+        ui.end_row();
+        ui.label("");
+        source_paths.show_value_picker(ui, ui.id().with("lookup_key"), collection, key);
+        ui.end_row();
+        ui.label("value");
+        source_paths.show_value_picker(ui, ui.id().with("lookup_value"), collection, value);
+        ui.end_row();
+    });
 }
 
 fn show_endpoint_label(
@@ -854,6 +876,23 @@ impl GraphViewer<'_> {
 }
 
 impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
+    fn node_layout(
+        &mut self,
+        default: NodeLayout,
+        node: SnarlNodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        snarl: &Snarl<CanvasNode>,
+    ) -> NodeLayout {
+        if Self::mapping_id(snarl[node])
+            .is_some_and(|id| matches!(self.graph.nodes.get(&id), Some(Node::Lookup { .. })))
+        {
+            NodeLayout::sandwich()
+        } else {
+            default
+        }
+    }
+
     fn current_transform(
         &mut self,
         to_global: &mut egui::emath::TSTransform,
@@ -1187,6 +1226,34 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         }
     }
 
+    fn has_body(&mut self, node: &CanvasNode) -> bool {
+        Self::mapping_id(*node)
+            .is_some_and(|id| matches!(self.graph.nodes.get(&id), Some(Node::Lookup { .. })))
+    }
+
+    fn show_body(
+        &mut self,
+        node: SnarlNodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        ui: &mut Ui,
+        snarl: &mut Snarl<CanvasNode>,
+    ) {
+        let Some(node_id) = Self::mapping_id(snarl[node]) else {
+            return;
+        };
+        let source_paths = self.source_paths;
+        if let Some(Node::Lookup {
+            collection,
+            key,
+            value,
+            ..
+        }) = self.graph.nodes.get_mut(&node_id)
+        {
+            show_lookup_editor(ui, source_paths, collection, key, value);
+        }
+    }
+
     #[allow(refining_impl_trait)]
     fn show_input(&mut self, pin: &InPin, ui: &mut Ui, snarl: &mut Snarl<CanvasNode>) -> PinInfo {
         let idx = pin.id.input;
@@ -1491,45 +1558,8 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ui.label("condition ? then : else");
                 }
                 Node::ValueMap { table, default, .. } => show_value_map_editor(ui, table, default),
-                Node::Lookup {
-                    collection,
-                    key,
-                    value,
-                    ..
-                } => {
-                    // Snarl reuses the prior node width while measuring pin payloads.
-                    // Keep path controls bounded so that width cannot feed back each frame.
-                    ui.allocate_ui_with_layout(
-                        egui::vec2(PATH_EDITOR_WIDTH, 0.0),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            egui::Grid::new(ui.id().with("lookup_paths")).show(ui, |ui| {
-                                ui.label("collection");
-                                self.source_paths.show_collection_picker(
-                                    ui,
-                                    ui.id().with("lookup_collection"),
-                                    collection,
-                                );
-                                ui.end_row();
-                                ui.label("");
-                                self.source_paths.show_value_picker(
-                                    ui,
-                                    ui.id().with("lookup_key"),
-                                    collection,
-                                    key,
-                                );
-                                ui.end_row();
-                                ui.label("value");
-                                self.source_paths.show_value_picker(
-                                    ui,
-                                    ui.id().with("lookup_value"),
-                                    collection,
-                                    value,
-                                );
-                                ui.end_row();
-                            });
-                        },
-                    );
+                Node::Lookup { .. } => {
+                    ui.label("result");
                 }
                 Node::DynamicSourceField { object, frame, .. } => {
                     ui.label(format!(
