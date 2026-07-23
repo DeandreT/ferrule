@@ -4,8 +4,8 @@ use ir::{Instance, ScalarType, SchemaNode, Value};
 use umya_spreadsheet::structs::{Style, Worksheet};
 
 use super::{
-    FlatTableWriteOptions, MAX_WORKSHEET_ROW, XlsxFormatError, column_indexes, exact_f64,
-    lexical_f64, lexical_i64, row_fields, validate_row,
+    FlatTableWriteOptions, MAX_WORKSHEET_ROW, XlsxFormatError, boolean_lexical, column_indexes,
+    exact_f64, lexical_f64, lexical_i64, row_fields, validate_row,
 };
 
 struct ReplacementOptions<'a> {
@@ -249,7 +249,7 @@ fn replace_value(
             cell.set_value_bool(*value);
         }
         (ScalarType::Bool, Value::String(value)) => {
-            cell.set_value_bool(value.trim().parse().map_err(|_| bad("string"))?);
+            cell.set_value_bool(boolean_lexical(value).ok_or_else(|| bad("string"))?);
         }
         (_, Value::Float(_)) => return Err(bad("non-finite float")),
         (_, other) => return Err(bad(other.type_name())),

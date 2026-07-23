@@ -437,7 +437,11 @@ fn parse_cell(
         },
         ScalarType::Bool => match cell {
             Data::Bool(value) => Ok(Value::Bool(*value)),
-            Data::String(value) => value.parse().map(Value::Bool).map_err(|_| bad()),
+            Data::Int(0) => Ok(Value::Bool(false)),
+            Data::Int(1) => Ok(Value::Bool(true)),
+            Data::Float(value) if *value == 0.0 => Ok(Value::Bool(false)),
+            Data::Float(value) if *value == 1.0 => Ok(Value::Bool(true)),
+            Data::String(value) => boolean_lexical(value).map(Value::Bool).ok_or_else(bad),
             _ => Err(bad()),
         },
     }
@@ -676,7 +680,7 @@ fn write_cell(
             worksheet.write_boolean(row, column, *value)?;
         }
         (ScalarType::Bool, Value::String(value)) => {
-            let boolean = value.trim().parse::<bool>().map_err(|_| bad("string"))?;
+            let boolean = boolean_lexical(value).ok_or_else(|| bad("string"))?;
             worksheet.write_boolean(row, column, boolean)?;
         }
         (_, value) => return Err(bad(value.type_name())),
@@ -700,6 +704,14 @@ fn lexical_f64(value: &str) -> Option<f64> {
         .parse::<f64>()
         .ok()
         .filter(|value| value.is_finite())
+}
+
+pub(crate) fn boolean_lexical(value: &str) -> Option<bool> {
+    match value.trim() {
+        "true" | "1" => Some(true),
+        "false" | "0" => Some(false),
+        _ => None,
+    }
 }
 
 fn instance_type_name(instance: &Instance) -> &'static str {
@@ -792,7 +804,7 @@ mod tests {
         worksheet.write_string(3, 1, "Jan").unwrap();
         worksheet.write_number(3, 2, 999.0).unwrap();
         worksheet.write_number(3, 3, 12.5).unwrap();
-        worksheet.write_boolean(3, 5, true).unwrap();
+        worksheet.write_number(3, 5, 1.0).unwrap();
         let bytes = workbook.save_to_buffer().unwrap();
 
         let actual = from_bytes(&bytes, &schema(), Some("Revenue"), 3, &[2, 4, 6], true).unwrap();
@@ -931,10 +943,7 @@ mod tests {
                 "amount".into(),
                 Instance::Scalar(Value::String("12.5".into())),
             ),
-            (
-                "active".into(),
-                Instance::Scalar(Value::String("true".into())),
-            ),
+            ("active".into(), Instance::Scalar(Value::String("1".into()))),
         ])];
 
         let bytes = to_bytes(&schema, &rows, None, 1, &[], false).unwrap();
@@ -948,6 +957,28 @@ mod tests {
                 ("active".into(), Instance::Scalar(Value::Bool(true))),
             ])]
         );
+    }
+
+    #[test]
+    fn boolean_cells_reject_numbers_other_than_zero_or_one() {
+        assert_eq!(
+            parse_cell(&Data::Int(0), ScalarType::Bool, 1, "active").unwrap(),
+            Value::Bool(false)
+        );
+        assert_eq!(
+            parse_cell(&Data::Float(1.0), ScalarType::Bool, 1, "active").unwrap(),
+            Value::Bool(true)
+        );
+        for cell in [Data::Int(2), Data::Float(-1.0), Data::String("yes".into())] {
+            assert!(matches!(
+                parse_cell(&cell, ScalarType::Bool, 1, "active"),
+                Err(XlsxFormatError::Parse {
+                    row: 1,
+                    expected: ScalarType::Bool,
+                    ..
+                })
+            ));
+        }
     }
 
     #[test]
