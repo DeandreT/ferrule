@@ -49,6 +49,28 @@ fn accepts_each_grouping_mode_over_source_iteration() {
 }
 
 #[test]
+fn validates_post_group_filters_in_the_candidate_context() {
+    let mut valid = grouped_program(GroupingPlan::By { key: 3 });
+    valid.root.children[0].iteration = Some(
+        IterationPlan::source(vec!["Rows".into()])
+            .with_filtered_grouping(GroupingPlan::By { key: 3 }, 1),
+    );
+    assert_eq!(validate_program(&valid), Ok(()));
+
+    valid.root.children[0].iteration = Some(
+        IterationPlan::source(vec!["Rows".into()])
+            .with_filtered_grouping(GroupingPlan::By { key: 3 }, 99),
+    );
+    assert_eq!(
+        validate_program(&valid),
+        Err(ProgramValidationError::MissingPostGroupFilterExpression {
+            target_path: vec!["Group".into()],
+            expression: 99,
+        })
+    );
+}
+
+#[test]
 fn reports_the_missing_expression_role_for_each_grouping_mode() {
     for (grouping, role) in [
         (GroupingPlan::By { key: 99 }, GroupingExpressionRole::Key),

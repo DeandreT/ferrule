@@ -64,6 +64,37 @@ fn exact_keys_keep_first_seen_order_and_expose_members_through_both_views() {
 }
 
 #[test]
+fn member_predicates_retain_whole_groups_when_any_member_matches() {
+    let source = group([field(
+        "Rows",
+        repeated([
+            row(text("A"), "drop-one"),
+            row(text("B"), "keep-one"),
+            row(text("A"), "drop-two"),
+            row(text("B"), "keep-two"),
+            row(text("C"), "drop-three"),
+        ]),
+    )]);
+    let candidates = ScopeContext::new(&source)
+        .walk_source(&["Rows"])
+        .into_iter()
+        .map(|candidate| {
+            let key = candidate.resolve_scalar(&["Key"])?;
+            let retained = candidate.resolve_scalar(&["Label"])? == text("keep-two");
+            Ok((candidate, key, retained))
+        })
+        .collect::<Result<Vec<_>, SourcePathError>>()
+        .expect("self-authored row fields resolve");
+    let grouped = GroupedItems::by_where_any(candidates, Some("Rows"));
+    let contexts = grouped.contexts();
+
+    assert_eq!(contexts.len(), 1);
+    assert_eq!(contexts[0].resolve_scalar(&["Key"]), Ok(text("B")));
+    assert_eq!(contexts[0].aggregate_items(&["Rows"]).len(), 2);
+    assert_eq!(contexts[0].position(&["Rows"]), 1);
+}
+
+#[test]
 fn contiguous_and_fixed_block_groups_retain_nested_outer_frames() {
     let source = group([field(
         "Orders",

@@ -233,3 +233,69 @@ fn main() {
         .expect("run generated grouping package");
     assert!(status.success());
 }
+
+#[test]
+fn generated_package_retains_a_group_when_any_member_matches() {
+    let mut program = grouping_program();
+    program.expressions.retain(|expression| expression.id != 6);
+    program.root.children[0].iteration = Some(
+        IterationPlan::source(vec!["Rows".into()])
+            .with_filtered_grouping(GroupingPlan::By { key: 1 }, 5),
+    );
+    let runtime_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../codegen-runtime")
+        .canonicalize()
+        .expect("runtime path exists");
+    let output = TempDir::new("rust_post_group_filter_codegen");
+    let artifacts = emit(
+        &program,
+        &Options {
+            package_name: "post-group-filter-map".into(),
+            runtime_dependency: RuntimeDependency::Path(
+                runtime_path.to_string_lossy().into_owned(),
+            ),
+        },
+    )
+    .expect("post-group filter program emits");
+    write_artifacts(output.path(), &artifacts);
+    fs::write(
+        output.path().join("src/main.rs"),
+        r#"use codegen_runtime::{Instance, Value, field, group, repeated, scalar, string};
+
+fn row(key: &str, value: i64, keep: bool) -> Instance {
+    group([
+        field("Key", scalar(string(key))),
+        field("Value", scalar(Value::Int(value))),
+        field("Keep", scalar(Value::Bool(keep))),
+    ])
+}
+
+fn main() {
+    let source = group([field("Rows", repeated([
+        row("A", 1, false),
+        row("B", 2, false),
+        row("A", 3, true),
+        row("C", 4, false),
+    ]))]);
+    let output = post_group_filter_map::execute(&source).unwrap();
+    let buckets = output.field("Bucket").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(buckets.len(), 1);
+    assert_eq!(buckets[0].field("First").and_then(Instance::as_scalar), Some(&Value::Int(1)));
+    assert_eq!(buckets[0].field("Sum").and_then(Instance::as_scalar), Some(&Value::Int(4)));
+    assert_eq!(buckets[0].field("Position").and_then(Instance::as_scalar), Some(&Value::Int(1)));
+    let members = buckets[0].field("Member").and_then(Instance::as_repeated).unwrap();
+    assert_eq!(members.len(), 2);
+    assert_eq!(members[0].field("Value").and_then(Instance::as_scalar), Some(&Value::Int(1)));
+    assert_eq!(members[1].field("Value").and_then(Instance::as_scalar), Some(&Value::Int(3)));
+}
+"#,
+    )
+    .expect("write generated post-group filter harness");
+
+    let status = Command::new("cargo")
+        .args(["run", "--quiet"])
+        .current_dir(output.path())
+        .status()
+        .expect("run generated post-group filter package");
+    assert!(status.success());
+}
