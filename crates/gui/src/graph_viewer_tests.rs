@@ -280,7 +280,13 @@ fn lookup_node_width_stabilizes_across_repaints() {
     };
     fx.source_paths =
         SourcePathCatalog::new(&SchemaNode::group("LineItems", Vec::new()), &[catalog]);
-    fx.graph.nodes.insert(1, Node::Unconnected);
+    fx.graph.nodes.insert(
+        1,
+        Node::SourceField {
+            path: vec!["name".into()],
+            frame: None,
+        },
+    );
     fx.graph.nodes.insert(
         2,
         Node::Lookup {
@@ -291,14 +297,37 @@ fn lookup_node_width_stabilizes_across_repaints() {
         },
     );
     let mut snarl = std::mem::take(&mut fx.snarl);
-    snarl.insert_node(egui::pos2(250.0, 180.0), CanvasNode::Graph(2));
+    let lookup = snarl.insert_node(egui::pos2(250.0, 180.0), CanvasNode::Graph(2));
+    snarl.connect(
+        OutPinId {
+            node: fx.source,
+            output: 0,
+        },
+        InPinId {
+            node: lookup,
+            input: 0,
+        },
+    );
+    snarl.connect(
+        OutPinId {
+            node: lookup,
+            output: 0,
+        },
+        InPinId {
+            node: fx.target,
+            input: 0,
+        },
+    );
     let mut node_sizes = std::collections::BTreeMap::new();
     let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
     let context = egui::Context::default();
+    context.set_zoom_factor(1.5);
     let mut sizes = Vec::new();
     let style = crate::appearance::EditorAppearance::default().to_snarl_style();
+    let mut search = crate::canvas_search::CanvasSearchState::default();
 
     for _ in 0..24 {
+        crate::theme::ThemeState::default().apply(&context);
         let _ = context.run_ui(Default::default(), |ui| {
             ui.set_min_size(egui::vec2(900.0, 700.0));
             egui::CentralPanel::default().show(ui, |ui| {
@@ -329,10 +358,15 @@ fn lookup_node_width_stabilizes_across_repaints() {
                     pin_interaction_ids: Vec::new(),
                     error: None,
                 };
-                SnarlWidget::new()
-                    .id(egui::Id::new("lookup_width_regression"))
-                    .style(style.clone())
-                    .show(&mut snarl, &mut viewer, ui);
+                crate::canvas_keyboard::show(
+                    &mut snarl,
+                    &mut viewer,
+                    &mut search,
+                    false,
+                    0,
+                    style,
+                    ui,
+                );
             });
         });
         if let Some(size) = node_sizes.get(&CanvasNode::Graph(2)) {
@@ -348,7 +382,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
         "Lookup node kept growing across repaints: {sizes:?}"
     );
     assert!(
-        sizes[0].x < 400.0 && sizes[0].y < 180.0,
+        sizes[0].x < 400.0 && sizes[0].y < 240.0,
         "Lookup node settled at an excessive size: {sizes:?}"
     );
 }
