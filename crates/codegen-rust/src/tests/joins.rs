@@ -44,7 +44,7 @@ fn join_program() -> Program {
         target_field: "Row".into(),
         repeating: true,
         iteration: Some(IterationPlan::new(
-            InnerJoin::new(JoinId::new(7), plan),
+            InnerJoin::new(JoinId::new(7), plan.clone()),
             Some(8),
             Some(SortPlan::new(
                 SortKey {
@@ -89,7 +89,10 @@ fn join_program() -> Program {
     };
 
     Program {
-        source: SchemaNode::group("Source", vec![a]),
+        source: SchemaNode::group(
+            "Source",
+            vec![a, SchemaNode::scalar("Separator", ScalarType::String)],
+        ),
         extra_sources: vec![NamedSourceProgram {
             name: "Catalog".into(),
             source: SchemaNode::group("Catalog", vec![b]),
@@ -97,6 +100,9 @@ fn join_program() -> Program {
         target: SchemaNode::group(
             "Target",
             vec![
+                SchemaNode::scalar("Count", ScalarType::Int),
+                SchemaNode::scalar("Total", ScalarType::Int),
+                SchemaNode::scalar("Joined", ScalarType::String),
                 SchemaNode::group(
                     "Row",
                     vec![
@@ -143,6 +149,48 @@ fn join_program() -> Program {
                     args: vec![1, 10, 2],
                 },
             },
+            join_field(12, 7, &["A"], &["Id"]),
+            ExpressionNode {
+                id: 13,
+                expression: Expression::Call {
+                    function: ScalarFunction::Multiply,
+                    args: vec![12, 3],
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Sum,
+                    join: InnerJoin::new(JoinId::new(7), plan.clone()),
+                    expression: Some(13),
+                    arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Count,
+                    join: InnerJoin::new(JoinId::new(7), plan.clone()),
+                    expression: None,
+                    arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 16,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Separator".into()],
+                },
+            },
+            ExpressionNode {
+                id: 17,
+                expression: Expression::JoinAggregate {
+                    function: AggregateFunction::Join,
+                    join: InnerJoin::new(JoinId::new(7), plan),
+                    expression: Some(1),
+                    arg: Some(16),
+                },
+            },
         ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
@@ -151,7 +199,26 @@ fn join_program() -> Program {
             repeating: false,
             iteration: None,
             construction: TargetConstruction::Group,
-            bindings: Vec::new(),
+            bindings: vec![
+                Binding {
+                    target_field: "Count".into(),
+                    expression: 15,
+                    target_type: ScalarType::Int,
+                    repeating: false,
+                },
+                Binding {
+                    target_field: "Total".into(),
+                    expression: 14,
+                    target_type: ScalarType::Int,
+                    repeating: false,
+                },
+                Binding {
+                    target_field: "Joined".into(),
+                    expression: 17,
+                    target_type: ScalarType::String,
+                    repeating: false,
+                },
+            ],
             children: vec![row],
         },
         extra_targets: Vec::new(),
@@ -208,6 +275,16 @@ fn emits_left_deep_join_fields_positions_and_controls() {
     assert!(source.contains("context.resolve_join_scalar(7, &[\"Catalog\", \"B\"]"));
     assert!(source.contains("context.join_position(7)?"));
     assert!(source.contains("with_compact_last_position(outputs.len() + 1)"));
+    assert!(source.contains("let tuple_contexts = context.inner_join(7"));
+    assert!(source.contains("values.push(expression_13(&tuple_context)?);"));
+    assert!(source.contains("let values = vec![Value::Null; tuple_contexts.len()];"));
+    let tuple_value = source
+        .find("values.push(expression_1(&tuple_context)?);")
+        .expect("join aggregate tuple expression");
+    let parent_arg = source
+        .find("let arg = Some(expression_16(context)?);")
+        .expect("join aggregate parent argument");
+    assert!(tuple_value < parent_arg);
 }
 
 #[test]
@@ -237,11 +314,14 @@ fn row(fields: impl IntoIterator<Item = (&'static str, Value)>) -> Instance {
 }
 
 fn main() {
-    let source = group([field("A", repeated([
-        row([("Id", Value::Int(1)), ("Region", string("west")), ("Label", string("A1"))]),
-        row([("Id", Value::Int(1)), ("Region", string("west")), ("Label", string("A2"))]),
-        row([("Id", Value::Null), ("Region", string("west")), ("Label", string("AN"))]),
-    ]))]);
+    let source = group([
+        field("A", repeated([
+            row([("Id", Value::Int(1)), ("Region", string("west")), ("Label", string("A1"))]),
+            row([("Id", Value::Int(1)), ("Region", string("west")), ("Label", string("A2"))]),
+            row([("Id", Value::Null), ("Region", string("west")), ("Label", string("AN"))]),
+        ])),
+        field("Separator", scalar(string("|"))),
+    ]);
     let catalog = group([field("B", repeated([
         row([("Aid", string("1")), ("Region", string("west")), ("Tag", string("high")), ("Rank", Value::Int(30))]),
         row([("Aid", Value::Int(1)), ("Region", string("west")), ("Tag", string("mid")), ("Rank", Value::Int(20))]),
@@ -250,6 +330,9 @@ fn main() {
     ]))]);
     let inputs = [NamedInput { name: "Catalog", instance: &catalog }];
     let output = join_map::execute_with_sources(&source, &inputs).unwrap();
+    assert_eq!(output.field("Count").and_then(Instance::as_scalar), Some(&Value::Int(4)));
+    assert_eq!(output.field("Total").and_then(Instance::as_scalar), Some(&Value::Int(100)));
+    assert_eq!(output.field("Joined").and_then(Instance::as_scalar), Some(&string("A1|A1|A2|A2")));
     let rows = output.field("Row").and_then(Instance::as_repeated).unwrap();
     assert_eq!(rows.len(), 2);
     for (index, row) in rows.iter().enumerate() {
@@ -261,6 +344,37 @@ fn main() {
         let details = row.field("Details").unwrap();
         assert_eq!(details.field("Summary").and_then(Instance::as_scalar), Some(&string(if index == 0 { "A1:high" } else { "A2:high" })));
     }
+
+    let empty_catalog = group([field("B", repeated(Vec::<Instance>::new()))]);
+    let empty_inputs = [NamedInput { name: "Catalog", instance: &empty_catalog }];
+    let empty = join_map::execute_with_sources(&source, &empty_inputs).unwrap();
+    assert_eq!(empty.field("Count").and_then(Instance::as_scalar), Some(&Value::Int(0)));
+    assert_eq!(empty.field("Total").and_then(Instance::as_scalar), Some(&Value::Int(0)));
+    assert_eq!(empty.field("Joined").and_then(Instance::as_scalar), Some(&string("")));
+
+    let Some(a) = source.field("A") else {
+        panic!("join source has A");
+    };
+    let numeric_separator = group([
+        field("A", a.clone()),
+        field("Separator", scalar(Value::Int(7))),
+    ]);
+    let numeric = join_map::execute_with_sources(&numeric_separator, &inputs).unwrap();
+    assert_eq!(numeric.field("Joined").and_then(Instance::as_scalar), Some(&string("A17A17A27A2")));
+
+    let overflow_catalog = group([field("B", repeated([row([
+        ("Aid", Value::Int(1)),
+        ("Region", string("west")),
+        ("Tag", string("overflow")),
+        ("Rank", Value::Int(i64::MAX)),
+    ])]))]);
+    let overflow_inputs = [NamedInput { name: "Catalog", instance: &overflow_catalog }];
+    assert_eq!(
+        join_map::execute_with_sources(&source, &overflow_inputs),
+        Err(codegen_runtime::RuntimeError::AggregateIntegerOverflow {
+            function: codegen_runtime::AggregateFunction::Sum,
+        })
+    );
 }
 "#,
     )

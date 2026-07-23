@@ -163,7 +163,7 @@ fn lowers_portable_generated_sequences_and_their_item_roots() {
         }))
     );
 
-    let recursive = project(
+    let mut recursive = project(
         mapping::SequenceExpr::RecursiveCollect {
             collection: vec!["directory".into()],
             children: vec!["children".into()],
@@ -188,6 +188,28 @@ fn lowers_portable_generated_sequences_and_their_item_roots() {
                 },
             ),
             (42, item()),
+        ],
+    );
+    // Recursive-sequence lowering now performs the same schema validation as
+    // emitters, so the fixture must describe the collection it claims to walk.
+    recursive.source = SchemaNode::group(
+        "Source",
+        vec![
+            scalar("First"),
+            scalar("Second"),
+            scalar("NestedValue"),
+            SchemaNode::group(
+                "directory",
+                vec![
+                    SchemaNode::scalar("name", ScalarType::String),
+                    SchemaNode::group(
+                        "files",
+                        vec![SchemaNode::scalar("name", ScalarType::String)],
+                    )
+                    .repeating(),
+                    SchemaNode::recursive_group("children", "directory").repeating(),
+                ],
+            ),
         ],
     );
     assert_eq!(

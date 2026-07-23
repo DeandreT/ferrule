@@ -126,6 +126,7 @@ pub(super) fn validate_expression(
     expressions: &BTreeMap<NodeId, &Expression>,
     sources: SourceCatalog<'_>,
     active_joins: &[ActiveJoin],
+    root_context: bool,
 ) -> Result<(), ProgramValidationError> {
     let mut pending = vec![root];
     let mut visited = BTreeSet::new();
@@ -168,6 +169,55 @@ pub(super) fn validate_expression(
                 if !active_joins.iter().any(|owner| owner.id == *join) =>
             {
                 return Err(ProgramValidationError::InactiveJoinExpression { node, join: *join });
+            }
+            Expression::JoinAggregate {
+                join,
+                expression,
+                arg,
+                ..
+            } => {
+                if !root_context {
+                    return Err(ProgramValidationError::JoinAggregateRequiresRootContext {
+                        node,
+                        join: join.id(),
+                    });
+                }
+                validate_plan(sources, join)?;
+                if let Some(expression) = expression {
+                    validate_expression(
+                        *expression,
+                        expressions,
+                        sources,
+                        &[ActiveJoin::new(join)],
+                        false,
+                    )?;
+                }
+                if let Some(arg) = arg {
+                    validate_expression(*arg, expressions, sources, active_joins, root_context)?;
+                }
+            }
+            Expression::Aggregate { value, arg, .. } => {
+                if let Some(value) = value.expression() {
+                    validate_expression(value, expressions, sources, active_joins, false)?;
+                }
+                if let Some(arg) = arg {
+                    validate_expression(*arg, expressions, sources, active_joins, root_context)?;
+                }
+            }
+            Expression::CollectionFind {
+                predicate, value, ..
+            } => {
+                validate_expression(*predicate, expressions, sources, active_joins, false)?;
+                validate_expression(*value, expressions, sources, active_joins, false)?;
+            }
+            Expression::SequenceExists {
+                sequence,
+                predicate,
+            } => {
+                for input in sequence.inputs() {
+                    validate_expression(input, expressions, sources, active_joins, root_context)?;
+                }
+                validate_expression(*predicate, expressions, sources, active_joins, false)?;
             }
             _ => pending.extend(graph_dependencies::of(expression)),
         }
