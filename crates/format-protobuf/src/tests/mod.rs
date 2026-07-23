@@ -5,6 +5,7 @@ use crate::{
     from_slice, to_ir_schema, to_vec,
 };
 
+mod aliases;
 mod reserved;
 
 const CONTACT_SCHEMA: &str = r#"
