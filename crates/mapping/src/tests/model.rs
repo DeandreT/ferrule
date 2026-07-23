@@ -173,6 +173,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     assert!(defaults.edi_kind.is_none());
     assert!(defaults.edi_implied_decimals.is_empty());
     assert!(defaults.edi_lexical_formats.is_empty());
+    assert!(defaults.edi_value_constraints.is_empty());
     assert!(defaults.x12_separators.is_none());
     assert!(defaults.x12_interchange_version.is_none());
     assert!(!defaults.xml_document);
@@ -250,6 +251,15 @@ fn edi_boundary_kind_roundtrips() {
         edi_kind: Some(EdiBoundaryKind::X12),
         edi_implied_decimals: vec![
             EdiImpliedDecimal::new(vec!["Interchange".into(), "Amount".into()], 3).unwrap(),
+        ],
+        edi_value_constraints: vec![
+            crate::EdiValueConstraint::new(
+                vec!["Interchange".into(), "Code".into()],
+                2,
+                3,
+                vec!["AA".into(), "BB".into(), "AA".into()],
+            )
+            .unwrap(),
         ],
         x12_separators: Some(X12Separators {
             element: '+',

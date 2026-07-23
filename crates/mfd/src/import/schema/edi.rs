@@ -71,6 +71,7 @@ pub(super) fn read(
     let (embedded_idoc, embedded_swift_mt) = embedded_runtime_layout(&text, kind, &name, warnings);
     let embedded_implied_decimals = embedded_implied_decimals(&text, &name, warnings);
     let embedded_lexical_formats = embedded_lexical_formats(&text, &name, warnings);
+    let embedded_value_constraints = embedded_value_constraints(&text, &name, warnings);
     let config = text.attribute("config");
     let compiled = if runtime_boundary
         && matches!(
@@ -87,6 +88,7 @@ pub(super) fn read(
                             None,
                             Vec::new(),
                             Vec::new(),
+                            Vec::new(),
                         )
                     })
                     .map_err(|error| error.to_string()),
@@ -100,6 +102,7 @@ pub(super) fn read(
                         Some(compiled.layout),
                         Vec::new(),
                         Vec::new(),
+                        Vec::new(),
                     )
                 })
                 .map_err(|error| error.to_string()),
@@ -111,6 +114,7 @@ pub(super) fn read(
                             None,
                             compiled.implied_decimals,
                             compiled.lexical_formats,
+                            compiled.value_constraints,
                         )
                     })
                     .map_err(|error| error.to_string()),
@@ -132,14 +136,21 @@ pub(super) fn read(
         None
     };
     let has_compiled_schema = compiled.is_some();
-    let (mut schema, idoc, swift_mt, edi_implied_decimals, edi_lexical_formats) = compiled
-        .unwrap_or((
-            fallback_schema,
-            embedded_idoc,
-            embedded_swift_mt,
-            embedded_implied_decimals,
-            embedded_lexical_formats,
-        ));
+    let (
+        mut schema,
+        idoc,
+        swift_mt,
+        edi_implied_decimals,
+        edi_lexical_formats,
+        edi_value_constraints,
+    ) = compiled.unwrap_or((
+        fallback_schema,
+        embedded_idoc,
+        embedded_swift_mt,
+        embedded_implied_decimals,
+        embedded_lexical_formats,
+        embedded_value_constraints,
+    ));
     if has_compiled_schema && kind == "EDIX12" {
         merge_parser_error_entries(&entry, &mut schema);
     }
@@ -205,6 +216,7 @@ pub(super) fn read(
             },
             edi_implied_decimals,
             edi_lexical_formats,
+            edi_value_constraints,
             edi_autocomplete,
             x12_separators,
             x12_interchange_version,
@@ -267,6 +279,29 @@ fn embedded_lexical_formats(
             warnings.push(format!(
                 "EDI component `{component_name}` has invalid embedded lexical-format metadata \
                  ({error}); EDI date/time output compaction was disabled"
+            ));
+            Vec::new()
+        }
+    }
+}
+
+fn embedded_value_constraints(
+    text: &roxmltree::Node<'_, '_>,
+    component_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<mapping::EdiValueConstraint> {
+    let Some(metadata) = text
+        .children()
+        .find(|node| node.has_tag_name("ferrule-value-constraints"))
+    else {
+        return Vec::new();
+    };
+    match serde_json::from_str(metadata.text().unwrap_or_default()) {
+        Ok(constraints) => constraints,
+        Err(error) => {
+            warnings.push(format!(
+                "EDI component `{component_name}` has invalid embedded value-constraint metadata \
+                 ({error}); EDI value validation was disabled"
             ));
             Vec::new()
         }

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+const MAX_EDI_ALLOWED_VALUES: usize = 4_096;
+
 /// Runtime EDI family owned by a mapping document boundary.
 ///
 /// The compiled schema remains format-agnostic, so this discriminator is
@@ -75,6 +77,88 @@ impl<'de> Deserialize<'de> for EdiLexicalFormat {
         Self::new(wire.path, wire.kind).ok_or_else(|| {
             serde::de::Error::custom(
                 "EDI lexical-format paths must be non-empty and time widths must be within 4..=8",
+            )
+        })
+    }
+}
+
+/// One configured EDI leaf's lexical length and code-list constraints.
+///
+/// Paths are relative to the EDI schema root. Allowed values are sorted and
+/// deduplicated at construction so reports and serialized projects remain
+/// deterministic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EdiValueConstraint {
+    path: Vec<String>,
+    min_chars: u16,
+    max_chars: u16,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    allowed_values: Vec<String>,
+}
+
+impl EdiValueConstraint {
+    pub fn new(
+        path: Vec<String>,
+        min_chars: u16,
+        max_chars: u16,
+        mut allowed_values: Vec<String>,
+    ) -> Option<Self> {
+        allowed_values.sort();
+        allowed_values.dedup();
+        (!path.is_empty()
+            && path.iter().all(|segment| !segment.is_empty())
+            && max_chars > 0
+            && min_chars <= max_chars
+            && allowed_values.len() <= MAX_EDI_ALLOWED_VALUES)
+            .then_some(Self {
+                path,
+                min_chars,
+                max_chars,
+                allowed_values,
+            })
+    }
+
+    pub fn path(&self) -> &[String] {
+        &self.path
+    }
+
+    pub const fn min_chars(&self) -> u16 {
+        self.min_chars
+    }
+
+    pub const fn max_chars(&self) -> u16 {
+        self.max_chars
+    }
+
+    pub fn allowed_values(&self) -> &[String] {
+        &self.allowed_values
+    }
+}
+
+impl<'de> Deserialize<'de> for EdiValueConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Wire {
+            path: Vec<String>,
+            min_chars: u16,
+            max_chars: u16,
+            #[serde(default)]
+            allowed_values: Vec<String>,
+        }
+
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(
+            wire.path,
+            wire.min_chars,
+            wire.max_chars,
+            wire.allowed_values,
+        )
+        .ok_or_else(|| {
+            serde::de::Error::custom(
+                "EDI value constraints require a non-empty path, 0 <= min <= max, a positive max, and at most 4096 allowed values",
             )
         })
     }

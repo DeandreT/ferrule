@@ -27,7 +27,7 @@ mod xlsx_output;
 pub use adjacency::AdjacencyTreePlan;
 pub use edi::{
     EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiLexicalKind,
-    EdifactAutocomplete, X12Autocomplete, X12Separators,
+    EdiValueConstraint, EdifactAutocomplete, X12Autocomplete, X12Separators,
 };
 pub use external_source::{
     ExternalHttpHeader, ExternalHttpMode, ExternalPayloadFormat, ExternalSourceOptions,

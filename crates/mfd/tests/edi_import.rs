@@ -478,6 +478,18 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
     assert!(
         imported
             .project
+            .source_options
+            .edi_value_constraints
+            .iter()
+            .any(|constraint| {
+                constraint.min_chars() == 8
+                    && constraint.max_chars() == 8
+                    && constraint.path().ends_with(&["ST".into(), "FDate".into()])
+            })
+    );
+    assert!(
+        imported
+            .project
             .source
             .child("Interchange")
             .and_then(|node| node.child("Group"))
@@ -711,7 +723,10 @@ fn malformed_embedded_implied_decimals_warn_and_disable_scaling() {
         r#"<mapping version="26"><component name="map"><structure><children>
           <component name="source" library="text" kind="16"><data>
             <root><entry name="Envelope"><entry name="Amount" datatype="decimal" outkey="10"/></entry></root>
-            <text type="edi" kind="EDITRADACOMS"><ferrule-implied-decimals>[{"path":[],"places":0}]</ferrule-implied-decimals></text>
+            <text type="edi" kind="EDITRADACOMS">
+              <ferrule-implied-decimals>[{"path":[],"places":0}]</ferrule-implied-decimals>
+              <ferrule-value-constraints>[{"path":[],"min_chars":3,"max_chars":2}]</ferrule-value-constraints>
+            </text>
           </data></component>
           <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
             <root><entry name="Result"><entry name="Amount" inpkey="20"/></entry></root>
@@ -734,6 +749,21 @@ fn malformed_embedded_implied_decimals_warn_and_disable_scaling() {
             .project
             .source_options
             .edi_implied_decimals
+            .is_empty()
+    );
+    assert!(
+        imported
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("invalid embedded value-constraint metadata")),
+        "{:?}",
+        imported.warnings
+    );
+    assert!(
+        imported
+            .project
+            .source_options
+            .edi_value_constraints
             .is_empty()
     );
 }

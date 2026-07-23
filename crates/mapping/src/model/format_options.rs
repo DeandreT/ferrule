@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, ExternalSourceOptions,
-    FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout, PdfLayout, ProtobufOptions,
-    SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators, XbrlBoundaryOptions,
-    XlsxHierarchicalLayout, is_false,
+    EdiAutocomplete, EdiBoundaryKind, EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint,
+    ExternalSourceOptions, FixedWidthLayout, FlexTextLayout, HttpGetOptions, IdocLayout, PdfLayout,
+    ProtobufOptions, SwiftMtLayout, TabularBoundaryKind, WsdlMessageOptions, X12Separators,
+    XbrlBoundaryOptions, XlsxHierarchicalLayout, is_false,
 };
 
 macro_rules! xlsx_coordinate {
@@ -175,6 +175,10 @@ pub struct FormatOptions {
     /// forms for the wire representation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub edi_lexical_formats: Vec<EdiLexicalFormat>,
+    /// EDI leaf length and code-list constraints compiled from the owning
+    /// external configuration.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edi_value_constraints: Vec<EdiValueConstraint>,
     /// Dialect-specific trailer and control-count completion retained from
     /// an EDI target boundary.
     #[serde(default, skip_serializing_if = "Option::is_none")]

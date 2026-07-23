@@ -500,6 +500,19 @@ fn retained_layout_xml(kind: EdiBoundaryKind, options: &FormatOptions) -> Result
             xml_escape(&formats)
         );
     }
+    if !options.edi_value_constraints.is_empty() {
+        let constraints =
+            serde_json::to_string(&options.edi_value_constraints).map_err(|error| {
+                MfdError::Unsupported(format!(
+                    "could not serialize EDI value constraints: {error}"
+                ))
+            })?;
+        let _ = writeln!(
+            output,
+            "\t\t\t\t\t\t\t<ferrule-value-constraints>{}</ferrule-value-constraints>",
+            xml_escape(&constraints)
+        );
+    }
     Ok(output)
 }
 

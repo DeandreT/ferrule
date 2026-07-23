@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use definitions::{Definitions, compiled_config, load_definitions};
 use files::{Files, parse_document, resolve_message_config, resolve_sibling};
 use ir::SchemaNode;
-use mapping::{EdiImpliedDecimal, EdiLexicalFormat};
+use mapping::{EdiImpliedDecimal, EdiLexicalFormat, EdiValueConstraint};
 use parser::{MessageName, build_envelope, build_message};
 use thiserror::Error;
 
@@ -49,6 +49,7 @@ pub struct CompiledConfig {
     pub schema: SchemaNode,
     pub implied_decimals: Vec<EdiImpliedDecimal>,
     pub lexical_formats: Vec<EdiLexicalFormat>,
+    pub value_constraints: Vec<EdiValueConstraint>,
 }
 
 /// Imports one complete EDI configuration.

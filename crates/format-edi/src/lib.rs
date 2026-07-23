@@ -15,7 +15,12 @@ pub mod idoc;
 mod segments;
 pub mod swift;
 pub mod tradacoms;
+mod validation;
 pub mod x12;
+
+pub use validation::{
+    EdiConstraintViolation, EdiValidationIssue, EdiValidationReport, validate_values,
+};
 
 use std::io::Read;
 use std::path::Path;
@@ -142,6 +147,10 @@ pub enum EdiFormatError {
         value: String,
         reason: &'static str,
     },
+    #[error("EDI value-constraint path `{path}` is invalid: {reason}")]
+    InvalidValueConstraintLayout { path: String, reason: &'static str },
+    #[error("{0}")]
+    Validation(EdiValidationReport),
 }
 
 /// Applies fixed implied fractional places retained from an EDI

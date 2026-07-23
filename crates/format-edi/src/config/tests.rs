@@ -14,6 +14,7 @@ fn message_config_expands_positions_and_wraps_envelope() {
             <Data name="FDecimal" type="decimal" minLength="1" maxLength="10"/>
             <Data name="FDate" type="date" minLength="8" maxLength="8"/>
             <Data name="FTime" type="time" minLength="4" maxLength="8"/>
+            <Data name="FCode" type="string" minLength="2" maxLength="3"/>
             <Composite name="C1" id="C1-GUIDE"><Data ref="F1"/><Data ref="F2"/></Composite>
             <Segment name="ISA"><Data ref="F1"/></Segment>
             <Segment name="GS"><Data ref="F1"/></Segment>
@@ -22,6 +23,7 @@ fn message_config_expands_positions_and_wraps_envelope() {
               <Composite ref="C1-GUIDE"/>
               <Data ref="F1" mergedEntries="2"><Values><Value Code="AA"/></Values></Data>
               <Data ref="FDate"/><Data ref="FTime" nodeName="Clock"/><Data ref="FDecimal"/>
+              <Data ref="FCode" nodeName="Status"><Values><Value Code="AA"/><Value Code="BB"/></Values></Data>
               <Composite name="C-MISSING" minOccurs="0" maxOccurs="0"/>
             </Segment>
             <Segment name="SE"><Data ref="F2"/></Segment>
@@ -57,6 +59,15 @@ fn message_config_expands_positions_and_wraps_envelope() {
                 .path()
                 .last()
                 .is_some_and(|segment| segment == "FDate")
+    }));
+    assert!(compiled.value_constraints.iter().any(|constraint| {
+        constraint
+            .path()
+            .last()
+            .is_some_and(|segment| segment == "Status")
+            && constraint.min_chars() == 2
+            && constraint.max_chars() == 3
+            && constraint.allowed_values() == ["AA", "BB"]
     }));
     assert!(compiled.lexical_formats.iter().any(|format| {
         format.kind() == EdiLexicalKind::Decimal { max_chars: 10 }
