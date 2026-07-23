@@ -1,7 +1,13 @@
+use std::collections::BTreeMap;
+use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, SchemaNode, Value};
+use mapping::{
+    Binding, FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, Project, Scope,
+    UserFunction,
+};
 
 struct TempDir(PathBuf);
 
@@ -121,4 +127,181 @@ fn xsi_nil_functions_import_execute_and_round_trip() {
     let reimported = mfd::import(&exported).unwrap();
     assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
     assert_output(&reimported.project, &run(&reimported.project));
+}
+
+fn nested_nil_udf_project() -> Project {
+    let nil_function = FunctionId::new(1);
+    let choose_function = FunctionId::new(2);
+    let use_nil = FunctionParameterId::new(10);
+    let value = FunctionParameterId::new(11);
+    let functions = BTreeMap::from([
+        (
+            nil_function,
+            UserFunction {
+                library: "helpers".into(),
+                name: "nil-value".into(),
+                description: None,
+                parameters: Vec::new(),
+                output_name: "result".into(),
+                output_type: ScalarType::String,
+                body: Graph {
+                    nodes: BTreeMap::from([(
+                        0,
+                        Node::Const {
+                            value: Value::xml_nil(),
+                        },
+                    )]),
+                },
+                output: 0,
+            },
+        ),
+        (
+            choose_function,
+            UserFunction {
+                library: "helpers".into(),
+                name: "choose-nil".into(),
+                description: None,
+                parameters: vec![
+                    FunctionParameter {
+                        id: use_nil,
+                        name: "use-nil".into(),
+                        ty: ScalarType::Bool,
+                    },
+                    FunctionParameter {
+                        id: value,
+                        name: "value".into(),
+                        ty: ScalarType::String,
+                    },
+                ],
+                output_name: "result".into(),
+                output_type: ScalarType::String,
+                body: Graph {
+                    nodes: BTreeMap::from([
+                        (0, Node::FunctionParameter { parameter: use_nil }),
+                        (1, Node::FunctionParameter { parameter: value }),
+                        (
+                            2,
+                            Node::UserFunctionCall {
+                                function: nil_function,
+                                args: Vec::new(),
+                            },
+                        ),
+                        (
+                            3,
+                            Node::If {
+                                condition: 0,
+                                then: 2,
+                                else_: 1,
+                            },
+                        ),
+                    ]),
+                },
+                output: 3,
+            },
+        ),
+    ]);
+    Project {
+        source: SchemaNode::group(
+            "Source",
+            vec![
+                SchemaNode::scalar("UseNil", ScalarType::Bool),
+                SchemaNode::scalar("Value", ScalarType::String),
+            ],
+        ),
+        target: SchemaNode::group(
+            "Target",
+            vec![SchemaNode::scalar("Result", ScalarType::String).nillable()],
+        ),
+        source_path: Some("source.xml".into()),
+        target_path: Some("target.xml".into()),
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: functions,
+        graph: Graph {
+            nodes: BTreeMap::from([
+                (
+                    0,
+                    Node::SourceField {
+                        path: vec!["UseNil".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    1,
+                    Node::SourceField {
+                        path: vec!["Value".into()],
+                        frame: None,
+                    },
+                ),
+                (
+                    2,
+                    Node::UserFunctionCall {
+                        function: choose_function,
+                        args: vec![0, 1],
+                    },
+                ),
+            ]),
+        },
+        root: Scope {
+            bindings: vec![Binding {
+                target_field: "Result".into(),
+                node: 2,
+            }],
+            ..Scope::default()
+        },
+    }
+}
+
+fn udf_source(use_nil: bool, value: &str) -> Instance {
+    Instance::Group(vec![
+        ("UseNil".into(), Instance::Scalar(Value::Bool(use_nil))),
+        (
+            "Value".into(),
+            Instance::Scalar(Value::String(value.into())),
+        ),
+    ])
+}
+
+fn assert_udf_results(project: &Project) -> Result<(), Box<dyn Error>> {
+    let nil = engine::run(project, &udf_source(true, "kept"))?;
+    assert!(
+        nil.field("Result")
+            .and_then(Instance::as_scalar)
+            .is_some_and(Value::is_xml_nil)
+    );
+    let nil_xml = format_xml::to_string(&project.target, &nil)?;
+    assert!(nil_xml.contains("xsi:nil=\"true\""));
+    let kept = engine::run(project, &udf_source(false, "kept"))?;
+    assert_eq!(
+        kept.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::String("kept".into()))
+    );
+    Ok(())
+}
+
+#[test]
+fn nested_scalar_udf_with_xml_nil_exports_reimports_and_executes() -> Result<(), Box<dyn Error>> {
+    let dir = TempDir::new();
+    let project = nested_nil_udf_project();
+    assert!(engine::validate(&project).is_empty());
+    assert_udf_results(&project)?;
+
+    let design = dir.0.join("nil-udf.mfd");
+    let warnings = mfd::export(&project, &design)?;
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = std::fs::read_to_string(&design)?;
+    assert!(xml.contains("name=\"nil-value\" library=\"helpers\""));
+    assert!(xml.contains("name=\"choose-nil\" library=\"helpers\""));
+    assert!(xml.contains("name=\"set-xsi-nil\" library=\"core\""));
+    assert!(xml.matches("kind=\"19\"").count() >= 2);
+
+    let reimported = mfd::import(&design)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(reimported.project.user_functions.len(), 2);
+    assert!(engine::validate(&reimported.project).is_empty());
+    assert_udf_results(&reimported.project)?;
+    Ok(())
 }
