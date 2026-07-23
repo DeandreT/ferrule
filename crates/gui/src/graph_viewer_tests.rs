@@ -295,7 +295,8 @@ fn lookup_node_width_stabilizes_across_repaints() {
     let mut node_sizes = std::collections::BTreeMap::new();
     let mut endpoint_scroll = crate::canvas_endpoints::EndpointScrollState::default();
     let context = egui::Context::default();
-    let mut widths = Vec::new();
+    let mut sizes = Vec::new();
+    let style = crate::appearance::EditorAppearance::default().to_snarl_style();
 
     for _ in 0..24 {
         let _ = context.run_ui(Default::default(), |ui| {
@@ -330,22 +331,25 @@ fn lookup_node_width_stabilizes_across_repaints() {
                 };
                 SnarlWidget::new()
                     .id(egui::Id::new("lookup_width_regression"))
+                    .style(style.clone())
                     .show(&mut snarl, &mut viewer, ui);
             });
         });
         if let Some(size) = node_sizes.get(&CanvasNode::Graph(2)) {
-            widths.push(size.x);
+            sizes.push(*size);
         }
     }
 
-    assert_eq!(widths.len(), 24, "Lookup node was not rendered: {widths:?}");
+    assert_eq!(sizes.len(), 24, "Lookup node was not rendered: {sizes:?}");
     assert!(
-        widths.iter().all(|width| (*width - widths[0]).abs() < 0.5),
-        "Lookup node kept widening across repaints: {widths:?}"
+        sizes
+            .iter()
+            .all(|size| { (size.x - sizes[0].x).abs() < 0.5 && (size.y - sizes[0].y).abs() < 0.5 }),
+        "Lookup node kept growing across repaints: {sizes:?}"
     );
     assert!(
-        widths[0] < 400.0,
-        "Lookup node settled at an excessive width: {widths:?}"
+        sizes[0].x < 400.0 && sizes[0].y < 180.0,
+        "Lookup node settled at an excessive size: {sizes:?}"
     );
 }
 
