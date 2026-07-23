@@ -141,6 +141,7 @@ mod tests {
         assert_eq!(unmap_function_name("normalize_space"), "normalize-space");
         assert_eq!(unmap_function_name("ends_with"), "ends-with");
         assert_eq!(unmap_function_name("matches"), "matches");
+        assert_eq!(unmap_function_name("replace"), "replace");
         assert_eq!(function_library("normalize_space"), "core");
         assert_eq!(unmap_function_name("is_numeric"), "numeric");
         assert_eq!(function_library("is_numeric"), "lang");

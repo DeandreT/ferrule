@@ -31,6 +31,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "ends_with" => binary_scalar_string(args, "ends_with", |a, b| a.ends_with(b)),
         "contains" => binary_scalar_string(args, "contains", |a, b| a.contains(b)),
         "matches" => regex_match::matches(args),
+        "replace" => regex_match::replace(args),
         "sql_like" => binary_string(args, "sql_like", sql_like),
         "pad_string_left" => pad_string(args, "pad_string_left", true),
         "pad_string_right" => pad_string(args, "pad_string_right", false),
