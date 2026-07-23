@@ -1,4 +1,4 @@
-use ir::{Instance, Value};
+use ir::{Instance, SchemaKind, Value};
 
 use crate::{
     Cardinality, DefaultValue, FieldType, Layout, MAX_SCHEMA_BYTES, ProtobufError, ScalarType,
@@ -599,6 +599,184 @@ fn rejects_malformed_oneof_declarations() {
         (
             r#"syntax = "proto3"; message M { oneof value { string text = 1; } string value = 2; }"#,
             "both a field and oneof name",
+        ),
+    ];
+    for (source, expected) in cases {
+        let error = error_text(Layout::parse(source));
+        assert!(
+            error.contains(expected),
+            "`{error}` should contain `{expected}`"
+        );
+    }
+}
+
+#[test]
+fn maps_project_as_repeated_entries_and_roundtrip_typed_values() {
+    let layout = parse(
+        r#"
+        syntax = "proto3";
+        message Child { string label = 1; }
+        message Root {
+          map<string, int32> counts = 1;
+          map<int32, Child> children = 2;
+          map<bool, string> flags = 3 [deprecated = true];
+        }
+        "#,
+    );
+    let root_id = layout.resolve_message("Root").unwrap();
+    let root = layout.message(root_id).unwrap();
+    let counts = root.field("counts").unwrap();
+    assert!(counts.is_map());
+    assert_eq!(counts.cardinality(), Cardinality::Repeated);
+    let FieldType::Message(entry_id) = counts.ty() else {
+        panic!("map field should reference its entry message");
+    };
+    let entry = layout.message(entry_id).unwrap();
+    assert!(entry.is_map_entry());
+    assert_eq!(entry.fields().len(), 2);
+    assert_eq!(
+        entry.field("key").unwrap().cardinality(),
+        Cardinality::Implicit
+    );
+
+    let schema = to_ir_schema(&layout, "Root").unwrap();
+    let counts_schema = schema.child("counts").unwrap();
+    assert!(counts_schema.repeating);
+    let SchemaKind::Group { children, .. } = &counts_schema.kind else {
+        panic!("map field should project as an entry group");
+    };
+    assert_eq!(
+        children
+            .iter()
+            .map(|child| child.name.as_str())
+            .collect::<Vec<_>>(),
+        ["key", "value"]
+    );
+
+    let instance = group(vec![
+        (
+            "counts",
+            Instance::Repeated(vec![
+                group(vec![
+                    ("key", scalar(Value::String("a".into()))),
+                    ("value", scalar(Value::Int(1))),
+                ]),
+                group(vec![
+                    ("key", scalar(Value::String("zero".into()))),
+                    ("value", scalar(Value::Int(0))),
+                ]),
+            ]),
+        ),
+        (
+            "children",
+            Instance::Repeated(vec![group(vec![
+                ("key", scalar(Value::Int(7))),
+                (
+                    "value",
+                    group(vec![("label", scalar(Value::String("seven".into())))]),
+                ),
+            ])]),
+        ),
+        (
+            "flags",
+            Instance::Repeated(vec![group(vec![
+                ("key", scalar(Value::Bool(false))),
+                ("value", scalar(Value::String(String::new()))),
+            ])]),
+        ),
+    ]);
+    let bytes = encode(&layout, "Root", &instance);
+    assert_eq!(decode(&layout, "Root", &bytes), instance);
+}
+
+#[test]
+fn map_decode_uses_last_key_and_materializes_entry_defaults() {
+    let layout = parse(r#"syntax = "proto3"; message Root { map<string, int32> counts = 1; }"#);
+    let decoded = decode(
+        &layout,
+        "Root",
+        &[
+            0x0a, 0x05, 0x0a, 0x01, b'a', 0x10, 0x01, // a = 1
+            0x0a, 0x00, // missing key/value = "" / 0
+            0x0a, 0x05, 0x0a, 0x01, b'a', 0x10, 0x02, // a = 2 wins
+        ],
+    );
+    assert_eq!(
+        decoded,
+        group(vec![(
+            "counts",
+            Instance::Repeated(vec![
+                group(vec![
+                    ("key", scalar(Value::String(String::new()))),
+                    ("value", scalar(Value::Int(0))),
+                ]),
+                group(vec![
+                    ("key", scalar(Value::String("a".into()))),
+                    ("value", scalar(Value::Int(2))),
+                ]),
+            ]),
+        )])
+    );
+}
+
+#[test]
+fn proto2_map_enum_values_default_to_the_first_declaration() {
+    let layout = parse(
+        r#"
+        syntax = "proto2";
+        enum State { READY = 3; DONE = 7; }
+        message Root { map<string, State> states = 1; }
+        "#,
+    );
+    assert_eq!(
+        decode(&layout, "Root", &[0x0a, 0x00]),
+        group(vec![(
+            "states",
+            Instance::Repeated(vec![group(vec![
+                ("key", scalar(Value::String(String::new()))),
+                ("value", scalar(Value::Int(3))),
+            ])]),
+        )])
+    );
+}
+
+#[test]
+fn map_encode_rejects_duplicate_semantic_keys() {
+    let layout = parse(r#"syntax = "proto3"; message Root { map<string, int32> counts = 1; }"#);
+    let duplicate = group(vec![(
+        "counts",
+        Instance::Repeated(vec![
+            group(vec![("key", scalar(Value::Int(7)))]),
+            group(vec![("key", scalar(Value::String("7".into())))]),
+        ]),
+    )]);
+    let error = error_text(to_vec(&layout, "Root", &duplicate));
+    assert!(error.contains("Root.counts[1].key"), "{error}");
+    assert!(error.contains("map key occurs more than once"), "{error}");
+}
+
+#[test]
+fn rejects_malformed_map_declarations() {
+    let cases = [
+        (
+            r#"syntax = "proto3"; message M { map<float, string> values = 1; }"#,
+            "must be an integer, bool, or string",
+        ),
+        (
+            r#"syntax = "proto3"; message M { map<bytes, string> values = 1; }"#,
+            "must be an integer, bool, or string",
+        ),
+        (
+            r#"syntax = "proto3"; enum K { ZERO = 0; } message M { map<K, string> values = 1; }"#,
+            "is not a scalar key type",
+        ),
+        (
+            r#"syntax = "proto3"; message M { map<string, int32> values = 1 [packed = true]; }"#,
+            "map field cannot use option `packed`",
+        ),
+        (
+            r#"syntax = "proto3"; message M { message ValuesEntry {} map<string, int32> values = 1; }"#,
+            "duplicate declaration `M.ValuesEntry`",
         ),
     ];
     for (source, expected) in cases {

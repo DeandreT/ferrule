@@ -20,6 +20,7 @@ pub(super) struct RawMessage {
     pub(super) full_name: String,
     pub(super) fields: Vec<RawField>,
     pub(super) oneofs: Vec<String>,
+    pub(super) map_entry: bool,
 }
 
 #[derive(Debug)]
@@ -32,6 +33,7 @@ pub(super) struct RawField {
     pub(super) packed: bool,
     pub(super) default: Option<RawDefault>,
     pub(super) oneof: Option<String>,
+    pub(super) map: bool,
 }
 
 #[derive(Debug)]
@@ -172,7 +174,7 @@ fn resolve_message(
             .map(|value| resolve_default(value, ty, enums))
             .transpose()?;
         let default = if field.cardinality == Cardinality::Implicit {
-            proto3_default(ty, enums)?
+            implicit_default(ty, enums, !raw.map_entry)?
         } else {
             default
         };
@@ -196,6 +198,7 @@ fn resolve_message(
             packed: field.packed,
             default,
             oneof,
+            map: field.map,
         });
     }
     Ok(Message {
@@ -203,23 +206,34 @@ fn resolve_message(
         full_name: raw.full_name.clone(),
         fields,
         oneofs,
+        map_entry: raw.map_entry,
     })
 }
 
-fn proto3_default(ty: FieldType, enums: &[RawEnum]) -> Result<Option<DefaultValue>, ProtobufError> {
+fn implicit_default(
+    ty: FieldType,
+    enums: &[RawEnum],
+    require_zero_enum: bool,
+) -> Result<Option<DefaultValue>, ProtobufError> {
     let value = match ty {
         FieldType::Message(_) => return Ok(None),
         FieldType::Enum(id) => {
             let enumeration = enums.get(id.0).ok_or_else(|| {
                 ProtobufError::schema(format!("unknown resolved enum id {}", id.index()))
             })?;
-            if enumeration.values.first().map(EnumValue::number) != Some(0) {
+            let first = enumeration.values.first().ok_or_else(|| {
+                ProtobufError::schema(format!(
+                    "enum `{}` must declare at least one value",
+                    enumeration.full_name
+                ))
+            })?;
+            if require_zero_enum && first.number() != 0 {
                 return Err(ProtobufError::schema(format!(
                     "proto3 enum `{}` must declare zero as its first value",
                     enumeration.full_name
                 )));
             }
-            DefaultValue::Enum(0)
+            DefaultValue::Enum(first.number())
         }
         FieldType::Scalar(ScalarType::Double | ScalarType::Float) => DefaultValue::Float(0.0),
         FieldType::Scalar(

@@ -112,6 +112,7 @@ pub struct Field {
     pub(super) packed: bool,
     pub(super) default: Option<DefaultValue>,
     pub(super) oneof: Option<OneofId>,
+    pub(super) map: bool,
 }
 
 impl Field {
@@ -142,6 +143,10 @@ impl Field {
     pub fn oneof(&self) -> Option<OneofId> {
         self.oneof
     }
+
+    pub fn is_map(&self) -> bool {
+        self.map
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,6 +166,7 @@ pub struct Message {
     pub(super) full_name: String,
     pub(super) fields: Vec<Field>,
     pub(super) oneofs: Vec<Oneof>,
+    pub(super) map_entry: bool,
 }
 
 impl Message {
@@ -186,6 +192,10 @@ impl Message {
 
     pub fn oneof(&self, id: OneofId) -> Option<&Oneof> {
         self.oneofs.get(id.0)
+    }
+
+    pub fn is_map_entry(&self) -> bool {
+        self.map_entry
     }
 }
 
