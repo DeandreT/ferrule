@@ -390,7 +390,7 @@ fn parse_scalar(name: &str, ty: ScalarType, text: &str) -> Result<Value, XmlForm
             }
             Value::Float(value)
         }
-        ScalarType::Bool => Value::Bool(text.trim().parse().map_err(|_| bad())?),
+        ScalarType::Bool => Value::Bool(xml_boolean(text).ok_or_else(bad)?),
     })
 }
 
@@ -1273,12 +1273,18 @@ fn format_scalar(name: &str, ty: ScalarType, value: &Value) -> Result<String, Xm
             .map(|value| value.to_string())
             .ok_or_else(|| incompatible("string")),
         (ScalarType::Bool, Value::Bool(value)) => Ok(value.to_string()),
-        (ScalarType::Bool, Value::String(value)) => value
-            .trim()
-            .parse::<bool>()
+        (ScalarType::Bool, Value::String(value)) => xml_boolean(value)
             .map(|value| value.to_string())
-            .map_err(|_| incompatible("string")),
+            .ok_or_else(|| incompatible("string")),
         (_, other) => Err(incompatible(other.type_name())),
+    }
+}
+
+fn xml_boolean(value: &str) -> Option<bool> {
+    match value.trim() {
+        "true" | "1" => Some(true),
+        "false" | "0" => Some(false),
+        _ => None,
     }
 }
 

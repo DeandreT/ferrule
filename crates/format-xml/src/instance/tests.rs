@@ -196,6 +196,53 @@ fn strings_preserve_whitespace_while_typed_values_accept_it() {
 }
 
 #[test]
+fn xml_booleans_accept_word_and_numeric_lexicals() {
+    let schema = SchemaNode::group(
+        "Root",
+        vec![
+            SchemaNode::scalar("enabled", ScalarType::Bool).attribute(),
+            SchemaNode::scalar("Word", ScalarType::Bool),
+            SchemaNode::scalar("Numeric", ScalarType::Bool),
+        ],
+    );
+    let instance = from_str(
+        "<Root enabled=\"0\"><Word>true</Word><Numeric>1</Numeric></Root>",
+        &schema,
+    )
+    .unwrap();
+
+    assert_eq!(
+        instance.field("enabled").and_then(Instance::as_scalar),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        instance.field("Word").and_then(Instance::as_scalar),
+        Some(&Value::Bool(true))
+    );
+    assert_eq!(
+        instance.field("Numeric").and_then(Instance::as_scalar),
+        Some(&Value::Bool(true))
+    );
+
+    let scalar_schema = SchemaNode::scalar("Enabled", ScalarType::Bool);
+    assert!(
+        to_string(
+            &scalar_schema,
+            &Instance::Scalar(Value::String(" 1 ".into()))
+        )
+        .unwrap()
+        .ends_with("<Enabled>true</Enabled>")
+    );
+    assert!(matches!(
+        from_str("<Enabled>yes</Enabled>", &scalar_schema),
+        Err(XmlFormatError::ScalarParse {
+            ty: ScalarType::Bool,
+            ..
+        })
+    ));
+}
+
+#[test]
 fn writer_rejects_instance_shapes_that_cannot_form_one_document() {
     let repeated_root = Instance::Repeated(vec![
         Instance::Group(Vec::new()),
