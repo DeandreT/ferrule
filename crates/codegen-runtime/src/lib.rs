@@ -11,6 +11,7 @@ mod context;
 mod failure;
 mod generated_sequence;
 mod iteration;
+mod recursive_filter;
 mod runtime_value;
 mod user_function;
 mod value_map;
@@ -35,6 +36,7 @@ pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
+pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};
 pub use runtime_value::{ExecutionContext, RuntimeValue};
 pub use user_function::adapt_user_function_value;
 pub use value_map::value_map;
@@ -56,6 +58,16 @@ pub enum RuntimeError {
         function: AggregateFunction,
     },
     CopyCurrentSourceRequiresGroup {
+        found: &'static str,
+    },
+    RecursiveFilterDepth {
+        limit: usize,
+    },
+    RecursiveFilterRequiresGroup {
+        found: &'static str,
+    },
+    RecursiveFilterRequiresCollection {
+        field: String,
         found: &'static str,
     },
     GeneratedSequenceTooLarge {
@@ -141,6 +153,18 @@ impl fmt::Display for RuntimeError {
             Self::CopyCurrentSourceRequiresGroup { found } => write!(
                 formatter,
                 "copy-current-source construction requires a group item, got {found}"
+            ),
+            Self::RecursiveFilterDepth { limit } => write!(
+                formatter,
+                "recursive filter exceeds the {limit}-group depth limit"
+            ),
+            Self::RecursiveFilterRequiresGroup { found } => write!(
+                formatter,
+                "recursive filter requires a group item, got {found}"
+            ),
+            Self::RecursiveFilterRequiresCollection { field, found } => write!(
+                formatter,
+                "recursive filter field {field:?} must be a repeated collection, got {found}"
             ),
             Self::GeneratedSequenceTooLarge { requested, max } => write!(
                 formatter,
@@ -247,6 +271,9 @@ impl std::error::Error for RuntimeError {
             Self::AggregateIntegerOverflow { .. }
             | Self::AggregateNonFinite { .. }
             | Self::CopyCurrentSourceRequiresGroup { .. }
+            | Self::RecursiveFilterDepth { .. }
+            | Self::RecursiveFilterRequiresGroup { .. }
+            | Self::RecursiveFilterRequiresCollection { .. }
             | Self::GeneratedSequenceTooLarge { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }

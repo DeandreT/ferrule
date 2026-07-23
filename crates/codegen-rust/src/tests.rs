@@ -20,6 +20,7 @@ mod extra_targets;
 mod failure_rules;
 mod grouping;
 mod joins;
+mod recursive_filter;
 mod scalar_functions;
 mod xml_mixed_content;
 mod xml_serialize;

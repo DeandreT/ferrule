@@ -292,15 +292,43 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         element: usize,
     },
-    InvalidXmlMixedContentConstructionSource {
-        target_path: Vec<String>,
-        element: usize,
-        source_field: String,
-    },
     InvalidXmlMixedContentConstructionTarget {
         target_path: Vec<String>,
         element: usize,
         target_field: String,
+    },
+    InvalidRecursiveFilterConstruction {
+        target_path: Vec<String>,
+    },
+    RecursiveFilterConstructionRequiresGroupSource {
+        target_path: Vec<String>,
+    },
+    RecursiveFilterConstructionRequiresGroupTarget {
+        target_path: Vec<String>,
+    },
+    RecursiveFilterConstructionRequiresMatchingGroups {
+        target_path: Vec<String>,
+    },
+    InvalidRecursiveFilterChildren {
+        target_path: Vec<String>,
+        field: String,
+    },
+    InvalidRecursiveFilterItems {
+        target_path: Vec<String>,
+        field: String,
+    },
+    MissingRecursiveFilterPredicate {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
+    RecursiveFilterConstructionHasContent {
+        target_path: Vec<String>,
+    },
+    RecursiveFilterConstructionHasControls {
+        target_path: Vec<String>,
+    },
+    RecursiveFilterConstructionHasInvalidIteration {
+        target_path: Vec<String>,
     },
     CopyConstructionRequiresGroupSource {
         target_path: Vec<String>,
@@ -898,9 +926,6 @@ fn validate_scope(
                     target_path: target_path.clone(),
                 });
             }
-            let Some(source_node) = scope_source.map(SchemaCursor::node) else {
-                unreachable!("mixed-content group source was validated");
-            };
             let mut source_names = BTreeSet::new();
             for (element_index, element) in elements.iter().enumerate() {
                 if element.source.is_empty()
@@ -911,17 +936,6 @@ fn validate_scope(
                         ProgramValidationError::InvalidXmlMixedContentConstructionElement {
                             target_path: target_path.clone(),
                             element: element_index,
-                        },
-                    );
-                }
-                if source_node.child(&element.source).is_none_or(|source| {
-                    !source.repeating || !matches!(source.kind, SchemaKind::Scalar { .. })
-                }) {
-                    return Err(
-                        ProgramValidationError::InvalidXmlMixedContentConstructionSource {
-                            target_path: target_path.clone(),
-                            element: element_index,
-                            source_field: element.source.clone(),
                         },
                     );
                 }
@@ -937,6 +951,109 @@ fn validate_scope(
                     );
                 }
             }
+        }
+        TargetConstruction::RecursiveFilter {
+            children,
+            items,
+            predicate,
+        } => {
+            if children.is_empty() || items.is_empty() || children == items {
+                return Err(ProgramValidationError::InvalidRecursiveFilterConstruction {
+                    target_path: target_path.clone(),
+                });
+            }
+            let Some(scope_source) = scope_source
+                .filter(|source| matches!(source.node().kind, SchemaKind::Group { .. }))
+            else {
+                return Err(
+                    ProgramValidationError::RecursiveFilterConstructionRequiresGroupSource {
+                        target_path: target_path.clone(),
+                    },
+                );
+            };
+            if !matches!(target_node.kind, SchemaKind::Group { .. }) {
+                return Err(
+                    ProgramValidationError::RecursiveFilterConstructionRequiresGroupTarget {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if scope_source.node().kind != target_node.kind {
+                return Err(
+                    ProgramValidationError::RecursiveFilterConstructionRequiresMatchingGroups {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if scope_source.node().child(children).is_none_or(|child| {
+                !child.repeating
+                    || child.recursive_ref.is_none()
+                    || !matches!(child.kind, SchemaKind::Group { .. })
+            }) {
+                return Err(ProgramValidationError::InvalidRecursiveFilterChildren {
+                    target_path: target_path.clone(),
+                    field: children.clone(),
+                });
+            }
+            if scope_source.node().child(items).is_none_or(|item| {
+                !item.repeating || !matches!(item.kind, SchemaKind::Group { .. })
+            }) {
+                return Err(ProgramValidationError::InvalidRecursiveFilterItems {
+                    target_path: target_path.clone(),
+                    field: items.clone(),
+                });
+            }
+            if !scope.bindings.is_empty() || !scope.children.is_empty() {
+                return Err(
+                    ProgramValidationError::RecursiveFilterConstructionHasContent {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if let Some(iteration) = &scope.iteration {
+                if !matches!(iteration.input(), IterationSource::Source(_)) {
+                    return Err(
+                        ProgramValidationError::RecursiveFilterConstructionHasInvalidIteration {
+                            target_path: target_path.clone(),
+                        },
+                    );
+                }
+                if iteration.filter().is_some()
+                    || iteration.post_group_filter().is_some()
+                    || iteration.sort().is_some()
+                    || iteration.grouping().is_some()
+                    || !iteration.windows().is_empty()
+                {
+                    return Err(
+                        ProgramValidationError::RecursiveFilterConstructionHasControls {
+                            target_path: target_path.clone(),
+                        },
+                    );
+                }
+            }
+            if !expressions.contains_key(predicate) {
+                return Err(ProgramValidationError::MissingRecursiveFilterPredicate {
+                    target_path: target_path.clone(),
+                    expression: *predicate,
+                });
+            }
+            let item_source = scope_source
+                .follow(std::slice::from_ref(items))
+                .and_then(SchemaCursor::resolved);
+            validate_expression_context(
+                *predicate,
+                expressions,
+                ScopeSchemas {
+                    current_source: item_source,
+                    active_source: item_source,
+                    ..schemas
+                },
+                sequence_items,
+                &item_context,
+                &scope_joins,
+                false,
+                &sequence_owner,
+            )?;
         }
         TargetConstruction::CopyCurrentSource => {
             let Some(scope_source) = scope_source
@@ -1533,16 +1650,6 @@ impl fmt::Display for ProgramValidationError {
                 display_path(target_path),
                 element + 1
             ),
-            Self::InvalidXmlMixedContentConstructionSource {
-                target_path,
-                element,
-                source_field,
-            } => write!(
-                formatter,
-                "target scope {} XML mixed-content child mapping {} source {source_field:?} must be a repeating scalar field",
-                display_path(target_path),
-                element + 1
-            ),
             Self::InvalidXmlMixedContentConstructionTarget {
                 target_path,
                 element,
@@ -1552,6 +1659,59 @@ impl fmt::Display for ProgramValidationError {
                 "target scope {} XML mixed-content child mapping {} target {target_field:?} must be a repeating scalar field",
                 display_path(target_path),
                 element + 1
+            ),
+            Self::InvalidRecursiveFilterConstruction { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction requires distinct non-empty child and item collection names",
+                display_path(target_path)
+            ),
+            Self::RecursiveFilterConstructionRequiresGroupSource { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction requires a group source item",
+                display_path(target_path)
+            ),
+            Self::RecursiveFilterConstructionRequiresGroupTarget { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction requires a group target",
+                display_path(target_path)
+            ),
+            Self::RecursiveFilterConstructionRequiresMatchingGroups { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction requires matching source and target group fields",
+                display_path(target_path)
+            ),
+            Self::InvalidRecursiveFilterChildren { target_path, field } => write!(
+                formatter,
+                "target scope {} recursive-filter child field {field:?} must be a repeating recursive group",
+                display_path(target_path)
+            ),
+            Self::InvalidRecursiveFilterItems { target_path, field } => write!(
+                formatter,
+                "target scope {} recursive-filter item field {field:?} must be a repeating group",
+                display_path(target_path)
+            ),
+            Self::MissingRecursiveFilterPredicate {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} recursive-filter predicate references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::RecursiveFilterConstructionHasContent { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction cannot contain bindings or child scopes",
+                display_path(target_path)
+            ),
+            Self::RecursiveFilterConstructionHasControls { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction cannot use scope controls",
+                display_path(target_path)
+            ),
+            Self::RecursiveFilterConstructionHasInvalidIteration { target_path } => write!(
+                formatter,
+                "target scope {} recursive-filter construction cannot iterate a generated sequence or inner join",
+                display_path(target_path)
             ),
             Self::CopyConstructionRequiresGroupSource { target_path } => write!(
                 formatter,

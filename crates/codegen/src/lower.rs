@@ -235,6 +235,14 @@ fn lower_scope(
                     .collect(),
             }
         }
+        ScopeConstruction::RecursiveFilter { plan } => {
+            roots.push(plan.predicate());
+            crate::TargetConstruction::RecursiveFilter {
+                children: plan.children().to_string(),
+                items: plan.items().to_string(),
+                predicate: plan.predicate(),
+            }
+        }
         _ => crate::TargetConstruction::Group,
     };
 
@@ -477,7 +485,7 @@ fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructi
         ScopeConstruction::CopyCurrentSource => None,
         ScopeConstruction::Scalar { .. } => None,
         ScopeConstruction::XmlMixedContent { .. } => None,
-        ScopeConstruction::RecursiveFilter { .. } => Some(ScopeConstructionKind::RecursiveFilter),
+        ScopeConstruction::RecursiveFilter { .. } => None,
         ScopeConstruction::PathHierarchy { .. } => Some(ScopeConstructionKind::PathHierarchy),
         ScopeConstruction::AdjacencyTree { .. } => Some(ScopeConstructionKind::AdjacencyTree),
     }

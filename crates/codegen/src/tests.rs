@@ -18,6 +18,7 @@ mod extra_sources;
 mod failures;
 mod grouping;
 mod joins;
+mod recursive_filter;
 mod scalar_functions;
 mod sequences;
 mod source_document_path;

@@ -148,7 +148,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              adapt_user_function_value, apply_sequence_windows, call,\n\
              collection_find_selected, field, generate_sequence,\n\
              group, item_count, repeated,\n\
-             recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
+             recursive_collect, recursive_filter, recursive_sequence_parameter, require_bool, scalar,\n\
              serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
              preserve_xml_mixed_content, xml_mixed_content, XmlMixedContentElement,\n\
              XmlMixedContentReplacement,\n\
@@ -1227,6 +1227,19 @@ fn render_scope_item(
     if let TargetConstruction::Scalar { expression } = &scope.construction {
         output.push_str(&format!(
             "{indent}let output = scalar(expression_{expression}({context})?);\n"
+        ));
+        return output;
+    }
+    if let TargetConstruction::RecursiveFilter {
+        children,
+        items,
+        predicate,
+    } = &scope.construction
+    {
+        output.push_str(&format!(
+            "{indent}let output = recursive_filter(\n{indent}    {context},\n{indent}    {},\n{indent}    {},\n{indent}    {predicate},\n{indent}    expression_{predicate},\n{indent})?;\n",
+            rust_string(children),
+            rust_string(items),
         ));
         return output;
     }

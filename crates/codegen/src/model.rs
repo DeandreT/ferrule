@@ -902,6 +902,11 @@ pub enum TargetConstruction {
     XmlMixedContent {
         elements: Vec<XmlMixedContentElement>,
     },
+    RecursiveFilter {
+        children: String,
+        items: String,
+        predicate: NodeId,
+    },
 }
 
 /// One direct-child rename retained in a mixed-content target stream.
