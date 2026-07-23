@@ -4,9 +4,9 @@ use std::path::{Path, PathBuf};
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
-    AggregateOp, Binding, Graph, IterationOutput, JoinConditions, JoinId, JoinKey, JoinPlan,
-    JoinSource, JoinSourceCardinality, NamedSource, Node, Project, Scope, ScopeIteration,
-    SequenceWindow,
+    AggregateOp, Binding, DynamicSourcePath, Graph, IterationOutput, JoinConditions, JoinId,
+    JoinKey, JoinPlan, JoinSource, JoinSourceCardinality, NamedSource, Node, Project, Scope,
+    ScopeIteration, SequenceWindow,
 };
 
 struct TempDir(PathBuf);
@@ -199,6 +199,82 @@ fn two_way_source() -> Instance {
     ])
 }
 
+fn named_source_project() -> Project {
+    let mut project = two_way_project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::group(
+                "Left",
+                vec![
+                    SchemaNode::scalar("Id", ScalarType::String),
+                    SchemaNode::scalar("Tenant", ScalarType::String),
+                    SchemaNode::scalar("Label", ScalarType::String),
+                ],
+            )
+            .repeating(),
+        ],
+    );
+    project.extra_sources = vec![NamedSource {
+        name: "Reference".into(),
+        path: "reference.xml".into(),
+        schema: SchemaNode::group(
+            "Reference",
+            vec![
+                SchemaNode::group(
+                    "Right",
+                    vec![
+                        SchemaNode::scalar("Code", ScalarType::String),
+                        SchemaNode::scalar("Tenant", ScalarType::String),
+                        SchemaNode::scalar("Description", ScalarType::String),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        options: Default::default(),
+        dynamic_path: None,
+    }];
+    let join = JoinId::new(8);
+    let plan = JoinPlan::new(
+        JoinSource::new(vec!["Left".into()]),
+        JoinSource::new(vec!["Reference".into(), "Right".into()]),
+        JoinConditions::new(JoinKey::new(
+            vec!["Left".into()],
+            vec!["Id".into()],
+            vec!["Code".into()],
+        ))
+        .and(JoinKey::new(
+            vec!["Left".into()],
+            vec!["Tenant".into()],
+            vec!["Tenant".into()],
+        )),
+    )
+    .unwrap();
+    project.root.children[0].iteration = ScopeIteration::InnerJoin { id: join, plan };
+    let Some(Node::JoinField { collection, .. }) = project.graph.nodes.get_mut(&1) else {
+        panic!("two-way project must expose the right joined field");
+    };
+    *collection = vec!["Reference".into(), "Right".into()];
+    project
+}
+
+fn named_source_instances() -> (Instance, Vec<(String, Instance)>) {
+    let Instance::Group(mut fields) = two_way_source() else {
+        panic!("two-way source must be a group");
+    };
+    let Some((_, right)) = fields.pop() else {
+        panic!("two-way source must contain its right collection");
+    };
+    (
+        Instance::Group(fields),
+        vec![(
+            "Reference".into(),
+            Instance::Group(vec![("Right".into(), right)]),
+        )],
+    )
+}
+
 fn import_exported(path: &Path) -> mfd::Imported {
     let imported = mfd::import(path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
@@ -257,6 +333,70 @@ fn exports_and_round_trips_composite_join_fields_position_and_window() {
             Some(&Value::String("R1".into())),
         ]
     );
+}
+
+#[test]
+fn exports_and_executes_a_root_join_over_a_static_named_source() {
+    let dir = TempDir::new("named-source");
+    let output = dir.path("mapping.mfd");
+    let project = named_source_project();
+    let (primary, extras) = named_source_instances();
+    let expected = engine::run_with_sources(&project, &primary, extras.clone()).unwrap();
+
+    let warnings = mfd::export(&project, &output).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let xml = fs::read_to_string(&output).unwrap();
+    assert_eq!(xml.matches("kind=\"32\"").count(), 1);
+    assert!(xml.contains("inputinstance=\"reference.xml\""));
+
+    let imported = import_exported(&output);
+    assert_eq!(imported.project.extra_sources.len(), 1);
+    assert_eq!(imported.project.extra_sources[0].name, "Reference");
+    let Some((_, plan)) = imported.project.root.children[0].join() else {
+        panic!("expected the row scope to retain its join");
+    };
+    assert!(
+        plan.sources().any(|source| {
+            source.collection() == ["Reference".to_string(), "Right".to_string()]
+        })
+    );
+    assert_eq!(
+        engine::run_with_sources(&imported.project, &primary, extras).unwrap(),
+        expected
+    );
+}
+
+#[test]
+fn dynamic_named_source_join_rejects_before_replacing_artifacts() {
+    let dir = TempDir::new("dynamic-named-source");
+    let output = dir.path("mapping.mfd");
+    fs::write(&output, "sentinel").unwrap();
+    let mut project = named_source_project();
+    project.graph.nodes.insert(
+        4,
+        Node::Const {
+            value: Value::String("reference.xml".into()),
+        },
+    );
+    project.extra_sources[0].dynamic_path = Some(DynamicSourcePath {
+        node: 4,
+        iteration: vec!["Left".into()],
+    });
+
+    let error = mfd::export(&project, &output).unwrap_err();
+    assert!(
+        matches!(
+            &error,
+            mfd::MfdError::Unsupported(message)
+                if message.contains("inner join 8")
+                    && message.contains("dynamic additional source `Reference`")
+        ),
+        "{error}"
+    );
+    assert_eq!(fs::read_to_string(&output).unwrap(), "sentinel");
+    assert!(!dir.path("mapping-source.xsd").exists());
+    assert!(!dir.path("mapping-source-2.xsd").exists());
+    assert!(!dir.path("mapping-target.xsd").exists());
 }
 
 #[test]

@@ -9,12 +9,14 @@ use crate::MfdError;
 
 use super::schema::{SideFormat, side_format};
 use super::{
-    concatenation, edi, exception, external_source, flextext, pdf, protobuf, recursive, wsdl, xbrl,
+    concatenation, edi, exception, external_source, flextext, join, pdf, protobuf, recursive, wsdl,
+    xbrl,
 };
 
 pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
     exception::validate(project)?;
     wsdl::validate(project)?;
+    join::validate(project)?;
     if project.extra_sources.len() > 256 {
         return Err(MfdError::Unsupported(
             "projects with more than 256 additional sources cannot be exported to .mfd".to_string(),

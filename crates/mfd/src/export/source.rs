@@ -28,6 +28,11 @@ pub(super) struct SourceExports<'a> {
     extras: Vec<SourceExport<'a>>,
 }
 
+pub(super) struct JoinCollection<'a> {
+    pub(super) schema: &'a SchemaNode,
+    pub(super) port: u32,
+}
+
 impl<'a> SourceExports<'a> {
     pub(super) fn build(project: &'a Project, keys: &mut KeyAlloc) -> Result<Self, MfdError> {
         let primary = build_source(
@@ -152,6 +157,28 @@ impl<'a> SourceExports<'a> {
             node = node.child(segment)?;
         }
         Some(node)
+    }
+
+    /// Resolves one join input against exactly one exported source component.
+    /// Named sources must use their explicit source-name prefix, so schema and
+    /// port ownership cannot diverge through suffix matching.
+    pub(super) fn join_collection(&self, path: &[String]) -> Option<JoinCollection<'_>> {
+        let (source, local) = match path.first() {
+            Some(name) => {
+                let mut matches = self.extras.iter().filter(|source| source.name == name);
+                match (matches.next(), matches.next()) {
+                    (Some(source), None) => (source, &path[1..]),
+                    (None, None) => (&self.primary, path),
+                    _ => return None,
+                }
+            }
+            None => (&self.primary, path),
+        };
+        let schema = local
+            .iter()
+            .try_fold(source.schema, |node, segment| node.child(segment))?;
+        let port = source.ports.key_for_abs(local)?;
+        Some(JoinCollection { schema, port })
     }
 
     /// Resolves a scope's source as relative to its active anchor, falling
