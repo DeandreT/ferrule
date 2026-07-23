@@ -1,6 +1,6 @@
 use super::*;
 use ir::SchemaNode;
-use mapping::{Binding, SequenceExpr, SequenceWindow};
+use mapping::{Binding, SequenceExpr, SequenceWindow, XmlMixedContentElement};
 
 fn graph_from(nodes: Vec<(NodeId, Node)>) -> Graph {
     Graph {
@@ -10,6 +10,52 @@ fn graph_from(nodes: Vec<(NodeId, Node)>) -> Graph {
 
 fn dummy_schema() -> SchemaNode {
     SchemaNode::group("root", vec![])
+}
+
+#[test]
+fn mixed_content_validation_allows_names_owned_by_retained_metadata() {
+    let project = Project {
+        source: SchemaNode::group(
+            "Section",
+            vec![SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text()],
+        ),
+        target: SchemaNode::group(
+            "Description",
+            vec![
+                SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+                SchemaNode::scalar("Bold", ScalarType::String).repeating(),
+            ],
+        ),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph: graph_from(vec![(
+            0,
+            Node::Const {
+                value: Value::String("mapped".into()),
+            },
+        )]),
+        root: Scope {
+            construction: ScopeConstruction::XmlMixedContent {
+                elements: vec![XmlMixedContentElement {
+                    source: "Trademark".into(),
+                    target: "Bold".into(),
+                }],
+            },
+            bindings: vec![Binding {
+                target_field: "Bold".into(),
+                node: 0,
+            }],
+            ..Scope::default()
+        },
+    };
+
+    assert!(validate(&project).is_empty(), "{:?}", validate(&project));
 }
 
 #[test]
