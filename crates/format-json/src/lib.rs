@@ -425,7 +425,7 @@ fn validate_alternative_fields(
                 && alternative.constraints.iter().all(|constraint| {
                     fields
                         .get(&constraint.member)
-                        .is_some_and(|value| constraint_matches(&constraint.value, value))
+                        .is_none_or(|value| constraint_matches(&constraint.value, value))
                 })
         })
         .count();
