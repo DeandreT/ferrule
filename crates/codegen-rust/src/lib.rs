@@ -804,7 +804,13 @@ fn render_iteration_scope(
         render_prefilter(iteration.filter(), &mut output);
     }
     if let Some(grouping) = iteration.grouping() {
-        render_grouping(iteration.input(), grouping, has_windows, &mut output);
+        render_grouping(
+            iteration.input(),
+            grouping,
+            iteration.post_group_filter(),
+            has_windows,
+            &mut output,
+        );
     }
     if has_windows {
         output.push_str("    candidates = apply_sequence_windows(candidates, &windows);\n");
@@ -850,6 +856,7 @@ fn render_iteration_scope(
 fn render_grouping(
     input: &IterationSource,
     grouping: GroupingPlan,
+    post_group_filter: Option<NodeId>,
     candidates_are_reassigned: bool,
     output: &mut String,
 ) {
@@ -868,21 +875,110 @@ fn render_grouping(
         "let candidates"
     };
     match grouping {
-        GroupingPlan::By { key } => output.push_str(&format!(
-            "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n        grouping_candidates.push((candidate, key));\n    }}\n    let grouped_items = GroupedItems::by(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
-        )),
-        GroupingPlan::AdjacentBy { key } => output.push_str(&format!(
-            "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n        grouping_candidates.push((candidate, key));\n    }}\n    let grouped_items = GroupedItems::adjacent_by(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
-        )),
-        GroupingPlan::StartingWith { predicate } => output.push_str(&format!(
-            "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let starts = expression_{predicate}(&candidate)?;\n        let starts = require_bool({predicate}, starts)?;\n        grouping_candidates.push((candidate, starts));\n    }}\n    let grouped_items = GroupedItems::starting_with(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
-        )),
-        GroupingPlan::EndingWith { predicate } => output.push_str(&format!(
-            "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let ends = expression_{predicate}(&candidate)?;\n        let ends = require_bool({predicate}, ends)?;\n        grouping_candidates.push((candidate, ends));\n    }}\n    let grouped_items = GroupedItems::ending_with(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
-        )),
-        GroupingPlan::IntoBlocks { size } => output.push_str(&format!(
-            "    let group_size = item_count({size}, expression_{size}(context)?)?;\n    let grouped_items = GroupedItems::into_blocks(candidates, {wrapper}, group_size, {size})?;\n    {binding} = grouped_items.contexts();\n"
-        )),
+        GroupingPlan::By { key } => {
+            output.push_str(&format!(
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n"
+            ));
+            render_post_group_filter(post_group_filter, output);
+            let tuple = if post_group_filter.is_some() {
+                "(candidate, key, retained)"
+            } else {
+                "(candidate, key)"
+            };
+            let function = if post_group_filter.is_some() {
+                "by_where_any"
+            } else {
+                "by"
+            };
+            output.push_str(&format!(
+                "        grouping_candidates.push({tuple});\n    }}\n    let grouped_items = GroupedItems::{function}(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
+            ));
+        }
+        GroupingPlan::AdjacentBy { key } => {
+            output.push_str(&format!(
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let key = expression_{key}(&candidate)?;\n"
+            ));
+            render_post_group_filter(post_group_filter, output);
+            let tuple = if post_group_filter.is_some() {
+                "(candidate, key, retained)"
+            } else {
+                "(candidate, key)"
+            };
+            let function = if post_group_filter.is_some() {
+                "adjacent_by_where_any"
+            } else {
+                "adjacent_by"
+            };
+            output.push_str(&format!(
+                "        grouping_candidates.push({tuple});\n    }}\n    let grouped_items = GroupedItems::{function}(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
+            ));
+        }
+        GroupingPlan::StartingWith { predicate } => {
+            output.push_str(&format!(
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let starts = expression_{predicate}(&candidate)?;\n        let starts = require_bool({predicate}, starts)?;\n"
+            ));
+            render_post_group_filter(post_group_filter, output);
+            let tuple = if post_group_filter.is_some() {
+                "(candidate, starts, retained)"
+            } else {
+                "(candidate, starts)"
+            };
+            let function = if post_group_filter.is_some() {
+                "starting_with_where_any"
+            } else {
+                "starting_with"
+            };
+            output.push_str(&format!(
+                "        grouping_candidates.push({tuple});\n    }}\n    let grouped_items = GroupedItems::{function}(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
+            ));
+        }
+        GroupingPlan::EndingWith { predicate } => {
+            output.push_str(&format!(
+                "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {{\n        let ends = expression_{predicate}(&candidate)?;\n        let ends = require_bool({predicate}, ends)?;\n"
+            ));
+            render_post_group_filter(post_group_filter, output);
+            let tuple = if post_group_filter.is_some() {
+                "(candidate, ends, retained)"
+            } else {
+                "(candidate, ends)"
+            };
+            let function = if post_group_filter.is_some() {
+                "ending_with_where_any"
+            } else {
+                "ending_with"
+            };
+            output.push_str(&format!(
+                "        grouping_candidates.push({tuple});\n    }}\n    let grouped_items = GroupedItems::{function}(grouping_candidates, {wrapper});\n    {binding} = grouped_items.contexts();\n"
+            ));
+        }
+        GroupingPlan::IntoBlocks { size } => {
+            output.push_str(&format!(
+                "    let group_size = item_count({size}, expression_{size}(context)?)?;\n"
+            ));
+            let function = if post_group_filter.is_some() {
+                output.push_str(
+                    "    let mut grouping_candidates = Vec::with_capacity(candidates.len());\n    for candidate in candidates {\n",
+                );
+                render_post_group_filter(post_group_filter, output);
+                output
+                    .push_str("        grouping_candidates.push((candidate, retained));\n    }\n");
+                "into_blocks_where_any"
+            } else {
+                output.push_str("    let grouping_candidates = candidates;\n");
+                "into_blocks"
+            };
+            output.push_str(&format!(
+                "    let grouped_items = GroupedItems::{function}(grouping_candidates, {wrapper}, group_size, {size})?;\n    {binding} = grouped_items.contexts();\n"
+            ));
+        }
+    }
+}
+
+fn render_post_group_filter(post_group_filter: Option<NodeId>, output: &mut String) {
+    if let Some(predicate) = post_group_filter {
+        output.push_str(&format!(
+            "        let retained = expression_{predicate}(&candidate)?;\n        let retained = require_bool({predicate}, retained)?;\n"
+        ));
     }
 }
 

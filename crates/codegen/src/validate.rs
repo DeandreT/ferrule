@@ -284,6 +284,10 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
         expression: NodeId,
     },
+    MissingPostGroupFilterExpression {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
     MissingSortExpression {
         target_path: Vec<String>,
         key: usize,
@@ -726,6 +730,26 @@ fn validate_scope(
             });
         }
         if let Some(expression) = iteration.filter() {
+            validate_expression_context(
+                expression,
+                expressions,
+                candidate_schemas,
+                sequence_items,
+                &item_context,
+                &scope_joins,
+                item_root_context,
+                &sequence_owner,
+            )?;
+        }
+        if let Some(expression) = iteration.post_group_filter()
+            && !expressions.contains_key(&expression)
+        {
+            return Err(ProgramValidationError::MissingPostGroupFilterExpression {
+                target_path: target_path.clone(),
+                expression,
+            });
+        }
+        if let Some(expression) = iteration.post_group_filter() {
             validate_expression_context(
                 expression,
                 expressions,
@@ -1393,6 +1417,14 @@ impl fmt::Display for ProgramValidationError {
             } => write!(
                 formatter,
                 "target scope {} filter references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::MissingPostGroupFilterExpression {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} post-group filter references missing expression {expression}",
                 display_path(target_path)
             ),
             Self::MissingSortExpression {

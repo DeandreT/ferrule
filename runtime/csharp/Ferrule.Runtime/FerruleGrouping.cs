@@ -10,7 +10,8 @@ public sealed partial class ScopeContext
     public IReadOnlyList<ScopeContext> GroupBy(
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
-        Func<ScopeContext, FerruleValue> keySelector)
+        Func<ScopeContext, FerruleValue> keySelector,
+        Func<ScopeContext, bool>? retainIfAny = null)
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(keySelector);
@@ -20,15 +21,19 @@ public sealed partial class ScopeContext
         {
             ArgumentNullException.ThrowIfNull(candidate);
             var key = keySelector(candidate);
+            var retained = retainIfAny?.Invoke(candidate) ?? true;
             var existing = groups.Find(group => group.Key.HasValue && group.Key.Value == key);
             if (existing is null)
             {
-                existing = new GroupBucket(key, CandidateMember(candidate, sourcePath));
+                existing = new GroupBucket(
+                    key,
+                    CandidateMember(candidate, sourcePath),
+                    retained);
                 groups.Add(existing);
             }
             else
             {
-                existing.Add(CandidateMember(candidate, sourcePath));
+                existing.Add(CandidateMember(candidate, sourcePath), retained);
             }
         }
         return BuildGroupedContexts(groups, sourcePath);
@@ -41,7 +46,8 @@ public sealed partial class ScopeContext
     public IReadOnlyList<ScopeContext> GroupAdjacentBy(
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
-        Func<ScopeContext, FerruleValue> keySelector)
+        Func<ScopeContext, FerruleValue> keySelector,
+        Func<ScopeContext, bool>? retainIfAny = null)
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(keySelector);
@@ -51,14 +57,18 @@ public sealed partial class ScopeContext
         {
             ArgumentNullException.ThrowIfNull(candidate);
             var key = keySelector(candidate);
+            var retained = retainIfAny?.Invoke(candidate) ?? true;
             var current = groups.Count == 0 ? null : groups[^1];
             if (current is null || !current.Key.HasValue || current.Key.Value != key)
             {
-                groups.Add(new GroupBucket(key, CandidateMember(candidate, sourcePath)));
+                groups.Add(new GroupBucket(
+                    key,
+                    CandidateMember(candidate, sourcePath),
+                    retained));
             }
             else
             {
-                current.Add(CandidateMember(candidate, sourcePath));
+                current.Add(CandidateMember(candidate, sourcePath), retained);
             }
         }
         return BuildGroupedContexts(groups, sourcePath);
@@ -71,7 +81,8 @@ public sealed partial class ScopeContext
     public IReadOnlyList<ScopeContext> GroupStartingWith(
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
-        Func<ScopeContext, bool> startsGroup)
+        Func<ScopeContext, bool> startsGroup,
+        Func<ScopeContext, bool>? retainIfAny = null)
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(startsGroup);
@@ -82,13 +93,14 @@ public sealed partial class ScopeContext
             ArgumentNullException.ThrowIfNull(candidate);
             var member = CandidateMember(candidate, sourcePath);
             var starts = startsGroup(candidate);
+            var retained = retainIfAny?.Invoke(candidate) ?? true;
             if (groups.Count == 0 || starts)
             {
-                groups.Add(new GroupBucket(null, member));
+                groups.Add(new GroupBucket(null, member, retained));
             }
             else
             {
-                groups[^1].Add(member);
+                groups[^1].Add(member, retained);
             }
         }
         return BuildGroupedContexts(groups, sourcePath);
@@ -101,7 +113,8 @@ public sealed partial class ScopeContext
     public IReadOnlyList<ScopeContext> GroupEndingWith(
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
-        Func<ScopeContext, bool> endsGroup)
+        Func<ScopeContext, bool> endsGroup,
+        Func<ScopeContext, bool>? retainIfAny = null)
     {
         ValidateGroupingArguments(candidates, sourcePath);
         ArgumentNullException.ThrowIfNull(endsGroup);
@@ -112,15 +125,17 @@ public sealed partial class ScopeContext
         {
             ArgumentNullException.ThrowIfNull(candidate);
             var member = CandidateMember(candidate, sourcePath);
+            var ends = endsGroup(candidate);
+            var retained = retainIfAny?.Invoke(candidate) ?? true;
             if (previousEndedGroup)
             {
-                groups.Add(new GroupBucket(null, member));
+                groups.Add(new GroupBucket(null, member, retained));
             }
             else
             {
-                groups[^1].Add(member);
+                groups[^1].Add(member, retained);
             }
-            previousEndedGroup = endsGroup(candidate);
+            previousEndedGroup = ends;
         }
         return BuildGroupedContexts(groups, sourcePath);
     }
@@ -129,7 +144,8 @@ public sealed partial class ScopeContext
     public IReadOnlyList<ScopeContext> GroupIntoBlocks(
         IReadOnlyList<ScopeContext> candidates,
         IReadOnlyList<string> sourcePath,
-        ulong size)
+        ulong size,
+        Func<ScopeContext, bool>? retainIfAny = null)
     {
         ValidateGroupingArguments(candidates, sourcePath);
         if (size == 0)
@@ -142,13 +158,14 @@ public sealed partial class ScopeContext
         {
             ArgumentNullException.ThrowIfNull(candidate);
             var member = CandidateMember(candidate, sourcePath);
+            var retained = retainIfAny?.Invoke(candidate) ?? true;
             if (groups.Count == 0 || (ulong)groups[^1].Members.Count >= size)
             {
-                groups.Add(new GroupBucket(null, member));
+                groups.Add(new GroupBucket(null, member, retained));
             }
             else
             {
-                groups[^1].Add(member);
+                groups[^1].Add(member, retained);
             }
         }
         return BuildGroupedContexts(groups, sourcePath);
@@ -196,10 +213,11 @@ public sealed partial class ScopeContext
         IReadOnlyList<GroupBucket> groups,
         IReadOnlyList<string> sourcePath)
     {
-        var contexts = new ScopeContext[groups.Count];
-        for (var index = 0; index < groups.Count; index++)
+        var retainedGroups = groups.Where(group => group.Retained).ToArray();
+        var contexts = new ScopeContext[retainedGroups.Length];
+        for (var index = 0; index < retainedGroups.Length; index++)
         {
-            var group = groups[index];
+            var group = retainedGroups[index];
             var members = new FerruleRepeated(group.Members);
             var frames = new List<FerruleInstance>(
                 _frames.Count + group.IntermediateFrames.Count + 2);
@@ -234,7 +252,7 @@ public sealed partial class ScopeContext
 
     private sealed class GroupBucket
     {
-        internal GroupBucket(FerruleValue? key, GroupMember first)
+        internal GroupBucket(FerruleValue? key, GroupMember first, bool retained)
         {
             Key = key;
             Members = new List<FerruleInstance> { first.Member };
@@ -242,6 +260,7 @@ public sealed partial class ScopeContext
             IntermediateCollections = first.IntermediateCollections;
             CollectionPath = first.CollectionPath;
             DocumentPath = first.DocumentPath;
+            Retained = retained;
         }
 
         internal FerruleValue? Key { get; }
@@ -256,7 +275,13 @@ public sealed partial class ScopeContext
 
         internal string? DocumentPath { get; }
 
-        internal void Add(GroupMember member) => Members.Add(member.Member);
+        internal bool Retained { get; private set; }
+
+        internal void Add(GroupMember member, bool retained)
+        {
+            Members.Add(member.Member);
+            Retained |= retained;
+        }
     }
 
     private sealed record GroupMember(

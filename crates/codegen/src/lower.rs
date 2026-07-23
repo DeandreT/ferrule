@@ -315,7 +315,7 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
             .group_into_blocks
             .map(|size| GroupingPlan::IntoBlocks { size })
     };
-    Some(IterationPlan::new_grouped(
+    let iteration = IterationPlan::new(
         input,
         scope.filter,
         scope.sort_by.map(|expression| {
@@ -333,7 +333,6 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
                 scope.sort_filter_order.into(),
             )
         }),
-        grouping,
         scope
             .windows
             .iter()
@@ -341,7 +340,15 @@ fn lower_iteration(scope: &Scope) -> Option<IterationPlan> {
             .map(SequenceWindow::from)
             .collect(),
         scope.iteration_output.into(),
-    ))
+    );
+    Some(match (grouping, scope.post_group_filter) {
+        (Some(grouping), Some(predicate)) => iteration.with_filtered_grouping(grouping, predicate),
+        (Some(grouping), None) => iteration.with_grouping(grouping),
+        (None, None) => iteration,
+        (None, Some(_)) => {
+            unreachable!("validated post-group filters always own a grouping operation")
+        }
+    })
 }
 
 fn lower_generated_sequence(sequence: &mapping::SequenceExpr) -> GeneratedSequence {
@@ -450,9 +457,6 @@ fn inspect_scope_features(
     }
     if scope.merge_dynamic_fields {
         report(ScopeFeature::DynamicFieldMerge);
-    }
-    if scope.post_group_filter.is_some() {
-        report(ScopeFeature::PostGroupFilter);
     }
 }
 

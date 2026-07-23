@@ -910,6 +910,7 @@ pub struct IterationPlan {
     filter: Option<NodeId>,
     sort: Option<SortPlan>,
     grouping: Option<GroupingPlan>,
+    post_group_filter: Option<NodeId>,
     windows: Vec<SequenceWindow>,
     output: IterationOutput,
 }
@@ -970,6 +971,7 @@ impl IterationPlan {
             filter,
             sort,
             grouping,
+            post_group_filter: None,
             windows,
             output,
         }
@@ -977,6 +979,15 @@ impl IterationPlan {
 
     pub fn with_grouping(mut self, grouping: GroupingPlan) -> Self {
         self.grouping = Some(grouping);
+        self.post_group_filter = None;
+        self
+    }
+
+    /// Groups candidates and retains only groups for which `predicate`
+    /// evaluates to true for at least one surviving member.
+    pub fn with_filtered_grouping(mut self, grouping: GroupingPlan, predicate: NodeId) -> Self {
+        self.grouping = Some(grouping);
+        self.post_group_filter = Some(predicate);
         self
     }
 
@@ -1031,6 +1042,10 @@ impl IterationPlan {
         self.grouping
     }
 
+    pub const fn post_group_filter(&self) -> Option<NodeId> {
+        self.post_group_filter
+    }
+
     pub fn windows(&self) -> &[SequenceWindow] {
         &self.windows
     }
@@ -1051,6 +1066,7 @@ impl IterationPlan {
                     .map(|key| key.expression),
             )
             .chain(self.grouping.map(GroupingPlan::expression))
+            .chain(self.post_group_filter)
             .chain(self.windows.iter().copied().flat_map(SequenceWindow::nodes))
     }
 }

@@ -120,6 +120,7 @@ fn lowers_each_grouping_mode_inside_the_candidate_pipeline() {
             }
             GroupingPlan::IntoBlocks { size } => scope.group_into_blocks = Some(size),
         }
+        scope.post_group_filter = Some(2);
 
         let program = lower(&project).expect("portable grouping should lower");
         let iteration = program.root.children[0]
@@ -128,6 +129,7 @@ fn lowers_each_grouping_mode_inside_the_candidate_pipeline() {
             .expect("grouping retains its iteration");
 
         assert_eq!(iteration.grouping(), Some(expected));
+        assert_eq!(iteration.post_group_filter(), Some(2));
         assert_eq!(iteration.filter(), Some(5));
         assert_eq!(
             iteration.sort().expect("sort is retained").keys().count(),
@@ -136,7 +138,7 @@ fn lowers_each_grouping_mode_inside_the_candidate_pipeline() {
         assert_eq!(iteration.windows().len(), 1);
         assert_eq!(
             iteration.roots().collect::<Vec<_>>(),
-            vec![5, 4, expected.expression(), 6]
+            vec![5, 4, expected.expression(), 2, 6]
         );
     }
 }

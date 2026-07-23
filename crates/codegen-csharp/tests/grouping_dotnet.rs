@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
     AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, GeneratedSequence,
-    GroupingPlan, IterationPlan, Program, TargetScope,
+    GroupingPlan, IterationPlan, Program, ScalarFunction, TargetScope,
 };
 use ir::{ScalarType, SchemaNode, Value};
 
@@ -126,6 +126,14 @@ fn fixture() -> Program {
                     collection: Vec::new(),
                 },
             },
+            constant(6, Value::String("a".into())),
+            ExpressionNode {
+                id: 7,
+                expression: Expression::Call {
+                    function: ScalarFunction::Equal,
+                    args: vec![3, 6],
+                },
+            },
         ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
@@ -145,7 +153,7 @@ fn fixture() -> Program {
                         flags: None,
                         item: 3,
                     })
-                    .with_grouping(GroupingPlan::By { key: 3 }),
+                    .with_filtered_grouping(GroupingPlan::By { key: 3 }, 7),
                 ),
                 construction: Default::default(),
                 bindings: vec![
@@ -211,9 +219,8 @@ using Ferrule.Runtime;
 
 var output = (FerruleGroup)GeneratedMapping.Execute(new FerruleGroup(Array.Empty<FerruleField>()));
 var groups = (FerruleRepeated)output.Fields.Single(field => field.Name == "Group").Value;
-Equal(2, groups.Items.Count);
+Equal(1, groups.Items.Count);
 Check((FerruleGroup)groups.Items[0], "a", "a,a,a", 1, "a,a,a");
-Check((FerruleGroup)groups.Items[1], "b", "b", 2, "b");
 Console.WriteLine("generated grouping passed");
 
 static void Check(

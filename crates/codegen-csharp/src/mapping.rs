@@ -765,7 +765,13 @@ fn render_iteration_scope(scope: usize, iteration: &IterationPlan, output: &mut 
         render_prefilter(scope, iteration.filter(), output);
     }
     if let Some(grouping) = grouping {
-        render_grouping(scope, iteration.input(), grouping, output);
+        render_grouping(
+            scope,
+            iteration.input(),
+            grouping,
+            iteration.post_group_filter(),
+            output,
+        );
     }
     if has_windows {
         output.push_str(&format!(
@@ -821,6 +827,7 @@ fn render_grouping(
     scope: usize,
     input: &IterationSource,
     grouping: GroupingPlan,
+    post_group_filter: Option<NodeId>,
     output: &mut String,
 ) {
     output.push_str(&format!(
@@ -831,37 +838,55 @@ fn render_grouping(
             output.push_str(&format!("GroupBy(candidates_{scope}, "));
             render_grouping_path(input, output);
             output.push_str(&format!(
-                ", candidate_{scope} => Node_{key}(candidate_{scope}))"
+                ", candidate_{scope} => Node_{key}(candidate_{scope})"
             ));
+            render_post_group_filter(scope, post_group_filter, output);
+            output.push(')');
         }
         GroupingPlan::AdjacentBy { key } => {
             output.push_str(&format!("GroupAdjacentBy(candidates_{scope}, "));
             render_grouping_path(input, output);
             output.push_str(&format!(
-                ", candidate_{scope} => Node_{key}(candidate_{scope}))"
+                ", candidate_{scope} => Node_{key}(candidate_{scope})"
             ));
+            render_post_group_filter(scope, post_group_filter, output);
+            output.push(')');
         }
         GroupingPlan::StartingWith { predicate } => {
             output.push_str(&format!("GroupStartingWith(candidates_{scope}, "));
             render_grouping_path(input, output);
             output.push_str(&format!(
-                ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U))"
+                ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U)"
             ));
+            render_post_group_filter(scope, post_group_filter, output);
+            output.push(')');
         }
         GroupingPlan::EndingWith { predicate } => {
             output.push_str(&format!("GroupEndingWith(candidates_{scope}, "));
             render_grouping_path(input, output);
             output.push_str(&format!(
-                ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U))"
+                ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U)"
             ));
+            render_post_group_filter(scope, post_group_filter, output);
+            output.push(')');
         }
         GroupingPlan::IntoBlocks { .. } => {
             output.push_str(&format!("GroupIntoBlocks(candidates_{scope}, "));
             render_grouping_path(input, output);
-            output.push_str(&format!(", grouping_size_{scope})"));
+            output.push_str(&format!(", grouping_size_{scope}"));
+            render_post_group_filter(scope, post_group_filter, output);
+            output.push(')');
         }
     }
     output.push_str(");\n");
+}
+
+fn render_post_group_filter(scope: usize, post_group_filter: Option<NodeId>, output: &mut String) {
+    if let Some(predicate) = post_group_filter {
+        output.push_str(&format!(
+            ", candidate_{scope} => global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(Node_{predicate}(candidate_{scope}), {predicate}U)"
+        ));
+    }
 }
 
 fn render_grouping_path(input: &IterationSource, output: &mut String) {
