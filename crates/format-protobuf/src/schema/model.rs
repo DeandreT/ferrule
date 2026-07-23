@@ -1,4 +1,4 @@
-use crate::{MAX_SCHEMA_BYTES, ProtobufError};
+use crate::ProtobufError;
 
 pub(super) const MAX_FIELD_NUMBER: u32 = (1 << 29) - 1;
 
@@ -263,12 +263,16 @@ pub struct Layout {
 
 impl Layout {
     pub fn parse(source: &str) -> Result<Self, ProtobufError> {
-        if source.len() > MAX_SCHEMA_BYTES {
-            return Err(ProtobufError::schema(format!(
-                "schema exceeds the {MAX_SCHEMA_BYTES}-byte limit"
-            )));
-        }
-        super::parser::parse(source)
+        Self::parse_files("root.proto", source, std::iter::empty())
+    }
+
+    /// Parses a root schema plus an in-memory set of canonical virtual files.
+    pub fn parse_files<'a>(
+        root_path: &str,
+        root_source: &str,
+        imports: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<Self, ProtobufError> {
+        super::files::parse_layout(root_path, root_source, imports)
     }
 
     pub fn package(&self) -> Option<&str> {

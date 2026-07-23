@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 
 use crate::ProtobufError;
@@ -10,13 +10,34 @@ use super::model::{
 
 #[derive(Debug)]
 pub(super) struct RawSchema {
+    pub(super) root_package: Option<String>,
+    pub(super) files: Vec<RawFileContext>,
+    pub(super) messages: Vec<RawMessage>,
+    pub(super) enums: Vec<RawEnum>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct RawFile {
     pub(super) package: Option<String>,
+    pub(super) imports: Vec<RawImport>,
     pub(super) messages: Vec<RawMessage>,
     pub(super) enums: Vec<RawEnum>,
     pub(super) proto3: bool,
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct RawImport {
+    pub(super) path: String,
+    pub(super) public: bool,
+}
+
 #[derive(Debug)]
+pub(super) struct RawFileContext {
+    pub(super) visible: BTreeSet<usize>,
+    pub(super) proto3: bool,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct RawMessage {
     pub(super) name: String,
     pub(super) full_name: String,
@@ -24,9 +45,10 @@ pub(super) struct RawMessage {
     pub(super) oneofs: Vec<String>,
     pub(super) reserved: RawReserved<u32>,
     pub(super) map_entry: bool,
+    pub(super) file: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct RawReserved<T> {
     pub(super) names: Vec<String>,
     pub(super) ranges: Vec<RawReservedRange<T>>,
@@ -46,13 +68,13 @@ impl<T> RawReserved<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct RawReservedRange<T> {
     pub(super) start: T,
     pub(super) end: T,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct RawField {
     pub(super) name: String,
     pub(super) number: u32,
@@ -65,20 +87,21 @@ pub(super) struct RawField {
     pub(super) map: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) enum RawDefault {
     Identifier(String),
     String(String),
     Number(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct RawEnum {
     pub(super) name: String,
     pub(super) full_name: String,
     pub(super) values: Vec<EnumValue>,
     pub(super) reserved: RawReserved<i32>,
     pub(super) allow_alias: bool,
+    pub(super) file: usize,
 }
 
 impl RawSchema {
@@ -88,7 +111,10 @@ impl RawSchema {
             if names
                 .insert(
                     message.full_name.as_str(),
-                    DeclId::Message(MessageId(index)),
+                    Declaration {
+                        id: DeclId::Message(MessageId(index)),
+                        file: message.file,
+                    },
                 )
                 .is_some()
             {
@@ -100,7 +126,13 @@ impl RawSchema {
         }
         for (index, enumeration) in self.enums.iter().enumerate() {
             if names
-                .insert(enumeration.full_name.as_str(), DeclId::Enum(EnumId(index)))
+                .insert(
+                    enumeration.full_name.as_str(),
+                    Declaration {
+                        id: DeclId::Enum(EnumId(index)),
+                        file: enumeration.file,
+                    },
+                )
                 .is_some()
             {
                 return Err(ProtobufError::schema(format!(
@@ -114,13 +146,13 @@ impl RawSchema {
             .messages
             .iter()
             .map(|message| {
-                resolve_message(
-                    message,
-                    self.package.as_deref(),
-                    &names,
-                    &self.enums,
-                    self.proto3,
-                )
+                let file = self.files.get(message.file).ok_or_else(|| {
+                    ProtobufError::schema(format!(
+                        "message `{}` has invalid source-file ownership",
+                        message.full_name
+                    ))
+                })?;
+                resolve_message(message, file, &names, &self.enums)
             })
             .collect::<Result<Vec<_>, _>>()?;
         let enums = self
@@ -129,7 +161,7 @@ impl RawSchema {
             .map(resolve_enum)
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Layout {
-            package: self.package,
+            package: self.root_package,
             messages,
             enums,
         })
@@ -142,12 +174,17 @@ enum DeclId {
     Enum(EnumId),
 }
 
+#[derive(Clone, Copy)]
+struct Declaration {
+    id: DeclId,
+    file: usize,
+}
+
 fn resolve_message(
     raw: &RawMessage,
-    package: Option<&str>,
-    names: &HashMap<&str, DeclId>,
+    file: &RawFileContext,
+    names: &HashMap<&str, Declaration>,
     enums: &[RawEnum],
-    proto3: bool,
 ) -> Result<Message, ProtobufError> {
     let reserved = validate_reserved(
         "message",
@@ -205,7 +242,7 @@ fn resolve_message(
         }
         let ty = match ScalarType::parse(&field.type_name) {
             Some(scalar) => FieldType::Scalar(scalar),
-            None => resolve_named_type(&field.type_name, &field.scope, package, names)?,
+            None => resolve_named_type(&field.type_name, &field.scope, &file.visible, names)?,
         };
         let packable = matches!(ty, FieldType::Scalar(scalar) if scalar.is_packable())
             || matches!(ty, FieldType::Enum(_));
@@ -245,7 +282,7 @@ fn resolve_message(
             .transpose()?;
         let packed = field.cardinality == Cardinality::Repeated
             && packable
-            && field.packed.unwrap_or(proto3);
+            && field.packed.unwrap_or(file.proto3);
         fields.push(Field {
             name: field.name.clone(),
             number: field.number,
@@ -436,28 +473,32 @@ fn validate_field_number(message: &RawMessage, field: &RawField) -> Result<(), P
 fn resolve_named_type(
     type_name: &str,
     scope: &str,
-    package: Option<&str>,
-    names: &HashMap<&str, DeclId>,
+    visible: &BTreeSet<usize>,
+    names: &HashMap<&str, Declaration>,
 ) -> Result<FieldType, ProtobufError> {
     if let Some(absolute) = type_name.strip_prefix('.') {
         return names
             .get(absolute)
             .copied()
-            .map(field_type)
+            .filter(|declaration| visible.contains(&declaration.file))
+            .map(|declaration| field_type(declaration.id))
             .ok_or_else(|| ProtobufError::schema(format!("unknown field type `{type_name}`")));
     }
 
-    let package_parts = package.map_or(0, |value| value.split('.').count());
     let parts: Vec<_> = scope.split('.').collect();
-    for length in (package_parts..=parts.len()).rev() {
+    for length in (0..=parts.len()).rev() {
         let prefix = parts[..length].join(".");
         let candidate = if prefix.is_empty() {
             type_name.to_string()
         } else {
             format!("{prefix}.{type_name}")
         };
-        if let Some(id) = names.get(candidate.as_str()).copied() {
-            return Ok(field_type(id));
+        if let Some(declaration) = names
+            .get(candidate.as_str())
+            .copied()
+            .filter(|declaration| visible.contains(&declaration.file))
+        {
+            return Ok(field_type(declaration.id));
         }
     }
     Err(ProtobufError::schema(format!(

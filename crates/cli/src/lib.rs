@@ -19,7 +19,8 @@ use std::time::Duration;
 use anyhow::{Context, bail};
 use ir::{Instance, SchemaNode};
 use mapping::{
-    EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, TabularBoundaryKind,
+    EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, ProtobufOptions,
+    TabularBoundaryKind,
 };
 
 const DEFAULT_HTTP_TIMEOUT_SECONDS: u64 = 30;
@@ -455,8 +456,8 @@ fn write_output(
     }
     if let Some(protobuf) = &options.protobuf {
         reject_protobuf_conflicts(options, "output")?;
-        let layout = format_protobuf::Layout::parse(&protobuf.schema)
-            .context("parsing embedded Protocol Buffers schema")?;
+        let layout =
+            protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
         format_protobuf::write(path, &layout, &protobuf.root_message, instance)
             .with_context(|| format!("writing output {}", path.display()))?;
         return Ok(1);
@@ -694,8 +695,8 @@ fn read_instance(
 
     if let Some(protobuf) = &options.protobuf {
         reject_protobuf_conflicts(options, "input")?;
-        let layout = format_protobuf::Layout::parse(&protobuf.schema)
-            .context("parsing embedded Protocol Buffers schema")?;
+        let layout =
+            protobuf_layout(protobuf).context("parsing embedded Protocol Buffers schema")?;
         return format_protobuf::read(path, &layout, &protobuf.root_message)
             .with_context(|| format!("reading Protocol Buffers input {}", path.display()));
     }
@@ -869,6 +870,19 @@ fn read_instance(
         other => bail!("unsupported input file extension: .{other}"),
     };
     Ok(instance)
+}
+
+fn protobuf_layout(
+    options: &ProtobufOptions,
+) -> Result<format_protobuf::Layout, format_protobuf::ProtobufError> {
+    format_protobuf::Layout::parse_files(
+        options.schema_path.as_deref().unwrap_or("root.proto"),
+        &options.schema,
+        options
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
 }
 
 fn http_url(path: &Path) -> Option<&str> {

@@ -67,7 +67,7 @@ pub use pdf::{
     PdfTextCase, PdfTextGroup, PdfTextGroupOutput, PdfTextGroups, PdfTextMatch, PdfTextProperties,
     PdfTextRows, PdfVerticalBoundaryFind,
 };
-pub use protobuf::ProtobufOptions;
+pub use protobuf::{ProtobufOptions, ProtobufSchemaFile};
 pub use recursive::RecursiveFilterPlan;
 pub use swift::{
     SwiftCharset, SwiftFieldLayout, SwiftMessageLayout, SwiftMtLayout, SwiftMtLayoutError,

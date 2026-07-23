@@ -206,6 +206,8 @@ fn pdf_options_reject_other_format_options_before_reading() {
                 protobuf: Some(ProtobufOptions {
                     schema: "message Document { optional string Value = 1; }".into(),
                     root_message: "Document".into(),
+                    schema_path: None,
+                    imports: Vec::new(),
                 }),
                 ..FormatOptions::default()
             },

@@ -17,7 +17,7 @@ layout and dialect details that an extension cannot express.
 | HL7 v2 / TRADACOMS | Yes | Yes | Bounded schema-guided message I/O |
 | IDoc / SWIFT MT | Yes | Yes | Runtime I/O through embedded imported layouts |
 | FlexText | Yes | Yes | Embedded recursive split/store/switch layouts, including fixed-width and delimited records |
-| Protocol Buffers | Yes | Yes | Bounded proto2/proto3 schemas and binary messages, including nested messages, enums, repeated fields, and packed scalars |
+| Protocol Buffers | Yes | Yes | Bounded proto2/proto3 binary I/O with self-contained local import graphs, public imports, nested messages, enums, repeated fields, and packed scalars |
 | XBRL | Yes | Yes | Typed instance facts, contexts, dimensions, units, and namespace-qualified concepts |
 | PDF | Yes | No | Layout-driven visual extraction from positioned text and painted edges |
 

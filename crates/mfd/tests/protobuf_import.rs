@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ir::{Instance, ScalarType, SchemaKind, Value};
+use mapping::ProtobufOptions;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -57,6 +58,189 @@ fn protobuf_directory() -> Instance {
             Instance::Repeated(vec![record(4, "Four", 1), record(8, "Eight", 0)]),
         ),
     ])
+}
+
+fn embedded_layout(options: &ProtobufOptions) -> format_protobuf::Layout {
+    format_protobuf::Layout::parse_files(
+        options.schema_path.as_deref().unwrap_or("root.proto"),
+        &options.schema,
+        options
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
+    .unwrap_or_else(|error| panic!("embedded protobuf graph should parse: {error}"))
+}
+
+#[test]
+fn multi_file_source_is_embedded_executable_and_roundtrips_without_originals() {
+    let temp = TempDir::new();
+    for directory in ["api", "shared", "common"] {
+        std::fs::create_dir_all(temp.0.join(directory)).unwrap();
+    }
+    let root_source = r#"
+syntax = "proto3";
+package app;
+import "shared/model.proto";
+message Envelope {
+  shared.model.Record record = 1;
+  shared.types.Status status = 2;
+}
+"#;
+    let model_source = r#"
+syntax = "proto3";
+package shared.model;
+import public "common/status.proto";
+message Record {
+  string name = 1;
+  shared.types.Status status = 2;
+}
+"#;
+    let status_source = r#"
+syntax = "proto3";
+package shared.types;
+enum Status { STATUS_UNSPECIFIED = 0; READY = 1; }
+"#;
+    std::fs::write(temp.0.join("api/root.proto"), root_source).unwrap();
+    std::fs::write(temp.0.join("shared/model.proto"), model_source).unwrap();
+    std::fs::write(temp.0.join("common/status.proto"), status_source).unwrap();
+    std::fs::write(
+        temp.0.join("result.xsd"),
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Result">
+    <xs:complexType><xs:sequence>
+      <xs:element name="Name" type="xs:string"/>
+      <xs:element name="Status" type="xs:int"/>
+    </xs:sequence></xs:complexType>
+  </xs:element>
+</xs:schema>
+"#,
+    )
+    .unwrap();
+    let design = temp.0.join("multi-file.mfd");
+    std::fs::write(
+        &design,
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<mapping version="32">
+  <resources/>
+  <component name="defaultmap" uid="1">
+    <properties SelectedLanguage="builtin"/>
+    <structure><children>
+      <component name="Envelope" library="binary" uid="2" kind="33">
+        <properties/>
+        <data><root>
+          <entry name="FileInstance" expanded="1">
+            <entry name="document" type="doc-protobuf" expanded="1">
+              <document schemafile="api/root.proto" root="{app}Envelope"/>
+              <entry name="Envelope" expanded="1">
+                <entry name="record" expanded="1">
+                  <entry name="name" outkey="11"/>
+                  <entry name="status"/>
+                </entry>
+                <entry name="status" outkey="12"/>
+              </entry>
+            </entry>
+          </entry>
+        </root><binary inputinstance="envelope.bin"/></data>
+      </component>
+      <component name="Result" library="xml" uid="3" kind="14">
+        <properties XSLTDefaultOutput="1"/>
+        <data><root>
+          <entry name="FileInstance" expanded="1">
+            <entry name="document" expanded="1">
+              <entry name="Result" expanded="1">
+                <entry name="Name" inpkey="21"/>
+                <entry name="Status" inpkey="22"/>
+              </entry>
+            </entry>
+          </entry>
+        </root><document schema="result.xsd" outputinstance="result.xml" instanceroot="{}Result"/></data>
+      </component>
+    </children></structure>
+    <connections>
+      <edge from="11" to="21"/>
+      <edge from="12" to="22"/>
+    </connections>
+  </component>
+</mapping>
+"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let options = imported.project.source_options.protobuf.as_ref().unwrap();
+    assert_eq!(options.schema_path.as_deref(), Some("api/root.proto"));
+    assert_eq!(options.imports.len(), 2);
+    assert_eq!(
+        options
+            .imports
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>(),
+        ["common/status.proto", "shared/model.proto"]
+    );
+
+    for directory in ["api", "shared", "common"] {
+        std::fs::remove_dir_all(temp.0.join(directory)).unwrap();
+    }
+    let layout = embedded_layout(options);
+    let input = Instance::Group(vec![
+        (
+            "record".to_string(),
+            Instance::Group(vec![
+                (
+                    "name".to_string(),
+                    Instance::Scalar(Value::String("portable".to_string())),
+                ),
+                (
+                    "status".to_string(),
+                    Instance::Scalar(Value::String("READY".to_string())),
+                ),
+            ]),
+        ),
+        (
+            "status".to_string(),
+            Instance::Scalar(Value::String("READY".to_string())),
+        ),
+    ]);
+    let bytes = format_protobuf::to_vec(&layout, &options.root_message, &input).unwrap();
+    let decoded = format_protobuf::from_slice(&layout, &options.root_message, &bytes).unwrap();
+    let output = engine::run(&imported.project, &decoded).unwrap();
+    assert_eq!(
+        scalar(&output, "Name"),
+        Some(&Value::String("portable".to_string()))
+    );
+    assert_eq!(scalar(&output, "Status"), Some(&Value::Int(1)));
+
+    let exported_design = temp.0.join("exported/mapping.mfd");
+    let warnings = mfd::export(&imported.project, &exported_design).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let exported_base = temp.0.join("exported/mapping-source-protobuf");
+    assert_eq!(
+        std::fs::read_to_string(exported_base.join("api/root.proto")).unwrap(),
+        root_source
+    );
+    assert_eq!(
+        std::fs::read_to_string(exported_base.join("shared/model.proto")).unwrap(),
+        model_source
+    );
+    assert_eq!(
+        std::fs::read_to_string(exported_base.join("common/status.proto")).unwrap(),
+        status_source
+    );
+    let exported_xml = std::fs::read_to_string(&exported_design).unwrap();
+    assert!(exported_xml.contains("schemafile=\"mapping-source-protobuf/api/root.proto\""));
+
+    let reimported = mfd::import(&exported_design).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert_eq!(
+        reimported.project.source_options.protobuf,
+        imported.project.source_options.protobuf
+    );
+    assert_eq!(engine::run(&reimported.project, &decoded).unwrap(), output);
 }
 
 #[test]

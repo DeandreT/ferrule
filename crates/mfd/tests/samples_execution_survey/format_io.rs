@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use ir::{Instance, SchemaNode};
 use mapping::{
-    EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, TabularBoundaryKind,
+    EdiAutocomplete, EdiBoundaryKind, ExternalPayloadFormat, FormatOptions, ProtobufOptions,
+    TabularBoundaryKind,
 };
 
 use super::FIXED_CURRENT_DATETIME;
@@ -142,8 +143,7 @@ pub(super) fn read_instance(
         return format_flextext::read(path, schema, layout).map_err(|error| error.to_string());
     }
     if let Some(protobuf) = &options.protobuf {
-        let layout =
-            format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| error.to_string())?;
+        let layout = protobuf_layout(protobuf)?;
         return format_protobuf::read(path, &layout, &protobuf.root_message)
             .map_err(|error| error.to_string());
     }
@@ -276,8 +276,7 @@ pub(super) fn write_instance(
             .map_err(|error| error.to_string());
     }
     if let Some(protobuf) = &options.protobuf {
-        let layout =
-            format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| error.to_string())?;
+        let layout = protobuf_layout(protobuf)?;
         return format_protobuf::write(path, &layout, &protobuf.root_message, instance)
             .map_err(|error| error.to_string());
     }
@@ -332,6 +331,18 @@ pub(super) fn write_instance(
         "hl7" => Err("HL7 output is not supported".to_string()),
         other => Err(format!("unsupported output file extension `.{other}`")),
     }
+}
+
+fn protobuf_layout(options: &ProtobufOptions) -> Result<format_protobuf::Layout, String> {
+    format_protobuf::Layout::parse_files(
+        options.schema_path.as_deref().unwrap_or("root.proto"),
+        &options.schema,
+        options
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn formatted_edi_output<'a>(

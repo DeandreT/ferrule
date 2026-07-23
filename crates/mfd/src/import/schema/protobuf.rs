@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use mapping::{FormatOptions, ProtobufOptions};
+use mapping::{FormatOptions, ProtobufOptions, ProtobufSchemaFile};
 
 use super::{
     ComponentFormat, SchemaComponent, collect_entry_ports, entry_key_sets, entry_tree_schema,
@@ -151,18 +151,14 @@ fn load_typed_layout(
         .attribute("schemafile")
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "document metadata has no schemafile".to_string())?;
-    let schema_path = resolve_sibling(mfd_path, schema_file);
-    let schema_bytes = std::fs::read(&schema_path)
-        .map_err(|error| format!("could not read protobuf schema `{schema_file}` ({error})"))?;
-    if schema_bytes.len() > format_protobuf::MAX_SCHEMA_BYTES {
-        return Err(format!(
-            "protobuf schema `{schema_file}` exceeds the {}-byte limit",
-            format_protobuf::MAX_SCHEMA_BYTES
-        ));
-    }
-    let schema_text = String::from_utf8(schema_bytes)
-        .map_err(|_| format!("protobuf schema `{schema_file}` is not valid UTF-8"))?;
-    let layout = format_protobuf::Layout::parse(&schema_text)
+    let base = mfd_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let bundle = load_schema_bundle(base, schema_file)
+        .map_err(|error| format!("could not load protobuf schema `{schema_file}` ({error})"))?;
+    let layout = bundle
+        .layout()
         .map_err(|error| format!("could not parse protobuf schema `{schema_file}` ({error})"))?;
 
     let payload_name = payload.attribute("name").unwrap_or_default();
@@ -174,23 +170,46 @@ fn load_typed_layout(
         .ok_or_else(|| "resolved protobuf root is missing from its layout".to_string())?;
     let schema = format_protobuf::to_ir_schema(&layout, &root_name)
         .map_err(|error| format!("protobuf root `{root_name}` is unsupported ({error})"))?;
+    let (root_path, schema_text, imports) = bundle.into_parts();
+    let has_imports = !imports.is_empty();
     Ok((
         schema,
         FormatOptions {
             protobuf: Some(ProtobufOptions {
                 schema: schema_text,
                 root_message: root_name,
+                schema_path: has_imports.then_some(root_path),
+                imports: imports
+                    .into_iter()
+                    .map(|file| {
+                        let (path, source) = file.into_parts();
+                        ProtobufSchemaFile { path, source }
+                    })
+                    .collect(),
             }),
             ..FormatOptions::default()
         },
     ))
 }
 
-fn resolve_sibling(mfd_path: &Path, relative: &str) -> PathBuf {
-    mfd_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(relative)
+fn load_schema_bundle(
+    base: &Path,
+    schema_file: &str,
+) -> Result<format_protobuf::SchemaBundle, format_protobuf::ProtobufError> {
+    if let Some((directory, root_path)) = schema_file.split_once('/')
+        && directory.ends_with("-protobuf")
+        && !root_path.is_empty()
+    {
+        let confined_base = std::fs::canonicalize(base)?;
+        let bundle_base = std::fs::canonicalize(base.join(directory))?;
+        if !bundle_base.starts_with(&confined_base) {
+            return Err(format_protobuf::ProtobufError::InvalidSchema(format!(
+                "protobuf bundle directory `{directory}` escapes the mapping directory"
+            )));
+        }
+        return format_protobuf::SchemaBundle::read_relative(&bundle_base, root_path);
+    }
+    format_protobuf::SchemaBundle::read_relative(base, schema_file)
 }
 
 fn resolve_root(
@@ -335,7 +354,7 @@ mod tests {
         assert!(component.options.protobuf.is_none());
         assert!(component.schema.child("value").is_some());
         assert!(warnings.iter().any(|warning| {
-            warning.contains("could not read protobuf schema")
+            warning.contains("could not load protobuf schema")
                 && warning.contains("without executable protobuf metadata")
         }));
     }

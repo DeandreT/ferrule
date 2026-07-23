@@ -3,7 +3,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use ir::SchemaNode;
-use mapping::FormatOptions;
+use mapping::{FormatOptions, ProtobufOptions};
 
 use crate::MfdError;
 
@@ -38,7 +38,7 @@ pub(super) fn validate_side(
             side_name(side)
         )));
     }
-    let layout = format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| {
+    let layout = embedded_layout(protobuf).map_err(|error| {
         unsupported(format!("the embedded protobuf schema is invalid: {error}"))
     })?;
     let root = layout
@@ -74,7 +74,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
             side_name(args.side)
         ))
     })?;
-    let layout = format_protobuf::Layout::parse(&protobuf.schema).map_err(|error| {
+    let layout = embedded_layout(protobuf).map_err(|error| {
         unsupported(format!("the embedded protobuf schema is invalid: {error}"))
     })?;
     let root = layout
@@ -94,12 +94,37 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         .file_stem()
         .and_then(|stem| stem.to_str())
         .unwrap_or("mapping");
-    let schema_file = format!("{stem}-{}.proto", args.sibling_suffix);
-    let schema_path = args
-        .mfd_path
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join(&schema_file);
+    let base = args.mfd_path.parent().unwrap_or_else(|| Path::new("."));
+    let (schema_file, siblings) = if protobuf.imports.is_empty() {
+        let schema_file = format!("{stem}-{}.proto", args.sibling_suffix);
+        let sibling = GeneratedSibling {
+            path: base.join(&schema_file),
+            contents: protobuf.schema.clone(),
+        };
+        (schema_file, vec![sibling])
+    } else {
+        let directory = format!("{stem}-{}-protobuf", args.sibling_suffix);
+        let root_path = format_protobuf::canonical_schema_path(
+            protobuf.schema_path.as_deref().unwrap_or("root.proto"),
+        )
+        .map_err(|error| unsupported(format!("invalid embedded protobuf root path: {error}")))?;
+        let schema_file = format!("{directory}/{root_path}");
+        let mut siblings = Vec::with_capacity(protobuf.imports.len() + 1);
+        siblings.push(GeneratedSibling {
+            path: base.join(&schema_file),
+            contents: protobuf.schema.clone(),
+        });
+        for file in &protobuf.imports {
+            let path = format_protobuf::canonical_schema_path(&file.path).map_err(|error| {
+                unsupported(format!("invalid embedded protobuf import path: {error}"))
+            })?;
+            siblings.push(GeneratedSibling {
+                path: base.join(&directory).join(path),
+                contents: file.source.clone(),
+            });
+        }
+        (schema_file, siblings)
+    };
     let root_key = args
         .ports
         .required_key_for_abs(&[], "protobuf document root")?;
@@ -179,13 +204,20 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
         xml_escape(&schema_file),
         xml_escape(&expanded_name(root_name)),
     );
-    Ok(RenderedSchemaComponent {
-        xml,
-        siblings: vec![GeneratedSibling {
-            path: schema_path,
-            contents: protobuf.schema.clone(),
-        }],
-    })
+    Ok(RenderedSchemaComponent { xml, siblings })
+}
+
+fn embedded_layout(
+    options: &ProtobufOptions,
+) -> Result<format_protobuf::Layout, format_protobuf::ProtobufError> {
+    format_protobuf::Layout::parse_files(
+        options.schema_path.as_deref().unwrap_or("root.proto"),
+        &options.schema,
+        options
+            .imports
+            .iter()
+            .map(|file| (file.path.as_str(), file.source.as_str())),
+    )
 }
 
 const fn side_name(side: Side) -> &'static str {

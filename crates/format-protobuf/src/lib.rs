@@ -20,8 +20,9 @@ pub const MAX_SCHEMA_BYTES: usize = 1024 * 1024;
 pub const MAX_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 
 pub use schema::{
-    Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, Message,
-    MessageId, Oneof, OneofId, ScalarType,
+    Cardinality, DefaultValue, Enum, EnumId, EnumValue, Field, FieldType, Layout, MAX_IMPORT_DEPTH,
+    MAX_IMPORT_PATH_BYTES, MAX_SCHEMA_FILES, MAX_SCHEMA_GRAPH_BYTES, Message, MessageId, Oneof,
+    OneofId, ScalarType, SchemaBundle, SchemaFile, canonical_schema_path,
 };
 
 /// Errors from schema parsing, layout validation, or instance encoding.
@@ -68,15 +69,15 @@ impl ProtobufError {
 
 /// Parses a proto2/proto3-lite schema from disk.
 pub fn read_layout(path: &Path) -> Result<Layout, ProtobufError> {
-    let bytes = std::fs::read(path)?;
-    if bytes.len() > MAX_SCHEMA_BYTES {
-        return Err(ProtobufError::schema(format!(
-            "schema exceeds the {MAX_SCHEMA_BYTES}-byte limit"
-        )));
-    }
-    let source =
-        String::from_utf8(bytes).map_err(|_| ProtobufError::schema("schema is not valid UTF-8"))?;
-    Layout::parse(&source)
+    let base = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let root = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| ProtobufError::schema("protobuf schema path has no UTF-8 filename"))?;
+    SchemaBundle::read_relative(base, root)?.layout()
 }
 
 /// Encodes one root message into a new byte vector.
