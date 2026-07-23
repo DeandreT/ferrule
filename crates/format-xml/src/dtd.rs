@@ -3,7 +3,7 @@
 //! The importer supports bounded internal parameter entities containing
 //! content-model particles, but never loads external entities or subsets. It
 //! supports `ELEMENT` and `ATTLIST` declarations, child sequences and choices,
-//! the standard occurrence suffixes, `EMPTY`, exact `(#PCDATA)`, and
+//! the standard occurrence suffixes, `EMPTY`, text and mixed content, and
 //! CDATA/enumeration attributes.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -56,6 +56,8 @@ pub enum DtdError {
     UnresolvedElement { parent: String, child: String },
     #[error("DTD element `{element}` uses `{name}` as both a child element and an attribute")]
     AttributeElementNameCollision { element: String, name: String },
+    #[error("DTD mixed-content element `{element}` declares child `{child}` more than once")]
+    DuplicateMixedChild { element: String, child: String },
     #[error("DTD element `{0}` is recursively defined and cannot become a finite schema")]
     RecursiveElement(String),
     #[error(
@@ -131,6 +133,7 @@ struct AttributeDecl {
 enum Content {
     Empty,
     Text,
+    Mixed(Vec<String>),
     Children(Particle),
 }
 
@@ -275,16 +278,32 @@ impl<'a> Parser<'a> {
         self.skip_whitespace();
         if self.consume("#PCDATA") {
             self.skip_whitespace();
-            if !self.consume(")") {
-                return self.unsupported("mixed PCDATA and child-element content");
+            if self.consume(")") {
+                if self
+                    .peek_byte()
+                    .is_some_and(|byte| matches!(byte, b'?' | b'*' | b'+'))
+                {
+                    return self.unsupported("an occurrence suffix on #PCDATA content");
+                }
+                return Ok(Content::Text);
             }
-            if self
-                .peek_byte()
-                .is_some_and(|byte| matches!(byte, b'?' | b'*' | b'+'))
-            {
-                return self.unsupported("an occurrence suffix on #PCDATA content");
+            let mut children = Vec::new();
+            loop {
+                if !self.consume("|") {
+                    return self.syntax("expected `|` or `)` after #PCDATA");
+                }
+                self.skip_whitespace();
+                children.push(self.parse_name()?);
+                self.bump_particle_count()?;
+                self.skip_whitespace();
+                if self.consume(")") {
+                    break;
+                }
             }
-            return Ok(Content::Text);
+            if !self.consume("*") {
+                return self.unsupported("mixed PCDATA and child-element content must use `*`");
+            }
+            return Ok(Content::Mixed(children));
         }
         let mut particle = self.parse_particle_group(1)?;
         particle.occurs = self.parse_occurrence();
@@ -778,6 +797,44 @@ impl<'a> Expander<'a> {
                     self.bump_node_count()?;
                     let mut children =
                         vec![SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text()];
+                    children.extend(self.expand_attributes(&declaration.attributes)?);
+                    Ok(SchemaNode::group(name, children))
+                }
+                Content::Mixed(names) => {
+                    self.bump_node_count()?;
+                    let mut children =
+                        Vec::with_capacity(names.len() + declaration.attributes.len() + 1);
+                    children.push(SchemaNode::scalar(XML_TEXT_FIELD, ScalarType::String).text());
+                    let mut seen = BTreeSet::new();
+                    for child_name in names {
+                        if !seen.insert(child_name.as_str()) {
+                            return Err(DtdError::DuplicateMixedChild {
+                                element: name.to_string(),
+                                child: child_name.clone(),
+                            });
+                        }
+                        let (child_name, _) = self
+                            .document
+                            .elements
+                            .get_key_value(child_name)
+                            .ok_or_else(|| DtdError::UnresolvedElement {
+                                parent: name.to_string(),
+                                child: child_name.clone(),
+                            })?;
+                        let mut child = self.expand_element(child_name)?;
+                        child.repeating = true;
+                        children.push(child);
+                    }
+                    if let Some(attribute) = declaration
+                        .attributes
+                        .iter()
+                        .find(|attribute| children.iter().any(|child| child.name == attribute.name))
+                    {
+                        return Err(DtdError::AttributeElementNameCollision {
+                            element: name.to_string(),
+                            name: attribute.name.clone(),
+                        });
+                    }
                     children.extend(self.expand_attributes(&declaration.attributes)?);
                     Ok(SchemaNode::group(name, children))
                 }
