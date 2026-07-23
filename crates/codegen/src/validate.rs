@@ -213,6 +213,16 @@ pub enum ProgramValidationError {
         scope_repeating: bool,
         target_repeating: bool,
     },
+    ScopeSequenceRequiresGroupTarget {
+        target_path: Vec<String>,
+    },
+    InvalidScopeSequenceWrapper {
+        target_path: Vec<String>,
+    },
+    InvalidScopeSequenceSegment {
+        target_path: Vec<String>,
+        segment: usize,
+    },
     MissingSequenceExpression {
         owner: SequenceOwner,
         role: SequenceExpressionRole,
@@ -561,6 +571,54 @@ fn validate_scope(
             target_repeating: target_node.repeating,
         });
     }
+    if let Some(iteration) = &scope.iteration
+        && let Some(sequence) = iteration.concatenated()
+    {
+        if !matches!(target_node.kind, SchemaKind::Group { .. }) {
+            return Err(ProgramValidationError::ScopeSequenceRequiresGroupTarget {
+                target_path: target_path.clone(),
+            });
+        }
+        let mapped_target_invalid = iteration.output() == IterationOutput::MappedSequence
+            && (target_path.is_empty() || target_node.repeating);
+        if !matches!(scope.construction, TargetConstruction::Group)
+            || iteration.filter().is_some()
+            || iteration.sort().is_some()
+            || iteration.grouping().is_some()
+            || !iteration.windows().is_empty()
+            || iteration.output() == IterationOutput::First
+            || mapped_target_invalid
+            || !scope.bindings.is_empty()
+            || !scope.children.is_empty()
+        {
+            return Err(ProgramValidationError::InvalidScopeSequenceWrapper {
+                target_path: target_path.clone(),
+            });
+        }
+        for (index, segment) in sequence.iter().enumerate() {
+            let output_matches = segment.iteration.as_ref().map_or_else(
+                || iteration.output() == IterationOutput::Repeated && segment.repeating,
+                |segment_iteration| segment_iteration.output() == iteration.output(),
+            );
+            if !segment.target_field.is_empty() || !output_matches {
+                return Err(ProgramValidationError::InvalidScopeSequenceSegment {
+                    target_path: target_path.clone(),
+                    segment: index,
+                });
+            }
+            validate_scope(
+                segment,
+                expressions,
+                schemas,
+                target_path,
+                sequence_items,
+                active_sequence_items,
+                active_joins,
+                root_context,
+            )?;
+        }
+        return Ok(());
+    }
     if let Some(iteration) = &scope.iteration {
         let grouping_expression =
             grouping::validate(iteration, expressions, target_path.as_slice())?;
@@ -619,6 +677,9 @@ fn validate_scope(
                 scope_source = None;
                 active_source = None;
                 scope_joins.push(joins::ActiveJoin::new(join));
+            }
+            IterationSource::Concatenate(_) => {
+                unreachable!("concatenated scope validation returns before candidate validation")
             }
         }
         let candidate_schemas = ScopeSchemas {
@@ -1208,6 +1269,25 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "target scope {} repeating flag {scope_repeating} does not match target schema cardinality {target_repeating}",
                 display_path(target_path)
+            ),
+            Self::ScopeSequenceRequiresGroupTarget { target_path } => write!(
+                formatter,
+                "target scope {} concatenation requires a group target",
+                display_path(target_path)
+            ),
+            Self::InvalidScopeSequenceWrapper { target_path } => write!(
+                formatter,
+                "target scope {} concatenation wrapper has unsupported content, controls, or output",
+                display_path(target_path)
+            ),
+            Self::InvalidScopeSequenceSegment {
+                target_path,
+                segment,
+            } => write!(
+                formatter,
+                "target scope {} concatenation segment {} has a target field or output kind that does not match its wrapper",
+                display_path(target_path),
+                segment + 1
             ),
             Self::MissingSequenceExpression {
                 owner,
