@@ -3,6 +3,7 @@ use crate::canvas::{SourceBlock, TargetBlock, source_blocks, target_blocks};
 use egui_snarl::ui::SnarlWidget;
 use egui_snarl::{InPinId, OutPinId};
 use ir::{ScalarType, SchemaNode};
+use mapping::NamedSource;
 
 struct Fixture {
     graph: Graph,
@@ -257,14 +258,36 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
 #[test]
 fn lookup_node_width_stabilizes_across_repaints() {
     let mut fx = fixture();
+    let catalog = NamedSource {
+        name: "Articles".to_string(),
+        path: "Articles.xml".to_string(),
+        schema: SchemaNode::group(
+            "Articles",
+            vec![
+                SchemaNode::group(
+                    "Article",
+                    vec![
+                        SchemaNode::scalar("Number", ScalarType::Int),
+                        SchemaNode::scalar("Name", ScalarType::String),
+                        SchemaNode::scalar("SinglePrice", ScalarType::Float),
+                    ],
+                )
+                .repeating(),
+            ],
+        ),
+        options: Default::default(),
+        dynamic_path: None,
+    };
+    fx.source_paths =
+        SourcePathCatalog::new(&SchemaNode::group("LineItems", Vec::new()), &[catalog]);
     fx.graph.nodes.insert(1, Node::Unconnected);
     fx.graph.nodes.insert(
         2,
         Node::Lookup {
-            collection: Vec::new(),
-            key: vec!["name".into()],
+            collection: vec!["Articles".into(), "Article".into()],
+            key: vec!["Number".into()],
             matches: 1,
-            value: vec!["age".into()],
+            value: vec!["Name".into()],
         },
     );
     let mut snarl = std::mem::take(&mut fx.snarl);
@@ -274,7 +297,7 @@ fn lookup_node_width_stabilizes_across_repaints() {
     let context = egui::Context::default();
     let mut widths = Vec::new();
 
-    for _ in 0..8 {
+    for _ in 0..24 {
         let _ = context.run_ui(Default::default(), |ui| {
             ui.set_min_size(egui::vec2(900.0, 700.0));
             egui::CentralPanel::default().show(ui, |ui| {
@@ -315,14 +338,13 @@ fn lookup_node_width_stabilizes_across_repaints() {
         }
     }
 
-    let stable = &widths[widths.len().saturating_sub(3)..];
-    assert_eq!(stable.len(), 3, "Lookup node was not rendered: {widths:?}");
+    assert_eq!(widths.len(), 24, "Lookup node was not rendered: {widths:?}");
     assert!(
-        stable.iter().all(|width| (*width - stable[0]).abs() < 0.5),
+        widths.iter().all(|width| (*width - widths[0]).abs() < 0.5),
         "Lookup node kept widening across repaints: {widths:?}"
     );
     assert!(
-        stable[0] < 400.0,
+        widths[0] < 400.0,
         "Lookup node settled at an excessive width: {widths:?}"
     );
 }
