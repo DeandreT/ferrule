@@ -172,6 +172,7 @@ pub(super) fn render_schema_component(
 
     let mut out = String::new();
     let mut sibling = None;
+    let mut additional_siblings = Vec::new();
     match format {
         SideFormat::Pdf => {
             return super::pdf::render(super::pdf::RenderArgs {
@@ -231,16 +232,22 @@ pub(super) fn render_schema_component(
                 });
             }
             let schema_file = format!("{stem}-{sibling_suffix}.xsd");
-            let namespace = format_xml::xsd::export_namespace(schema)?;
+            let exported = format_xml::xsd::export_set(schema, &schema_file)?;
             let instance_root = format!(
                 "{{{}}}{}",
-                namespace.as_deref().unwrap_or_default(),
+                exported.namespace.as_deref().unwrap_or_default(),
                 schema.name
             );
             sibling = Some(GeneratedSibling {
                 path: dir.join(&schema_file),
-                contents: format_xml::xsd::export(schema)?,
+                contents: exported.root,
             });
+            additional_siblings.extend(exported.dependencies.into_iter().map(|dependency| {
+                GeneratedSibling {
+                    path: dir.join(dependency.filename),
+                    contents: dependency.contents,
+                }
+            }));
             if let Some(http) = options.http_get {
                 if side != Side::Source {
                     return Err(MfdError::Unsupported(
@@ -287,7 +294,7 @@ pub(super) fn render_schema_component(
                 );
                 return Ok(RenderedSchemaComponent {
                     xml: out,
-                    siblings: sibling.into_iter().collect(),
+                    siblings: sibling.into_iter().chain(additional_siblings).collect(),
                 });
             }
             let _ = write!(
@@ -736,7 +743,7 @@ pub(super) fn render_schema_component(
     }
     Ok(RenderedSchemaComponent {
         xml: out,
-        siblings: sibling.into_iter().collect(),
+        siblings: sibling.into_iter().chain(additional_siblings).collect(),
     })
 }
 

@@ -8,11 +8,15 @@ use super::{ElementOccurrence, write_attribute, write_element_required};
 
 pub(super) struct AlternativeExportPlan<'a> {
     namespace: Option<String>,
+    export_namespace: Option<String>,
     saw_unqualified: bool,
     groups: BTreeMap<usize, String>,
     group_views: BTreeMap<usize, Vec<String>>,
     alternatives_by_base: BTreeMap<String, BTreeSet<String>>,
     definitions: BTreeMap<String, TypeDefinition<'a>>,
+    external_names: BTreeMap<(bool, String, String), String>,
+    external_namespaces: Vec<(String, String)>,
+    external_imports: Vec<(String, String)>,
 }
 
 struct TypeDefinition<'a> {
@@ -32,43 +36,110 @@ impl PartialEq for TypeDefinition<'_> {
 }
 
 impl<'a> AlternativeExportPlan<'a> {
-    pub(super) fn build(schema: &'a SchemaNode) -> Result<Self, XmlFormatError> {
-        let mut reserved = BTreeSet::new();
-        collect_type_names(schema, &mut reserved)?;
+    pub(super) fn build(
+        schema: &'a SchemaNode,
+        external_references: &[super::ExternalReference],
+    ) -> Result<Self, XmlFormatError> {
         let mut plan = Self {
             namespace: None,
+            export_namespace: None,
             saw_unqualified: false,
             groups: BTreeMap::new(),
             group_views: BTreeMap::new(),
             alternatives_by_base: BTreeMap::new(),
             definitions: BTreeMap::new(),
+            external_names: BTreeMap::new(),
+            external_namespaces: Vec::new(),
+            external_imports: Vec::new(),
         };
+        plan.set_external_references(external_references);
+        let mut reserved = BTreeSet::new();
+        collect_type_names(schema, &plan, &mut reserved)?;
         plan.collect(schema, &reserved)?;
         Ok(plan)
     }
 
     pub(super) fn schema_attributes(&self) -> String {
-        let mut attributes = self
-            .namespace
-            .as_ref()
-            .map_or_else(String::new, |namespace| {
-                format!(
-                    " xmlns:tns=\"{}\" targetNamespace=\"{}\"",
-                    xml_escape(namespace),
-                    xml_escape(namespace)
-                )
-            });
+        let mut attributes =
+            self.export_namespace
+                .as_deref()
+                .map_or_else(String::new, |namespace| {
+                    format!(
+                        " xmlns:tns=\"{}\" targetNamespace=\"{}\"",
+                        xml_escape(namespace),
+                        xml_escape(namespace)
+                    )
+                });
         if self.has_restricted_views() {
             attributes.push_str(&format!(
                 " xmlns:ferrule=\"{}\"",
                 super::ALTERNATIVE_VIEW_NAMESPACE
             ));
         }
+        for (prefix, namespace) in &self.external_namespaces {
+            attributes.push_str(&format!(" xmlns:{}=\"{}\"", prefix, xml_escape(namespace)));
+        }
         attributes
     }
 
     pub(super) fn namespace(&self) -> Option<&str> {
         self.namespace.as_deref()
+    }
+
+    pub(super) fn set_export_namespace(&mut self, namespace: Option<String>) {
+        self.export_namespace = namespace;
+    }
+
+    pub(super) fn needs_legacy_name_markers(&self) -> bool {
+        self.export_namespace.is_some()
+    }
+
+    pub(super) fn set_external_references(&mut self, references: &[super::ExternalReference]) {
+        for reference in references {
+            if !self
+                .external_namespaces
+                .iter()
+                .any(|(prefix, _)| prefix == &reference.prefix)
+            {
+                self.external_namespaces
+                    .push((reference.prefix.clone(), reference.namespace.clone()));
+            }
+            self.external_names.insert(
+                (
+                    reference.attribute,
+                    reference.namespace.clone(),
+                    reference.name.clone(),
+                ),
+                reference.prefix.clone(),
+            );
+            let import = (reference.namespace.clone(), reference.location.clone());
+            if !self.external_imports.contains(&import) {
+                self.external_imports.push(import);
+            }
+        }
+    }
+
+    pub(super) fn external_prefix(&self, node: &SchemaNode) -> Option<&str> {
+        let ir::XmlNamespace::Qualified(namespace) = node.xml_namespace.as_ref()? else {
+            return None;
+        };
+        self.external_names
+            .get(&(
+                node.attribute,
+                namespace.as_str().to_string(),
+                node.name.clone(),
+            ))
+            .map(String::as_str)
+    }
+
+    pub(super) fn write_imports(&self, out: &mut String) {
+        for (namespace, location) in &self.external_imports {
+            out.push_str(&format!(
+                "  <xs:import namespace=\"{}\" schemaLocation=\"{}\"/>\n",
+                xml_escape(namespace),
+                xml_escape(location)
+            ));
+        }
     }
 
     pub(super) fn type_for(&self, node: &SchemaNode) -> Option<String> {
@@ -125,6 +196,9 @@ impl<'a> AlternativeExportPlan<'a> {
         node: &'a SchemaNode,
         reserved: &BTreeSet<String>,
     ) -> Result<(), XmlFormatError> {
+        if self.external_prefix(node).is_some() {
+            return Ok(());
+        }
         let SchemaKind::Group {
             children,
             alternatives,
@@ -360,12 +434,19 @@ fn write_members(
     }
     out.push_str(&format!("{pad}</xs:sequence>\n"));
     for attribute in attributes {
-        write_attribute(attribute, depth, out)?;
+        write_attribute(attribute, depth, alternatives, out)?;
     }
     Ok(())
 }
 
-fn collect_type_names(node: &SchemaNode, out: &mut BTreeSet<String>) -> Result<(), XmlFormatError> {
+fn collect_type_names(
+    node: &SchemaNode,
+    plan: &AlternativeExportPlan<'_>,
+    out: &mut BTreeSet<String>,
+) -> Result<(), XmlFormatError> {
+    if plan.external_prefix(node).is_some() {
+        return Ok(());
+    }
     let SchemaKind::Group {
         children,
         alternatives,
@@ -381,7 +462,7 @@ fn collect_type_names(node: &SchemaNode, out: &mut BTreeSet<String>) -> Result<(
         }
     }
     for child in children {
-        collect_type_names(child, out)?;
+        collect_type_names(child, plan, out)?;
     }
     Ok(())
 }

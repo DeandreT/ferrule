@@ -20,8 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use ir::{
-    ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD, XmlRepeatingSequence,
-    XmlSequenceMember,
+    ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD, XmlNamespace,
+    XmlRepeatingSequence, XmlSequenceMember,
 };
 use roxmltree::Node;
 
@@ -29,11 +29,12 @@ use crate::XmlFormatError;
 
 mod export;
 
-pub use export::{export, export_namespace};
+pub use export::{XsdExportArtifact, XsdExportSet, export, export_namespace, export_set};
 
 const MAX_MATERIALIZED_SCHEMA_ELEMENTS: usize = 4_096;
 const MAX_TYPE_DERIVATION_DEPTH: usize = 256;
 const ALTERNATIVE_VIEW_NAMESPACE: &str = "urn:ferrule:xsd:group-alternatives";
+const LEGACY_NAME_NAMESPACE: &str = "urn:ferrule:xsd:legacy-name";
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct ActiveDeclaration {
@@ -171,6 +172,7 @@ impl ParseState {
                 group: group.to_string(),
             });
         }
+        crate::instance::validate_namespace_siblings(&schema)?;
         Ok(schema)
     }
 
@@ -436,7 +438,9 @@ fn parse_element(
             return node;
         }
         // An unresolved non-recursive reference still degrades leniently.
-        return SchemaNode::scalar(local, ScalarType::String);
+        let mut node = SchemaNode::scalar(local, ScalarType::String);
+        node.xml_namespace = qname_namespace(el, r);
+        return node;
     }
     let name = el.attribute("name").unwrap_or_default().to_string();
     let mut node = if let Some(complex_type) = el
@@ -470,6 +474,7 @@ fn parse_element(
     } else {
         SchemaNode::scalar(name, ScalarType::String)
     };
+    node.xml_namespace = declaration_namespace(el, schema_el, false);
     apply_exported_alternative_view(el, &mut node);
     apply_fixed_value(el, &mut node);
     if el
@@ -480,6 +485,47 @@ fn parse_element(
     } else {
         node
     }
+}
+
+fn declaration_namespace(
+    declaration: &Node<'_, '_>,
+    schema: &Node<'_, '_>,
+    attribute: bool,
+) -> Option<XmlNamespace> {
+    if declaration.attribute((LEGACY_NAME_NAMESPACE, "namespace")) == Some("legacy") {
+        return None;
+    }
+    let global = declaration.parent() == Some(*schema);
+    let default = if attribute {
+        "attributeFormDefault"
+    } else {
+        "elementFormDefault"
+    };
+    let qualified = global
+        || declaration.attribute("form") == Some("qualified")
+        || (declaration.attribute("form") != Some("unqualified")
+            && schema.attribute(default) == Some("qualified"));
+    if qualified
+        && let Some(namespace) = schema
+            .attribute("targetNamespace")
+            .filter(|namespace| !namespace.is_empty())
+        && let Some(namespace) = XmlNamespace::qualified(namespace)
+    {
+        Some(namespace)
+    } else {
+        let explicitly_unqualified = declaration.attribute("form") == Some("unqualified");
+        let schema_has_namespace = schema
+            .attribute("targetNamespace")
+            .is_some_and(|namespace| !namespace.is_empty());
+        (explicitly_unqualified || schema_has_namespace).then_some(XmlNamespace::Unqualified)
+    }
+}
+
+fn qname_namespace(node: &Node<'_, '_>, qname: &str) -> Option<XmlNamespace> {
+    let (prefix, _) = qname.split_once(':')?;
+    node.lookup_namespace_uri(Some(prefix))
+        .filter(|namespace| !namespace.is_empty())
+        .and_then(XmlNamespace::qualified)
 }
 
 fn apply_fixed_value(declaration: &Node<'_, '_>, node: &mut SchemaNode) {
@@ -958,7 +1004,9 @@ fn parse_element_declaration(
     state: &mut ParseState,
 ) -> Option<SchemaNode> {
     if !state.enter(schema_path, "element", name) {
-        return Some(SchemaNode::recursive_group(name, name));
+        let mut node = SchemaNode::recursive_group(name, name);
+        node.xml_namespace = declaration_namespace(declaration, schema_el, false);
+        return Some(node);
     }
     let node = parse_element(declaration, schema_el, schema_path, state);
     state.leave();
@@ -1316,18 +1364,77 @@ fn parse_complex_type(
         if attr.attribute("use") == Some("prohibited") {
             continue;
         }
-        let name = attr.attribute("name").unwrap_or_default().to_string();
-        let ty = attr
-            .attribute("type")
-            .map(map_xsd_type)
-            .unwrap_or(ScalarType::String);
-        let mut attribute = SchemaNode::scalar(name, ty).attribute();
-        if let Some(fixed) = attr.attribute("fixed") {
-            attribute.fixed = Some(fixed.to_string());
-        }
+        let attribute = parse_attribute(&attr, schema_el, schema_path, state);
         parsed.children.push(attribute);
     }
     parsed
+}
+
+fn parse_attribute(
+    declaration: &Node<'_, '_>,
+    schema: &Node<'_, '_>,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> SchemaNode {
+    if declaration.attribute("name").is_none()
+        && let Some(reference) = declaration.attribute("ref")
+    {
+        if let Some(mut attribute) = resolve_attribute(reference, schema, schema_path, state) {
+            if let Some(fixed) = declaration.attribute("fixed") {
+                attribute.fixed = Some(fixed.to_string());
+            }
+            return attribute;
+        }
+        let mut attribute =
+            SchemaNode::scalar(local_name(reference), ScalarType::String).attribute();
+        attribute.xml_namespace =
+            qname_namespace(declaration, reference).or(Some(XmlNamespace::Unqualified));
+        return attribute;
+    }
+
+    let name = declaration.attribute("name").unwrap_or_default();
+    let ty = declaration
+        .children()
+        .find(|node| node.is_element() && node.tag_name().name() == "simpleType")
+        .map(|simple| simple_type_scalar(&simple))
+        .or_else(|| {
+            declaration.attribute("type").map(|ty| {
+                resolve_simple_type(ty, schema, schema_path, state)
+                    .unwrap_or_else(|| map_xsd_type(ty))
+            })
+        })
+        .unwrap_or(ScalarType::String);
+    let mut attribute = SchemaNode::scalar(name, ty).attribute();
+    attribute.xml_namespace = declaration_namespace(declaration, schema, true);
+    if let Some(fixed) = declaration.attribute("fixed") {
+        attribute.fixed = Some(fixed.to_string());
+    }
+    attribute
+}
+
+fn resolve_attribute(
+    qname: &str,
+    schema: &Node<'_, '_>,
+    schema_path: &Path,
+    state: &mut ParseState,
+) -> Option<SchemaNode> {
+    let local = local_name(qname);
+    if is_local_qname(schema, qname)
+        && let Some(declaration) = top_level(schema, "attribute", local)
+    {
+        return Some(parse_attribute(&declaration, schema, schema_path, state));
+    }
+    let path = state.find_external_declaration(schema, schema_path, "attribute", qname)?;
+    let text = read_xml_text(&path).ok()?;
+    let document = roxmltree::Document::parse(&text).ok()?;
+    let external_schema = document.root_element();
+    let declaration = top_level(&external_schema, "attribute", local)?;
+    Some(parse_attribute(
+        &declaration,
+        &external_schema,
+        &path,
+        state,
+    ))
 }
 
 fn repeating_sequence(
