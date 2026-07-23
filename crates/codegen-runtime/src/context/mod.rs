@@ -312,6 +312,10 @@ impl<'a> ScopeContext<'a> {
         self.generated_item_contexts(items).collect()
     }
 
+    pub(crate) fn current_instance(&self) -> Option<&Instance> {
+        self.frames.last().map(|frame| frame.instance)
+    }
+
     pub(crate) fn with_xml_mixed_content_value<'b>(
         &'b self,
         value: &'b Instance,

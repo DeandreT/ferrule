@@ -74,3 +74,66 @@ fn lowers_ordered_xml_mixed_content_and_replacement_dependencies() {
         [1, 2]
     );
 }
+
+#[test]
+fn lowers_target_xml_mixed_content_construction_without_graph_dependencies() {
+    let mut project = supported_project();
+    project.source = SchemaNode::group(
+        "Source",
+        vec![
+            SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+            SchemaNode::scalar("Em", ScalarType::String).repeating(),
+            SchemaNode::scalar("Strong", ScalarType::String).repeating(),
+        ],
+    );
+    project.target = SchemaNode::group(
+        "Target",
+        vec![
+            SchemaNode::scalar(ir::XML_TEXT_FIELD, ScalarType::String).text(),
+            SchemaNode::scalar("Italic", ScalarType::String).repeating(),
+        ],
+    );
+    project.graph.nodes = BTreeMap::from([(
+        1,
+        Node::SourceField {
+            path: vec!["Em".into()],
+            frame: None,
+        },
+    )]);
+    project.root = Scope {
+        construction: ScopeConstruction::XmlMixedContent {
+            elements: vec![
+                mapping::XmlMixedContentElement {
+                    source: "Em".into(),
+                    target: "Italic".into(),
+                },
+                mapping::XmlMixedContentElement {
+                    source: "Strong".into(),
+                    target: "Italic".into(),
+                },
+            ],
+        },
+        bindings: vec![MappingBinding {
+            target_field: "Italic".into(),
+            node: 1,
+        }],
+        ..Scope::default()
+    };
+
+    let program = lower(&project).expect("target mixed-content construction lowers");
+    assert_eq!(
+        program.root.construction,
+        crate::TargetConstruction::XmlMixedContent {
+            elements: vec![
+                crate::XmlMixedContentElement {
+                    source: "Em".into(),
+                    target: "Italic".into(),
+                },
+                crate::XmlMixedContentElement {
+                    source: "Strong".into(),
+                    target: "Italic".into(),
+                },
+            ],
+        }
+    );
+}

@@ -279,6 +279,29 @@ pub enum ProgramValidationError {
     GroupConstructionRequiresGroupTarget {
         target_path: Vec<String>,
     },
+    XmlMixedContentConstructionRequiresGroupSource {
+        target_path: Vec<String>,
+    },
+    XmlMixedContentConstructionRequiresMixedTarget {
+        target_path: Vec<String>,
+    },
+    EmptyXmlMixedContentConstruction {
+        target_path: Vec<String>,
+    },
+    InvalidXmlMixedContentConstructionElement {
+        target_path: Vec<String>,
+        element: usize,
+    },
+    InvalidXmlMixedContentConstructionSource {
+        target_path: Vec<String>,
+        element: usize,
+        source_field: String,
+    },
+    InvalidXmlMixedContentConstructionTarget {
+        target_path: Vec<String>,
+        element: usize,
+        target_field: String,
+    },
     CopyConstructionRequiresGroupSource {
         target_path: Vec<String>,
     },
@@ -841,7 +864,7 @@ fn validate_scope(
         }
     }
 
-    match scope.construction {
+    match &scope.construction {
         TargetConstruction::Group => {
             if !matches!(target_node.kind, SchemaKind::Group { .. }) {
                 return Err(
@@ -849,6 +872,70 @@ fn validate_scope(
                         target_path: target_path.clone(),
                     },
                 );
+            }
+        }
+        TargetConstruction::XmlMixedContent { elements } => {
+            if !matches!(target_node.kind, SchemaKind::Group { .. })
+                || target_node.text_child().is_none()
+            {
+                return Err(
+                    ProgramValidationError::XmlMixedContentConstructionRequiresMixedTarget {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if scope_source
+                .is_none_or(|source| !matches!(source.node().kind, SchemaKind::Group { .. }))
+            {
+                return Err(
+                    ProgramValidationError::XmlMixedContentConstructionRequiresGroupSource {
+                        target_path: target_path.clone(),
+                    },
+                );
+            }
+            if elements.is_empty() {
+                return Err(ProgramValidationError::EmptyXmlMixedContentConstruction {
+                    target_path: target_path.clone(),
+                });
+            }
+            let Some(source_node) = scope_source.map(SchemaCursor::node) else {
+                unreachable!("mixed-content group source was validated");
+            };
+            let mut source_names = BTreeSet::new();
+            for (element_index, element) in elements.iter().enumerate() {
+                if element.source.is_empty()
+                    || element.target.is_empty()
+                    || !source_names.insert(element.source.as_str())
+                {
+                    return Err(
+                        ProgramValidationError::InvalidXmlMixedContentConstructionElement {
+                            target_path: target_path.clone(),
+                            element: element_index,
+                        },
+                    );
+                }
+                if source_node.child(&element.source).is_none_or(|source| {
+                    !source.repeating || !matches!(source.kind, SchemaKind::Scalar { .. })
+                }) {
+                    return Err(
+                        ProgramValidationError::InvalidXmlMixedContentConstructionSource {
+                            target_path: target_path.clone(),
+                            element: element_index,
+                            source_field: element.source.clone(),
+                        },
+                    );
+                }
+                if target_node.child(&element.target).is_none_or(|target| {
+                    !target.repeating || !matches!(target.kind, SchemaKind::Scalar { .. })
+                }) {
+                    return Err(
+                        ProgramValidationError::InvalidXmlMixedContentConstructionTarget {
+                            target_path: target_path.clone(),
+                            element: element_index,
+                            target_field: element.target.clone(),
+                        },
+                    );
+                }
             }
         }
         TargetConstruction::CopyCurrentSource => {
@@ -903,14 +990,14 @@ fn validate_scope(
                     target_path: target_path.clone(),
                 });
             }
-            if !expressions.contains_key(&expression) {
+            if !expressions.contains_key(expression) {
                 return Err(ProgramValidationError::MissingScalarExpression {
                     target_path: target_path.clone(),
-                    expression,
+                    expression: *expression,
                 });
             }
             validate_expression_context(
-                expression,
+                *expression,
                 expressions,
                 ScopeSchemas {
                     current_source: scope_source,
@@ -1421,6 +1508,50 @@ impl fmt::Display for ProgramValidationError {
                 formatter,
                 "target scope {} group construction requires a group target",
                 display_path(target_path)
+            ),
+            Self::XmlMixedContentConstructionRequiresGroupSource { target_path } => write!(
+                formatter,
+                "target scope {} XML mixed-content construction requires a group source item",
+                display_path(target_path)
+            ),
+            Self::XmlMixedContentConstructionRequiresMixedTarget { target_path } => write!(
+                formatter,
+                "target scope {} XML mixed-content construction requires a group target with a text field",
+                display_path(target_path)
+            ),
+            Self::EmptyXmlMixedContentConstruction { target_path } => write!(
+                formatter,
+                "target scope {} XML mixed-content construction requires at least one child mapping",
+                display_path(target_path)
+            ),
+            Self::InvalidXmlMixedContentConstructionElement {
+                target_path,
+                element,
+            } => write!(
+                formatter,
+                "target scope {} XML mixed-content child mapping {} requires a unique non-empty source name and a non-empty target name",
+                display_path(target_path),
+                element + 1
+            ),
+            Self::InvalidXmlMixedContentConstructionSource {
+                target_path,
+                element,
+                source_field,
+            } => write!(
+                formatter,
+                "target scope {} XML mixed-content child mapping {} source {source_field:?} must be a repeating scalar field",
+                display_path(target_path),
+                element + 1
+            ),
+            Self::InvalidXmlMixedContentConstructionTarget {
+                target_path,
+                element,
+                target_field,
+            } => write!(
+                formatter,
+                "target scope {} XML mixed-content child mapping {} target {target_field:?} must be a repeating scalar field",
+                display_path(target_path),
+                element + 1
             ),
             Self::CopyConstructionRequiresGroupSource { target_path } => write!(
                 formatter,

@@ -39,7 +39,10 @@ pub use runtime_value::{ExecutionContext, RuntimeValue};
 pub use user_function::adapt_user_function_value;
 pub use value_map::value_map;
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
-pub use xml_mixed_content::{XmlMixedContentReplacement, xml_mixed_content};
+pub use xml_mixed_content::{
+    XmlMixedContentElement, XmlMixedContentReplacement, preserve_xml_mixed_content,
+    xml_mixed_content,
+};
 
 /// Failure produced while executing generated mapping code.
 #[derive(Debug, PartialEq)]

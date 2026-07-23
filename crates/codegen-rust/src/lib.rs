@@ -150,7 +150,8 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              group, item_count, repeated,\n\
              recursive_collect, recursive_sequence_parameter, require_bool, scalar,\n\
              serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
-             xml_mixed_content, XmlMixedContentReplacement,\n\
+             preserve_xml_mixed_content, xml_mixed_content, XmlMixedContentElement,\n\
+             XmlMixedContentReplacement,\n\
          };\n\n",
     );
     source.push_str("pub use codegen_runtime::NamedInput;\n\n");
@@ -1223,13 +1224,13 @@ fn render_scope_item(
     context: &str,
 ) -> String {
     let mut output = String::new();
-    if let TargetConstruction::Scalar { expression } = scope.construction {
+    if let TargetConstruction::Scalar { expression } = &scope.construction {
         output.push_str(&format!(
             "{indent}let output = scalar(expression_{expression}({context})?);\n"
         ));
         return output;
     }
-    if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
+    if matches!(&scope.construction, TargetConstruction::CopyCurrentSource) {
         output.push_str(&format!(
             "{indent}let output = {context}.copy_current_group()?;\n"
         ));
@@ -1282,6 +1283,19 @@ fn render_scope_item(
             output.push_str(&format!("{indent}    {field},\n"));
         }
         output.push_str(&format!("{indent}]);\n"));
+    }
+    if let TargetConstruction::XmlMixedContent { elements } = &scope.construction {
+        output.push_str(&format!(
+            "{indent}let output = preserve_xml_mixed_content(\n{indent}    {context},\n{indent}    output,\n{indent}    &[\n"
+        ));
+        for element in elements {
+            output.push_str(&format!(
+                "{indent}        XmlMixedContentElement {{ source: {}, target: {} }},\n",
+                rust_string(&element.source),
+                rust_string(&element.target),
+            ));
+        }
+        output.push_str(&format!("{indent}    ],\n{indent});\n"));
     }
     output
 }
