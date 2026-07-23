@@ -1,5 +1,7 @@
 use crate::{MAX_SCHEMA_BYTES, ProtobufError};
 
+pub(super) const MAX_FIELD_NUMBER: u32 = (1 << 29) - 1;
+
 /// Stable identifier for a resolved message within one [`Layout`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MessageId(pub(super) usize);

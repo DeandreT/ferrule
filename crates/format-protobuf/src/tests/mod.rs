@@ -5,6 +5,8 @@ use crate::{
     from_slice, to_ir_schema, to_vec,
 };
 
+mod reserved;
+
 const CONTACT_SCHEMA: &str = r#"
     // Omitting syntax selects proto2, as required by legacy schemas.
     package example.directory;
