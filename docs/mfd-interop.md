@@ -25,6 +25,9 @@ modules can lower scalar parameter/number arithmetic to the native call graph.
 Structured XML string serializers retain the selected subtree schema and emit
 attributes, nested groups, repeated children, escaping, the configured default
 namespace, and optional XML declaration directly from the current source item.
+Imported XSD contracts expand bounded named model and attribute groups, retain
+typed scalar element/simple-content/attribute defaults, and materialize those
+defaults at the XML input boundary.
 Structured XML database columns reuse that typed serializer with compact output,
 so document-valued TEXT fields execute without flattening the source subtree.
 SQLite `LocalRelationsStorage` declarations are retained as exact typed relation
@@ -71,7 +74,8 @@ first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
 direct execution of unrecognized or external-service user components. Bounded
 same-namespace substitution groups and exact nullable scalar JSON unions are
-preserved. Expanded-name identity for ordinary elements and attributes is
+preserved, including required or optional typed `const` discriminators and
+JSON-null discriminators. Expanded-name identity for ordinary elements and attributes is
 preserved; foreign declarations export as an atomic graph of local XSD siblings.
 
 The exact supported surface evolves quickly. The

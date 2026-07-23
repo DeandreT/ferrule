@@ -113,6 +113,8 @@ The current portable model includes:
 - collection aggregates over direct fields or computed per-item expressions
 - nested, repeating-group, repeating-scalar, and exact whole-current-group
   target construction with numeric target adaptation for ordinary field bindings
+- bounded recursive-filter target construction with sparse-field preservation,
+  item-local predicates, frame-pinned fields, and exact recursion-depth failures
 - one primary target plus ordered, independently shaped named targets evaluated
   from the same source context and graph
 - ordered static named inputs shared by every target, including field access,
@@ -164,8 +166,8 @@ tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
-matcher. Recursive-filter, path-hierarchy, and adjacency-tree target
-construction remain interpreter-only. Per-item dynamic named sources remain
+matcher. Path-hierarchy and adjacency-tree target construction remain
+interpreter-only. Per-item dynamic named sources remain
 interpreter-only because their graph-computed paths require a typed host loader
 contract during scope evaluation. Direct correlated join scopes and
 joined-tuple aggregates beyond the exact active-singleton-to-repeating
