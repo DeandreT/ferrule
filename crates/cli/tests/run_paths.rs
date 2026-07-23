@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -85,6 +86,36 @@ fn in_memory_project_runs_before_its_project_file_exists() {
         std::fs::read_to_string(dir.join("output.csv")).unwrap(),
         std::fs::read_to_string(fixture_dir().join("expected_output.csv")).unwrap()
     );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[derive(Default)]
+struct TraceCollector(RefCell<Vec<cli::TraceEvent>>);
+
+impl cli::TraceSink for TraceCollector {
+    fn record(&self, event: cli::TraceEvent) {
+        self.0.borrow_mut().push(event);
+    }
+}
+
+#[test]
+fn in_memory_run_forwards_deterministic_trace_events() {
+    let dir = test_dir("trace");
+    std::fs::copy(fixture_dir().join("input.csv"), dir.join("input.csv")).unwrap();
+    let project = project_with_paths(Some("input.csv"), Some("output.csv"));
+    let trace = TraceCollector::default();
+
+    let outcome = cli::run_project_value_with_paths_and_trace(
+        &project,
+        &dir.join("mapping.json"),
+        None,
+        None,
+        &trace,
+    )
+    .unwrap();
+
+    assert_eq!(outcome.records_written, 2);
+    assert!(!trace.0.into_inner().is_empty());
     std::fs::remove_dir_all(dir).unwrap();
 }
 

@@ -28,10 +28,12 @@ impl FerruleApp {
         let input_path = nonempty_path(&self.input_path);
         let output_path = nonempty_path(&self.output_path);
         let started = std::time::Instant::now();
-        match cli::run_project_with_paths(
+        let trace = crate::run_report::TraceCollector::new();
+        match cli::run_project_with_paths_and_trace(
             project_path,
             input_path.as_deref(),
             output_path.as_deref(),
+            &trace,
         ) {
             Ok(outcome) => {
                 self.status = format!(
@@ -39,7 +41,11 @@ impl FerruleApp {
                     outcome.records_written,
                     outcome.output_path.display()
                 );
-                let report = crate::run_report::RunReport::from_outcome(outcome, started.elapsed());
+                let report = crate::run_report::RunReport::from_outcome_with_trace(
+                    outcome,
+                    started.elapsed(),
+                    trace.finish(),
+                );
                 self.run_report = Some(crate::run_report::RunReportView::new(report));
                 self.show_run_report = true;
                 self.diagnostics.clear();

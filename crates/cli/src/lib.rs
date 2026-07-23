@@ -32,6 +32,7 @@ mod code_generation;
 mod output_documents;
 
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
+pub use engine::{TraceEvent, TracePosition, TraceSink};
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
 
 /// Result of running a project after resolving its input and output paths.
@@ -79,6 +80,24 @@ pub fn run_project_with_paths(
     run_project_value_with_paths(&project, project_path, input_path, output_path)
 }
 
+/// Loads and runs a project while reporting successful graph evaluations to
+/// `trace_sink` in deterministic execution order.
+pub fn run_project_with_paths_and_trace(
+    project_path: &Path,
+    input_path: Option<&Path>,
+    output_path: Option<&Path>,
+    trace_sink: &dyn TraceSink,
+) -> anyhow::Result<RunOutcome> {
+    let project = load_project(project_path)?;
+    run_project_value_with_paths_and_trace(
+        &project,
+        project_path,
+        input_path,
+        output_path,
+        trace_sink,
+    )
+}
+
 /// Runs an in-memory project without requiring it to be saved first.
 ///
 /// `project_path` supplies the base directory for relative resources and the
@@ -89,6 +108,34 @@ pub fn run_project_value_with_paths(
     project_path: &Path,
     input_path: Option<&Path>,
     output_path: Option<&Path>,
+) -> anyhow::Result<RunOutcome> {
+    run_project_value_with_paths_inner(project, project_path, input_path, output_path, None)
+}
+
+/// Runs an in-memory project and reports successful graph evaluations to
+/// `trace_sink` in deterministic execution order.
+pub fn run_project_value_with_paths_and_trace(
+    project: &mapping::Project,
+    project_path: &Path,
+    input_path: Option<&Path>,
+    output_path: Option<&Path>,
+    trace_sink: &dyn TraceSink,
+) -> anyhow::Result<RunOutcome> {
+    run_project_value_with_paths_inner(
+        project,
+        project_path,
+        input_path,
+        output_path,
+        Some(trace_sink),
+    )
+}
+
+fn run_project_value_with_paths_inner(
+    project: &mapping::Project,
+    project_path: &Path,
+    input_path: Option<&Path>,
+    output_path: Option<&Path>,
+    trace_sink: Option<&dyn TraceSink>,
 ) -> anyhow::Result<RunOutcome> {
     require_valid(project)?;
 
@@ -172,9 +219,12 @@ pub fn run_project_value_with_paths(
         .strftime("%Y-%m-%dT%H:%M:%S%.f%:z")
         .to_string();
     let dynamic_loader = ProjectDynamicSourceLoader::new(project_dir, &project.extra_sources);
-    let execution = engine::ExecutionContext::new(&runtime_project_path)
+    let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
+    if let Some(trace_sink) = trace_sink {
+        execution = execution.with_trace_sink(trace_sink);
+    }
     let outputs = engine::run_outputs_with_sources_and_context(
         project,
         &source_instance,
