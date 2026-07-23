@@ -15,7 +15,7 @@ use ir::{Instance, SchemaKind, SchemaNode, Value};
 
 use crate::autocomplete as envelope;
 use crate::segments::{
-    Segment, WriteOptions, read_segments, serialize_segments, validate_instance_shape,
+    Segment, WriteOptions, WriteStyle, read_segments, serialize_segments, validate_instance_shape,
     write_segments,
 };
 use crate::{EdiFormatError, MAX_RUNTIME_INPUT_BYTES, read_bounded_input};
@@ -31,6 +31,7 @@ const WRITE_OPTIONS: WriteOptions = WriteOptions {
     terminator: '~',
     release: None,
     repetition: Some('^'),
+    style: WriteStyle::Delimited,
     interchange_version: None,
 };
 
@@ -77,6 +78,7 @@ impl Separators {
             terminator: self.segment,
             release: self.release,
             repetition: self.repetition,
+            style: WriteStyle::Delimited,
             interchange_version: None,
         })
     }

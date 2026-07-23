@@ -321,14 +321,17 @@ pub(super) fn write_instance(
             match format_edi::dialect_of(schema).map_err(|error| error.to_string())? {
                 format_edi::Dialect::X12 => write_x12(path, schema, &formatted, options),
                 format_edi::Dialect::Edifact => write_edifact(path, schema, &formatted, options),
-                format_edi::Dialect::Hl7 => return Err("HL7 output is not supported".to_string()),
+                format_edi::Dialect::Hl7 => format_edi::hl7::write(path, schema, &formatted),
                 format_edi::Dialect::Tradacoms => {
-                    return Err("TRADACOMS output is not supported".to_string());
+                    format_edi::tradacoms::write(path, schema, &formatted)
                 }
             }
             .map_err(|error| error.to_string())
         }
-        "hl7" => Err("HL7 output is not supported".to_string()),
+        "hl7" => {
+            let formatted = formatted_edi_output(instance, options)?;
+            format_edi::hl7::write(path, schema, &formatted).map_err(|error| error.to_string())
+        }
         other => Err(format!("unsupported output file extension `.{other}`")),
     }
 }

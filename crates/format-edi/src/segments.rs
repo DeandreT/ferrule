@@ -40,6 +40,17 @@ pub struct Segment {
     pub elements: Vec<Vec<Vec<String>>>,
 }
 
+/// Structural spelling used around and inside serialized segments.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WriteStyle {
+    /// `ID+element`-style syntax used by X12 and EDIFACT.
+    Delimited,
+    /// `ID=element`-style syntax used by TRADACOMS.
+    Assigned,
+    /// HL7 v2 header and escape spelling, including one subcomponent level.
+    Hl7 { subcomponent: char },
+}
+
 /// Separators used when serializing; `release` (EDIFACT's `?`) escapes the
 /// other separators inside component text, and `repetition` (X12 5010's
 /// `^`) joins the occurrences of a `repeating` element.
@@ -50,6 +61,7 @@ pub(crate) struct WriteOptions {
     pub terminator: char,
     pub release: Option<char>,
     pub repetition: Option<char>,
+    pub style: WriteStyle,
     /// Five ASCII digits used only when ISA12 is absent from the instance.
     pub interchange_version: Option<[u8; 5]>,
 }
@@ -636,9 +648,21 @@ pub(crate) fn serialize_segments(
 ) -> Result<String, EdiFormatError> {
     let mut out = String::new();
     for segment in segments {
-        out.push_str(&segment.id);
+        let mut serialized = Vec::with_capacity(segment.elements.len());
         for (index, element) in segment.elements.iter().enumerate() {
-            out.push(opts.element);
+            if matches!(opts.style, WriteStyle::Hl7 { .. })
+                && matches!(segment.id.as_str(), "FHS" | "BHS" | "MSH")
+                && index < 2
+            {
+                serialized.push(
+                    element
+                        .first()
+                        .and_then(|parts| parts.first())
+                        .cloned()
+                        .unwrap_or_default(),
+                );
+                continue;
+            }
             let allowed_reserved = match (segment.id.as_str(), index) {
                 ("ISA", 10) => opts.repetition,
                 ("ISA", 15) => Some(opts.component),
@@ -660,10 +684,9 @@ pub(crate) fn serialize_segments(
                     segment.id
                 )));
             }
-            out.push_str(&repeats.join(&opts.repetition.unwrap_or_default().to_string()));
+            serialized.push(repeats.join(&opts.repetition.unwrap_or_default().to_string()));
         }
-        out.push(opts.terminator);
-        out.push('\n');
+        serialize_segment(&segment.id, &serialized, opts, &mut out);
     }
     Ok(out)
 }
@@ -771,6 +794,14 @@ fn write_node(
         Shape::Segment(element_schemas) => {
             let segment_id = schema_segment_id(&node.name)
                 .ok_or_else(|| EdiFormatError::UnsupportedSchema(node.name.clone()))?;
+            if matches!(opts.style, WriteStyle::Hl7 { .. })
+                && matches!(segment_id, "FHS" | "BHS" | "MSH")
+                && element_schemas.len() < 2
+            {
+                return Err(EdiFormatError::UnsupportedSchema(format!(
+                    "HL7 header `{segment_id}` must declare its separator and encoding fields"
+                )));
+            }
             let mut elements = element_schemas
                 .iter()
                 .enumerate()
@@ -795,6 +826,12 @@ fn write_node(
                         ("ISA", 15) => Some(opts.component.to_string()),
                         _ => None,
                     };
+                    if matches!(opts.style, WriteStyle::Hl7 { .. })
+                        && matches!(segment_id, "FHS" | "BHS" | "MSH")
+                        && index < 2
+                    {
+                        return write_hl7_header_element(element, instance, index, opts);
+                    }
                     write_element(
                         element,
                         instance.field(&element.name),
@@ -809,13 +846,7 @@ fn write_node(
                     elements.pop();
                 }
             }
-            out.push_str(segment_id);
-            for element in &elements {
-                out.push(opts.element);
-                out.push_str(element);
-            }
-            out.push(opts.terminator);
-            out.push('\n');
+            serialize_segment(segment_id, &elements, opts, out);
         }
         Shape::Container(children) => {
             for child in children {
@@ -826,6 +857,81 @@ fn write_node(
         }
     }
     Ok(())
+}
+
+fn serialize_segment(segment_id: &str, elements: &[String], opts: &WriteOptions, out: &mut String) {
+    out.push_str(segment_id);
+    match opts.style {
+        WriteStyle::Delimited => {
+            for element in elements {
+                out.push(opts.element);
+                out.push_str(element);
+            }
+        }
+        WriteStyle::Assigned => {
+            if let Some((first, rest)) = elements.split_first() {
+                out.push('=');
+                out.push_str(first);
+                for element in rest {
+                    out.push(opts.element);
+                    out.push_str(element);
+                }
+            }
+        }
+        WriteStyle::Hl7 { .. } if matches!(segment_id, "FHS" | "BHS" | "MSH") => {
+            if let Some(field_separator) = elements.first() {
+                out.push_str(field_separator);
+            }
+            if let Some(encoding) = elements.get(1) {
+                out.push_str(encoding);
+            }
+            for element in elements.iter().skip(2) {
+                out.push(opts.element);
+                out.push_str(element);
+            }
+        }
+        WriteStyle::Hl7 { .. } => {
+            for element in elements {
+                out.push(opts.element);
+                out.push_str(element);
+            }
+        }
+    }
+    out.push(opts.terminator);
+    if !matches!(opts.style, WriteStyle::Hl7 { .. }) {
+        out.push('\n');
+    }
+}
+
+fn write_hl7_header_element(
+    schema: &SchemaNode,
+    instance: &Instance,
+    index: usize,
+    opts: &WriteOptions,
+) -> Result<String, EdiFormatError> {
+    let expected = match (index, opts.style) {
+        (0, WriteStyle::Hl7 { .. }) => opts.element.to_string(),
+        (1, WriteStyle::Hl7 { subcomponent }) => format!(
+            "{}{}{}{}",
+            opts.component,
+            opts.repetition.unwrap_or('~'),
+            opts.release.unwrap_or('\\'),
+            subcomponent
+        ),
+        _ => return Err(EdiFormatError::UnsupportedSchema(schema.name.clone())),
+    };
+    let value = scalar_or_fixed(
+        schema,
+        instance.field(&schema.name).and_then(Instance::as_scalar),
+    )?;
+    if !value.is_empty() && value != expected {
+        return Err(EdiFormatError::InvalidEnvelopeElement {
+            element: schema.name.clone(),
+            value,
+            reason: "value does not match the configured HL7 separators",
+        });
+    }
+    Ok(expected)
 }
 
 fn validate_isa_separator(
@@ -919,20 +1025,57 @@ fn write_one_repeat(
         SchemaKind::Group { children, .. } => {
             let mut components: Vec<String> = children
                 .iter()
-                .map(|c| {
-                    let text = scalar_or_fixed(
-                        c,
-                        instance
-                            .and_then(|i| i.field(&c.name))
-                            .and_then(Instance::as_scalar),
-                    )?;
-                    escape(&text, &c.name, opts, None)
+                .map(|child| {
+                    write_component(child, instance.and_then(|i| i.field(&child.name)), opts)
                 })
                 .collect::<Result<_, _>>()?;
             while components.last().is_some_and(String::is_empty) {
                 components.pop();
             }
             Ok(components.join(&opts.component.to_string()))
+        }
+    }
+}
+
+fn write_component(
+    schema: &SchemaNode,
+    instance: Option<&Instance>,
+    opts: &WriteOptions,
+) -> Result<String, EdiFormatError> {
+    if schema.repeating {
+        return Err(EdiFormatError::UnsupportedSchema(format!(
+            "component `{}` repeats below an EDI element",
+            schema.name
+        )));
+    }
+    match &schema.kind {
+        SchemaKind::Scalar { .. } => {
+            let text = scalar_or_fixed(schema, instance.and_then(Instance::as_scalar))?;
+            escape(&text, &schema.name, opts, None)
+        }
+        SchemaKind::Group { children, .. } => {
+            let WriteStyle::Hl7 { subcomponent } = opts.style else {
+                return Err(EdiFormatError::UnsupportedSchema(schema.name.clone()));
+            };
+            let mut parts = children
+                .iter()
+                .map(|child| {
+                    let SchemaKind::Scalar { .. } = child.kind else {
+                        return Err(EdiFormatError::UnsupportedSchema(child.name.clone()));
+                    };
+                    let text = scalar_or_fixed(
+                        child,
+                        instance
+                            .and_then(|value| value.field(&child.name))
+                            .and_then(Instance::as_scalar),
+                    )?;
+                    escape(&text, &child.name, opts, None)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            while parts.last().is_some_and(String::is_empty) {
+                parts.pop();
+            }
+            Ok(parts.join(&subcomponent.to_string()))
         }
     }
 }
@@ -996,11 +1139,15 @@ fn escape(
     if text.chars().count() == 1 && text.chars().next() == allowed_reserved {
         return Ok(text.to_string());
     }
+    if matches!(opts.style, WriteStyle::Hl7 { .. }) {
+        return escape_hl7(text, opts);
+    }
     let Some(release) = opts.release else {
         if let Some(delimiter) = text.chars().find(|character| {
             *character == opts.element
                 || *character == opts.component
                 || *character == opts.terminator
+                || (matches!(opts.style, WriteStyle::Assigned) && *character == '=')
                 || opts.repetition == Some(*character)
         }) {
             return Err(EdiFormatError::UnescapableDelimiter {
@@ -1016,11 +1163,44 @@ fn escape(
             || c == opts.element
             || c == opts.component
             || c == opts.terminator
+            || (matches!(opts.style, WriteStyle::Assigned) && c == '=')
             || opts.repetition == Some(c)
         {
             out.push(release);
         }
         out.push(c);
+    }
+    Ok(out)
+}
+
+fn escape_hl7(text: &str, opts: &WriteOptions) -> Result<String, EdiFormatError> {
+    let WriteStyle::Hl7 { subcomponent } = opts.style else {
+        return Err(EdiFormatError::UnsupportedSchema(
+            "invalid HL7 write style".to_string(),
+        ));
+    };
+    let release = opts.release.unwrap_or('\\');
+    let repetition = opts.repetition.unwrap_or('~');
+    let mut out = String::with_capacity(text.len());
+    for character in text.chars() {
+        let escape_code = if character == opts.element {
+            Some('F')
+        } else if character == opts.component {
+            Some('S')
+        } else if character == repetition {
+            Some('R')
+        } else if character == release {
+            Some('E')
+        } else if character == subcomponent {
+            Some('T')
+        } else {
+            None
+        };
+        if let Some(code) = escape_code {
+            out.extend([release, code, release]);
+        } else {
+            out.push(character);
+        }
     }
     Ok(out)
 }

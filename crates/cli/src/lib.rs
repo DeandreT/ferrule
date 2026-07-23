@@ -600,9 +600,9 @@ fn write_output(
                 format_edi::Dialect::Edifact => {
                     write_edifact_output(path, schema, &formatted, options, current_datetime)
                 }
-                format_edi::Dialect::Hl7 => bail!("HL7 output is not yet supported"),
+                format_edi::Dialect::Hl7 => format_edi::hl7::write(path, schema, &formatted),
                 format_edi::Dialect::Tradacoms => {
-                    bail!("TRADACOMS output is not yet supported")
+                    format_edi::tradacoms::write(path, schema, &formatted)
                 }
             }
             .with_context(|| format!("writing output {}", path.display()))?;
@@ -1337,8 +1337,8 @@ fn write_edi_output(
         EdiBoundaryKind::Edifact => {
             write_edifact_output(path, schema, instance, options, current_datetime)
         }
-        EdiBoundaryKind::Hl7 => bail!("HL7 output is not yet supported"),
-        EdiBoundaryKind::Tradacoms => bail!("TRADACOMS output is not yet supported"),
+        EdiBoundaryKind::Hl7 => format_edi::hl7::write(path, schema, instance),
+        EdiBoundaryKind::Tradacoms => format_edi::tradacoms::write(path, schema, instance),
         EdiBoundaryKind::Idoc => bail!("SAP IDoc output is not supported; IDoc is input-only"),
         EdiBoundaryKind::SwiftMt => {
             bail!("SWIFT MT output is not supported; SWIFT MT is input-only")

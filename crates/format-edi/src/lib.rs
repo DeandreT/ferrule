@@ -1,4 +1,5 @@
-//! EDI schema-guided instance read/write, covering ANSI X12 and UN/EDIFACT.
+//! EDI schema-guided instance read/write, covering ANSI X12, UN/EDIFACT,
+//! HL7 v2, and TRADACOMS.
 //!
 //! EDI files are flat segment streams whose hierarchy (loops) exists only
 //! in an implementation guide, so ferrule expresses that hierarchy in the
