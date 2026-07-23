@@ -195,6 +195,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut fn_inputs: BTreeMap<NodeId, Vec<u32>> = BTreeMap::new();
     let auto_numbers = AutoNumbers::collect(&project.graph);
     let mut auto_number_inputs = Vec::new();
+    let mut json_serializer_inputs = Vec::new();
     let mut position_inputs = BTreeMap::new();
     let mut sequence_exists_pins = Vec::new();
     let mut siblings = Vec::new();
@@ -763,6 +764,27 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 );
             }
             Node::Call { function, args } => {
+                if function == "json_serialize_object" {
+                    match super::json_serializer::render(
+                        id,
+                        args,
+                        &project.graph,
+                        keys,
+                        uid,
+                        mfd_path,
+                    ) {
+                        Ok(rendered) => {
+                            node_out_key.insert(id, rendered.output);
+                            components.push_str(&rendered.xml);
+                            json_serializer_inputs.extend(rendered.inputs);
+                            siblings.push(rendered.sibling);
+                        }
+                        Err(reason) => warnings.push(format!(
+                            "JSON string serializer node {id} is unsupported: {reason}; skipped"
+                        )),
+                    }
+                    continue;
+                }
                 if let Some(alternative) =
                     xml_type_alternative_port(node, &project.graph, sources)
                 {
@@ -908,6 +930,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         edges,
         warnings,
     );
+    connect_deferred_inputs(
+        "JSON string serializer",
+        &json_serializer_inputs,
+        node_out_key,
+        edges,
+        warnings,
+    );
     for inputs in auto_number_inputs {
         for (node, input) in [inputs.start, inputs.increment] {
             match node_out_key.get(&node) {
@@ -923,6 +952,24 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         position_inputs,
         sequence_exists_pins,
         siblings,
+    }
+}
+
+fn connect_deferred_inputs(
+    kind: &str,
+    inputs: &[(NodeId, u32)],
+    node_out_key: &BTreeMap<NodeId, u32>,
+    edges: &mut Vec<(u32, u32)>,
+    warnings: &mut Vec<String>,
+) {
+    for &(node, input) in inputs {
+        if let Some(&output) = node_out_key.get(&node) {
+            edges.push((output, input));
+        } else {
+            warnings.push(format!(
+                "{kind} input references unexported node {node}; connection skipped"
+            ));
+        }
     }
 }
 
