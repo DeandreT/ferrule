@@ -5,11 +5,10 @@ use mapping::{FunctionId, Graph, Node, NodeId, Project, Scope, ScopeConstruction
 
 use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
-    FailureRuleFeature, FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin,
-    IterationPlan, IterationSource, JoinId, JoinPlan, LowerError, NamedSourceProgram,
-    NamedTargetProgram, Program, ScalarFunction, ScopeConstructionKind, ScopeFeature,
-    SequenceWindow, SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind,
-    UnsupportedSequenceKind, UserFunctionParameter, UserFunctionProgram,
+    FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
+    JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program, ScalarFunction,
+    ScopeConstructionKind, ScopeFeature, SequenceWindow, SortKey, SortPlan, SourceIteration,
+    TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -42,8 +41,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
     let failure_rules = project
         .failure_rules
         .iter()
-        .enumerate()
-        .filter_map(|(index, rule)| lower_failure_rule(index, rule, &mut roots, &mut diagnostics))
+        .map(|rule| lower_failure_rule(rule, &mut roots))
         .collect();
     let mut target_path = Vec::new();
     let root = lower_scope(
@@ -111,12 +109,7 @@ fn inspect_dynamic_sources(project: &Project, diagnostics: &mut Vec<Diagnostic>)
     }
 }
 
-fn lower_failure_rule(
-    index: usize,
-    rule: &mapping::FailureRule,
-    roots: &mut Vec<NodeId>,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<FailureRule> {
+fn lower_failure_rule(rule: &mapping::FailureRule, roots: &mut Vec<NodeId>) -> FailureRule {
     roots.extend(rule.selection.predicate());
     roots.extend(rule.message);
     let iteration = match &rule.iteration {
@@ -126,15 +119,6 @@ fn lower_failure_rule(
         mapping::FailureIteration::Sequence { sequence } => {
             roots.extend(sequence.inputs());
             roots.push(sequence.item());
-            if matches!(sequence, mapping::SequenceExpr::TokenizeRegex { .. }) {
-                diagnostics.push(Diagnostic::UnsupportedFailureRule {
-                    rule: index + 1,
-                    feature: FailureRuleFeature::GeneratedSequence(
-                        UnsupportedSequenceKind::TokenizeRegex,
-                    ),
-                });
-                return None;
-            }
             FailureIteration::Generated(lower_generated_sequence(sequence))
         }
     };
@@ -145,11 +129,11 @@ fn lower_failure_rule(
             FailureSelection::WhenFalse(predicate)
         }
     };
-    Some(FailureRule {
+    FailureRule {
         iteration,
         selection,
         message: rule.message,
-    })
+    }
 }
 
 fn lower_scope(

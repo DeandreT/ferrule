@@ -4,7 +4,7 @@ use mapping::{
 };
 
 use super::*;
-use crate::{FailureIteration, FailureRule, FailureRuleFeature, FailureSelection, SourceIteration};
+use crate::{FailureIteration, FailureRule, FailureSelection, SourceIteration};
 
 #[test]
 fn lowers_ordered_rules_and_every_expression_root() {
@@ -112,7 +112,7 @@ fn lowers_ordered_rules_and_every_expression_root() {
 }
 
 #[test]
-fn reports_nonportable_generated_sequences_at_the_rule() {
+fn lowers_regex_generated_failure_sequences() {
     let mut project = supported_project();
     project.graph.nodes.extend([
         (
@@ -148,19 +148,25 @@ fn reports_nonportable_generated_sequences_at_the_rule() {
         message: None,
     });
 
-    let diagnostics = lower(&project)
-        .expect_err("regex tokenization is not portable")
-        .into_diagnostics();
+    let program = lower(&project).expect("regex failure sequence lowers");
 
     assert_eq!(
-        diagnostics,
-        vec![Diagnostic::UnsupportedFailureRule {
-            rule: 1,
-            feature: FailureRuleFeature::GeneratedSequence(UnsupportedSequenceKind::TokenizeRegex,),
+        program.failure_rules,
+        vec![FailureRule {
+            iteration: FailureIteration::Generated(GeneratedSequence::TokenizeRegex {
+                input: 40,
+                pattern: 41,
+                flags: None,
+                item: 42,
+            }),
+            selection: FailureSelection::All,
+            message: None,
         }]
     );
-    assert_eq!(
-        diagnostics[0].to_string(),
-        "failure rule 1: code generation does not support regular-expression tokenize generated sequence"
-    );
+    for root in [40, 41, 42] {
+        assert!(
+            program.expressions.iter().any(|node| node.id == root),
+            "failure expression {root} must be reachable"
+        );
+    }
 }

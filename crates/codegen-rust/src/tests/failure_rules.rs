@@ -14,7 +14,8 @@ fn failure_program() -> Program {
                     ],
                 )
                 .repeating(),
-                SchemaNode::scalar("To", ScalarType::Int),
+                SchemaNode::scalar("Tokens", ScalarType::String),
+                SchemaNode::scalar("Pattern", ScalarType::String),
                 SchemaNode::scalar("Stop", ScalarType::Bool),
                 SchemaNode::scalar("TargetExplodes", ScalarType::Int),
             ],
@@ -56,7 +57,7 @@ fn failure_program() -> Program {
                 id: 5,
                 expression: Expression::Call {
                     function: ScalarFunction::GreaterThan,
-                    args: vec![3, 4],
+                    args: vec![12, 4],
                 },
             },
             ExpressionNode {
@@ -96,7 +97,7 @@ fn failure_program() -> Program {
                 id: 11,
                 expression: Expression::SourceField {
                     frame: None,
-                    path: vec!["To".into()],
+                    path: vec!["Tokens".into()],
                 },
             },
             ExpressionNode {
@@ -112,6 +113,13 @@ fn failure_program() -> Program {
                     args: vec![2],
                 },
             },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["Pattern".into()],
+                },
+            },
         ],
         user_functions: Vec::new(),
         failure_rules: vec![
@@ -121,13 +129,14 @@ fn failure_program() -> Program {
                 message: Some(13),
             },
             FailureRule {
-                iteration: FailureIteration::Generated(GeneratedSequence::Range {
-                    from: None,
-                    to: 11,
+                iteration: FailureIteration::Generated(GeneratedSequence::TokenizeRegex {
+                    input: 11,
+                    pattern: 14,
+                    flags: None,
                     item: 3,
                 }),
                 selection: FailureSelection::WhenTrue(5),
-                message: Some(12),
+                message: Some(3),
             },
             FailureRule {
                 iteration: FailureIteration::Source(SourceIteration::new(Vec::new())),
@@ -216,6 +225,19 @@ fn emits_ordered_lazy_failures_before_every_target() {
     assert!(source.contains("let selected = !require_bool(1, predicate)?;"));
     assert!(source.contains("let message = Some(expression_13(&item_context)?);"));
     assert!(source.contains("return Err(codegen_runtime::mapping_failure(1, message));"));
+    let sequence_input = source
+        .find("let sequence_input = expression_11(context)?;")
+        .unwrap();
+    let sequence_pattern = source
+        .find("let sequence_pattern = expression_14(context)?;")
+        .unwrap();
+    let materialize = source.find("tokenize_regex(sequence_input").unwrap();
+    let iterate = source
+        .find("context.generated_items(&generated_items)")
+        .unwrap();
+    assert!(sequence_input < sequence_pattern);
+    assert!(sequence_pattern < materialize);
+    assert!(materialize < iterate);
     let first = source.find("evaluate_failure_rule_0(context)?;").unwrap();
     let second = source.find("evaluate_failure_rule_1(context)?;").unwrap();
     assert!(first < second);
@@ -276,7 +298,43 @@ fn main() {
     );
 
     let generated = source(&[("A", Value::Bool(true))], 3, false);
-    assert_failure(failure_map::execute(&generated), 2, Some("2"));
+    assert_failure(failure_map::execute(&generated), 2, Some("bad"));
+
+    let invalid_pattern = source_with_sequence(
+        &[("A", Value::Bool(true))],
+        Value::String("skip,bad".into()),
+        Value::String("(".into()),
+        false,
+    );
+    assert!(matches!(
+        failure_map::execute(&invalid_pattern),
+        Err(RuntimeError::InvalidTokenizeRegex { .. })
+    ));
+
+    let oversized_pattern = source_with_sequence(
+        &[("A", Value::Bool(true))],
+        Value::String("skip,bad".into()),
+        Value::String("a".repeat(65_537)),
+        false,
+    );
+    assert!(matches!(
+        failure_map::execute(&oversized_pattern),
+        Err(RuntimeError::TokenizeRegexPatternTooLarge {
+            bytes: 65_537,
+            max: 65_536,
+        })
+    ));
+
+    let null_input = source_with_sequence(
+        &[("A", Value::Bool(true))],
+        Value::Null,
+        Value::String("(".into()),
+        false,
+    );
+    assert!(matches!(
+        failure_map::execute(&null_input),
+        Err(RuntimeError::Function(FunctionError::TypeMismatch { .. }))
+    ));
 
     let runtime_message = source(&[("A", Value::Bool(true))], 1, true);
     assert_eq!(
@@ -317,7 +375,25 @@ fn assert_failure<T: Debug>(result: Result<T, RuntimeError>, rule: usize, messag
     );
 }
 
-fn source(rows: &[(&str, Value)], to: i64, stop: bool) -> Instance {
+fn source(rows: &[(&str, Value)], candidate_count: i64, stop: bool) -> Instance {
+    source_with_sequence(
+        rows,
+        Value::String(if candidate_count > 1 {
+            "skip,bad,later".into()
+        } else {
+            "only".into()
+        }),
+        Value::String(",".into()),
+        stop,
+    )
+}
+
+fn source_with_sequence(
+    rows: &[(&str, Value)],
+    tokens: Value,
+    pattern: Value,
+    stop: bool,
+) -> Instance {
     group([
         field(
             "Rows",
@@ -336,7 +412,8 @@ fn source(rows: &[(&str, Value)], to: i64, stop: bool) -> Instance {
                 ])
             })),
         ),
-        field("To", scalar(Value::Int(to))),
+        field("Tokens", scalar(tokens)),
+        field("Pattern", scalar(pattern)),
         field("Stop", scalar(Value::Bool(stop))),
         field("TargetExplodes", scalar(Value::Int(7))),
     ])

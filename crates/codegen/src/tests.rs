@@ -8,7 +8,7 @@ use mapping::{
 
 use crate::{
     Diagnostic, Expression, GeneratedSequence, IterationPlan, SUPPORTED_SCALAR_CALLS,
-    ScalarFunction, ScopeFeature, UnsupportedNodeKind, UnsupportedSequenceKind, lower,
+    ScalarFunction, ScopeFeature, UnsupportedNodeKind, lower,
 };
 
 mod artifacts;

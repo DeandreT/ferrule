@@ -14,11 +14,6 @@ pub enum Diagnostic {
         path_expression: NodeId,
         iteration: Vec<String>,
     },
-    UnsupportedFailureRule {
-        /// One-based declaration index.
-        rule: usize,
-        feature: FailureRuleFeature,
-    },
     UnsupportedScope {
         /// Static target-field path. Empty identifies the primary root.
         target_path: Vec<String>,
@@ -47,16 +42,6 @@ pub enum ScopeFeature {
     DynamicChildren,
     DynamicFieldMerge,
     PostGroupFilter,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnsupportedSequenceKind {
-    TokenizeRegex,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FailureRuleFeature {
-    GeneratedSequence(UnsupportedSequenceKind),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,10 +107,6 @@ impl fmt::Display for Diagnostic {
                 "extra source `{source}`: code generation does not support dynamic path expression {path_expression} over `{}`",
                 display_source_path(iteration)
             ),
-            Self::UnsupportedFailureRule { rule, feature } => write!(
-                formatter,
-                "failure rule {rule}: code generation does not support {feature}"
-            ),
             Self::UnsupportedScope {
                 target_path,
                 feature,
@@ -166,14 +147,6 @@ fn display_source_path(path: &[String]) -> String {
     }
 }
 
-impl fmt::Display for FailureRuleFeature {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::GeneratedSequence(kind) => write!(formatter, "{kind} generated sequence"),
-        }
-    }
-}
-
 impl fmt::Display for ScopeFeature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -187,14 +160,6 @@ impl fmt::Display for ScopeFeature {
             Self::DynamicFieldMerge => formatter.write_str("dynamic-field merging"),
             Self::PostGroupFilter => formatter.write_str("post-group filtering"),
         }
-    }
-}
-
-impl fmt::Display for UnsupportedSequenceKind {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::TokenizeRegex => "regular-expression tokenize",
-        })
     }
 }
 

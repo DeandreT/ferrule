@@ -74,6 +74,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("Condition", ScalarType::Bool),
                 SchemaNode::scalar("ExtraCondition", ScalarType::Bool),
                 SchemaNode::scalar("GeneratedFailure", ScalarType::Bool),
+                SchemaNode::scalar("GeneratedPattern", ScalarType::String),
                 SchemaNode::group(
                     "Orders",
                     vec![
@@ -252,13 +253,14 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 20,
                 expression: Expression::Const {
-                    value: Value::String("alpha,beta".into()),
+                    value: Value::String("alpha,beta,later".into()),
                 },
             },
             ExpressionNode {
                 id: 21,
-                expression: Expression::Const {
-                    value: Value::String(",".into()),
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: vec!["GeneratedPattern".into()],
                 },
             },
             ExpressionNode {
@@ -414,7 +416,7 @@ fn fixture() -> Program {
                 id: 42,
                 expression: Expression::Call {
                     function: ScalarFunction::Equal,
-                    args: vec![41, 27],
+                    args: vec![49, 27],
                 },
             },
             ExpressionNode {
@@ -453,6 +455,12 @@ fn fixture() -> Program {
                 id: 48,
                 expression: Expression::Const {
                     value: Value::String("i".into()),
+                },
+            },
+            ExpressionNode {
+                id: 49,
+                expression: Expression::Position {
+                    collection: Vec::new(),
                 },
             },
         ],
@@ -574,9 +582,10 @@ fn fixture() -> Program {
                 message: Some(39),
             },
             FailureRule {
-                iteration: FailureIteration::Generated(GeneratedSequence::Range {
-                    from: None,
-                    to: 26,
+                iteration: FailureIteration::Generated(GeneratedSequence::TokenizeRegex {
+                    input: 20,
+                    pattern: 21,
+                    flags: Some(48),
                     item: 41,
                 }),
                 selection: FailureSelection::WhenTrue(43),
@@ -801,10 +810,32 @@ var generatedFailure = Error(
         extraSources,
         executionContext));
 Assert(generatedFailure.FailureRule == 4);
-Assert(generatedFailure.MappingFailureMessage == "2:mapping.ferrule");
+Assert(generatedFailure.MappingFailureMessage == "beta:mapping.ferrule");
 Error(
     FerruleRuntimeError.MissingRuntimeValue,
     () => GeneratedMapping.ExecuteWithSources(generatedFailureSource, extraSources));
+var invalidGeneratedPatternSource = Source(
+    FerruleValue.FromBoolean(true),
+    true,
+    generatedFailure: true,
+    generatedPattern: "(");
+Error(
+    FerruleRuntimeError.InvalidTokenizeRegex,
+    () => GeneratedMapping.ExecuteWithSources(
+        invalidGeneratedPatternSource,
+        extraSources,
+        executionContext));
+var oversizedGeneratedPatternSource = Source(
+    FerruleValue.FromBoolean(true),
+    true,
+    generatedFailure: true,
+    generatedPattern: new string('a', 65_537));
+Error(
+    FerruleRuntimeError.TokenizeRegexPatternTooLarge,
+    () => GeneratedMapping.ExecuteWithSources(
+        oversizedGeneratedPatternSource,
+        extraSources,
+        executionContext));
 
 NamedSourceError(FerruleRuntimeError.MissingNamedSource, "catalog", () => GeneratedMapping.Execute(source));
 NamedSourceError(
@@ -851,6 +882,7 @@ static FerruleGroup Source(
     bool extraCondition,
     bool primarySettings = true,
     bool generatedFailure = false,
+    string generatedPattern = ",",
     FerruleValue? secondOrderBlocked = null)
 {
     var fields = new List<FerruleField>
@@ -862,6 +894,7 @@ static FerruleGroup Source(
         new("Condition", new FerruleScalar(condition)),
         new("ExtraCondition", new FerruleScalar(FerruleValue.FromBoolean(extraCondition))),
         new("GeneratedFailure", new FerruleScalar(FerruleValue.FromBoolean(generatedFailure))),
+        new("GeneratedPattern", new FerruleScalar(FerruleValue.FromString(generatedPattern))),
         new("Orders", new FerruleRepeated(new FerruleInstance[]
         {
             new FerruleGroup(new FerruleField[]
