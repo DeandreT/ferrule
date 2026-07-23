@@ -102,6 +102,39 @@ fn pcdata_with_attributes_becomes_simple_content_group() {
 }
 
 #[test]
+fn mixed_content_preserves_interleaved_text_and_typed_children() {
+    let schema = import_root_str(
+        r#"
+            <!ELEMENT Paragraph (#PCDATA | Emphasis | Link)*>
+            <!ATTLIST Paragraph lang CDATA #IMPLIED>
+            <!ELEMENT Emphasis (#PCDATA)>
+            <!ELEMENT Link (#PCDATA)>
+        "#,
+        Some("Paragraph"),
+    )
+    .unwrap();
+    assert!(schema.child(XML_TEXT_FIELD).is_some_and(|text| text.text));
+    assert!(
+        schema
+            .child("Emphasis")
+            .is_some_and(|child| child.repeating)
+    );
+    assert!(schema.child("Link").is_some_and(|child| child.repeating));
+    assert!(schema.child("lang").is_some_and(|child| child.attribute));
+
+    let input = r#"<Paragraph lang="en">before <Emphasis>bold</Emphasis> between <Link>url</Link> after</Paragraph>"#;
+    let instance = from_str(input, &schema).unwrap();
+    let output = to_string(&schema, &instance).unwrap();
+    let before = output.find("before ").unwrap();
+    let emphasis = output.find("<Emphasis>bold</Emphasis>").unwrap();
+    let between = output.find(" between ").unwrap();
+    let link = output.find("<Link>url</Link>").unwrap();
+    let after = output.find(" after").unwrap();
+    assert!(before < emphasis && emphasis < between && between < link && link < after);
+    assert_eq!(from_str(&output, &schema).unwrap(), instance);
+}
+
+#[test]
 fn file_api_imports_self_authored_dtd() {
     let path = std::env::temp_dir().join(format!(
         "ferrule_dtd_import_test_{}.dtd",
@@ -118,8 +151,8 @@ fn rejects_unsupported_or_unrepresentable_content_precisely() {
     let cases = [
         ("<!ELEMENT Root ANY>", "ANY element content"),
         (
-            "<!ELEMENT Root (#PCDATA|Child)*><!ELEMENT Child EMPTY>",
-            "mixed PCDATA and child-element content",
+            "<!ELEMENT Root (#PCDATA|Child)><!ELEMENT Child EMPTY>",
+            "mixed PCDATA and child-element content must use `*`",
         ),
         ("<!ENTITY item \"value\"><!ELEMENT Root EMPTY>", "entity"),
         ("<!NOTATION image SYSTEM \"image/png\">", "notation"),
