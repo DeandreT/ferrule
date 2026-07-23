@@ -9,7 +9,7 @@ use mapping::{
 };
 use rust_xlsxwriter::{ExcelDateTime, Format, Workbook, Worksheet};
 
-use super::{MAX_EXACT_F64_INTEGER, MAX_WORKSHEET_ROW, XlsxFormatError};
+use super::{MAX_EXACT_F64_INTEGER, MAX_WORKSHEET_ROW, XlsxFormatError, boolean_lexical};
 
 /// Reads a workbook written with a retained hierarchical layout.
 pub fn read_hierarchical(
@@ -606,9 +606,8 @@ fn write_value(
             worksheet.write_boolean(row, column, *value)?;
         }
         (XlsxCellKind::Boolean, Value::String(value)) => {
-            let boolean = value
-                .parse::<bool>()
-                .map_err(|_| value_error(layout, "value is not a boolean"))?;
+            let boolean = boolean_lexical(value)
+                .ok_or_else(|| value_error(layout, "value is not a boolean"))?;
             worksheet.write_boolean(row, column, boolean)?;
         }
         (
