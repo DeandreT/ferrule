@@ -232,7 +232,6 @@ fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(
         "isbn10_to_isbn13",
         "sql_like",
         "to_number",
-        "json_serialize_object",
         "flextext_parse_field",
     ] {
         assert!(
@@ -240,6 +239,9 @@ fn internal_functions_export_reimport_and_execute_without_warnings() -> Result<(
             "missing canonical component for {function}"
         );
     }
+    assert!(xml.contains("library=\"json\""));
+    assert!(xml.contains("usageKind=\"stringserialize\""));
+    assert!(!xml.contains("name=\"json_serialize_object\" library=\"ferrule\""));
 
     let imported = mfd::import(&design)?;
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
