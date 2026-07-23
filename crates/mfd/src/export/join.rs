@@ -10,6 +10,72 @@ use mapping::{
 use super::schema::{KeyAlloc, PortMatch, PortTree, xml_escape};
 use super::source::SourceExports;
 
+use crate::MfdError;
+
+pub(super) fn validate(project: &Project) -> Result<(), MfdError> {
+    let dynamic_sources = project
+        .extra_sources
+        .iter()
+        .filter(|source| source.dynamic_path.is_some())
+        .map(|source| source.name.as_str())
+        .collect::<BTreeSet<_>>();
+    if dynamic_sources.is_empty() {
+        return Ok(());
+    }
+
+    validate_scope_dynamic_sources(&project.root, &dynamic_sources)?;
+    for target in &project.extra_targets {
+        validate_scope_dynamic_sources(&target.root, &dynamic_sources)?;
+    }
+    for node in project.graph.nodes.values() {
+        if let Node::JoinAggregate { join, plan, .. } = node {
+            validate_plan_dynamic_sources(*join, plan, &dynamic_sources)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_scope_dynamic_sources(
+    scope: &Scope,
+    dynamic_sources: &BTreeSet<&str>,
+) -> Result<(), MfdError> {
+    if let Some((join, plan)) = scope.join() {
+        validate_plan_dynamic_sources(join, plan, dynamic_sources)?;
+    }
+    if let Some(segments) = scope.concatenated() {
+        for segment in segments.iter() {
+            validate_scope_dynamic_sources(segment, dynamic_sources)?;
+        }
+    }
+    for child in &scope.children {
+        validate_scope_dynamic_sources(child, dynamic_sources)?;
+    }
+    for child in &scope.dynamic_children {
+        validate_scope_dynamic_sources(&child.scope, dynamic_sources)?;
+    }
+    Ok(())
+}
+
+fn validate_plan_dynamic_sources(
+    join: JoinId,
+    plan: &JoinPlan,
+    dynamic_sources: &BTreeSet<&str>,
+) -> Result<(), MfdError> {
+    let Some(source) = plan.sources().find_map(|source| {
+        source
+            .collection()
+            .first()
+            .map(String::as_str)
+            .filter(|name| dynamic_sources.contains(name))
+    }) else {
+        return Ok(());
+    };
+    Err(MfdError::Unsupported(format!(
+        "inner join {} references dynamic additional source `{source}`; kind-32 export requires static source components",
+        join.get()
+    )))
+}
+
 #[derive(Default)]
 pub(super) struct JoinExports {
     row_outputs: BTreeMap<JoinId, u32>,
@@ -369,12 +435,13 @@ fn render_one(
                 collection.join("/")
             ));
         }
-        let Some(node) = source_exports.schema_node_at(collection) else {
+        let Some(resolved) = source_exports.join_collection(collection) else {
             return Err(format!(
-                "input {index} collection `{}` is not in an exported source schema",
+                "input {index} collection `{}` is not in an exported source schema or has no source component port",
                 collection.join("/")
             ));
         };
+        let node = resolved.schema;
         let valid = match source.cardinality() {
             JoinSourceCardinality::Repeating => {
                 node.repeating && matches!(node.kind, SchemaKind::Group { .. })
@@ -389,12 +456,7 @@ fn render_one(
                 collection.join("/")
             ));
         }
-        let source_port = source_exports.key_for_abs(collection).ok_or_else(|| {
-            format!(
-                "input {index} collection `{}` has no source component port",
-                collection.join("/")
-            )
-        })?;
+        let source_port = resolved.port;
         let input_port = keys.next();
         input_ports.push(input_port);
         input_edges.push((source_port, input_port));
