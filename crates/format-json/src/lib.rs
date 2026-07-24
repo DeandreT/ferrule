@@ -4,10 +4,10 @@
 //! `repeating` holds a JSON array of that child's shape (a missing repeating
 //! field reads as empty, matching the XML reader's zero-match behavior);
 //! scalars map per [`ScalarType`], with explicit JSON `null` accepted only
-//! when the schema node is nullable.
-//! Absent object properties read as Null scalars / empty groups. Null values
-//! on non-nullable scalar properties are omitted on write, while nullable
-//! scalar properties serialize them as explicit JSON `null`.
+//! when the scalar or its object/array container is nullable. Absent nullable
+//! containers, explicit nulls, and empty objects/arrays remain distinct.
+//! Unconstrained dynamic properties retain arbitrary values as canonical JSON
+//! text in the graph's string domain and restore them at the output boundary.
 
 pub mod json_schema;
 
@@ -103,6 +103,9 @@ fn read_repeated(
     value: &serde_json::Value,
     schema: &SchemaNode,
 ) -> Result<Instance, JsonFormatError> {
+    if value.is_null() && schema.container_nullable {
+        return Ok(Instance::Scalar(Value::json_null()));
+    }
     let serde_json::Value::Array(items) = value else {
         return Err(JsonFormatError::Shape {
             name: schema.name.clone(),
@@ -118,6 +121,14 @@ fn read_repeated(
 }
 
 fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance, JsonFormatError> {
+    if schema.json_any {
+        return Ok(Instance::Scalar(Value::String(serde_json::to_string(
+            value,
+        )?)));
+    }
+    if value.is_null() && schema.container_nullable {
+        return Ok(Instance::Scalar(Value::json_null()));
+    }
     match &schema.kind {
         SchemaKind::Scalar { ty } => Ok(Instance::Scalar(read_scalar(
             value,
@@ -174,7 +185,7 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
                     Some(field_value) => {
                         out.push((child.name.clone(), read_node(field_value, child)?));
                     }
-                    None if child.repeating => {
+                    None if child.repeating && !child.container_nullable => {
                         out.push((child.name.clone(), Instance::Repeated(Vec::new())));
                     }
                     // Absent properties are normal instance data (JSON
@@ -191,6 +202,9 @@ fn read_node(value: &serde_json::Value, schema: &SchemaNode) -> Result<Instance,
 }
 
 fn missing_instance(schema: &SchemaNode) -> Instance {
+    if schema.container_nullable {
+        return Instance::Scalar(Value::Null);
+    }
     if schema.repeating {
         Instance::Repeated(Vec::new())
     } else {
@@ -308,6 +322,9 @@ fn write_node(
     schema: &SchemaNode,
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
+    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+        return Ok(serde_json::Value::Null);
+    }
     if schema.repeating {
         let Instance::Repeated(items) = instance else {
             return Err(write_shape_error(
@@ -329,6 +346,12 @@ fn write_single_node(
     schema: &SchemaNode,
     instance: &Instance,
 ) -> Result<serde_json::Value, JsonFormatError> {
+    if schema.json_any {
+        return write_json_any(schema, instance);
+    }
+    if schema.container_nullable && matches!(instance, Instance::Scalar(Value::JsonNull(_))) {
+        return Ok(serde_json::Value::Null);
+    }
     match (&schema.kind, instance) {
         (SchemaKind::Scalar { ty }, Instance::Scalar(value)) => {
             write_scalar(value, *ty, schema.nullable, &schema.name)
@@ -360,10 +383,7 @@ fn write_single_node(
                         .iter()
                         .find(|child| child.name == *name)
                         .unwrap_or(dynamic);
-                    if !child_schema.repeating
-                        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
-                        && matches!(child_instance, Instance::Scalar(Value::Null))
-                    {
+                    if is_boundary_absence(child_schema, child_instance) {
                         continue;
                     }
                     out.insert(name.clone(), write_node(child_schema, child_instance)?);
@@ -376,10 +396,7 @@ fn write_single_node(
                 {
                     // A non-nullable Null scalar is boundary-level absence.
                     // Nullable scalars retain an explicit JSON null.
-                    if !child_schema.repeating
-                        && matches!(&child_schema.kind, SchemaKind::Scalar { .. })
-                        && matches!(child_instance, Instance::Scalar(Value::Null))
-                    {
+                    if is_boundary_absence(child_schema, child_instance) {
                         continue;
                     }
                     out.insert(
@@ -402,6 +419,44 @@ fn write_single_node(
             instance_type_name(other),
         )),
     }
+}
+
+fn write_json_any(
+    schema: &SchemaNode,
+    instance: &Instance,
+) -> Result<serde_json::Value, JsonFormatError> {
+    let Instance::Scalar(value) = instance else {
+        return Err(write_shape_error(
+            schema,
+            "arbitrary JSON scalar encoding",
+            instance_type_name(instance),
+        ));
+    };
+    match value {
+        Value::String(value) => Ok(serde_json::from_str(value)
+            .unwrap_or_else(|_| serde_json::Value::String(value.clone()))),
+        Value::Bool(value) => Ok((*value).into()),
+        Value::Int(value) => Ok((*value).into()),
+        Value::Float(value) => serde_json::Number::from_f64(*value)
+            .map(serde_json::Value::Number)
+            .ok_or_else(|| JsonFormatError::Shape {
+                name: schema.name.clone(),
+                expected: "finite JSON number",
+                got: "non-finite float",
+            }),
+        Value::JsonNull(_) => Ok(serde_json::Value::Null),
+        Value::Null | Value::XmlNil(_) => Err(JsonFormatError::Shape {
+            name: schema.name.clone(),
+            expected: "arbitrary JSON value",
+            got: value.type_name(),
+        }),
+    }
+}
+
+fn is_boundary_absence(schema: &SchemaNode, instance: &Instance) -> bool {
+    matches!(instance, Instance::Scalar(Value::Null))
+        && (schema.container_nullable
+            || (!schema.repeating && matches!(schema.kind, SchemaKind::Scalar { .. })))
 }
 
 fn validate_alternative_fields(

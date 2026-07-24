@@ -306,6 +306,18 @@ pub struct SchemaNode {
     /// not to the array itself.
     #[serde(default, skip_serializing_if = "core::ops::Not::not")]
     pub nullable: bool,
+    /// This JSON object or array may itself be the explicit `null` value.
+    ///
+    /// This is separate from [`Self::nullable`]: on a repeating scalar node,
+    /// that flag applies to each array item while this flag applies to the
+    /// array wrapper.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub container_nullable: bool,
+    /// This string scalar stores one arbitrary JSON value as canonical JSON
+    /// text. JSON boundaries use it for unconstrained dynamic object fields;
+    /// other formats and the mapping graph continue to see an ordinary string.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub json_any: bool,
     /// A required literal value for a scalar node (XSD's `xs:fixed`, JSON
     /// Schema's `const`), compared against the raw text before parsing.
     /// Format adapters use it both to validate and to disambiguate --
@@ -365,6 +377,10 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             nullable: bool,
             #[serde(default)]
+            container_nullable: bool,
+            #[serde(default)]
+            json_any: bool,
+            #[serde(default)]
             fixed: Option<String>,
             #[serde(default)]
             default: Option<String>,
@@ -391,6 +407,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             text: repr.text,
             nillable: repr.nillable,
             nullable: repr.nullable,
+            container_nullable: repr.container_nullable,
+            json_any: repr.json_any,
             fixed: repr.fixed,
             default: repr.default,
             value_generation: repr.value_generation,
@@ -409,6 +427,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             || !node.xml_repeating_sequences_are_valid()
             || !node.database_relation_is_valid()
             || !node.nullable_is_valid()
+            || !node.container_nullable_is_valid()
+            || !node.json_any_is_valid()
         {
             return Err(serde::de::Error::custom(
                 "schema metadata contains invalid alternatives, recursion, value generation, default value, alternative mode, XML alternative kind, XML repeating sequences, database relation, or JSON nullability",
@@ -579,6 +599,8 @@ impl SchemaNode {
             text: false,
             nillable: false,
             nullable: false,
+            container_nullable: false,
+            json_any: false,
             fixed: None,
             default: None,
             value_generation: None,
@@ -600,6 +622,8 @@ impl SchemaNode {
             text: false,
             nillable: false,
             nullable: false,
+            container_nullable: false,
+            json_any: false,
             fixed: None,
             default: None,
             value_generation: None,
@@ -677,6 +701,25 @@ impl SchemaNode {
     /// Checks that explicit JSON nullability remains scalar-only.
     pub fn nullable_is_valid(&self) -> bool {
         !self.nullable || matches!(self.kind, SchemaKind::Scalar { .. })
+    }
+
+    /// Checks that JSON container nullability belongs to an object or array.
+    pub fn container_nullable_is_valid(&self) -> bool {
+        !self.container_nullable || self.repeating || matches!(self.kind, SchemaKind::Group { .. })
+    }
+
+    /// Checks that arbitrary JSON values use the graph's canonical string domain.
+    pub fn json_any_is_valid(&self) -> bool {
+        !self.json_any
+            || (!self.repeating
+                && !self.attribute
+                && !self.text
+                && matches!(
+                    self.kind,
+                    SchemaKind::Scalar {
+                        ty: ScalarType::String
+                    }
+                ))
     }
 
     /// Checks that declared database relation metadata belongs to this nested table.
@@ -944,6 +987,18 @@ impl SchemaNode {
     pub fn nullable(mut self) -> Option<Self> {
         self.nullable = true;
         self.nullable_is_valid().then_some(self)
+    }
+
+    /// Marks this JSON object or array wrapper as accepting explicit `null`.
+    pub fn nullable_container(mut self) -> Option<Self> {
+        self.container_nullable = true;
+        self.container_nullable_is_valid().then_some(self)
+    }
+
+    /// Marks this string scalar as the canonical encoding of arbitrary JSON.
+    pub fn json_any(mut self) -> Option<Self> {
+        self.json_any = true;
+        self.json_any_is_valid().then_some(self)
     }
 
     /// Requires this scalar to hold `value` (builder-style).
@@ -1743,6 +1798,45 @@ mod tests {
         assert!(
             serde_json::from_str::<SchemaNode>(
                 r#"{"name":"object","nullable":true,"kind":{"kind":"group","children":[]}}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn json_container_nullability_and_arbitrary_values_are_validated() {
+        let object = SchemaNode::group("object", Vec::new())
+            .nullable_container()
+            .unwrap();
+        let array = SchemaNode::scalar("items", ScalarType::Int)
+            .repeating()
+            .nullable_container()
+            .unwrap();
+        let any = SchemaNode::scalar("*", ScalarType::String)
+            .json_any()
+            .unwrap();
+        for schema in [&object, &array, &any] {
+            let encoded = serde_json::to_string(schema).unwrap();
+            assert_eq!(
+                serde_json::from_str::<SchemaNode>(&encoded).unwrap(),
+                *schema
+            );
+        }
+
+        let old: SchemaNode =
+            serde_json::from_str(r#"{"name":"object","kind":{"kind":"group","children":[]}}"#)
+                .unwrap();
+        assert!(!old.container_nullable);
+        assert!(!old.json_any);
+        assert!(
+            SchemaNode::scalar("value", ScalarType::String)
+                .nullable_container()
+                .is_none()
+        );
+        assert!(SchemaNode::group("value", Vec::new()).json_any().is_none());
+        assert!(
+            serde_json::from_str::<SchemaNode>(
+                r#"{"name":"object","json_any":true,"kind":{"kind":"group","children":[]}}"#
             )
             .is_err()
         );
