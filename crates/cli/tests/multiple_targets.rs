@@ -91,6 +91,17 @@ fn explicit_primary_output_does_not_replace_stored_extra_target_paths()
     assert_eq!(outcome.extra_outputs.len(), 1);
     assert_eq!(outcome.extra_outputs[0].name, "second");
     assert_eq!(outcome.extra_outputs[0].path, stored_secondary);
+    assert_eq!(
+        outcome
+            .artifacts
+            .iter()
+            .map(|artifact| (artifact.name.as_str(), artifact.path.as_path()))
+            .collect::<Vec<_>>(),
+        vec![
+            ("First", override_path.as_path()),
+            ("second", stored_secondary.as_path()),
+        ]
+    );
     assert!(!stored_primary.exists());
     let expected = Instance::Group(vec![(
         "Value".into(),

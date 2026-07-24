@@ -44,6 +44,10 @@ enum Command {
         /// Output instance; defaults to the project's target_path.
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Named host scalar in NAME=VALUE form. Repeat for multiple
+        /// parameters; declared mapping types apply during execution.
+        #[arg(long = "param", value_name = "NAME=VALUE")]
+        parameters: Vec<String>,
     },
     /// Check project graph, scope, and schema references without reading data.
     Validate {
@@ -235,9 +239,18 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             project,
             input,
             output,
+            parameters,
         } => {
-            let outcome =
-                cli::run_project_with_paths(&project, input.as_deref(), output.as_deref())?;
+            let parameters = parse_runtime_parameters(&parameters)?;
+            let outcome = cli::run_project_with_options(
+                &project,
+                &cli::RunOptions {
+                    input_path: input.as_deref(),
+                    output_path: output.as_deref(),
+                    runtime_parameters: Some(&parameters),
+                    trace_sink: None,
+                },
+            )?;
             println!(
                 "wrote {} record(s) to {}",
                 outcome.records_written,
@@ -335,4 +348,17 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             Ok(ExitCode::SUCCESS)
         }
     }
+}
+
+fn parse_runtime_parameters(values: &[String]) -> anyhow::Result<engine::RuntimeParameters> {
+    let mut parameters = engine::RuntimeParameters::new();
+    for value in values {
+        let (name, value) = value
+            .split_once('=')
+            .with_context(|| format!("runtime parameter `{value}` must use NAME=VALUE"))?;
+        parameters
+            .insert(name, ir::Value::String(value.to_string()))
+            .with_context(|| format!("invalid runtime parameter `{name}`"))?;
+    }
+    Ok(parameters)
 }

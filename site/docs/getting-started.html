@@ -46,6 +46,23 @@
   --input crates/cli/tests/fixtures/orders/Orders.xml \
   --output order-lines.csv</code></pre>
 
+        <h3>Supply typed host parameters</h3>
+        <p>
+          A mapping can declare named scalar values supplied by its host.
+          Repeat <code>--param</code> for each value; ferrule applies the
+          declaration's string, integer, floating-point, or boolean coercion
+          before evaluating the target.
+        </p>
+        <pre><code>cargo +nightly run -p cli -- run \
+  --project project.json \
+  --param correlation_id=txn-42 \
+  --param control_number=7001</code></pre>
+        <p>
+          Parameter names are exact, values may contain additional
+          <code>=</code> characters, and duplicate names fail before input is
+          read.
+        </p>
+
         <h2>Validate without executing</h2>
         <p>
           Validation checks graph reachability, schema compatibility, scope
