@@ -37,16 +37,9 @@ pub enum Diagnostic {
 pub enum ScopeFeature {
     Iteration,
     CorrelatedInnerJoin,
-    Construction(ScopeConstructionKind),
     DynamicBindings,
     DynamicChildren,
     DynamicFieldMerge,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScopeConstructionKind {
-    RecursiveFilter,
-    AdjacencyTree,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,20 +142,10 @@ impl fmt::Display for ScopeFeature {
             Self::CorrelatedInnerJoin => {
                 formatter.write_str("an unsupported correlated inner join")
             }
-            Self::Construction(kind) => write!(formatter, "{kind} construction"),
             Self::DynamicBindings => formatter.write_str("dynamic target bindings"),
             Self::DynamicChildren => formatter.write_str("dynamic target child scopes"),
             Self::DynamicFieldMerge => formatter.write_str("dynamic-field merging"),
         }
-    }
-}
-
-impl fmt::Display for ScopeConstructionKind {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::RecursiveFilter => "recursive-filter",
-            Self::AdjacencyTree => "adjacency-tree",
-        })
     }
 }
 

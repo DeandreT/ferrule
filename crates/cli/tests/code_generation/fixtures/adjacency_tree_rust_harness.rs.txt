@@ -1,0 +1,80 @@
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let input = source(
+        Value::Null,
+        &[
+            ("Root", None),
+            ("Beta", Some("Root")),
+            ("Alpha", Some("Root")),
+            ("Leaf", Some("Beta")),
+            ("Unreachable", Some("Unreachable")),
+        ],
+    );
+    assert_eq!(execute(&input)?, expected());
+    assert_eq!(
+        execute(&source(
+            Value::String("Loop".into()),
+            &[("Loop", Some("Loop"))],
+        )),
+        Err(RuntimeError::AdjacencyCycle { key: "Loop".into() }),
+    );
+    assert_eq!(
+        execute(&source(
+            Value::Int(1),
+            &[("Duplicate", None), ("Duplicate", None)],
+        )),
+        Err(RuntimeError::DuplicateAdjacencyKey {
+            key: "Duplicate".into(),
+        }),
+    );
+    assert_eq!(
+        execute(&source(Value::Int(1), &[("Root", None)])),
+        Err(RuntimeError::InvalidAdjacencyRoot { found: "int" }),
+    );
+    Ok(())
+}
+
+fn source(root: Value, rows: &[(&str, Option<&str>)]) -> Instance {
+    group([
+        field("Root", scalar(root)),
+        field(
+            "Rows",
+            repeated(
+                rows.iter()
+                    .map(|(key, parent)| {
+                        group([
+                            field("Key", scalar(Value::String((*key).into()))),
+                            field(
+                                "Parent",
+                                scalar(
+                                    parent
+                                        .map(|parent| Value::String(parent.into()))
+                                        .unwrap_or(Value::Null),
+                                ),
+                            ),
+                        ])
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        ),
+    ])
+}
+
+fn tree(name: &str, children: Vec<Instance>) -> Instance {
+    group([
+        field("name", scalar(Value::String(name.into()))),
+        field("children", repeated(children)),
+    ])
+}
+
+fn expected() -> Instance {
+    tree(
+        "Root",
+        vec![
+            tree("Beta", vec![tree("Leaf", Vec::new())]),
+            tree("Alpha", Vec::new()),
+        ],
+    )
+}

@@ -7,9 +7,9 @@ use crate::{
     Binding, Diagnostic, Expression, ExpressionNode, FailureIteration, FailureRule,
     FailureSelection, GeneratedSequence, GroupingPlan, InnerJoin, IterationPlan, IterationSource,
     JoinId, JoinPlan, LowerError, NamedSourceProgram, NamedTargetProgram, Program,
-    ProgramValidationError, ScalarFunction, ScopeConstructionKind, ScopeFeature, SequenceWindow,
-    SortKey, SortPlan, SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter,
-    UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
+    ProgramValidationError, ScalarFunction, ScopeFeature, SequenceWindow, SortKey, SortPlan,
+    SourceIteration, TargetScope, UnsupportedNodeKind, UserFunctionParameter, UserFunctionProgram,
+    XmlMixedContentElement, XmlMixedContentReplacement, validate_program,
 };
 
 pub fn lower(project: &Project) -> Result<Program, LowerError> {
@@ -250,7 +250,18 @@ fn lower_scope(
             files: plan.files().to_string(),
             name: plan.name().to_string(),
         },
-        _ => crate::TargetConstruction::Group,
+        ScopeConstruction::AdjacencyTree { plan } => {
+            roots.extend(plan.root());
+            crate::TargetConstruction::AdjacencyTree {
+                collection: plan.collection().to_vec(),
+                key: plan.key().to_vec(),
+                parent: plan.parent().to_vec(),
+                target_key: plan.target_key().to_string(),
+                target_children: plan.target_children().to_string(),
+                root: plan.root(),
+            }
+        }
+        ScopeConstruction::Constructed => crate::TargetConstruction::Group,
     };
 
     let bindings = scope
@@ -472,9 +483,6 @@ fn inspect_scope_features(
         }
         ScopeIteration::Concatenate(_) => {}
     }
-    if let Some(kind) = construction_kind(&scope.construction) {
-        report(ScopeFeature::Construction(kind));
-    }
     if !scope.dynamic_bindings.is_empty() {
         report(ScopeFeature::DynamicBindings);
     }
@@ -483,18 +491,6 @@ fn inspect_scope_features(
     }
     if scope.merge_dynamic_fields {
         report(ScopeFeature::DynamicFieldMerge);
-    }
-}
-
-fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructionKind> {
-    match construction {
-        ScopeConstruction::Constructed => None,
-        ScopeConstruction::CopyCurrentSource => None,
-        ScopeConstruction::Scalar { .. } => None,
-        ScopeConstruction::XmlMixedContent { .. } => None,
-        ScopeConstruction::RecursiveFilter { .. } => None,
-        ScopeConstruction::PathHierarchy { .. } => None,
-        ScopeConstruction::AdjacencyTree { .. } => Some(ScopeConstructionKind::AdjacencyTree),
     }
 }
 

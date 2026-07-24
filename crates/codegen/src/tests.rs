@@ -11,6 +11,7 @@ use crate::{
     ScalarFunction, ScopeFeature, lower,
 };
 
+mod adjacency_tree;
 mod artifacts;
 mod collection_find;
 mod concatenate;

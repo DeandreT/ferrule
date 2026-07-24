@@ -173,6 +173,9 @@ The current portable model includes:
 - bounded path-hierarchy target construction from repeated scalar paths, with
   first-seen directory/file order, duplicate-file preservation, null omission,
   exact single-root validation, and matching depth/materialization failures
+- bounded adjacency-tree target construction from flat string-keyed rows, with
+  graph-computed root selection, source-order children, unreachable-cycle
+  omission, and matching duplicate/root/cycle/depth failures
 - one primary target plus ordered, independently shaped named targets evaluated
   from the same source context and graph
 - ordered static named inputs shared by every target, including field access,
@@ -225,8 +228,7 @@ tokenization with the common `i`, `m`, `s`, and `x` flags. Rust and .NET still
 expose materially different regex dialects and Unicode behavior, so patterns
 outside the shared non-backtracking dialect can produce a backend-specific
 invalid-pattern error; exact cross-backend support needs a Ferrule-owned
-matcher. Adjacency-tree target construction remains interpreter-only. Per-item
-dynamic named sources remain
+matcher. Per-item dynamic named sources remain
 interpreter-only because their graph-computed paths require a typed host loader
 contract during scope evaluation. Direct correlated join scopes and
 joined-tuple aggregates beyond the exact active-singleton-to-repeating

@@ -461,6 +461,35 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             output.push_str(");\n    }\n");
             continue;
         }
+        if let TargetConstruction::AdjacencyTree {
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+            root,
+        } = scope.construction
+        {
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerruleAdjacencyTree.Build(\n            context,\n            ",
+            );
+            render_path(collection, &mut output);
+            output.push_str(",\n            ");
+            render_path(key, &mut output);
+            output.push_str(",\n            ");
+            render_path(parent, &mut output);
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(target_key));
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(target_children));
+            output.push_str(",\n            ");
+            match root {
+                Some(root) => output.push_str(&format!("Node_{root}")),
+                None => output.push_str("null"),
+            }
+            output.push_str(");\n    }\n");
+            continue;
+        }
         if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
             output.push_str("        return context.CopyCurrentGroup();\n    }\n");
             continue;

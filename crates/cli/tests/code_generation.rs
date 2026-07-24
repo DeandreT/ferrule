@@ -10,6 +10,8 @@ use cli::{GenerateOutcome, GenerateTarget, generate_project};
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{Binding, Graph, Node, Project, Scope, ScopeIteration};
 
+#[path = "code_generation/adjacency_tree.rs"]
+mod adjacency_tree;
 #[path = "code_generation/aggregates.rs"]
 mod aggregates;
 #[path = "code_generation/collection_find.rs"]

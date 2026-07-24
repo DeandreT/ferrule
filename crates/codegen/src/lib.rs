@@ -15,9 +15,7 @@ pub use artifact::{
     ArtifactPath, ArtifactPathError, ArtifactPathErrorKind, ArtifactSet, ArtifactSetError,
     GeneratedFile,
 };
-pub use diagnostic::{
-    Diagnostic, LowerError, ScopeConstructionKind, ScopeFeature, UnsupportedNodeKind,
-};
+pub use diagnostic::{Diagnostic, LowerError, ScopeFeature, UnsupportedNodeKind};
 pub use join::{
     InnerJoin, JoinConditions, JoinId, JoinKey, JoinPlan, JoinPlanError, JoinSource,
     JoinSourceCardinality,
