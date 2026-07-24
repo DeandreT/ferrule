@@ -18,7 +18,7 @@ pub(super) fn read(
                 .descendants()
                 .any(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi")) =>
         {
-            super::edi::read(component, mfd_path, warnings, false)
+            super::edi::read(component, mfd_path, None, warnings, false)
         }
         Some("db") => read_db(component, warnings),
         _ => None,

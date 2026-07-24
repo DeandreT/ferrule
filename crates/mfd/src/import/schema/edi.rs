@@ -7,6 +7,8 @@ use mapping::{
     X12Separators,
 };
 
+use crate::resource::ResourceResolver;
+
 use super::{ComponentFormat, SchemaComponent};
 
 #[path = "edi/config_source.rs"]
@@ -15,6 +17,7 @@ mod config_source;
 pub(super) fn read(
     component: &roxmltree::Node,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
     runtime_boundary: bool,
 ) -> Option<SchemaComponent> {
@@ -79,45 +82,50 @@ pub(super) fn read(
             "EDIX12" | "EDIFACT" | "EDIHL7" | "EDITRADACOMS" | "EDIFIXED" | "SWIFTMT"
         ) {
         config.and_then(|declared| {
-            match config_source::resolve(mfd_path, declared).and_then(|resolved| match kind {
-                "EDIFIXED" => format_edi::config::idoc::import_config(resolved.path())
+            match config_source::resolve(mfd_path, resources, declared).and_then(|resolved| {
+                match kind {
+                    "EDIFIXED" => format_edi::config::idoc::import_config(resolved.path())
+                        .map(|compiled| {
+                            (
+                                compiled.schema,
+                                Some(compiled.layout),
+                                None,
+                                Vec::new(),
+                                Vec::new(),
+                                Vec::new(),
+                            )
+                        })
+                        .map_err(|error| error.to_string()),
+                    "SWIFTMT" => {
+                        format_edi::config::swift::import_config(
+                            resolved.path(),
+                            &selected_messages,
+                        )
+                    }
                     .map(|compiled| {
                         (
                             compiled.schema,
+                            None,
                             Some(compiled.layout),
-                            None,
                             Vec::new(),
                             Vec::new(),
                             Vec::new(),
                         )
                     })
                     .map_err(|error| error.to_string()),
-                "SWIFTMT" => {
-                    format_edi::config::swift::import_config(resolved.path(), &selected_messages)
+                    _ => format_edi::config::import_config(resolved.path(), &selected_messages)
+                        .map(|compiled| {
+                            (
+                                compiled.schema,
+                                None,
+                                None,
+                                compiled.implied_decimals,
+                                compiled.lexical_formats,
+                                compiled.value_constraints,
+                            )
+                        })
+                        .map_err(|error| error.to_string()),
                 }
-                .map(|compiled| {
-                    (
-                        compiled.schema,
-                        None,
-                        Some(compiled.layout),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    )
-                })
-                .map_err(|error| error.to_string()),
-                _ => format_edi::config::import_config(resolved.path(), &selected_messages)
-                    .map(|compiled| {
-                        (
-                            compiled.schema,
-                            None,
-                            None,
-                            compiled.implied_decimals,
-                            compiled.lexical_formats,
-                            compiled.value_constraints,
-                        )
-                    })
-                    .map_err(|error| error.to_string()),
             }) {
                 Ok(compiled) => Some(compiled),
                 Err(error) => {

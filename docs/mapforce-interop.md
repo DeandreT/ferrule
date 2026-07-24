@@ -10,6 +10,21 @@ references, but ferrule's implementation and committed fixtures are original.
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
 ```
 
+For a mapping package whose resources sit above or beside the design directory,
+declare the trusted package root:
+
+```sh
+cargo +nightly run -p cli -- import-mfd \
+  --mfd package/maps/design.mfd \
+  --package-root package \
+  --out project.json
+```
+
+Resource references accept both slash styles and may contain parent components
+when their canonical target remains inside the package. Symlink escapes,
+absolute Windows paths, ambiguous case-insensitive matches, and traversal above
+the root are rejected.
+
 Import resolves the supported component graph into ferrule schemas, graph
 nodes, scopes, format options, and endpoints. Current coverage includes common
 XML, JSON, CSV/fixed-width/FlexText, XLSX, SQLite, EDI, Protocol Buffers, XBRL,
@@ -36,8 +51,8 @@ keeps nested relational reads executable when the database omits foreign-key met
 Filter components downstream from grouping retain their operator order: a
 group survives when any member satisfies the predicate, and sparse typed member
 ports resolve within that retained group.
-External EDI configurations may be ordinary sibling directories or adjacent
-ZIP packages. Packages are extracted under strict path, entry-count, compressed,
+External EDI configurations may be ordinary package resources or adjacent ZIP
+packages. Packages are extracted under strict path, entry-count, compressed,
 and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata
 are embedded in the imported project, so execution and later export do not
 depend on the package remaining available.
