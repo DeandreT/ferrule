@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use codegen_runtime::{
-    ExecutionContext, Instance, RuntimeError, RuntimeValue, Value, field, group, scalar,
+    ExecutionContext, Instance, RuntimeError, RuntimeParameters, RuntimeValue, ScalarType, Value,
+    field, group, scalar,
 };
 use ferrule_generated_mapping::{execute, execute_with_context};
 
@@ -11,15 +12,18 @@ const CURRENT: &str = "2026-07-19T11:22:33.45-07:00";
 const SKIPPED: &str = "missing-current-skipped";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let parameters = runtime_parameters(Value::String(" 42 ".into()));
     let full = ExecutionContext::with_main_mapping_file_path(
         Path::new(ACTIVE),
         Path::new(MAIN),
     )
-    .with_current_datetime(CURRENT);
+    .with_current_datetime(CURRENT)
+    .with_parameters(&parameters);
     let paths = ExecutionContext::with_main_mapping_file_path(
         Path::new(ACTIVE),
         Path::new(MAIN),
-    );
+    )
+    .with_parameters(&parameters);
     assert_eq!(execute_with_context(&source(true), &full)?, expected(CURRENT));
     assert_eq!(execute_with_context(&source(false), &paths)?, expected(SKIPPED));
     assert_eq!(
@@ -34,7 +38,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             value: RuntimeValue::CurrentDateTime,
         }),
     );
+    let without_parameters = ExecutionContext::with_main_mapping_file_path(
+        Path::new(ACTIVE),
+        Path::new(MAIN),
+    )
+    .with_current_datetime(CURRENT);
+    assert_eq!(
+        execute_with_context(&source(true), &without_parameters),
+        Err(RuntimeError::MissingRuntimeParameter {
+            node: 10,
+            name: "correlation_id".into(),
+        }),
+    );
+    let wrong_parameters = runtime_parameters(Value::Bool(false));
+    let wrong = ExecutionContext::with_main_mapping_file_path(
+        Path::new(ACTIVE),
+        Path::new(MAIN),
+    )
+    .with_current_datetime(CURRENT)
+    .with_parameters(&wrong_parameters);
+    assert_eq!(
+        execute_with_context(&source(true), &wrong),
+        Err(RuntimeError::RuntimeParameterType {
+            node: 11,
+            name: "control_number".into(),
+            expected: ScalarType::Int,
+            found: "bool",
+        }),
+    );
     Ok(())
+}
+
+fn runtime_parameters(control: Value) -> RuntimeParameters {
+    let mut parameters = RuntimeParameters::new();
+    parameters
+        .insert("correlation_id", Value::String("txn-42".into()))
+        .unwrap();
+    parameters.insert("control_number", control).unwrap();
+    parameters.insert("test_mode", Value::Bool(true)).unwrap();
+    parameters.insert("amount", Value::Int(125)).unwrap();
+    parameters
 }
 
 fn source(use_current: bool) -> Instance {
@@ -48,5 +91,9 @@ fn expected(current: &str) -> Instance {
         field("CurrentOne", scalar(Value::String(current.into()))),
         field("CurrentTwo", scalar(Value::String(current.into()))),
         field("Lazy", scalar(Value::String("lazy".into()))),
+        field("Correlation", scalar(Value::String("txn-42".into()))),
+        field("Control", scalar(Value::Int(42))),
+        field("TestMode", scalar(Value::Bool(true))),
+        field("Amount", scalar(Value::Float(125.0))),
     ])
 }

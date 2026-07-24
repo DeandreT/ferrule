@@ -29,6 +29,8 @@ public enum FerruleRuntimeError
     RecursiveFilterRequiresGroup,
     RecursiveFilterRequiresCollection,
     MissingRuntimeValue,
+    MissingRuntimeParameter,
+    RuntimeParameterType,
     GeneratedSequenceTooLarge,
     RecursiveSequenceDepth,
     RecursiveSequenceTooLarge,
@@ -64,6 +66,7 @@ public sealed class FerruleRuntimeException : Exception
         ulong? userFunction = null,
         ulong? functionParameter = null,
         FerruleScalarType? expectedScalarType = null,
+        string? runtimeParameter = null,
         string? sourceField = null,
         string? foundInstance = null)
         : base(message)
@@ -86,6 +89,7 @@ public sealed class FerruleRuntimeException : Exception
         UserFunction = userFunction;
         FunctionParameter = functionParameter;
         ExpectedScalarType = expectedScalarType;
+        RuntimeParameter = runtimeParameter;
         SourceField = sourceField;
         FoundInstance = foundInstance;
     }
@@ -111,6 +115,7 @@ public sealed class FerruleRuntimeException : Exception
         ulong? userFunction = null,
         ulong? functionParameter = null,
         FerruleScalarType? expectedScalarType = null,
+        string? runtimeParameter = null,
         string? sourceField = null,
         string? foundInstance = null)
         : base(message, innerException)
@@ -133,6 +138,7 @@ public sealed class FerruleRuntimeException : Exception
         UserFunction = userFunction;
         FunctionParameter = functionParameter;
         ExpectedScalarType = expectedScalarType;
+        RuntimeParameter = runtimeParameter;
         SourceField = sourceField;
         FoundInstance = foundInstance;
     }
@@ -172,6 +178,8 @@ public sealed class FerruleRuntimeException : Exception
     public ulong? FunctionParameter { get; }
 
     public FerruleScalarType? ExpectedScalarType { get; }
+
+    public string? RuntimeParameter { get; }
 
     public string? SourceField { get; }
 

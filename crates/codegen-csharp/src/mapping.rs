@@ -182,6 +182,14 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 output.push_str(runtime_value_name(*value));
                 output.push_str(");\n");
             }
+            Expression::RuntimeParameter { name, ty } => {
+                output.push_str(" =>\n        context.ResolveRuntimeParameter(");
+                output.push_str(&format!("{node}U, "));
+                output.push_str(&literal::string(name));
+                output.push_str(", global::Ferrule.Runtime.FerruleScalarType.");
+                output.push_str(scalar_type_name(*ty));
+                output.push_str(");\n");
+            }
             Expression::Call { function, args } => {
                 output.push_str(" =>\n        global::Ferrule.Runtime.FerruleFunctions.Call(");
                 output.push_str(&literal::string(function.as_str()));

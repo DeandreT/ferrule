@@ -20,7 +20,7 @@ pub fn value_map(
         .unwrap_or(Value::Null)
 }
 
-fn coerce_input(value: &Value, target: ScalarType) -> Option<Value> {
+pub(crate) fn coerce_input(value: &Value, target: ScalarType) -> Option<Value> {
     match (target, value) {
         (_, Value::Null) => Some(Value::Null),
         (_, Value::JsonNull(value)) => Some(Value::JsonNull(*value)),

@@ -654,6 +654,10 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         Node::RuntimeValue { value } => Expression::RuntimeValue {
             value: (*value).into(),
         },
+        Node::RuntimeParameter { name, ty } => Expression::RuntimeParameter {
+            name: name.clone(),
+            ty: *ty,
+        },
         Node::Call { function, args } => {
             let Some(function) = ScalarFunction::from_name(function) else {
                 return Err(Diagnostic::UnsupportedFunction {
@@ -761,7 +765,6 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
     match node {
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
-        Node::RuntimeParameter { .. } => UnsupportedNodeKind::RuntimeParameter,
         Node::SourceField { .. }
         | Node::XmlSerialize { .. }
         | Node::XmlMixedContent { .. }
@@ -773,6 +776,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
+        | Node::RuntimeParameter { .. }
         | Node::Call { .. }
         | Node::UserFunctionCall { .. }
         | Node::If { .. }

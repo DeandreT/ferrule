@@ -21,7 +21,8 @@ cargo +nightly run -p cli -- generate \
 The result is a standalone, package-free .NET 10 library. Its generated artifact
 tree includes the C# runtime sources required by the mapping. The generated
 class retains `Execute(source)` and adds `Execute(source, executionContext)` for
-host-supplied mapping paths and the run's stable current date-time text.
+host-supplied mapping paths, the run's stable current date-time text, and
+bounded typed parameters attached through `FerruleRuntimeParameters`.
 `ExecuteOutputs` returns the primary instance plus every named target in project
 order. The legacy `Execute` overloads still evaluate all named targets before
 returning the primary instance, so later target failures are not hidden.
@@ -43,6 +44,8 @@ cargo +nightly run -p cli -- generate \
 Rust generation currently requires `--rust-runtime-path`. The generated crate
 links that local runtime until the runtime is published as a versioned package.
 It exposes both `execute(source)` and `execute_with_context(source, execution)`.
+The execution context can borrow a validated `RuntimeParameters` set containing
+the mapping's named scalar host inputs.
 The corresponding `execute_outputs` functions return the primary instance and
 ordered named targets; the legacy functions evaluate that complete result and
 then move out its primary instance.
@@ -80,6 +83,8 @@ The current portable model includes:
   positions
 - explicit active/main mapping paths and an optional stable current date-time
   supplied by the execution host
+- bounded named host parameters with declared string, integer, floating-point,
+  or boolean types, scalar coercion, and distinct missing/type failures
 - lazy conditionals and a closed set of 72 boolean, arithmetic, comparison,
   scalar text, Unicode whitespace/substring/padding, finite numeric detection,
   integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
@@ -146,7 +151,8 @@ engine's left-to-right evaluation and lazy-branch behavior, while aggregate and
 sequence size failures remain structured. Floating-point constants preserve
 their complete IEEE-754 bit patterns, including infinities and NaN payloads.
 The legacy no-context entry points remain valid and produce a typed missing
-runtime-value error only when a reachable host value is actually evaluated.
+runtime-value or missing-parameter error only when a reachable host value is
+actually evaluated.
 When a project declares static named sources, those legacy entry points produce
 a typed missing-source error; callers must use a source-aware entry point and
 supply the exact declared set. Duplicate and unexpected names are also typed

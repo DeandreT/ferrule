@@ -27,7 +27,11 @@ public static class FerruleValueMaps
         FerruleValue? defaultValue = null)
     {
         ArgumentNullException.ThrowIfNull(table);
-        var value = inputType.HasValue ? Coerce(input, inputType.Value) : input;
+        var value = input;
+        if (inputType.HasValue && TryCoerce(input, inputType.Value, out var coerced))
+        {
+            value = coerced;
+        }
         foreach (var entry in table)
         {
             if (entry.From == value)
@@ -39,20 +43,32 @@ public static class FerruleValueMaps
         return defaultValue ?? FerruleValue.Null;
     }
 
-    private static FerruleValue Coerce(FerruleValue value, FerruleScalarType type)
+    internal static bool TryCoerce(
+        FerruleValue value,
+        FerruleScalarType type,
+        out FerruleValue coerced)
     {
         if (value.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull or FerruleValueKind.XmlNil)
         {
-            return value;
+            coerced = value;
+            return true;
         }
 
-        return type switch
+        coerced = type switch
         {
             FerruleScalarType.String => CoerceString(value),
             FerruleScalarType.Int64 => CoerceInt64(value),
             FerruleScalarType.Double => CoerceDouble(value),
             FerruleScalarType.Bool => CoerceBool(value),
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, null),
+        };
+        return (coerced.Kind, type) switch
+        {
+            (FerruleValueKind.String, FerruleScalarType.String) or
+            (FerruleValueKind.Int64, FerruleScalarType.Int64) or
+            (FerruleValueKind.Double, FerruleScalarType.Double) or
+            (FerruleValueKind.Bool, FerruleScalarType.Bool) => true,
+            _ => false,
         };
     }
 

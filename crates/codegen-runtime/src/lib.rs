@@ -37,7 +37,10 @@ pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
 };
 pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};
-pub use runtime_value::{ExecutionContext, RuntimeValue};
+pub use runtime_value::{
+    ExecutionContext, MAX_RUNTIME_PARAMETER_NAME_BYTES, MAX_RUNTIME_PARAMETER_STRING_BYTES,
+    MAX_RUNTIME_PARAMETERS, RuntimeParameterError, RuntimeParameters, RuntimeValue,
+};
 pub use user_function::adapt_user_function_value;
 pub use value_map::value_map;
 pub use xml::{MAX_EMBEDDED_XML_SCHEMA_BYTES, MAX_SERIALIZED_XML_BYTES, serialize_xml};
@@ -96,6 +99,16 @@ pub enum RuntimeError {
     },
     MissingRuntimeValue {
         value: RuntimeValue,
+    },
+    MissingRuntimeParameter {
+        node: u32,
+        name: String,
+    },
+    RuntimeParameterType {
+        node: u32,
+        name: String,
+        expected: ScalarType,
+        found: &'static str,
     },
     MissingNamedSource {
         name: &'static str,
@@ -206,6 +219,19 @@ impl fmt::Display for RuntimeError {
             Self::MissingRuntimeValue { value } => {
                 write!(formatter, "execution context does not provide {value:?}")
             }
+            Self::MissingRuntimeParameter { node, name } => write!(
+                formatter,
+                "node {node}: execution context does not provide runtime parameter `{name}`"
+            ),
+            Self::RuntimeParameterType {
+                node,
+                name,
+                expected,
+                found,
+            } => write!(
+                formatter,
+                "node {node}: runtime parameter `{name}` expected {expected:?}, got {found}"
+            ),
             Self::MissingNamedSource { name } => {
                 write!(formatter, "required named source {name:?} was not supplied")
             }
@@ -283,6 +309,8 @@ impl std::error::Error for RuntimeError {
             | Self::ZeroWidthTokenizeRegex
             | Self::TokenizeRegexTooLarge { .. }
             | Self::MissingRuntimeValue { .. }
+            | Self::MissingRuntimeParameter { .. }
+            | Self::RuntimeParameterType { .. }
             | Self::MissingNamedSource { .. }
             | Self::DuplicateNamedSource { .. }
             | Self::UnexpectedNamedSource { .. }

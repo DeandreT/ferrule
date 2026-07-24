@@ -561,6 +561,56 @@ fn lowers_all_runtime_values_as_dependency_free_expressions() {
 }
 
 #[test]
+fn lowers_typed_runtime_parameters_as_dependency_free_expressions() {
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        10,
+        Node::RuntimeParameter {
+            name: "control_number".into(),
+            ty: ScalarType::Int,
+        },
+    );
+    project.graph.nodes.insert(
+        20,
+        Node::RuntimeParameter {
+            name: "correlation_id".into(),
+            ty: ScalarType::String,
+        },
+    );
+
+    let program = lower(&project).expect("runtime parameters are portable host inputs");
+
+    assert_eq!(
+        program
+            .expressions
+            .iter()
+            .filter_map(|node| match &node.expression {
+                expression @ Expression::RuntimeParameter { .. } => {
+                    Some((expression, node.id))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>(),
+        vec![
+            (
+                &Expression::RuntimeParameter {
+                    name: "control_number".into(),
+                    ty: ScalarType::Int,
+                },
+                10,
+            ),
+            (
+                &Expression::RuntimeParameter {
+                    name: "correlation_id".into(),
+                    ty: ScalarType::String,
+                },
+                20,
+            ),
+        ]
+    );
+}
+
+#[test]
 fn nested_calls_and_if_retain_every_dependency_deterministically() {
     let mut project = supported_project();
     project.graph.nodes.extend([

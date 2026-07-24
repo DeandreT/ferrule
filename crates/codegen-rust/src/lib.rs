@@ -461,6 +461,12 @@ fn render_expression(
             "context.runtime_value(RuntimeValue::{})",
             runtime_value_name(*value)
         ),
+        Expression::RuntimeParameter { name, ty } => format!(
+            "context.runtime_parameter({}, {}, ScalarType::{})",
+            id,
+            rust_string(name),
+            scalar_type_name(*ty)
+        ),
         Expression::Call { function, args } => {
             let mut body = String::from("{\n        let args = vec![\n");
             for arg in args {
