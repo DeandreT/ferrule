@@ -59,6 +59,18 @@ Run `cargo +nightly run -p cli -- --help` for the complete CLI. Input and
 output paths may be omitted when the project stores `source_path` and
 `target_path` values.
 
+Mappings with typed host inputs accept repeatable parameters:
+
+```sh
+cargo +nightly run -p cli -- run \
+  --project project.json \
+  --param correlation_id=txn-42 \
+  --param control_number=7001
+```
+
+CLI parameter values begin as strings and are coerced by each declaration's
+scalar type. Names are exact and duplicates are rejected before input is read.
+
 ## Common Workflows
 
 Bootstrap schemas from existing metadata:

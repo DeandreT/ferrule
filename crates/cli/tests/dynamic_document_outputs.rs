@@ -113,6 +113,7 @@ fn writes_every_dynamic_document_beneath_the_explicit_base() -> Result<(), Box<d
     assert_eq!(outcome.records_written, 2);
     assert_eq!(outcome.output_path, output);
     assert_eq!(outcome.primary_outputs.len(), 2);
+    assert_eq!(outcome.artifacts, outcome.primary_outputs);
     assert_eq!(
         outcome
             .primary_outputs
