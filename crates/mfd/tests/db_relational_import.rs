@@ -294,7 +294,7 @@ fn ignores_disconnected_selected_tables_when_connected_tables_exist() {
 }
 
 #[test]
-fn missing_untyped_database_keeps_the_fallback_warning() {
+fn missing_untyped_database_reports_package_resolution_fallback() {
     let dir = TempDir::new("missing_untyped");
     let design = dir.0.join("missing-untyped.mfd");
     write_design(
@@ -307,7 +307,7 @@ fn missing_untyped_database_keeps_the_fallback_warning() {
 
     let imported = mfd::import(&design).unwrap();
     assert!(imported.warnings.iter().any(|warning| {
-        warning.contains("database `test.sqlite` not found next to the design")
+        warning.contains("database `test.sqlite` could not be resolved")
             && warning.contains("falling back to untyped columns")
     }));
     assert!(matches!(

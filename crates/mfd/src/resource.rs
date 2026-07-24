@@ -191,7 +191,7 @@ fn resolve_case_insensitive(candidate: &Path) -> std::io::Result<PathBuf> {
                 if matches.next().is_some() {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        "resource has multiple case-insensitive matches",
+                        "resource path has multiple case-insensitive sibling matches",
                     ));
                 }
             }
