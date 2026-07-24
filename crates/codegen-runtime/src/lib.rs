@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+mod adjacency_tree;
 mod aggregate;
 mod context;
 mod failure;
@@ -22,6 +23,7 @@ mod xml_mixed_content;
 
 use std::fmt;
 
+pub use adjacency_tree::{AdjacencyTreeFields, AdjacencyTreeRoot, adjacency_tree};
 pub use aggregate::{AggregateFunction, aggregate};
 pub use context::{
     GeneratedItems, GroupedItems, InnerJoinKey, InnerJoinStage, InstanceKind, NamedInput,
@@ -91,6 +93,32 @@ pub enum RuntimeError {
     },
     PathHierarchyRootCount {
         count: usize,
+    },
+    MissingAdjacencyCollection {
+        path: String,
+    },
+    AdjacencyTreeTooLarge {
+        max: u128,
+    },
+    DuplicateAdjacencyKey {
+        key: String,
+    },
+    InvalidAdjacencyRoot {
+        found: &'static str,
+    },
+    AdjacencyRootCount {
+        count: usize,
+    },
+    AdjacencyTreeDepth {
+        limit: usize,
+    },
+    AdjacencyCycle {
+        key: String,
+    },
+    InvalidAdjacencyField {
+        role: &'static str,
+        path: String,
+        found: &'static str,
     },
     GeneratedSequenceTooLarge {
         requested: u128,
@@ -213,6 +241,37 @@ impl fmt::Display for RuntimeError {
             Self::PathHierarchyRootCount { count } => write!(
                 formatter,
                 "path hierarchy requires exactly one root directory, found {count}"
+            ),
+            Self::MissingAdjacencyCollection { path } => {
+                write!(formatter, "adjacency-tree collection {path:?} is missing")
+            }
+            Self::AdjacencyTreeTooLarge { max } => {
+                write!(formatter, "adjacency tree produced more than {max} items")
+            }
+            Self::DuplicateAdjacencyKey { key } => {
+                write!(
+                    formatter,
+                    "adjacency-tree key {key:?} occurs more than once"
+                )
+            }
+            Self::InvalidAdjacencyRoot { found } => write!(
+                formatter,
+                "adjacency-tree root requires a string or absent value, got {found}"
+            ),
+            Self::AdjacencyRootCount { count } => write!(
+                formatter,
+                "adjacency tree requires exactly one selected root row, got {count}"
+            ),
+            Self::AdjacencyTreeDepth { limit } => write!(
+                formatter,
+                "adjacency tree exceeds the {limit}-group depth limit"
+            ),
+            Self::AdjacencyCycle { key } => {
+                write!(formatter, "adjacency tree contains a cycle at key {key:?}")
+            }
+            Self::InvalidAdjacencyField { role, path, found } => write!(
+                formatter,
+                "adjacency-tree {role} field {path:?} requires a string or absent value, got {found}"
             ),
             Self::GeneratedSequenceTooLarge { requested, max } => write!(
                 formatter,
@@ -339,6 +398,14 @@ impl std::error::Error for RuntimeError {
             | Self::PathHierarchyDepth { .. }
             | Self::PathHierarchyTooLarge { .. }
             | Self::PathHierarchyRootCount { .. }
+            | Self::MissingAdjacencyCollection { .. }
+            | Self::AdjacencyTreeTooLarge { .. }
+            | Self::DuplicateAdjacencyKey { .. }
+            | Self::InvalidAdjacencyRoot { .. }
+            | Self::AdjacencyRootCount { .. }
+            | Self::AdjacencyTreeDepth { .. }
+            | Self::AdjacencyCycle { .. }
+            | Self::InvalidAdjacencyField { .. }
             | Self::GeneratedSequenceTooLarge { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }

@@ -7,6 +7,7 @@ use crate::{
     SourceIteration,
 };
 
+mod adjacency_tree;
 mod collection_find;
 mod collections;
 mod concatenate;
