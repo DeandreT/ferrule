@@ -328,6 +328,15 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
     read_with_separators(path, schema, lenient, None)
 }
 
+/// Reads X12 text into an [`Instance`] tree shaped by `schema`.
+pub fn from_str(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
+    from_str_with_separators(text, schema, lenient, None)
+}
+
 /// Reads X12 using retained boundary syntax. Declared separators are checked
 /// against the ISA envelope, and the optional release character is decoded.
 pub fn read_with_separators(
@@ -342,6 +351,16 @@ pub fn read_with_separators(
     )?;
     let text =
         std::str::from_utf8(&bytes).map_err(|_| EdiFormatError::NotX12("input is not UTF-8"))?;
+    from_str_with_separators(text, schema, lenient, separators)
+}
+
+/// Reads X12 text using retained boundary syntax.
+pub fn from_str_with_separators(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+    separators: Option<Separators>,
+) -> Result<Instance, EdiFormatError> {
     let (segments, component_separator) = tokenize_with_component_separator(text, separators)?;
     read_segments(schema, &segments, component_separator, None, lenient)
 }
@@ -351,6 +370,11 @@ pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<()
     write_with_separators(path, schema, instance, Separators::default())
 }
 
+/// Serializes an [`Instance`] tree shaped by `schema` as X12 text.
+pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, EdiFormatError> {
+    to_string_with_separators(schema, instance, Separators::default())
+}
+
 /// Writes X12 with separators retained by the owning mapping boundary.
 pub fn write_with_separators(
     path: &Path,
@@ -358,7 +382,20 @@ pub fn write_with_separators(
     instance: &Instance,
     separators: Separators,
 ) -> Result<(), EdiFormatError> {
-    write_with_syntax(path, schema, instance, separators, None)
+    std::fs::write(
+        path,
+        to_string_with_separators(schema, instance, separators)?,
+    )?;
+    Ok(())
+}
+
+/// Serializes X12 text with separators retained by the owning mapping boundary.
+pub fn to_string_with_separators(
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+) -> Result<String, EdiFormatError> {
+    to_string_with_syntax(schema, instance, separators, None)
 }
 
 /// Writes X12 with retained separators and an optional ISA12 version used
@@ -370,14 +407,21 @@ pub fn write_with_syntax(
     separators: Separators,
     interchange_version: Option<&str>,
 ) -> Result<(), EdiFormatError> {
-    write_with_syntax_inner(
+    std::fs::write(
         path,
-        schema,
-        instance,
-        separators,
-        interchange_version,
-        None,
-    )
+        to_string_with_syntax(schema, instance, separators, interchange_version)?,
+    )?;
+    Ok(())
+}
+
+/// Serializes X12 text with retained separators and an optional ISA12 version.
+pub fn to_string_with_syntax(
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+) -> Result<String, EdiFormatError> {
+    to_string_with_syntax_inner(schema, instance, separators, interchange_version, None)
 }
 
 /// Writes X12 and derives missing envelope dates, identifiers, counts, and
@@ -390,8 +434,29 @@ pub fn write_with_syntax_and_autocomplete(
     interchange_version: Option<&str>,
     autocomplete: Autocomplete<'_>,
 ) -> Result<(), EdiFormatError> {
-    write_with_syntax_inner(
+    std::fs::write(
         path,
+        to_string_with_syntax_and_autocomplete(
+            schema,
+            instance,
+            separators,
+            interchange_version,
+            autocomplete,
+        )?,
+    )?;
+    Ok(())
+}
+
+/// Serializes X12 text and derives missing envelope values from one stable
+/// mapping-run timestamp.
+pub fn to_string_with_syntax_and_autocomplete(
+    schema: &SchemaNode,
+    instance: &Instance,
+    separators: Separators,
+    interchange_version: Option<&str>,
+    autocomplete: Autocomplete<'_>,
+) -> Result<String, EdiFormatError> {
+    to_string_with_syntax_inner(
         schema,
         instance,
         separators,
@@ -400,14 +465,13 @@ pub fn write_with_syntax_and_autocomplete(
     )
 }
 
-fn write_with_syntax_inner(
-    path: &Path,
+fn to_string_with_syntax_inner(
     schema: &SchemaNode,
     instance: &Instance,
     separators: Separators,
     interchange_version: Option<&str>,
     autocomplete: Option<Autocomplete<'_>>,
-) -> Result<(), EdiFormatError> {
+) -> Result<String, EdiFormatError> {
     validate_instance_shape(schema, instance)?;
     let mut options = separators.write_options()?;
     options.interchange_version = interchange_version
@@ -425,8 +489,7 @@ fn write_with_syntax_inner(
         )?;
         out = serialize_segments(&completed, &options)?;
     }
-    std::fs::write(path, out)?;
-    Ok(())
+    Ok(out)
 }
 
 fn parse_interchange_version(value: &str) -> Result<[u8; 5], EdiFormatError> {

@@ -115,7 +115,11 @@
           </div>
           <div class="glossary-entry" id="execution-artifact">
             <dt><a href="#execution-artifact">Execution artifact</a></dt>
-            <dd>One file atomically published by a successful run. The host report orders primary target files first, followed by additional targets in project order.</dd>
+            <dd>One serialized target document produced by a successful run. A filesystem run publishes it atomically; a payload run returns its bounded bytes to the host. Both reports order primary targets first, followed by additional targets in project order.</dd>
+          </div>
+          <div class="glossary-entry" id="payload-document">
+            <dt><a href="#payload-document">Payload document</a></dt>
+            <dd>Bounded host-owned input bytes paired with a logical path. The path selects the format and identifies dynamic secondary inputs without granting the mapping filesystem access.</dd>
           </div>
           <div class="glossary-entry" id="document-set">
             <dt><a href="#document-set">Document set</a></dt>
