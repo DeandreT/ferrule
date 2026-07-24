@@ -7,3 +7,7 @@ pub(super) fn runtime_field(value: RuntimeValue) -> &'static str {
         RuntimeValue::CurrentDateTime => "\0current_datetime",
     }
 }
+
+pub(super) fn runtime_parameter_field(name: &str) -> String {
+    format!("\0runtime_parameter:{name}")
+}

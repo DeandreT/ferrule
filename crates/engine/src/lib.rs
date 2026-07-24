@@ -1,11 +1,10 @@
 //! Interprets a mapping graph against a source instance to produce a target instance.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::Arc;
 
-#[cfg(test)]
-use ir::ScalarType;
-use ir::{Instance, Value};
+use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, JoinId, NodeId, Project, RuntimeValue};
 #[cfg(test)]
 use mapping::{Graph, IterationOutput, Node, Scope, ScopeConstruction};
@@ -32,7 +31,7 @@ mod validate;
 
 #[cfg(test)]
 use aggregate::{aggregate, value_ordering};
-use context::runtime_field;
+use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 
 pub use trace::{TraceEvent, TracePosition, TraceSink};
@@ -50,6 +49,79 @@ pub struct NamedOutput {
 pub struct ExecutionOutputs {
     pub primary: Instance,
     pub extras: Vec<NamedOutput>,
+}
+
+pub const MAX_RUNTIME_PARAMETERS: usize = 1_024;
+pub const MAX_RUNTIME_PARAMETER_STRING_BYTES: usize = 8 * 1024 * 1024;
+
+/// Immutable, bounded named scalar inputs supplied by an execution host.
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeParameters {
+    values: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum RuntimeParameterError {
+    #[error("runtime parameter name cannot be empty")]
+    EmptyName,
+    #[error("runtime parameter name cannot contain NUL")]
+    NameContainsNul,
+    #[error("runtime parameter name exceeds {limit} UTF-8 bytes")]
+    NameTooLong { limit: usize },
+    #[error("runtime parameter `{name}` is duplicated")]
+    Duplicate { name: String },
+    #[error("runtime parameter count exceeds {limit}")]
+    TooMany { limit: usize },
+    #[error("runtime parameter `{name}` string value exceeds {limit} UTF-8 bytes")]
+    StringTooLong { name: String, limit: usize },
+}
+
+impl RuntimeParameters {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert(
+        &mut self,
+        name: impl Into<String>,
+        value: Value,
+    ) -> Result<(), RuntimeParameterError> {
+        let name = name.into();
+        if name.is_empty() {
+            return Err(RuntimeParameterError::EmptyName);
+        }
+        if name.contains('\0') {
+            return Err(RuntimeParameterError::NameContainsNul);
+        }
+        if name.len() > mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES {
+            return Err(RuntimeParameterError::NameTooLong {
+                limit: mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES,
+            });
+        }
+        if self.values.contains_key(&name) {
+            return Err(RuntimeParameterError::Duplicate { name });
+        }
+        if self.values.len() >= MAX_RUNTIME_PARAMETERS {
+            return Err(RuntimeParameterError::TooMany {
+                limit: MAX_RUNTIME_PARAMETERS,
+            });
+        }
+        if matches!(&value, Value::String(text) if text.len() > MAX_RUNTIME_PARAMETER_STRING_BYTES)
+        {
+            return Err(RuntimeParameterError::StringTooLong {
+                name,
+                limit: MAX_RUNTIME_PARAMETER_STRING_BYTES,
+            });
+        }
+        self.values.insert(name, value);
+        Ok(())
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
+        self.values
+            .iter()
+            .map(|(name, value)| (name.as_str(), value))
+    }
 }
 
 #[derive(Debug, Error, PartialEq)]
@@ -148,6 +220,15 @@ pub enum EngineError {
     ValueMapMiss { node: NodeId },
     #[error("execution context does not provide {0:?}")]
     MissingRuntimeValue(RuntimeValue),
+    #[error("graph node {node}: execution context does not provide runtime parameter `{name}`")]
+    MissingRuntimeParameter { node: NodeId, name: String },
+    #[error("graph node {node}: runtime parameter `{name}` expected {expected:?}, got {found}")]
+    RuntimeParameterType {
+        node: NodeId,
+        name: String,
+        expected: ScalarType,
+        found: &'static str,
+    },
     #[error("dynamic source `{source_name}` requires a host source loader")]
     MissingDynamicSourceLoader { source_name: String },
     #[error("dynamic source `{source_name}` path expression produced {found}, expected a string")]
@@ -272,6 +353,7 @@ pub struct ExecutionContext<'a> {
     mapping_file_path: &'a Path,
     main_mapping_file_path: &'a Path,
     current_datetime: Option<&'a str>,
+    parameters: Option<&'a RuntimeParameters>,
     dynamic_source_loader: Option<&'a dyn DynamicSourceLoader>,
     trace_sink: Option<&'a dyn TraceSink>,
 }
@@ -288,6 +370,7 @@ impl<'a> ExecutionContext<'a> {
             mapping_file_path,
             main_mapping_file_path: mapping_file_path,
             current_datetime: None,
+            parameters: None,
             dynamic_source_loader: None,
             trace_sink: None,
         }
@@ -302,6 +385,7 @@ impl<'a> ExecutionContext<'a> {
             mapping_file_path,
             main_mapping_file_path,
             current_datetime: None,
+            parameters: None,
             dynamic_source_loader: None,
             trace_sink: None,
         }
@@ -310,6 +394,12 @@ impl<'a> ExecutionContext<'a> {
     /// Supplies one stable XML `dateTime` lexical value for the run.
     pub fn with_current_datetime(mut self, current_datetime: &'a str) -> Self {
         self.current_datetime = Some(current_datetime);
+        self
+    }
+
+    /// Supplies bounded named scalar inputs for runtime-parameter nodes.
+    pub fn with_parameters(mut self, parameters: &'a RuntimeParameters) -> Self {
+        self.parameters = Some(parameters);
         self
     }
 
@@ -403,6 +493,18 @@ fn run_outputs_internal(
                     })
                 })
             })
+            .chain(execution.into_iter().flat_map(|execution| {
+                execution
+                    .parameters
+                    .into_iter()
+                    .flat_map(RuntimeParameters::iter)
+                    .map(|(name, value)| {
+                        (
+                            runtime_parameter_field(name),
+                            Instance::Scalar(value.clone()),
+                        )
+                    })
+            }))
             .collect(),
     );
     let extras_frame = Instance::Group(extras);
@@ -494,6 +596,9 @@ mod recursive_filter_tests;
 #[cfg(test)]
 #[path = "tests/repeated_scalar.rs"]
 mod repeated_scalar_tests;
+#[cfg(test)]
+#[path = "tests/runtime_parameters.rs"]
+mod runtime_parameter_tests;
 #[cfg(test)]
 #[path = "tests/sequence_exists.rs"]
 mod sequence_exists_tests;

@@ -8,7 +8,7 @@ use mapping::{FunctionId, Graph, Node, NodeId, UserFunction};
 
 use crate::EngineError;
 use crate::aggregate::aggregate;
-use crate::context::runtime_field;
+use crate::context::{runtime_field, runtime_parameter_field};
 use crate::join::{AggregateInput as JoinAggregateInput, eval_aggregate as eval_join_aggregate};
 use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
@@ -102,6 +102,22 @@ pub(crate) fn eval_expr(
             .and_then(Instance::as_scalar)
             .cloned()
             .ok_or(EngineError::MissingRuntimeValue(*value)),
+        Node::RuntimeParameter { name, ty } => {
+            let value = context
+                .first()
+                .and_then(|frame| frame.field(&runtime_parameter_field(name)))
+                .and_then(Instance::as_scalar)
+                .ok_or_else(|| EngineError::MissingRuntimeParameter {
+                    node: node_id,
+                    name: name.clone(),
+                })?;
+            coerce_value_map_input(value, *ty).ok_or_else(|| EngineError::RuntimeParameterType {
+                node: node_id,
+                name: name.clone(),
+                expected: *ty,
+                found: value.type_name(),
+            })
+        }
         Node::Call { function, args } => {
             let mut values = Vec::with_capacity(args.len());
             for arg in args {

@@ -798,6 +798,9 @@ fn node_label(node: &mapping::Node) -> String {
             format!("function input {}", parameter.get())
         }
         mapping::Node::RuntimeValue { value } => format!("runtime {value:?}"),
+        mapping::Node::RuntimeParameter { name, ty } => {
+            format!("runtime input {name} ({ty:?})")
+        }
         mapping::Node::Call { function, .. } => function.clone(),
         mapping::Node::UserFunctionCall { function, .. } => {
             format!("user function {}", function.get())

@@ -99,6 +99,27 @@ pub(super) fn validate_graph(project: &Project, issues: &mut Vec<ValidationIssue
                     ));
                 }
             }
+            Node::RuntimeParameter { name, .. } => {
+                if name.is_empty() {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "runtime parameter name cannot be empty",
+                    ));
+                } else if name.contains('\0') {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        "runtime parameter name cannot contain NUL",
+                    ));
+                } else if name.len() > mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        format!(
+                            "runtime parameter name exceeds {} UTF-8 bytes",
+                            mapping::MAX_RUNTIME_PARAMETER_NAME_BYTES
+                        ),
+                    ));
+                }
+            }
             Node::Position { collection } if !collection.is_empty() => {
                 validate_collection_path(project, &location, collection, "position", issues);
             }
@@ -583,6 +604,7 @@ fn node_dynamic_sources<'a>(project: &'a Project, node: &'a Node) -> impl Iterat
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
+        | Node::RuntimeParameter { .. }
         | Node::Call { .. }
         | Node::UserFunctionCall { .. }
         | Node::If { .. }
@@ -942,6 +964,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
+        | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args
             .iter()

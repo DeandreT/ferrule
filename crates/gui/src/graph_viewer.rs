@@ -13,7 +13,7 @@
 use egui::Ui;
 use egui_snarl::ui::{NodeLayout, PinInfo, SnarlViewer};
 use egui_snarl::{InPin, InPinId, NodeId as SnarlNodeId, OutPin, Snarl};
-use ir::Value;
+use ir::{ScalarType, Value};
 use mapping::{
     AggregateOp, Binding, FunctionId, FunctionParameterId, Graph, NamedTarget, Node, NodeId, Scope,
 };
@@ -627,6 +627,7 @@ impl GraphViewer<'_> {
             | Node::Const { .. }
             | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
+            | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => None,
         }
     }
@@ -854,6 +855,7 @@ impl GraphViewer<'_> {
             | Node::Const { .. }
             | Node::FunctionParameter { .. }
             | Node::RuntimeValue { .. }
+            | Node::RuntimeParameter { .. }
             | Node::XmlSerialize { .. } => 0,
             Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.len(),
             Node::If { .. } => 3,
@@ -955,6 +957,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                         )
                     }
                     Some(Node::RuntimeValue { value }) => format!("Runtime: {value:?}"),
+                    Some(Node::RuntimeParameter { name, ty }) => {
+                        format!("Runtime input: {name} ({ty:?})")
+                    }
                     Some(Node::Call { function, .. }) => format!("Call: {function}"),
                     Some(Node::UserFunctionCall { function, .. }) => {
                         self.function_names.get(function).map_or_else(
@@ -1523,6 +1528,28 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 }
                 Node::RuntimeValue { value } => {
                     ui.label(format!("{value:?}"));
+                }
+                Node::RuntimeParameter { name, ty } => {
+                    ui.horizontal(|ui| {
+                        ui.label("name");
+                        ui.text_edit_singleline(name);
+                    });
+                    egui::ComboBox::from_id_salt(ui.id().with("runtime_parameter_type"))
+                        .selected_text(format!("{ty:?}").to_lowercase())
+                        .show_ui(ui, |ui| {
+                            for candidate in [
+                                ScalarType::String,
+                                ScalarType::Int,
+                                ScalarType::Float,
+                                ScalarType::Bool,
+                            ] {
+                                ui.selectable_value(
+                                    ty,
+                                    candidate,
+                                    format!("{candidate:?}").to_lowercase(),
+                                );
+                            }
+                        });
                 }
                 Node::Call { function, args } => {
                     egui::ComboBox::from_id_salt(ui.id().with("builtin"))

@@ -8,8 +8,8 @@ pub use format_options::{
     XlsxRow, XlsxTableRegion, XlsxWorksheetSetLayout,
 };
 pub use graph::{
-    AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, Node, NodeId, RuntimeValue,
-    SequenceExpr, XmlMixedContentReplacement,
+    AggregateOp, Binding, DynamicBinding, DynamicChild, Graph, MAX_RUNTIME_PARAMETER_NAME_BYTES,
+    Node, NodeId, RuntimeValue, SequenceExpr, XmlMixedContentReplacement,
 };
 pub use project::{
     DynamicSourcePath, FailureIteration, FailureRule, FailureSelection, FunctionId,

@@ -7,6 +7,8 @@ use crate::{FunctionId, FunctionParameterId, JoinId, JoinPlan, Scope};
 
 pub type NodeId = u32;
 
+pub const MAX_RUNTIME_PARAMETER_NAME_BYTES: usize = 256;
+
 const fn default_xml_indent() -> bool {
     true
 }
@@ -68,6 +70,9 @@ pub enum Node {
     FunctionParameter { parameter: FunctionParameterId },
     /// Reads a value supplied explicitly by the execution host.
     RuntimeValue { value: RuntimeValue },
+    /// Reads one named, typed scalar supplied explicitly by the execution
+    /// host. The name is host-contract data rather than a source field path.
+    RuntimeParameter { name: String, ty: ScalarType },
     /// Calls a built-in function (see the `functions` crate) with the
     /// evaluated outputs of the given argument nodes.
     Call { function: String, args: Vec<NodeId> },
@@ -214,6 +219,7 @@ impl Node {
             | Self::Const { .. }
             | Self::FunctionParameter { .. }
             | Self::RuntimeValue { .. }
+            | Self::RuntimeParameter { .. }
             | Self::XmlSerialize { .. } => Vec::new(),
             Self::Call { args, .. } | Self::UserFunctionCall { args, .. } => args.clone(),
             Self::If {
