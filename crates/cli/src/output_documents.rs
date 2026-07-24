@@ -404,7 +404,9 @@ fn cleanup_stages(targets: &[StagedTarget<'_>]) {
     }
 }
 
-fn validate_document_paths(documents: &[DocumentMember]) -> anyhow::Result<Vec<PathBuf>> {
+pub(super) fn validate_document_paths(
+    documents: &[DocumentMember],
+) -> anyhow::Result<Vec<PathBuf>> {
     let mut paths = Vec::with_capacity(documents.len());
     let mut unique = BTreeSet::new();
     for document in documents {

@@ -71,6 +71,29 @@ cargo +nightly run -p cli -- run \
 CLI parameter values begin as strings and are coerced by each declaration's
 scalar type. Names are exact and duplicates are rejected before input is read.
 
+Rust hosts can run the same interpreter without temporary input or output files:
+
+```rust
+let input = cli::PayloadDocument::new(
+    std::path::Path::new("order.json"),
+    request_body,
+)?;
+let outcome = cli::run_project_payloads(
+    std::path::Path::new("project.json"),
+    &cli::PayloadRunOptions::new(input),
+)?;
+for artifact in outcome.artifacts {
+    publish(artifact.path, artifact.bytes)?;
+}
+```
+
+Logical paths select the format and identify returned artifacts. Payload runs
+accept named static or dynamic secondary inputs, typed runtime parameters, and
+tracing. Inputs and outputs are bounded to 64 MiB per document, 256 MiB per
+run, and 4096 output artifacts; logical paths are limited to 4096 UTF-8 bytes
+and source names to 256. SQLite and update-existing XLSX operations remain
+filesystem APIs because they modify persistent state.
+
 ## Common Workflows
 
 Bootstrap schemas from existing metadata:

@@ -63,6 +63,31 @@
           read.
         </p>
 
+        <h3>Run from host-owned bytes</h3>
+        <p>
+          Rust services can use <code>cli::PayloadRunOptions</code> to supply
+          a primary document, named secondary documents, runtime parameters,
+          and an optional trace sink without temporary files. Each document
+          keeps a logical path for format selection and dynamic-source lookup.
+          Successful runs return ordered <code>PayloadArtifact</code> values
+          for the primary and additional targets.
+        </p>
+        <pre><code>let input = cli::PayloadDocument::new(
+    std::path::Path::new("order.json"),
+    request_body,
+)?;
+let result = cli::run_project_payloads(
+    std::path::Path::new("project.json"),
+    &amp;cli::PayloadRunOptions::new(input),
+)?;</code></pre>
+        <p>
+          Payload documents are limited to 64 MiB each, all input or output
+          bytes to 256 MiB per run, output to 4096 artifacts, logical paths to
+          4096 UTF-8 bytes, and source names to 256. SQLite and update-existing
+          XLSX use the filesystem runner because they require persistent prior
+          state.
+        </p>
+
         <h2>Validate without executing</h2>
         <p>
           Validation checks graph reachability, schema compatibility, scope
