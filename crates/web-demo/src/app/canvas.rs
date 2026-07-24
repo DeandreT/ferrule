@@ -83,6 +83,7 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
+        | Node::RuntimeParameter { .. }
         | Node::Position { .. }
         | Node::JoinField { .. }
         | Node::JoinPosition { .. }
@@ -149,6 +150,7 @@ fn node_title(node: &Node) -> String {
             format!("function parameter {}", parameter.get())
         }
         Node::RuntimeValue { value } => format!("runtime · {value:?}"),
+        Node::RuntimeParameter { name, ty } => format!("runtime · {name}: {ty:?}"),
         Node::Call { function, .. } => function.clone(),
         Node::UserFunctionCall { function, .. } => {
             format!("user function {}", function.get())

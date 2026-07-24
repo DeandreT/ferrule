@@ -429,11 +429,21 @@ impl GraphBuilder<'_> {
             let input = match self.input_feed(idx, 0) {
                 Some(feed) => self.value_node(feed),
                 None => {
-                    let preview = self.fn_components[idx]
-                        .input_preview
-                        .clone()
-                        .unwrap_or(Value::Null);
-                    Some(self.alloc(mapping::Node::Const { value: preview }))
+                    if let Some(value) = self.fn_components[idx].input_preview.clone() {
+                        Some(self.alloc(mapping::Node::Const { value }))
+                    } else if let Some(name) = self.fn_components[idx].input_parameter_name.clone()
+                    {
+                        Some(
+                            self.alloc(mapping::Node::RuntimeParameter {
+                                name,
+                                ty: self.fn_components[idx]
+                                    .input_type
+                                    .unwrap_or(ir::ScalarType::String),
+                            }),
+                        )
+                    } else {
+                        Some(self.alloc(mapping::Node::Const { value: Value::Null }))
+                    }
                 }
             };
             return match (input, self.fn_components[idx].input_type) {

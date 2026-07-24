@@ -421,6 +421,7 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         | Node::Const { .. }
         | Node::FunctionParameter { .. }
         | Node::RuntimeValue { .. }
+        | Node::RuntimeParameter { .. }
         | Node::XmlSerialize { .. } => Vec::new(),
         Node::Call { args, .. } | Node::UserFunctionCall { args, .. } => args.clone(),
         Node::If {

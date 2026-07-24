@@ -761,6 +761,7 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
     match node {
         Node::DynamicSourceField { .. } => UnsupportedNodeKind::DynamicSourceField,
+        Node::RuntimeParameter { .. } => UnsupportedNodeKind::RuntimeParameter,
         Node::SourceField { .. }
         | Node::XmlSerialize { .. }
         | Node::XmlMixedContent { .. }
