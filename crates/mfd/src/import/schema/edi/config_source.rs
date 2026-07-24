@@ -5,6 +5,8 @@ use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::resource::ResourceResolver;
+
 const MAX_ARCHIVE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 512;
 const MAX_EXTRACTED_BYTES: u64 = 32 * 1024 * 1024;
@@ -30,11 +32,18 @@ impl Drop for ExtractedArchive {
     }
 }
 
-pub(super) fn resolve(mfd_path: &Path, declared: &str) -> Result<ResolvedConfig, String> {
+pub(super) fn resolve(
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    declared: &str,
+) -> Result<ResolvedConfig, String> {
     let portable = declared
         .strip_prefix("altova://edi_config/")
         .unwrap_or(declared)
         .replace('\\', "/");
+    if let Some(resources) = resources {
+        return resolve_in_package(resources, declared, &portable);
+    }
     let relative = bounded_relative_path(&portable)
         .ok_or_else(|| format!("configuration path `{declared}` is not a bounded relative path"))?;
     let roots = config_roots(mfd_path)?;
@@ -81,6 +90,54 @@ pub(super) fn resolve(mfd_path: &Path, declared: &str) -> Result<ResolvedConfig,
         )),
         _ => Err(format!(
             "configuration `{declared}` resolves to multiple nearby packages"
+        )),
+    }
+}
+
+fn resolve_in_package(
+    resources: &ResourceResolver,
+    declared: &str,
+    portable: &str,
+) -> Result<ResolvedConfig, String> {
+    let direct_error = match resources.resolve_file(portable, "EDI configuration") {
+        Ok(path) => {
+            return Ok(ResolvedConfig {
+                path,
+                _archive: None,
+            });
+        }
+        Err(error) => error,
+    };
+    let relative = resources.package_relative_path(portable, "EDI configuration")?;
+    let roots = vec![resources.package_root().to_path_buf()];
+    let packages = archive_candidates(&roots, &relative);
+    let mut extracted = Vec::new();
+    let mut errors = Vec::new();
+    for (archive, entries) in packages {
+        match extract_matching_archive(&archive, &entries) {
+            Ok(Some((archive, path))) => extracted.push((archive, path)),
+            Ok(None) => {}
+            Err(error) => errors.push(format!("{}: {error}", archive.display())),
+        }
+    }
+    match extracted.len() {
+        1 => {
+            let (archive, path) = extracted
+                .pop()
+                .ok_or_else(|| "internal EDI package resolution error".to_string())?;
+            Ok(ResolvedConfig {
+                path,
+                _archive: Some(archive),
+            })
+        }
+        0 if errors.is_empty() => Err(direct_error),
+        0 => Err(format!(
+            "configuration `{declared}` was found in an invalid package ({})",
+            errors.join("; ")
+        )),
+        _ => Err(format!(
+            "configuration `{declared}` resolves to multiple packages inside `{}`",
+            resources.package_root().display()
         )),
     }
 }
