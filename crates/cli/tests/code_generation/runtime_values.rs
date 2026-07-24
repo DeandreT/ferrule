@@ -10,10 +10,22 @@ fn runtime_project() -> Project {
         source: SchemaNode::group("Source", vec![bool_("UseCurrent")]),
         target: SchemaNode::group(
             "Target",
-            ["Active", "Main", "CurrentOne", "CurrentTwo", "Lazy"]
-                .into_iter()
-                .map(string)
-                .collect(),
+            [
+                "Active",
+                "Main",
+                "CurrentOne",
+                "CurrentTwo",
+                "Lazy",
+                "Correlation",
+            ]
+            .into_iter()
+            .map(string)
+            .chain([
+                int("Control"),
+                bool_("TestMode"),
+                SchemaNode::scalar("Amount", ScalarType::Float),
+            ])
+            .collect(),
         ),
         source_path: None,
         target_path: None,
@@ -84,6 +96,34 @@ fn runtime_project() -> Project {
                         else_: 4,
                     },
                 ),
+                (
+                    10,
+                    Node::RuntimeParameter {
+                        name: "correlation_id".into(),
+                        ty: ScalarType::String,
+                    },
+                ),
+                (
+                    11,
+                    Node::RuntimeParameter {
+                        name: "control_number".into(),
+                        ty: ScalarType::Int,
+                    },
+                ),
+                (
+                    12,
+                    Node::RuntimeParameter {
+                        name: "test_mode".into(),
+                        ty: ScalarType::Bool,
+                    },
+                ),
+                (
+                    13,
+                    Node::RuntimeParameter {
+                        name: "amount".into(),
+                        ty: ScalarType::Float,
+                    },
+                ),
             ]),
         },
         root: Scope {
@@ -93,6 +133,10 @@ fn runtime_project() -> Project {
                 ("CurrentOne", 6),
                 ("CurrentTwo", 6),
                 ("Lazy", 9),
+                ("Correlation", 10),
+                ("Control", 11),
+                ("TestMode", 12),
+                ("Amount", 13),
             ]
             .into_iter()
             .map(|(target_field, node)| Binding {
@@ -131,17 +175,31 @@ fn expected(current: &str) -> Instance {
             "Lazy".into(),
             Instance::Scalar(Value::String("lazy".into())),
         ),
+        (
+            "Correlation".into(),
+            Instance::Scalar(Value::String("txn-42".into())),
+        ),
+        ("Control".into(), Instance::Scalar(Value::Int(42))),
+        ("TestMode".into(), Instance::Scalar(Value::Bool(true))),
+        ("Amount".into(), Instance::Scalar(Value::Float(125.0))),
     ])
 }
 
 #[test]
 fn runtime_values_match_engine_and_generated_backends() -> TestResult<()> {
     let project = runtime_project();
+    let mut parameters = engine::RuntimeParameters::new();
+    parameters.insert("correlation_id", Value::String("txn-42".into()))?;
+    parameters.insert("control_number", Value::String(" 42 ".into()))?;
+    parameters.insert("test_mode", Value::Bool(true))?;
+    parameters.insert("amount", Value::Int(125))?;
     let full =
         engine::ExecutionContext::with_main_mapping_file_path(Path::new(ACTIVE), Path::new(MAIN))
-            .with_current_datetime(CURRENT);
+            .with_current_datetime(CURRENT)
+            .with_parameters(&parameters);
     let paths =
-        engine::ExecutionContext::with_main_mapping_file_path(Path::new(ACTIVE), Path::new(MAIN));
+        engine::ExecutionContext::with_main_mapping_file_path(Path::new(ACTIVE), Path::new(MAIN))
+            .with_parameters(&parameters);
     assert_eq!(
         engine::run_with_context(&project, &source(true), &full)?,
         expected(CURRENT)
@@ -161,6 +219,34 @@ fn runtime_values_match_engine_and_generated_backends() -> TestResult<()> {
         Err(engine::EngineError::MissingRuntimeValue(
             mapping::RuntimeValue::CurrentDateTime,
         ))
+    );
+    let without_parameters =
+        engine::ExecutionContext::with_main_mapping_file_path(Path::new(ACTIVE), Path::new(MAIN))
+            .with_current_datetime(CURRENT);
+    assert_eq!(
+        engine::run_with_context(&project, &source(true), &without_parameters),
+        Err(engine::EngineError::MissingRuntimeParameter {
+            node: 10,
+            name: "correlation_id".into(),
+        })
+    );
+    let mut wrong_parameters = engine::RuntimeParameters::new();
+    wrong_parameters.insert("correlation_id", Value::String("txn-42".into()))?;
+    wrong_parameters.insert("control_number", Value::Bool(false))?;
+    wrong_parameters.insert("test_mode", Value::Bool(true))?;
+    wrong_parameters.insert("amount", Value::Int(125))?;
+    let wrong =
+        engine::ExecutionContext::with_main_mapping_file_path(Path::new(ACTIVE), Path::new(MAIN))
+            .with_current_datetime(CURRENT)
+            .with_parameters(&wrong_parameters);
+    assert_eq!(
+        engine::run_with_context(&project, &source(true), &wrong),
+        Err(engine::EngineError::RuntimeParameterType {
+            node: 11,
+            name: "control_number".into(),
+            expected: ScalarType::Int,
+            found: "bool",
+        })
     );
 
     let directory = TempDir::new("runtime_values")?;

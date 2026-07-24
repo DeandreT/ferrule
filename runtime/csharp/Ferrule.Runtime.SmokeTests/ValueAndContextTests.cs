@@ -232,6 +232,64 @@ internal static partial class Program
         Throws<ArgumentNullException>(() => new FerruleExecutionContext("active", null!));
     }
 
+    private static void RuntimeParameters()
+    {
+        var parameters = new FerruleRuntimeParameters(new[]
+        {
+            KeyValuePair.Create("control_number", Text(" 42 ")),
+            KeyValuePair.Create("test_mode", FerruleValue.FromBoolean(false)),
+        });
+        Equal(2, parameters.Count);
+        var context = ScopeContext.FromSource(
+            Group(),
+            FerruleExecutionContext.WithParameters("mapping.ferrule", parameters));
+        Equal(
+            FerruleValue.FromInt64(42),
+            context.ResolveRuntimeParameter(7, "control_number", FerruleScalarType.Int64));
+
+        var missing = Error(
+            FerruleRuntimeError.MissingRuntimeParameter,
+            () => context.ResolveRuntimeParameter(8, "missing", FerruleScalarType.String));
+        Equal((uint?)8, missing.Node);
+        Equal("missing", missing.RuntimeParameter);
+
+        var wrongType = Error(
+            FerruleRuntimeError.RuntimeParameterType,
+            () => context.ResolveRuntimeParameter(9, "test_mode", FerruleScalarType.Int64));
+        Equal((uint?)9, wrongType.Node);
+        Equal("test_mode", wrongType.RuntimeParameter);
+        Equal(FerruleScalarType.Int64, wrongType.ExpectedScalarType);
+        Equal(FerruleValueKind.Bool, wrongType.FoundKind);
+
+        Throws<ArgumentException>(() => new FerruleRuntimeParameters(new[]
+        {
+            KeyValuePair.Create(string.Empty, FerruleValue.Null),
+        }));
+        Throws<ArgumentException>(() => new FerruleRuntimeParameters(new[]
+        {
+            KeyValuePair.Create("bad\0name", FerruleValue.Null),
+        }));
+        Throws<ArgumentException>(() => new FerruleRuntimeParameters(new[]
+        {
+            KeyValuePair.Create(new string('\u00e9', 129), FerruleValue.Null),
+        }));
+        Throws<ArgumentException>(() => new FerruleRuntimeParameters(new[]
+        {
+            KeyValuePair.Create("x", FerruleValue.Null),
+            KeyValuePair.Create("x", FerruleValue.Null),
+        }));
+        Throws<ArgumentException>(() => new FerruleRuntimeParameters(
+            Enumerable.Range(0, FerruleRuntimeParameters.MaximumCount + 1)
+                .Select(index => KeyValuePair.Create($"p{index}", FerruleValue.Null))));
+        Throws<ArgumentException>(() => new FerruleRuntimeParameters(new[]
+        {
+            KeyValuePair.Create(
+                "large",
+                FerruleValue.FromString(
+                    new string('x', FerruleRuntimeParameters.MaximumStringUtf8Bytes + 1))),
+        }));
+    }
+
     private static void SourceDocumentPath()
     {
         var documents = new FerruleDocumentSet(new[]

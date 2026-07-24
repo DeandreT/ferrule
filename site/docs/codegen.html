@@ -54,7 +54,8 @@
         <p>
           The result is a standalone, package-free .NET 10 library. Runtime
           sources are vendored into the generated artifact tree, and named
-          inputs or outputs use typed boundary methods.
+          inputs, outputs, and bounded host parameters use typed boundary
+          methods.
         </p>
 
         <h2>Rust</h2>
@@ -66,7 +67,8 @@
         <p>
           Rust generation currently links the local <code>codegen-runtime</code> crate by
           path. The generated crate exposes primary-output entry points plus
-          output-set and named-source variants.
+          output-set and named-source variants. Its execution context can
+          borrow a validated <code>RuntimeParameters</code> set.
         </p>
 
         <h2 id="examples">Run the examples</h2>
@@ -151,7 +153,7 @@ dotnet run \
           <li>Nested source iteration, generated scalar sequences, filters, multi-key sorting, sequence windows, grouping, mapped output, recursive-filter target construction, and compact positions.</li>
           <li>Structured XML serialization and ordered mixed-content reconstruction with graph-computed replacements.</li>
           <li>Root-context static inner joins with duplicate-preserving order and exact joined fields.</li>
-          <li>Typed runtime errors for arity, scalar types, functions, aggregate bounds, generated sequence limits, and unsupported reachable constructs.</li>
+          <li>Typed runtime errors for arity, scalar types, missing or invalid host parameters, functions, aggregate bounds, generated sequence limits, and unsupported reachable constructs.</li>
         </ul>
 
         <div class="callout">
