@@ -1213,39 +1213,112 @@ fn nullable_scalar_refs_and_array_items_preserve_null_values() {
 }
 
 #[test]
-fn nullable_scalar_unions_reject_unrepresentable_validation() {
-    for validation in [
-        r#""minLength":1"#,
-        r#""pattern":"^[a-z]+$""#,
-        r#""enum":["a","b"]"#,
+fn nullable_scalar_unions_accept_shape_neutral_validation_keywords() {
+    for (ty, validation) in [
+        ("string", r#""minLength":1"#),
+        ("string", r#""pattern":"^[a-z]+$""#),
+        ("string", r#""enum":["a","b"]"#),
+        ("number", r#""minimum":0"#),
     ] {
         let text = format!(
             r#"{{
   "title":"Constrained",
   "oneOf":[
-    {{"type":"string",{validation}}},
+    {{"type":"{ty}",{validation}}},
     {{"type":"null"}}
   ]
 }}"#
         );
-        let error = import_str_result(&text).unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("nullable scalar alternatives cannot preserve"),
-            "{error}"
-        );
+        let schema = import_str_result(&text).unwrap();
+        assert!(schema.nullable);
     }
 
-    for text in [
-        r#"{"title":"NullOnly","type":"null"}"#,
-        r#"{"title":"MaybeObject","type":["object","null"],"properties":{}}"#,
-        r#"{"title":"MaybeArray","type":["array","null"],"items":{"type":"string"}}"#,
+    assert!(matches!(
+        import_str_result(r#"{"title":"NullOnly","type":"null"}"#),
+        Err(JsonFormatError::UnsupportedSchemaUnion { .. })
+    ));
+}
+
+#[test]
+fn nullable_objects_and_arrays_preserve_absent_null_and_empty_values() {
+    let schema = import_str(
+        r#"{
+  "title":"Envelope",
+  "type":"object",
+  "properties":{
+    "object":{
+      "type":["object","null"],
+      "properties":{"value":{"type":"string"}},
+      "additionalProperties":false
+    },
+    "array":{
+      "type":["array","null"],
+      "items":{"type":"integer"}
+    }
+  },
+  "additionalProperties":false
+}"#,
+    );
+    let object = schema.child("object").unwrap();
+    assert!(object.container_nullable);
+    assert!(matches!(object.kind, SchemaKind::Group { .. }));
+    let array = schema.child("array").unwrap();
+    assert!(array.container_nullable);
+    assert!(array.repeating);
+
+    for input in [
+        "{}",
+        r#"{"object":null,"array":null}"#,
+        r#"{"object":{},"array":[]}"#,
+        r#"{"object":{"value":"x"},"array":[1,2]}"#,
     ] {
-        assert!(matches!(
-            import_str_result(text),
-            Err(JsonFormatError::UnsupportedSchemaUnion { .. })
-        ));
+        let instance = crate::from_str(input, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+    }
+    assert_eq!(import_str(&export(&schema)), schema);
+}
+
+#[test]
+fn nullable_container_unions_roundtrip_nested_composition() {
+    for text in [
+        r#"{
+  "title":"MaybeObject",
+  "oneOf":[
+    {"type":"object","properties":{"value":{"type":"string"}},"additionalProperties":false},
+    {"type":"null"}
+  ]
+}"#,
+        r#"{
+  "title":"MaybeArray",
+  "anyOf":[
+    {"type":"array","items":{"type":"object","properties":{"id":{"type":"integer"}},"additionalProperties":false}},
+    {"type":"null"}
+  ]
+}"#,
+    ] {
+        let schema = import_str(text);
+        assert!(schema.container_nullable);
+        for input in if schema.repeating {
+            ["null", r#"[{"id":1}]"#]
+        } else {
+            ["null", r#"{"value":"x"}"#]
+        } {
+            let instance = crate::from_str(input, &schema).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(
+                    &crate::to_string(&schema, &instance).unwrap()
+                )
+                .unwrap(),
+                serde_json::from_str::<serde_json::Value>(input).unwrap()
+            );
+        }
+        assert_eq!(import_str(&export(&schema)), schema);
     }
 }
 
@@ -1451,15 +1524,32 @@ fn typed_object_additional_properties_preserve_their_exact_shape() {
 }
 
 #[test]
-fn explicit_unconstrained_additional_properties_are_rejected() {
+fn explicit_unconstrained_additional_properties_roundtrip_arbitrary_values() {
     for additional in ["true", "{}"] {
         let text =
             format!(r#"{{"title":"Open","type":"object","additionalProperties":{additional}}}"#);
-        assert!(matches!(
-            import_str_result(&text),
-            Err(JsonFormatError::UnsupportedSchemaObject { reason, .. })
-                if reason.contains("unconstrained additionalProperties")
-        ));
+        let schema = import_str(&text);
+        let dynamic = schema.dynamic_fields().unwrap();
+        assert!(dynamic.json_any);
+        let input = r#"{
+  "text":"value",
+  "number":17,
+  "flag":true,
+  "nothing":null,
+  "array":[1,{"nested":"yes"}],
+  "object":{"child":false}
+}"#;
+        let instance = crate::from_str(input, &schema).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &crate::to_string(&schema, &instance).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(input).unwrap()
+        );
+        let exported: serde_json::Value = serde_json::from_str(&export(&schema)).unwrap();
+        assert_eq!(exported["additionalProperties"], serde_json::json!({}));
+        assert_eq!(import_str(&export(&schema)), schema);
     }
 }
 
