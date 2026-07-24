@@ -438,6 +438,29 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
             ));
             continue;
         }
+        if let TargetConstruction::PathHierarchy {
+            collection,
+            separator,
+            directories,
+            files,
+            name,
+        } = scope.construction
+        {
+            output.push_str(
+                "        return global::Ferrule.Runtime.FerrulePathHierarchy.Build(\n            context,\n            ",
+            );
+            render_path(collection, &mut output);
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(separator));
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(directories));
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(files));
+            output.push_str(",\n            ");
+            output.push_str(&literal::string(name));
+            output.push_str(");\n    }\n");
+            continue;
+        }
         if matches!(scope.construction, TargetConstruction::CopyCurrentSource) {
             output.push_str("        return context.CopyCurrentGroup();\n    }\n");
             continue;

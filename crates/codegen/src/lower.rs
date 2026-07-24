@@ -243,6 +243,13 @@ fn lower_scope(
                 predicate: plan.predicate(),
             }
         }
+        ScopeConstruction::PathHierarchy { plan } => crate::TargetConstruction::PathHierarchy {
+            collection: plan.collection().to_vec(),
+            separator: plan.separator().to_string(),
+            directories: plan.directories().to_string(),
+            files: plan.files().to_string(),
+            name: plan.name().to_string(),
+        },
         _ => crate::TargetConstruction::Group,
     };
 
@@ -486,7 +493,7 @@ fn construction_kind(construction: &ScopeConstruction) -> Option<ScopeConstructi
         ScopeConstruction::Scalar { .. } => None,
         ScopeConstruction::XmlMixedContent { .. } => None,
         ScopeConstruction::RecursiveFilter { .. } => None,
-        ScopeConstruction::PathHierarchy { .. } => Some(ScopeConstructionKind::PathHierarchy),
+        ScopeConstruction::PathHierarchy { .. } => None,
         ScopeConstruction::AdjacencyTree { .. } => Some(ScopeConstructionKind::AdjacencyTree),
     }
 }

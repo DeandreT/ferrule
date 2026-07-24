@@ -15,6 +15,7 @@ mod graph_dependencies;
 mod grouping;
 mod joins;
 mod lookup;
+mod path_hierarchy;
 mod recursive_sequence;
 mod sequences;
 mod sources;
@@ -328,6 +329,35 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
     },
     RecursiveFilterConstructionHasInvalidIteration {
+        target_path: Vec<String>,
+    },
+    InvalidPathHierarchyConstruction {
+        target_path: Vec<String>,
+    },
+    InvalidPathHierarchyCollection {
+        target_path: Vec<String>,
+        collection: Vec<String>,
+    },
+    PathHierarchyConstructionRequiresGroupTarget {
+        target_path: Vec<String>,
+    },
+    InvalidPathHierarchyName {
+        target_path: Vec<String>,
+        field: String,
+    },
+    InvalidPathHierarchyFiles {
+        target_path: Vec<String>,
+        field: String,
+        name: String,
+    },
+    InvalidPathHierarchyDirectories {
+        target_path: Vec<String>,
+        field: String,
+    },
+    PathHierarchyConstructionHasContent {
+        target_path: Vec<String>,
+    },
+    PathHierarchyConstructionHasIteration {
         target_path: Vec<String>,
     },
     CopyConstructionRequiresGroupSource {
@@ -1055,6 +1085,27 @@ fn validate_scope(
                 &sequence_owner,
             )?;
         }
+        TargetConstruction::PathHierarchy {
+            collection,
+            separator,
+            directories,
+            files,
+            name,
+        } => {
+            path_hierarchy::validate(
+                scope,
+                path_hierarchy::Construction {
+                    collection,
+                    separator,
+                    directories,
+                    files,
+                    name,
+                },
+                schemas,
+                target_node,
+                target_path,
+            )?;
+        }
         TargetConstruction::CopyCurrentSource => {
             let Some(scope_source) = scope_source
                 .filter(|source| matches!(source.node().kind, SchemaKind::Group { .. }))
@@ -1711,6 +1762,54 @@ impl fmt::Display for ProgramValidationError {
             Self::RecursiveFilterConstructionHasInvalidIteration { target_path } => write!(
                 formatter,
                 "target scope {} recursive-filter construction cannot iterate a generated sequence or inner join",
+                display_path(target_path)
+            ),
+            Self::InvalidPathHierarchyConstruction { target_path } => write!(
+                formatter,
+                "target scope {} path-hierarchy construction requires a non-empty collection, separator, name, and distinct directory/file fields",
+                display_path(target_path)
+            ),
+            Self::InvalidPathHierarchyCollection {
+                target_path,
+                collection,
+            } => write!(
+                formatter,
+                "target scope {} path-hierarchy collection {} must be a repeating scalar",
+                display_path(target_path),
+                display_path(collection)
+            ),
+            Self::PathHierarchyConstructionRequiresGroupTarget { target_path } => write!(
+                formatter,
+                "target scope {} path-hierarchy construction requires a group target",
+                display_path(target_path)
+            ),
+            Self::InvalidPathHierarchyName { target_path, field } => write!(
+                formatter,
+                "target scope {} path-hierarchy name field {field:?} must be a non-repeating scalar",
+                display_path(target_path)
+            ),
+            Self::InvalidPathHierarchyFiles {
+                target_path,
+                field,
+                name,
+            } => write!(
+                formatter,
+                "target scope {} path-hierarchy file field {field:?} must be a repeating group with scalar {name:?}",
+                display_path(target_path)
+            ),
+            Self::InvalidPathHierarchyDirectories { target_path, field } => write!(
+                formatter,
+                "target scope {} path-hierarchy directory field {field:?} must be a repeating recursive reference to the target group",
+                display_path(target_path)
+            ),
+            Self::PathHierarchyConstructionHasContent { target_path } => write!(
+                formatter,
+                "target scope {} path-hierarchy construction cannot contain bindings or child scopes",
+                display_path(target_path)
+            ),
+            Self::PathHierarchyConstructionHasIteration { target_path } => write!(
+                formatter,
+                "target scope {} path-hierarchy construction cannot use scope iteration",
                 display_path(target_path)
             ),
             Self::CopyConstructionRequiresGroupSource { target_path } => write!(
