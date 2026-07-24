@@ -94,6 +94,12 @@ run, and 4096 output artifacts; logical paths are limited to 4096 UTF-8 bytes
 and source names to 256. SQLite and update-existing XLSX operations remain
 filesystem APIs because they modify persistent state.
 
+Generated Rust and C# libraries also expose bounded schema-shaped JSON methods
+such as `execute_json` and `GeneratedMapping.ExecuteJson`. Source-aware variants
+accept exact named JSON inputs, and output-set variants return the primary
+document plus ordered named target documents. See
+[code generation](docs/code-generation.md#json-host-boundary).
+
 ## Common Workflows
 
 Bootstrap schemas from existing metadata:

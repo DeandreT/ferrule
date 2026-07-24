@@ -26,6 +26,7 @@ internal static partial class Program
             ("runtime execution context", RuntimeExecutionContext),
             ("runtime parameters", RuntimeParameters),
             ("source document path", SourceDocumentPath),
+            ("JSON document boundaries", JsonDocumentBoundaries),
             ("field order", FieldOrder),
             ("empty field names", EmptyFieldNames),
             ("scalar functions", ScalarFunctions),

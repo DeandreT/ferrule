@@ -1,8 +1,9 @@
 # C# Code Generation Example
 
-This package constructs a typed `FerruleInstance` source tree, executes the
-generated mapping library, and checks the complete filtered and sorted result.
-The generated library vendors its runtime and has no NuGet dependencies.
+This package passes `input.json` to
+`GeneratedMapping.ExecuteJson`, compares the returned document with
+`expected-output.json`, and checks the complete filtered and sorted result. The
+generated library vendors its runtime and has no NuGet dependencies.
 
 From the repository root, generate the library into a fresh destination:
 
@@ -25,6 +26,6 @@ dotnet run \
   --configuration Release
 ```
 
-The host calls `Ferrule.Generated.GeneratedMapping.Execute`, prints the three
+The host calls `Ferrule.Generated.GeneratedMapping.ExecuteJson`, prints the three
 generated invoice summaries, and exits unsuccessfully if the output differs
 from the mapping contract.

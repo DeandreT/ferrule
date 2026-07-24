@@ -16,7 +16,9 @@ use codegen::{ArtifactPath, ArtifactSet, GeneratedFile, Program, validate_progra
 /// The artifact embeds the small Ferrule C# runtime and exposes
 /// `Ferrule.Generated.GeneratedMapping.Execute(FerruleInstance)` and
 /// `ExecuteOutputs(FerruleInstance)`, plus overloads accepting host-supplied
-/// execution context and named static inputs.
+/// execution context and named static inputs. Schema-shaped `ExecuteJson`
+/// variants provide a bounded document boundary over the same generated
+/// functions.
 pub fn emit(program: &Program) -> Result<ArtifactSet, EmitError> {
     validate_program(program)?;
     let generated_mapping = mapping::render(program)?;
@@ -264,6 +266,12 @@ mod tests {
         let artifacts = emit(&program).expect("named inputs emit");
         let source = generated_source(&artifacts);
         assert!(source.contains("public sealed record NamedInput("));
+        assert!(source.contains("public sealed record NamedJsonInput("));
+        assert!(source.contains("public sealed record JsonExecutionOutputs("));
+        assert!(
+            source.contains("public static JsonExecutionOutputs ExecuteJsonOutputsWithSources(")
+        );
+        assert!(source.contains("private const string SourceJsonSchema"));
         assert_eq!(
             source
                 .matches(

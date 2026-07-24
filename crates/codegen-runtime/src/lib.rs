@@ -11,6 +11,7 @@ mod context;
 mod failure;
 mod generated_sequence;
 mod iteration;
+mod json;
 mod recursive_filter;
 mod runtime_value;
 mod user_function;
@@ -35,6 +36,10 @@ pub use generated_sequence::{
 pub use ir::{Instance, ScalarType, Value};
 pub use iteration::{
     SequenceWindow, SortDirection, apply_sequence_windows, item_count, sort_candidates,
+};
+pub use json::{
+    JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
+    serialize_json,
 };
 pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};
 pub use runtime_value::{

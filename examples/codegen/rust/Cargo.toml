@@ -5,8 +5,8 @@ edition = "2024"
 publish = false
 
 [dependencies]
-codegen-runtime = { path = "../../../crates/codegen-runtime" }
 ferrule-generated-mapping = { path = "../generated/rust" }
+serde_json = "1"
 
 # Keep this host application independent from ferrule's workspace.
 [workspace]

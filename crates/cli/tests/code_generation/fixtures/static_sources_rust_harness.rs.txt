@@ -1,5 +1,8 @@
 use codegen_runtime::{Instance, NamedInput, RuntimeError, Value, field, group, repeated, scalar};
-use ferrule_generated_mapping::{execute, execute_outputs_with_sources, execute_with_sources};
+use ferrule_generated_mapping::{
+    NamedJsonInput, execute, execute_json_outputs_with_sources, execute_outputs_with_sources,
+    execute_with_sources,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let primary = primary_source();
@@ -22,6 +25,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(output.extras[0].name, "audit");
     assert_eq!(output.extras[0].instance, expected_audit());
     assert_eq!(execute_with_sources(&primary, &reversed)?, expected_primary());
+
+    let json_output = execute_json_outputs_with_sources(
+        r#"{"Order":[{"Sku":"A"},{"Sku":"missing"},{"Sku":"B"}]}"#,
+        &[
+            NamedJsonInput {
+                name: "labels",
+                document: r#"{"LabelRow":[{"Text":"first"},{"Text":"second"}]}"#,
+            },
+            NamedJsonInput {
+                name: "catalog",
+                document: r#"{"CatalogRow":[{"Sku":"A","Label":"Alpha"},{"Sku":"B","Label":"Beta"}]}"#,
+            },
+        ],
+    )?;
+    assert_eq!(json_output.primary, EXPECTED_PRIMARY_JSON);
+    assert_eq!(json_output.extras.len(), 1);
+    assert_eq!(json_output.extras[0].name, "audit");
+    assert_eq!(json_output.extras[0].document, EXPECTED_AUDIT_JSON);
 
     assert_eq!(
         execute(&primary),
@@ -71,6 +92,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     Ok(())
 }
+
+const EXPECTED_PRIMARY_JSON: &str = "{\n  \"CatalogCount\": 2,\n  \"Result\": [\n    {\n      \"Sku\": \"A\",\n      \"CatalogLabel\": \"Alpha\"\n    },\n    {\n      \"Sku\": \"missing\"\n    },\n    {\n      \"Sku\": \"B\",\n      \"CatalogLabel\": \"Beta\"\n    }\n  ],\n  \"ReferenceLabel\": [\n    {\n      \"Text\": \"first\"\n    },\n    {\n      \"Text\": \"second\"\n    }\n  ]\n}\n";
+
+const EXPECTED_AUDIT_JSON: &str = "{\n  \"FirstCatalogLabel\": \"Alpha\"\n}\n";
 
 fn primary_source() -> Instance {
     group([field(
