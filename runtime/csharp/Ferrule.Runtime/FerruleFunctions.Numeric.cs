@@ -55,6 +55,48 @@ public static partial class FerruleFunctions
         throw InvalidArgument("to_number", "requires a finite numeric value");
     }
 
+    private static FerruleValue EffectiveBoolean(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("boolean", arguments, 1);
+        var value = arguments[0];
+        return FerruleValue.FromBoolean(value.Kind switch
+        {
+            FerruleValueKind.Null or
+                FerruleValueKind.JsonNull or
+                FerruleValueKind.XmlNil => false,
+            FerruleValueKind.Bool => value.BooleanValue,
+            FerruleValueKind.Int64 => value.Int64Value != 0,
+            FerruleValueKind.Double => value.DoubleValue != 0.0 &&
+                !double.IsNaN(value.DoubleValue),
+            FerruleValueKind.String => value.StringValue.Length != 0,
+            _ => false,
+        });
+    }
+
+    private static FerruleValue Positive(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("positive", arguments, 1);
+        var operand = NumericOperand.From(arguments[0], "positive");
+        return operand.IsDouble
+            ? FerruleValue.FromDouble(operand.Double)
+            : FerruleValue.FromInt64(operand.Integer);
+    }
+
+    private static FerruleValue Floor(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("floor", arguments, 1);
+        var operand = NumericOperand.From(arguments[0], "floor");
+        if (!operand.IsDouble)
+        {
+            return FerruleValue.FromInt64(operand.Integer);
+        }
+        if (!double.IsFinite(operand.Double))
+        {
+            throw InvalidArgument("floor", "requires a finite numeric value");
+        }
+        return FerruleValue.FromDouble(Math.Floor(operand.Double));
+    }
+
     private static FerruleValue DelayPassthrough(IReadOnlyList<FerruleValue> arguments)
     {
         RequireArity("delay_passthrough", arguments, 2);

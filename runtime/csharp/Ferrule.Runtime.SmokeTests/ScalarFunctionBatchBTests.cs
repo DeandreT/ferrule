@@ -533,7 +533,32 @@ internal static partial class Program
             FerruleValue.FromInt64(1703),
             Text("[H,2-2][m,2-2]"));
 
+        CallEquals(
+            Text("10 Nov 2004 +01:00"),
+            "format_date",
+            Text("2004-11-10+01:00"),
+            Text("[D01] [MNn,3-3] [Y] [Z]"));
+        CallEquals(
+            Text("Wednesday, DECEMBER 01, 2010 03:02:39 pm GMT+01:00"),
+            "format_datetime",
+            Text("2010-12-01T15:02:39.25+01:00"),
+            Text("Wednesday, [MN] [D01], [Y] [h01]:[m01]:[s01] [Pn] [z]"));
+        CallEquals(
+            Text("09:53:00.125Z"),
+            "format_time",
+            Text("09:53:00.125Z"),
+            Text("[H01]:[m01]:[s01].[f]Z"));
+        CallEquals(
+            Text("29/02/2024"),
+            "format_date",
+            Text("2024-02-29"),
+            Text("[D01]/[M01]/[Y]"),
+            FerruleValue.Null,
+            Text(string.Empty),
+            FerruleValue.JsonNull);
+
         AssertFunctionArity("parse_date", 2, Text("2014-01-02"));
+        AssertFunctionArity("format_date", 2, Text("2014-01-02"));
         AssertFunctionType(
             "parse_datetime",
             FerruleValue.FromInt64(2014),
@@ -552,6 +577,12 @@ internal static partial class Program
             "requires a value matching a supported date/time picture",
             Text("2014-01-02 24:00:00"),
             Text("[Y]-[M]-[D] [H]:[m]:[s]"));
+        AssertInvalidArgument(
+            "format_time",
+            "supports only default language, calendar, and place arguments",
+            Text("09:30:00"),
+            Text("[H]:[m]"),
+            Text("de"));
     }
 
     private static void DateTimeArithmeticFunctions()
