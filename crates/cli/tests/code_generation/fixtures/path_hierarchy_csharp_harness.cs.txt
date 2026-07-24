@@ -1,0 +1,75 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(Paths(
+    FerruleValue.FromString("root/b/b.txt"),
+    FerruleValue.FromString("root/a.txt"),
+    FerruleValue.FromString("root/b/b.txt"),
+    FerruleValue.Null,
+    FerruleValue.FromString("top-level.txt")));
+
+Assert(Fields(output).SequenceEqual(new[] { "file", "directory", "name" }));
+Assert(Name(output) == "root");
+var rootFiles = Repeated(output, "file");
+Assert(rootFiles.Items.Count == 1);
+Assert(Name((FerruleGroup)rootFiles.Items[0]) == "a.txt");
+var directories = Repeated(output, "directory");
+Assert(directories.Items.Count == 1);
+var child = (FerruleGroup)directories.Items[0];
+Assert(Name(child) == "b");
+var childFiles = Repeated(child, "file");
+Assert(childFiles.Items.Count == 2);
+Assert(Name((FerruleGroup)childFiles.Items[0]) == "b.txt");
+Assert(Name((FerruleGroup)childFiles.Items[1]) == "b.txt");
+
+var error = Error(() => GeneratedMapping.Execute(Paths(
+    FerruleValue.FromString("one/a.txt"),
+    FerruleValue.FromString("two/b.txt"))));
+Assert(error.Error == FerruleRuntimeError.PathHierarchyRootCount);
+Assert(error.Detail == "2");
+
+static FerruleGroup Paths(params FerruleValue[] values) =>
+    new(new[]
+    {
+        new FerruleField(
+            "File",
+            new FerruleRepeated(values.Select(value =>
+                (FerruleInstance)new FerruleScalar(value)))),
+    });
+
+static IEnumerable<string> Fields(FerruleGroup group) =>
+    group.Fields.Select(field => field.Name);
+
+static FerruleRepeated Repeated(FerruleGroup group, string field)
+{
+    var value = group.Fields.Single(candidate => candidate.Name == field).Value;
+    return (FerruleRepeated)value;
+}
+
+static string Name(FerruleGroup group)
+{
+    var value = group.Fields.Single(field => field.Name == "name").Value;
+    return ((FerruleScalar)value).Value.StringValue;
+}
+
+static FerruleRuntimeException Error(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("expected path hierarchy to fail");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("path-hierarchy output differs from the engine");
+    }
+}

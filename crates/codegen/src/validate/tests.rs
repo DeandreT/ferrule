@@ -14,6 +14,7 @@ mod failures;
 mod grouping;
 mod invariants;
 mod joins;
+mod path_hierarchy;
 mod recursive_filter;
 mod sources;
 mod user_functions;
