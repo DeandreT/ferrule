@@ -68,6 +68,35 @@ public sealed partial class ScopeContext
         return FerruleValue.FromString(resolved);
     }
 
+    /// <summary>Returns one named host scalar after declared-type coercion.</summary>
+    public FerruleValue ResolveRuntimeParameter(
+        uint node,
+        string name,
+        FerruleScalarType expected)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (_executionContext is null ||
+            !_executionContext.TryGetParameter(name, out var value))
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.MissingRuntimeParameter,
+                $"node {node}: execution context does not provide runtime parameter '{name}'",
+                node: node,
+                runtimeParameter: name);
+        }
+        if (!FerruleValueMaps.TryCoerce(value, expected, out var coerced))
+        {
+            throw new FerruleRuntimeException(
+                FerruleRuntimeError.RuntimeParameterType,
+                $"node {node}: runtime parameter '{name}' expected {expected}, got {value.Kind}",
+                node: node,
+                foundKind: value.Kind,
+                expectedScalarType: expected,
+                runtimeParameter: name);
+        }
+        return coerced;
+    }
+
     /// <summary>Returns the resolved path of the nearest active source document.</summary>
     public FerruleValue ResolveSourceDocumentPath()
     {

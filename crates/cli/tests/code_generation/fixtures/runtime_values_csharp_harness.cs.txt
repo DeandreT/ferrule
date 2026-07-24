@@ -6,8 +6,9 @@ const string Main = "/maps/main.ferrule.json";
 const string Current = "2026-07-19T11:22:33.45-07:00";
 const string Skipped = "missing-current-skipped";
 
-var full = new FerruleExecutionContext(Active, Main, Current);
-var paths = new FerruleExecutionContext(Active, Main);
+var parameters = Parameters(FerruleValue.FromString(" 42 "));
+var full = new FerruleExecutionContext(Active, Main, Current, parameters);
+var paths = new FerruleExecutionContext(Active, Main, null, parameters);
 AssertOutput(GeneratedMapping.Execute(Source(true), full), Current);
 AssertOutput(GeneratedMapping.Execute(Source(false), paths), Skipped);
 AssertError(
@@ -16,6 +17,32 @@ AssertError(
 AssertError(
     () => GeneratedMapping.Execute(Source(true), paths),
     FerruleRuntimeValue.CurrentDateTime);
+var missingParameter = AssertRuntimeError(
+    () => GeneratedMapping.Execute(
+        Source(true),
+        new FerruleExecutionContext(Active, Main, Current)),
+    FerruleRuntimeError.MissingRuntimeParameter);
+Assert(missingParameter.Node == 10U);
+Assert(missingParameter.RuntimeParameter == "correlation_id");
+
+var wrongParameters = Parameters(FerruleValue.FromBoolean(false));
+var wrongParameter = AssertRuntimeError(
+    () => GeneratedMapping.Execute(
+        Source(true),
+        new FerruleExecutionContext(Active, Main, Current, wrongParameters)),
+    FerruleRuntimeError.RuntimeParameterType);
+Assert(wrongParameter.Node == 11U);
+Assert(wrongParameter.RuntimeParameter == "control_number");
+Assert(wrongParameter.ExpectedScalarType == FerruleScalarType.Int64);
+Assert(wrongParameter.FoundKind == FerruleValueKind.Bool);
+
+static FerruleRuntimeParameters Parameters(FerruleValue control) => new(new[]
+{
+    KeyValuePair.Create("correlation_id", FerruleValue.FromString("txn-42")),
+    KeyValuePair.Create("control_number", control),
+    KeyValuePair.Create("test_mode", FerruleValue.FromBoolean(true)),
+    KeyValuePair.Create("amount", FerruleValue.FromInt64(125)),
+});
 
 static FerruleGroup Source(bool useCurrent) => new(new FerruleField[]
 {
@@ -30,6 +57,10 @@ static void AssertOutput(FerruleInstance instance, string current)
     AssertField(output, "CurrentOne", current);
     AssertField(output, "CurrentTwo", current);
     AssertField(output, "Lazy", "lazy");
+    AssertField(output, "Correlation", "txn-42");
+    AssertValue(output, "Control", FerruleValue.FromInt64(42));
+    AssertValue(output, "TestMode", FerruleValue.FromBoolean(true));
+    AssertValue(output, "Amount", FerruleValue.FromDouble(125.0));
 }
 
 static void AssertField(FerruleGroup output, string name, string expected)
@@ -39,6 +70,15 @@ static void AssertField(FerruleGroup output, string name, string expected)
         scalar.Value != FerruleValue.FromString(expected))
     {
         throw new InvalidOperationException($"Runtime-value output {name} differs from the engine.");
+    }
+}
+
+static void AssertValue(FerruleGroup output, string name, FerruleValue expected)
+{
+    var field = output.Fields.Single(field => field.Name == name);
+    if (field.Value is not FerruleScalar scalar || scalar.Value != expected)
+    {
+        throw new InvalidOperationException($"Runtime-parameter output {name} differs from the engine.");
     }
 }
 
@@ -56,4 +96,28 @@ static void AssertError(Action action, FerruleRuntimeValue expected)
     }
 
     throw new InvalidOperationException($"Expected missing runtime value {expected}.");
+}
+
+static FerruleRuntimeException AssertRuntimeError(
+    Action action,
+    FerruleRuntimeError expected)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException error) when (error.Error == expected)
+    {
+        return error;
+    }
+
+    throw new InvalidOperationException($"Expected runtime error {expected}.");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("Runtime-parameter assertion failed.");
+    }
 }

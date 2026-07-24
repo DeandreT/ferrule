@@ -12,7 +12,8 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         | Expression::JoinPosition { .. }
         | Expression::Const { .. }
         | Expression::FunctionParameter { .. }
-        | Expression::RuntimeValue { .. } => Vec::new(),
+        | Expression::RuntimeValue { .. }
+        | Expression::RuntimeParameter { .. } => Vec::new(),
         Expression::XmlMixedContent { replacements, .. } => replacements
             .iter()
             .map(|replacement| replacement.expression)

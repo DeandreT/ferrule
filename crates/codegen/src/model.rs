@@ -520,6 +520,10 @@ pub enum Expression {
     RuntimeValue {
         value: RuntimeValue,
     },
+    RuntimeParameter {
+        name: String,
+        ty: ScalarType,
+    },
     Call {
         function: ScalarFunction,
         args: Vec<NodeId>,

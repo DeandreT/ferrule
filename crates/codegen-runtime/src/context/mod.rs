@@ -177,6 +177,31 @@ impl<'a> ScopeContext<'a> {
             .ok_or(RuntimeError::MissingRuntimeValue { value })
     }
 
+    /// Resolves and coerces one named host scalar using the same bounded rules
+    /// as the interpreter.
+    pub fn runtime_parameter(
+        &self,
+        node: u32,
+        name: &str,
+        expected: crate::ScalarType,
+    ) -> Result<Value, RuntimeError> {
+        let value = self
+            .execution
+            .and_then(|execution| execution.parameter(name))
+            .ok_or_else(|| RuntimeError::MissingRuntimeParameter {
+                node,
+                name: name.to_string(),
+            })?;
+        crate::value_map::coerce_input(value, expected).ok_or_else(|| {
+            RuntimeError::RuntimeParameterType {
+                node,
+                name: name.to_string(),
+                expected,
+                found: value.type_name(),
+            }
+        })
+    }
+
     /// Returns the resolved path of the nearest active source document.
     pub fn source_document_path(&self) -> Result<Value, SourcePathError> {
         self.frames
