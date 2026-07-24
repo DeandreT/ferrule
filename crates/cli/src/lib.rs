@@ -30,10 +30,17 @@ const MAX_HTTP_REDIRECTS: u32 = 5;
 
 mod code_generation;
 mod output_documents;
+mod payload;
 
 pub use code_generation::{GenerateOutcome, GenerateTarget, generate_project};
 pub use engine::{TraceEvent, TracePosition, TraceSink};
 use output_documents::{OutputDestination, TargetOutput, write_target_outputs};
+pub use payload::{
+    MAX_PAYLOAD_ARTIFACTS, MAX_PAYLOAD_DOCUMENT_BYTES, MAX_PAYLOAD_NAME_BYTES,
+    MAX_PAYLOAD_PATH_BYTES, MAX_PAYLOAD_RUN_BYTES, NamedPayloadInput, PayloadArtifact,
+    PayloadDocument, PayloadRunOptions, PayloadRunOutcome, run_project_payloads,
+    run_project_value_payloads,
+};
 
 /// Result of running a project after resolving its input and output paths.
 #[derive(Debug, Clone, PartialEq, Eq)]

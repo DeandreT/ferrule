@@ -22,6 +22,14 @@ bounded typed runtime parameters, and optional tracing. A successful
 `RunOutcome` retains every atomically published file in deterministic
 primary-then-extra target order.
 
+Hosts that own transport and persistence can instead use
+`cli::PayloadRunOptions`. Each input carries bounded bytes plus a logical path
+that selects its format and supplies dynamic-source identity. The runner accepts
+named static and dynamic secondary documents and returns bounded serialized
+`PayloadArtifact` values in the same target order without touching output
+paths. SQLite and update-existing XLSX stay on the filesystem runner because
+their behavior depends on persistent prior state.
+
 During execution, source contexts form a stack. Field resolution begins at the
 innermost frame and falls outward, which allows parent values to broadcast into
 nested target rows. Repeating source paths can cross several collection levels;
@@ -57,8 +65,9 @@ See [Supported formats](formats.md) for adapter direction and boundaries.
 ### Interfaces and interoperability
 
 - `crates/mfd` - MapForce `.mfd` import and export
-- `crates/cli` - headless validation, execution, host run options and ordered
-  artifact reports, schema import, interop, and code generation
+- `crates/cli` - headless validation, filesystem and raw-payload execution,
+  host run options and ordered artifact reports, schema import, interop, and
+  code generation
 - `crates/editor-ui` - shared editor presentation and interaction logic
 - `crates/gui` - native egui mapping editor
 - `crates/web-demo` - WebAssembly playground built around the real mapping

@@ -125,15 +125,28 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
     )?;
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| EdiFormatError::NotTradacoms("input is not UTF-8"))?;
+    from_str(text, schema, lenient)
+}
+
+/// Reads TRADACOMS text into an [`Instance`] tree shaped by `schema`.
+pub fn from_str(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
     let segments = tokenize(text)?;
     read_segments(schema, &segments, ':', None, lenient)
 }
 
 /// Writes a schema-shaped TRADACOMS interchange using `TAG=...` segments.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
-    let output = write_segments(schema, instance, &WRITE_OPTIONS)?;
-    std::fs::write(path, output)?;
+    std::fs::write(path, to_string(schema, instance)?)?;
     Ok(())
+}
+
+/// Serializes an [`Instance`] tree as TRADACOMS text.
+pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, EdiFormatError> {
+    write_segments(schema, instance, &WRITE_OPTIONS)
 }
 
 #[cfg(test)]

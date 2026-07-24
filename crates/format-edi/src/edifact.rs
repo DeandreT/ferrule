@@ -178,15 +178,28 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
     )?;
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| EdiFormatError::NotEdifact("input is not UTF-8"))?;
+    from_str(text, schema, lenient)
+}
+
+/// Reads EDIFACT text into an [`Instance`] tree shaped by `schema`.
+pub fn from_str(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
     let (segments, separators) = tokenize_with_separators(text)?;
     read_segments(schema, &segments, separators.component, None, lenient)
 }
 
 /// Writes an [`Instance`] tree shaped by `schema` as EDIFACT.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
-    let out = write_segments(schema, instance, &WRITE_OPTIONS)?;
-    std::fs::write(path, out)?;
+    std::fs::write(path, to_string(schema, instance)?)?;
     Ok(())
+}
+
+/// Serializes an [`Instance`] tree shaped by `schema` as EDIFACT text.
+pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, EdiFormatError> {
+    write_segments(schema, instance, &WRITE_OPTIONS)
 }
 
 /// Writes EDIFACT and derives missing envelope dates, identifiers, counts,
@@ -197,6 +210,20 @@ pub fn write_with_autocomplete(
     instance: &Instance,
     autocomplete: Autocomplete<'_>,
 ) -> Result<(), EdiFormatError> {
+    std::fs::write(
+        path,
+        to_string_with_autocomplete(schema, instance, autocomplete)?,
+    )?;
+    Ok(())
+}
+
+/// Serializes EDIFACT text and derives missing envelope values from one stable
+/// mapping-run timestamp.
+pub fn to_string_with_autocomplete(
+    schema: &SchemaNode,
+    instance: &Instance,
+    autocomplete: Autocomplete<'_>,
+) -> Result<String, EdiFormatError> {
     let out = write_segments(schema, instance, &WRITE_OPTIONS)?;
     let (segments, _) = tokenize_with_separators(&out)?;
     let completed = envelope::edifact(
@@ -207,9 +234,7 @@ pub fn write_with_autocomplete(
         autocomplete.controlling_agency,
         autocomplete.message_type,
     )?;
-    let out = serialize_segments(&completed, &WRITE_OPTIONS)?;
-    std::fs::write(path, out)?;
-    Ok(())
+    serialize_segments(&completed, &WRITE_OPTIONS)
 }
 
 #[cfg(test)]

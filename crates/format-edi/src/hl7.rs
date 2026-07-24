@@ -181,6 +181,15 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
     )?;
     let text =
         std::str::from_utf8(&bytes).map_err(|_| EdiFormatError::NotHl7("input is not UTF-8"))?;
+    from_str(text, schema, lenient)
+}
+
+/// Reads HL7 v2 text using its embedded delimiter declaration.
+pub fn from_str(
+    text: &str,
+    schema: &SchemaNode,
+    lenient: bool,
+) -> Result<Instance, EdiFormatError> {
     let (segments, separators) = tokenize_with_separators(text)?;
     read_segments_with_subcomponent_escape(
         schema,
@@ -196,9 +205,13 @@ pub fn read(path: &Path, schema: &SchemaNode, lenient: bool) -> Result<Instance,
 /// Header separator fields are derived from that encoding when absent and
 /// rejected when a supplied value disagrees.
 pub fn write(path: &Path, schema: &SchemaNode, instance: &Instance) -> Result<(), EdiFormatError> {
-    let output = write_segments(schema, instance, &WRITE_OPTIONS)?;
-    std::fs::write(path, output)?;
+    std::fs::write(path, to_string(schema, instance)?)?;
     Ok(())
+}
+
+/// Serializes an [`Instance`] tree as HL7 v2 text using `|^~\\&`.
+pub fn to_string(schema: &SchemaNode, instance: &Instance) -> Result<String, EdiFormatError> {
+    write_segments(schema, instance, &WRITE_OPTIONS)
 }
 
 #[cfg(test)]
