@@ -99,6 +99,9 @@ pub(super) fn unmap_function_name(name: &str) -> String {
         "get_fileext" => "get-fileext",
         "delay_passthrough" => "sleep",
         "format_number" => "format-number",
+        "format_date" => "format-date",
+        "format_datetime" => "format-dateTime",
+        "format_time" => "format-time",
         other => other,
     }
     .to_string()
@@ -128,6 +131,7 @@ pub(super) fn function_library(name: &str) -> &'static str {
         | "duration_from_parts"
         | "datetime_add"
         | "delay_passthrough" => "lang",
+        "boolean" | "floor" | "format_date" | "format_datetime" | "format_time" => "xpath2",
         "edifact_to_datetime" => "edifact",
         _ => "core",
     }

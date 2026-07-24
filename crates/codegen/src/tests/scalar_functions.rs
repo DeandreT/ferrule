@@ -137,6 +137,9 @@ fn lowers_datetime_picture_calls_without_backend_specific_state() {
         ("parse_date", ScalarFunction::ParseDate),
         ("parse_datetime", ScalarFunction::ParseDatetime),
         ("parse_time", ScalarFunction::ParseTime),
+        ("format_date", ScalarFunction::FormatDate),
+        ("format_datetime", ScalarFunction::FormatDatetime),
+        ("format_time", ScalarFunction::FormatTime),
     ]
     .into_iter()
     .enumerate()

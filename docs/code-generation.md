@@ -80,7 +80,7 @@ The current portable model includes:
   positions
 - explicit active/main mapping paths and an optional stable current date-time
   supplied by the execution host
-- lazy conditionals and a closed set of 66 boolean, arithmetic, comparison,
+- lazy conditionals and a closed set of 72 boolean, arithmetic, comparison,
   scalar text, Unicode whitespace/substring/padding, finite numeric detection,
   integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
   matching/replacement, ISBN, rounding, date extraction, composition, picture parsing, exact

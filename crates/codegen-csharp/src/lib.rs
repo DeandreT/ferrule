@@ -148,6 +148,9 @@ mod tests {
                 .iter()
                 .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.DateTimePictures.cs")
         );
+        assert!(first.files().iter().any(|file| {
+            file.path.as_str() == "Runtime/FerruleFunctions.DateTimeFormatting.cs"
+        }));
         assert!(
             first
                 .files()

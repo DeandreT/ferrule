@@ -22,6 +22,13 @@ public static partial class FerruleFunctions
         GmtTimezone,
     }
 
+    private enum DateTimePictureLetterCase
+    {
+        Upper,
+        Lower,
+        Title,
+    }
+
     private abstract record DateTimePicturePart;
 
     private sealed record DateTimePictureLiteral(string Value) : DateTimePicturePart;
@@ -30,7 +37,8 @@ public static partial class FerruleFunctions
         DateTimePictureField Field,
         int MinimumWidth,
         int MaximumWidth,
-        int? FixedWidth) : DateTimePicturePart;
+        int? FixedWidth,
+        DateTimePictureLetterCase? LetterCase) : DateTimePicturePart;
 
     private static FerruleValue ParseDate(IReadOnlyList<FerruleValue> arguments)
     {
@@ -336,11 +344,22 @@ public static partial class FerruleFunctions
         var fixedWidth = parsedWidth.Value.Minimum == parsedWidth.Value.Maximum
             ? parsedWidth.Value.Minimum
             : presentationWidth;
+        var letterCase = (field, modifier) switch
+        {
+            (DateTimePictureField.MonthName, "N") or
+                (DateTimePictureField.Period, "N") => DateTimePictureLetterCase.Upper,
+            (DateTimePictureField.MonthName, "n") or
+                (DateTimePictureField.Period, "n") => DateTimePictureLetterCase.Lower,
+            (DateTimePictureField.MonthName, "Nn") or
+                (DateTimePictureField.Period, "Nn") => DateTimePictureLetterCase.Title,
+            _ => (DateTimePictureLetterCase?)null,
+        };
         return new DateTimePictureComponent(
             field,
             parsedWidth.Value.Minimum,
             parsedWidth.Value.Maximum,
-            fixedWidth);
+            fixedWidth,
+            letterCase);
     }
 
     private static (int Minimum, int Maximum)? ParseDateTimePictureWidth(

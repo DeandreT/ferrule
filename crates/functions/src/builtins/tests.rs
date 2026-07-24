@@ -16,6 +16,32 @@ fn concat_joins_mixed_scalar_types() {
 }
 
 #[test]
+fn boolean_positive_and_floor_follow_scalar_numeric_semantics() {
+    for (value, expected) in [
+        (Value::Null, false),
+        (Value::json_null(), false),
+        (Value::Bool(false), false),
+        (Value::Int(0), false),
+        (Value::Float(f64::NAN), false),
+        (Value::String(String::new()), false),
+        (Value::Bool(true), true),
+        (Value::Int(-1), true),
+        (Value::Float(0.5), true),
+        (Value::String("0".into()), true),
+    ] {
+        assert_eq!(call("boolean", &[value]), Ok(Value::Bool(expected)));
+    }
+    assert_eq!(call("positive", &[Value::Int(-7)]), Ok(Value::Int(-7)));
+    assert_eq!(
+        call("positive", &[Value::String("2.5".into())]),
+        Ok(Value::Float(2.5))
+    );
+    assert_eq!(call("floor", &[Value::Int(-7)]), Ok(Value::Int(-7)));
+    assert_eq!(call("floor", &[Value::Float(-2.1)]), Ok(Value::Float(-3.0)));
+    assert!(call("floor", &[Value::Float(f64::INFINITY)]).is_err());
+}
+
+#[test]
 fn isbn10_converts_to_bookland_isbn13_and_validates_check_digit() {
     assert_eq!(
         call("isbn10_to_isbn13", &[Value::String("0-7645-4964-2".into())]),

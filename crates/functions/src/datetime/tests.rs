@@ -87,6 +87,54 @@ fn parses_time_with_fraction_and_gmt_offset() {
 }
 
 #[test]
+fn formats_iso_values_with_the_supported_picture_grammar() {
+    assert_eq!(
+        format_date(&[text("2015-12-01+01:00"), text("[D01] [MNn,3-3] [Y] [Z]"),]).unwrap(),
+        text("01 Dec 2015 +01:00")
+    );
+    assert_eq!(
+        format_datetime(&[
+            text("2010-12-01T15:02:39.25+01:00"),
+            text("[D].[MNn].[Y,2-2] [h]:[m01]:[s01].[f] [P] [z]"),
+        ])
+        .unwrap(),
+        text("1.December.10 3:02:39.25 PM GMT+01:00")
+    );
+    assert_eq!(
+        format_time(&[text("00:09:08Z"), text("[H01]:[m01]:[s01] [P] [Z]")]).unwrap(),
+        text("00:09:08 AM Z")
+    );
+    assert_eq!(
+        format_date(&[
+            text("2004-11-10"),
+            text("[d,3-3] [Y]"),
+            Value::Null,
+            Value::Null,
+            Value::Null,
+        ])
+        .unwrap(),
+        text("315 2004")
+    );
+}
+
+#[test]
+fn formatters_reject_invalid_values_pictures_and_nondefault_locale_arguments() {
+    assert!(format_date(&[text("2023-02-29"), text("[Y]-[M]-[D]")]).is_err());
+    assert!(format_time(&[text("24:00:00"), text("[H]:[m]:[s]")]).is_err());
+    assert!(format_datetime(&[text("2024-01-01"), text("[Y]")]).is_err());
+    assert!(
+        format_date(&[
+            text("2024-01-01"),
+            text("[Y]"),
+            text("fr"),
+            Value::Null,
+            Value::Null,
+        ])
+        .is_err()
+    );
+}
+
+#[test]
 fn parse_time_uses_atomic_numeric_lexical_forms() {
     assert_eq!(
         parse_time(&[Value::Float(953.0), text("[H,1-1][m,2-2]"),]).unwrap(),

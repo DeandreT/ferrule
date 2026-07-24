@@ -165,6 +165,44 @@ fn scalar_function_project() -> Project {
         ],
     );
 
+    let effective_boolean = graph.call_values("boolean", vec![Value::String("false".into())]);
+    let positive = graph.call_values("positive", vec![Value::String("2.5".into())]);
+    let floor = graph.call_values("floor", vec![Value::Float(-2.1)]);
+    let formatted_date = graph.call_values(
+        "format_date",
+        vec![
+            Value::String("2004-11-10+01:00".into()),
+            Value::String("[D01] [MNn,3-3] [Y] [Z]".into()),
+        ],
+    );
+    let formatted_datetime = graph.call_values(
+        "format_datetime",
+        vec![
+            Value::String("2010-12-01T15:02:39.25+01:00".into()),
+            Value::String("[MN] [D01], [Y] [h01]:[m01]:[s01] [Pn] [z]".into()),
+        ],
+    );
+    let formatted_time = graph.call_values(
+        "format_time",
+        vec![
+            Value::String("09:53:00.125Z".into()),
+            Value::String("[H01]:[m01]:[s01].[f]Z".into()),
+        ],
+    );
+    add_group(
+        &mut target,
+        &mut scopes,
+        "InteropScalar",
+        vec![
+            ("Boolean", ScalarType::Bool, effective_boolean),
+            ("Positive", ScalarType::Float, positive),
+            ("Floor", ScalarType::Float, floor),
+            ("Date", ScalarType::String, formatted_date),
+            ("Datetime", ScalarType::String, formatted_datetime),
+            ("Time", ScalarType::String, formatted_time),
+        ],
+    );
+
     let normalized = graph.call_values(
         "normalize_space",
         vec![Value::String(
@@ -549,6 +587,20 @@ fn expected() -> Instance {
                     "ExactInteger",
                     Value::String("-9,223,372,036,854,775,808".into()),
                 ),
+            ]),
+        ),
+        (
+            "InteropScalar".into(),
+            values(vec![
+                ("Boolean", Value::Bool(true)),
+                ("Positive", Value::Float(2.5)),
+                ("Floor", Value::Float(-3.0)),
+                ("Date", Value::String("10 Nov 2004 +01:00".into())),
+                (
+                    "Datetime",
+                    Value::String("DECEMBER 01, 2010 03:02:39 pm GMT+01:00".into()),
+                ),
+                ("Time", Value::String("09:53:00.125Z".into())),
             ]),
         ),
         (

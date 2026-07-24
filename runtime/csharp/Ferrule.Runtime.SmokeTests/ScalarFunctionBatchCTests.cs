@@ -26,6 +26,24 @@ internal static partial class Program
 
     private static void NumericConversionFunctions()
     {
+        CallEquals(Bool(false), "boolean", FerruleValue.Null);
+        CallEquals(Bool(false), "boolean", FerruleValue.XmlNil);
+        CallEquals(Bool(false), "boolean", FerruleValue.FromDouble(double.NaN));
+        CallEquals(Bool(false), "boolean", FerruleValue.FromDouble(-0.0));
+        CallEquals(Bool(true), "boolean", FerruleValue.FromInt64(-1));
+        CallEquals(Bool(true), "boolean", Text("false"));
+        CallEquals(FerruleValue.FromInt64(-7), "positive", FerruleValue.FromInt64(-7));
+        CallEquals(FerruleValue.FromDouble(2.5), "positive", Text("2.5"));
+        CallEquals(FerruleValue.FromInt64(-7), "floor", FerruleValue.FromInt64(-7));
+        CallEquals(FerruleValue.FromDouble(-3.0), "floor", FerruleValue.FromDouble(-2.1));
+
+        AssertFunctionArity("boolean", 1, Array.Empty<FerruleValue>());
+        AssertFunctionType("positive", Bool(true));
+        AssertInvalidArgument(
+            "floor",
+            "requires a finite numeric value",
+            FerruleValue.FromDouble(double.PositiveInfinity));
+
         foreach (var value in new[]
         {
             FerruleValue.FromInt64(long.MinValue),
