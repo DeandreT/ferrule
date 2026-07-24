@@ -942,6 +942,14 @@ pub enum TargetConstruction {
         files: String,
         name: String,
     },
+    AdjacencyTree {
+        collection: Vec<String>,
+        key: Vec<String>,
+        parent: Vec<String>,
+        target_key: String,
+        target_children: String,
+        root: Option<NodeId>,
+    },
 }
 
 /// One direct-child rename retained in a mixed-content target stream.

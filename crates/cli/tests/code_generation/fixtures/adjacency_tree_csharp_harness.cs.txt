@@ -1,0 +1,91 @@
+using Ferrule.Generated;
+using Ferrule.Runtime;
+
+var output = (FerruleGroup)GeneratedMapping.Execute(Source(
+    FerruleValue.Null,
+    ("Root", null),
+    ("Beta", "Root"),
+    ("Alpha", "Root"),
+    ("Leaf", "Beta"),
+    ("Unreachable", "Unreachable")));
+Assert(Name(output) == "Root");
+var children = Children(output);
+Assert(children.Items.Count == 2);
+Assert(Name((FerruleGroup)children.Items[0]) == "Beta");
+Assert(Name((FerruleGroup)children.Items[1]) == "Alpha");
+var grandchildren = Children((FerruleGroup)children.Items[0]);
+Assert(grandchildren.Items.Count == 1);
+Assert(Name((FerruleGroup)grandchildren.Items[0]) == "Leaf");
+
+var cycle = Error(() => GeneratedMapping.Execute(Source(
+    FerruleValue.FromString("Loop"),
+    ("Loop", "Loop"))));
+Assert(cycle.Error == FerruleRuntimeError.AdjacencyCycle);
+Assert(cycle.Detail == "Loop");
+
+var duplicate = Error(() => GeneratedMapping.Execute(Source(
+    FerruleValue.FromInt64(1),
+    ("Duplicate", null),
+    ("Duplicate", null))));
+Assert(duplicate.Error == FerruleRuntimeError.DuplicateAdjacencyKey);
+Assert(duplicate.Detail == "Duplicate");
+
+var invalidRoot = Error(() => GeneratedMapping.Execute(Source(
+    FerruleValue.FromInt64(1),
+    ("Root", null))));
+Assert(invalidRoot.Error == FerruleRuntimeError.InvalidAdjacencyRoot);
+Assert(invalidRoot.FoundKind == FerruleValueKind.Int64);
+
+static FerruleGroup Source(
+    FerruleValue root,
+    params (string Key, string? Parent)[] rows) =>
+    new(new FerruleField[]
+    {
+        new("Root", new FerruleScalar(root)),
+        new(
+            "Rows",
+            new FerruleRepeated(rows.Select(row =>
+                (FerruleInstance)new FerruleGroup(new FerruleField[]
+                {
+                    new("Key", new FerruleScalar(FerruleValue.FromString(row.Key))),
+                    new(
+                        "Parent",
+                        new FerruleScalar(row.Parent is null
+                            ? FerruleValue.Null
+                            : FerruleValue.FromString(row.Parent))),
+                })))),
+    });
+
+static string Name(FerruleGroup group)
+{
+    var value = group.Fields.Single(field => field.Name == "name").Value;
+    return ((FerruleScalar)value).Value.StringValue;
+}
+
+static FerruleRepeated Children(FerruleGroup group)
+{
+    var value = group.Fields.Single(field => field.Name == "children").Value;
+    return (FerruleRepeated)value;
+}
+
+static FerruleRuntimeException Error(Action action)
+{
+    try
+    {
+        action();
+    }
+    catch (FerruleRuntimeException exception)
+    {
+        return exception;
+    }
+
+    throw new InvalidOperationException("expected adjacency tree to fail");
+}
+
+static void Assert(bool condition)
+{
+    if (!condition)
+    {
+        throw new InvalidOperationException("adjacency-tree output differs from the engine");
+    }
+}

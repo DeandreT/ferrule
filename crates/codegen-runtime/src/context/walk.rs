@@ -5,6 +5,33 @@ use super::{
 };
 
 impl<'a> ScopeContext<'a> {
+    pub(crate) fn repeated_source(&self, path: &[&str]) -> Option<&'a [Instance]> {
+        for frame in self.frames.iter().rev() {
+            let mut current = frame.instance;
+            let mut found = true;
+            for segment in path {
+                let Some(next) = current.field(segment) else {
+                    found = false;
+                    break;
+                };
+                current = next;
+            }
+            if found && let Some(items) = current.as_repeated() {
+                return Some(items);
+            }
+        }
+        if let Some((name, rest)) = path.split_first()
+            && let Some(input) = self.named_input(name)
+        {
+            let mut current = input;
+            for segment in rest {
+                current = current.field(segment)?;
+            }
+            return current.as_repeated();
+        }
+        None
+    }
+
     /// Produces one child context for every item selected by `path`.
     ///
     /// The path is evaluated from the innermost frame that owns its first

@@ -8,6 +8,7 @@ use crate::{
     Expression, IterationOutput, IterationSource, Program, TargetConstruction, TargetScope,
 };
 
+mod adjacency_tree;
 mod collection_find;
 mod context;
 mod failures;
@@ -358,6 +359,39 @@ pub enum ProgramValidationError {
         target_path: Vec<String>,
     },
     PathHierarchyConstructionHasIteration {
+        target_path: Vec<String>,
+    },
+    InvalidAdjacencyTreeConstruction {
+        target_path: Vec<String>,
+    },
+    InvalidAdjacencyTreeCollection {
+        target_path: Vec<String>,
+        collection: Vec<String>,
+    },
+    InvalidAdjacencyTreeField {
+        target_path: Vec<String>,
+        role: &'static str,
+        path: Vec<String>,
+    },
+    AdjacencyTreeConstructionRequiresGroupTarget {
+        target_path: Vec<String>,
+    },
+    InvalidAdjacencyTreeTargetKey {
+        target_path: Vec<String>,
+        field: String,
+    },
+    InvalidAdjacencyTreeTargetChildren {
+        target_path: Vec<String>,
+        field: String,
+    },
+    MissingAdjacencyTreeRoot {
+        target_path: Vec<String>,
+        expression: NodeId,
+    },
+    AdjacencyTreeConstructionHasContent {
+        target_path: Vec<String>,
+    },
+    AdjacencyTreeConstructionHasIteration {
         target_path: Vec<String>,
     },
     CopyConstructionRequiresGroupSource {
@@ -1106,6 +1140,50 @@ fn validate_scope(
                 target_path,
             )?;
         }
+        TargetConstruction::AdjacencyTree {
+            collection,
+            key,
+            parent,
+            target_key,
+            target_children,
+            root,
+        } => {
+            adjacency_tree::validate(
+                scope,
+                adjacency_tree::Construction {
+                    collection,
+                    key,
+                    parent,
+                    target_key,
+                    target_children,
+                },
+                schemas,
+                target_node,
+                target_path,
+            )?;
+            if let Some(root) = root {
+                if !expressions.contains_key(root) {
+                    return Err(ProgramValidationError::MissingAdjacencyTreeRoot {
+                        target_path: target_path.clone(),
+                        expression: *root,
+                    });
+                }
+                validate_expression_context(
+                    *root,
+                    expressions,
+                    ScopeSchemas {
+                        current_source: scope_source,
+                        active_source,
+                        ..schemas
+                    },
+                    sequence_items,
+                    &item_context,
+                    &scope_joins,
+                    item_root_context,
+                    &sequence_owner,
+                )?;
+            }
+        }
         TargetConstruction::CopyCurrentSource => {
             let Some(scope_source) = scope_source
                 .filter(|source| matches!(source.node().kind, SchemaKind::Group { .. }))
@@ -1810,6 +1888,63 @@ impl fmt::Display for ProgramValidationError {
             Self::PathHierarchyConstructionHasIteration { target_path } => write!(
                 formatter,
                 "target scope {} path-hierarchy construction cannot use scope iteration",
+                display_path(target_path)
+            ),
+            Self::InvalidAdjacencyTreeConstruction { target_path } => write!(
+                formatter,
+                "target scope {} adjacency-tree construction requires distinct non-empty collection/key/parent paths and target key/child fields",
+                display_path(target_path)
+            ),
+            Self::InvalidAdjacencyTreeCollection {
+                target_path,
+                collection,
+            } => write!(
+                formatter,
+                "target scope {} adjacency-tree collection {} must be a repeating group",
+                display_path(target_path),
+                display_path(collection)
+            ),
+            Self::InvalidAdjacencyTreeField {
+                target_path,
+                role,
+                path,
+            } => write!(
+                formatter,
+                "target scope {} adjacency-tree {role} field {} must be a non-repeating string",
+                display_path(target_path),
+                display_path(path)
+            ),
+            Self::AdjacencyTreeConstructionRequiresGroupTarget { target_path } => write!(
+                formatter,
+                "target scope {} adjacency-tree construction requires a group target",
+                display_path(target_path)
+            ),
+            Self::InvalidAdjacencyTreeTargetKey { target_path, field } => write!(
+                formatter,
+                "target scope {} adjacency-tree target key {field:?} must be a non-repeating string",
+                display_path(target_path)
+            ),
+            Self::InvalidAdjacencyTreeTargetChildren { target_path, field } => write!(
+                formatter,
+                "target scope {} adjacency-tree child field {field:?} must be a repeating recursive reference to the target group",
+                display_path(target_path)
+            ),
+            Self::MissingAdjacencyTreeRoot {
+                target_path,
+                expression,
+            } => write!(
+                formatter,
+                "target scope {} adjacency-tree root references missing expression {expression}",
+                display_path(target_path)
+            ),
+            Self::AdjacencyTreeConstructionHasContent { target_path } => write!(
+                formatter,
+                "target scope {} adjacency-tree construction cannot contain bindings or child scopes",
+                display_path(target_path)
+            ),
+            Self::AdjacencyTreeConstructionHasIteration { target_path } => write!(
+                formatter,
+                "target scope {} adjacency-tree construction cannot use scope iteration",
                 display_path(target_path)
             ),
             Self::CopyConstructionRequiresGroupSource { target_path } => write!(
