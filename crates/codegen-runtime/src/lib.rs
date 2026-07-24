@@ -12,6 +12,7 @@ mod failure;
 mod generated_sequence;
 mod iteration;
 mod json;
+mod path_hierarchy;
 mod recursive_filter;
 mod runtime_value;
 mod user_function;
@@ -41,6 +42,7 @@ pub use json::{
     JsonBoundaryError, MAX_EMBEDDED_JSON_SCHEMA_BYTES, MAX_JSON_DOCUMENT_BYTES, parse_json,
     serialize_json,
 };
+pub use path_hierarchy::{MAX_PATH_HIERARCHY_DEPTH, MAX_PATH_HIERARCHY_ITEMS, path_hierarchy};
 pub use recursive_filter::{RecursiveFilterPredicate, recursive_filter};
 pub use runtime_value::{
     ExecutionContext, MAX_RUNTIME_PARAMETER_NAME_BYTES, MAX_RUNTIME_PARAMETER_STRING_BYTES,
@@ -77,6 +79,18 @@ pub enum RuntimeError {
     RecursiveFilterRequiresCollection {
         field: String,
         found: &'static str,
+    },
+    PathHierarchyValueType {
+        found: &'static str,
+    },
+    PathHierarchyDepth {
+        limit: usize,
+    },
+    PathHierarchyTooLarge {
+        max: usize,
+    },
+    PathHierarchyRootCount {
+        count: usize,
     },
     GeneratedSequenceTooLarge {
         requested: u128,
@@ -183,6 +197,22 @@ impl fmt::Display for RuntimeError {
             Self::RecursiveFilterRequiresCollection { field, found } => write!(
                 formatter,
                 "recursive filter field {field:?} must be a repeated collection, got {found}"
+            ),
+            Self::PathHierarchyValueType { found } => write!(
+                formatter,
+                "path-hierarchy input values must be strings, got {found}"
+            ),
+            Self::PathHierarchyDepth { limit } => write!(
+                formatter,
+                "path hierarchy exceeds the {limit}-directory depth limit"
+            ),
+            Self::PathHierarchyTooLarge { max } => write!(
+                formatter,
+                "path hierarchy materializes more than {max} directory and file items"
+            ),
+            Self::PathHierarchyRootCount { count } => write!(
+                formatter,
+                "path hierarchy requires exactly one root directory, found {count}"
             ),
             Self::GeneratedSequenceTooLarge { requested, max } => write!(
                 formatter,
@@ -305,6 +335,10 @@ impl std::error::Error for RuntimeError {
             | Self::RecursiveFilterDepth { .. }
             | Self::RecursiveFilterRequiresGroup { .. }
             | Self::RecursiveFilterRequiresCollection { .. }
+            | Self::PathHierarchyValueType { .. }
+            | Self::PathHierarchyDepth { .. }
+            | Self::PathHierarchyTooLarge { .. }
+            | Self::PathHierarchyRootCount { .. }
             | Self::GeneratedSequenceTooLarge { .. }
             | Self::RecursiveSequenceDepth { .. }
             | Self::RecursiveSequenceTooLarge { .. }

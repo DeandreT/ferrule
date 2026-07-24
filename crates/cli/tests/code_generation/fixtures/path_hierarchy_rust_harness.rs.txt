@@ -1,0 +1,48 @@
+use codegen_runtime::{Instance, RuntimeError, Value, field, group, repeated, scalar};
+use ferrule_generated_mapping::execute;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = paths([
+        Value::String("root/b/b.txt".into()),
+        Value::String("root/a.txt".into()),
+        Value::String("root/b/b.txt".into()),
+        Value::Null,
+        Value::String("top-level.txt".into()),
+    ]);
+    assert_eq!(execute(&source)?, expected());
+
+    assert_eq!(
+        execute(&paths([
+            Value::String("one/a.txt".into()),
+            Value::String("two/b.txt".into()),
+        ])),
+        Err(RuntimeError::PathHierarchyRootCount { count: 2 }),
+    );
+    Ok(())
+}
+
+fn paths(values: impl IntoIterator<Item = Value>) -> Instance {
+    group([field(
+        "File",
+        repeated(values.into_iter().map(scalar).collect::<Vec<_>>()),
+    )])
+}
+
+fn named(name: &str) -> Instance {
+    group([field("name", scalar(Value::String(name.into())))])
+}
+
+fn expected() -> Instance {
+    group([
+        field("file", repeated(vec![named("a.txt")])),
+        field(
+            "directory",
+            repeated(vec![group([
+                field("file", repeated(vec![named("b.txt"), named("b.txt")])),
+                field("directory", repeated(Vec::new())),
+                field("name", scalar(Value::String("b".into()))),
+            ])]),
+        ),
+        field("name", scalar(Value::String("root".into()))),
+    ])
+}

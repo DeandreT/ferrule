@@ -935,6 +935,13 @@ pub enum TargetConstruction {
         items: String,
         predicate: NodeId,
     },
+    PathHierarchy {
+        collection: Vec<String>,
+        separator: String,
+        directories: String,
+        files: String,
+        name: String,
+    },
 }
 
 /// One direct-child rename retained in a mixed-content target stream.

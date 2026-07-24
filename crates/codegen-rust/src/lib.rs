@@ -151,6 +151,7 @@ fn render_source(program: &Program) -> Result<String, EmitError> {
              group, item_count, repeated,\n\
              recursive_collect, recursive_filter, recursive_sequence_parameter, require_bool, scalar,\n\
              parse_json, serialize_json, serialize_xml, sort_candidates, tokenize, tokenize_by_length, tokenize_regex, value_map,\n\
+             path_hierarchy,\n\
              preserve_xml_mixed_content, xml_mixed_content, XmlMixedContentElement,\n\
              XmlMixedContentReplacement,\n\
          };\n\n",
@@ -1479,6 +1480,24 @@ fn render_scope_item(
             "{indent}let output = recursive_filter(\n{indent}    {context},\n{indent}    {},\n{indent}    {},\n{indent}    {predicate},\n{indent}    expression_{predicate},\n{indent})?;\n",
             rust_string(children),
             rust_string(items),
+        ));
+        return output;
+    }
+    if let TargetConstruction::PathHierarchy {
+        collection,
+        separator,
+        directories,
+        files,
+        name,
+    } = &scope.construction
+    {
+        let collection = render_string_path(collection);
+        output.push_str(&format!(
+            "{indent}let output = path_hierarchy(\n{indent}    {context},\n{indent}    &[{collection}],\n{indent}    {},\n{indent}    {},\n{indent}    {},\n{indent}    {},\n{indent})?;\n",
+            rust_string(separator),
+            rust_string(directories),
+            rust_string(files),
+            rust_string(name),
         ));
         return output;
     }
