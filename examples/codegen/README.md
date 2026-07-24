@@ -11,9 +11,10 @@ From the repository root, generate both libraries and run both hosts:
 ```
 
 The script writes generated artifacts under `examples/codegen/generated/`,
-which is intentionally ignored. Each host constructs the same typed source
-instance, calls its generated library, validates the result, and prints the
-three invoice rows.
+which is intentionally ignored. Each host passes the same JSON document to its
+generated library, validates the schema-shaped JSON result, and prints the
+three invoice rows. The lower-level typed instance APIs remain available when
+a host needs direct tree access.
 
 - [`project.json`](project.json) is the portable mapping project.
 - [`input.json`](input.json) and [`expected-output.json`](expected-output.json)
@@ -21,5 +22,6 @@ three invoice rows.
 - [`rust/`](rust/) demonstrates the generated Rust API.
 - [`csharp/`](csharp/) demonstrates the generated C# API.
 
-The generated libraries return ferrule instance trees. Format adapters and file
-I/O remain the host application's responsibility.
+The generated libraries expose both typed instance-tree APIs and bounded JSON
+document APIs. Other format adapters and file I/O remain the host
+application's responsibility.

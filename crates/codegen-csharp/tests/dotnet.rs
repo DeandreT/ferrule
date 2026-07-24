@@ -123,7 +123,28 @@ fn fixture() -> Program {
         ],
         target: SchemaNode::group(
             "target schema",
-            vec![SchemaNode::group("Nested", Vec::new()).repeating()],
+            vec![
+                SchemaNode::scalar("RootInt", ScalarType::Int),
+                SchemaNode::scalar("Exists", ScalarType::Bool),
+                SchemaNode::scalar("Selected", ScalarType::String),
+                SchemaNode::group(
+                    "Nested",
+                    vec![
+                        SchemaNode::scalar("Copied", ScalarType::String),
+                        SchemaNode::scalar("Lines", ScalarType::String).repeating(),
+                        SchemaNode::scalar("Middle", ScalarType::Int),
+                        SchemaNode::scalar("ExactFloat", ScalarType::Float),
+                        SchemaNode::scalar("LazyValue", ScalarType::Int),
+                        SchemaNode::scalar("Compared", ScalarType::Bool),
+                        SchemaNode::scalar("Customer", ScalarType::String),
+                        SchemaNode::scalar("Sku", ScalarType::String),
+                        SchemaNode::scalar("OrderCode", ScalarType::String),
+                        SchemaNode::scalar("CatalogName", ScalarType::String),
+                        SchemaNode::scalar("Prefix", ScalarType::String),
+                    ],
+                )
+                .repeating(),
+            ],
         )
         .repeating(),
         expressions: vec![
@@ -692,7 +713,8 @@ fn write_harness(root: &Path) {
     .expect("harness project is written");
     std::fs::write(
         directory.join("Program.cs"),
-        r#"using Ferrule.Generated;
+        r#"using System.Text.Json;
+using Ferrule.Generated;
 using Ferrule.Runtime;
 
 var source = Source(FerruleValue.FromBoolean(true), true);
@@ -748,6 +770,80 @@ var executionContext = new FerruleExecutionContext("mapping.ferrule");
 var contextualOutputs = GeneratedMapping.ExecuteOutputsWithSources(source, extraSources, executionContext);
 Assert(contextualOutputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
 Assert(((FerruleRepeated)GeneratedMapping.ExecuteWithSources(source, extraSources, executionContext)).Items.Count == 1);
+
+const string sourceJson = """
+{
+  "Account": { "Name": "Ada" },
+  "Condition": true,
+  "ExtraCondition": true,
+  "GeneratedFailure": false,
+  "GeneratedPattern": ",",
+  "Orders": [
+    {
+      "Customer": "Ada",
+      "OrderCode": "A",
+      "Blocked": false,
+      "Items": [{ "Sku": "A-1" }, { "Sku": "A-2" }]
+    },
+    {
+      "Customer": "Lin",
+      "OrderCode": "B",
+      "Blocked": false,
+      "Items": [{ "Sku": "B-1" }]
+    }
+  ],
+  "settings": { "Prefix": "primary" }
+}
+""";
+var jsonInputs = new NamedJsonInput[]
+{
+    new("settings", """{"Prefix":"extra"}"""),
+    new(
+        "catalog",
+        """
+        {
+          "Customers": [
+            { "Code": "Ada", "DisplayName": "Ada Lovelace", "Blocked": false },
+            { "Code": "Lin", "DisplayName": "Lin Clark", "Blocked": false }
+          ]
+        }
+        """),
+};
+var jsonOutputs = GeneratedMapping.ExecuteJsonOutputsWithSources(
+    sourceJson,
+    jsonInputs,
+    executionContext);
+using (var primaryJson = JsonDocument.Parse(jsonOutputs.Primary))
+{
+    Assert(primaryJson.RootElement.ValueKind == JsonValueKind.Array);
+    Assert(primaryJson.RootElement.GetArrayLength() == 1);
+    var generated = primaryJson.RootElement[0];
+    Assert(generated.GetProperty("RootInt").GetInt64() == 7);
+    Assert(generated.GetProperty("Nested").GetArrayLength() == 3);
+    Assert(generated.GetProperty("Nested")[0].GetProperty("CatalogName").GetString() == "Ada Lovelace");
+}
+Assert(jsonOutputs.Extras.Select(output => output.Name).SequenceEqual(new[] { "audit", "archive" }));
+using (var auditJson = JsonDocument.Parse(jsonOutputs.Extras[0].Document))
+{
+    Assert(auditJson.RootElement.GetProperty("AccountName").GetString() == "Ada");
+    Assert(auditJson.RootElement.GetProperty("FirstCatalogName").GetString() == "Ada Lovelace");
+}
+Error(
+    FerruleRuntimeError.JsonBoundary,
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        """{"Condition":"true"}""",
+        jsonInputs));
+NamedSourceError(
+    FerruleRuntimeError.DuplicateNamedSource,
+    "catalog",
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        "{",
+        new NamedJsonInput[]
+        {
+            new("catalog", "{"),
+            new("catalog", "{"),
+            jsonInputs[0],
+        }));
 
 var fallback = (FerruleRepeated)GeneratedMapping.ExecuteWithSources(
     Source(FerruleValue.FromBoolean(true), true, false),

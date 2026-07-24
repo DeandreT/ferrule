@@ -282,6 +282,10 @@ fn emits_exact_named_input_contract_in_declaration_order() {
     assert!(source.contains("pub fn execute_with_sources_and_context("));
     assert!(source.contains("pub fn execute_outputs_with_sources("));
     assert!(source.contains("pub fn execute_outputs_with_sources_and_context("));
+    assert!(source.contains("pub struct NamedJsonInput<'a>"));
+    assert!(source.contains("pub struct JsonExecutionOutputs"));
+    assert!(source.contains("pub fn execute_json_outputs_with_sources("));
+    assert!(source.contains("const SOURCE_JSON_SCHEMA: &str"));
     assert!(source.contains("execute_outputs_with_sources(source, &[])"));
     assert!(source.contains("execute_outputs_with_sources_and_context(source, &[], execution)"));
     assert!(source.contains("ScopeContext::with_named_inputs(source, &inputs)"));
@@ -312,7 +316,7 @@ use codegen_runtime::{
     ExecutionContext, Instance, RuntimeError, SourcePathError, Value, field, group, repeated,
     scalar,
 };
-use named_input_map::NamedInput;
+use named_input_map::{NamedInput, NamedJsonInput};
 
 fn main() {
     let source = primary(true);
@@ -330,6 +334,20 @@ fn main() {
         NamedInput { name: "Tree", instance: &tree },
         NamedInput { name: "Settings", instance: &settings },
         NamedInput { name: "Catalog", instance: &catalog },
+    ];
+    let json_inputs = [
+        NamedJsonInput {
+            name: "Tree",
+            document: "{\"Name\":\"root\",\"Files\":[{\"Name\":\"top.txt\"}],\"Children\":[]}",
+        },
+        NamedJsonInput {
+            name: "Settings",
+            document: "{\"Label\":\"named\",\"Other\":\"fallback\"}",
+        },
+        NamedJsonInput {
+            name: "Catalog",
+            document: "[{\"Key\":1,\"Name\":\"one\"},{\"Key\":2,\"Name\":\"two\"}]",
+        },
     ];
 
     let expected = group([
@@ -355,6 +373,71 @@ fn main() {
     let outputs = named_input_map::execute_outputs_with_sources(&source, &inputs).unwrap();
     assert_eq!(outputs.primary, expected);
     assert!(outputs.extras.is_empty());
+    let json_outputs = named_input_map::execute_json_outputs_with_sources(
+        "{\"Customer\":2,\"Required\":\"present\",\"Settings\":{\"Label\":\"primary\"}}",
+        &json_inputs,
+    )
+    .unwrap();
+    assert_eq!(
+        json_outputs.primary,
+        concat!(
+            "{\n",
+            "  \"LookupName\": \"two\",\n",
+            "  \"PrimarySetting\": \"primary\",\n",
+            "  \"FallbackSetting\": \"fallback\",\n",
+            "  \"CatalogCount\": 2,\n",
+            "  \"Required\": \"present\",\n",
+            "  \"Rows\": [\n",
+            "    {\n",
+            "      \"Key\": 1,\n",
+            "      \"Name\": \"one\",\n",
+            "      \"Position\": 1\n",
+            "    },\n",
+            "    {\n",
+            "      \"Key\": 2,\n",
+            "      \"Name\": \"two\",\n",
+            "      \"Position\": 2\n",
+            "    }\n",
+            "  ],\n",
+            "  \"Paths\": [\n",
+            "    \"/root/top.txt\"\n",
+            "  ]\n",
+            "}\n",
+        ),
+    );
+    assert!(json_outputs.extras.is_empty());
+    assert!(matches!(
+        named_input_map::execute_json_with_sources(
+            "{}",
+            &[NamedJsonInput {
+                name: "Unknown",
+                document: "{}",
+            }],
+        ),
+        Err(codegen_runtime::JsonBoundaryError::Execution(
+            RuntimeError::UnexpectedNamedSource { name }
+        )) if name == "Unknown"
+    ));
+    assert!(matches!(
+        named_input_map::execute_json_with_sources(
+            "{",
+            &[
+                NamedJsonInput {
+                    name: "Catalog",
+                    document: "{",
+                },
+                NamedJsonInput {
+                    name: "Catalog",
+                    document: "{",
+                },
+                json_inputs[1],
+                json_inputs[0],
+            ],
+        ),
+        Err(codegen_runtime::JsonBoundaryError::Execution(
+            RuntimeError::DuplicateNamedSource { name: "Catalog" }
+        ))
+    ));
 
     let execution = ExecutionContext::new(Path::new("mapping.ferrule.json"));
     assert_eq!(

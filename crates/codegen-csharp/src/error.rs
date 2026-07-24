@@ -15,7 +15,7 @@ impl fmt::Display for EmitError {
         match self {
             Self::ProgramValidation(error) => error.fmt(formatter),
             Self::SchemaSerialization(message) => {
-                write!(formatter, "cannot serialize embedded XML schema: {message}")
+                write!(formatter, "cannot serialize embedded schema: {message}")
             }
             Self::ArtifactPath(error) => error.fmt(formatter),
             Self::ArtifactSet(error) => error.fmt(formatter),

@@ -1,6 +1,39 @@
 using Ferrule.Generated;
 using Ferrule.Runtime;
 
+const string ExpectedPrimaryJson = """
+{
+  "CatalogCount": 2,
+  "Result": [
+    {
+      "Sku": "A",
+      "CatalogLabel": "Alpha"
+    },
+    {
+      "Sku": "missing"
+    },
+    {
+      "Sku": "B",
+      "CatalogLabel": "Beta"
+    }
+  ],
+  "ReferenceLabel": [
+    {
+      "Text": "first"
+    },
+    {
+      "Text": "second"
+    }
+  ]
+}
+""" + "\n";
+
+const string ExpectedAuditJson = """
+{
+  "FirstCatalogLabel": "Alpha"
+}
+""" + "\n";
+
 var primary = PrimarySource();
 var catalog = CatalogSource();
 var labels = LabelsSource();
@@ -21,6 +54,23 @@ AssertInstance(
     GeneratedMapping.ExecuteWithSources(primary, reversed),
     ExpectedPrimary(),
     "source-aware primary");
+
+var jsonOutput = GeneratedMapping.ExecuteJsonOutputsWithSources(
+    """{"Order":[{"Sku":"A"},{"Sku":"missing"},{"Sku":"B"}]}""",
+    new NamedJsonInput[]
+    {
+        new("labels", """{"LabelRow":[{"Text":"first"},{"Text":"second"}]}"""),
+        new(
+            "catalog",
+            """{"CatalogRow":[{"Sku":"A","Label":"Alpha"},{"Sku":"B","Label":"Beta"}]}"""),
+    });
+if (jsonOutput.Primary != ExpectedPrimaryJson ||
+    jsonOutput.Extras.Count != 1 ||
+    jsonOutput.Extras[0].Name != "audit" ||
+    jsonOutput.Extras[0].Document != ExpectedAuditJson)
+{
+    throw new InvalidOperationException("Generated JSON outputs differ from the engine.");
+}
 
 AssertError(
     FerruleRuntimeError.MissingNamedSource,

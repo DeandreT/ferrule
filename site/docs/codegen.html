@@ -71,6 +71,52 @@
           borrow a validated <code>RuntimeParameters</code> set.
         </p>
 
+        <h2>JSON application boundary</h2>
+        <p>
+          Both generated libraries can accept and return ordinary JSON text.
+          The mapping embeds its source, named-source, primary-target, and
+          named-target schemas, so a host does not need to manually construct
+          ferrule instance trees for a JSON workflow.
+        </p>
+        <div class="quick-grid">
+          <section class="tile">
+            <h3>Rust</h3>
+            <pre><code>let outputs =
+  execute_json_outputs_with_sources(
+    source_json,
+    &amp;[NamedJsonInput {
+      name: "catalog",
+      document: catalog_json,
+    }],
+  )?;</code></pre>
+          </section>
+          <section class="tile">
+            <h3>C#</h3>
+            <pre><code>var outputs =
+  GeneratedMapping
+    .ExecuteJsonOutputsWithSources(
+      sourceJson,
+      new[] {
+        new NamedJsonInput(
+          "catalog", catalogJson)
+      });</code></pre>
+          </section>
+        </div>
+        <p>
+          Input names remain exact and duplicate-checked, while named outputs
+          retain project order. Context-aware overloads accept the same mapping
+          paths, stable date-time, and typed runtime parameters as the
+          instance-tree APIs.
+        </p>
+        <div class="callout">
+          <strong>Bounded documents.</strong>
+          Each JSON input and output is capped at 64 MiB and each trusted
+          embedded schema at 1 MiB. Invalid shapes, numeric conversions, output
+          serialization, and size excess produce typed boundary failures. These
+          methods are deliberately JSON-only; stored format paths and options
+          remain host metadata.
+        </div>
+
         <h2 id="examples">Run the examples</h2>
         <p>
           The repository includes one mapping project with matching Rust and
@@ -83,9 +129,8 @@
           <a href="https://github.com/DeandreT/ferrule/blob/main/examples/codegen/project.json"><code>examples/codegen/project.json</code></a>,
           writes disposable artifacts below <code>examples/codegen/generated/</code>,
           and then executes each host against the same input. This keeps the
-          example focused on the application boundary: construct an
-          <code>Instance</code>, call the generated mapping, and handle its
-          typed result.
+          example focused on the application boundary: pass JSON text, call
+          the generated mapping, and handle its bounded result.
         </p>
         <p>
           The mapping removes zero-value orders, sorts the remaining rows,
@@ -101,8 +146,8 @@
             <h3>Rust host</h3>
             <p>
               A small Cargo application calls
-              <code>ferrule_generated_mapping::execute(&amp;source)</code> and
-              renders the returned target instance.
+              <code>ferrule_generated_mapping::execute_json(source)</code> and
+              validates the returned target document.
             </p>
             <a href="https://github.com/DeandreT/ferrule/tree/main/examples/codegen/rust">Browse the Rust example</a>
           </section>
@@ -110,7 +155,7 @@
             <h3>C# host</h3>
             <p>
               A package-free .NET application calls
-              <code>Ferrule.Generated.GeneratedMapping.Execute(source)</code>
+              <code>Ferrule.Generated.GeneratedMapping.ExecuteJson(source)</code>
               through the generated project reference.
             </p>
             <a href="https://github.com/DeandreT/ferrule/tree/main/examples/codegen/csharp">Browse the C# example</a>
