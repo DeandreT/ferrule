@@ -460,6 +460,7 @@ mod tests {
             outputs: vec![output],
             output_pins: vec![Some(output)],
             input_type: None,
+            input_parameter_name: None,
             input_preview: None,
             constant: None,
             valuemap: None,

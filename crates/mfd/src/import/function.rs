@@ -57,6 +57,8 @@ pub(super) struct FnComponent {
     pub(super) output_pins: Vec<Option<u32>>,
     /// Scalar coercion declared by a transparent kind=6 input parameter.
     pub(super) input_type: Option<ScalarType>,
+    /// Public host parameter name declared by a kind=6 input component.
+    pub(super) input_parameter_name: Option<String>,
     /// Design-time value used by an otherwise unconnected input parameter.
     /// Database query parameters need this before the source is loaded.
     pub(super) input_preview: Option<Value>,
@@ -152,6 +154,20 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
                         .or_else(|| input.attribute("type"))
                 })
                 .map(parse_scalar_type)
+        })
+        .flatten();
+    let input_parameter_name = (library == "core" && kind == 6)
+        .then(|| {
+            data.and_then(|data| {
+                data.descendants()
+                    .find(|node| {
+                        node.has_tag_name("parameter")
+                            && node.attribute("usageKind") == Some("input")
+                    })
+                    .and_then(|parameter| parameter.attribute("name"))
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string)
+            })
         })
         .flatten();
     let input_preview = (library == "core" && kind == 6)
@@ -259,6 +275,7 @@ pub(super) fn read(component: &roxmltree::Node) -> FnComponent {
         outputs,
         output_pins,
         input_type,
+        input_parameter_name,
         input_preview,
         constant,
         valuemap,
