@@ -17,6 +17,11 @@ A ferrule project is plain JSON built from four main concepts:
 4. **Endpoints** identify the primary input and output plus optional named
    sources and targets. Stored paths can be overridden by the host or CLI.
 
+Library hosts execute through `cli::RunOptions`, which combines path overrides,
+bounded typed runtime parameters, and optional tracing. A successful
+`RunOutcome` retains every atomically published file in deterministic
+primary-then-extra target order.
+
 During execution, source contexts form a stack. Field resolution begins at the
 innermost frame and falls outward, which allows parent values to broadcast into
 nested target rows. Repeating source paths can cross several collection levels;
@@ -52,8 +57,8 @@ See [Supported formats](formats.md) for adapter direction and boundaries.
 ### Interfaces and interoperability
 
 - `crates/mfd` - MapForce `.mfd` import and export
-- `crates/cli` - headless validation, execution, schema import, interop, and
-  code generation
+- `crates/cli` - headless validation, execution, host run options and ordered
+  artifact reports, schema import, interop, and code generation
 - `crates/editor-ui` - shared editor presentation and interaction logic
 - `crates/gui` - native egui mapping editor
 - `crates/web-demo` - WebAssembly playground built around the real mapping

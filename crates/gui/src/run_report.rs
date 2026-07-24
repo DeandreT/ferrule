@@ -74,20 +74,11 @@ impl RunReport {
         duration: Duration,
         trace: TraceReport,
     ) -> Self {
-        let mut outputs = if outcome.primary_outputs.is_empty() {
-            vec![RunOutput::new(
-                "Primary".to_string(),
-                outcome.records_written,
-                outcome.output_path.clone(),
-            )]
-        } else {
-            outcome
-                .primary_outputs
-                .iter()
-                .map(RunOutput::from_written)
-                .collect()
-        };
-        outputs.extend(outcome.extra_outputs.iter().map(RunOutput::from_written));
+        let outputs = outcome
+            .artifacts
+            .iter()
+            .map(RunOutput::from_written)
+            .collect();
         Self {
             duration,
             records_written: outcome.records_written,
@@ -580,6 +571,11 @@ mod tests {
             output_path: missing.clone(),
             primary_outputs: Vec::new(),
             extra_outputs: Vec::new(),
+            artifacts: vec![cli::WrittenOutput {
+                name: "Primary".into(),
+                records_written: 2,
+                path: missing,
+            }],
         };
 
         let mut report = RunReport::from_outcome_with_trace(
@@ -611,6 +607,18 @@ mod tests {
                 records_written: 1,
                 path: PathBuf::from("audit.json"),
             }],
+            artifacts: vec![
+                cli::WrittenOutput {
+                    name: "Primary 1".into(),
+                    records_written: 2,
+                    path: PathBuf::from("first.xml"),
+                },
+                cli::WrittenOutput {
+                    name: "Audit".into(),
+                    records_written: 1,
+                    path: PathBuf::from("audit.json"),
+                },
+            ],
         };
 
         let report = RunReport::from_outcome_with_trace(

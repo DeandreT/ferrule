@@ -109,6 +109,14 @@
             <dt><a href="#context">Context</a></dt>
             <dd>The active stack of source frames visible while an expression is evaluated. It also carries iteration positions, join tuples, named inputs, fixed runtime values, and bounded typed host parameters.</dd>
           </div>
+          <div class="glossary-entry" id="runtime-parameter">
+            <dt><a href="#runtime-parameter">Runtime parameter</a></dt>
+            <dd>A bounded named scalar supplied by the execution host rather than read from a source document. Its declaration fixes the expected scalar type; missing and invalid values remain distinct typed failures.</dd>
+          </div>
+          <div class="glossary-entry" id="execution-artifact">
+            <dt><a href="#execution-artifact">Execution artifact</a></dt>
+            <dd>One file atomically published by a successful run. The host report orders primary target files first, followed by additional targets in project order.</dd>
+          </div>
           <div class="glossary-entry" id="document-set">
             <dt><a href="#document-set">Document set</a></dt>
             <dd>An ordered collection of typed documents that retains each member's boundary-relative path. It is used for wildcard and per-document mappings without flattening document identity.</dd>

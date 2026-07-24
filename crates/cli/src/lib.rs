@@ -45,14 +45,51 @@ pub struct RunOutcome {
     /// single-file targets leave this empty.
     pub primary_outputs: Vec<WrittenOutput>,
     pub extra_outputs: Vec<WrittenOutput>,
+    /// Every published file in deterministic primary-then-extra target order.
+    pub artifacts: Vec<WrittenOutput>,
 }
 
-/// One additional target file written during a project run.
+/// One target file written during a project run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WrittenOutput {
     pub name: String,
     pub records_written: usize,
     pub path: PathBuf,
+}
+
+/// Host-supplied paths, scalar parameters, and optional tracing for one run.
+#[derive(Default)]
+pub struct RunOptions<'a> {
+    pub input_path: Option<&'a Path>,
+    pub output_path: Option<&'a Path>,
+    pub runtime_parameters: Option<&'a engine::RuntimeParameters>,
+    pub trace_sink: Option<&'a dyn TraceSink>,
+}
+
+impl<'a> RunOptions<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_input_path(mut self, path: &'a Path) -> Self {
+        self.input_path = Some(path);
+        self
+    }
+
+    pub fn with_output_path(mut self, path: &'a Path) -> Self {
+        self.output_path = Some(path);
+        self
+    }
+
+    pub fn with_runtime_parameters(mut self, parameters: &'a engine::RuntimeParameters) -> Self {
+        self.runtime_parameters = Some(parameters);
+        self
+    }
+
+    pub fn with_trace_sink(mut self, trace_sink: &'a dyn TraceSink) -> Self {
+        self.trace_sink = Some(trace_sink);
+        self
+    }
 }
 
 /// Loads the project at `project_path`, runs it against `input_path` (plus
@@ -76,8 +113,23 @@ pub fn run_project_with_paths(
     input_path: Option<&Path>,
     output_path: Option<&Path>,
 ) -> anyhow::Result<RunOutcome> {
+    run_project_with_options(
+        project_path,
+        &RunOptions {
+            input_path,
+            output_path,
+            ..RunOptions::default()
+        },
+    )
+}
+
+/// Loads and runs a project with one unified host execution contract.
+pub fn run_project_with_options(
+    project_path: &Path,
+    options: &RunOptions<'_>,
+) -> anyhow::Result<RunOutcome> {
     let project = load_project(project_path)?;
-    run_project_value_with_paths(&project, project_path, input_path, output_path)
+    run_project_value_with_options(&project, project_path, options)
 }
 
 /// Loads and runs a project while reporting successful graph evaluations to
@@ -88,13 +140,14 @@ pub fn run_project_with_paths_and_trace(
     output_path: Option<&Path>,
     trace_sink: &dyn TraceSink,
 ) -> anyhow::Result<RunOutcome> {
-    let project = load_project(project_path)?;
-    run_project_value_with_paths_and_trace(
-        &project,
+    run_project_with_options(
         project_path,
-        input_path,
-        output_path,
-        trace_sink,
+        &RunOptions {
+            input_path,
+            output_path,
+            trace_sink: Some(trace_sink),
+            ..RunOptions::default()
+        },
     )
 }
 
@@ -109,7 +162,15 @@ pub fn run_project_value_with_paths(
     input_path: Option<&Path>,
     output_path: Option<&Path>,
 ) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_paths_inner(project, project_path, input_path, output_path, None)
+    run_project_value_with_options(
+        project,
+        project_path,
+        &RunOptions {
+            input_path,
+            output_path,
+            ..RunOptions::default()
+        },
+    )
 }
 
 /// Runs an in-memory project and reports successful graph evaluations to
@@ -121,43 +182,47 @@ pub fn run_project_value_with_paths_and_trace(
     output_path: Option<&Path>,
     trace_sink: &dyn TraceSink,
 ) -> anyhow::Result<RunOutcome> {
-    run_project_value_with_paths_inner(
+    run_project_value_with_options(
         project,
         project_path,
-        input_path,
-        output_path,
-        Some(trace_sink),
+        &RunOptions {
+            input_path,
+            output_path,
+            trace_sink: Some(trace_sink),
+            ..RunOptions::default()
+        },
     )
 }
 
-fn run_project_value_with_paths_inner(
+/// Runs an in-memory project with one unified host execution contract.
+pub fn run_project_value_with_options(
     project: &mapping::Project,
     project_path: &Path,
-    input_path: Option<&Path>,
-    output_path: Option<&Path>,
-    trace_sink: Option<&dyn TraceSink>,
+    options: &RunOptions<'_>,
 ) -> anyhow::Result<RunOutcome> {
     require_valid(project)?;
 
     let input_path = resolve_run_path(
         project_path,
-        input_path,
+        options.input_path,
         project.source_path.as_deref(),
         "input",
         "source_path",
         true,
     )?;
     let primary_destination = if project.root.output_path().is_some() {
-        OutputDestination::DynamicBase(output_path.map(Path::to_path_buf).unwrap_or_else(|| {
-            project_path
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_path_buf()
-        }))
+        OutputDestination::DynamicBase(options.output_path.map(Path::to_path_buf).unwrap_or_else(
+            || {
+                project_path
+                    .parent()
+                    .unwrap_or(Path::new("."))
+                    .to_path_buf()
+            },
+        ))
     } else {
         OutputDestination::Static(resolve_run_path(
             project_path,
-            output_path,
+            options.output_path,
             project.target_path.as_deref(),
             "output",
             "target_path",
@@ -222,7 +287,10 @@ fn run_project_value_with_paths_inner(
     let mut execution = engine::ExecutionContext::new(&runtime_project_path)
         .with_current_datetime(&current_datetime)
         .with_dynamic_source_loader(&dynamic_loader);
-    if let Some(trace_sink) = trace_sink {
+    if let Some(parameters) = options.runtime_parameters {
+        execution = execution.with_parameters(parameters);
+    }
+    if let Some(trace_sink) = options.trace_sink {
         execution = execution.with_trace_sink(trace_sink);
     }
     let outputs = engine::run_outputs_with_sources_and_context(
@@ -272,10 +340,14 @@ fn run_project_value_with_paths_inner(
         .context("output batch did not return a primary target result")?;
     let row_count = primary_result.records_written;
     let mut primary_outputs = primary_result.outputs;
+    let mut artifacts = primary_outputs.clone();
     if matches!(primary_destination, OutputDestination::Static(_)) {
         primary_outputs.clear();
     }
-    let extra_outputs = written.flat_map(|target| target.outputs).collect();
+    let extra_outputs = written
+        .flat_map(|target| target.outputs)
+        .collect::<Vec<_>>();
+    artifacts.extend(extra_outputs.iter().cloned());
 
     Ok(RunOutcome {
         records_written: row_count,
@@ -283,6 +355,7 @@ fn run_project_value_with_paths_inner(
         output_path,
         primary_outputs,
         extra_outputs,
+        artifacts,
     })
 }
 
