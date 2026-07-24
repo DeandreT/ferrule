@@ -1,7 +1,8 @@
 # Rust Code Generation Host
 
-This standalone application constructs a source `Instance`, calls the generated
-mapping library, validates its returned target shape, and prints the invoices.
+This standalone application passes `input.json` to the generated mapping's
+bounded `execute_json` API, compares the returned document with
+`expected-output.json`, and prints the invoices.
 
 From the repository root, generate the mapping into a new destination:
 

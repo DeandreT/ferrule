@@ -12,5 +12,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../generated/csharp/Ferrule.Generated.csproj" />
+    <None Include="../input.json" Link="input.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../expected-output.json" Link="expected-output.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

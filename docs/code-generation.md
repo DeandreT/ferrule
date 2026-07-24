@@ -54,13 +54,63 @@ For projects with static named sources, `execute_with_sources` and
 matching variants that also accept an execution context. No source instance is
 cloned while building the generated scope context.
 
+## JSON Host Boundary
+
+Both generated libraries also expose schema-shaped JSON entry points. These
+methods parse a primary JSON document with the mapping's embedded source schema,
+execute the same generated functions as the typed API, and serialize the
+primary and ordered named targets with their embedded target schemas.
+
+Rust:
+
+```rust
+let outputs = ferrule_generated_mapping::execute_json_outputs_with_sources(
+    source_json,
+    &[ferrule_generated_mapping::NamedJsonInput {
+        name: "catalog",
+        document: catalog_json,
+    }],
+)?;
+publish(outputs.primary);
+for output in outputs.extras {
+    publish_named(output.name, output.document);
+}
+```
+
+C#:
+
+```csharp
+var outputs = GeneratedMapping.ExecuteJsonOutputsWithSources(
+    sourceJson,
+    new[] { new NamedJsonInput("catalog", catalogJson) });
+Publish(outputs.Primary);
+foreach (var output in outputs.Extras)
+{
+    PublishNamed(output.Name, output.Document);
+}
+```
+
+The singular `execute_json` / `ExecuteJson` variants return only the primary
+document but still evaluate every named target. Context-aware variants accept
+the same mapping paths, stable date-time, and typed runtime parameters as the
+instance APIs. Named inputs are exact, ordinal, duplicate-checked, and normalized
+to project order before execution.
+
+Each JSON input and output document is limited to 64 MiB, and each trusted
+embedded schema is limited to 1 MiB. Invalid JSON shape, non-exact numeric
+conversion, output serialization, and size failures remain typed boundary
+errors. These APIs intentionally use JSON regardless of stored project paths or
+format options; hosts needing X12, XML, database, or other physical formats
+should use the interpreter payload API or adapt a typed `Instance` at their own
+boundary.
+
 ## Runnable Hosts
 
 [`examples/codegen/`](../examples/codegen/) contains one portable mapping with
 matching Rust and C# host applications. The mapping filters zero-value orders,
 sorts the remaining rows, assigns compact positions, and formats invoice labels.
 The checked-in input and expected output show the equivalent JSON boundaries;
-the hosts demonstrate constructing and inspecting typed instance trees directly.
+the hosts pass those documents directly through the generated JSON APIs.
 
 Generate both libraries and run both hosts from the repository root:
 
@@ -70,10 +120,10 @@ Generate both libraries and run both hosts from the repository root:
 
 Generated artifacts are recreated under `examples/codegen/generated/` and are
 not committed. The [Rust host](../examples/codegen/rust/) calls
-`ferrule_generated_mapping::execute`, while the
+`ferrule_generated_mapping::execute_json`, while the
 [C# host](../examples/codegen/csharp/) calls
-`Ferrule.Generated.GeneratedMapping.Execute`. Both validate the complete
-filtered and sorted result before printing it.
+`Ferrule.Generated.GeneratedMapping.ExecuteJson`. Both validate the complete
+filtered and sorted JSON result before printing it.
 
 ## Portable Subset
 
@@ -161,7 +211,7 @@ Failure rules run after the input boundary is validated but before the primary
 or any named target. Their structured error retains the one-based rule number
 and distinguishes an absent message from an evaluated empty message.
 Stored output paths and format options remain host metadata: generated libraries
-return instances and do not write files.
+return instances or JSON documents and do not write files.
 
 Features outside this model produce a specific diagnostic naming the unsupported
 node, function, scope control, endpoint, or target construction. The portable
