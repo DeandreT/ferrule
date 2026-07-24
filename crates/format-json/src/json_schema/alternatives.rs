@@ -49,6 +49,61 @@ pub(super) fn parse_nullable_scalar_alternatives(
     Ok(Some(node))
 }
 
+pub(super) fn parse_nullable_container_alternatives(
+    name: &str,
+    schema: &serde_json::Value,
+    alternatives: &serde_json::Value,
+    keyword: &str,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<Option<SchemaNode>, JsonFormatError> {
+    let Some(alternatives) = alternatives
+        .as_array()
+        .filter(|alternatives| alternatives.len() == 2)
+    else {
+        return Ok(None);
+    };
+    let first_is_null = is_null_alternative(name, &alternatives[0], doc, active_refs)?;
+    let second_is_null = is_null_alternative(name, &alternatives[1], doc, active_refs)?;
+    let content = match (first_is_null, second_is_null) {
+        (true, false) => &alternatives[1],
+        (false, true) => &alternatives[0],
+        _ => return Ok(None),
+    };
+    ensure_annotation_only(name, schema, keyword)?;
+    let mut node = parse(name, content, doc, active_refs)?;
+    if !node.repeating && !matches!(node.kind, ir::SchemaKind::Group { .. }) {
+        return Ok(None);
+    }
+    node.container_nullable = true;
+    Ok(Some(node))
+}
+
+fn is_null_alternative(
+    union_name: &str,
+    schema: &serde_json::Value,
+    doc: &serde_json::Value,
+    active_refs: &mut Vec<String>,
+) -> Result<bool, JsonFormatError> {
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        ensure_annotation_only(union_name, schema, "$ref")?;
+        if active_refs.iter().any(|active| active == reference) {
+            return Err(unsupported_union(
+                union_name,
+                "nullable container alternatives cannot use cyclic references",
+            ));
+        }
+        let Some(resolved) = resolve_ref(doc, reference) else {
+            return Ok(false);
+        };
+        active_refs.push(reference.to_string());
+        let is_null = is_null_alternative(union_name, resolved, doc, active_refs);
+        active_refs.pop();
+        return is_null;
+    }
+    Ok(schema.get("type").and_then(serde_json::Value::as_str) == Some("null"))
+}
+
 fn classify_scalar_alternative(
     union_name: &str,
     schema: &serde_json::Value,
@@ -91,8 +146,51 @@ fn classify_scalar_alternative(
         "boolean" => ScalarAlternative::Scalar(ScalarType::Bool),
         _ => return Ok(ScalarAlternative::Other),
     };
-    ensure_annotation_only(union_name, schema, "type")?;
+    ensure_scalar_shape_only(union_name, schema)?;
     Ok(classified)
+}
+
+fn ensure_scalar_shape_only(
+    union_name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    let Some(object) = schema.as_object() else {
+        return Err(unsupported_union(
+            union_name,
+            "nullable scalar alternatives must be schema objects",
+        ));
+    };
+    if let Some(keyword) = object.keys().find(|keyword| {
+        keyword.as_str() != "type"
+            && !is_annotation_keyword(keyword.as_str())
+            && !is_scalar_validation_keyword(keyword.as_str())
+    }) {
+        return Err(unsupported_union(
+            union_name,
+            &format!("nullable scalar alternative uses unsupported `{keyword}` composition"),
+        ));
+    }
+    Ok(())
+}
+
+fn is_scalar_validation_keyword(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "const"
+            | "enum"
+            | "format"
+            | "pattern"
+            | "minLength"
+            | "maxLength"
+            | "minimum"
+            | "maximum"
+            | "exclusiveMinimum"
+            | "exclusiveMaximum"
+            | "multipleOf"
+            | "contentEncoding"
+            | "contentMediaType"
+            | "contentSchema"
+    )
 }
 
 fn ensure_annotation_only(

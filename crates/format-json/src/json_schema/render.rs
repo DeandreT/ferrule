@@ -5,6 +5,22 @@ use ir::{
 /// Writes `node`'s shape (sans repetition) into `out`; repetition wraps it
 /// in an array schema.
 pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
+    if node.container_nullable {
+        let mut content = serde_json::Map::new();
+        render_non_nullable(node, &mut content);
+        out.insert(
+            "anyOf".into(),
+            serde_json::Value::Array(vec![
+                serde_json::Value::Object(content),
+                serde_json::json!({ "type": "null" }),
+            ]),
+        );
+        return;
+    }
+    render_non_nullable(node, out);
+}
+
+fn render_non_nullable(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
     if node.repeating {
         out.insert("type".into(), "array".into());
         let mut items = serde_json::Map::new();
@@ -18,6 +34,9 @@ pub(super) fn render(node: &SchemaNode, out: &mut serde_json::Map<String, serde_
 fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json::Value>) {
     match &node.kind {
         SchemaKind::Scalar { ty } => {
+            if node.json_any {
+                return;
+            }
             let name = match ty {
                 ScalarType::String => "string",
                 ScalarType::Int => "integer",

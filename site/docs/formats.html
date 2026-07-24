@@ -33,7 +33,7 @@
           <thead><tr><th>Format</th><th>Source</th><th>Target</th><th>Current scope</th></tr></thead>
           <tbody>
             <tr><td>XML</td><td>Yes</td><td>Yes</td><td>Hierarchical I/O, namespace-aware element and attribute names, XSD-lite with local import graphs, named model/attribute groups, typed defaults, bounded DTD import with internal content-model parameter entities, attributes, `xsi:nil`, generic elements, and mixed content. External DTD identifiers are never loaded.</td></tr>
-            <tr><td>JSON</td><td>Yes</td><td>Yes</td><td>Hierarchical I/O, JSON Lines, local schema references, exact nullable scalars, selected object alternatives with typed required/optional const discriminators, and dynamic target properties.</td></tr>
+            <tr><td>JSON</td><td>Yes</td><td>Yes</td><td>Hierarchical I/O, JSON Lines, local schema references, exact nullable scalar/object/array values, selected object alternatives with typed const discriminators, and typed or unconstrained dynamic properties.</td></tr>
             <tr><td>CSV</td><td>Yes</td><td>Yes</td><td>Delimited flat rows with configurable delimiter and header handling.</td></tr>
             <tr><td>Fixed-width</td><td>Yes</td><td>Yes</td><td>Validated Unicode-scalar column layouts, fill policy, record separators, and typed empty values.</td></tr>
             <tr><td>XLSX</td><td>Yes</td><td>Yes</td><td>Typed worksheets, selected composite/grid source shapes, hierarchical targets, and update-existing writes.</td></tr>
@@ -51,7 +51,7 @@
           <li>PDF output is intentionally unsupported.</li>
           <li>XBRL taxonomy formula, presentation, calculation, and linkbase execution are not interpreted.</li>
           <li>XML preserves declared expanded names, and MFD export writes foreign declarations as an atomic local XSD graph. Mapping paths use local field names, so XSD import explicitly rejects siblings that differ only by namespace. General `xsi:type`, substitution-group, and namespace-dependent wildcard semantics remain outside the supported subset.</li>
-          <li>JSON Schema supports selected closed-object alternatives, not general nested union composition.</li>
+          <li>JSON Schema preserves selected object alternatives, nullable scalar/object/array wrappers, and typed or unconstrained dynamic properties. General multi-type union composition and validation-keyword enforcement remain outside the runtime.</li>
           <li>Database execution is SQLite-specific today.</li>
           <li>EDI output validation runs after wire lexical formatting and leaves the destination unchanged on failure.</li>
         </ul>

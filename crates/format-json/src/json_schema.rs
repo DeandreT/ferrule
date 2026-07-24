@@ -5,12 +5,13 @@
 //! `$ref` pointers (`#/definitions/...`, `#/$defs/...`; cyclic or external
 //! refs degrade to string scalars). Compatible closed-object `oneOf` and
 //! `anyOf` unions, their required scalar `const` discriminators, and typed
-//! `additionalProperties` schemas are preserved. Scalar-plus-null `oneOf` /
-//! `anyOf` and scalar nullable type arrays retain explicit nullability,
-//! including scalar array items. An omitted or false `additionalProperties`
-//! is treated as closed; explicitly unconstrained `true`/`{}` schemas and
-//! general composition or validation keywords remain outside this "lite"
-//! subset.
+//! `additionalProperties` schemas are preserved. Scalar/container-plus-null
+//! `oneOf` / `anyOf` and nullable type arrays retain explicit nullability,
+//! including scalar array items. Unconstrained `additionalProperties` values
+//! are retained as canonical JSON text in the graph's string domain. An
+//! omitted or false `additionalProperties` is treated as closed. General
+//! composition remains outside this subset; shape-neutral validation keywords
+//! are accepted but are not enforced by the mapping schema.
 
 use ir::{GroupAlternativeMode, ScalarType, SchemaNode};
 
@@ -20,7 +21,8 @@ mod alternatives;
 mod render;
 
 use alternatives::{
-    parse_inferred_const_scalar, parse_nullable_scalar_alternatives, parse_object_alternatives,
+    parse_inferred_const_scalar, parse_nullable_container_alternatives,
+    parse_nullable_scalar_alternatives, parse_object_alternatives,
 };
 
 /// Imports the root of a JSON Schema file as a [`SchemaNode`]. The root
@@ -80,6 +82,16 @@ fn parse(
         )? {
             return Ok(nullable);
         }
+        if let Some(nullable) = parse_nullable_container_alternatives(
+            name,
+            schema,
+            alternatives,
+            "oneOf",
+            doc,
+            active_refs,
+        )? {
+            return Ok(nullable);
+        }
         return parse_object_alternatives(
             name,
             schema,
@@ -91,6 +103,16 @@ fn parse(
     }
     if let Some(alternatives) = schema.get("anyOf") {
         if let Some(nullable) = parse_nullable_scalar_alternatives(
+            name,
+            schema,
+            alternatives,
+            "anyOf",
+            doc,
+            active_refs,
+        )? {
+            return Ok(nullable);
+        }
+        if let Some(nullable) = parse_nullable_container_alternatives(
             name,
             schema,
             alternatives,
@@ -113,13 +135,20 @@ fn parse(
     match ty {
         Some("object") => {
             let children = parse_properties(schema, doc, active_refs)?;
-            attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)
+            let mut node =
+                attach_dynamic_fields(SchemaNode::group(name, children), schema, doc, active_refs)?;
+            node.container_nullable = nullable;
+            Ok(node)
         }
         Some("array") => {
             let Some(items) = schema.get("items") else {
-                return Ok(SchemaNode::scalar(name, ScalarType::String).repeating());
+                let mut node = SchemaNode::scalar(name, ScalarType::String).repeating();
+                node.container_nullable = nullable;
+                return Ok(node);
             };
-            Ok(parse(name, items, doc, active_refs)?.repeating())
+            let mut node = parse(name, items, doc, active_refs)?.repeating();
+            node.container_nullable = nullable;
+            Ok(node)
         }
         Some("string") => Ok(scalar_schema(name, ScalarType::String, nullable)),
         Some("integer") => Ok(scalar_schema(name, ScalarType::Int, nullable)),
@@ -180,12 +209,6 @@ fn schema_type<'a>(
             "type arrays must contain one non-null type",
         ));
     };
-    if nullable && matches!(concrete, "object" | "array") {
-        return Err(unsupported_union(
-            name,
-            "nullable object and array schemas cannot be represented without losing explicit null",
-        ));
-    }
     if nullable
         && !matches!(
             concrete,
@@ -214,19 +237,11 @@ fn attach_dynamic_fields(
 ) -> Result<SchemaNode, JsonFormatError> {
     let additional = match schema.get("additionalProperties") {
         None | Some(serde_json::Value::Bool(false)) => return Ok(group),
-        Some(serde_json::Value::Bool(true)) => {
-            return Err(unsupported_object(
-                &group.name,
-                "unconstrained additionalProperties true has no exact ferrule value schema",
-            ));
-        }
+        Some(serde_json::Value::Bool(true)) => return attach_unconstrained_dynamic(group),
         Some(serde_json::Value::Object(object))
             if object.is_empty() || !declares_supported_shape(object) =>
         {
-            return Err(unsupported_object(
-                &group.name,
-                "unconstrained additionalProperties schema has no exact ferrule value type",
-            ));
+            return attach_unconstrained_dynamic(group);
         }
         Some(additional @ serde_json::Value::Object(_)) => additional,
         Some(_) => {
@@ -237,6 +252,19 @@ fn attach_dynamic_fields(
         }
     };
     let value = parse("*", additional, doc, active_refs)?;
+    let name = group.name.clone();
+    group
+        .with_dynamic_fields(value)
+        .ok_or_else(|| JsonFormatError::UnsupportedSchemaUnion {
+            name,
+            reason: "open objects cannot use closed object alternatives".to_string(),
+        })
+}
+
+fn attach_unconstrained_dynamic(group: SchemaNode) -> Result<SchemaNode, JsonFormatError> {
+    let value = SchemaNode::scalar("*", ScalarType::String)
+        .json_any()
+        .ok_or_else(|| unsupported_object(&group.name, "invalid arbitrary JSON value schema"))?;
     let name = group.name.clone();
     group
         .with_dynamic_fields(value)
