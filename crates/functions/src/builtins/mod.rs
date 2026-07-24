@@ -57,6 +57,9 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "string" => string(args),
         "is_numeric" => is_numeric(args),
         "to_number" => to_number(args),
+        "boolean" => effective_boolean(args),
+        "positive" => positive(args),
+        "floor" => floor(args),
         "format_number" => format_number::format_number(args),
         "exists" => exists(args),
         "round" => round(args),
@@ -76,6 +79,9 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "parse_date" => datetime::parse_date(args),
         "parse_datetime" => datetime::parse_datetime(args),
         "parse_time" => datetime::parse_time(args),
+        "format_date" => datetime::format_date(args),
+        "format_datetime" => datetime::format_datetime(args),
+        "format_time" => datetime::format_time(args),
         "edifact_to_datetime" => datetime::edifact_to_datetime(args),
         "coerce_datetime" => datetime::coerce_datetime(args),
         "substitute_missing" => substitute_missing(args),
@@ -345,6 +351,57 @@ fn to_number(args: &[Value]) -> Result<Value, FunctionError> {
             })
         }
     }
+}
+
+fn effective_boolean(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "boolean",
+            expected: 1,
+            got: args.len(),
+        });
+    };
+    Ok(Value::Bool(match value {
+        Value::Null | Value::JsonNull(_) | Value::XmlNil(_) => false,
+        Value::Bool(value) => *value,
+        Value::Int(value) => *value != 0,
+        Value::Float(value) => *value != 0.0 && !value.is_nan(),
+        Value::String(value) => !value.is_empty(),
+    }))
+}
+
+fn positive(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "positive",
+            expected: 1,
+            got: args.len(),
+        });
+    };
+    Ok(match numeric_operand(value, "positive")? {
+        NumericOperand::Int(value) => Value::Int(value),
+        NumericOperand::Float(value) => Value::Float(value),
+    })
+}
+
+fn floor(args: &[Value]) -> Result<Value, FunctionError> {
+    let [value] = args else {
+        return Err(FunctionError::ArityMismatch {
+            function: "floor",
+            expected: 1,
+            got: args.len(),
+        });
+    };
+    Ok(match numeric_operand(value, "floor")? {
+        NumericOperand::Int(value) => Value::Int(value),
+        NumericOperand::Float(value) if value.is_finite() => Value::Float(value.floor()),
+        NumericOperand::Float(_) => {
+            return Err(FunctionError::InvalidArgument {
+                function: "floor",
+                message: "requires a finite numeric value",
+            });
+        }
+    })
 }
 
 fn pad_string(args: &[Value], name: &'static str, left: bool) -> Result<Value, FunctionError> {

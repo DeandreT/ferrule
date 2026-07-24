@@ -29,11 +29,19 @@ enum Field {
     GmtTimezone,
 }
 
+#[derive(Clone, Copy)]
+enum LetterCase {
+    Upper,
+    Lower,
+    Title,
+}
+
 struct Component {
     field: Field,
     min_width: usize,
     max_width: usize,
     fixed_width: Option<usize>,
+    letter_case: Option<LetterCase>,
 }
 
 enum Part {
@@ -52,6 +60,17 @@ struct Parsed {
     period: Option<bool>,
     minute: Option<u32>,
     second: Option<u32>,
+    fraction: Option<String>,
+    timezone: Option<String>,
+}
+
+struct Formattable {
+    year: String,
+    month: u32,
+    day: u32,
+    hour: u32,
+    minute: u32,
+    second: u32,
     fraction: Option<String>,
     timezone: Option<String>,
 }
@@ -84,6 +103,81 @@ pub(super) fn parse_time(args: &[Value]) -> Result<Value, FunctionError> {
     let mut output = format!("{hour:02}:{minute:02}:{second:02}");
     append_time_suffix(&mut output, &parsed);
     Ok(Value::String(output))
+}
+
+pub(super) fn format_date(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "format_date";
+    let (value, picture) = format_arguments(args, FUNCTION)?;
+    let (date, timezone) = split_iso_timezone(value, FUNCTION)?;
+    validate_iso_date(date, FUNCTION)?;
+    let mut fields = Formattable::from_date(date, FUNCTION)?;
+    fields.timezone = timezone.map(str::to_string);
+    Ok(Value::String(format_picture(&fields, picture, FUNCTION)?))
+}
+
+pub(super) fn format_datetime(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "format_datetime";
+    let (value, picture) = format_arguments(args, FUNCTION)?;
+    let Some((date, time)) = value.split_once('T') else {
+        return invalid(FUNCTION);
+    };
+    validate_iso_date(date, FUNCTION)?;
+    validate_iso_time(time, FUNCTION)?;
+    let mut fields = Formattable::from_date(date, FUNCTION)?;
+    fields.set_time(time, FUNCTION)?;
+    Ok(Value::String(format_picture(&fields, picture, FUNCTION)?))
+}
+
+pub(super) fn format_time(args: &[Value]) -> Result<Value, FunctionError> {
+    const FUNCTION: &str = "format_time";
+    let (value, picture) = format_arguments(args, FUNCTION)?;
+    validate_iso_time(value, FUNCTION)?;
+    let mut fields = Formattable {
+        year: "2000".to_string(),
+        month: 1,
+        day: 1,
+        hour: 0,
+        minute: 0,
+        second: 0,
+        fraction: None,
+        timezone: None,
+    };
+    fields.set_time(value, FUNCTION)?;
+    Ok(Value::String(format_picture(&fields, picture, FUNCTION)?))
+}
+
+fn format_arguments<'a>(
+    args: &'a [Value],
+    function: &'static str,
+) -> Result<(&'a str, &'a str), FunctionError> {
+    if !(2..=5).contains(&args.len()) {
+        return Err(FunctionError::ArityMismatch {
+            function,
+            expected: 2,
+            got: args.len(),
+        });
+    }
+    let (Value::String(value), Value::String(picture)) = (&args[0], &args[1]) else {
+        let bad = if matches!(&args[0], Value::String(_)) {
+            &args[1]
+        } else {
+            &args[0]
+        };
+        return Err(FunctionError::TypeMismatch {
+            function,
+            got: bad.type_name(),
+        });
+    };
+    if args[2..].iter().any(|argument| {
+        !matches!(argument, Value::Null | Value::JsonNull(_))
+            && !matches!(argument, Value::String(value) if value.is_empty())
+    }) {
+        return Err(FunctionError::InvalidArgument {
+            function,
+            message: "supports only default language, calendar, and place arguments",
+        });
+    }
+    Ok((value, picture))
 }
 
 pub(super) fn edifact_to_datetime(args: &[Value]) -> Result<Value, FunctionError> {
@@ -650,6 +744,142 @@ fn append_time_suffix(output: &mut String, parsed: &Parsed) {
     }
 }
 
+fn format_picture(
+    value: &Formattable,
+    picture: &str,
+    function: &'static str,
+) -> Result<String, FunctionError> {
+    let parts = picture_parts(picture).ok_or(FunctionError::InvalidArgument {
+        function,
+        message: INVALID_PICTURE,
+    })?;
+    let mut output = String::new();
+    for part in parts {
+        match part {
+            Part::Literal(literal) => output.push_str(&literal),
+            Part::Component(component) => {
+                output.push_str(&format_component(value, &component, function)?)
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn format_component(
+    value: &Formattable,
+    component: &Component,
+    function: &'static str,
+) -> Result<String, FunctionError> {
+    let numeric = |value: u32| format_numeric(value.to_string(), component, false, function);
+    match component.field {
+        Field::Year => format_numeric(value.year.clone(), component, true, function),
+        Field::Month => numeric(value.month),
+        Field::MonthName => {
+            const MONTHS: [&str; 12] = [
+                "January",
+                "February",
+                "March",
+                "April",
+                "May",
+                "June",
+                "July",
+                "August",
+                "September",
+                "October",
+                "November",
+                "December",
+            ];
+            let Some(month) = MONTHS.get(value.month.saturating_sub(1) as usize) else {
+                return invalid(function);
+            };
+            let mut month = match component.letter_case.unwrap_or(LetterCase::Title) {
+                LetterCase::Upper => month.to_uppercase(),
+                LetterCase::Lower => month.to_lowercase(),
+                LetterCase::Title => (*month).to_string(),
+            };
+            if let Some(width) = component.fixed_width {
+                month = month.chars().take(width).collect();
+            }
+            if month.chars().count() < component.min_width
+                || month.chars().count() > component.max_width
+            {
+                return invalid(function);
+            }
+            Ok(month)
+        }
+        Field::Day => numeric(value.day),
+        Field::DayOfYear => numeric(value.day_of_year()),
+        Field::Hour24 => numeric(value.hour),
+        Field::Hour12 => numeric(match value.hour % 12 {
+            0 => 12,
+            hour => hour,
+        }),
+        Field::Period => {
+            let period = if value.hour >= 12 { "PM" } else { "AM" };
+            Ok(match component.letter_case.unwrap_or(LetterCase::Upper) {
+                LetterCase::Upper => period.to_string(),
+                LetterCase::Lower => period.to_ascii_lowercase(),
+                LetterCase::Title => {
+                    let mut chars = period.chars();
+                    chars
+                        .next()
+                        .map(|character| character.to_string())
+                        .unwrap_or_default()
+                        + &chars.as_str().to_ascii_lowercase()
+                }
+            })
+        }
+        Field::Minute => numeric(value.minute),
+        Field::Second => numeric(value.second),
+        Field::Fraction => {
+            let fraction = value.fraction.as_deref().unwrap_or("0");
+            format_numeric(fraction.to_string(), component, false, function)
+        }
+        Field::Timezone => Ok(value.timezone.clone().unwrap_or_default()),
+        Field::GmtTimezone => Ok(value
+            .timezone
+            .as_ref()
+            .map(|timezone| format!("GMT{timezone}"))
+            .unwrap_or_default()),
+    }
+}
+
+fn format_numeric(
+    mut value: String,
+    component: &Component,
+    truncate_left: bool,
+    function: &'static str,
+) -> Result<String, FunctionError> {
+    let negative = value.starts_with('-');
+    let digits = value.strip_prefix('-').unwrap_or(&value);
+    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return invalid(function);
+    }
+    let width = component.fixed_width;
+    let mut digits = digits.to_string();
+    if let Some(width) = width {
+        if digits.len() > width {
+            if truncate_left {
+                digits = digits[digits.len() - width..].to_string();
+            } else {
+                return invalid(function);
+            }
+        } else if digits.len() < width {
+            digits = format!("{digits:0>width$}");
+        }
+    }
+    let displayed_width = digits.len();
+    if displayed_width < component.min_width || displayed_width > component.max_width {
+        return invalid(function);
+    }
+    value.clear();
+    if negative {
+        value.push('-');
+    }
+    value.push_str(&digits);
+    Ok(value)
+}
+
 fn parse_picture(
     value: &str,
     picture: &str,
@@ -768,6 +998,12 @@ fn parse_component(spec: &str) -> Option<Component> {
         };
         (field, modifier)
     };
+    let letter_case = match (field, modifier) {
+        (Field::MonthName, "N") | (Field::Period, "N") => Some(LetterCase::Upper),
+        (Field::MonthName, "n") | (Field::Period, "n") => Some(LetterCase::Lower),
+        (Field::MonthName, "Nn") | (Field::Period, "Nn") => Some(LetterCase::Title),
+        _ => None,
+    };
     let (default_min, default_max) = match field {
         Field::Year => (1, 9),
         Field::Month
@@ -800,6 +1036,7 @@ fn parse_component(spec: &str) -> Option<Component> {
         min_width,
         max_width,
         fixed_width,
+        letter_case,
     })
 }
 
@@ -812,6 +1049,65 @@ fn parse_width(width: &str, natural_max: usize) -> Option<(usize, usize)> {
     let min = min.parse().ok()?;
     let max = max.parse().ok()?;
     (min > 0 && min <= max).then_some((min, max))
+}
+
+impl Formattable {
+    fn from_date(value: &str, function: &'static str) -> Result<Self, FunctionError> {
+        let year_end = value.len().saturating_sub(6);
+        let year = value
+            .get(..year_end)
+            .ok_or(FunctionError::InvalidArgument {
+                function,
+                message: INVALID_PICTURE,
+            })?;
+        let month = value
+            .get(year_end + 1..value.len().saturating_sub(3))
+            .ok_or(FunctionError::InvalidArgument {
+                function,
+                message: INVALID_PICTURE,
+            })
+            .and_then(|value| number(value, function))?;
+        let day = value
+            .get(value.len().saturating_sub(2)..)
+            .ok_or(FunctionError::InvalidArgument {
+                function,
+                message: INVALID_PICTURE,
+            })
+            .and_then(|value| number(value, function))?;
+        Ok(Self {
+            year: year.to_string(),
+            month,
+            day,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            fraction: None,
+            timezone: None,
+        })
+    }
+
+    fn set_time(&mut self, value: &str, function: &'static str) -> Result<(), FunctionError> {
+        let (time, timezone) = split_iso_timezone(value, function)?;
+        let (whole, fraction) = time
+            .split_once('.')
+            .map_or((time, None), |(whole, fraction)| (whole, Some(fraction)));
+        self.hour = number(&whole[..2], function)?;
+        self.minute = number(&whole[3..5], function)?;
+        self.second = number(&whole[6..], function)?;
+        self.fraction = fraction.map(str::to_string);
+        self.timezone = timezone.map(str::to_string);
+        Ok(())
+    }
+
+    fn day_of_year(&self) -> u32 {
+        let year = self.year.strip_prefix('-').unwrap_or(&self.year);
+        let leap =
+            decimal_mod(year, 400) == 0 || decimal_mod(year, 4) == 0 && decimal_mod(year, 100) != 0;
+        (1..self.month)
+            .map(|month| days_in_month_with_leap(month, leap))
+            .sum::<u32>()
+            + self.day
+    }
 }
 
 impl Parsed {

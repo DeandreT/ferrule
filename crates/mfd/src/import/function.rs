@@ -627,7 +627,13 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "lower-case" | "lowercase" => "lower",
         "string" => "string",
         "numeric" => "is_numeric",
+        "boolean" => "boolean",
+        "positive" => "positive",
+        "floor" => "floor",
         "format-number" => "format_number",
+        "format-date" => "format_date",
+        "format-dateTime" => "format_datetime",
+        "format-time" => "format_time",
         "trim" => "trim",
         "left" => "left",
         "right" => "right",
@@ -685,6 +691,12 @@ mod tests {
         assert_eq!(map_name("string"), Some("string"));
         assert_eq!(map_name("numeric"), Some("is_numeric"));
         assert_eq!(map_name("format-number"), Some("format_number"));
+        assert_eq!(map_name("boolean"), Some("boolean"));
+        assert_eq!(map_name("positive"), Some("positive"));
+        assert_eq!(map_name("floor"), Some("floor"));
+        assert_eq!(map_name("format-date"), Some("format_date"));
+        assert_eq!(map_name("format-dateTime"), Some("format_datetime"));
+        assert_eq!(map_name("format-time"), Some("format_time"));
         assert_eq!(map_name("normalize-space"), Some("normalize_space"));
         assert_eq!(map_name("ends-with"), Some("ends_with"));
         assert_eq!(map_name("matches"), Some("matches"));
