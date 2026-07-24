@@ -34,6 +34,12 @@
   --mfd design.mfd \
   --out project.json</code></pre>
         <p>
+          When schemas or EDI configurations live outside the design directory,
+          pass <code>--package-root package</code>. Windows separators and safe
+          parent paths are accepted, while every resolved file remains
+          canonically confined to that trusted directory.
+        </p>
+        <p>
           Import resolves supported document components, schemas, graph nodes,
           target scopes, format options, paths, and warnings into a ferrule
           project. A design is rejected only when no usable source or target can

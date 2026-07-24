@@ -73,6 +73,7 @@ Import or export a MapForce design:
 
 ```sh
 cargo +nightly run -p cli -- import-mfd --mfd design.mfd --out project.json
+cargo +nightly run -p cli -- import-mfd --mfd package/maps/design.mfd --package-root package --out project.json
 cargo +nightly run -p cli -- export-mfd --project project.json --out design.mfd
 ```
 

@@ -438,9 +438,16 @@ pub fn import_json_schema(schema_path: &Path) -> anyhow::Result<String> {
 
 /// Converts a MapForce `.mfd` design into a ferrule project file. Returns
 /// the warnings for constructs that could not be converted.
-pub fn import_mfd(mfd_path: &Path, out_path: &Path) -> anyhow::Result<Vec<String>> {
-    let imported =
-        mfd::import(mfd_path).with_context(|| format!("importing {}", mfd_path.display()))?;
+pub fn import_mfd(
+    mfd_path: &Path,
+    out_path: &Path,
+    package_root: Option<&Path>,
+) -> anyhow::Result<Vec<String>> {
+    let options = package_root
+        .map(|root| mfd::ImportOptions::default().with_package_root(root))
+        .unwrap_or_default();
+    let imported = mfd::import_with_options(mfd_path, &options)
+        .with_context(|| format!("importing {}", mfd_path.display()))?;
     let json = serde_json::to_string_pretty(&imported.project)?;
     std::fs::write(out_path, json).with_context(|| format!("writing {}", out_path.display()))?;
     Ok(imported.warnings)

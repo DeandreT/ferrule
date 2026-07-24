@@ -87,6 +87,9 @@ enum Command {
         mfd: PathBuf,
         #[arg(long)]
         out: PathBuf,
+        /// Trusted root containing the mapping and all referenced resources.
+        #[arg(long)]
+        package_root: Option<PathBuf>,
     },
     /// Convert a ferrule project file into a MapForce .mfd design
     /// (generated XSDs are written next to it).
@@ -311,8 +314,12 @@ fn execute(cli: Cli) -> anyhow::Result<ExitCode> {
             println!("{}", cli::import_db(&db, &table)?);
             Ok(ExitCode::SUCCESS)
         }
-        Command::ImportMfd { mfd, out } => {
-            let warnings = cli::import_mfd(&mfd, &out)?;
+        Command::ImportMfd {
+            mfd,
+            out,
+            package_root,
+        } => {
+            let warnings = cli::import_mfd(&mfd, &out, package_root.as_deref())?;
             for warning in &warnings {
                 diagnostics.warning("import-mfd", warning);
             }

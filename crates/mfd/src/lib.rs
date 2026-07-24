@@ -47,9 +47,10 @@
 mod canonical_function;
 mod export;
 mod import;
+mod resource;
 
 pub use export::export;
-pub use import::{Imported, import};
+pub use import::{ImportOptions, Imported, import, import_with_options};
 
 use thiserror::Error;
 
@@ -65,6 +66,8 @@ pub enum MfdError {
     NotMfd(&'static str),
     #[error("cannot import: {0}")]
     UnsupportedImport(String),
+    #[error("resource resolution error: {0}")]
+    Resource(String),
     #[error("cannot export: {0}")]
     Unsupported(String),
 }

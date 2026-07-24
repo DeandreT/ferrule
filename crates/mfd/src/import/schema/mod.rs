@@ -4,6 +4,8 @@ use std::path::Path;
 use ir::{ScalarType, SchemaKind, SchemaNode, XML_ELEMENTS_FIELD, XML_TEXT_FIELD};
 use mapping::{FormatOptions, TabularBoundaryKind};
 
+use crate::resource::ResourceResolver;
+
 mod csv;
 mod database_relation;
 pub(super) mod database_xml;
@@ -30,6 +32,18 @@ use csv::select_block as select_csv_block;
 pub(crate) use csv::{SingletonPosition as CsvSingletonPosition, split_singleton_port};
 use generic_xml::{generic_entry_schema, merge_entries as merge_generic_xml_entries};
 use xml_ports::{normalize_xml_text_ports, reconcile_explicit_text_entries};
+
+fn resolve_resource_reference(
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    declared: &str,
+    description: &str,
+) -> Result<std::path::PathBuf, String> {
+    match resources {
+        Some(resources) => resources.resolve_file(declared, description),
+        None => resolve_xml_schema_reference(mfd_path, declared),
+    }
+}
 
 pub(super) fn restore_connected_structural_ports(
     components: &mut [SchemaComponent],
@@ -205,6 +219,28 @@ pub(super) fn read_schema_component(
     mfd_path: &Path,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
+    read_schema_component_resolved(component, mfd_path, None, warnings)
+}
+
+pub(super) fn read_schema_component_in_package(
+    component: &roxmltree::Node,
+    resources: &ResourceResolver,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    read_schema_component_resolved(
+        component,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+    )
+}
+
+fn read_schema_component_resolved(
+    component: &roxmltree::Node,
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
     let name = component.attribute("name").unwrap_or_default().to_string();
     let data = component
         .children()
@@ -268,16 +304,17 @@ pub(super) fn read_schema_component(
     let mut schema = document
         .and_then(|d| d.attribute("schema"))
         .and_then(|rel| {
-            let schema_path = match resolve_xml_schema_reference(mfd_path, rel) {
-                Ok(path) => path,
-                Err(error) => {
-                    warnings.push(format!(
-                        "component `{name}`: could not read schema `{rel}` ({error}); \
+            let schema_path =
+                match resolve_resource_reference(mfd_path, resources, rel, "XML Schema") {
+                    Ok(path) => path,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "component `{name}`: could not read schema `{rel}` ({error}); \
                          falling back to the entry tree (no types, no repeating info)"
-                    ));
-                    return None;
-                }
-            };
+                        ));
+                        return None;
+                    }
+                };
             match read_xml_schema_file(&schema_path, instance_root.first().map(String::as_str)) {
                 Ok(schema) => {
                     if instance_root.len() <= 1 {
@@ -310,7 +347,7 @@ pub(super) fn read_schema_component(
         })
         .unwrap_or_else(|| entry_tree_schema(&entry));
     if let Some(rel) = document.and_then(|document| document.attribute("schema"))
-        && let Ok(schema_path) = resolve_xml_schema_reference(mfd_path, rel)
+        && let Ok(schema_path) = resolve_resource_reference(mfd_path, resources, rel, "XML Schema")
         && !schema_path
             .extension()
             .and_then(|extension| extension.to_str())
@@ -467,9 +504,32 @@ pub(super) fn record_entry_keys(
 }
 
 /// Reads a JSON component and normalizes structural entry wrappers away.
+#[cfg(test)]
 pub(super) fn read_json_component(
     component: &roxmltree::Node,
     mfd_path: &Path,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    read_json_component_resolved(component, mfd_path, None, warnings)
+}
+
+pub(super) fn read_json_component_in_package(
+    component: &roxmltree::Node,
+    resources: &ResourceResolver,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    read_json_component_resolved(
+        component,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+    )
+}
+
+fn read_json_component_resolved(
+    component: &roxmltree::Node,
+    mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     let name = component.attribute("name").unwrap_or_default().to_string();
@@ -575,7 +635,17 @@ pub(super) fn read_json_component(
     let mut schema = json_el
         .and_then(|j| j.attribute("schema"))
         .and_then(|rel| {
-            let schema_path = mfd_path.parent().unwrap_or(Path::new(".")).join(rel);
+            let schema_path =
+                match resolve_resource_reference(mfd_path, resources, rel, "JSON Schema") {
+                    Ok(path) => path,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "component `{name}`: could not read schema `{rel}` ({error}); \
+                             falling back to the entry tree"
+                        ));
+                        return None;
+                    }
+                };
             match format_json::json_schema::import(&schema_path) {
                 Ok(schema) => Some(schema),
                 Err(e) => {
@@ -1028,10 +1098,16 @@ pub(super) fn read_csv_component(
 /// types, qualifiers, and exact cardinalities.
 pub(super) fn read_edi_component(
     component: &roxmltree::Node,
-    mfd_path: &Path,
+    resources: &ResourceResolver,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
-    edi::read(component, mfd_path, warnings, true)
+    edi::read(
+        component,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+        true,
+    )
 }
 
 /// Reads an internal structured UDF parameter as a schema declaration only.
@@ -1230,10 +1306,26 @@ pub(super) fn normalize_xml_entry_name(name: &str) -> (&str, bool) {
 /// several top-level tables live below a non-repeating `database` root and
 /// nested relationship names keep MapForce's `PhysicalTable|JoinColumn`
 /// convention understood by `format_db::read_instance`.
-pub(super) fn read_db_component(
+pub(super) fn read_db_component_in_package(
+    component: &roxmltree::Node,
+    mapping_el: &roxmltree::Node,
+    resources: &ResourceResolver,
+    warnings: &mut Vec<String>,
+) -> Option<SchemaComponent> {
+    read_db_component_resolved(
+        component,
+        mapping_el,
+        resources.mapping_path(),
+        Some(resources),
+        warnings,
+    )
+}
+
+fn read_db_component_resolved(
     component: &roxmltree::Node,
     mapping_el: &roxmltree::Node,
     mfd_path: &Path,
+    resources: Option<&ResourceResolver>,
     warnings: &mut Vec<String>,
 ) -> Option<SchemaComponent> {
     let name = component.attribute("name").unwrap_or_default().to_string();
@@ -1396,17 +1488,17 @@ pub(super) fn read_db_component(
     }
 
     let db_path = connection.as_deref().and_then(|conn| {
-        let path = mfd_path.parent().unwrap_or(Path::new(".")).join(conn);
-        if path.exists() {
-            Some(path)
-        } else {
-            if embedded_types.is_none() {
-                warnings.push(format!(
-                    "component `{name}`: database `{conn}` not found next to the \
-                     design; falling back to untyped columns"
-                ));
+        match resolve_resource_reference(mfd_path, resources, conn, "database") {
+            Ok(path) => Some(path),
+            Err(error) => {
+                if embedded_types.is_none() {
+                    warnings.push(format!(
+                        "component `{name}`: database `{conn}` could not be resolved ({error}); \
+                         falling back to untyped columns"
+                    ));
+                }
+                None
             }
-            None
         }
     });
 

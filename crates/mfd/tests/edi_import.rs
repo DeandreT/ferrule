@@ -355,10 +355,12 @@ fn cloned_edi_target_segments_keep_branch_local_bindings() {
 }
 
 #[test]
-fn compiles_relative_x12_configuration_into_an_executable_schema() {
+fn compiles_windows_parent_x12_path_inside_declared_package() {
     let directory = TempDir::new("x12_config");
     let config_directory = directory.path().join("X12");
+    let mapping_directory = directory.path().join("Maps");
     std::fs::create_dir_all(&config_directory).unwrap();
+    std::fs::create_dir_all(&mapping_directory).unwrap();
     std::fs::write(
         config_directory.join("Defs.Segment"),
         r#"<Config><Elements>
@@ -391,7 +393,7 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
           </Group></Message></Config>"#,
     )
     .unwrap();
-    let mfd_path = directory.path().join("mapping.mfd");
+    let mfd_path = mapping_directory.join("mapping.mfd");
     std::fs::write(
         &mfd_path,
         r#"<mapping version="22"><resources/><component name="defaultmap" uid="1">
@@ -413,7 +415,7 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
                   <entry name="MF_AK9" outkey="35"><entry name="F715" outkey="14"/></entry>
                 </entry></entry></entry>
               </entry></entry></entry></root>
-              <text type="edi" kind="EDIX12" config="X12\850.Config">
+              <text type="edi" kind="EDIX12" config="..\X12\850.Config">
                 <settings interchangecontrolversionnumber="00505"><separators dataelement="+" component=":" segment="%27" repetition="%21" escape="%3F"/></settings>
               </text>
             </data></component>
@@ -435,7 +437,8 @@ fn compiles_relative_x12_configuration_into_an_executable_schema() {
     )
     .unwrap();
 
-    let imported = mfd::import(&mfd_path).unwrap();
+    let options = mfd::ImportOptions::default().with_package_root(directory.path());
+    let imported = mfd::import_with_options(&mfd_path, &options).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(
         imported.project.source_options.edi_kind,

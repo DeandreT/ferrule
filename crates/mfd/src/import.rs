@@ -5,14 +5,14 @@
 //! the user finishes by hand still beats redrawing the mapping.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ir::SchemaKind;
 use mapping::{
     Graph, NamedSource, NamedTarget, Project, Scope, ScopeIteration, ScopeSequence, SequenceExpr,
 };
 
-use crate::{MfdError, canonical_function};
+use crate::{MfdError, canonical_function, resource::ResourceResolver};
 
 mod aggregate;
 mod alternatives;
@@ -62,11 +62,12 @@ use function::{
 };
 use graph::{GraphBuilder, read_copy_all_targets, read_edges};
 use schema::{
-    ComponentFormat, SchemaComponent, note_skipped_library, read_csv_component, read_db_component,
-    read_edi_component, read_fixed_width_component, read_flextext_component,
-    read_http_get_component, read_json_component, read_pdf_component, read_protobuf_component,
-    read_schema_component, read_wsdl_component, read_xbrl_component, read_xlsx_component,
-    refine_wsdl_target_schemas, schema_node_at,
+    ComponentFormat, SchemaComponent, note_skipped_library, read_csv_component,
+    read_db_component_in_package, read_edi_component, read_fixed_width_component,
+    read_flextext_component, read_http_get_component, read_json_component_in_package,
+    read_pdf_component, read_protobuf_component, read_schema_component_in_package,
+    read_wsdl_component, read_xbrl_component, read_xlsx_component, refine_wsdl_target_schemas,
+    schema_node_at,
 };
 use scope::{ScopeBuilder, TargetLeaf};
 use source::{SourcePath, primary_index, runtime_names};
@@ -75,6 +76,24 @@ use udf::{Call as UdfCall, Registry as UdfRegistry};
 pub struct Imported {
     pub project: Project,
     pub warnings: Vec<String>,
+}
+
+/// Filesystem policy for importing one mapping package.
+#[derive(Debug, Clone, Default)]
+pub struct ImportOptions {
+    package_root: Option<PathBuf>,
+}
+
+impl ImportOptions {
+    /// Confines all mapping resources to this trusted directory.
+    pub fn with_package_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.package_root = Some(root.into());
+        self
+    }
+
+    pub fn package_root(&self) -> Option<&Path> {
+        self.package_root.as_deref()
+    }
 }
 
 struct PrimarySourceHint {
@@ -110,6 +129,16 @@ fn hinted_primary_index(sources: &[&SchemaComponent], hint: &PrimarySourceHint) 
 }
 
 pub fn import(path: &Path) -> Result<Imported, MfdError> {
+    import_with_options(path, &ImportOptions::default())
+}
+
+pub fn import_with_options(path: &Path, options: &ImportOptions) -> Result<Imported, MfdError> {
+    let resources = ResourceResolver::new(path, options.package_root())?;
+    import_resolved(&resources)
+}
+
+fn import_resolved(resources: &ResourceResolver) -> Result<Imported, MfdError> {
+    let path = resources.mapping_path();
     let text = std::fs::read_to_string(path)?;
     let doc = roxmltree::Document::parse(&text)?;
     let mapping_el = doc.root_element();
@@ -161,38 +190,42 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
             let library = component.attribute("library").unwrap_or_default();
             let name = component.attribute("name").unwrap_or_default().to_string();
             match library {
-                "xml" => match read_schema_component(&component, path, &mut warnings) {
-                    Some(sc) => match xml_serializer::read(&component, &sc) {
-                        Ok(Some(serializer)) => xml_serializers.push(serializer),
-                        Ok(None) => schema_components.push(sc),
-                        Err(reason) => {
-                            warnings.push(format!(
-                                "XML string serializer `{name}` is unsupported: {reason}"
-                            ));
-                            schema_components.push(sc);
-                        }
-                    },
-                    None => warnings.push(format!("skipped xml component `{name}`")),
-                },
-                "json" => match read_json_component(&component, path, &mut warnings) {
-                    Some(sc) => match json_serializer::read(&component, &sc) {
-                        Ok(Some(serializer)) => json_serializers.push(serializer),
-                        Ok(None) => match json_parser::read(&component, &sc) {
-                            Ok(Some(parser)) => json_parsers.push(parser),
+                "xml" => {
+                    match read_schema_component_in_package(&component, resources, &mut warnings) {
+                        Some(sc) => match xml_serializer::read(&component, &sc) {
+                            Ok(Some(serializer)) => xml_serializers.push(serializer),
                             Ok(None) => schema_components.push(sc),
-                            Err(reason) => warnings.push(format!(
-                                "JSON string parser `{name}` is unsupported: {reason}"
-                            )),
+                            Err(reason) => {
+                                warnings.push(format!(
+                                    "XML string serializer `{name}` is unsupported: {reason}"
+                                ));
+                                schema_components.push(sc);
+                            }
                         },
-                        Err(reason) => {
-                            warnings.push(format!(
-                                "JSON string serializer `{name}` is unsupported: {reason}"
-                            ));
-                            schema_components.push(sc);
-                        }
-                    },
-                    None => warnings.push(format!("skipped json component `{name}`")),
-                },
+                        None => warnings.push(format!("skipped xml component `{name}`")),
+                    }
+                }
+                "json" => {
+                    match read_json_component_in_package(&component, resources, &mut warnings) {
+                        Some(sc) => match json_serializer::read(&component, &sc) {
+                            Ok(Some(serializer)) => json_serializers.push(serializer),
+                            Ok(None) => match json_parser::read(&component, &sc) {
+                                Ok(Some(parser)) => json_parsers.push(parser),
+                                Ok(None) => schema_components.push(sc),
+                                Err(reason) => warnings.push(format!(
+                                    "JSON string parser `{name}` is unsupported: {reason}"
+                                )),
+                            },
+                            Err(reason) => {
+                                warnings.push(format!(
+                                    "JSON string serializer `{name}` is unsupported: {reason}"
+                                ));
+                                schema_components.push(sc);
+                            }
+                        },
+                        None => warnings.push(format!("skipped json component `{name}`")),
+                    }
+                }
                 "xlsx" if component.attribute("kind") == Some("26") => {
                     match read_xlsx_component(&component, &mut warnings) {
                         Some(sc) => schema_components.push(sc),
@@ -217,7 +250,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                             None => warnings.push(format!("skipped csv component `{name}`")),
                         }
                     } else if flavor == "edi" {
-                        match read_edi_component(&component, path, &mut warnings) {
+                        match read_edi_component(&component, resources, &mut warnings) {
                             Some(sc) => schema_components.push(sc),
                             None => warnings.push(format!("skipped edi component `{name}`")),
                         }
@@ -317,7 +350,12 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                     fn_components.push(read_fn_component(&component));
                 }
                 "db" if is_routine_catalog(&component, &children) => {}
-                "db" => match read_db_component(&component, &mapping_el, path, &mut warnings) {
+                "db" => match read_db_component_in_package(
+                    &component,
+                    &mapping_el,
+                    resources,
+                    &mut warnings,
+                ) {
                     Some(sc) => schema_components.push(sc),
                     None => note_skipped_library(&mut skipped_libraries, "db"),
                 },
@@ -381,7 +419,7 @@ pub fn import(path: &Path) -> Result<Imported, MfdError> {
                                 && node.attribute("usageKind") == Some("variable")
                         }) =>
                 {
-                    match read_schema_component(&component, path, &mut warnings) {
+                    match read_schema_component_in_package(&component, resources, &mut warnings) {
                         Some(variable) => schema_components.push(variable),
                         None => warnings.push(format!(
                             "skipped core structure variable `{name}`: missing entry tree"
