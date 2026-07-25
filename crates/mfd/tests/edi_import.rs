@@ -632,6 +632,13 @@ fn compiles_and_embeds_selected_swift_configuration() {
     let imported = mfd::import(&mfd_path).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     assert_eq!(imported.project.source_path.as_deref(), Some("input.mt950"));
+    assert!(
+        imported
+            .project
+            .source_options
+            .edi_config_reference
+            .is_none()
+    );
     let layout = imported.project.source_options.swift_mt.as_ref().unwrap();
     assert_eq!(layout.message("MT950").unwrap().fields().len(), 1);
     let encoded = serde_json::to_string(&imported.project).unwrap();
@@ -641,6 +648,82 @@ fn compiles_and_embeds_selected_swift_configuration() {
         imported.project.source_options.swift_mt
     );
     assert_source_boundary_roundtrip(&imported.project, directory.path());
+}
+
+#[test]
+fn retains_unavailable_swift_configuration_for_design_roundtrips() {
+    let directory = TempDir::new("swift_missing_config");
+    let design = directory.path().join("mapping.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><resources/><component name="map" uid="1"><structure><children>
+          <component name="swift" library="text" uid="2" kind="16"><data>
+            <root><entry name="FileInstance"><entry name="document">
+              <entry name="Messages"><entry name="Statement"><entry name="Reference" outkey="10"/></entry></entry>
+            </entry></entry></root>
+            <text type="edi" kind="SWIFTMT" config="Unavailable/Envelope.Config"/>
+          </data></component>
+          <component name="target" library="xml" uid="3" kind="14"><properties XSLTDefaultOutput="1"/><data>
+            <root><entry name="Result"><entry name="Reference" inpkey="20"/></entry></root>
+          </data></component>
+        </children><graph><vertices>
+          <vertex vertexkey="10"><edges><edge vertexkey="20"/></edges></vertex>
+        </vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&design).unwrap();
+    assert_eq!(
+        imported
+            .project
+            .source_options
+            .edi_config_reference
+            .as_deref(),
+        Some("Unavailable/Envelope.Config")
+    );
+    assert!(imported.project.source_options.swift_mt.is_none());
+    assert_eq!(imported.warnings.len(), 1, "{:?}", imported.warnings);
+
+    let exported_path = directory.path().join("roundtrip.mfd");
+    assert!(
+        mfd::export(&imported.project, &exported_path)
+            .unwrap()
+            .is_empty()
+    );
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    let document = roxmltree::Document::parse(&exported).unwrap();
+    let text = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("kind") == Some("SWIFTMT"))
+        .unwrap();
+    assert_eq!(
+        text.attribute("config"),
+        Some("Unavailable/Envelope.Config")
+    );
+    assert!(
+        text.children()
+            .all(|child| !child.has_tag_name("ferrule-layout"))
+    );
+
+    let reimported = mfd::import(&exported_path).unwrap();
+    assert_eq!(
+        reimported
+            .project
+            .source_options
+            .edi_config_reference
+            .as_deref(),
+        Some("Unavailable/Envelope.Config")
+    );
+    assert!(reimported.project.source_options.swift_mt.is_none());
+    assert_eq!(reimported.warnings.len(), 1, "{:?}", reimported.warnings);
+    assert!(
+        mfd::export(
+            &reimported.project,
+            &directory.path().join("second-roundtrip.mfd")
+        )
+        .unwrap()
+        .is_empty()
+    );
 }
 
 #[test]
