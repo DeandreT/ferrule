@@ -27,14 +27,8 @@ pub(super) fn apply(
         .iter()
         .filter(|child| !child.attribute)
         .collect::<Vec<_>>();
-    if restricted_elements.is_empty() && !base_elements.is_empty() {
-        return Err(unsupported(
-            base_name,
-            "a nonempty base particle requires an explicit restricted xs:sequence",
-        ));
-    }
-
     let mut next_base = 0;
+    let mut normalized_elements = Vec::with_capacity(restricted_elements.len());
     for child in restricted_elements {
         let Some(offset) = base_elements[next_base..]
             .iter()
@@ -46,23 +40,24 @@ pub(super) fn apply(
             ));
         };
         let candidate = base_elements[next_base + offset];
-        if !compatible_restriction(candidate, child) {
+        let Some(normalized) = normalize_restriction(candidate, child) else {
             return Err(unsupported(
                 base_name,
                 "a restricted particle changes an incompatible field shape or widens repetition",
             ));
-        }
+        };
+        normalized_elements.push(normalized);
         next_base += offset + 1;
     }
 
     let prohibited = prohibited_attributes(declaration, schema, schema_path, state);
-    let restricted_attributes = restricted
+    let mut restricted_attributes = restricted
         .children
         .iter()
         .filter(|child| child.attribute)
         .cloned()
         .collect::<Vec<_>>();
-    for attribute in &restricted_attributes {
+    for attribute in &mut restricted_attributes {
         let Some(candidate) = base
             .children
             .iter()
@@ -73,19 +68,16 @@ pub(super) fn apply(
                 "a restriction cannot introduce an attribute absent from its base",
             ));
         };
-        if !compatible_restriction(candidate, attribute) {
+        let Some(normalized) = normalize_restriction(candidate, attribute) else {
             return Err(unsupported(
                 base_name,
                 "a restricted attribute changes an incompatible field shape",
             ));
-        }
+        };
+        *attribute = normalized;
     }
 
-    let mut children = restricted
-        .children
-        .drain(..)
-        .filter(|child| !child.attribute)
-        .collect::<Vec<_>>();
+    let mut children = normalized_elements;
     for base_attribute in base.children.into_iter().filter(|child| child.attribute) {
         if prohibited
             .iter()
@@ -158,7 +150,7 @@ fn prohibited_attributes(
         .collect()
 }
 
-fn compatible_restriction(base: &SchemaNode, restricted: &SchemaNode) -> bool {
+fn normalize_restriction(base: &SchemaNode, restricted: &SchemaNode) -> Option<SchemaNode> {
     if base.name != restricted.name
         || base.attribute != restricted.attribute
         || base.text != restricted.text
@@ -166,33 +158,45 @@ fn compatible_restriction(base: &SchemaNode, restricted: &SchemaNode) -> bool {
         || (!base.repeating && restricted.repeating)
         || (!base.nillable && restricted.nillable)
     {
-        return false;
+        return None;
     }
     match (&base.kind, &restricted.kind) {
-        (SchemaKind::Scalar { ty: base }, SchemaKind::Scalar { ty: restricted }) => {
-            base == restricted
+        (SchemaKind::Scalar { ty: base_ty }, SchemaKind::Scalar { ty: restricted_ty }) => {
+            (base_ty == restricted_ty).then(|| restricted.clone())
         }
         (
-            SchemaKind::Group { children: base, .. },
             SchemaKind::Group {
-                children: restricted,
+                children: base_children,
+                ..
+            },
+            SchemaKind::Group {
+                children: restricted_children,
                 ..
             },
         ) => {
+            if base.recursive_ref.is_some() {
+                let mut normalized = base.clone();
+                normalized.repeating = restricted.repeating;
+                normalized.nillable = restricted.nillable;
+                return Some(normalized);
+            }
             let mut next_base = 0;
-            restricted.iter().all(|child| {
-                let Some(offset) = base[next_base..]
+            let mut normalized_children = Vec::with_capacity(restricted_children.len());
+            for child in restricted_children {
+                let offset = base_children[next_base..]
                     .iter()
-                    .position(|candidate| candidate.name == child.name)
-                else {
-                    return false;
-                };
-                let compatible = compatible_restriction(&base[next_base + offset], child);
+                    .position(|candidate| candidate.name == child.name)?;
+                let normalized = normalize_restriction(&base_children[next_base + offset], child)?;
+                normalized_children.push(normalized);
                 next_base += offset + 1;
-                compatible
-            })
+            }
+            let mut normalized = restricted.clone();
+            if let SchemaKind::Group { children, .. } = &mut normalized.kind {
+                *children = normalized_children;
+            }
+            Some(normalized)
         }
-        _ => false,
+        _ => None,
     }
 }
 

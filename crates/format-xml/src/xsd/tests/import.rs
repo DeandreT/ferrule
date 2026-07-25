@@ -1205,6 +1205,77 @@ fn narrows_complex_content_restriction_particles_and_attributes() {
 }
 
 #[test]
+fn preserves_recursive_base_fields_restated_by_a_restriction() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_recursive_restriction_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:complexType name="RecursiveBase">
+            <xs:sequence>
+              <xs:element name="Label" type="xs:string"/>
+              <xs:element name="Discarded" type="xs:string" minOccurs="0"/>
+              <xs:element name="Child" type="RecursiveBase" minOccurs="0" maxOccurs="unbounded"/>
+            </xs:sequence>
+          </xs:complexType>
+          <xs:complexType name="Narrow"><xs:complexContent>
+            <xs:restriction base="RecursiveBase">
+              <xs:sequence>
+                <xs:element name="Label" type="xs:string"/>
+                <xs:element name="Discarded" type="xs:string" minOccurs="0" maxOccurs="0"/>
+                <xs:element name="Child" type="RecursiveBase" minOccurs="0" maxOccurs="unbounded"/>
+              </xs:sequence>
+            </xs:restriction>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Root" type="Narrow"/>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("Root")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(schema.child("Discarded").is_none());
+    let child = schema.child("Child").unwrap();
+    assert!(child.repeating);
+    assert!(child.recursive_ref.is_some());
+    assert!(matches!(child.kind, SchemaKind::Group { ref children, .. } if children.is_empty()));
+}
+
+#[test]
+fn empty_complex_content_restriction_removes_the_base_particle() {
+    let path = std::env::temp_dir().join(format!(
+        "ferrule_xsd_empty_particle_restriction_{}.xsd",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+          <xs:complexType name="Base">
+            <xs:sequence><xs:element name="Removed" type="xs:string"/></xs:sequence>
+            <xs:attribute name="kept" type="xs:string"/>
+            <xs:attribute name="removed" type="xs:string"/>
+          </xs:complexType>
+          <xs:complexType name="AttributesOnly"><xs:complexContent>
+            <xs:restriction base="Base">
+              <xs:attribute name="kept" type="xs:string"/>
+              <xs:attribute name="removed" use="prohibited"/>
+            </xs:restriction>
+          </xs:complexContent></xs:complexType>
+          <xs:element name="Root" type="AttributesOnly"/>
+        </xs:schema>"#,
+    )
+    .unwrap();
+
+    let schema = import_root(&path, Some("Root")).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert!(schema.child("Removed").is_none());
+    assert!(schema.child("kept").is_some_and(|child| child.attribute));
+    assert!(schema.child("removed").is_none());
+}
+
+#[test]
 fn rejects_incompatible_complex_content_restrictions_explicitly() {
     for (label, body, reason) in [
         (
