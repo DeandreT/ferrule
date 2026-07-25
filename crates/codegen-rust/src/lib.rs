@@ -899,6 +899,41 @@ fn render_expression(
             ));
             body
         }
+        Expression::SequenceAggregate {
+            function,
+            sequence,
+            predicate,
+            arg,
+        } => {
+            let mut body = String::from("{\n");
+            render_generated_values(sequence, "        ", &mut body);
+            body.push_str(
+                "        let generated_items = GeneratedItems::new(sequence_values);\n        let mut aggregate_values = Vec::new();\n",
+            );
+            body.push_str(
+                "        for item_context in context.generated_item_contexts(&generated_items) {\n",
+            );
+            if let Some(predicate) = predicate {
+                body.push_str(&format!(
+                    "            let selected = expression_{predicate}(&item_context)?;\n            if !require_bool(selected, {predicate})? {{\n                continue;\n            }}\n"
+                ));
+            }
+            body.push_str(&format!(
+                "            aggregate_values.push(expression_{}(&item_context)?);\n        }}\n",
+                sequence.item()
+            ));
+            match arg {
+                Some(arg) => body.push_str(&format!(
+                    "        let arg = Some(expression_{arg}(context)?);\n"
+                )),
+                None => body.push_str("        let arg = None;\n"),
+            }
+            body.push_str(&format!(
+                "        aggregate(AggregateFunction::{}, &aggregate_values, arg)\n    }}",
+                aggregate_function_name(*function)
+            ));
+            body
+        }
     };
     let parameters_argument = parameters
         .map(|_| ", parameters: &[Value]")

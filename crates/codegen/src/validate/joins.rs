@@ -267,6 +267,33 @@ pub(super) fn validate_expression(
                 }
                 validate_expression(*predicate, expressions, sources, None, active_joins, false)?;
             }
+            Expression::SequenceAggregate {
+                sequence,
+                predicate,
+                arg,
+                ..
+            } => {
+                for input in sequence.inputs().chain(arg.iter().copied()) {
+                    validate_expression(
+                        input,
+                        expressions,
+                        sources,
+                        current_source,
+                        active_joins,
+                        root_context,
+                    )?;
+                }
+                if let Some(predicate) = predicate {
+                    validate_expression(
+                        *predicate,
+                        expressions,
+                        sources,
+                        None,
+                        active_joins,
+                        false,
+                    )?;
+                }
+            }
             _ => pending.extend(graph_dependencies::of(expression)),
         }
     }

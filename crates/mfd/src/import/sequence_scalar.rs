@@ -9,6 +9,78 @@ use super::iteration::split_at_innermost_repeating;
 use super::schema::{JsonDynamicPort, schema_node_at};
 
 impl GraphBuilder<'_> {
+    pub(super) fn sequence_aggregate_node(
+        &mut self,
+        function: mapping::AggregateOp,
+        aggregate_feed: u32,
+        arg: Option<NodeId>,
+    ) -> Option<Node> {
+        let mut sequence_feed = aggregate_feed;
+        let mut predicate_feed = None;
+        let mut invert_predicate = false;
+        if let Some(&filter_index) = self.fn_by_output.get(&aggregate_feed)
+            && let Some(filter) = self.fn_components.get(filter_index)
+            && is_filter(filter)
+            && let Some(output_position) = filter
+                .output_pins
+                .iter()
+                .position(|output| *output == Some(aggregate_feed))
+            && output_position <= 1
+        {
+            sequence_feed = self.input_feed(filter_index, 0)?;
+            predicate_feed = Some(self.input_feed(filter_index, 1)?);
+            invert_predicate = output_position == 1;
+        }
+
+        let sequence_index = *self.fn_by_output.get(&sequence_feed)?;
+        if !self
+            .fn_components
+            .get(sequence_index)
+            .is_some_and(|component| {
+                is_sequence_producer(component)
+                    && component.output_pins.first().copied().flatten() == Some(sequence_feed)
+            })
+        {
+            return None;
+        }
+
+        let item = self.alloc(Node::SourceField {
+            path: Vec::new(),
+            frame: None,
+        });
+        let previous_item = self.sequence_items.insert(sequence_index, item);
+        if predicate_feed.is_some() {
+            self.sequence_predicate_components.insert(sequence_index);
+        }
+        let result = self.sequence_expr(sequence_index).and_then(|sequence| {
+            let mut predicate = predicate_feed.and_then(|feed| self.value_node(feed));
+            if invert_predicate {
+                predicate = predicate.map(|predicate| {
+                    self.alloc(Node::Call {
+                        function: "not".to_string(),
+                        args: vec![predicate],
+                    })
+                });
+            }
+            (predicate_feed.is_none() || predicate.is_some()).then_some(Node::SequenceAggregate {
+                function,
+                sequence,
+                predicate,
+                arg,
+            })
+        });
+        self.sequence_predicate_components.remove(&sequence_index);
+        if let Some(previous_item) = previous_item {
+            self.sequence_items.insert(sequence_index, previous_item);
+        } else {
+            self.sequence_items.remove(&sequence_index);
+        }
+        if result.is_none() {
+            self.graph.nodes.remove(&item);
+        }
+        result
+    }
+
     pub(super) fn sequence_exists_node(&mut self, exists_index: usize) -> Option<Node> {
         let filter_feed = self.input_feed(exists_index, 0)?;
         let filter_index = *self.fn_by_output.get(&filter_feed)?;

@@ -828,6 +828,9 @@ fn node_label(node: &mapping::Node) -> String {
         mapping::Node::SequenceItemAt { sequence, .. } => {
             format!("item-at {}", generated_sequence_label(sequence))
         }
+        mapping::Node::SequenceAggregate {
+            function, sequence, ..
+        } => format!("{function:?} {}", generated_sequence_label(sequence)).to_lowercase(),
         mapping::Node::Aggregate {
             function,
             collection,

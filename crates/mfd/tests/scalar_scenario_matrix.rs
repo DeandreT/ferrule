@@ -4,7 +4,8 @@ use std::path::Path;
 
 use ir::{Instance, Value};
 use support::{
-    ConnectionStyle, GeneratedSequence, ScalarContext, ScalarLiteral as Literal, ScalarMfdBuilder,
+    ConnectionStyle, GeneratedAggregate, GeneratedSequence, ScalarContext,
+    ScalarLiteral as Literal, ScalarMfdBuilder,
 };
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
@@ -16,6 +17,23 @@ struct FunctionCase {
     arguments: Vec<Literal>,
     output_type: &'static str,
     nondeterministic: bool,
+}
+
+#[derive(Clone, Copy)]
+struct GraphEncoding {
+    style: ConnectionStyle,
+    reverse_components: bool,
+    key_offset: u32,
+}
+
+impl Default for GraphEncoding {
+    fn default() -> Self {
+        Self {
+            style: ConnectionStyle::Graph,
+            reverse_components: false,
+            key_offset: 0,
+        }
+    }
 }
 
 impl FunctionCase {
@@ -555,6 +573,74 @@ fn execute_generated_exists(
     Ok((value, imported.project))
 }
 
+fn execute_generated_aggregate(
+    sequence: GeneratedSequence,
+    operation: GeneratedAggregate,
+    arguments: Vec<Literal>,
+    output_type: &str,
+    context: ScalarContext,
+    encoding: GraphEncoding,
+) -> TestResult<(Value, mapping::Project)> {
+    let fixture = ScalarMfdBuilder::generated_aggregate(
+        format!("generated_{operation:?}_{sequence:?}_{context:?}"),
+        sequence,
+        operation,
+        arguments,
+        output_type,
+    )
+    .context(context)
+    .connection_style(encoding.style)
+    .reverse_components(encoding.reverse_components)
+    .key_offset(encoding.key_offset)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(
+        imported.warnings.is_empty(),
+        "{operation:?} over {sequence:?} in {context:?}: {:?}",
+        imported.warnings
+    );
+    let validation = engine::validate(&imported.project);
+    assert!(
+        validation.is_empty(),
+        "{operation:?} over {sequence:?} in {context:?}: {validation:?}"
+    );
+    codegen::lower(&imported.project).map_err(|diagnostics| {
+        format!("{operation:?} over {sequence:?} did not lower: {diagnostics:?}")
+    })?;
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    let value = output
+        .field("Result")
+        .and_then(Instance::as_scalar)
+        .cloned()
+        .ok_or_else(|| {
+            format!("{operation:?} over {sequence:?} in {context:?} produced no Result scalar")
+        })?;
+
+    let roundtrip = fixture.design().with_file_name("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &roundtrip)?;
+    assert!(
+        export_warnings.is_empty(),
+        "{operation:?} over {sequence:?} in {context:?} export: {export_warnings:?}"
+    );
+    let reimported = mfd::import(&roundtrip)?;
+    assert!(
+        reimported.warnings.is_empty(),
+        "{operation:?} over {sequence:?} in {context:?} re-import: {:?}",
+        reimported.warnings
+    );
+    let rerun = engine::run(&reimported.project, &source)?;
+    assert_eq!(
+        rerun.field("Result").and_then(Instance::as_scalar),
+        Some(&value),
+        "{operation:?} over {sequence:?} in {context:?} changed after export and re-import"
+    );
+    Ok((value, imported.project))
+}
+
 #[test]
 fn scalar_functions_are_equivalent_in_main_udf_and_nested_udf_contexts() -> TestResult {
     for (case_index, case) in scalar_cases().iter().enumerate() {
@@ -851,5 +937,166 @@ fn generated_position_exists_is_invariant_under_graph_encoding() -> TestResult {
             "{style:?}, reverse={reverse_components}, offset={key_offset}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn generated_aggregates_execute_in_scalar_and_nested_udfs() -> TestResult {
+    let cases = [
+        (
+            GeneratedSequence::Tokenize,
+            GeneratedAggregate::Count,
+            vec![text("alpha|beta|gamma"), text("|")],
+            "integer",
+            Value::Int(3),
+        ),
+        (
+            GeneratedSequence::Generate,
+            GeneratedAggregate::Sum,
+            vec![int(1), int(4)],
+            "integer",
+            Value::Int(10),
+        ),
+        (
+            GeneratedSequence::Generate,
+            GeneratedAggregate::Avg,
+            vec![int(1), int(4)],
+            "decimal",
+            Value::Float(2.5),
+        ),
+        (
+            GeneratedSequence::TokenizeByLength,
+            GeneratedAggregate::Min,
+            vec![text("090204"), int(2)],
+            "integer",
+            Value::Int(2),
+        ),
+        (
+            GeneratedSequence::TokenizeRegex,
+            GeneratedAggregate::Max,
+            vec![text("3,11,7"), text(","), text("")],
+            "integer",
+            Value::Int(11),
+        ),
+        (
+            GeneratedSequence::Tokenize,
+            GeneratedAggregate::Join,
+            vec![text("alpha|beta|gamma"), text("|"), text(" / ")],
+            "string",
+            Value::String("alpha / beta / gamma".to_string()),
+        ),
+    ];
+    for (sequence, operation, arguments, output_type, expected) in cases {
+        for context in [ScalarContext::UserDefined, ScalarContext::NestedUserDefined] {
+            let (actual, project) = execute_generated_aggregate(
+                sequence,
+                operation,
+                arguments.clone(),
+                output_type,
+                context,
+                GraphEncoding::default(),
+            )?;
+            assert_eq!(
+                actual, expected,
+                "{operation:?} over {sequence:?} in {context:?}"
+            );
+            assert!(
+                project
+                    .graph
+                    .nodes
+                    .values()
+                    .any(|node| matches!(node, mapping::Node::SequenceAggregate { .. })),
+                "{operation:?} over {sequence:?} in {context:?} was not lowered to SequenceAggregate"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_aggregate_is_invariant_under_graph_encoding() -> TestResult {
+    let variants = [
+        (ConnectionStyle::Graph, false, 0),
+        (ConnectionStyle::Graph, true, 3_000),
+        (ConnectionStyle::Legacy, false, 6_000),
+        (ConnectionStyle::Legacy, true, 9_000),
+    ];
+    for (style, reverse_components, key_offset) in variants {
+        let (actual, _) = execute_generated_aggregate(
+            GeneratedSequence::TokenizeRegex,
+            GeneratedAggregate::Join,
+            vec![text("one  two three"), text(r"\s+"), text(""), text(",")],
+            "string",
+            ScalarContext::NestedUserDefined,
+            GraphEncoding {
+                style,
+                reverse_components,
+                key_offset,
+            },
+        )?;
+        assert_eq!(
+            actual,
+            Value::String("one,two,three".to_string()),
+            "{style:?}, reverse={reverse_components}, offset={key_offset}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn filtered_generated_aggregate_executes_and_roundtrips() -> TestResult {
+    let fixture = ScalarMfdBuilder::generated_filtered_aggregate(
+        "filtered_generated_join",
+        GeneratedSequence::Tokenize,
+        GeneratedAggregate::Join,
+        vec![
+            text("alpha|beta|alpha"),
+            text("|"),
+            text("alpha"),
+            text("/"),
+        ],
+        "string",
+    )
+    .context(ScalarContext::NestedUserDefined)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+    codegen::lower(&imported.project)
+        .map_err(|diagnostics| format!("filtered aggregate did not lower: {diagnostics:?}"))?;
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            mapping::Node::SequenceAggregate {
+                predicate: Some(_),
+                ..
+            }
+        )
+    }));
+
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    assert_eq!(
+        output.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::String("alpha/alpha".to_string()))
+    );
+
+    let roundtrip = fixture.design().with_file_name("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &roundtrip)?;
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let reimported = mfd::import(&roundtrip)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source)?;
+    assert_eq!(
+        rerun.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::String("alpha/alpha".to_string()))
+    );
     Ok(())
 }

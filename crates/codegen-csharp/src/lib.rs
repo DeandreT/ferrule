@@ -40,10 +40,10 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 mod tests {
     use ::mapping::FunctionId;
     use codegen::{
-        Binding, Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
-        GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram,
-        Program, ProgramValidationError, RuntimeValue, ScalarFunction, SourceIteration,
-        TargetScope, UserFunctionProgram,
+        AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,
+        FailureSelection, GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram,
+        NamedTargetProgram, Program, ProgramValidationError, RuntimeValue, ScalarFunction,
+        SourceIteration, TargetScope, UserFunctionProgram,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -1021,6 +1021,81 @@ mod tests {
         assert!(source.contains("FerruleSequences.TokenizeRegex"));
         assert!(source.contains("context.IterateGenerated(sequence_values_scope_1)"));
         assert!(!source.contains("context.EnumerateGenerated(sequence_values_scope_1)"));
+    }
+
+    #[test]
+    fn generated_sequence_aggregates_emit_private_item_reduction() {
+        let mut program = program();
+        program.expressions.extend([
+            ExpressionNode {
+                id: 10,
+                expression: Expression::Const {
+                    value: Value::Int(1),
+                },
+            },
+            ExpressionNode {
+                id: 11,
+                expression: Expression::Const {
+                    value: Value::Int(4),
+                },
+            },
+            ExpressionNode {
+                id: 12,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 13,
+                expression: Expression::Position {
+                    collection: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 14,
+                expression: Expression::Const {
+                    value: Value::Int(2),
+                },
+            },
+            ExpressionNode {
+                id: 15,
+                expression: Expression::Call {
+                    function: ScalarFunction::GreaterThan,
+                    args: vec![13, 14],
+                },
+            },
+            ExpressionNode {
+                id: 16,
+                expression: Expression::SequenceAggregate {
+                    function: AggregateFunction::Sum,
+                    sequence: GeneratedSequence::Range {
+                        from: Some(10),
+                        to: 11,
+                        item: 12,
+                    },
+                    predicate: Some(15),
+                    arg: None,
+                },
+            },
+        ]);
+        program.root.bindings[0] = Binding {
+            target_field: "root value".into(),
+            expression: 16,
+            target_type: ScalarType::Int,
+            repeating: false,
+        };
+
+        let artifacts = emit(&program).expect("generated sequence aggregate emits");
+        let source = generated_source(&artifacts);
+        let aggregate = source
+            .split("private static global::Ferrule.Runtime.FerruleValue Node_16")
+            .nth(1)
+            .expect("aggregate method");
+        assert!(aggregate.contains("context.EnumerateGenerated(sequence_values_node_16)"));
+        assert!(aggregate.contains("Node_15(sequence_context_node_16)"));
+        assert!(aggregate.contains("Node_12(sequence_context_node_16)"));
+        assert!(aggregate.contains("FerruleAggregateOperation.Sum"));
     }
 
     #[test]

@@ -493,7 +493,8 @@ fn validate_expression_sequence_paths(
     for (&node, expression) in expressions {
         let sequence = match expression {
             Expression::SequenceExists { sequence, .. }
-            | Expression::SequenceItemAt { sequence, .. } => sequence,
+            | Expression::SequenceItemAt { sequence, .. }
+            | Expression::SequenceAggregate { sequence, .. } => sequence,
             _ => continue,
         };
         recursive_sequence::validate(sources, sequence, &SequenceOwner::Expression(node))?;

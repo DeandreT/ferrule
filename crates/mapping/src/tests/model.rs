@@ -1018,6 +1018,38 @@ fn sequence_item_at_roundtrips() {
 }
 
 #[test]
+fn sequence_aggregate_roundtrips() {
+    let node = Node::SequenceAggregate {
+        function: AggregateOp::Join,
+        sequence: SequenceExpr::TokenizeRegex {
+            input: 1,
+            pattern: 2,
+            flags: Some(3),
+            item: 4,
+        },
+        predicate: Some(5),
+        arg: Some(6),
+    };
+    let encoded = serde_json::to_string(&node).unwrap();
+    assert!(encoded.contains(r#""kind":"sequence_aggregate""#));
+    let decoded: Node = serde_json::from_str(&encoded).unwrap();
+    assert!(matches!(
+        decoded,
+        Node::SequenceAggregate {
+            function: AggregateOp::Join,
+            sequence: SequenceExpr::TokenizeRegex {
+                input: 1,
+                pattern: 2,
+                flags: Some(3),
+                item: 4
+            },
+            predicate: Some(5),
+            arg: Some(6)
+        }
+    ));
+}
+
+#[test]
 fn regex_sequence_preserves_disconnected_optional_flags() {
     let sequence = SequenceExpr::TokenizeRegex {
         input: 1,
