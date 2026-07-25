@@ -1228,6 +1228,26 @@ mod tests {
     }
 
     #[test]
+    fn scalar_calls_serialize_typed_json_objects() {
+        assert_eq!(
+            call(
+                "json_serialize_object",
+                &[
+                    Value::String(r#"["Order","Number"]"#.into()),
+                    Value::String("integer".into()),
+                    Value::String("7".into()),
+                    Value::String(r#"["Order","Active"]"#.into()),
+                    Value::String("boolean".into()),
+                    Value::String("true".into()),
+                ],
+            ),
+            Ok(Value::String(
+                r#"{"Order":{"Number":7,"Active":true}}"#.into()
+            ))
+        );
+    }
+
+    #[test]
     fn boolean_requirements_retain_the_condition_node() {
         assert_eq!(require_bool(12, Value::Bool(true)), Ok(true));
         assert_eq!(

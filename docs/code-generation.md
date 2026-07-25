@@ -135,13 +135,14 @@ The current portable model includes:
   supplied by the execution host
 - bounded named host parameters with declared string, integer, floating-point,
   or boolean types, scalar coercion, and distinct missing/type failures
-- lazy conditionals and a closed set of 74 boolean, arithmetic, comparison,
+- lazy conditionals and a closed set of 75 boolean, arithmetic, comparison,
   scalar text, Unicode whitespace/substring/padding, finite numeric detection,
   integer-first conversion, numeric picture formatting, SQL LIKE, bounded regex
   matching/replacement, ISBN, rounding, date extraction, composition, picture parsing, exact
   duration arithmetic, and EDIFACT date-time conversion,
   missing-value, XML-nil, lexical path, schema-guided JSON-string field
-  projection, and validated pure delay-pass-through functions
+  projection and typed object serialization, and validated pure
+  delay-pass-through functions
 - ordered value maps with optional declared-input coercion, first-match wins,
   and explicit or Null fallback
 - first-match lookups over exact repeating collections in the primary or a

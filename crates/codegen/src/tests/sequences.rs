@@ -478,7 +478,7 @@ fn reports_unsupported_functions_inside_regex_generated_scopes() {
     project.graph.nodes.insert(
         41,
         Node::Call {
-            function: "json_serialize_object".into(),
+            function: "flextext_parse_field".into(),
             args: vec![20, 20],
         },
     );
@@ -492,7 +492,7 @@ fn reports_unsupported_functions_inside_regex_generated_scopes() {
         diagnostics,
         vec![Diagnostic::UnsupportedFunction {
             node: 41,
-            function: "json_serialize_object".into(),
+            function: "flextext_parse_field".into(),
         }]
     );
 }
