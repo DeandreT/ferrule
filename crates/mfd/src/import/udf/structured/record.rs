@@ -44,7 +44,7 @@ pub(super) fn read(
     let mut ids = Vec::new();
     let mut seen_ids = BTreeSet::new();
     for child in children {
-        if child.attribute("library") == Some("xml") {
+        if super::is_structured_declaration(*child) {
             continue;
         }
         if !matches!(child.attribute("library"), Some("core") | Some("lang")) {
@@ -91,7 +91,9 @@ pub(super) fn read(
         ids.push(id);
     }
     if functions.len() + 2 != children.len() {
-        return Err("structured record requires one XML input and one XML output".to_string());
+        return Err(
+            "structured record requires one structured input and one structured output".to_string(),
+        );
     }
 
     let edge_from = crate::import::graph::read_edges(structure, None);

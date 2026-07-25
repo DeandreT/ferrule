@@ -170,7 +170,7 @@ impl GraphBuilder<'_> {
                 let arity = input_ids
                     .iter()
                     .rposition(Option::is_some)
-                    .map_or(1, |last| last + 1);
+                    .map_or(usize::from(function != "create_guid"), |last| last + 1);
                 let args = (0..arity)
                     .map(|i| {
                         input_ids.get(i).copied().flatten().unwrap_or_else(|| {

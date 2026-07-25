@@ -301,7 +301,8 @@ fn sample_name(samples_dir: &Path, path: &Path) -> String {
 fn survey_file(samples_dir: &Path, path: &Path, export_path: &Path) -> SampleOutcome {
     let file = sample_name(samples_dir, path);
     let mut outcome = SampleOutcome::pending(file);
-    let imported = match mfd::import(path) {
+    let options = mfd::ImportOptions::default().with_package_root(samples_dir);
+    let imported = match mfd::import_with_options(path, &options) {
         Ok(imported) => imported,
         Err(error) => {
             outcome.import = StageOutcome::failed(vec![error.to_string()]);

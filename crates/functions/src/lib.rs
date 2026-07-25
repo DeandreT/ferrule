@@ -90,6 +90,7 @@ pub const BUILTIN_NAMES: &[&str] = &[
     "boolean",
     "positive",
     "floor",
+    "create_guid",
     "format_number",
     "exists",
     "round",

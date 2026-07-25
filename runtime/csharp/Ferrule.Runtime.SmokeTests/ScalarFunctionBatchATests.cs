@@ -57,6 +57,15 @@ internal static partial class Program
         CallEquals(Bool(false), "is_xml_nil", FerruleValue.Null);
         CallEquals(Bool(true), "is_xml_nil", FerruleValue.XmlNil);
 
+        var firstGuid = FerruleFunctions.Call("create_guid", Array.Empty<FerruleValue>());
+        var secondGuid = FerruleFunctions.Call("create_guid", Array.Empty<FerruleValue>());
+        Equal(FerruleValueKind.String, firstGuid.Kind);
+        Equal(32, firstGuid.StringValue.Length);
+        Equal(true, firstGuid.StringValue.All(Uri.IsHexDigit));
+        Equal('4', firstGuid.StringValue[12]);
+        Equal(true, "89ab".Contains(firstGuid.StringValue[16], StringComparison.Ordinal));
+        Equal(false, firstGuid.StringValue == secondGuid.StringValue);
+
         foreach (var (path, folder, filename) in new[]
         {
             ("/var/data/file.xml", "/var/data/", "file.xml"),
@@ -109,6 +118,7 @@ internal static partial class Program
         AssertFunctionArity("substitute_missing", 2, FerruleValue.Null);
         AssertFunctionArity("substitute_missing_with_xml_nil", 1, Array.Empty<FerruleValue>());
         AssertFunctionArity("is_xml_nil", 1, FerruleValue.Null, FerruleValue.XmlNil);
+        AssertFunctionArity("create_guid", 0, FerruleValue.Null);
         AssertFunctionType("get_folder", Bool(false));
         AssertFunctionType("get_fileext", Bool(false));
         AssertFunctionArity("resolve_filepath", 2, Text("base"));

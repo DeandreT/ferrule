@@ -60,6 +60,7 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "boolean" => effective_boolean(args),
         "positive" => positive(args),
         "floor" => floor(args),
+        "create_guid" => create_guid(args),
         "format_number" => format_number::format_number(args),
         "exists" => exists(args),
         "round" => round(args),
@@ -97,6 +98,17 @@ pub(super) fn call(name: &str, args: &[Value]) -> Result<Value, FunctionError> {
         "flextext_parse_field" => flextext::parse_field(args),
         other => Err(FunctionError::UnknownFunction(other.to_string())),
     }
+}
+
+fn create_guid(args: &[Value]) -> Result<Value, FunctionError> {
+    if !args.is_empty() {
+        return Err(FunctionError::ArityMismatch {
+            function: "create_guid",
+            expected: 0,
+            got: args.len(),
+        });
+    }
+    Ok(Value::String(uuid::Uuid::new_v4().simple().to_string()))
 }
 
 fn is_xml_nil(args: &[Value]) -> Result<Value, FunctionError> {

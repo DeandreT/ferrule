@@ -42,6 +42,34 @@ fn boolean_positive_and_floor_follow_scalar_numeric_semantics() {
 }
 
 #[test]
+fn create_guid_returns_a_fresh_unformatted_uuid_v4() {
+    let first = call("create_guid", &[]).unwrap();
+    let second = call("create_guid", &[]).unwrap();
+    let Value::String(first) = first else {
+        panic!("create_guid must return text");
+    };
+    let Value::String(second) = second else {
+        panic!("create_guid must return text");
+    };
+
+    for guid in [&first, &second] {
+        assert_eq!(guid.len(), 32);
+        assert!(guid.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(&guid[12..13], "4");
+        assert!(matches!(&guid[16..17], "8" | "9" | "a" | "b"));
+    }
+    assert_ne!(first, second);
+    assert!(matches!(
+        call("create_guid", &[Value::Null]),
+        Err(FunctionError::ArityMismatch {
+            function: "create_guid",
+            expected: 0,
+            got: 1
+        })
+    ));
+}
+
+#[test]
 fn isbn10_converts_to_bookland_isbn13_and_validates_check_digit() {
     assert_eq!(
         call("isbn10_to_isbn13", &[Value::String("0-7645-4964-2".into())]),

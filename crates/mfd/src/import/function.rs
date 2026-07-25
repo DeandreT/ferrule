@@ -647,6 +647,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "boolean" => "boolean",
         "positive" => "positive",
         "floor" => "floor",
+        "create-guid" => "create_guid",
         "format-number" => "format_number",
         "format-date" => "format_date",
         "format-dateTime" => "format_datetime",
@@ -711,6 +712,7 @@ mod tests {
         assert_eq!(map_name("boolean"), Some("boolean"));
         assert_eq!(map_name("positive"), Some("positive"));
         assert_eq!(map_name("floor"), Some("floor"));
+        assert_eq!(map_name("create-guid"), Some("create_guid"));
         assert_eq!(map_name("format-date"), Some("format_date"));
         assert_eq!(map_name("format-dateTime"), Some("format_datetime"));
         assert_eq!(map_name("format-time"), Some("format_time"));

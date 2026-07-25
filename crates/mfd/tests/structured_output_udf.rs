@@ -164,6 +164,26 @@ fn structured_lookup_output_emits_zero_or_many_constructed_occurrences() {
 }
 
 #[test]
+fn edi_catalog_lookup_emits_constructed_occurrences() {
+    let design = mapping()
+        .replace(
+            r#"<component name="Catalog" library="xml" uid="103" kind="14"><data>"#,
+            r#"<component name="Catalog" library="text" uid="103" kind="16"><data>"#,
+        )
+        .replace(
+            r#"</root><document schema="catalog.xsd" inputinstance="catalog.xml" instanceroot="{}Catalog"/></data></component>"#,
+            r#"</root><text type="edi" kind="EDIX12" inputinstance="catalog.x12"/></data></component>"#,
+        );
+    let dir = setup(&design);
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert_eq!(imported.project.extra_sources.len(), 1);
+    assert_eq!(imported.project.extra_sources[0].path, "catalog.x12");
+    assert!(engine::validate(&imported.project).is_empty());
+}
+
+#[test]
 fn structured_lookup_with_sequence_output_expression_warns_and_skips() {
     let dir = setup(&mapping().replace("name=\"multiply\"", "name=\"sum\""));
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();

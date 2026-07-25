@@ -275,6 +275,32 @@ fn structured_input_filter_udf_imports_as_first_match_lookup() {
 }
 
 #[test]
+fn edi_record_input_filter_udf_imports_as_first_match_lookup() {
+    let design = mapping()
+        .replace(
+            r#"<component name="Catalog" library="xml" uid="104" kind="14"><properties UsageKind="input"/><data><root>"#,
+            r#"<component name="Catalog" library="text" uid="104" kind="16"><properties UsageKind="input"/><data><root>"#,
+        )
+        .replace(
+            r#"</root><document schema="catalog.xsd" instanceroot="{}Catalog"/></data></component>"#,
+            r#"</root><text type="edi" kind="EDIX12"/><parameter usageKind="input" name="Catalog"/></data></component>"#,
+        );
+    let dir = setup(&design);
+    let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();
+
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        imported
+            .project
+            .graph
+            .nodes
+            .values()
+            .any(|node| matches!(node, Node::CollectionFind { .. }))
+    );
+    assert!(engine::validate(&imported.project).is_empty());
+}
+
+#[test]
 fn structured_lookup_near_miss_retains_actionable_warning() {
     let dir = setup(&mapping().replace("name=\"equal\"", "name=\"unsupported-predicate\""));
     let imported = mfd::import(&dir.0.join("mapping.mfd")).unwrap();

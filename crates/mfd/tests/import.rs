@@ -44,6 +44,73 @@ fn scalar(instance: &Instance, field: &str) -> Value {
 }
 
 #[test]
+fn zero_input_create_guid_imports_and_executes() {
+    let temp = TempDir::new("create_guid");
+    std::fs::write(
+        temp.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Seed" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    std::fs::write(
+        temp.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Target"><xs:complexType><xs:sequence>
+    <xs:element name="Guid" type="xs:string"/>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )
+    .unwrap();
+    let mapping = temp.0.join("mapping.mfd");
+    std::fs::write(
+        &mapping,
+        r#"<mapping version="31"><component name="map"><structure><children>
+  <component name="Source" library="xml" kind="14"><data><root>
+    <entry name="Source"><entry name="Seed" outkey="1"/></entry>
+  </root><document schema="source.xsd" instanceroot="{}Source"/></data></component>
+  <component name="create-guid" library="lang" kind="5">
+    <targets><datapoint pos="0" key="3"/></targets>
+  </component>
+  <component name="Target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data><root>
+    <entry name="Target"><entry name="Guid" inpkey="2"/></entry>
+  </root><document schema="target.xsd" instanceroot="{}Target"/></data></component>
+</children><graph><vertices>
+  <vertex vertexkey="3"><edges><edge vertexkey="2"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )
+    .unwrap();
+
+    let imported = mfd::import(&mapping).unwrap();
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let output = engine::run(
+        &imported.project,
+        &Instance::Group(vec![(
+            "Seed".into(),
+            Instance::Scalar(Value::String("unused".into())),
+        )]),
+    )
+    .unwrap();
+    let Value::String(guid) = scalar(&output, "Guid") else {
+        panic!("create-guid target must be text");
+    };
+    assert_eq!(guid.len(), 32);
+    assert!(guid.bytes().all(|byte| byte.is_ascii_hexdigit()));
+
+    let exported_path = temp.0.join("exported.mfd");
+    let export_warnings = mfd::export(&imported.project, &exported_path).unwrap();
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let exported = std::fs::read_to_string(&exported_path).unwrap();
+    assert!(exported.contains(r#"name="create-guid" library="lang""#));
+    let reimported = mfd::import(&exported_path).unwrap();
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(engine::validate(&reimported.project).is_empty());
+}
+
+#[test]
 fn target_node_defaults_fill_missing_connected_and_unconnected_scalars() {
     let temp = TempDir::new("target_node_defaults");
     let source_xsd = temp.0.join("source.xsd");
