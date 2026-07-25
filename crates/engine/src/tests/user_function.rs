@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use ir::{Instance, ScalarType, SchemaNode, Value};
 use mapping::{
-    Binding, FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, Project, Scope,
-    UserFunction,
+    Binding, FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, Project,
+    RuntimeValue, Scope, UserFunction,
 };
 
-use crate::{EngineError, run, validate};
+use crate::{EngineError, ExecutionContext, run, run_with_context, validate};
 
 fn parameter(id: u64, name: &str, ty: ScalarType) -> FunctionParameter {
     FunctionParameter {
@@ -204,6 +205,48 @@ fn evaluates_nested_functions_with_isolated_parameters_and_coercion() {
     assert!(validate(&project).is_empty());
     let output = run(&project, &source("41")).unwrap();
     assert_eq!(output_value(&output), Some(&Value::String("42".into())));
+}
+
+#[test]
+fn user_functions_can_read_the_stable_runtime_clock() -> Result<(), EngineError> {
+    let function_id = FunctionId::new(1);
+    let user_functions = BTreeMap::from([(
+        function_id,
+        function(
+            "timestamp",
+            Vec::new(),
+            ScalarType::String,
+            [(
+                0,
+                Node::RuntimeValue {
+                    value: RuntimeValue::CurrentDateTime,
+                },
+            )],
+            0,
+        ),
+    )]);
+    let graph = Graph {
+        nodes: [(
+            0,
+            Node::UserFunctionCall {
+                function: function_id,
+                args: Vec::new(),
+            },
+        )]
+        .into_iter()
+        .collect(),
+    };
+    let project = project(graph, user_functions, 0);
+    let execution = ExecutionContext::new(Path::new("/maps/test.json"))
+        .with_current_datetime("2026-07-24T12:34:56-07:00");
+
+    assert!(validate(&project).is_empty());
+    let output = run_with_context(&project, &source("unused"), &execution)?;
+    assert_eq!(
+        output_value(&output),
+        Some(&Value::String("2026-07-24T12:34:56-07:00".into()))
+    );
+    Ok(())
 }
 
 #[test]

@@ -622,6 +622,12 @@ fn render_user_function_expression(
             };
             output.push_str(&format!(" =>\n        parameters[{index}];\n"));
         }
+        Expression::RuntimeValue { value } => {
+            output.push_str(" =>\n        context.ResolveRuntimeValue(");
+            output.push_str("global::Ferrule.Runtime.FerruleRuntimeValue.");
+            output.push_str(runtime_value_name(*value));
+            output.push_str(");\n");
+        }
         Expression::Call {
             function: builtin,
             args,

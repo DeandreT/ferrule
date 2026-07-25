@@ -72,6 +72,35 @@ fn accepts_isolated_nested_scalar_functions() {
 }
 
 #[test]
+fn accepts_runtime_values_in_isolated_scalar_functions() {
+    let mut program = program();
+    program.user_functions.push(UserFunctionProgram {
+        id: FunctionId::new(1),
+        library: "tests".into(),
+        name: "timestamp".into(),
+        parameters: Vec::new(),
+        output_type: ScalarType::String,
+        expressions: vec![ExpressionNode {
+            id: 1,
+            expression: Expression::RuntimeValue {
+                value: crate::RuntimeValue::CurrentDateTime,
+            },
+        }],
+        output: 1,
+    });
+    program.expressions.push(ExpressionNode {
+        id: 3,
+        expression: Expression::UserFunctionCall {
+            function: FunctionId::new(1),
+            args: Vec::new(),
+        },
+    });
+    program.root.bindings[0].expression = 3;
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
 fn rejects_parameter_leakage_and_context_dependent_function_bodies() {
     let mut leaked = program();
     leaked.expressions.push(ExpressionNode {

@@ -8,14 +8,29 @@ use super::{
     ScalarParameter,
 };
 use crate::import::function::{
-    FnComponent, is_db_scalar_function_component, map_component_name, parse_constant,
-    read as read_function,
+    FnComponent, is_db_scalar_function_component, is_xbrl_measure_component, map_component_name,
+    parse_constant, read as read_function,
 };
 use crate::import::graph::read_edges;
 use crate::import::schema::parse_u32;
 
 const MAX_SCALAR_EXPANSION_NODES: usize = 65_536;
 const MAX_SCALAR_EXPANSION_DEPTH: usize = 256;
+
+fn is_scalar_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    let library = component.attribute("library").unwrap_or_default();
+    let name = component.attribute("name").unwrap_or_default();
+    let kind = component.attribute("kind");
+    matches!(library, "core" | "lang")
+        || kind == Some("19")
+        || is_db_scalar_function_component(component)
+        || is_xbrl_measure_component(component)
+        || library == "xpath2"
+            && kind == Some("5")
+            && (name == "current-dateTime" || super::super::function::map_name(name).is_some())
+        || library == "edifact" && kind == Some("5") && name == "to-datetime"
+        || library == "ferrule" && kind == Some("5") && crate::canonical_function::is_internal(name)
+}
 
 pub(super) enum ReadError {
     Shape(String),
@@ -49,16 +64,7 @@ pub(super) fn read(
     let scalar_only = children
         .children()
         .filter(|node| node.is_element() && node.has_tag_name("component"))
-        .all(|child| {
-            matches!(child.attribute("library"), Some("core" | "lang"))
-                || child.attribute("kind") == Some("19")
-                || is_db_scalar_function_component(&child)
-                || child.attribute("library") == Some("ferrule")
-                    && child.attribute("kind") == Some("5")
-                    && crate::canonical_function::is_internal(
-                        child.attribute("name").unwrap_or_default(),
-                    )
-        });
+        .all(|child| is_scalar_component(&child));
 
     let mut functions = Vec::new();
     let mut function_component_ids = Vec::new();
@@ -139,10 +145,7 @@ pub(super) fn read(
         let internal = library == "ferrule"
             && child.attribute("kind") == Some("5")
             && crate::canonical_function::is_internal(child_name);
-        if !matches!(library, "core" | "lang")
-            && !internal
-            && !is_db_scalar_function_component(&child)
-        {
+        if !is_scalar_component(&child) && !internal {
             let detail = if library == "xml" || library == "json" || library == "text" {
                 "constructs or reads a structured sequence"
             } else {
@@ -422,6 +425,12 @@ impl DefinitionContext<'_> {
             ("set-xsi-nil", 5) if function.library == "core" => {
                 Ok(ScalarExpr::Const(Value::xml_nil()))
             }
+            ("mfd-filepath", 5) if function.library == "core" => {
+                Ok(ScalarExpr::RuntimeValue(RuntimeValue::MappingFilePath))
+            }
+            ("main-mfd-filepath", 5) if function.library == "core" => {
+                Ok(ScalarExpr::RuntimeValue(RuntimeValue::MainMappingFilePath))
+            }
             (_, 3) => {
                 if function.library != "core" || function.inputs.len() != 2 {
                     return Err(
@@ -496,7 +505,29 @@ impl DefinitionContext<'_> {
                 function: "exists".to_string(),
                 args: vec![input(0, active)?],
             }),
+            ("not-exists", 5) if function.library == "core" => Ok(ScalarExpr::Call {
+                function: "not".to_string(),
+                args: vec![ScalarExpr::Call {
+                    function: "exists".to_string(),
+                    args: vec![input(0, active)?],
+                }],
+            }),
+            ("xbrl-measure-shares", 5) if function.library == "xbrl" => Ok(ScalarExpr::Const(
+                Value::String("{http://www.xbrl.org/2003/instance}xbrli:shares".to_string()),
+            )),
+            ("xbrl-measure-currency", 5) if function.library == "xbrl" => Ok(ScalarExpr::Call {
+                function: "concat".to_string(),
+                args: vec![
+                    ScalarExpr::Const(Value::String(
+                        "{http://www.xbrl.org/2003/iso4217}iso4217:".to_string(),
+                    )),
+                    input(0, active)?,
+                ],
+            }),
             ("now", 5) if function.library == "lang" => {
+                Ok(ScalarExpr::RuntimeValue(RuntimeValue::CurrentDateTime))
+            }
+            ("current-dateTime", 5) if function.library == "xpath2" => {
                 Ok(ScalarExpr::RuntimeValue(RuntimeValue::CurrentDateTime))
             }
             (name, _) => {
@@ -510,7 +541,7 @@ impl DefinitionContext<'_> {
                     .inputs
                     .iter()
                     .rposition(|key| key.is_some_and(|key| self.edge_from.contains_key(&key)))
-                    .map_or(1, |last| last + 1);
+                    .map_or_else(|| usize::from(!function.inputs.is_empty()), |last| last + 1);
                 let mut args = (0..arity)
                     .map(|pos| input(pos, active))
                     .collect::<Result<Vec<_>, _>>()?;

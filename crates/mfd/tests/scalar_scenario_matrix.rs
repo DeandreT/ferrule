@@ -1,0 +1,489 @@
+mod support;
+
+use std::path::Path;
+
+use ir::{Instance, Value};
+use support::{ConnectionStyle, ScalarContext, ScalarLiteral as Literal, ScalarMfdBuilder};
+
+type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+#[derive(Clone)]
+struct FunctionCase {
+    name: &'static str,
+    library: &'static str,
+    arguments: Vec<Literal>,
+    output_type: &'static str,
+    nondeterministic: bool,
+}
+
+impl FunctionCase {
+    fn new(
+        name: &'static str,
+        library: &'static str,
+        arguments: Vec<Literal>,
+        output_type: &'static str,
+    ) -> Self {
+        Self {
+            name,
+            library,
+            arguments,
+            output_type,
+            nondeterministic: false,
+        }
+    }
+
+    fn nondeterministic(mut self) -> Self {
+        self.nondeterministic = true;
+        self
+    }
+}
+
+fn text(value: &str) -> Literal {
+    Literal::string(value)
+}
+
+fn int(value: i64) -> Literal {
+    Literal::Integer(value)
+}
+
+fn decimal(value: f64) -> Literal {
+    Literal::Decimal(value)
+}
+
+fn boolean(value: bool) -> Literal {
+    Literal::Boolean(value)
+}
+
+fn scalar_cases() -> Vec<FunctionCase> {
+    vec![
+        FunctionCase::new(
+            "concat",
+            "core",
+            vec![text("left"), text("right")],
+            "string",
+        ),
+        FunctionCase::new("add", "core", vec![int(7), int(5)], "integer"),
+        FunctionCase::new("subtract", "core", vec![int(7), int(5)], "integer"),
+        FunctionCase::new("multiply", "core", vec![int(7), int(5)], "integer"),
+        FunctionCase::new("divide", "core", vec![int(10), int(4)], "decimal"),
+        FunctionCase::new("equal", "core", vec![int(7), int(7)], "boolean"),
+        FunctionCase::new("not-equal", "core", vec![int(7), int(5)], "boolean"),
+        FunctionCase::new("greater", "core", vec![int(7), int(5)], "boolean"),
+        FunctionCase::new("less", "core", vec![int(5), int(7)], "boolean"),
+        FunctionCase::new("greater-or-equal", "core", vec![int(7), int(7)], "boolean"),
+        FunctionCase::new("less-or-equal", "core", vec![int(5), int(7)], "boolean"),
+        FunctionCase::new(
+            "logical-and",
+            "core",
+            vec![boolean(true), boolean(false)],
+            "boolean",
+        ),
+        FunctionCase::new(
+            "logical-or",
+            "core",
+            vec![boolean(true), boolean(false)],
+            "boolean",
+        ),
+        FunctionCase::new("logical-not", "core", vec![boolean(false)], "boolean"),
+        FunctionCase::new("string-length", "xpath2", vec![text("hello")], "integer"),
+        FunctionCase::new(
+            "contains",
+            "xpath2",
+            vec![text("hello"), text("ell")],
+            "boolean",
+        ),
+        FunctionCase::new(
+            "starts-with",
+            "xpath2",
+            vec![text("hello"), text("he")],
+            "boolean",
+        ),
+        FunctionCase::new(
+            "ends-with",
+            "xpath2",
+            vec![text("hello"), text("lo")],
+            "boolean",
+        ),
+        FunctionCase::new(
+            "matches",
+            "xpath2",
+            vec![text("hello"), text("^h.*o$")],
+            "boolean",
+        ),
+        FunctionCase::new(
+            "replace",
+            "xpath2",
+            vec![text("hello"), text("ell"), text("ipp")],
+            "string",
+        ),
+        FunctionCase::new("upper-case", "xpath2", vec![text("Mixed")], "string"),
+        FunctionCase::new("lower-case", "xpath2", vec![text("Mixed")], "string"),
+        FunctionCase::new("string", "xpath2", vec![int(42)], "string"),
+        FunctionCase::new("number", "xpath2", vec![text("42.5")], "decimal"),
+        FunctionCase::new("numeric", "core", vec![text("42.5")], "boolean"),
+        FunctionCase::new("boolean", "xpath2", vec![text("false")], "boolean"),
+        FunctionCase::new("positive", "core", vec![decimal(-2.5)], "decimal"),
+        FunctionCase::new("floor", "xpath2", vec![decimal(-2.5)], "decimal"),
+        FunctionCase::new("create-guid", "lang", Vec::new(), "string").nondeterministic(),
+        FunctionCase::new(
+            "format-number",
+            "xpath2",
+            vec![decimal(1234.5), text("#,##0.0")],
+            "string",
+        ),
+        FunctionCase::new(
+            "format-date",
+            "xpath2",
+            vec![text("2024-02-29"), text("[Y]-[M01]-[D01]")],
+            "string",
+        ),
+        FunctionCase::new(
+            "format-dateTime",
+            "xpath2",
+            vec![
+                text("2024-02-29T13:14:15Z"),
+                text("[Y]-[M01]-[D01] [H01]:[m01]"),
+            ],
+            "string",
+        ),
+        FunctionCase::new(
+            "format-time",
+            "xpath2",
+            vec![text("13:14:15Z"), text("[H01]:[m01]:[s01]")],
+            "string",
+        ),
+        FunctionCase::new("trim", "lang", vec![text("  hello  ")], "string"),
+        FunctionCase::new("left", "lang", vec![text("hello"), int(2)], "string"),
+        FunctionCase::new("right", "lang", vec![text("hello"), int(2)], "string"),
+        FunctionCase::new("left-trim", "lang", vec![text("  hello  ")], "string"),
+        FunctionCase::new("right-trim", "lang", vec![text("  hello  ")], "string"),
+        FunctionCase::new(
+            "pad-string-left",
+            "lang",
+            vec![text("7"), int(3), text("0")],
+            "string",
+        ),
+        FunctionCase::new(
+            "pad-string-right",
+            "lang",
+            vec![text("7"), int(3), text("0")],
+            "string",
+        ),
+        FunctionCase::new(
+            "substring",
+            "xpath2",
+            vec![text("hello"), int(2), int(3)],
+            "string",
+        ),
+        FunctionCase::new(
+            "substring-before",
+            "xpath2",
+            vec![text("left:right"), text(":")],
+            "string",
+        ),
+        FunctionCase::new(
+            "substring-after",
+            "xpath2",
+            vec![text("left:right"), text(":")],
+            "string",
+        ),
+        FunctionCase::new(
+            "normalize-space",
+            "xpath2",
+            vec![text(" a \t b ")],
+            "string",
+        ),
+        FunctionCase::new("empty", "xpath2", vec![text("")], "boolean"),
+        FunctionCase::new(
+            "get-folder",
+            "lang",
+            vec![text("folder/file.txt")],
+            "string",
+        ),
+        FunctionCase::new(
+            "remove-folder",
+            "lang",
+            vec![text("folder/file.txt")],
+            "string",
+        ),
+        FunctionCase::new(
+            "resolve-filepath",
+            "lang",
+            vec![text("folder/base"), text("../file.txt")],
+            "string",
+        ),
+        FunctionCase::new("is-xsi-nil", "core", vec![text("present")], "boolean"),
+        FunctionCase::new(
+            "substitute-missing-with-xsi-nil",
+            "core",
+            vec![text("present")],
+            "string",
+        ),
+        FunctionCase::new("exists", "core", vec![text("present")], "boolean"),
+        FunctionCase::new(
+            "round-precision",
+            "xpath2",
+            vec![decimal(2.55), int(1)],
+            "decimal",
+        ),
+        FunctionCase::new(
+            "date-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "string",
+        ),
+        FunctionCase::new(
+            "year-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "integer",
+        ),
+        FunctionCase::new(
+            "month-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "integer",
+        ),
+        FunctionCase::new(
+            "day-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "integer",
+        ),
+        FunctionCase::new(
+            "weekday",
+            "lang",
+            vec![text("2024-02-29T13:14:15Z")],
+            "integer",
+        ),
+        FunctionCase::new(
+            "hours-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "integer",
+        ),
+        FunctionCase::new(
+            "minutes-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "integer",
+        ),
+        FunctionCase::new(
+            "time-from-datetime",
+            "xpath2",
+            vec![text("2024-02-29T13:14:15Z")],
+            "string",
+        ),
+        FunctionCase::new(
+            "datetime-from-date-and-time",
+            "lang",
+            vec![text("2024-02-29"), text("13:14:15Z")],
+            "string",
+        ),
+        FunctionCase::new(
+            "datetime-from-parts",
+            "lang",
+            vec![int(2024), int(2), int(29), int(13), int(14), int(15)],
+            "string",
+        ),
+        FunctionCase::new(
+            "duration-from-parts",
+            "lang",
+            vec![int(1), int(2), int(3), int(4), int(5), int(6)],
+            "string",
+        ),
+        FunctionCase::new(
+            "datetime-add",
+            "lang",
+            vec![text("2024-02-29T13:14:15Z"), text("P1D")],
+            "string",
+        ),
+        FunctionCase::new(
+            "parse-date",
+            "lang",
+            vec![text("29/02/2024"), text("[D01]/[M01]/[Y]")],
+            "string",
+        ),
+        FunctionCase::new(
+            "parse-dateTime",
+            "lang",
+            vec![
+                text("29/02/2024 13:14:15"),
+                text("[D01]/[M01]/[Y] [H01]:[m01]:[s01]"),
+            ],
+            "string",
+        ),
+        FunctionCase::new(
+            "parse-time",
+            "lang",
+            vec![text("13:14:15"), text("[H01]:[m01]:[s01]")],
+            "string",
+        ),
+        FunctionCase::new(
+            "to-datetime",
+            "edifact",
+            vec![text("20240229131415"), text("204")],
+            "string",
+        ),
+        FunctionCase::new(
+            "substitute-null",
+            "db",
+            vec![text("present"), text("fallback")],
+            "string",
+        ),
+        FunctionCase::new(
+            "get-fileext",
+            "lang",
+            vec![text("folder/archive.tar.gz")],
+            "string",
+        ),
+        FunctionCase::new("sleep", "core", vec![text("value"), int(0)], "string"),
+        FunctionCase::new("is-null", "db", vec![text("present")], "boolean"),
+        FunctionCase::new("is-not-null", "db", vec![text("present")], "boolean"),
+        FunctionCase::new("now", "lang", Vec::new(), "string"),
+        FunctionCase::new("current-dateTime", "xpath2", Vec::new(), "string"),
+        FunctionCase::new("mfd-filepath", "core", Vec::new(), "string"),
+        FunctionCase::new("main-mfd-filepath", "core", Vec::new(), "string"),
+        FunctionCase::new("set-empty", "core", Vec::new(), "string"),
+        FunctionCase::new("set-xsi-nil", "core", Vec::new(), "string"),
+        FunctionCase::new("not-exists", "core", vec![text("present")], "boolean"),
+        FunctionCase::new("xbrl-measure-currency", "xbrl", vec![text("USD")], "string"),
+        FunctionCase::new("xbrl-measure-shares", "xbrl", Vec::new(), "string"),
+    ]
+}
+
+fn execute_case(
+    case: &FunctionCase,
+    context: ScalarContext,
+    style: ConnectionStyle,
+    reverse_components: bool,
+    key_offset: u32,
+) -> TestResult<Value> {
+    let fixture = ScalarMfdBuilder::new(
+        format!("{}_{}", case.name, context_name(context)),
+        case.name,
+        case.library,
+        case.arguments.clone(),
+        case.output_type,
+    )
+    .context(context)
+    .connection_style(style)
+    .reverse_components(reverse_components)
+    .key_offset(key_offset)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(
+        imported.warnings.is_empty(),
+        "{} in {context:?}: {:?}",
+        case.name,
+        imported.warnings
+    );
+    let validation = engine::validate(&imported.project);
+    assert!(
+        validation.is_empty(),
+        "{} in {context:?}: {validation:?}",
+        case.name
+    );
+
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let execution = engine::ExecutionContext::new(Path::new("/fixtures/scenario.mfd"))
+        .with_current_datetime("2026-07-24T12:34:56-07:00");
+    let output = engine::run_with_context(&imported.project, &source, &execution)?;
+    output
+        .field("Result")
+        .and_then(Instance::as_scalar)
+        .cloned()
+        .ok_or_else(|| format!("{} in {context:?} produced no Result scalar", case.name).into())
+}
+
+fn context_name(context: ScalarContext) -> &'static str {
+    match context {
+        ScalarContext::Main => "main",
+        ScalarContext::UserDefined => "udf",
+        ScalarContext::NestedUserDefined => "nested_udf",
+    }
+}
+
+fn assert_guid(value: &Value, context: ScalarContext) {
+    let Value::String(value) = value else {
+        panic!("create-guid in {context:?} did not produce text");
+    };
+    assert_eq!(value.len(), 32, "create-guid in {context:?}");
+    assert!(
+        value.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "create-guid in {context:?}"
+    );
+}
+
+#[test]
+fn scalar_functions_are_equivalent_in_main_udf_and_nested_udf_contexts() -> TestResult {
+    for (case_index, case) in scalar_cases().iter().enumerate() {
+        let baseline = execute_case(case, ScalarContext::Main, ConnectionStyle::Graph, false, 0)?;
+        let udf = execute_case(
+            case,
+            ScalarContext::UserDefined,
+            ConnectionStyle::Graph,
+            false,
+            1_000 + case_index as u32,
+        )?;
+        let nested = execute_case(
+            case,
+            ScalarContext::NestedUserDefined,
+            ConnectionStyle::Graph,
+            false,
+            2_000 + case_index as u32,
+        )?;
+
+        if case.nondeterministic {
+            assert_guid(&baseline, ScalarContext::Main);
+            assert_guid(&udf, ScalarContext::UserDefined);
+            assert_guid(&nested, ScalarContext::NestedUserDefined);
+        } else {
+            assert_eq!(udf, baseline, "{} differs in a scalar UDF", case.name);
+            assert_eq!(
+                nested, baseline,
+                "{} differs in a nested scalar UDF",
+                case.name
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn scalar_import_is_invariant_under_ids_order_and_connection_encoding() -> TestResult {
+    let case = FunctionCase::new(
+        "concat",
+        "core",
+        vec![text("left<&\""), text("right")],
+        "string",
+    );
+    let variants = [
+        (ConnectionStyle::Graph, false, 0),
+        (ConnectionStyle::Graph, true, 3_000),
+        (ConnectionStyle::Legacy, false, 6_000),
+        (ConnectionStyle::Legacy, true, 9_000),
+    ];
+    let mut baseline = None;
+    for (style, reverse_components, key_offset) in variants {
+        let value = execute_case(
+            &case,
+            ScalarContext::NestedUserDefined,
+            style,
+            reverse_components,
+            key_offset,
+        )?;
+        match &baseline {
+            Some(baseline) => assert_eq!(
+                &value, baseline,
+                "semantic output changed for {style:?}, reverse={reverse_components}, offset={key_offset}"
+            ),
+            None => baseline = Some(value),
+        }
+    }
+    assert_eq!(baseline, Some(Value::String("left<&\"right".to_string())));
+    Ok(())
+}

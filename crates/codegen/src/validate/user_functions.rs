@@ -100,6 +100,7 @@ fn validate_definition(
                 }
             }
             Expression::Const { .. }
+            | Expression::RuntimeValue { .. }
             | Expression::Call { .. }
             | Expression::If { .. }
             | Expression::ValueMap { .. } => {}
