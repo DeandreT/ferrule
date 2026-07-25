@@ -23,8 +23,9 @@ pub enum SequenceWindow {
 /// Stably orders candidates by already-evaluated scalar keys.
 ///
 /// Generated code evaluates each key exactly once before calling this helper.
-/// The const key count keeps candidate keys and directions aligned. Equal or
-/// incomparable key tuples retain their input order.
+/// The const key count keeps candidate keys and directions aligned. Equal key
+/// tuples retain their input order. Heterogeneous scalar domains use a fixed
+/// total order so the comparator remains transitive.
 pub fn sort_candidates<T, const N: usize>(
     mut candidates: Vec<(T, [Value; N])>,
     directions: [SortDirection; N],
@@ -93,22 +94,32 @@ pub fn apply_sequence_windows<T>(mut items: Vec<T>, windows: &[SequenceWindow]) 
 
 fn sort_value_ordering(left: &Value, right: &Value) -> Ordering {
     match (left, right) {
-        (Value::Null, Value::Null) => Ordering::Equal,
-        (Value::Null, _) => Ordering::Less,
-        (_, Value::Null) => Ordering::Greater,
-        (Value::Int(left), Value::Int(right)) => left.cmp(right),
-        (Value::Float(left), Value::Float(right)) => {
-            left.partial_cmp(right).unwrap_or(Ordering::Equal)
-        }
-        (Value::Int(left), Value::Float(right)) if right.is_finite() => {
-            compare_int_float(*left, *right)
-        }
-        (Value::Float(left), Value::Int(right)) if left.is_finite() => {
-            compare_int_float(*right, *left).reverse()
-        }
-        (Value::String(left), Value::String(right)) => left.cmp(right),
+        (Value::Null | Value::JsonNull(_), Value::Null | Value::JsonNull(_)) => Ordering::Equal,
         (Value::Bool(left), Value::Bool(right)) => left.cmp(right),
-        _ => Ordering::Equal,
+        (Value::Int(left), Value::Int(right)) => left.cmp(right),
+        (Value::Float(left), Value::Float(right)) => match (left.is_nan(), right.is_nan()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => left.partial_cmp(right).unwrap_or(Ordering::Equal),
+        },
+        (Value::Int(_), Value::Float(right)) if right.is_nan() => Ordering::Less,
+        (Value::Float(left), Value::Int(_)) if left.is_nan() => Ordering::Greater,
+        (Value::Int(left), Value::Float(right)) => compare_int_float(*left, *right),
+        (Value::Float(left), Value::Int(right)) => compare_int_float(*right, *left).reverse(),
+        (Value::String(left), Value::String(right)) => left.cmp(right),
+        (Value::XmlNil(_), Value::XmlNil(_)) => Ordering::Equal,
+        _ => sort_value_rank(left).cmp(&sort_value_rank(right)),
+    }
+}
+
+fn sort_value_rank(value: &Value) -> u8 {
+    match value {
+        Value::Null | Value::JsonNull(_) => 0,
+        Value::Bool(_) => 1,
+        Value::Int(_) | Value::Float(_) => 2,
+        Value::String(_) => 3,
+        Value::XmlNil(_) => 4,
     }
 }
 
@@ -183,7 +194,28 @@ mod tests {
             ],
             [SortDirection::Ascending],
         );
-        assert_eq!(incomparable, ["xml-nil", "string", "nan"]);
+        assert_eq!(incomparable, ["nan", "string", "xml-nil"]);
+    }
+
+    #[test]
+    fn sort_totally_orders_cyclic_mixed_and_non_finite_keys() {
+        let mut candidates = Vec::new();
+        for index in 0..10 {
+            candidates.push((format!("two-{index}"), [Value::Int(2)]));
+            candidates.push((
+                format!("string-{index}"),
+                [Value::String("incomparable".into())],
+            ));
+            candidates.push((format!("one-{index}"), [Value::Int(1)]));
+            candidates.push((format!("nan-{index}"), [Value::Float(f64::NAN)]));
+        }
+
+        let sorted = sort_candidates(candidates, [SortDirection::Ascending]);
+        let expected = ["one", "two", "nan", "string"]
+            .into_iter()
+            .flat_map(|prefix| (0..10).map(move |index| format!("{prefix}-{index}")))
+            .collect::<Vec<_>>();
+        assert_eq!(sorted, expected);
     }
 
     #[test]

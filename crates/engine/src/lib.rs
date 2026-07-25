@@ -30,7 +30,7 @@ mod user_function;
 mod validate;
 
 #[cfg(test)]
-use aggregate::{aggregate, value_ordering};
+use aggregate::aggregate;
 use context::{runtime_field, runtime_parameter_field};
 use eval_scope::eval_scope;
 

@@ -9,7 +9,7 @@ use mapping::{
     SortFilterOrder, XmlMixedContentElement,
 };
 
-use crate::aggregate::value_ordering;
+use crate::aggregate::sort_value_ordering;
 use crate::dynamic_target::{self, eval_dynamic_key, insert_target_field};
 use crate::eval_expr::{EvalProgram, eval_expr};
 use crate::grouping::GroupingMode;
@@ -276,7 +276,7 @@ pub(crate) fn eval_scope(
         }
         keyed.sort_by(|(_, left), (_, right)| {
             for ((left, right), key) in left.iter().zip(right).zip(&sort_keys) {
-                let ordering = value_ordering(left, right).unwrap_or(std::cmp::Ordering::Equal);
+                let ordering = sort_value_ordering(left, right);
                 let ordering = if key.descending {
                     ordering.reverse()
                 } else {

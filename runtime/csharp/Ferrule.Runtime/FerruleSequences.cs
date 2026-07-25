@@ -486,7 +486,7 @@ public static class FerruleSequences
 
     /// <summary>
     /// Evaluates every key once in item/key order and returns a stable multi-key sort.
-    /// Incomparable values behave as equal for that key.
+    /// Heterogeneous scalar domains use a fixed total order.
     /// </summary>
     public static IReadOnlyList<T> StableSort<T>(
         IReadOnlyList<T> items,
@@ -613,7 +613,7 @@ public static class FerruleSequences
     {
         for (var index = 0; index < keys.Count; index++)
         {
-            var comparison = CompareValues(left.Values[index], right.Values[index]) ?? 0;
+            var comparison = CompareSortValues(left.Values[index], right.Values[index]);
             if (keys[index].Descending)
             {
                 comparison = -comparison;
@@ -625,6 +625,59 @@ public static class FerruleSequences
         }
         return left.Ordinal.CompareTo(right.Ordinal);
     }
+
+    private static int CompareSortValues(FerruleValue left, FerruleValue right)
+    {
+        if (left.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        {
+            return right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull ? 0 : -1;
+        }
+        if (right.Kind is FerruleValueKind.Null or FerruleValueKind.JsonNull)
+        {
+            return 1;
+        }
+
+        return (left.Kind, right.Kind) switch
+        {
+            (FerruleValueKind.Bool, FerruleValueKind.Bool) =>
+                left.BooleanValue.CompareTo(right.BooleanValue),
+            (FerruleValueKind.Int64, FerruleValueKind.Int64) =>
+                left.Int64Value.CompareTo(right.Int64Value),
+            (FerruleValueKind.Double, FerruleValueKind.Double) =>
+                CompareSortDoubles(left.DoubleValue, right.DoubleValue),
+            (FerruleValueKind.Int64, FerruleValueKind.Double) when
+                double.IsNaN(right.DoubleValue) => -1,
+            (FerruleValueKind.Double, FerruleValueKind.Int64) when
+                double.IsNaN(left.DoubleValue) => 1,
+            (FerruleValueKind.Int64, FerruleValueKind.Double) =>
+                CompareIntegerAndDouble(left.Int64Value, right.DoubleValue),
+            (FerruleValueKind.Double, FerruleValueKind.Int64) =>
+                -CompareIntegerAndDouble(right.Int64Value, left.DoubleValue),
+            (FerruleValueKind.String, FerruleValueKind.String) =>
+                CompareUnicodeScalars(left.StringValue, right.StringValue),
+            (FerruleValueKind.XmlNil, FerruleValueKind.XmlNil) => 0,
+            _ => SortValueRank(left.Kind).CompareTo(SortValueRank(right.Kind)),
+        };
+    }
+
+    private static int CompareSortDoubles(double left, double right)
+    {
+        if (double.IsNaN(left))
+        {
+            return double.IsNaN(right) ? 0 : 1;
+        }
+        return double.IsNaN(right) ? -1 : left.CompareTo(right);
+    }
+
+    private static int SortValueRank(FerruleValueKind kind) => kind switch
+    {
+        FerruleValueKind.Null or FerruleValueKind.JsonNull => 0,
+        FerruleValueKind.Bool => 1,
+        FerruleValueKind.Int64 or FerruleValueKind.Double => 2,
+        FerruleValueKind.String => 3,
+        FerruleValueKind.XmlNil => 4,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
 
     private static int? CompareFiniteDoubles(double left, double right)
     {
