@@ -452,6 +452,18 @@ impl DefinitionContext<'_> {
             return Ok(expression);
         }
         match (function.name.as_str(), function.kind) {
+            ("position", 5) if function.library == "core" => {
+                let sequence_feed = self.connected_input(function, 0).ok_or_else(|| {
+                    "definition position context input is not connected".to_string()
+                })?;
+                sequence_items
+                    .contains(&sequence_feed)
+                    .then_some(ScalarExpr::SequencePosition(sequence_feed))
+                    .ok_or_else(|| {
+                        "definition position does not reference an active generated sequence"
+                            .to_string()
+                    })
+            }
             ("item-at", 5) if function.library == "core" => {
                 let sequence_feed = self.connected_input(function, 0).ok_or_else(|| {
                     "definition item-at sequence input is not connected".to_string()
@@ -1040,6 +1052,10 @@ fn substitute(
             budget.claim(depth)?;
             Ok(ScalarExpr::SequenceItem(*feed))
         }
+        ScalarExpr::SequencePosition(feed) => {
+            budget.claim(depth)?;
+            Ok(ScalarExpr::SequencePosition(*feed))
+        }
     }
 }
 
@@ -1140,6 +1156,7 @@ fn clone_with_budget(
             predicate: Box::new(clone_with_budget(predicate, budget, depth + 1)?),
         }),
         ScalarExpr::SequenceItem(feed) => Ok(ScalarExpr::SequenceItem(*feed)),
+        ScalarExpr::SequencePosition(feed) => Ok(ScalarExpr::SequencePosition(*feed)),
     }
 }
 
