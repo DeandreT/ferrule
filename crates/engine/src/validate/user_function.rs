@@ -115,7 +115,11 @@ fn validate_body(
             }
         }
         match node {
-            Node::Unconnected | Node::Const { .. } | Node::If { .. } | Node::ValueMap { .. } => {}
+            Node::Unconnected
+            | Node::Const { .. }
+            | Node::RuntimeValue { .. }
+            | Node::If { .. }
+            | Node::ValueMap { .. } => {}
             Node::FunctionParameter { parameter } => {
                 if !parameter_ids.contains(parameter) {
                     issues.push(ValidationIssue::new(

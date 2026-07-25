@@ -38,10 +38,12 @@ fn file(path: &str, contents: impl Into<Vec<u8>>) -> Result<GeneratedFile, EmitE
 
 #[cfg(test)]
 mod tests {
+    use ::mapping::FunctionId;
     use codegen::{
         Binding, Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
         GeneratedSequence, IterationOutput, IterationPlan, NamedSourceProgram, NamedTargetProgram,
-        Program, ProgramValidationError, ScalarFunction, SourceIteration, TargetScope,
+        Program, ProgramValidationError, RuntimeValue, ScalarFunction, SourceIteration,
+        TargetScope, UserFunctionProgram,
     };
     use ir::{ScalarType, SchemaNode, Value};
 
@@ -171,6 +173,51 @@ mod tests {
                 .iter()
                 .any(|file| file.path.as_str() == "Runtime/ScopeContext.cs")
         );
+    }
+
+    #[test]
+    fn scalar_user_functions_can_resolve_runtime_values() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut program = program();
+        program.user_functions.push(UserFunctionProgram {
+            id: FunctionId::new(1),
+            library: "tests".into(),
+            name: "timestamp".into(),
+            parameters: Vec::new(),
+            output_type: ScalarType::String,
+            expressions: vec![ExpressionNode {
+                id: 1,
+                expression: Expression::RuntimeValue {
+                    value: RuntimeValue::CurrentDateTime,
+                },
+            }],
+            output: 1,
+        });
+        program.expressions.push(ExpressionNode {
+            id: 10,
+            expression: Expression::UserFunctionCall {
+                function: FunctionId::new(1),
+                args: Vec::new(),
+            },
+        });
+        program.root.bindings[0].expression = 10;
+
+        let artifacts = emit(&program)?;
+        let Some(generated) = artifacts
+            .files()
+            .iter()
+            .find(|file| file.path.as_str() == "GeneratedMapping.cs")
+        else {
+            panic!("generated C# mapping artifact is missing");
+        };
+        let source = String::from_utf8_lossy(&generated.contents);
+        assert!(source.contains(
+            "UserFunction_1_Node_1(\n        global::Ferrule.Runtime.ScopeContext context"
+        ));
+        assert!(source.contains(
+            "context.ResolveRuntimeValue(global::Ferrule.Runtime.FerruleRuntimeValue.CurrentDateTime)"
+        ));
+        Ok(())
     }
 
     #[test]

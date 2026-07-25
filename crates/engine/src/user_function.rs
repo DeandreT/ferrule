@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, HashSet};
 
-use ir::{ScalarType, Value};
+use ir::{Instance, ScalarType, Value};
 use mapping::{FunctionId, FunctionParameterId, Node, NodeId, UserFunction};
 
 use crate::EngineError;
+use crate::context::runtime_field;
 
 pub(super) const MAX_USER_FUNCTION_DEPTH: usize = 64;
 
@@ -11,14 +12,16 @@ pub(super) fn evaluate(
     functions: &BTreeMap<FunctionId, UserFunction>,
     function: FunctionId,
     arguments: Vec<Value>,
+    runtime: Option<&Instance>,
 ) -> Result<Value, EngineError> {
-    evaluate_nested(functions, function, arguments, &mut Vec::new())
+    evaluate_nested(functions, function, arguments, runtime, &mut Vec::new())
 }
 
 fn evaluate_nested(
     functions: &BTreeMap<FunctionId, UserFunction>,
     function_id: FunctionId,
     arguments: Vec<Value>,
+    runtime: Option<&Instance>,
     call_stack: &mut Vec<FunctionId>,
 ) -> Result<Value, EngineError> {
     if call_stack.contains(&function_id) {
@@ -64,6 +67,7 @@ fn evaluate_nested(
         function,
         function.output,
         &parameters,
+        runtime,
         call_stack,
         &mut HashSet::new(),
     );
@@ -84,6 +88,7 @@ fn evaluate_body_node(
     function: &UserFunction,
     node_id: NodeId,
     parameters: &[(FunctionParameterId, Value)],
+    runtime: Option<&Instance>,
     call_stack: &mut Vec<FunctionId>,
     in_progress: &mut HashSet<NodeId>,
 ) -> Result<Value, EngineError> {
@@ -112,6 +117,11 @@ fn evaluate_body_node(
                 function: function_id,
                 parameter: *parameter,
             }),
+        Node::RuntimeValue { value } => runtime
+            .and_then(|frame| frame.field(runtime_field(*value)))
+            .and_then(Instance::as_scalar)
+            .cloned()
+            .ok_or(EngineError::MissingRuntimeValue(*value)),
         Node::Call {
             function: name,
             args,
@@ -124,6 +134,7 @@ fn evaluate_body_node(
                     function,
                     *argument,
                     parameters,
+                    runtime,
                     call_stack,
                     in_progress,
                 )?);
@@ -146,11 +157,12 @@ fn evaluate_body_node(
                     function,
                     *argument,
                     parameters,
+                    runtime,
                     call_stack,
                     in_progress,
                 )?);
             }
-            evaluate_nested(functions, *callee, values, call_stack)
+            evaluate_nested(functions, *callee, values, runtime, call_stack)
         }
         Node::If {
             condition,
@@ -162,6 +174,7 @@ fn evaluate_body_node(
             function,
             *condition,
             parameters,
+            runtime,
             call_stack,
             in_progress,
         )? {
@@ -171,6 +184,7 @@ fn evaluate_body_node(
                 function,
                 *then,
                 parameters,
+                runtime,
                 call_stack,
                 in_progress,
             ),
@@ -180,6 +194,7 @@ fn evaluate_body_node(
                 function,
                 *else_,
                 parameters,
+                runtime,
                 call_stack,
                 in_progress,
             ),
@@ -201,6 +216,7 @@ fn evaluate_body_node(
                 function,
                 *input,
                 parameters,
+                runtime,
                 call_stack,
                 in_progress,
             )?;

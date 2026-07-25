@@ -130,7 +130,12 @@ pub(crate) fn eval_expr(
             for arg in args {
                 values.push(eval_expr(program, *arg, context, positions, in_progress)?);
             }
-            user_function::evaluate(program.user_functions, *function, values)
+            user_function::evaluate(
+                program.user_functions,
+                *function,
+                values,
+                context.first().copied(),
+            )
         }
         Node::If {
             condition,
