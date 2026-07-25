@@ -2,8 +2,13 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use codegen::{Binding, Expression, ExpressionNode, Program, ScalarFunction, TargetScope};
+use codegen::{
+    Binding, DelimitedTextField, Expression, ExpressionNode, Program, ScalarFunction, TargetScope,
+};
 use ir::{ScalarType, SchemaNode, Value};
+use mapping::{
+    DelimitedDialect, DelimitedRecordField, FlexCommand, FlexLineEnding, FlexTextLayout,
+};
 
 #[test]
 fn generated_scalar_batch_c_preserves_runtime_semantics() {
@@ -59,6 +64,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("Numeric", ScalarType::String),
                 SchemaNode::scalar("Duration", ScalarType::Float),
                 SchemaNode::scalar("Json", ScalarType::String),
+                SchemaNode::scalar("Delimited", ScalarType::String),
             ],
         ),
         extra_sources: Vec::new(),
@@ -71,6 +77,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("Delayed", ScalarType::String),
                 SchemaNode::scalar("Parsed", ScalarType::Float),
                 SchemaNode::scalar("Serialized", ScalarType::String),
+                SchemaNode::scalar("DelimitedCount", ScalarType::Int),
             ],
         ),
         expressions: vec![
@@ -78,6 +85,7 @@ fn fixture() -> Program {
             source_field(2, "Numeric"),
             source_field(3, "Duration"),
             source_field(8, "Json"),
+            source_field(15, "Delimited"),
             call(4, ScalarFunction::Trim, &[1]),
             call(5, ScalarFunction::IsNumeric, &[2]),
             call(6, ScalarFunction::ToNumber, &[2]),
@@ -100,6 +108,13 @@ fn fixture() -> Program {
             constant(12, Value::String(r#"["Order","Note"]"#.into())),
             constant(13, Value::String("string".into())),
             call(14, ScalarFunction::JsonSerializeObject, &[12, 13, 4]),
+            ExpressionNode {
+                id: 16,
+                expression: Expression::DelimitedTextField {
+                    input: 15,
+                    parser: delimited_parser(),
+                },
+            },
         ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
@@ -115,11 +130,35 @@ fn fixture() -> Program {
                 binding("Delayed", 7, ScalarType::String),
                 binding("Parsed", 11, ScalarType::Float),
                 binding("Serialized", 14, ScalarType::String),
+                binding("DelimitedCount", 16, ScalarType::Int),
             ],
             children: Vec::new(),
         },
         extra_targets: Vec::new(),
     }
+}
+
+fn delimited_parser() -> DelimitedTextField {
+    let layout = FlexTextLayout::new(
+        "Root",
+        FlexCommand::DelimitedRecords {
+            name: "Row".into(),
+            dialect: DelimitedDialect::new_with_field_separator("*#*", "\r\n", '"', '"')
+                .expect("test dialect is valid"),
+            fields: vec![
+                DelimitedRecordField::new("Name", ScalarType::String).expect("test field is valid"),
+                DelimitedRecordField::new("Count", ScalarType::Int).expect("test field is valid"),
+            ],
+        },
+        FlexLineEnding::Crlf,
+        false,
+    )
+    .expect("test layout is valid");
+    DelimitedTextField::from_descriptors(
+        &serde_json::to_string(&layout).expect("test layout serializes"),
+        r#"["Row","Count"]"#,
+    )
+    .expect("test layout profile is portable")
 }
 
 fn source_field(id: u32, field: &str) -> ExpressionNode {
@@ -188,53 +227,84 @@ var output = Execute(
     "\u0085\u2003value\u3000",
     Text("6.022e23"),
     0.0,
-    Text("""{"Leaves":{"Total":3.5}}"""));
+    Text("""{"Leaves":{"Total":3.5}}"""),
+    Text("Ada*#*7\r\nGrace*#*8"));
 Equal(Text("value"), Field(output, "Trimmed"));
 Equal(Bool(true), Field(output, "Numeric"));
 Equal(FerruleValue.FromDouble(6.022e23), Field(output, "Number"));
 Equal(Text("value"), Field(output, "Delayed"));
 Equal(FerruleValue.FromDouble(3.5), Field(output, "Parsed"));
 Equal(Text("""{"Order":{"Note":"value"}}"""), Field(output, "Serialized"));
+Equal(FerruleValue.FromInt64(7), Field(output, "DelimitedCount"));
 
 var boundary = Execute(
     " value ",
     Text("9223372036854775807"),
     0.25,
-    Text("""{"Leaves":{"Total":4}}"""));
+    Text("""{"Leaves":{"Total":4}}"""),
+    Text("\"Ada*#*Lovelace\"*#*9"));
 Equal(FerruleValue.FromInt64(long.MaxValue), Field(boundary, "Number"));
+Equal(FerruleValue.FromInt64(9), Field(boundary, "DelimitedCount"));
 
 var beyondBoundary = Execute(
     " value ",
     Text("9223372036854775808"),
     -0.0,
-    Text("""{"Leaves":{"Total":4}}"""));
+    Text("""{"Leaves":{"Total":4}}"""),
+    Text("Ada*#*7"));
 Equal(FerruleValueKind.Double, Field(beyondBoundary, "Number").Kind);
 
-var missing = Execute(" value ", FerruleValue.Null, 0.0, FerruleValue.Null);
+var missing = Execute(
+    " value ",
+    FerruleValue.Null,
+    0.0,
+    FerruleValue.Null,
+    FerruleValue.Null);
 Equal(Bool(false), Field(missing, "Numeric"));
 Equal(FerruleValue.Null, Field(missing, "Number"));
 Equal(FerruleValue.Null, Field(missing, "Parsed"));
+Equal(FerruleValue.Null, Field(missing, "DelimitedCount"));
 
 RuntimeError(
     FerruleRuntimeError.FunctionInvalidArgument,
     "to_number",
     "requires a finite numeric value",
-    () => Execute("value", Bool(true), 0.0, FerruleValue.Null));
+    () => Execute("value", Bool(true), 0.0, FerruleValue.Null, FerruleValue.Null));
 RuntimeError(
     FerruleRuntimeError.FunctionInvalidArgument,
     "delay_passthrough",
     "requires a finite nonnegative duration",
-    () => Execute("value", Text("1"), -0.01, FerruleValue.Null));
+    () => Execute("value", Text("1"), -0.01, FerruleValue.Null, FerruleValue.Null));
 RuntimeError(
     FerruleRuntimeError.FunctionInvalidArgument,
     "json_parse_field",
     "input does not match the JSON schema",
-    () => Execute("value", Text("1"), 0.0, Text("""{"Leaves":true}""")));
+    () => Execute(
+        "value",
+        Text("1"),
+        0.0,
+        Text("""{"Leaves":true}"""),
+        FerruleValue.Null));
 RuntimeError(
     FerruleRuntimeError.FunctionType,
     "json_parse_field",
     null,
-    () => Execute("value", Text("1"), 0.0, Bool(true)));
+    () => Execute("value", Text("1"), 0.0, Bool(true), FerruleValue.Null));
+RuntimeError(
+    FerruleRuntimeError.FunctionInvalidArgument,
+    "flextext_parse_field",
+    "input does not match the FlexText layout",
+    () => Execute(
+        "value",
+        Text("1"),
+        0.0,
+        FerruleValue.Null,
+        Text("Ada*#*7\r\nGrace*#*not-an-integer")));
+RuntimeError(
+    FerruleRuntimeError.FunctionType,
+    "flextext_parse_field",
+    null,
+    () => Execute("value", Text("1"), 0.0, FerruleValue.Null, Bool(true)));
 RuntimeError(
     FerruleRuntimeError.FunctionInvalidArgument,
     "json_parse_field",
@@ -296,12 +366,14 @@ static FerruleGroup Execute(
     string text,
     FerruleValue numeric,
     double duration,
-    FerruleValue json) =>
+    FerruleValue json,
+    FerruleValue delimited) =>
     (FerruleGroup)GeneratedMapping.Execute(Group(
         new FerruleField("Text", Scalar(Text(text))),
         new FerruleField("Numeric", Scalar(numeric)),
         new FerruleField("Duration", Scalar(FerruleValue.FromDouble(duration))),
-        new FerruleField("Json", Scalar(json))));
+        new FerruleField("Json", Scalar(json)),
+        new FerruleField("Delimited", Scalar(delimited))));
 
 static FerruleValue Field(FerruleGroup group, string name) =>
     ((FerruleScalar)group.Fields.Single(field => field.Name == name).Value).Value;

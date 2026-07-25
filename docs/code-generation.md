@@ -143,6 +143,9 @@ The current portable model includes:
   missing-value, XML-nil, lexical path, schema-guided JSON-string field
   projection and typed object serialization, and validated pure
   delay-pass-through functions
+- validated embedded delimited FlexText field projection with multi-character
+  field separators, quoted fields, typed columns, and complete-record
+  validation before first-row selection
 - ordered value maps with optional declared-input coercion, first-match wins,
   and explicit or Null fallback
 - first-match lookups over exact repeating collections in the primary or a

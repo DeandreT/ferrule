@@ -1,5 +1,5 @@
 use ir::{ScalarType, SchemaNode, Value};
-use mapping::{AggregateOp, FunctionId, FunctionParameterId, NodeId};
+use mapping::{AggregateOp, FlexCommand, FlexTextLayout, FunctionId, FunctionParameterId, NodeId};
 
 use crate::{InnerJoin, JoinId};
 
@@ -485,6 +485,116 @@ pub struct ExpressionNode {
     pub expression: Expression,
 }
 
+/// One validated, self-contained delimited FlexText field projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DelimitedTextField {
+    layout_descriptor: String,
+    path_descriptor: String,
+    field_separator: String,
+    record_separator: String,
+    quote: String,
+    escape: String,
+    fields: Vec<ScalarType>,
+    selected: usize,
+}
+
+impl DelimitedTextField {
+    pub fn from_descriptors(
+        layout_descriptor: &str,
+        path_descriptor: &str,
+    ) -> Result<Self, DelimitedTextFieldError> {
+        let layout = serde_json::from_str::<FlexTextLayout>(layout_descriptor)
+            .map_err(|_| DelimitedTextFieldError::InvalidLayout)?;
+        let path = serde_json::from_str::<Vec<String>>(path_descriptor)
+            .map_err(|_| DelimitedTextFieldError::InvalidPath)?;
+        let FlexCommand::DelimitedRecords {
+            name,
+            dialect,
+            fields,
+        } = layout.command()
+        else {
+            return Err(DelimitedTextFieldError::UnsupportedLayout);
+        };
+        let [record, field] = path.as_slice() else {
+            return Err(DelimitedTextFieldError::UnsupportedPath);
+        };
+        if record != name {
+            return Err(DelimitedTextFieldError::UnsupportedPath);
+        }
+        let selected = fields
+            .iter()
+            .position(|candidate| candidate.name() == field)
+            .ok_or(DelimitedTextFieldError::UnsupportedPath)?;
+        Ok(Self {
+            layout_descriptor: layout_descriptor.to_string(),
+            path_descriptor: path_descriptor.to_string(),
+            field_separator: dialect.field_separator().to_string(),
+            record_separator: dialect.record_separator().to_string(),
+            quote: dialect.quote().to_string(),
+            escape: dialect.escape().to_string(),
+            fields: fields.iter().map(|field| field.ty()).collect(),
+            selected,
+        })
+    }
+
+    pub fn layout_descriptor(&self) -> &str {
+        &self.layout_descriptor
+    }
+
+    pub fn path_descriptor(&self) -> &str {
+        &self.path_descriptor
+    }
+
+    pub fn field_separator(&self) -> &str {
+        &self.field_separator
+    }
+
+    pub fn record_separator(&self) -> &str {
+        &self.record_separator
+    }
+
+    pub fn quote(&self) -> &str {
+        &self.quote
+    }
+
+    pub fn escape(&self) -> &str {
+        &self.escape
+    }
+
+    pub fn fields(&self) -> &[ScalarType] {
+        &self.fields
+    }
+
+    pub const fn selected(&self) -> usize {
+        self.selected
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DelimitedTextFieldError {
+    InvalidLayout,
+    InvalidPath,
+    UnsupportedLayout,
+    UnsupportedPath,
+}
+
+impl std::fmt::Display for DelimitedTextFieldError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::InvalidLayout => "FlexText layout descriptor is invalid",
+            Self::InvalidPath => "FlexText field path descriptor is invalid",
+            Self::UnsupportedLayout => {
+                "code generation requires a top-level delimited-record FlexText layout"
+            }
+            Self::UnsupportedPath => {
+                "code generation requires one direct field of the delimited record"
+            }
+        })
+    }
+}
+
+impl std::error::Error for DelimitedTextFieldError {}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     SourceField {
@@ -539,6 +649,10 @@ pub enum Expression {
     Call {
         function: ScalarFunction,
         args: Vec<NodeId>,
+    },
+    DelimitedTextField {
+        input: NodeId,
+        parser: DelimitedTextField,
     },
     UserFunctionCall {
         function: FunctionId,
