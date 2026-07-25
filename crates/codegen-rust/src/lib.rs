@@ -715,6 +715,12 @@ fn render_expression(
             ));
             body
         }
+        Expression::DelimitedTextField { input, parser } => format!(
+            "{{\n        let args = [\n            {}?,\n            Value::String({}.to_string()),\n            Value::String({}.to_string()),\n        ];\n        call(\"flextext_parse_field\", &args)\n    }}",
+            call_expression(*input, "context"),
+            rust_string(parser.layout_descriptor()),
+            rust_string(parser.path_descriptor()),
+        ),
         Expression::UserFunctionCall { function, args } => {
             let definition = functions.get(function).ok_or({
                 ProgramValidationError::MissingUserFunction {

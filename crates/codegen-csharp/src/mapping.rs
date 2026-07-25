@@ -203,6 +203,11 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(" });\n");
             }
+            Expression::DelimitedTextField { input, parser } => {
+                output.push_str(" =>\n        ");
+                render_delimited_text_field(parser, &format!("Node_{input}(context)"), &mut output);
+                output.push_str(";\n");
+            }
             Expression::UserFunctionCall { function, args } => {
                 output.push_str("\n    {\n");
                 render_user_function_call(
@@ -677,6 +682,11 @@ fn render_user_function_expression(
                 output.push_str(&call(*argument));
             }
             output.push_str(" });\n");
+        }
+        Expression::DelimitedTextField { input, parser } => {
+            output.push_str(" =>\n        ");
+            render_delimited_text_field(parser, &call(*input), output);
+            output.push_str(";\n");
         }
         Expression::UserFunctionCall {
             function: called,
@@ -1505,6 +1515,32 @@ fn render_path(path: &[String], output: &mut String) {
         output.push_str(&literal::string(segment));
     }
     output.push_str(" }");
+}
+
+fn render_delimited_text_field(
+    parser: &codegen::DelimitedTextField,
+    input: &str,
+    output: &mut String,
+) {
+    output.push_str("global::Ferrule.Runtime.FerruleDelimitedText.ParseField(");
+    output.push_str(input);
+    output.push_str(", ");
+    output.push_str(&literal::string(parser.field_separator()));
+    output.push_str(", ");
+    output.push_str(&literal::string(parser.record_separator()));
+    output.push_str(", ");
+    output.push_str(&literal::string(parser.quote()));
+    output.push_str(", ");
+    output.push_str(&literal::string(parser.escape()));
+    output.push_str(", new global::Ferrule.Runtime.FerruleScalarType[] { ");
+    for (index, field) in parser.fields().iter().enumerate() {
+        if index != 0 {
+            output.push_str(", ");
+        }
+        output.push_str("global::Ferrule.Runtime.FerruleScalarType.");
+        output.push_str(scalar_type_name(*field));
+    }
+    output.push_str(&format!(" }}, {}U)", parser.selected()));
 }
 
 fn target_type(target_type: ScalarType) -> &'static str {

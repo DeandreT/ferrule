@@ -22,12 +22,13 @@ pub use join::{
 };
 pub use lower::lower;
 pub use model::{
-    AggregateFunction, AggregateValue, Binding, Expression, ExpressionNode, FailureIteration,
-    FailureRule, FailureSelection, GeneratedSequence, GroupingPlan, IterationOutput, IterationPlan,
-    IterationSource, NamedSourceProgram, NamedTargetProgram, Program, RuntimeValue,
-    SUPPORTED_SCALAR_CALLS, ScalarFunction, ScopeSequence, SequenceWindow, SortFilterOrder,
-    SortKey, SortPlan, SourceIteration, TargetConstruction, TargetScope, UserFunctionParameter,
-    UserFunctionProgram, XmlMixedContentElement, XmlMixedContentReplacement,
+    AggregateFunction, AggregateValue, Binding, DelimitedTextField, DelimitedTextFieldError,
+    Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection, GeneratedSequence,
+    GroupingPlan, IterationOutput, IterationPlan, IterationSource, NamedSourceProgram,
+    NamedTargetProgram, Program, RuntimeValue, SUPPORTED_SCALAR_CALLS, ScalarFunction,
+    ScopeSequence, SequenceWindow, SortFilterOrder, SortKey, SortPlan, SourceIteration,
+    TargetConstruction, TargetScope, UserFunctionParameter, UserFunctionProgram,
+    XmlMixedContentElement, XmlMixedContentReplacement,
 };
 pub use validate::{
     GroupingExpressionRole, JoinKeySide, ProgramValidationError, RecursiveSequencePathRole,

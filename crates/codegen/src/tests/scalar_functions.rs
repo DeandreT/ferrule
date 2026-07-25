@@ -1,4 +1,8 @@
-use mapping::Node;
+use mapping::{
+    DelimitedDialect, DelimitedRecordField, FlexCommand, FlexLineEnding, FlexTextLayout, Node,
+};
+
+use crate::DelimitedTextField;
 
 use super::*;
 
@@ -98,6 +102,63 @@ fn newly_supported_names_are_closed_and_canonical() {
     }
 
     assert_eq!(ScalarFunction::from_name("sleep"), None);
+}
+
+#[test]
+fn lowers_literal_delimited_flextext_fields_to_a_validated_profile() {
+    let layout = FlexTextLayout::new(
+        "Root",
+        FlexCommand::DelimitedRecords {
+            name: "Row".into(),
+            dialect: DelimitedDialect::new_with_field_separator("*#*", "\r\n", '"', '"')
+                .expect("test dialect is valid"),
+            fields: vec![
+                DelimitedRecordField::new("Name", ScalarType::String).expect("test field is valid"),
+                DelimitedRecordField::new("Count", ScalarType::Int).expect("test field is valid"),
+            ],
+        },
+        FlexLineEnding::Crlf,
+        false,
+    )
+    .expect("test layout is valid");
+    let layout = serde_json::to_string(&layout).expect("test layout serializes");
+    let path = r#"["Row","Count"]"#;
+    let mut project = supported_project();
+    project.graph.nodes.insert(
+        21,
+        Node::Const {
+            value: Value::String(layout.clone()),
+        },
+    );
+    project.graph.nodes.insert(
+        22,
+        Node::Const {
+            value: Value::String(path.into()),
+        },
+    );
+    project.graph.nodes.insert(
+        23,
+        Node::Call {
+            function: "flextext_parse_field".into(),
+            args: vec![20, 21, 22],
+        },
+    );
+    project.root.bindings[0].node = 23;
+
+    let program = lower(&project).expect("literal delimited FlexText projection is portable");
+    let expression = program
+        .expressions
+        .iter()
+        .find(|expression| expression.id == 23)
+        .expect("projection is reachable");
+    assert_eq!(
+        expression.expression,
+        Expression::DelimitedTextField {
+            input: 20,
+            parser: DelimitedTextField::from_descriptors(&layout, path)
+                .expect("test descriptors are portable"),
+        }
+    );
 }
 
 #[test]

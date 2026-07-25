@@ -102,6 +102,7 @@ fn validate_definition(
             Expression::Const { .. }
             | Expression::RuntimeValue { .. }
             | Expression::Call { .. }
+            | Expression::DelimitedTextField { .. }
             | Expression::If { .. }
             | Expression::ValueMap { .. } => {}
             Expression::UserFunctionCall {

@@ -958,6 +958,7 @@ dependencies = [
  "engine",
  "ir",
  "mapping",
+ "serde_json",
 ]
 
 [[package]]

@@ -138,6 +138,12 @@ mod tests {
             first
                 .files()
                 .iter()
+                .any(|file| file.path.as_str() == "Runtime/FerruleDelimitedText.cs")
+        );
+        assert!(
+            first
+                .files()
+                .iter()
                 .any(|file| file.path.as_str() == "Runtime/FerruleFunctions.FormatNumber.cs")
         );
         assert!(
