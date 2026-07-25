@@ -396,6 +396,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "boolean",
         "positive",
         "floor",
+        "create_guid",
         "format_number",
         "substitute_missing",
         "substitute_missing_with_xml_nil",

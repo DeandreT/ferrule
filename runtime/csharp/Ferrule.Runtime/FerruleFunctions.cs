@@ -40,6 +40,7 @@ public static partial class FerruleFunctions
             "boolean" => EffectiveBoolean(arguments),
             "positive" => Positive(arguments),
             "floor" => Floor(arguments),
+            "create_guid" => CreateGuid(arguments),
             "format_number" => FormatNumber(arguments),
             "round" => Round(arguments),
             "delay_passthrough" => DelayPassthrough(arguments),
@@ -101,6 +102,12 @@ public static partial class FerruleFunctions
                 $"Unknown function '{function}'.",
                 function: function),
         };
+    }
+
+    private static FerruleValue CreateGuid(IReadOnlyList<FerruleValue> arguments)
+    {
+        RequireArity("create_guid", arguments, 0);
+        return FerruleValue.FromString(Guid.NewGuid().ToString("N"));
     }
 
     public static bool RequireBoolean(FerruleValue value, uint conditionNode)

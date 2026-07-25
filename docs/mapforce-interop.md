@@ -56,6 +56,10 @@ packages. Packages are extracted under strict path, entry-count, compressed,
 and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata
 are embedded in the imported project, so execution and later export do not
 depend on the package remaining available.
+Zero-input `create-guid` generator components execute in the interpreter and
+generated Rust/C# mappings and round-trip as native `lang` components. Scalar
+and record-producing filter lookup UDFs accept typed XML, EDI, or database
+inputs.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable

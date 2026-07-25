@@ -10,10 +10,12 @@ pub(crate) struct ResourceResolver {
     mapping_path: PathBuf,
     mapping_directory: PathBuf,
     package_root: PathBuf,
+    explicit_package_root: bool,
 }
 
 impl ResourceResolver {
     pub(crate) fn new(mapping_path: &Path, package_root: Option<&Path>) -> Result<Self, MfdError> {
+        let explicit_package_root = package_root.is_some();
         let mapping_path = std::fs::canonicalize(mapping_path).map_err(|error| {
             MfdError::Resource(format!(
                 "could not canonicalize mapping `{}` ({error})",
@@ -48,6 +50,7 @@ impl ResourceResolver {
             mapping_path,
             mapping_directory,
             package_root,
+            explicit_package_root,
         })
     }
 
@@ -82,9 +85,17 @@ impl ResourceResolver {
                 Component::Normal(value) => normalized.push(value),
                 Component::ParentDir if normalized.pop() => {}
                 Component::ParentDir => {
+                    let guidance = if self.explicit_package_root {
+                        String::new()
+                    } else {
+                        "; retry with a trusted package root that contains both the mapping and \
+                         this resource (`import-mfd --package-root ...` or \
+                         `ImportOptions::with_package_root(...)`)"
+                            .to_string()
+                    };
                     return Err(format!(
-                        "{description} `{declared}` traverses above package root `{}`",
-                        self.package_root.display()
+                        "{description} `{declared}` traverses above package root `{}`{guidance}",
+                        self.package_root.display(),
                     ));
                 }
                 Component::Prefix(_) | Component::RootDir => {
@@ -275,6 +286,22 @@ mod tests {
                 .is_err()
         );
         assert!(ResourceResolver::new(&escaped, Some(&package.0)).is_err());
+    }
+
+    #[test]
+    fn default_root_escape_explains_how_to_declare_a_mapping_package() {
+        let package = TempDir::new();
+        let design = package.0.join("maps");
+        std::fs::create_dir_all(&design).unwrap();
+        let mapping = design.join("mapping.mfd");
+        std::fs::write(&mapping, "<mapping/>").unwrap();
+        let resolver = ResourceResolver::new(&mapping, None).unwrap();
+
+        let error = resolver
+            .package_relative_path("../edi/997.config", "EDI configuration")
+            .unwrap_err();
+        assert!(error.contains("import-mfd --package-root"));
+        assert!(error.contains("ImportOptions::with_package_root"));
     }
 
     #[cfg(unix)]
