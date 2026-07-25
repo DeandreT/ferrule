@@ -1,5 +1,8 @@
-use codegen::{Expression, ExpressionNode, ScalarFunction};
-use ir::Value;
+use codegen::{DelimitedTextField, Expression, ExpressionNode, ScalarFunction};
+use ir::{ScalarType, Value};
+use mapping::{
+    DelimitedDialect, DelimitedRecordField, FlexCommand, FlexLineEnding, FlexTextLayout,
+};
 
 use super::*;
 
@@ -114,6 +117,13 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 args: vec![113, 114, 100],
             },
         },
+        ExpressionNode {
+            id: 116,
+            expression: Expression::DelimitedTextField {
+                input: 100,
+                parser: delimited_parser(),
+            },
+        },
     ]);
     let selected = program
         .root
@@ -147,7 +157,29 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         "replace",
         "json_parse_field",
         "json_serialize_object",
+        "flextext_parse_field",
     ] {
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }
+}
+
+fn delimited_parser() -> DelimitedTextField {
+    let layout = FlexTextLayout::new(
+        "Root",
+        FlexCommand::DelimitedRecords {
+            name: "Row".into(),
+            dialect: DelimitedDialect::new(',', "\n", '"', '"').expect("test dialect is valid"),
+            fields: vec![
+                DelimitedRecordField::new("Name", ScalarType::String).expect("test field is valid"),
+            ],
+        },
+        FlexLineEnding::Lf,
+        false,
+    )
+    .expect("test layout is valid");
+    DelimitedTextField::from_descriptors(
+        &serde_json::to_string(&layout).expect("test layout serializes"),
+        r#"["Row","Name"]"#,
+    )
+    .expect("test parser profile is portable")
 }

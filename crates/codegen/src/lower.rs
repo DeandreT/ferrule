@@ -75,7 +75,7 @@ pub fn lower(project: &Project) -> Result<Program, LowerError> {
         let Some(node) = project.graph.nodes.get(id) else {
             continue;
         };
-        match lower_expression(*id, node) {
+        match lower_expression(*id, node, &project.graph) {
             Ok(node) => expressions.push(node),
             Err(diagnostic) => diagnostics.push(diagnostic),
         }
@@ -565,7 +565,7 @@ fn lower_user_function(
         let Some(expression) = function.body.nodes.get(&node) else {
             continue;
         };
-        match lower_expression(node, expression) {
+        match lower_expression(node, expression, &function.body) {
             Ok(expression) => expressions.push(expression),
             Err(diagnostic) => diagnostics.push(Diagnostic::UserFunction {
                 function: id,
@@ -592,7 +592,7 @@ fn lower_user_function(
     visits.insert(id, FunctionVisit::Complete);
 }
 
-fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnostic> {
+fn lower_expression(id: NodeId, node: &Node, graph: &Graph) -> Result<ExpressionNode, Diagnostic> {
     let expression = match node {
         Node::SourceField { path, frame } => Expression::SourceField {
             frame: frame.clone(),
@@ -662,11 +662,34 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             ty: *ty,
         },
         Node::Call { function, args } => {
-            let Some(function) = ScalarFunction::from_name(function) else {
-                return Err(Diagnostic::UnsupportedFunction {
-                    node: id,
-                    function: function.clone(),
+            if function == "flextext_parse_field" {
+                let [input, layout, path] = args.as_slice() else {
+                    return Err(unsupported_function(id, function));
+                };
+                let Some(Node::Const {
+                    value: ir::Value::String(layout),
+                }) = graph.nodes.get(layout)
+                else {
+                    return Err(unsupported_function(id, function));
+                };
+                let Some(Node::Const {
+                    value: ir::Value::String(path),
+                }) = graph.nodes.get(path)
+                else {
+                    return Err(unsupported_function(id, function));
+                };
+                let parser = crate::DelimitedTextField::from_descriptors(layout, path)
+                    .map_err(|_| unsupported_function(id, function))?;
+                return Ok(ExpressionNode {
+                    id,
+                    expression: Expression::DelimitedTextField {
+                        input: *input,
+                        parser,
+                    },
                 });
+            }
+            let Some(function) = ScalarFunction::from_name(function) else {
+                return Err(unsupported_function(id, function));
             };
             Expression::Call {
                 function,
@@ -776,6 +799,13 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
         }
     };
     Ok(ExpressionNode { id, expression })
+}
+
+fn unsupported_function(node: NodeId, function: &str) -> Diagnostic {
+    Diagnostic::UnsupportedFunction {
+        node,
+        function: function.to_string(),
+    }
 }
 
 fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {

@@ -10,4 +10,4 @@ description = "Backend-neutral lowering and generated artifact IR for ferrule ma
 engine = { workspace = true }
 ir = { workspace = true }
 mapping = { workspace = true }
-
+serde_json = { workspace = true }
