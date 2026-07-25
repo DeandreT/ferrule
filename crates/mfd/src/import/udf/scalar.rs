@@ -8,8 +8,8 @@ use super::{
     ScalarParameter, ScalarSequenceExpr,
 };
 use crate::import::function::{
-    FnComponent, is_db_scalar_function_component, is_xbrl_measure_component, map_component_name,
-    parse_constant, read as read_function,
+    FnComponent, aggregate_op, is_db_scalar_function_component, is_xbrl_measure_component,
+    map_component_name, parse_constant, read as read_function,
 };
 use crate::import::graph::read_edges;
 use crate::import::schema::parse_u32;
@@ -72,7 +72,17 @@ pub(super) fn read(
             && child.attribute("kind") == Some("5")
             && matches!(
                 child.attribute("name"),
-                Some("item-at" | "exists" | "not-exists")
+                Some(
+                    "item-at"
+                        | "exists"
+                        | "not-exists"
+                        | "count"
+                        | "sum"
+                        | "avg"
+                        | "min"
+                        | "max"
+                        | "string-join"
+                )
             )
     });
 
@@ -214,12 +224,6 @@ pub(super) fn read(
                     | "items-from-till"
                     | "last-items"
                     | "distinct-values"
-                    | "count"
-                    | "sum"
-                    | "avg"
-                    | "min"
-                    | "max"
-                    | "string-join"
             )
         {
             return Err(ReadError::Shape(format!(
@@ -446,6 +450,11 @@ impl DefinitionContext<'_> {
         sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
         let function = &self.functions[idx];
+        if let Some(expression) =
+            self.sequence_aggregate_expression(function, active, budget, sequence_items)?
+        {
+            return Ok(expression);
+        }
         if let Some(expression) =
             self.sequence_exists_expression(function, active, budget, sequence_items)?
         {
@@ -713,6 +722,91 @@ impl DefinitionContext<'_> {
             }
         } else {
             exists
+        }))
+    }
+
+    fn sequence_aggregate_expression(
+        &self,
+        function: &FnComponent,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
+    ) -> Result<Option<ScalarExpr>, String> {
+        if function.library != "core" || function.kind != 5 {
+            return Ok(None);
+        }
+        let Some(operation) = aggregate_op(&function.name)
+            .filter(|operation| *operation != mapping::AggregateOp::ItemAt)
+        else {
+            return Ok(None);
+        };
+        let sequence_position = if function.inputs.len() == 1 { 0 } else { 1 };
+        let Some(aggregate_feed) = self.connected_input(function, sequence_position) else {
+            return Ok(None);
+        };
+
+        let mut sequence_feed = aggregate_feed;
+        let mut predicate_feed = None;
+        let mut invert_predicate = false;
+        if let Some(Producer::Function(filter_index)) = self.by_output.get(&aggregate_feed).copied()
+            && let Some(filter) = self.functions.get(filter_index)
+            && filter.library == "core"
+            && filter.kind == 3
+            && let Some(output_position) = filter
+                .output_pins
+                .iter()
+                .position(|output| *output == Some(aggregate_feed))
+            && output_position <= 1
+        {
+            sequence_feed = self.connected_input(filter, 0).ok_or_else(|| {
+                "definition sequence aggregate filter input is not connected".to_string()
+            })?;
+            predicate_feed = Some(self.connected_input(filter, 1).ok_or_else(|| {
+                "definition sequence aggregate predicate is not connected".to_string()
+            })?);
+            invert_predicate = output_position == 1;
+        }
+        if !self.is_generated_sequence_output(sequence_feed) {
+            return Ok(None);
+        }
+
+        let sequence = self.sequence_expression(sequence_feed, active, budget, sequence_items)?;
+        let predicate = predicate_feed
+            .map(|predicate_feed| {
+                let mut predicate_items = sequence_items.to_vec();
+                predicate_items.push(sequence_feed);
+                self.expression_with_sequence_items(
+                    predicate_feed,
+                    active,
+                    budget,
+                    &predicate_items,
+                )
+                .map(|predicate| {
+                    if invert_predicate {
+                        ScalarExpr::Call {
+                            function: "not".to_string(),
+                            args: vec![predicate],
+                        }
+                    } else {
+                        predicate
+                    }
+                })
+                .map(Box::new)
+            })
+            .transpose()?;
+        let arg = self
+            .connected_input(function, 2)
+            .map(|arg| {
+                self.expression_with_sequence_items(arg, active, budget, sequence_items)
+                    .map(Box::new)
+            })
+            .transpose()?;
+        Ok(Some(ScalarExpr::SequenceAggregate {
+            function: operation,
+            sequence,
+            item_feed: sequence_feed,
+            predicate,
+            arg,
         }))
     }
 
@@ -1056,6 +1150,30 @@ fn substitute(
             budget.claim(depth)?;
             Ok(ScalarExpr::SequencePosition(*feed))
         }
+        ScalarExpr::SequenceAggregate {
+            function,
+            sequence,
+            item_feed,
+            predicate,
+            arg,
+        } => {
+            budget.claim(depth)?;
+            Ok(ScalarExpr::SequenceAggregate {
+                function: *function,
+                sequence: substitute_sequence(sequence, parameters, budget, depth + 1)?,
+                item_feed: *item_feed,
+                predicate: predicate
+                    .as_ref()
+                    .map(|predicate| {
+                        substitute(predicate, parameters, budget, depth + 1).map(Box::new)
+                    })
+                    .transpose()?,
+                arg: arg
+                    .as_ref()
+                    .map(|arg| substitute(arg, parameters, budget, depth + 1).map(Box::new))
+                    .transpose()?,
+            })
+        }
     }
 }
 
@@ -1157,6 +1275,25 @@ fn clone_with_budget(
         }),
         ScalarExpr::SequenceItem(feed) => Ok(ScalarExpr::SequenceItem(*feed)),
         ScalarExpr::SequencePosition(feed) => Ok(ScalarExpr::SequencePosition(*feed)),
+        ScalarExpr::SequenceAggregate {
+            function,
+            sequence,
+            item_feed,
+            predicate,
+            arg,
+        } => Ok(ScalarExpr::SequenceAggregate {
+            function: *function,
+            sequence: clone_sequence_with_budget(sequence, budget, depth + 1)?,
+            item_feed: *item_feed,
+            predicate: predicate
+                .as_ref()
+                .map(|predicate| clone_with_budget(predicate, budget, depth + 1).map(Box::new))
+                .transpose()?,
+            arg: arg
+                .as_ref()
+                .map(|arg| clone_with_budget(arg, budget, depth + 1).map(Box::new))
+                .transpose()?,
+        }),
     }
 }
 

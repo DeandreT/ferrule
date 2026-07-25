@@ -612,6 +612,18 @@ impl GraphViewer<'_> {
                 .or_else(|| (idx == sequence.inputs().len()).then_some(*predicate)),
             Node::SequenceItemAt { sequence, index } => graph_sequence::input_at(sequence, idx)
                 .or_else(|| (idx == sequence.inputs().len()).then_some(*index)),
+            Node::SequenceAggregate {
+                sequence,
+                predicate,
+                arg,
+                ..
+            } => graph_sequence::input_at(sequence, idx).or_else(|| {
+                predicate
+                    .iter()
+                    .chain(arg)
+                    .nth(idx.saturating_sub(sequence.inputs().len()))
+                    .copied()
+            }),
             Node::Aggregate {
                 expression, arg, ..
             }
@@ -867,6 +879,16 @@ impl GraphViewer<'_> {
                 predicate: _,
             } => sequence.inputs().len() + 1,
             Node::SequenceItemAt { sequence, .. } => sequence.inputs().len() + 1,
+            Node::SequenceAggregate {
+                sequence,
+                predicate,
+                arg,
+                ..
+            } => {
+                sequence.inputs().len()
+                    + usize::from(predicate.is_some())
+                    + usize::from(arg.is_some())
+            }
             Node::Aggregate {
                 expression, arg, ..
             }
@@ -994,6 +1016,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Some(Node::SequenceItemAt { sequence, .. }) => {
                         format!("Item at: {}", graph_sequence::label(sequence))
+                    }
+                    Some(Node::SequenceAggregate {
+                        function, sequence, ..
+                    }) => {
+                        let op = format!("{function:?}").to_lowercase();
+                        format!("{op}: {}", graph_sequence::label(sequence))
                     }
                     Some(Node::Aggregate {
                         function,
@@ -1652,6 +1680,23 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     ui.label(format!(
                         "select one {} item",
                         graph_sequence::label(sequence)
+                    ));
+                }
+                Node::SequenceAggregate {
+                    function,
+                    sequence,
+                    predicate,
+                    ..
+                } => {
+                    let op = format!("{function:?}").to_lowercase();
+                    ui.label(format!(
+                        "{op} {} {}",
+                        graph_sequence::label(sequence),
+                        if predicate.is_some() {
+                            "filtered items"
+                        } else {
+                            "items"
+                        }
                     ));
                 }
                 Node::Aggregate {

@@ -195,9 +195,10 @@ The current portable model includes:
 - literal and bounded regular-expression tokenization, Unicode-scalar
   fixed-length tokenization, bounded inclusive integer ranges, and bounded
   recursive depth-first collection
-- ordinary scope iteration, failure rules, existential predicates, and
-  1-based scalar `item-at` over those generated sequences; predicates
-  short-circuit after the sequence has been materialized
+- ordinary scope iteration, failure rules, existential predicates, 1-based
+  scalar `item-at`, and count/sum/average/minimum/maximum/string-join reductions
+  over raw or filtered generated values; predicates execute in a private
+  generated-item and position context
 - active collection identity, outward source-field fallback, and compacted
   output positions
 

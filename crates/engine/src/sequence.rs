@@ -360,6 +360,60 @@ pub(super) fn eval_sequence_item_at(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn eval_sequence_aggregate(
+    program: EvalProgram<'_>,
+    function: mapping::AggregateOp,
+    sequence: &SequenceExpr,
+    predicate: Option<NodeId>,
+    arg: Option<NodeId>,
+    context: &[&Instance],
+    positions: &[PositionFrame],
+    in_progress: &mut HashSet<NodeId>,
+) -> Result<Value, EngineError> {
+    let generated = eval_sequence_in_progress(program, sequence, context, positions, in_progress)?;
+    let mut values = Vec::with_capacity(generated.len());
+    for (index, value) in generated.into_iter().enumerate() {
+        let item = Instance::Scalar(value.clone());
+        let mut item_context = context.to_vec();
+        item_context.push(&item);
+        let mut item_positions = positions.to_vec();
+        item_positions.push(PositionFrame {
+            collection: Vec::new(),
+            index: index + 1,
+            grouped: false,
+            join: None,
+            join_position: None,
+            document_path: None,
+        });
+        let keep = match predicate {
+            Some(predicate) => match eval_expr(
+                program,
+                predicate,
+                &item_context,
+                &item_positions,
+                in_progress,
+            )? {
+                Value::Bool(value) => value,
+                other => {
+                    return Err(EngineError::NotABool {
+                        node: predicate,
+                        found: other.type_name(),
+                    });
+                }
+            },
+            None => true,
+        };
+        if keep {
+            values.push(value);
+        }
+    }
+    let arg = arg
+        .map(|arg| eval_expr(program, arg, context, positions, in_progress))
+        .transpose()?;
+    super::aggregate::aggregate(function, values.len(), &values, arg)
+}
+
 fn eval_sequence_arg(
     program: EvalProgram<'_>,
     node: NodeId,

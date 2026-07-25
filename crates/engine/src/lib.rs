@@ -600,6 +600,9 @@ mod repeated_scalar_tests;
 #[path = "tests/runtime_parameters.rs"]
 mod runtime_parameter_tests;
 #[cfg(test)]
+#[path = "tests/sequence_aggregate.rs"]
+mod sequence_aggregate_tests;
+#[cfg(test)]
 #[path = "tests/sequence_exists.rs"]
 mod sequence_exists_tests;
 #[cfg(test)]

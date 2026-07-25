@@ -14,7 +14,7 @@ use crate::resolve::{
     dynamic_scalar, field_scalar, instance_in_active_collection, instance_in_frame, join_scalar,
     repeated, scalar_in_active_collection, scalar_in_frame, source_document_path,
 };
-use crate::sequence::{eval_sequence_exists, eval_sequence_item_at};
+use crate::sequence::{eval_sequence_aggregate, eval_sequence_exists, eval_sequence_item_at};
 use crate::source_iteration::{PositionFrame, WalkExtension, walk};
 use crate::trace::{TraceSink, record_node_value};
 use crate::user_function;
@@ -260,6 +260,21 @@ pub(crate) fn eval_expr(
         Node::SequenceItemAt { sequence, index } => {
             eval_sequence_item_at(program, sequence, *index, context, positions, in_progress)
         }
+        Node::SequenceAggregate {
+            function,
+            sequence,
+            predicate,
+            arg,
+        } => eval_sequence_aggregate(
+            program,
+            *function,
+            sequence,
+            *predicate,
+            *arg,
+            context,
+            positions,
+            in_progress,
+        ),
         Node::Aggregate {
             function,
             collection,

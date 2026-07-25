@@ -3,9 +3,9 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use codegen::{
-    Binding, Expression, ExpressionNode, FailureIteration, FailureRule, FailureSelection,
-    GeneratedSequence, IterationPlan, NamedSourceProgram, NamedTargetProgram, Program,
-    RuntimeValue, ScalarFunction, SourceIteration, TargetScope, UserFunctionParameter,
+    AggregateFunction, Binding, Expression, ExpressionNode, FailureIteration, FailureRule,
+    FailureSelection, GeneratedSequence, IterationPlan, NamedSourceProgram, NamedTargetProgram,
+    Program, RuntimeValue, ScalarFunction, SourceIteration, TargetScope, UserFunctionParameter,
     UserFunctionProgram,
 };
 use ir::{ScalarType, SchemaNode, Value};
@@ -127,6 +127,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("RootInt", ScalarType::Int),
                 SchemaNode::scalar("Exists", ScalarType::Bool),
                 SchemaNode::scalar("Selected", ScalarType::String),
+                SchemaNode::scalar("Count", ScalarType::Int),
                 SchemaNode::group(
                     "Nested",
                     vec![
@@ -484,6 +485,27 @@ fn fixture() -> Program {
                     collection: Vec::new(),
                 },
             },
+            ExpressionNode {
+                id: 50,
+                expression: Expression::SourceField {
+                    frame: None,
+                    path: Vec::new(),
+                },
+            },
+            ExpressionNode {
+                id: 51,
+                expression: Expression::SequenceAggregate {
+                    function: AggregateFunction::Count,
+                    sequence: GeneratedSequence::TokenizeRegex {
+                        input: 20,
+                        pattern: 21,
+                        flags: Some(48),
+                        item: 50,
+                    },
+                    predicate: None,
+                    arg: None,
+                },
+            },
         ],
         user_functions: vec![
             UserFunctionProgram {
@@ -622,6 +644,7 @@ fn fixture() -> Program {
                 binding("RootInt", 2, ScalarType::Int, false),
                 binding("Exists", 24, ScalarType::Bool, false),
                 binding("Selected", 28, ScalarType::String, false),
+                binding("Count", 51, ScalarType::Int, false),
             ],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
@@ -723,12 +746,13 @@ var extraSources = ExtraSources();
 var outputRows = (FerruleRepeated)GeneratedMapping.ExecuteWithSources(source, extraSources);
 Assert(outputRows.Items.Count == 1);
 var output = (FerruleGroup)outputRows.Items[0];
-Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "Nested" }));
+Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "Count", "Nested" }));
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromInt64(7));
 Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.FromBoolean(true));
 Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.FromString("beta"));
+Assert(((FerruleScalar)output.Fields[3].Value).Value == FerruleValue.FromInt64(3));
 
-var nestedRows = (FerruleRepeated)output.Fields[3].Value;
+var nestedRows = (FerruleRepeated)output.Fields[4].Value;
 Assert(nestedRows.Items.Count == 3);
 var nested = (FerruleGroup)nestedRows.Items[0];
 Assert(nested.Fields.Select(field => field.Name).SequenceEqual(
@@ -848,7 +872,7 @@ NamedSourceError(
 var fallback = (FerruleRepeated)GeneratedMapping.ExecuteWithSources(
     Source(FerruleValue.FromBoolean(true), true, false),
     extraSources);
-var fallbackNested = (FerruleRepeated)((FerruleGroup)fallback.Items[0]).Fields[3].Value;
+var fallbackNested = (FerruleRepeated)((FerruleGroup)fallback.Items[0]).Fields[4].Value;
 Assert(((FerruleScalar)((FerruleGroup)fallbackNested.Items[0]).Fields[10].Value).Value == FerruleValue.FromString("extra"));
 
 Error(

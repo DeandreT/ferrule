@@ -53,6 +53,13 @@ pub(super) enum ScalarExpr {
     },
     SequenceItem(u32),
     SequencePosition(u32),
+    SequenceAggregate {
+        function: mapping::AggregateOp,
+        sequence: ScalarSequenceExpr,
+        item_feed: u32,
+        predicate: Option<Box<ScalarExpr>>,
+        arg: Option<Box<ScalarExpr>>,
+    },
 }
 
 #[derive(Clone)]
@@ -153,6 +160,20 @@ impl ScalarExpr {
                 predicate.collect_parameters(parameters);
             }
             ScalarExpr::SequenceItem(_) | ScalarExpr::SequencePosition(_) => {}
+            ScalarExpr::SequenceAggregate {
+                sequence,
+                predicate,
+                arg,
+                ..
+            } => {
+                sequence.collect_parameters(parameters);
+                if let Some(predicate) = predicate {
+                    predicate.collect_parameters(parameters);
+                }
+                if let Some(arg) = arg {
+                    arg.collect_parameters(parameters);
+                }
+            }
         }
     }
 }
@@ -473,7 +494,8 @@ impl ScalarExpr {
             Self::SequenceItemAt { .. }
             | Self::SequenceExists { .. }
             | Self::SequenceItem(_)
-            | Self::SequencePosition(_) => true,
+            | Self::SequencePosition(_)
+            | Self::SequenceAggregate { .. } => true,
             Self::Call { args, .. } => args.iter().any(Self::requires_inlining),
             Self::If {
                 condition,
@@ -531,7 +553,8 @@ fn instantiate_function_body(
         ScalarExpr::SequenceItemAt { .. }
         | ScalarExpr::SequenceExists { .. }
         | ScalarExpr::SequenceItem(_)
-        | ScalarExpr::SequencePosition(_) => return None,
+        | ScalarExpr::SequencePosition(_)
+        | ScalarExpr::SequenceAggregate { .. } => return None,
     };
     Some(alloc_node(graph, next_id, node))
 }
@@ -1374,6 +1397,47 @@ fn instantiate_with_sequence_items(
             } else {
                 alloc_node(graph, next_id, Node::Const { value: Value::Null })
             }
+        }
+        ScalarExpr::SequenceAggregate {
+            function,
+            sequence,
+            item_feed,
+            predicate,
+            arg,
+        } => {
+            let item = alloc_node(
+                graph,
+                next_id,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            );
+            let sequence = sequence.instantiate(item, parameters, sequence_items, graph, next_id);
+            let mut nested_items = sequence_items.to_vec();
+            nested_items.push((*item_feed, item));
+            let predicate = predicate.as_ref().map(|predicate| {
+                instantiate_with_sequence_items(
+                    predicate,
+                    parameters,
+                    &nested_items,
+                    graph,
+                    next_id,
+                )
+            });
+            let arg = arg.as_ref().map(|arg| {
+                instantiate_with_sequence_items(arg, parameters, sequence_items, graph, next_id)
+            });
+            alloc_node(
+                graph,
+                next_id,
+                Node::SequenceAggregate {
+                    function: *function,
+                    sequence,
+                    predicate,
+                    arg,
+                },
+            )
         }
     }
 }

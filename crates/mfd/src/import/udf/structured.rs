@@ -1144,7 +1144,8 @@ impl ExprContext<'_> {
             ScalarExpr::SequenceItemAt { .. }
             | ScalarExpr::SequenceExists { .. }
             | ScalarExpr::SequenceItem(_)
-            | ScalarExpr::SequencePosition(_) => {
+            | ScalarExpr::SequencePosition(_)
+            | ScalarExpr::SequenceAggregate { .. } => {
                 Err("structured scalar expressions cannot consume generated sequences".to_string())
             }
         }

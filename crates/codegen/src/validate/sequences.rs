@@ -13,7 +13,8 @@ pub(super) fn collect_expression_items(
     for (&node, expression) in expressions {
         let sequence = match expression {
             Expression::SequenceExists { sequence, .. }
-            | Expression::SequenceItemAt { sequence, .. } => sequence,
+            | Expression::SequenceItemAt { sequence, .. }
+            | Expression::SequenceAggregate { sequence, .. } => sequence,
             _ => continue,
         };
         register_item(
@@ -143,6 +144,38 @@ fn visit_context(
                     expressions,
                     sequence_items,
                     &[],
+                    &reducer,
+                    visited,
+                )?;
+            }
+            Ok(())
+        }
+        Expression::SequenceAggregate {
+            sequence,
+            predicate,
+            arg,
+            ..
+        } => {
+            let reducer = SequenceOwner::Expression(node);
+            for input in sequence.inputs().chain(arg.iter().copied()) {
+                visit_context(
+                    input,
+                    root,
+                    expressions,
+                    sequence_items,
+                    active_sequence_items,
+                    &reducer,
+                    visited,
+                )?;
+            }
+            if let Some(predicate) = predicate {
+                let predicate_items = [sequence.item()];
+                visit_context(
+                    *predicate,
+                    root,
+                    expressions,
+                    sequence_items,
+                    &predicate_items,
                     &reducer,
                     visited,
                 )?;

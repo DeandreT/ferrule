@@ -82,6 +82,11 @@ impl GraphBuilder<'_> {
             return Ok(Some(node));
         }
         let arg = arg_feed.and_then(|feed| self.value_node(feed));
+        if op != AggregateOp::ItemAt
+            && let Some(node) = self.sequence_aggregate_node(op, sequence_feed, arg)
+        {
+            return Ok(Some(node));
+        }
 
         if let Some((join, plan, expression)) = self.join_aggregate_sequence(sequence_feed)? {
             if expression.is_none() && op != AggregateOp::Count {

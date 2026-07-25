@@ -50,6 +50,9 @@ fn graph_node_inputs(node: &Node) -> Vec<NodeId> {
         Node::SequenceItemAt { sequence, index } => {
             sequence.inputs().into_iter().chain([*index]).collect()
         }
+        Node::SequenceAggregate { sequence, arg, .. } => {
+            sequence.inputs().into_iter().chain(*arg).collect()
+        }
         Node::Aggregate {
             expression, arg, ..
         } => expression.iter().chain(arg).copied().collect(),
