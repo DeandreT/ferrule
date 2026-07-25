@@ -554,7 +554,7 @@ pub fn adapt_target_value(value: Value, expected: ScalarType) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ir::DocumentMember;
+    use ir::{DocumentMember, SchemaNode};
 
     #[test]
     fn resolves_nested_group_fields_and_empty_scalar_path() {
@@ -1201,6 +1201,29 @@ mod tests {
         assert_eq!(
             call("divide", &[Value::Int(1), Value::Int(0)]),
             Err(RuntimeError::Function(FunctionError::DivideByZero))
+        );
+    }
+
+    #[test]
+    fn scalar_calls_parse_schema_typed_json_fields() {
+        let schema = SchemaNode::group(
+            "Payload",
+            vec![SchemaNode::group(
+                "Leaves",
+                vec![SchemaNode::scalar("Total", ScalarType::Float)],
+            )],
+        );
+        let schema = serde_json::to_string(&schema).expect("test schema serializes");
+        assert_eq!(
+            call(
+                "json_parse_field",
+                &[
+                    Value::String(r#"{"Leaves":{"Total":3.5}}"#.into()),
+                    Value::String(schema),
+                    Value::String(r#"["Leaves","Total"]"#.into()),
+                ],
+            ),
+            Ok(Value::Float(3.5))
         );
     }
 

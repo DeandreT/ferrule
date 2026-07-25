@@ -73,6 +73,28 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 args: vec![100, 106, 108],
             },
         },
+        ExpressionNode {
+            id: 110,
+            expression: Expression::Const {
+                value: Value::String(
+                    serde_json::to_string(&ir::SchemaNode::scalar("Value", ir::ScalarType::Int))
+                        .expect("JSON parser schema serializes"),
+                ),
+            },
+        },
+        ExpressionNode {
+            id: 111,
+            expression: Expression::Const {
+                value: Value::String("[]".into()),
+            },
+        },
+        ExpressionNode {
+            id: 112,
+            expression: Expression::Call {
+                function: ScalarFunction::JsonParseField,
+                args: vec![100, 110, 111],
+            },
+        },
     ]);
     let selected = program
         .root
@@ -104,6 +126,7 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         "delay_passthrough",
         "matches",
         "replace",
+        "json_parse_field",
     ] {
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }
