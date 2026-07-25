@@ -65,12 +65,15 @@ pub(super) fn read(
         .children()
         .filter(|node| node.is_element() && node.has_tag_name("component"))
         .all(|child| is_scalar_component(&child));
-    let has_item_at = children.children().any(|child| {
+    let has_sequence_reducer = children.children().any(|child| {
         child.is_element()
             && child.has_tag_name("component")
             && child.attribute("library") == Some("core")
             && child.attribute("kind") == Some("5")
-            && child.attribute("name") == Some("item-at")
+            && matches!(
+                child.attribute("name"),
+                Some("item-at" | "exists" | "not-exists")
+            )
     });
 
     let mut functions = Vec::new();
@@ -163,7 +166,7 @@ pub(super) fn read(
             )));
         }
         let function = read_function(&child);
-        if !has_item_at
+        if !has_sequence_reducer
             && function.library == "core"
             && function.kind == 5
             && matches!(
@@ -352,6 +355,19 @@ impl DefinitionContext<'_> {
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
     ) -> Result<ScalarExpr, String> {
+        self.expression_with_sequence_items(feed, active, budget, &[])
+    }
+
+    fn expression_with_sequence_items(
+        &self,
+        feed: u32,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
+    ) -> Result<ScalarExpr, String> {
+        if sequence_items.contains(&feed) {
+            return Ok(ScalarExpr::SequenceItem(feed));
+        }
         if let Some(component_id) = self.parameter_by_key.get(&feed) {
             let Some((default_feed, parameter_type)) =
                 self.parameter_default_by_key.get(&feed).copied()
@@ -362,7 +378,7 @@ impl DefinitionContext<'_> {
                 return Err("definition contains a cyclic scalar parameter default".to_string());
             }
             let default = self
-                .expression(default_feed, active, budget)
+                .expression_with_sequence_items(default_feed, active, budget, sequence_items)
                 .map(|default| coerce_constant(default, parameter_type));
             active.remove(&feed);
             return Ok(ScalarExpr::DefaultedParameter {
@@ -379,8 +395,12 @@ impl DefinitionContext<'_> {
             .copied()
             .ok_or_else(|| format!("definition feed `{feed}` is not scalar"))
             .and_then(|producer| match producer {
-                Producer::Function(idx) => self.function_expression(idx, feed, active, budget),
-                Producer::Nested(idx) => self.nested_expression(idx, feed, active, budget),
+                Producer::Function(idx) => {
+                    self.function_expression(idx, feed, active, budget, sequence_items)
+                }
+                Producer::Nested(idx) => {
+                    self.nested_expression(idx, feed, active, budget, sequence_items)
+                }
             });
         active.remove(&feed);
         result
@@ -392,6 +412,7 @@ impl DefinitionContext<'_> {
         feed: u32,
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
         let call = &self.nested_calls[idx];
         let template = call
@@ -408,7 +429,7 @@ impl DefinitionContext<'_> {
                     .and_then(|input_key| self.edge_from.get(input_key))
                     .copied()?;
                 Some(
-                    self.expression(input_feed, active, budget)
+                    self.expression_with_sequence_items(input_feed, active, budget, sequence_items)
                         .map(|expression| (*component_id, expression)),
                 )
             })
@@ -422,15 +443,22 @@ impl DefinitionContext<'_> {
         feed: u32,
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
         let function = &self.functions[idx];
+        if let Some(expression) =
+            self.sequence_exists_expression(function, active, budget, sequence_items)?
+        {
+            return Ok(expression);
+        }
         match (function.name.as_str(), function.kind) {
             ("item-at", 5) if function.library == "core" => {
                 let sequence_feed = self.connected_input(function, 0).ok_or_else(|| {
                     "definition item-at sequence input is not connected".to_string()
                 })?;
-                let sequence = self.sequence_expression(sequence_feed, active, budget)?;
-                let index = self.function_input(function, 1, active, budget)?;
+                let sequence =
+                    self.sequence_expression(sequence_feed, active, budget, sequence_items)?;
+                let index = self.function_input(function, 1, active, budget, sequence_items)?;
                 Ok(ScalarExpr::SequenceItemAt {
                     sequence,
                     index: Box::new(index),
@@ -440,7 +468,7 @@ impl DefinitionContext<'_> {
                 if function.library == "core" =>
             {
                 Err(format!(
-                    "definition sequence operation `{}` must be consumed by item-at",
+                    "definition sequence operation `{}` must be consumed by item-at or a filtered exists",
                     function.name
                 ))
             }
@@ -481,8 +509,8 @@ impl DefinitionContext<'_> {
                         "definition uses unsupported filter output position `{output_pos}`"
                     ));
                 }
-                let value = self.function_input(function, 0, active, budget)?;
-                let predicate = self.function_input(function, 1, active, budget)?;
+                let value = self.function_input(function, 0, active, budget, sequence_items)?;
+                let predicate = self.function_input(function, 1, active, budget, sequence_items)?;
                 let null = Box::new(ScalarExpr::Const(Value::Null));
                 let (then, else_) = if output_pos == 0 {
                     (Box::new(value), null)
@@ -504,14 +532,32 @@ impl DefinitionContext<'_> {
                 Ok(ScalarExpr::Const(parse_constant(value, datatype)))
             }
             (_, 4) => Ok(ScalarExpr::If {
-                condition: Box::new(self.function_input(function, 0, active, budget)?),
-                then: Box::new(self.function_input(function, 1, active, budget)?),
-                else_: Box::new(self.function_input(function, 2, active, budget)?),
+                condition: Box::new(self.function_input(
+                    function,
+                    0,
+                    active,
+                    budget,
+                    sequence_items,
+                )?),
+                then: Box::new(self.function_input(function, 1, active, budget, sequence_items)?),
+                else_: Box::new(self.function_input(
+                    function,
+                    2,
+                    active,
+                    budget,
+                    sequence_items,
+                )?),
             }),
             (_, 23) => {
                 let valuemap = function.valuemap.clone().unwrap_or_default();
                 Ok(ScalarExpr::ValueMap {
-                    input: Box::new(self.function_input(function, 0, active, budget)?),
+                    input: Box::new(self.function_input(
+                        function,
+                        0,
+                        active,
+                        budget,
+                        sequence_items,
+                    )?),
                     input_type: valuemap.input_type,
                     table: valuemap.table,
                     default: valuemap.default,
@@ -521,18 +567,18 @@ impl DefinitionContext<'_> {
                 function: "not".to_string(),
                 args: vec![ScalarExpr::Call {
                     function: "exists".to_string(),
-                    args: vec![self.function_input(function, 0, active, budget)?],
+                    args: vec![self.function_input(function, 0, active, budget, sequence_items)?],
                 }],
             }),
             ("is-not-null", 5) if function.library == "db" => Ok(ScalarExpr::Call {
                 function: "exists".to_string(),
-                args: vec![self.function_input(function, 0, active, budget)?],
+                args: vec![self.function_input(function, 0, active, budget, sequence_items)?],
             }),
             ("not-exists", 5) if function.library == "core" => Ok(ScalarExpr::Call {
                 function: "not".to_string(),
                 args: vec![ScalarExpr::Call {
                     function: "exists".to_string(),
-                    args: vec![self.function_input(function, 0, active, budget)?],
+                    args: vec![self.function_input(function, 0, active, budget, sequence_items)?],
                 }],
             }),
             ("xbrl-measure-shares", 5) if function.library == "xbrl" => Ok(ScalarExpr::Const(
@@ -544,7 +590,7 @@ impl DefinitionContext<'_> {
                     ScalarExpr::Const(Value::String(
                         "{http://www.xbrl.org/2003/iso4217}iso4217:".to_string(),
                     )),
-                    self.function_input(function, 0, active, budget)?,
+                    self.function_input(function, 0, active, budget, sequence_items)?,
                 ],
             }),
             ("now", 5) if function.library == "lang" => {
@@ -566,7 +612,7 @@ impl DefinitionContext<'_> {
                     .rposition(|key| key.is_some_and(|key| self.edge_from.contains_key(&key)))
                     .map_or_else(|| usize::from(!function.inputs.is_empty()), |last| last + 1);
                 let mut args = (0..arity)
-                    .map(|pos| self.function_input(function, pos, active, budget))
+                    .map(|pos| self.function_input(function, pos, active, budget, sequence_items))
                     .collect::<Result<Vec<_>, _>>()?;
                 if matches!(mapped, "add" | "subtract" | "multiply" | "divide" | "round") {
                     args = args
@@ -585,6 +631,94 @@ impl DefinitionContext<'_> {
         }
     }
 
+    fn sequence_exists_expression(
+        &self,
+        function: &FnComponent,
+        active: &mut BTreeSet<u32>,
+        budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
+    ) -> Result<Option<ScalarExpr>, String> {
+        if function.library != "core"
+            || function.kind != 5
+            || !matches!(function.name.as_str(), "exists" | "not-exists")
+        {
+            return Ok(None);
+        }
+        let Some(filter_feed) = self.connected_input(function, 0) else {
+            return Ok(None);
+        };
+        let Some(Producer::Function(filter_index)) = self.by_output.get(&filter_feed).copied()
+        else {
+            return Ok(None);
+        };
+        let Some(filter) = self.functions.get(filter_index) else {
+            return Ok(None);
+        };
+        if filter.library != "core" || filter.kind != 3 {
+            return Ok(None);
+        }
+        let Some(output_position) = filter
+            .output_pins
+            .iter()
+            .position(|output| *output == Some(filter_feed))
+        else {
+            return Err("definition filtered exists input is not a filter output".to_string());
+        };
+        if output_position > 1 {
+            return Err(format!(
+                "definition filtered exists uses unsupported filter output position `{output_position}`"
+            ));
+        }
+        let Some(sequence_feed) = self.connected_input(filter, 0) else {
+            return Err("definition filtered exists sequence input is not connected".to_string());
+        };
+        if !self.is_generated_sequence_output(sequence_feed) {
+            return Ok(None);
+        }
+        let predicate_feed = self.connected_input(filter, 1).ok_or_else(|| {
+            "definition filtered exists predicate input is not connected".to_string()
+        })?;
+        let sequence = self.sequence_expression(sequence_feed, active, budget, sequence_items)?;
+        let mut predicate_items = sequence_items.to_vec();
+        predicate_items.push(sequence_feed);
+        let mut predicate =
+            self.expression_with_sequence_items(predicate_feed, active, budget, &predicate_items)?;
+        if output_position == 1 {
+            predicate = ScalarExpr::Call {
+                function: "not".to_string(),
+                args: vec![predicate],
+            };
+        }
+        let exists = ScalarExpr::SequenceExists {
+            sequence,
+            item_feed: sequence_feed,
+            predicate: Box::new(predicate),
+        };
+        Ok(Some(if function.name == "not-exists" {
+            ScalarExpr::Call {
+                function: "not".to_string(),
+                args: vec![exists],
+            }
+        } else {
+            exists
+        }))
+    }
+
+    fn is_generated_sequence_output(&self, feed: u32) -> bool {
+        let Some(Producer::Function(index)) = self.by_output.get(&feed).copied() else {
+            return false;
+        };
+        self.functions.get(index).is_some_and(|function| {
+            function.library == "core"
+                && function.kind == 5
+                && function.output_pins.first().copied().flatten() == Some(feed)
+                && matches!(
+                    function.name.as_str(),
+                    "tokenize" | "tokenize-regexp" | "tokenize-by-length" | "generate-sequence"
+                )
+        })
+    }
+
     fn connected_input(&self, function: &FnComponent, position: usize) -> Option<u32> {
         function
             .inputs
@@ -600,10 +734,11 @@ impl DefinitionContext<'_> {
         position: usize,
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
     ) -> Result<ScalarExpr, String> {
         self.connected_input(function, position)
             .map_or(Ok(ScalarExpr::Const(Value::Null)), |feed| {
-                self.expression(feed, active, budget)
+                self.expression_with_sequence_items(feed, active, budget, sequence_items)
             })
     }
 
@@ -612,6 +747,7 @@ impl DefinitionContext<'_> {
         feed: u32,
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
     ) -> Result<ScalarSequenceExpr, String> {
         if !active.insert(feed) {
             return Err("definition contains a cyclic generated sequence".to_string());
@@ -625,7 +761,7 @@ impl DefinitionContext<'_> {
             })
             .and_then(|producer| match producer {
                 Producer::Function(index) => {
-                    self.sequence_function_expression(index, feed, active, budget)
+                    self.sequence_function_expression(index, feed, active, budget, sequence_items)
                 }
                 Producer::Nested(_) => Err(
                     "definition item-at input is a scalar nested-function output, not a sequence"
@@ -642,6 +778,7 @@ impl DefinitionContext<'_> {
         output: u32,
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
     ) -> Result<ScalarSequenceExpr, String> {
         let function = self
             .functions
@@ -659,26 +796,64 @@ impl DefinitionContext<'_> {
             function.kind,
         ) {
             ("core", "tokenize", 5) => Ok(ScalarSequenceExpr::Tokenize {
-                input: self.required_sequence_input(function, 0, "value", active, budget)?,
+                input: self.required_sequence_input(
+                    function,
+                    0,
+                    "value",
+                    active,
+                    budget,
+                    sequence_items,
+                )?,
                 delimiter: self.required_sequence_input(
                     function,
                     1,
                     "delimiter",
                     active,
                     budget,
+                    sequence_items,
                 )?,
             }),
             ("core", "tokenize-by-length", 5) => Ok(ScalarSequenceExpr::TokenizeByLength {
-                input: self.required_sequence_input(function, 0, "value", active, budget)?,
-                length: self.required_sequence_input(function, 1, "length", active, budget)?,
+                input: self.required_sequence_input(
+                    function,
+                    0,
+                    "value",
+                    active,
+                    budget,
+                    sequence_items,
+                )?,
+                length: self.required_sequence_input(
+                    function,
+                    1,
+                    "length",
+                    active,
+                    budget,
+                    sequence_items,
+                )?,
             }),
             ("core", "tokenize-regexp", 5) => {
-                let input = self.required_sequence_input(function, 0, "value", active, budget)?;
-                let pattern =
-                    self.required_sequence_input(function, 1, "pattern", active, budget)?;
+                let input = self.required_sequence_input(
+                    function,
+                    0,
+                    "value",
+                    active,
+                    budget,
+                    sequence_items,
+                )?;
+                let pattern = self.required_sequence_input(
+                    function,
+                    1,
+                    "pattern",
+                    active,
+                    budget,
+                    sequence_items,
+                )?;
                 let flags = self
                     .connected_input(function, 2)
-                    .map(|feed| self.expression(feed, active, budget).map(Box::new))
+                    .map(|feed| {
+                        self.expression_with_sequence_items(feed, active, budget, sequence_items)
+                            .map(Box::new)
+                    })
                     .transpose()?;
                 Ok(ScalarSequenceExpr::TokenizeRegex {
                     input,
@@ -689,11 +864,21 @@ impl DefinitionContext<'_> {
             ("core", "generate-sequence", 5) => {
                 let from = self
                     .connected_input(function, 0)
-                    .map(|feed| self.expression(feed, active, budget).map(Box::new))
+                    .map(|feed| {
+                        self.expression_with_sequence_items(feed, active, budget, sequence_items)
+                            .map(Box::new)
+                    })
                     .transpose()?;
                 Ok(ScalarSequenceExpr::Generate {
                     from,
-                    to: self.required_sequence_input(function, 1, "upper-bound", active, budget)?,
+                    to: self.required_sequence_input(
+                        function,
+                        1,
+                        "upper-bound",
+                        active,
+                        budget,
+                        sequence_items,
+                    )?,
                 })
             }
             _ => Err(format!(
@@ -710,11 +895,13 @@ impl DefinitionContext<'_> {
         role: &str,
         active: &mut BTreeSet<u32>,
         budget: &mut ExpansionBudget,
+        sequence_items: &[u32],
     ) -> Result<Box<ScalarExpr>, String> {
         let feed = self
             .connected_input(function, position)
             .ok_or_else(|| format!("definition {} {role} input is not connected", function.name))?;
-        self.expression(feed, active, budget).map(Box::new)
+        self.expression_with_sequence_items(feed, active, budget, sequence_items)
+            .map(Box::new)
     }
 }
 
@@ -837,6 +1024,22 @@ fn substitute(
                 index: Box::new(substitute(index, parameters, budget, depth + 1)?),
             })
         }
+        ScalarExpr::SequenceExists {
+            sequence,
+            item_feed,
+            predicate,
+        } => {
+            budget.claim(depth)?;
+            Ok(ScalarExpr::SequenceExists {
+                sequence: substitute_sequence(sequence, parameters, budget, depth + 1)?,
+                item_feed: *item_feed,
+                predicate: Box::new(substitute(predicate, parameters, budget, depth + 1)?),
+            })
+        }
+        ScalarExpr::SequenceItem(feed) => {
+            budget.claim(depth)?;
+            Ok(ScalarExpr::SequenceItem(*feed))
+        }
     }
 }
 
@@ -927,6 +1130,16 @@ fn clone_with_budget(
             sequence: clone_sequence_with_budget(sequence, budget, depth + 1)?,
             index: Box::new(clone_with_budget(index, budget, depth + 1)?),
         }),
+        ScalarExpr::SequenceExists {
+            sequence,
+            item_feed,
+            predicate,
+        } => Ok(ScalarExpr::SequenceExists {
+            sequence: clone_sequence_with_budget(sequence, budget, depth + 1)?,
+            item_feed: *item_feed,
+            predicate: Box::new(clone_with_budget(predicate, budget, depth + 1)?),
+        }),
+        ScalarExpr::SequenceItem(feed) => Ok(ScalarExpr::SequenceItem(*feed)),
     }
 }
 

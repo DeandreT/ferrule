@@ -24,6 +24,12 @@ pub enum GeneratedSequence {
     Generate,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GeneratedReduction {
+    ItemAt(GeneratedSequence),
+    Exists(GeneratedSequence),
+}
+
 impl GeneratedSequence {
     fn component_name(self) -> &'static str {
         match self {
@@ -101,7 +107,7 @@ pub struct ScalarMfdBuilder {
     connection_style: ConnectionStyle,
     reverse_components: bool,
     key_offset: u32,
-    generated_item_at: Option<GeneratedSequence>,
+    generated_reduction: Option<GeneratedReduction>,
 }
 
 impl ScalarMfdBuilder {
@@ -122,7 +128,7 @@ impl ScalarMfdBuilder {
             connection_style: ConnectionStyle::Graph,
             reverse_components: false,
             key_offset: 0,
-            generated_item_at: None,
+            generated_reduction: None,
         }
     }
 
@@ -142,7 +148,26 @@ impl ScalarMfdBuilder {
             connection_style: ConnectionStyle::Graph,
             reverse_components: false,
             key_offset: 0,
-            generated_item_at: Some(sequence),
+            generated_reduction: Some(GeneratedReduction::ItemAt(sequence)),
+        }
+    }
+
+    pub fn generated_exists(
+        tag: impl Into<String>,
+        sequence: GeneratedSequence,
+        arguments: Vec<ScalarLiteral>,
+    ) -> Self {
+        Self {
+            tag: tag.into(),
+            function_name: "exists".to_string(),
+            function_library: "core".to_string(),
+            arguments,
+            output_type: "boolean".to_string(),
+            context: ScalarContext::UserDefined,
+            connection_style: ConnectionStyle::Graph,
+            reverse_components: false,
+            key_offset: 0,
+            generated_reduction: Some(GeneratedReduction::Exists(sequence)),
         }
     }
 
@@ -173,17 +198,30 @@ impl ScalarMfdBuilder {
                 "scalar scenarios support at most 64 arguments",
             ));
         }
-        if let Some(sequence) = self.generated_item_at
-            && self.arguments.len() != sequence.input_count() + 1
-        {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "{} item-at scenarios require {} sequence arguments plus one index",
-                    sequence.component_name(),
-                    sequence.input_count()
-                ),
-            ));
+        if let Some(reduction) = self.generated_reduction {
+            let sequence = match reduction {
+                GeneratedReduction::ItemAt(sequence) | GeneratedReduction::Exists(sequence) => {
+                    sequence
+                }
+            };
+            let scalar_role = match reduction {
+                GeneratedReduction::ItemAt(_) => "index",
+                GeneratedReduction::Exists(_) => "comparison value",
+            };
+            let reduction_name = match reduction {
+                GeneratedReduction::ItemAt(_) => "item-at",
+                GeneratedReduction::Exists(_) => "filtered exists",
+            };
+            if self.arguments.len() != sequence.input_count() + 1 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!(
+                        "{} {reduction_name} scenarios require {} sequence arguments plus one {scalar_role}",
+                        sequence.component_name(),
+                        sequence.input_count()
+                    ),
+                ));
+            }
         }
         static NEXT: AtomicUsize = AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
@@ -374,7 +412,7 @@ impl ScalarMfdBuilder {
         argument_outputs: &[u32],
     ) -> RenderedBody {
         let argument_count = self.arguments.len();
-        let Some(sequence) = self.generated_item_at else {
+        let Some(reduction) = self.generated_reduction else {
             return RenderedBody {
                 components: vec![function_component(
                     &self.function_name,
@@ -393,7 +431,19 @@ impl ScalarMfdBuilder {
             };
         };
 
+        let sequence = match reduction {
+            GeneratedReduction::ItemAt(sequence) | GeneratedReduction::Exists(sequence) => sequence,
+        };
         let sequence_inputs = sequence.input_count();
+        if reduction == GeneratedReduction::Exists(sequence) {
+            return self.render_generated_exists(
+                function_uid,
+                function_inputs,
+                function_output,
+                argument_outputs,
+                sequence,
+            );
+        }
         let item_sequence_input = function_output + 1;
         let item_index_input = function_output + 2;
         let item_output = function_output + 3;
@@ -426,6 +476,73 @@ impl ScalarMfdBuilder {
             ],
             edges,
             output: item_output,
+        }
+    }
+
+    fn render_generated_exists(
+        &self,
+        function_uid: u32,
+        function_inputs: &[u32],
+        function_output: u32,
+        argument_outputs: &[u32],
+        sequence: GeneratedSequence,
+    ) -> RenderedBody {
+        let sequence_inputs = sequence.input_count();
+        let equal_item_input = function_output + 1;
+        let equal_expected_input = function_output + 2;
+        let equal_output = function_output + 3;
+        let filter_sequence_input = function_output + 4;
+        let filter_predicate_input = function_output + 5;
+        let filter_true_output = function_output + 6;
+        let filter_false_output = function_output + 7;
+        let exists_input = function_output + 8;
+        let exists_output = function_output + 9;
+        let mut edges = argument_outputs
+            .iter()
+            .take(sequence_inputs)
+            .copied()
+            .zip(function_inputs.iter().take(sequence_inputs).copied())
+            .collect::<Vec<_>>();
+        edges.extend([
+            (function_output, equal_item_input),
+            (argument_outputs[sequence_inputs], equal_expected_input),
+            (function_output, filter_sequence_input),
+            (equal_output, filter_predicate_input),
+            (filter_true_output, exists_input),
+        ]);
+        RenderedBody {
+            components: vec![
+                function_component(
+                    sequence.component_name(),
+                    "core",
+                    function_uid,
+                    &function_inputs[..sequence_inputs],
+                    function_output,
+                ),
+                function_component(
+                    "equal",
+                    "core",
+                    function_uid + 1,
+                    &[equal_item_input, equal_expected_input],
+                    equal_output,
+                ),
+                filter_component(
+                    function_uid + 2,
+                    filter_sequence_input,
+                    filter_predicate_input,
+                    filter_true_output,
+                    filter_false_output,
+                ),
+                function_component(
+                    "exists",
+                    "core",
+                    function_uid + 3,
+                    &[exists_input],
+                    exists_output,
+                ),
+            ],
+            edges,
+            output: exists_output,
         }
     }
 
@@ -573,6 +690,21 @@ fn function_component(name: &str, library: &str, uid: u32, inputs: &[u32], outpu
 </component>"#,
         escape_attribute(name),
         escape_attribute(library)
+    )
+}
+
+fn filter_component(
+    uid: u32,
+    value_input: u32,
+    predicate_input: u32,
+    true_output: u32,
+    false_output: u32,
+) -> String {
+    format!(
+        r#"<component name="filter" library="core" uid="{uid}" kind="3">
+  <sources><datapoint pos="0" key="{value_input}"/><datapoint pos="1" key="{predicate_input}"/></sources>
+  <targets><datapoint pos="0" key="{true_output}"/><datapoint pos="1" key="{false_output}"/></targets>
+</component>"#
     )
 }
 

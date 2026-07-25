@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mapping::{Graph, NodeId, SequenceExpr};
 
-use super::{ScalarExpr, instantiate};
+use super::{ScalarExpr, instantiate_with_sequence_items};
 
 #[derive(Clone)]
 pub(in crate::import) enum ScalarSequenceExpr {
@@ -60,18 +60,43 @@ impl ScalarSequenceExpr {
         &self,
         item: NodeId,
         parameters: &BTreeMap<u32, NodeId>,
+        sequence_items: &[(u32, NodeId)],
         graph: &mut Graph,
         next_id: &mut NodeId,
     ) -> SequenceExpr {
         match self {
             Self::Tokenize { input, delimiter } => SequenceExpr::Tokenize {
-                input: instantiate(input, parameters, graph, next_id),
-                delimiter: instantiate(delimiter, parameters, graph, next_id),
+                input: instantiate_with_sequence_items(
+                    input,
+                    parameters,
+                    sequence_items,
+                    graph,
+                    next_id,
+                ),
+                delimiter: instantiate_with_sequence_items(
+                    delimiter,
+                    parameters,
+                    sequence_items,
+                    graph,
+                    next_id,
+                ),
                 item,
             },
             Self::TokenizeByLength { input, length } => SequenceExpr::TokenizeByLength {
-                input: instantiate(input, parameters, graph, next_id),
-                length: instantiate(length, parameters, graph, next_id),
+                input: instantiate_with_sequence_items(
+                    input,
+                    parameters,
+                    sequence_items,
+                    graph,
+                    next_id,
+                ),
+                length: instantiate_with_sequence_items(
+                    length,
+                    parameters,
+                    sequence_items,
+                    graph,
+                    next_id,
+                ),
                 item,
             },
             Self::TokenizeRegex {
@@ -79,18 +104,42 @@ impl ScalarSequenceExpr {
                 pattern,
                 flags,
             } => SequenceExpr::TokenizeRegex {
-                input: instantiate(input, parameters, graph, next_id),
-                pattern: instantiate(pattern, parameters, graph, next_id),
-                flags: flags
-                    .as_ref()
-                    .map(|flags| instantiate(flags, parameters, graph, next_id)),
+                input: instantiate_with_sequence_items(
+                    input,
+                    parameters,
+                    sequence_items,
+                    graph,
+                    next_id,
+                ),
+                pattern: instantiate_with_sequence_items(
+                    pattern,
+                    parameters,
+                    sequence_items,
+                    graph,
+                    next_id,
+                ),
+                flags: flags.as_ref().map(|flags| {
+                    instantiate_with_sequence_items(
+                        flags,
+                        parameters,
+                        sequence_items,
+                        graph,
+                        next_id,
+                    )
+                }),
                 item,
             },
             Self::Generate { from, to } => SequenceExpr::Generate {
-                from: from
-                    .as_ref()
-                    .map(|from| instantiate(from, parameters, graph, next_id)),
-                to: instantiate(to, parameters, graph, next_id),
+                from: from.as_ref().map(|from| {
+                    instantiate_with_sequence_items(
+                        from,
+                        parameters,
+                        sequence_items,
+                        graph,
+                        next_id,
+                    )
+                }),
+                to: instantiate_with_sequence_items(to, parameters, sequence_items, graph, next_id),
                 item,
             },
         }
