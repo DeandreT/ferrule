@@ -459,6 +459,17 @@ fn validate_failure_sequence_context(
                     ),
                 ));
             }
+            Node::SequenceAggregate {
+                expression: Some(expression),
+                ..
+            } if dependent.contains(expression) => {
+                issues.push(ValidationIssue::new(
+                    &location,
+                    format!(
+                        "item-dependent node {expression} is reused as graph node {consumer}'s sequence-aggregate expression"
+                    ),
+                ));
+            }
             _ => {}
         }
     }
@@ -843,6 +854,7 @@ fn validate_sequence_aggregate_contexts(
         let Node::SequenceAggregate {
             sequence,
             predicate,
+            expression,
             arg,
             ..
         } = node
@@ -879,20 +891,27 @@ fn validate_sequence_aggregate_contexts(
             }
         }
 
-        let Some(predicate) = predicate else {
-            continue;
-        };
-        let allowed = context_dependencies(&project.graph, [*predicate]);
-        for foreign in allowed.intersection(sequence_items) {
-            if *foreign != item {
-                issues.push(ValidationIssue::new(
-                    &location,
-                    format!(
-                        "predicate references sequence item node {foreign} owned by another generated context"
-                    ),
-                ));
+        for (label, root) in [
+            ("predicate", *predicate),
+            ("aggregate expression", *expression),
+        ]
+        .into_iter()
+        .filter_map(|(label, root)| root.map(|root| (label, root)))
+        {
+            let dependencies = context_dependencies(&project.graph, [root]);
+            for foreign in dependencies.intersection(sequence_items) {
+                if *foreign != item {
+                    issues.push(ValidationIssue::new(
+                        &location,
+                        format!(
+                            "{label} references sequence item node {foreign} owned by another generated context"
+                        ),
+                    ));
+                }
             }
         }
+        let allowed =
+            context_dependencies(&project.graph, predicate.iter().chain(expression).copied());
         let dependent: BTreeSet<_> = allowed
             .iter()
             .copied()
@@ -1117,6 +1136,7 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
         Node::SequenceAggregate {
             sequence,
             predicate,
+            expression,
             arg,
             ..
         } => sequence
@@ -1125,6 +1145,11 @@ pub(super) fn node_inputs(node: &Node) -> Vec<(String, NodeId)> {
             .enumerate()
             .map(|(argument, id)| (format!("sequence argument {argument}"), id))
             .chain(predicate.iter().map(|&id| ("predicate".to_string(), id)))
+            .chain(
+                expression
+                    .iter()
+                    .map(|&id| ("aggregate expression".to_string(), id)),
+            )
             .chain(arg.iter().map(|&id| ("argument".to_string(), id)))
             .collect(),
         Node::Aggregate {

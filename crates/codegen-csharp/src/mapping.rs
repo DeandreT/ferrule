@@ -389,6 +389,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 function,
                 sequence,
                 predicate,
+                expression,
                 arg,
             } => {
                 output.push_str("\n    {\n");
@@ -404,7 +405,7 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                 }
                 output.push_str(&format!(
                     "            aggregate_values_{identifier}.Add(Node_{}(sequence_context_{identifier}));\n        }}\n",
-                    sequence.item()
+                    expression.unwrap_or(sequence.item())
                 ));
                 match arg {
                     Some(arg) => output.push_str(&format!(
