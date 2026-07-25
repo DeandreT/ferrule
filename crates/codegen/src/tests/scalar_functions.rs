@@ -14,6 +14,7 @@ fn lowers_exact_numeric_and_delay_scalar_calls() {
         ("replace", ScalarFunction::Replace, vec![20, 20, 20]),
         ("is_numeric", ScalarFunction::IsNumeric, vec![20]),
         ("to_number", ScalarFunction::ToNumber, vec![20]),
+        ("create_guid", ScalarFunction::CreateGuid, vec![]),
         ("format_number", ScalarFunction::FormatNumber, vec![10, 20]),
         (
             "substitute_missing_with_xml_nil",
@@ -69,6 +70,7 @@ fn newly_supported_names_are_closed_and_canonical() {
         ("replace", ScalarFunction::Replace),
         ("is_numeric", ScalarFunction::IsNumeric),
         ("to_number", ScalarFunction::ToNumber),
+        ("create_guid", ScalarFunction::CreateGuid),
         ("format_number", ScalarFunction::FormatNumber),
         (
             "substitute_missing_with_xml_nil",

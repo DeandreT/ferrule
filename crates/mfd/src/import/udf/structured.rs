@@ -6,7 +6,8 @@ use mapping::AggregateOp;
 
 use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
-use crate::import::schema::{SchemaComponent, parse_u32, read_schema_component, schema_node_at};
+use crate::import::schema::read_definition_parameter_component;
+use crate::import::schema::{SchemaComponent, parse_u32, schema_node_at};
 
 mod adjacency;
 mod hierarchy;
@@ -158,24 +159,27 @@ pub(super) fn read(
         return Ok(definition);
     }
 
-    let xml = children
+    let declarations = children
         .iter()
-        .filter(|child| child.attribute("library") == Some("xml"))
+        .filter(|child| is_structured_declaration(**child))
         .copied()
         .collect::<Vec<_>>();
-    let [left, right] = xml.as_slice() else {
-        return Err("structured lookup requires one XML catalog and one XML output".to_string());
+    let [left, right] = declarations.as_slice() else {
+        return Err(
+            "structured lookup requires one structured input and one structured output".to_string(),
+        );
     };
     let (catalog_node, output_node) = match (is_output(left), is_output(right)) {
         (false, true) => (*left, *right),
         (true, false) => (*right, *left),
-        _ => return Err("structured lookup XML component roles are ambiguous".to_string()),
+        _ => return Err("structured lookup component roles are ambiguous".to_string()),
     };
 
     let mut schema_warnings = Vec::new();
-    let catalog = read_schema_component(&catalog_node, mfd_path, &mut schema_warnings)
-        .ok_or("structured lookup catalog schema cannot be read")?;
-    let output = read_schema_component(&output_node, mfd_path, &mut schema_warnings)
+    let catalog =
+        read_definition_parameter_component(&catalog_node, mfd_path, &mut schema_warnings)
+            .ok_or("structured lookup input schema cannot be read")?;
+    let output = read_definition_parameter_component(&output_node, mfd_path, &mut schema_warnings)
         .ok_or("structured lookup output schema cannot be read")?;
     if catalog.is_source
         && catalog.input_instance.is_none()
@@ -208,7 +212,7 @@ pub(super) fn read(
         );
     }
     if !catalog.is_source || catalog.input_instance.is_none() || output.is_source {
-        return Err("structured lookup XML component directions are unsupported".to_string());
+        return Err("structured lookup component directions are unsupported".to_string());
     }
     if !flat_output_group(&output.schema) {
         return Err("structured lookup output must be one flat non-repeating group".to_string());
@@ -300,7 +304,7 @@ pub(super) fn read(
         .ports
         .get(&catalog_port)
         .cloned()
-        .ok_or("structured lookup collection is not an XML catalog group")?;
+        .ok_or("structured lookup collection is not a structured input group")?;
     if !schema_node_at(&catalog.schema, &collection_path)
         .is_some_and(|node| node.repeating && matches!(node.kind, SchemaKind::Group { .. }))
     {
@@ -410,9 +414,9 @@ fn try_read_scalar_find(
     mfd_path: &Path,
     registry: &Registry,
 ) -> Result<Option<ImportedDefinition>, String> {
-    let xml = children
+    let declarations = children
         .iter()
-        .filter(|child| child.attribute("library") == Some("xml"))
+        .filter(|child| is_structured_declaration(**child))
         .copied()
         .collect::<Vec<_>>();
     let outputs = children
@@ -429,15 +433,17 @@ fn try_read_scalar_find(
         })
         .copied()
         .collect::<Vec<_>>();
-    let ([catalog_node], [output_node], [filter_node]) =
-        (xml.as_slice(), outputs.as_slice(), filters.as_slice())
-    else {
+    let ([catalog_node], [output_node], [filter_node]) = (
+        declarations.as_slice(),
+        outputs.as_slice(),
+        filters.as_slice(),
+    ) else {
         return Ok(None);
     };
 
     let mut schema_warnings = Vec::new();
-    let catalog = read_schema_component(catalog_node, mfd_path, &mut schema_warnings)
-        .ok_or("scalar structured lookup catalog schema cannot be read")?;
+    let catalog = read_definition_parameter_component(catalog_node, mfd_path, &mut schema_warnings)
+        .ok_or("scalar structured lookup input schema cannot be read")?;
     let parameter_source = catalog.is_source
         && catalog.input_instance.is_none()
         && record::is_input_parameter(*catalog_node);
@@ -449,7 +455,7 @@ fn try_read_scalar_find(
     let mut ids = Vec::new();
     let mut nested = BTreeMap::new();
     for child in children {
-        if child.attribute("library") == Some("xml") || *child == *output_node {
+        if is_structured_declaration(*child) || *child == *output_node {
             continue;
         }
         if child.attribute("kind") == Some("19") {
@@ -629,6 +635,15 @@ fn try_read_scalar_find(
     )))
 }
 
+fn is_structured_declaration(component: roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("xml")
+        || component.attribute("library") == Some("db")
+        || component.attribute("library") == Some("text")
+            && component
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.attribute("type") == Some("edi"))
+}
+
 fn collect_catalog_paths<'a>(expression: &'a Expr, paths: &mut Vec<&'a [String]>) {
     match expression {
         Expr::Catalog(path) | Expr::CatalogAbsolute(path) => paths.push(path),
@@ -746,7 +761,7 @@ fn read_aggregate_record(
     let edge_from = crate::import::graph::read_edges(structure, None);
     let mut aggregates = BTreeMap::new();
     for child in children {
-        if child.attribute("library") == Some("xml") {
+        if is_structured_declaration(*child) {
             continue;
         }
         let function = read_function(child);
