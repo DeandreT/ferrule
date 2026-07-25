@@ -168,6 +168,7 @@ fn convert_scalar_expression(
             })
         }
         super::udf::ScalarExpr::Const(value) => Some(Expr::Const(value.clone())),
+        super::udf::ScalarExpr::RuntimeValue(_) => None,
         super::udf::ScalarExpr::Call { function, args } => Some(Expr::Call {
             function: function.clone(),
             args: args

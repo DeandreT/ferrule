@@ -3,6 +3,7 @@ use mapping::{AggregateOp, Node, NodeId, RuntimeValue};
 
 use super::function::{aggregate_op, map_component_name, parse_constant};
 use super::graph::GraphBuilder;
+use super::iteration::split_at_innermost_repeating;
 use super::schema::{JsonDynamicPort, split_json_dynamic_port};
 use super::source::SourcePath;
 
@@ -296,41 +297,75 @@ impl GraphBuilder<'_> {
     }
 
     fn auto_number_node(&mut self, idx: usize) -> Node {
-        let inputs = self.fn_components[idx].inputs.clone();
-        let global_id = inputs.first().copied().flatten();
-        let restart = inputs.get(3).copied().flatten();
-        if global_id.is_some() || restart.is_some() {
-            self.warnings.push(
-                "auto-number with global-id or restart-on-change is unsupported; imported as Null"
-                    .to_string(),
-            );
+        if self.input_feed(idx, 0).is_some() || self.input_feed(idx, 3).is_some() {
             return Node::Const { value: Value::Null };
         }
-        let start = inputs
-            .get(1)
-            .copied()
-            .flatten()
-            .and_then(|input| self.edge_from.get(&input).copied())
-            .and_then(|feed| self.value_node(feed))
-            .unwrap_or_else(|| {
-                self.alloc(Node::Const {
-                    value: Value::Int(1),
+        self.auto_number_arithmetic(idx, Vec::new())
+    }
+
+    pub(super) fn auto_number_node_at_anchor(
+        &mut self,
+        idx: usize,
+        active_anchor: &[String],
+    ) -> NodeId {
+        if self.input_feed(idx, 0).is_some() {
+            self.warnings.push(
+                "auto-number with a global identifier is unsupported; imported as Null".to_string(),
+            );
+            return self.const_null();
+        }
+        let Some(restart_feed) = self.input_feed(idx, 3) else {
+            return self.fn_node(idx);
+        };
+        let restart_collection = self.source_abs_path(restart_feed).and_then(|source_path| {
+            let source = self.sources.get(source_path.source)?;
+            let collection = split_at_innermost_repeating(&source.schema, &source_path.path).0;
+            (!collection.is_empty()).then(|| {
+                self.context_path(&SourcePath {
+                    source: source_path.source,
+                    path: collection,
                 })
-            });
-        let increment = inputs
-            .get(2)
-            .copied()
-            .flatten()
-            .and_then(|input| self.edge_from.get(&input).copied())
-            .and_then(|feed| self.value_node(feed))
-            .unwrap_or_else(|| {
-                self.alloc(Node::Const {
-                    value: Value::Int(1),
-                })
-            });
-        let position = self.alloc(Node::Position {
-            collection: Vec::new(),
+            })
         });
+        // A distinct related scope evaluates its own item sequence under the
+        // same parent context, so its innermost position resets at that boundary.
+        if restart_collection.as_ref().is_some_and(|collection| {
+            collection != active_anchor
+                && collection
+                    .iter()
+                    .zip(active_anchor)
+                    .take_while(|(restart, active)| restart == active)
+                    .count()
+                    > 0
+        }) {
+            let node = self.auto_number_arithmetic(idx, Vec::new());
+            return self.alloc(node);
+        }
+        self.warnings.push(
+            "auto-number restart-on-change is not isolated by a distinct related scope; imported as Null"
+                .to_string(),
+        );
+        self.const_null()
+    }
+
+    fn auto_number_arithmetic(&mut self, idx: usize, collection: Vec<String>) -> Node {
+        let start = self
+            .input_feed(idx, 1)
+            .and_then(|feed| self.value_node(feed))
+            .unwrap_or_else(|| {
+                self.alloc(Node::Const {
+                    value: Value::Int(1),
+                })
+            });
+        let increment = self
+            .input_feed(idx, 2)
+            .and_then(|feed| self.value_node(feed))
+            .unwrap_or_else(|| {
+                self.alloc(Node::Const {
+                    value: Value::Int(1),
+                })
+            });
+        let position = self.alloc(Node::Position { collection });
         let one = self.alloc(Node::Const {
             value: Value::Int(1),
         });

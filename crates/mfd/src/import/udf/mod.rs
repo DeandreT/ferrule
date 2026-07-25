@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, SchemaKind, Value};
 use mapping::{
-    FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, NodeId, UserFunction,
+    FunctionId, FunctionParameter, FunctionParameterId, Graph, Node, NodeId, RuntimeValue,
+    UserFunction,
 };
 
 use super::function::read as read_function;
@@ -22,6 +23,7 @@ pub(super) enum ScalarExpr {
         default: Box<ScalarExpr>,
     },
     Const(Value),
+    RuntimeValue(RuntimeValue),
     Call {
         function: String,
         args: Vec<ScalarExpr>,
@@ -108,7 +110,7 @@ impl ScalarExpr {
             | ScalarExpr::DefaultedParameter { component_id, .. } => {
                 parameters.insert(*component_id);
             }
-            ScalarExpr::Const(_) => {}
+            ScalarExpr::Const(_) | ScalarExpr::RuntimeValue(_) => {}
             ScalarExpr::Call { args, .. } => {
                 for arg in args {
                     arg.collect_parameters(parameters);
@@ -450,7 +452,7 @@ impl ScalarExpr {
                 .into_iter()
                 .any(Self::has_parameter_default),
             Self::ValueMap { input, .. } => input.has_parameter_default(),
-            Self::Parameter(_) | Self::Const(_) => false,
+            Self::Parameter(_) | Self::Const(_) | Self::RuntimeValue(_) => false,
         }
     }
 }
@@ -467,6 +469,7 @@ fn instantiate_function_body(
         ScalarExpr::Const(value) => Node::Const {
             value: value.clone(),
         },
+        ScalarExpr::RuntimeValue(value) => Node::RuntimeValue { value: *value },
         ScalarExpr::Call { function, args } => Node::Call {
             function: function.clone(),
             args: args
@@ -1196,6 +1199,9 @@ fn instantiate(
                 value: value.clone(),
             },
         ),
+        ScalarExpr::RuntimeValue(value) => {
+            alloc_node(graph, next_id, Node::RuntimeValue { value: *value })
+        }
         ScalarExpr::Call { function, args } => {
             let args = args
                 .iter()

@@ -180,3 +180,101 @@ fn shared_auto_number_roundtrips_across_concatenated_target_branches()
     assert!(warnings.is_empty(), "{warnings:?}");
     Ok(())
 }
+
+#[test]
+fn restart_on_change_uses_position_in_a_related_nested_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let dir = TempDir::new()?;
+    std::fs::write(
+        dir.0.join("source.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Source"><xs:complexType><xs:sequence>
+    <xs:element name="Order" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Header" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="ResetKey" type="xs:string"/>
+      </xs:sequence></xs:complexType></xs:element>
+      <xs:element name="Item" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Name" type="xs:string"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    std::fs::write(
+        dir.0.join("target.xsd"),
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="Target"><xs:complexType><xs:sequence>
+    <xs:element name="Order" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+      <xs:element name="Line" maxOccurs="unbounded"><xs:complexType><xs:sequence>
+        <xs:element name="Number" type="xs:integer"/>
+        <xs:element name="Name" type="xs:string"/>
+      </xs:sequence></xs:complexType></xs:element>
+    </xs:sequence></xs:complexType></xs:element>
+  </xs:sequence></xs:complexType></xs:element>
+</xs:schema>"#,
+    )?;
+    let design = dir.0.join("restart.mfd");
+    std::fs::write(
+        &design,
+        r#"<mapping version="26"><component name="map"><structure><children>
+  <component name="source" library="xml" kind="14"><data>
+    <root><entry name="Source"><entry name="Order" outkey="10"><entry name="Header"><entry name="ResetKey" outkey="11"/></entry><entry name="Item" outkey="12"><entry name="Name" outkey="13"/></entry></entry></entry></root>
+    <document schema="source.xsd" instanceroot="{}Source"/>
+  </data></component>
+  <component name="auto-number" library="core" kind="5">
+    <sources><datapoint/><datapoint/><datapoint/><datapoint pos="3" key="20"/></sources>
+    <targets><datapoint key="21"/></targets>
+  </component>
+  <component name="target" library="xml" kind="14"><properties XSLTDefaultOutput="1"/><data>
+    <root><entry name="Target"><entry name="Order" inpkey="30"><entry name="Line" inpkey="31"><entry name="Number" inpkey="32"/><entry name="Name" inpkey="33"/></entry></entry></entry></root>
+    <document schema="target.xsd" instanceroot="{}Target"/>
+  </data></component>
+</children><graph><vertices>
+  <vertex vertexkey="10"><edges><edge vertexkey="30"/></edges></vertex>
+  <vertex vertexkey="11"><edges><edge vertexkey="20"/></edges></vertex>
+  <vertex vertexkey="12"><edges><edge vertexkey="31"/></edges></vertex>
+  <vertex vertexkey="13"><edges><edge vertexkey="33"/></edges></vertex>
+  <vertex vertexkey="21"><edges><edge vertexkey="32"/></edges></vertex>
+</vertices></graph></structure></component></mapping>"#,
+    )?;
+
+    let imported = mfd::import(&design)?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(engine::validate(&imported.project).is_empty());
+    let source = format_xml::from_str(
+        "<Source>\
+          <Order><Header><ResetKey>A</ResetKey></Header><Item><Name>a</Name></Item><Item><Name>b</Name></Item></Order>\
+          <Order><Header><ResetKey>B</ResetKey></Header><Item><Name>c</Name></Item><Item><Name>d</Name></Item></Order>\
+        </Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    let orders = output
+        .field("Order")
+        .and_then(Instance::as_repeated)
+        .ok_or("missing target orders")?;
+    let numbers = orders
+        .iter()
+        .map(|order| {
+            order
+                .field("Line")
+                .and_then(Instance::as_repeated)
+                .ok_or("missing target lines")?
+                .iter()
+                .map(|line| {
+                    line.field("Number")
+                        .and_then(Instance::as_scalar)
+                        .ok_or("missing target line number")
+                })
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(
+        numbers,
+        [
+            vec![&Value::Int(1), &Value::Int(2)],
+            vec![&Value::Int(1), &Value::Int(2)]
+        ]
+    );
+    Ok(())
+}

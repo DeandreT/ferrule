@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ir::{ScalarType, SchemaKind, Value};
-use mapping::AggregateOp;
+use mapping::{AggregateOp, RuntimeValue};
 
 use super::{Call, Definition, OutputExpr, Registry, ScalarExpr};
 use crate::import::function::{FnComponent, map_name, parse_constant, read as read_function};
@@ -110,6 +110,7 @@ enum Expr {
     Catalog(Vec<String>),
     CatalogAbsolute(Vec<String>),
     Const(Value),
+    RuntimeValue(RuntimeValue),
     Call {
         function: String,
         args: Vec<Expr>,
@@ -647,7 +648,7 @@ fn is_structured_declaration(component: roxmltree::Node<'_, '_>) -> bool {
 fn collect_catalog_paths<'a>(expression: &'a Expr, paths: &mut Vec<&'a [String]>) {
     match expression {
         Expr::Catalog(path) | Expr::CatalogAbsolute(path) => paths.push(path),
-        Expr::Parameter(_) | Expr::Const(_) => {}
+        Expr::Parameter(_) | Expr::Const(_) | Expr::RuntimeValue(_) => {}
         Expr::Call { args, .. } => {
             for argument in args {
                 collect_catalog_paths(argument, paths);
@@ -713,7 +714,7 @@ fn rebase_catalog_paths(expression: &mut Expr, collection: &[String]) -> Result<
                 *expression = Expr::CatalogAbsolute(absolute);
             }
         }
-        Expr::CatalogAbsolute(_) | Expr::Parameter(_) | Expr::Const(_) => {}
+        Expr::CatalogAbsolute(_) | Expr::Parameter(_) | Expr::Const(_) | Expr::RuntimeValue(_) => {}
         Expr::Call { args, .. } => {
             for argument in args {
                 rebase_catalog_paths(argument, collection)?;
@@ -1106,6 +1107,7 @@ impl ExprContext<'_> {
                 }
             }
             ScalarExpr::Const(value) => Ok(Expr::Const(value.clone())),
+            ScalarExpr::RuntimeValue(value) => Ok(Expr::RuntimeValue(*value)),
             ScalarExpr::Call { function, args } => Ok(Expr::Call {
                 function: function.clone(),
                 args: args
