@@ -11,7 +11,10 @@ use super::graph::{GraphBuilder, read_edges};
 use super::schema::{parse_u32, read_schema_component, schema_node_at};
 
 mod scalar;
+mod sequence;
 pub(super) mod structured;
+
+use sequence::ScalarSequenceExpr;
 
 const MAX_NESTED_UDF_DEPTH: usize = 64;
 
@@ -38,6 +41,10 @@ pub(super) enum ScalarExpr {
         input_type: Option<ScalarType>,
         table: Vec<(Value, Value)>,
         default: Option<Value>,
+    },
+    SequenceItemAt {
+        sequence: ScalarSequenceExpr,
+        index: Box<ScalarExpr>,
     },
 }
 
@@ -126,6 +133,10 @@ impl ScalarExpr {
                 else_.collect_parameters(parameters);
             }
             ScalarExpr::ValueMap { input, .. } => input.collect_parameters(parameters),
+            ScalarExpr::SequenceItemAt { sequence, index } => {
+                sequence.collect_parameters(parameters);
+                index.collect_parameters(parameters);
+            }
         }
     }
 }
@@ -378,7 +389,7 @@ impl Definition {
         let mut parameter_names = BTreeSet::new();
         (self.outputs.len() == 1
             && self.structured_parameters.is_empty()
-            && !expression.has_parameter_default()
+            && !expression.requires_inlining()
             && output.ty.is_some()
             && !output.name.trim().is_empty()
             && interface.parameters.len() == self.parameters.len()
@@ -440,18 +451,19 @@ impl Definition {
 }
 
 impl ScalarExpr {
-    fn has_parameter_default(&self) -> bool {
+    fn requires_inlining(&self) -> bool {
         match self {
             Self::DefaultedParameter { .. } => true,
-            Self::Call { args, .. } => args.iter().any(Self::has_parameter_default),
+            Self::SequenceItemAt { .. } => true,
+            Self::Call { args, .. } => args.iter().any(Self::requires_inlining),
             Self::If {
                 condition,
                 then,
                 else_,
             } => [condition.as_ref(), then.as_ref(), else_.as_ref()]
                 .into_iter()
-                .any(Self::has_parameter_default),
-            Self::ValueMap { input, .. } => input.has_parameter_default(),
+                .any(Self::requires_inlining),
+            Self::ValueMap { input, .. } => input.requires_inlining(),
             Self::Parameter(_) | Self::Const(_) | Self::RuntimeValue(_) => false,
         }
     }
@@ -497,6 +509,7 @@ fn instantiate_function_body(
             table: table.clone(),
             default: default.clone(),
         },
+        ScalarExpr::SequenceItemAt { .. } => return None,
     };
     Some(alloc_node(graph, next_id, node))
 }
@@ -1251,6 +1264,19 @@ fn instantiate(
                     default: default.clone(),
                 },
             )
+        }
+        ScalarExpr::SequenceItemAt { sequence, index } => {
+            let item = alloc_node(
+                graph,
+                next_id,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            );
+            let sequence = sequence.instantiate(item, parameters, graph, next_id);
+            let index = instantiate(index, parameters, graph, next_id);
+            alloc_node(graph, next_id, Node::SequenceItemAt { sequence, index })
         }
     }
 }

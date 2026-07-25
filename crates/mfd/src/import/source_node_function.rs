@@ -200,6 +200,7 @@ fn convert_scalar_expression(
             table: table.clone(),
             default: default.clone(),
         }),
+        super::udf::ScalarExpr::SequenceItemAt { .. } => None,
     }
 }
 

@@ -16,6 +16,32 @@ pub enum ConnectionStyle {
     Legacy,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GeneratedSequence {
+    Tokenize,
+    TokenizeByLength,
+    TokenizeRegex,
+    Generate,
+}
+
+impl GeneratedSequence {
+    fn component_name(self) -> &'static str {
+        match self {
+            Self::Tokenize => "tokenize",
+            Self::TokenizeByLength => "tokenize-by-length",
+            Self::TokenizeRegex => "tokenize-regexp",
+            Self::Generate => "generate-sequence",
+        }
+    }
+
+    const fn input_count(self) -> usize {
+        match self {
+            Self::Tokenize | Self::TokenizeByLength | Self::Generate => 2,
+            Self::TokenizeRegex => 3,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ScalarLiteral {
     String(String),
@@ -75,6 +101,7 @@ pub struct ScalarMfdBuilder {
     connection_style: ConnectionStyle,
     reverse_components: bool,
     key_offset: u32,
+    generated_item_at: Option<GeneratedSequence>,
 }
 
 impl ScalarMfdBuilder {
@@ -95,6 +122,27 @@ impl ScalarMfdBuilder {
             connection_style: ConnectionStyle::Graph,
             reverse_components: false,
             key_offset: 0,
+            generated_item_at: None,
+        }
+    }
+
+    pub fn generated_item_at(
+        tag: impl Into<String>,
+        sequence: GeneratedSequence,
+        arguments: Vec<ScalarLiteral>,
+        output_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            tag: tag.into(),
+            function_name: "item-at".to_string(),
+            function_library: "core".to_string(),
+            arguments,
+            output_type: output_type.into(),
+            context: ScalarContext::UserDefined,
+            connection_style: ConnectionStyle::Graph,
+            reverse_components: false,
+            key_offset: 0,
+            generated_item_at: Some(sequence),
         }
     }
 
@@ -123,6 +171,18 @@ impl ScalarMfdBuilder {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "scalar scenarios support at most 64 arguments",
+            ));
+        }
+        if let Some(sequence) = self.generated_item_at
+            && self.arguments.len() != sequence.input_count() + 1
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "{} item-at scenarios require {} sequence arguments plus one index",
+                    sequence.component_name(),
+                    sequence.input_count()
+                ),
             ));
         }
         static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -192,27 +252,25 @@ impl ScalarMfdBuilder {
     }
 
     fn render_main_direct(&self, ids: &Ids) -> String {
-        let argument_count = self.arguments.len();
         let constants = self.constant_components(&ids.main);
-        let function = function_component(
-            &self.function_name,
-            &self.function_library,
+        let body = self.render_function_body(
             ids.main.function_uid,
-            &ids.main.function_inputs[..argument_count],
+            &ids.main.function_inputs,
             ids.main.function_output,
+            &ids.main.constant_outputs,
         );
-        let mut components = Vec::with_capacity(constants.len() + 3);
+        let mut components = Vec::with_capacity(constants.len() + body.components.len() + 2);
         components.push(source_component(
             ids.main.source_uid,
             ids.main.source_output,
         ));
         components.extend(constants);
-        components.push(function);
+        components.extend(body.components);
         components.push(target_component(ids.main.target_uid, ids.main.target_input));
         self.maybe_reverse(&mut components);
 
-        let mut edges = self.constant_edges(&ids.main);
-        edges.push((ids.main.function_output, ids.main.target_input));
+        let mut edges = body.edges;
+        edges.push((body.output, ids.main.target_input));
         wrapper_component("main", &components, &edges, self.connection_style, None)
     }
 
@@ -245,24 +303,33 @@ impl ScalarMfdBuilder {
     fn render_definition(&self, ids: &FunctionIds, name: &str, body: DefinitionBody<'_>) -> String {
         let argument_count = self.arguments.len();
         let mut components = parameter_components(ids, &self.arguments);
-        let body_component = match body {
-            DefinitionBody::Function => function_component(
-                &self.function_name,
-                &self.function_library,
+        let body = match body {
+            DefinitionBody::Function => self.render_function_body(
                 ids.function_uid,
-                &ids.function_inputs[..argument_count],
+                &ids.function_inputs,
                 ids.function_output,
+                &ids.parameter_outputs,
             ),
-            DefinitionBody::Nested { callee, callee_ids } => udf_call_component(
-                callee,
-                ids.function_uid,
-                &ids.function_inputs[..argument_count],
-                ids.function_output,
-                &callee_ids.parameter_uids[..argument_count],
-                callee_ids.output_uid,
-            ),
+            DefinitionBody::Nested { callee, callee_ids } => RenderedBody {
+                components: vec![udf_call_component(
+                    callee,
+                    ids.function_uid,
+                    &ids.function_inputs[..argument_count],
+                    ids.function_output,
+                    &callee_ids.parameter_uids[..argument_count],
+                    callee_ids.output_uid,
+                )],
+                edges: ids
+                    .parameter_outputs
+                    .iter()
+                    .take(argument_count)
+                    .copied()
+                    .zip(ids.function_inputs.iter().take(argument_count).copied())
+                    .collect(),
+                output: ids.function_output,
+            },
         };
-        components.push(body_component);
+        components.extend(body.components);
         components.push(output_component(
             ids.output_uid,
             ids.output_input,
@@ -270,14 +337,8 @@ impl ScalarMfdBuilder {
         ));
         self.maybe_reverse(&mut components);
 
-        let mut edges = ids
-            .parameter_outputs
-            .iter()
-            .take(argument_count)
-            .copied()
-            .zip(ids.function_inputs.iter().take(argument_count).copied())
-            .collect::<Vec<_>>();
-        edges.push((ids.function_output, ids.output_input));
+        let mut edges = body.edges;
+        edges.push((body.output, ids.output_input));
         wrapper_component(
             name,
             &components,
@@ -305,6 +366,69 @@ impl ScalarMfdBuilder {
             .collect()
     }
 
+    fn render_function_body(
+        &self,
+        function_uid: u32,
+        function_inputs: &[u32],
+        function_output: u32,
+        argument_outputs: &[u32],
+    ) -> RenderedBody {
+        let argument_count = self.arguments.len();
+        let Some(sequence) = self.generated_item_at else {
+            return RenderedBody {
+                components: vec![function_component(
+                    &self.function_name,
+                    &self.function_library,
+                    function_uid,
+                    &function_inputs[..argument_count],
+                    function_output,
+                )],
+                edges: argument_outputs
+                    .iter()
+                    .take(argument_count)
+                    .copied()
+                    .zip(function_inputs.iter().take(argument_count).copied())
+                    .collect(),
+                output: function_output,
+            };
+        };
+
+        let sequence_inputs = sequence.input_count();
+        let item_sequence_input = function_output + 1;
+        let item_index_input = function_output + 2;
+        let item_output = function_output + 3;
+        let mut edges = argument_outputs
+            .iter()
+            .take(sequence_inputs)
+            .copied()
+            .zip(function_inputs.iter().take(sequence_inputs).copied())
+            .collect::<Vec<_>>();
+        edges.extend([
+            (function_output, item_sequence_input),
+            (argument_outputs[sequence_inputs], item_index_input),
+        ]);
+        RenderedBody {
+            components: vec![
+                function_component(
+                    sequence.component_name(),
+                    "core",
+                    function_uid,
+                    &function_inputs[..sequence_inputs],
+                    function_output,
+                ),
+                function_component(
+                    "item-at",
+                    "core",
+                    function_uid + 1,
+                    &[item_sequence_input, item_index_input],
+                    item_output,
+                ),
+            ],
+            edges,
+            output: item_output,
+        }
+    }
+
     fn maybe_reverse(&self, components: &mut [String]) {
         if self.reverse_components {
             components.reverse();
@@ -318,6 +442,12 @@ enum DefinitionBody<'a> {
         callee: &'a str,
         callee_ids: &'a FunctionIds,
     },
+}
+
+struct RenderedBody {
+    components: Vec<String>,
+    edges: Vec<(u32, u32)>,
+    output: u32,
 }
 
 struct Ids {
