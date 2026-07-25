@@ -41,6 +41,7 @@ public static partial class FerruleFunctions
             "positive" => Positive(arguments),
             "floor" => Floor(arguments),
             "create_guid" => CreateGuid(arguments),
+            "json_parse_field" => JsonParseField(arguments),
             "format_number" => FormatNumber(arguments),
             "round" => Round(arguments),
             "delay_passthrough" => DelayPassthrough(arguments),
