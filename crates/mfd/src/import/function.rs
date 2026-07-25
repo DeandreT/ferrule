@@ -390,12 +390,16 @@ pub(super) fn is_db_where(component: &FnComponent) -> bool {
 
 pub(super) fn is_db_function_component(component: &roxmltree::Node<'_, '_>) -> bool {
     component.attribute("library") == Some("db")
-        && (component.attribute("kind") == Some("21")
-            || component.attribute("kind") == Some("5")
-                && matches!(
-                    component.attribute("name"),
-                    Some("substitute-null" | "is-null" | "is-not-null")
-                ))
+        && (component.attribute("kind") == Some("21") || is_db_scalar_function_component(component))
+}
+
+pub(super) fn is_db_scalar_function_component(component: &roxmltree::Node<'_, '_>) -> bool {
+    component.attribute("library") == Some("db")
+        && component.attribute("kind") == Some("5")
+        && matches!(
+            component.attribute("name"),
+            Some("substitute-null" | "is-null" | "is-not-null")
+        )
 }
 
 pub(super) fn is_xbrl_measure_component(component: &roxmltree::Node<'_, '_>) -> bool {
@@ -643,6 +647,7 @@ pub(super) fn map_name(name: &str) -> Option<&'static str> {
         "upper-case" | "uppercase" => "upper",
         "lower-case" | "lowercase" => "lower",
         "string" => "string",
+        "number" => "to_number",
         "numeric" => "is_numeric",
         "boolean" => "boolean",
         "positive" => "positive",

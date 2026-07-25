@@ -862,7 +862,11 @@ fn qualify_catalog_paths(expression: &mut Expr, base: &[String]) {
             qualified.append(path);
             *path = qualified;
         }
-        Expr::Parameter(_) | Expr::Catalog(_) | Expr::Const(_) | Expr::Aggregate { .. } => {}
+        Expr::Parameter(_)
+        | Expr::Catalog(_)
+        | Expr::Const(_)
+        | Expr::RuntimeValue(_)
+        | Expr::Aggregate { .. } => {}
         Expr::Call { args, .. } => {
             for argument in args {
                 qualify_catalog_paths(argument, base);
@@ -911,6 +915,7 @@ pub(super) fn instantiate(
         Expr::Const(value) => builder.alloc(Node::Const {
             value: value.clone(),
         }),
+        Expr::RuntimeValue(value) => builder.alloc(Node::RuntimeValue { value: *value }),
         Expr::Call { function, args } => {
             let args = args
                 .iter()
