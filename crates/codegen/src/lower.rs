@@ -269,6 +269,17 @@ fn lower_scope(
         .iter()
         .filter_map(|binding| {
             roots.push(binding.node);
+            if binding.target_field == ir::XML_TYPE_FIELD
+                && target.xml_alternative_kind == ir::XmlAlternativeKind::XsiType
+                && !target.alternatives().is_empty()
+            {
+                return Some(Binding {
+                    target_field: binding.target_field.clone(),
+                    expression: binding.node,
+                    target_type: ir::ScalarType::String,
+                    repeating: false,
+                });
+            }
             let Some(target) = target.child(&binding.target_field) else {
                 diagnostics.push(Diagnostic::Validation {
                     location: display_target_path(target_path, &binding.target_field),

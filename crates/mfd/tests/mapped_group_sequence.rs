@@ -218,6 +218,7 @@ fn xsi_type_conditioned_structural_feeds_filter_and_preserve_type_identity() {
         "{:?}",
         engine::validate(&imported.project)
     );
+    codegen::lower(&imported.project).expect("conditioned target bindings lower for codegen");
 
     let source = format_xml::from_str(
         r#"<Source xmlns="urn:ferrule:typed-address" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:t="urn:ferrule:typed-address"><Message><Address xsi:type="t:USAddress"><name>West</name><state>CA</state></Address></Message><Message><Address xsi:type="t:EUAddress"><name>North</name><postcode>N1</postcode></Address></Message></Source>"#,
