@@ -28,6 +28,7 @@ pub enum GeneratedSequence {
 enum GeneratedReduction {
     ItemAt(GeneratedSequence),
     Exists(GeneratedSequence),
+    ExistsAtPosition(GeneratedSequence),
 }
 
 impl GeneratedSequence {
@@ -171,6 +172,25 @@ impl ScalarMfdBuilder {
         }
     }
 
+    pub fn generated_exists_at_position(
+        tag: impl Into<String>,
+        sequence: GeneratedSequence,
+        arguments: Vec<ScalarLiteral>,
+    ) -> Self {
+        Self {
+            tag: tag.into(),
+            function_name: "exists".to_string(),
+            function_library: "core".to_string(),
+            arguments,
+            output_type: "boolean".to_string(),
+            context: ScalarContext::UserDefined,
+            connection_style: ConnectionStyle::Graph,
+            reverse_components: false,
+            key_offset: 0,
+            generated_reduction: Some(GeneratedReduction::ExistsAtPosition(sequence)),
+        }
+    }
+
     pub fn context(mut self, context: ScalarContext) -> Self {
         self.context = context;
         self
@@ -200,17 +220,19 @@ impl ScalarMfdBuilder {
         }
         if let Some(reduction) = self.generated_reduction {
             let sequence = match reduction {
-                GeneratedReduction::ItemAt(sequence) | GeneratedReduction::Exists(sequence) => {
-                    sequence
-                }
+                GeneratedReduction::ItemAt(sequence)
+                | GeneratedReduction::Exists(sequence)
+                | GeneratedReduction::ExistsAtPosition(sequence) => sequence,
             };
             let scalar_role = match reduction {
                 GeneratedReduction::ItemAt(_) => "index",
                 GeneratedReduction::Exists(_) => "comparison value",
+                GeneratedReduction::ExistsAtPosition(_) => "position",
             };
             let reduction_name = match reduction {
                 GeneratedReduction::ItemAt(_) => "item-at",
                 GeneratedReduction::Exists(_) => "filtered exists",
+                GeneratedReduction::ExistsAtPosition(_) => "position-filtered exists",
             };
             if self.arguments.len() != sequence.input_count() + 1 {
                 return Err(std::io::Error::new(
@@ -432,16 +454,22 @@ impl ScalarMfdBuilder {
         };
 
         let sequence = match reduction {
-            GeneratedReduction::ItemAt(sequence) | GeneratedReduction::Exists(sequence) => sequence,
+            GeneratedReduction::ItemAt(sequence)
+            | GeneratedReduction::Exists(sequence)
+            | GeneratedReduction::ExistsAtPosition(sequence) => sequence,
         };
         let sequence_inputs = sequence.input_count();
-        if reduction == GeneratedReduction::Exists(sequence) {
+        if matches!(
+            reduction,
+            GeneratedReduction::Exists(_) | GeneratedReduction::ExistsAtPosition(_)
+        ) {
             return self.render_generated_exists(
                 function_uid,
                 function_inputs,
                 function_output,
                 argument_outputs,
                 sequence,
+                matches!(reduction, GeneratedReduction::ExistsAtPosition(_)),
             );
         }
         let item_sequence_input = function_output + 1;
@@ -486,7 +514,17 @@ impl ScalarMfdBuilder {
         function_output: u32,
         argument_outputs: &[u32],
         sequence: GeneratedSequence,
+        compare_position: bool,
     ) -> RenderedBody {
+        if compare_position {
+            return self.render_generated_position_exists(
+                function_uid,
+                function_inputs,
+                function_output,
+                argument_outputs,
+                sequence,
+            );
+        }
         let sequence_inputs = sequence.input_count();
         let equal_item_input = function_output + 1;
         let equal_expected_input = function_output + 2;
@@ -537,6 +575,83 @@ impl ScalarMfdBuilder {
                     "exists",
                     "core",
                     function_uid + 3,
+                    &[exists_input],
+                    exists_output,
+                ),
+            ],
+            edges,
+            output: exists_output,
+        }
+    }
+
+    fn render_generated_position_exists(
+        &self,
+        function_uid: u32,
+        function_inputs: &[u32],
+        function_output: u32,
+        argument_outputs: &[u32],
+        sequence: GeneratedSequence,
+    ) -> RenderedBody {
+        let sequence_inputs = sequence.input_count();
+        let position_context_input = function_output + 1;
+        let position_output = function_output + 2;
+        let equal_position_input = function_output + 3;
+        let equal_expected_input = function_output + 4;
+        let equal_output = function_output + 5;
+        let filter_sequence_input = function_output + 6;
+        let filter_predicate_input = function_output + 7;
+        let filter_true_output = function_output + 8;
+        let filter_false_output = function_output + 9;
+        let exists_input = function_output + 10;
+        let exists_output = function_output + 11;
+        let mut edges = argument_outputs
+            .iter()
+            .take(sequence_inputs)
+            .copied()
+            .zip(function_inputs.iter().take(sequence_inputs).copied())
+            .collect::<Vec<_>>();
+        edges.extend([
+            (function_output, position_context_input),
+            (position_output, equal_position_input),
+            (argument_outputs[sequence_inputs], equal_expected_input),
+            (function_output, filter_sequence_input),
+            (equal_output, filter_predicate_input),
+            (filter_true_output, exists_input),
+        ]);
+        RenderedBody {
+            components: vec![
+                function_component(
+                    sequence.component_name(),
+                    "core",
+                    function_uid,
+                    &function_inputs[..sequence_inputs],
+                    function_output,
+                ),
+                function_component(
+                    "position",
+                    "core",
+                    function_uid + 1,
+                    &[position_context_input],
+                    position_output,
+                ),
+                function_component(
+                    "equal",
+                    "core",
+                    function_uid + 2,
+                    &[equal_position_input, equal_expected_input],
+                    equal_output,
+                ),
+                filter_component(
+                    function_uid + 3,
+                    filter_sequence_input,
+                    filter_predicate_input,
+                    filter_true_output,
+                    filter_false_output,
+                ),
+                function_component(
+                    "exists",
+                    "core",
+                    function_uid + 4,
                     &[exists_input],
                     exists_output,
                 ),

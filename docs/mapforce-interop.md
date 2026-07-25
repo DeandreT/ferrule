@@ -64,7 +64,8 @@ length or bounded regular expressions, or generate an inclusive integer range,
 then either select one 1-based item or test a filtered sequence for a match.
 Import lowers those compositions to ferrule's native generated-sequence
 reducers, so interpreter execution, Rust/C# generation, and export/re-import
-share one bounded implementation.
+share one bounded implementation. Filtered UDF predicates can use the generated
+item's 1-based `position()` as well as the item value.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable

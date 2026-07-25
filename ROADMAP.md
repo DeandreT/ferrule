@@ -102,7 +102,8 @@ partitions filtered rows into contiguous groups and round-trips through `.mfd`.
 Scalar and nested scalar UDFs can compose bounded tokenization or inclusive
 integer generation with 1-based `item-at` or a filtered existential test; those
 definitions inline to the same native reducers used by ordinary mappings and
-generated Rust/C# libraries.
+generated Rust/C# libraries. Existential predicates can read both the generated
+item and its 1-based position.
 Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
 distinct from absent values, and inclusive ranges accept exact integral decimal
 inputs.
