@@ -1141,7 +1141,9 @@ impl ExprContext<'_> {
                 table: table.clone(),
                 default: default.clone(),
             }),
-            ScalarExpr::SequenceItemAt { .. } => {
+            ScalarExpr::SequenceItemAt { .. }
+            | ScalarExpr::SequenceExists { .. }
+            | ScalarExpr::SequenceItem(_) => {
                 Err("structured scalar expressions cannot consume generated sequences".to_string())
             }
         }
