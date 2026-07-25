@@ -56,6 +56,10 @@ packages. Packages are extracted under strict path, entry-count, compressed,
 and expanded-size limits; the resulting X12/EDIFACT schema and lexical metadata
 are embedded in the imported project, so execution and later export do not
 depend on the package remaining available.
+When an external EDI configuration cannot be resolved, its original reference
+is retained for `.mfd` export and re-import instead of being discarded. That
+keeps the design round-trippable, but the boundary remains explicitly
+non-executable until the referenced configuration is supplied and compiled.
 Zero-input `create-guid` generator components execute in the interpreter and
 generated Rust/C# mappings and round-trip as native `lang` components. Scalar
 and record-producing filter lookup UDFs accept typed XML, EDI, or database

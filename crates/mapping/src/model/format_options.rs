@@ -167,6 +167,11 @@ pub struct FormatOptions {
     /// EDI document family retained independently of the instance extension.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edi_kind: Option<EdiBoundaryKind>,
+    /// Unresolved external EDI configuration reference retained for design
+    /// round-trips. Runtime adapters never reopen this path; executable
+    /// projects embed the compiled schema and any required layout separately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edi_config_reference: Option<String>,
     /// EDI decimal leaves whose wire values have fixed implied fractional
     /// places. Paths are compiled from the owning external configuration.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

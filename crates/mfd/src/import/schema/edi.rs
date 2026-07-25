@@ -144,6 +144,9 @@ pub(super) fn read(
         None
     };
     let has_compiled_schema = compiled.is_some();
+    let unresolved_config_reference = (!has_compiled_schema && runtime_boundary)
+        .then(|| config.map(str::to_string))
+        .flatten();
     let (
         mut schema,
         idoc,
@@ -222,6 +225,7 @@ pub(super) fn read(
                 "SWIFTMT" => Some(EdiBoundaryKind::SwiftMt),
                 _ => None,
             },
+            edi_config_reference: unresolved_config_reference,
             edi_implied_decimals,
             edi_lexical_formats,
             edi_value_constraints,

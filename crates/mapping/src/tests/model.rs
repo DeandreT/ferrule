@@ -171,6 +171,7 @@ fn json_lines_format_option_defaults_off_and_roundtrips_when_enabled() {
     let defaults: FormatOptions = serde_json::from_str("{}").unwrap();
     assert!(!defaults.json_lines);
     assert!(defaults.edi_kind.is_none());
+    assert!(defaults.edi_config_reference.is_none());
     assert!(defaults.edi_implied_decimals.is_empty());
     assert!(defaults.edi_lexical_formats.is_empty());
     assert!(defaults.edi_value_constraints.is_empty());
@@ -249,6 +250,7 @@ fn edi_boundary_kind_roundtrips() {
     let options = FormatOptions {
         lenient_segments: true,
         edi_kind: Some(EdiBoundaryKind::X12),
+        edi_config_reference: Some("EDI/Envelope.Config".into()),
         edi_implied_decimals: vec![
             EdiImpliedDecimal::new(vec!["Interchange".into(), "Amount".into()], 3).unwrap(),
         ],
