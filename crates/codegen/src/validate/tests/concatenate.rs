@@ -60,6 +60,44 @@ fn accepts_nonempty_ordered_scope_sequences() {
 }
 
 #[test]
+fn accepts_a_single_group_segment_in_a_repeated_root_sequence() {
+    let mut program = program();
+    set_target_fields(
+        &mut program,
+        vec![SchemaNode::scalar("Value", ScalarType::Int)],
+    );
+    let static_segment = TargetScope {
+        target_field: String::new(),
+        repeating: false,
+        iteration: None,
+        construction: TargetConstruction::Group,
+        bindings: vec![Binding {
+            target_field: "Value".into(),
+            expression: 1,
+            target_type: ScalarType::Int,
+            repeating: false,
+        }],
+        children: Vec::new(),
+    };
+    let mut repeated_segment = segment(IterationOutput::Repeated);
+    repeated_segment.repeating = false;
+    program.root = TargetScope {
+        target_field: String::new(),
+        repeating: false,
+        iteration: Some(IterationPlan::concatenate(
+            static_segment,
+            vec![repeated_segment],
+            IterationOutput::Repeated,
+        )),
+        construction: TargetConstruction::Group,
+        bindings: Vec::new(),
+        children: Vec::new(),
+    };
+
+    assert_eq!(validate_program(&program), Ok(()));
+}
+
+#[test]
 fn rejects_scope_sequence_wrapper_content() {
     let mut program = sequence_program(IterationOutput::Repeated);
     program.root.children[0].bindings.push(Binding {

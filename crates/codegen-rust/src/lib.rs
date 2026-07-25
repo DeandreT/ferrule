@@ -1043,14 +1043,9 @@ fn render_scope(
 
 fn render_concatenated_scope(iteration: &IterationPlan, segment_names: &[String]) -> String {
     let mut output = String::from("    let mut outputs = Vec::new();\n");
-    let variant = match iteration.output() {
-        IterationOutput::Repeated => "Repeated",
-        IterationOutput::MappedSequence => "MappedSequence",
-        IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
-    };
-    for (index, segment_name) in segment_names.iter().enumerate() {
+    for segment_name in segment_names {
         output.push_str(&format!(
-            "    let segment_{index} = {segment_name}(context)?;\n    let Instance::{variant}(segment_{index}) = segment_{index} else {{\n        unreachable!(\"validated scope sequence segment output\");\n    }};\n    outputs.extend(segment_{index});\n"
+            "    match {segment_name}(context)? {{\n        item @ Instance::Group(_) => outputs.push(item),\n        Instance::Repeated(items) | Instance::MappedSequence(items) => outputs.extend(items),\n        _ => unreachable!(\"validated scope sequence segment output\"),\n    }}\n"
         ));
     }
     match iteration.output() {
