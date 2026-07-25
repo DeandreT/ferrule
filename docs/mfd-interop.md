@@ -59,7 +59,11 @@ depend on the package remaining available.
 Zero-input `create-guid` generator components execute in the interpreter and
 generated Rust/C# mappings and round-trip as native `lang` components. Scalar
 and record-producing filter lookup UDFs accept typed XML, EDI, or database
-inputs.
+inputs. Scalar and nested scalar UDFs can also tokenize text, split by fixed
+length or bounded regular expressions, or generate an inclusive integer range
+and select one 1-based item. Import lowers that composition to ferrule's native
+generated-sequence reducer, so interpreter execution, Rust/C# generation, and
+export/re-import share one bounded implementation.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable

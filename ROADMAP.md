@@ -99,6 +99,9 @@ stable per-run clock values use explicit host context, root and nested computed 
 targets, plain structural group copies, and filtered
 or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
+Scalar and nested scalar UDFs can compose bounded tokenization or inclusive
+integer generation with 1-based `item-at`; those definitions inline to the same
+native reducer used by ordinary mappings and generated Rust/C# libraries.
 Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
 distinct from absent values, and inclusive ranges accept exact integral decimal
 inputs.
