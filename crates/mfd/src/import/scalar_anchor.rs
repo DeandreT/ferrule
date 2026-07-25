@@ -46,6 +46,9 @@ impl GraphBuilder<'_> {
 
         let index = *self.fn_by_output.get(&key)?;
         let function = self.fn_components.get(index)?;
+        if function.kind == 5 && function.name == "auto-number" {
+            return Some(self.auto_number_node_at_anchor(index, active_anchor));
+        }
         if function.kind == 5
             && let Some(op) = aggregate_op(&function.name)
             && let Some(node) = self

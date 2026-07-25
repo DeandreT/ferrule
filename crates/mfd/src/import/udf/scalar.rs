@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{ScalarType, Value};
+use mapping::RuntimeValue;
 
 use super::{
     Call, Definition, OutputExpr, Registry, ScalarExpr, ScalarInterface, ScalarOutput,
     ScalarParameter,
 };
 use crate::import::function::{
-    FnComponent, map_component_name, parse_constant, read as read_function,
+    FnComponent, is_db_scalar_function_component, map_component_name, parse_constant,
+    read as read_function,
 };
 use crate::import::graph::read_edges;
 use crate::import::schema::parse_u32;
@@ -50,6 +52,7 @@ pub(super) fn read(
         .all(|child| {
             matches!(child.attribute("library"), Some("core" | "lang"))
                 || child.attribute("kind") == Some("19")
+                || is_db_scalar_function_component(&child)
                 || child.attribute("library") == Some("ferrule")
                     && child.attribute("kind") == Some("5")
                     && crate::canonical_function::is_internal(
@@ -136,7 +139,10 @@ pub(super) fn read(
         let internal = library == "ferrule"
             && child.attribute("kind") == Some("5")
             && crate::canonical_function::is_internal(child_name);
-        if !matches!(library, "core" | "lang") && !internal {
+        if !matches!(library, "core" | "lang")
+            && !internal
+            && !is_db_scalar_function_component(&child)
+        {
             let detail = if library == "xml" || library == "json" || library == "text" {
                 "constructs or reads a structured sequence"
             } else {
@@ -479,6 +485,20 @@ impl DefinitionContext<'_> {
                     default: valuemap.default,
                 })
             }
+            ("is-null", 5) if function.library == "db" => Ok(ScalarExpr::Call {
+                function: "not".to_string(),
+                args: vec![ScalarExpr::Call {
+                    function: "exists".to_string(),
+                    args: vec![input(0, active)?],
+                }],
+            }),
+            ("is-not-null", 5) if function.library == "db" => Ok(ScalarExpr::Call {
+                function: "exists".to_string(),
+                args: vec![input(0, active)?],
+            }),
+            ("now", 5) if function.library == "lang" => {
+                Ok(ScalarExpr::RuntimeValue(RuntimeValue::CurrentDateTime))
+            }
             (name, _) => {
                 let mapped = match name {
                     "normalize-space" => Some("normalize_space"),
@@ -584,6 +604,10 @@ fn substitute(
             budget.claim(depth)?;
             Ok(ScalarExpr::Const(value.clone()))
         }
+        ScalarExpr::RuntimeValue(value) => {
+            budget.claim(depth)?;
+            Ok(ScalarExpr::RuntimeValue(*value))
+        }
         ScalarExpr::Call { function, args } => {
             budget.claim(depth)?;
             Ok(ScalarExpr::Call {
@@ -639,6 +663,7 @@ fn clone_with_budget(
             default: Box::new(clone_with_budget(default, budget, depth + 1)?),
         }),
         ScalarExpr::Const(value) => Ok(ScalarExpr::Const(value.clone())),
+        ScalarExpr::RuntimeValue(value) => Ok(ScalarExpr::RuntimeValue(*value)),
         ScalarExpr::Call { function, args } => Ok(ScalarExpr::Call {
             function: function.clone(),
             args: args
