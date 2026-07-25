@@ -393,7 +393,9 @@ fn sort_by_neighbors(
         let b_rank = neighbor_rank(*b, direction, graph_nodes, edges, endpoints, ranks);
         match (a_rank, b_rank) {
             (Some(a_rank), Some(b_rank)) => a_rank.total_cmp(&b_rank),
-            _ => std::cmp::Ordering::Equal,
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
         }
         .then_with(|| previous[a].cmp(&previous[b]))
         .then_with(|| semantics[a].cmp(&semantics[b]))
@@ -627,6 +629,65 @@ mod tests {
                 .get_node_info(upper)
                 .is_some_and(|upper| upper.pos.x + 260.0 < target.pos.x)
         }));
+    }
+
+    #[test]
+    fn neighbor_sweep_totally_orders_ranked_and_unranked_nodes() {
+        let mut snarl = Snarl::new();
+        let source = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::SourceBlock(0));
+        let mut nodes = Vec::new();
+        let mut low = Vec::new();
+        let mut high = Vec::new();
+        let mut unranked = Vec::new();
+        for index in 0..12 {
+            let high_node = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(index * 3 + 1));
+            let unranked_node = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(index * 3 + 2));
+            let low_node = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(index * 3 + 3));
+            connect(&mut snarl, source, 20, high_node, 0);
+            connect(&mut snarl, source, 0, low_node, 0);
+            nodes.extend([high_node, unranked_node, low_node]);
+            high.push(high_node);
+            unranked.push(unranked_node);
+            low.push(low_node);
+        }
+        let semantics = snarl
+            .nodes_pos_ids()
+            .map(|(id, _, node)| (id, *node))
+            .collect::<BTreeMap<_, _>>();
+        let graph_nodes = nodes.iter().copied().collect::<BTreeSet<_>>();
+        let edges = snarl
+            .wires()
+            .map(|(from, to)| Edge {
+                from: from.node,
+                to: to.node,
+                output: from.output,
+                input: to.input,
+            })
+            .collect::<Vec<_>>();
+        let source_positions = BTreeMap::from([(source, 0.0)]);
+        let target_positions = BTreeMap::new();
+
+        sort_by_neighbors(
+            &mut nodes,
+            Direction::Upstream,
+            &semantics,
+            &graph_nodes,
+            &edges,
+            EndpointGeometry {
+                source_positions: &source_positions,
+                target_positions: &target_positions,
+                source_extent: 1_000.0,
+                target_extent: 1.0,
+            },
+            &BTreeMap::new(),
+        );
+
+        let expected = low
+            .into_iter()
+            .chain(high)
+            .chain(unranked)
+            .collect::<Vec<_>>();
+        assert_eq!(nodes, expected);
     }
 
     #[test]
