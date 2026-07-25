@@ -733,10 +733,10 @@ fn validate_scope(
             });
         }
         for (index, segment) in sequence.iter().enumerate() {
-            let output_matches = segment.iteration.as_ref().map_or_else(
-                || iteration.output() == IterationOutput::Repeated && segment.repeating,
-                |segment_iteration| segment_iteration.output() == iteration.output(),
-            );
+            let output_matches = segment
+                .iteration
+                .as_ref()
+                .is_none_or(|segment_iteration| segment_iteration.output() == iteration.output());
             if !segment.target_field.is_empty() || !output_matches {
                 return Err(ProgramValidationError::InvalidScopeSequenceSegment {
                     target_path: target_path.clone(),

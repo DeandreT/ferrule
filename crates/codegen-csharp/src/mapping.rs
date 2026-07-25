@@ -1218,16 +1218,16 @@ fn render_concatenated_scope(iteration: &IterationPlan, segments: &[usize], outp
     output.push_str(
         "        var outputs = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleInstance>();\n",
     );
+    for segment in segments {
+        output.push_str(&format!(
+            "        switch (Scope_{segment}(context))\n        {{\n            case global::Ferrule.Runtime.FerruleGroup item:\n                outputs.Add(item);\n                break;\n            case global::Ferrule.Runtime.FerruleRepeated repeated:\n                outputs.AddRange(repeated.Items);\n                break;\n            case global::Ferrule.Runtime.FerruleMappedSequence mapped:\n                outputs.AddRange(mapped.Items);\n                break;\n            default:\n                throw new global::System.InvalidOperationException(\"validated scope sequence segment output\");\n        }}\n"
+        ));
+    }
     let variant = match iteration.output() {
         IterationOutput::Repeated => "FerruleRepeated",
         IterationOutput::MappedSequence => "FerruleMappedSequence",
         IterationOutput::First => unreachable!("validated scope sequences cannot use First"),
     };
-    for segment in segments {
-        output.push_str(&format!(
-            "        outputs.AddRange(((global::Ferrule.Runtime.{variant})Scope_{segment}(context)).Items);\n"
-        ));
-    }
     output.push_str(&format!(
         "        return new global::Ferrule.Runtime.{variant}(outputs);\n"
     ));
