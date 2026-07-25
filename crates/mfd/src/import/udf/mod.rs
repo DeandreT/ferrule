@@ -46,6 +46,12 @@ pub(super) enum ScalarExpr {
         sequence: ScalarSequenceExpr,
         index: Box<ScalarExpr>,
     },
+    SequenceExists {
+        sequence: ScalarSequenceExpr,
+        item_feed: u32,
+        predicate: Box<ScalarExpr>,
+    },
+    SequenceItem(u32),
 }
 
 #[derive(Clone)]
@@ -137,6 +143,15 @@ impl ScalarExpr {
                 sequence.collect_parameters(parameters);
                 index.collect_parameters(parameters);
             }
+            ScalarExpr::SequenceExists {
+                sequence,
+                predicate,
+                ..
+            } => {
+                sequence.collect_parameters(parameters);
+                predicate.collect_parameters(parameters);
+            }
+            ScalarExpr::SequenceItem(_) => {}
         }
     }
 }
@@ -454,7 +469,9 @@ impl ScalarExpr {
     fn requires_inlining(&self) -> bool {
         match self {
             Self::DefaultedParameter { .. } => true,
-            Self::SequenceItemAt { .. } => true,
+            Self::SequenceItemAt { .. } | Self::SequenceExists { .. } | Self::SequenceItem(_) => {
+                true
+            }
             Self::Call { args, .. } => args.iter().any(Self::requires_inlining),
             Self::If {
                 condition,
@@ -509,7 +526,9 @@ fn instantiate_function_body(
             table: table.clone(),
             default: default.clone(),
         },
-        ScalarExpr::SequenceItemAt { .. } => return None,
+        ScalarExpr::SequenceItemAt { .. }
+        | ScalarExpr::SequenceExists { .. }
+        | ScalarExpr::SequenceItem(_) => return None,
     };
     Some(alloc_node(graph, next_id, node))
 }
@@ -1193,6 +1212,16 @@ fn instantiate(
     graph: &mut Graph,
     next_id: &mut NodeId,
 ) -> NodeId {
+    instantiate_with_sequence_items(expression, parameters, &[], graph, next_id)
+}
+
+fn instantiate_with_sequence_items(
+    expression: &ScalarExpr,
+    parameters: &BTreeMap<u32, NodeId>,
+    sequence_items: &[(u32, NodeId)],
+    graph: &mut Graph,
+    next_id: &mut NodeId,
+) -> NodeId {
     match expression {
         ScalarExpr::Parameter(component_id) => parameters
             .get(component_id)
@@ -1201,10 +1230,9 @@ fn instantiate(
         ScalarExpr::DefaultedParameter {
             component_id,
             default,
-        } => parameters
-            .get(component_id)
-            .copied()
-            .unwrap_or_else(|| instantiate(default, parameters, graph, next_id)),
+        } => parameters.get(component_id).copied().unwrap_or_else(|| {
+            instantiate_with_sequence_items(default, parameters, sequence_items, graph, next_id)
+        }),
         ScalarExpr::Const(value) => alloc_node(
             graph,
             next_id,
@@ -1218,7 +1246,9 @@ fn instantiate(
         ScalarExpr::Call { function, args } => {
             let args = args
                 .iter()
-                .map(|arg| instantiate(arg, parameters, graph, next_id))
+                .map(|arg| {
+                    instantiate_with_sequence_items(arg, parameters, sequence_items, graph, next_id)
+                })
                 .collect();
             alloc_node(
                 graph,
@@ -1234,9 +1264,17 @@ fn instantiate(
             then,
             else_,
         } => {
-            let condition = instantiate(condition, parameters, graph, next_id);
-            let then = instantiate(then, parameters, graph, next_id);
-            let else_ = instantiate(else_, parameters, graph, next_id);
+            let condition = instantiate_with_sequence_items(
+                condition,
+                parameters,
+                sequence_items,
+                graph,
+                next_id,
+            );
+            let then =
+                instantiate_with_sequence_items(then, parameters, sequence_items, graph, next_id);
+            let else_ =
+                instantiate_with_sequence_items(else_, parameters, sequence_items, graph, next_id);
             alloc_node(
                 graph,
                 next_id,
@@ -1253,7 +1291,8 @@ fn instantiate(
             table,
             default,
         } => {
-            let input = instantiate(input, parameters, graph, next_id);
+            let input =
+                instantiate_with_sequence_items(input, parameters, sequence_items, graph, next_id);
             alloc_node(
                 graph,
                 next_id,
@@ -1274,10 +1313,48 @@ fn instantiate(
                     frame: None,
                 },
             );
-            let sequence = sequence.instantiate(item, parameters, graph, next_id);
-            let index = instantiate(index, parameters, graph, next_id);
+            let sequence = sequence.instantiate(item, parameters, sequence_items, graph, next_id);
+            let index =
+                instantiate_with_sequence_items(index, parameters, sequence_items, graph, next_id);
             alloc_node(graph, next_id, Node::SequenceItemAt { sequence, index })
         }
+        ScalarExpr::SequenceExists {
+            sequence,
+            item_feed,
+            predicate,
+        } => {
+            let item = alloc_node(
+                graph,
+                next_id,
+                Node::SourceField {
+                    path: Vec::new(),
+                    frame: None,
+                },
+            );
+            let sequence = sequence.instantiate(item, parameters, sequence_items, graph, next_id);
+            let mut nested_items = sequence_items.to_vec();
+            nested_items.push((*item_feed, item));
+            let predicate = instantiate_with_sequence_items(
+                predicate,
+                parameters,
+                &nested_items,
+                graph,
+                next_id,
+            );
+            alloc_node(
+                graph,
+                next_id,
+                Node::SequenceExists {
+                    sequence,
+                    predicate,
+                },
+            )
+        }
+        ScalarExpr::SequenceItem(feed) => sequence_items
+            .iter()
+            .rev()
+            .find_map(|(candidate, item)| (*candidate == *feed).then_some(*item))
+            .unwrap_or_else(|| alloc_node(graph, next_id, Node::Const { value: Value::Null })),
     }
 }
 

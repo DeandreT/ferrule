@@ -489,6 +489,69 @@ fn execute_generated_item_at(
     Ok((value, imported.project))
 }
 
+fn execute_generated_exists(
+    sequence: GeneratedSequence,
+    arguments: Vec<Literal>,
+    context: ScalarContext,
+    style: ConnectionStyle,
+    reverse_components: bool,
+    key_offset: u32,
+) -> TestResult<(Value, mapping::Project)> {
+    let fixture = ScalarMfdBuilder::generated_exists(
+        format!("generated_exists_{sequence:?}_{context:?}"),
+        sequence,
+        arguments,
+    )
+    .context(context)
+    .connection_style(style)
+    .reverse_components(reverse_components)
+    .key_offset(key_offset)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(
+        imported.warnings.is_empty(),
+        "{sequence:?} in {context:?}: {:?}",
+        imported.warnings
+    );
+    let validation = engine::validate(&imported.project);
+    assert!(
+        validation.is_empty(),
+        "{sequence:?} in {context:?}: {validation:?}"
+    );
+    codegen::lower(&imported.project)
+        .map_err(|diagnostics| format!("{sequence:?} did not lower: {diagnostics:?}"))?;
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    let value = output
+        .field("Result")
+        .and_then(Instance::as_scalar)
+        .cloned()
+        .ok_or_else(|| format!("{sequence:?} in {context:?} produced no Result scalar"))?;
+
+    let roundtrip = fixture.design().with_file_name("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &roundtrip)?;
+    assert!(
+        export_warnings.is_empty(),
+        "{sequence:?} in {context:?} export: {export_warnings:?}"
+    );
+    let reimported = mfd::import(&roundtrip)?;
+    assert!(
+        reimported.warnings.is_empty(),
+        "{sequence:?} in {context:?} re-import: {:?}",
+        reimported.warnings
+    );
+    let rerun = engine::run(&reimported.project, &source)?;
+    assert_eq!(
+        rerun.field("Result").and_then(Instance::as_scalar),
+        Some(&value),
+        "{sequence:?} in {context:?} changed after export and re-import"
+    );
+    Ok((value, imported.project))
+}
+
 #[test]
 fn scalar_functions_are_equivalent_in_main_udf_and_nested_udf_contexts() -> TestResult {
     for (case_index, case) in scalar_cases().iter().enumerate() {
@@ -627,6 +690,85 @@ fn generated_item_at_is_invariant_under_ids_order_and_connection_encoding() -> T
         assert_eq!(
             actual,
             Value::String("TWO".to_string()),
+            "{style:?}, reverse={reverse_components}, offset={key_offset}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_exists_executes_in_scalar_and_nested_udfs() -> TestResult {
+    let cases = [
+        (
+            GeneratedSequence::Tokenize,
+            vec![text("alpha|beta|gamma"), text("|"), text("beta")],
+            true,
+        ),
+        (
+            GeneratedSequence::TokenizeByLength,
+            vec![text("abcdef"), int(2), text("gh")],
+            false,
+        ),
+        (
+            GeneratedSequence::TokenizeRegex,
+            vec![
+                text("alpha--beta::gamma"),
+                text("[-:]+"),
+                text(""),
+                text("gamma"),
+            ],
+            true,
+        ),
+        (
+            GeneratedSequence::Generate,
+            vec![int(4), int(7), int(6)],
+            true,
+        ),
+    ];
+    for (sequence, arguments, expected) in cases {
+        for context in [ScalarContext::UserDefined, ScalarContext::NestedUserDefined] {
+            let (actual, project) = execute_generated_exists(
+                sequence,
+                arguments.clone(),
+                context,
+                ConnectionStyle::Graph,
+                false,
+                0,
+            )?;
+            assert_eq!(actual, Value::Bool(expected), "{sequence:?} in {context:?}");
+            assert!(
+                project
+                    .graph
+                    .nodes
+                    .values()
+                    .any(|node| matches!(node, mapping::Node::SequenceExists { .. })),
+                "{sequence:?} in {context:?} was not lowered to SequenceExists"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_exists_is_invariant_under_ids_order_and_connection_encoding() -> TestResult {
+    let variants = [
+        (ConnectionStyle::Graph, false, 0),
+        (ConnectionStyle::Graph, true, 3_000),
+        (ConnectionStyle::Legacy, false, 6_000),
+        (ConnectionStyle::Legacy, true, 9_000),
+    ];
+    for (style, reverse_components, key_offset) in variants {
+        let (actual, _) = execute_generated_exists(
+            GeneratedSequence::TokenizeRegex,
+            vec![text("one  TWO three"), text(r"\s+"), text("i"), text("TWO")],
+            ScalarContext::NestedUserDefined,
+            style,
+            reverse_components,
+            key_offset,
+        )?;
+        assert_eq!(
+            actual,
+            Value::Bool(true),
             "{style:?}, reverse={reverse_components}, offset={key_offset}"
         );
     }
