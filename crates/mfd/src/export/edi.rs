@@ -59,9 +59,9 @@ pub(super) fn validate_side(
     }
     match kind {
         EdiBoundaryKind::Idoc => {
-            if options.idoc.is_none() {
+            if options.idoc.is_none() && options.edi_config_reference.is_none() {
                 return Err(MfdError::Unsupported(format!(
-                    "the {side_name} IDoc boundary has no retained runtime layout"
+                    "the {side_name} IDoc boundary has neither a retained runtime layout nor an external configuration reference"
                 )));
             }
             if options.swift_mt.is_some() {
@@ -71,9 +71,9 @@ pub(super) fn validate_side(
             }
         }
         EdiBoundaryKind::SwiftMt => {
-            if options.swift_mt.is_none() {
+            if options.swift_mt.is_none() && options.edi_config_reference.is_none() {
                 return Err(MfdError::Unsupported(format!(
-                    "the {side_name} SWIFT MT boundary has no retained runtime layout"
+                    "the {side_name} SWIFT MT boundary has neither a retained runtime layout nor an external configuration reference"
                 )));
             }
             if options.idoc.is_some() {
@@ -177,6 +177,12 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
     )?;
     let retained_layout = retained_layout_xml(kind, args.options)?;
     let retained_settings = retained_settings_xml(kind, args.options);
+    let retained_config = args
+        .options
+        .edi_config_reference
+        .as_deref()
+        .map(|config| format!(" config=\"{}\"", xml_escape(config)))
+        .unwrap_or_default();
     let mut out = String::new();
     let _ = write!(
         out,
@@ -192,7 +198,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> Result<RenderedSchemaComponent, Mf
          \t\t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t\t</entry>\n\
          \t\t\t\t\t\t</root>\n\
-         \t\t\t\t\t\t<text type=\"edi\" kind=\"{}\">{retained_settings}{retained_layout}\t\t\t\t\t\t</text>\n\
+         \t\t\t\t\t\t<text type=\"edi\" kind=\"{}\"{retained_config}>{retained_settings}{retained_layout}\t\t\t\t\t\t</text>\n\
          \t\t\t\t\t</data>\n\
          \t\t\t\t</component>\n",
         xml_escape(args.component_name),
