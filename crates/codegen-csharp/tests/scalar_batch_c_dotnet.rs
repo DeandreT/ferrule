@@ -70,6 +70,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("Number", ScalarType::String),
                 SchemaNode::scalar("Delayed", ScalarType::String),
                 SchemaNode::scalar("Parsed", ScalarType::Float),
+                SchemaNode::scalar("Serialized", ScalarType::String),
             ],
         ),
         expressions: vec![
@@ -96,6 +97,9 @@ fn fixture() -> Program {
             ),
             constant(10, Value::String(r#"["Leaves","Total"]"#.into())),
             call(11, ScalarFunction::JsonParseField, &[8, 9, 10]),
+            constant(12, Value::String(r#"["Order","Note"]"#.into())),
+            constant(13, Value::String("string".into())),
+            call(14, ScalarFunction::JsonSerializeObject, &[12, 13, 4]),
         ],
         user_functions: Vec::new(),
         failure_rules: Vec::new(),
@@ -110,6 +114,7 @@ fn fixture() -> Program {
                 binding("Number", 6, ScalarType::String),
                 binding("Delayed", 7, ScalarType::String),
                 binding("Parsed", 11, ScalarType::Float),
+                binding("Serialized", 14, ScalarType::String),
             ],
             children: Vec::new(),
         },
@@ -189,6 +194,7 @@ Equal(Bool(true), Field(output, "Numeric"));
 Equal(FerruleValue.FromDouble(6.022e23), Field(output, "Number"));
 Equal(Text("value"), Field(output, "Delayed"));
 Equal(FerruleValue.FromDouble(3.5), Field(output, "Parsed"));
+Equal(Text("""{"Order":{"Note":"value"}}"""), Field(output, "Serialized"));
 
 var boundary = Execute(
     " value ",
@@ -243,6 +249,46 @@ RuntimeError(
     () => FerruleFunctions.Call(
         "json_parse_field",
         new[] { Text("{}"), Text("""{"name":"Payload","kind":{"kind":"group","children":[]}}"""), Text("{}") }));
+Equal(
+    Text("""{"Count":7,"Amount":3.5,"Active":true,"Missing":null}"""),
+    FerruleFunctions.Call(
+        "json_serialize_object",
+        new[]
+        {
+            Text("""["Count"]"""), Text("integer"), Text("7"),
+            Text("""["Amount"]"""), Text("number"), Text("3.5"),
+            Text("""["Active"]"""), Text("boolean"), Text("1"),
+            Text("""["Missing"]"""), Text("string"), FerruleValue.JsonNull,
+        }));
+RuntimeError(
+    FerruleRuntimeError.FunctionInvalidArgument,
+    "json_serialize_object",
+    "property paths must be unique",
+    () => FerruleFunctions.Call(
+        "json_serialize_object",
+        new[]
+        {
+            Text("""["Value"]"""), Text("string"), Text("first"),
+            Text("""["Value"]"""), Text("string"), Text("second"),
+        }));
+RuntimeError(
+    FerruleRuntimeError.FunctionInvalidArgument,
+    "json_serialize_object",
+    "property path conflicts with a scalar property",
+    () => FerruleFunctions.Call(
+        "json_serialize_object",
+        new[]
+        {
+            Text("""["Value"]"""), Text("string"), Text("first"),
+            Text("""["Value","Nested"]"""), Text("string"), Text("second"),
+        }));
+RuntimeError(
+    FerruleRuntimeError.FunctionType,
+    "json_serialize_object",
+    null,
+    () => FerruleFunctions.Call(
+        "json_serialize_object",
+        new[] { Text("""["Value"]"""), Text("integer"), Text("not-an-integer") }));
 
 Console.WriteLine("generated scalar batch C passed");
 

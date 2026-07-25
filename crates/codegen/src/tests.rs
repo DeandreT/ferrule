@@ -318,7 +318,7 @@ fn unused_unsupported_nodes_do_not_block_lowering() {
         (
             99,
             Node::Call {
-                function: "json_serialize_object".into(),
+                function: "flextext_parse_field".into(),
                 args: vec![90],
             },
         ),
@@ -342,26 +342,26 @@ fn reports_each_reachable_unsupported_function_by_name() {
     project.graph.nodes.insert(
         40,
         Node::Call {
-            function: "json_serialize_object".into(),
+            function: "flextext_parse_field".into(),
             args: vec![10, 20],
         },
     );
     project.root.bindings[0].node = 40;
 
     let diagnostics = lower(&project)
-        .expect_err("json_serialize_object is outside the portable call whitelist")
+        .expect_err("flextext_parse_field is outside the portable call whitelist")
         .into_diagnostics();
 
     assert_eq!(
         diagnostics,
         vec![Diagnostic::UnsupportedFunction {
             node: 40,
-            function: "json_serialize_object".into(),
+            function: "flextext_parse_field".into(),
         }]
     );
     assert_eq!(
         diagnostics[0].to_string(),
-        "graph node 40: code generation does not support function `json_serialize_object`"
+        "graph node 40: code generation does not support function `flextext_parse_field`"
     );
 }
 
@@ -398,6 +398,7 @@ fn scalar_call_whitelist_is_closed_and_name_addressable() {
         "floor",
         "create_guid",
         "json_parse_field",
+        "json_serialize_object",
         "format_number",
         "substitute_missing",
         "substitute_missing_with_xml_nil",

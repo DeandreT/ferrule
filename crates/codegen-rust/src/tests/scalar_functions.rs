@@ -95,6 +95,25 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
                 args: vec![100, 110, 111],
             },
         },
+        ExpressionNode {
+            id: 113,
+            expression: Expression::Const {
+                value: Value::String(r#"["Value"]"#.into()),
+            },
+        },
+        ExpressionNode {
+            id: 114,
+            expression: Expression::Const {
+                value: Value::String("string".into()),
+            },
+        },
+        ExpressionNode {
+            id: 115,
+            expression: Expression::Call {
+                function: ScalarFunction::JsonSerializeObject,
+                args: vec![113, 114, 100],
+            },
+        },
     ]);
     let selected = program
         .root
@@ -127,6 +146,7 @@ fn emits_exact_scalar_function_names_through_the_shared_runtime() {
         "matches",
         "replace",
         "json_parse_field",
+        "json_serialize_object",
     ] {
         assert!(source.contains(&format!("call(\"{name}\", &args)")));
     }

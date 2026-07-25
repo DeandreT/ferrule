@@ -743,7 +743,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
     unsupported.graph.nodes.insert(
         30,
         Node::Call {
-            function: "json_serialize_object".into(),
+            function: "flextext_parse_field".into(),
             args: vec![10, 20],
         },
     );
@@ -756,7 +756,7 @@ fn unsupported_mapping_creates_no_output_directory() -> TestResult<()> {
         .expect_err("unsupported nodes must fail capability analysis");
 
     assert!(error.to_string().contains("graph node 30"));
-    assert!(error.to_string().contains("json_serialize_object"));
+    assert!(error.to_string().contains("flextext_parse_field"));
     assert!(!output.exists());
     assert!(
         std::fs::read_dir(&directory.0)?
