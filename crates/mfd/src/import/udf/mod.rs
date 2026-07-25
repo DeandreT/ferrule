@@ -52,6 +52,7 @@ pub(super) enum ScalarExpr {
         predicate: Box<ScalarExpr>,
     },
     SequenceItem(u32),
+    SequencePosition(u32),
 }
 
 #[derive(Clone)]
@@ -151,7 +152,7 @@ impl ScalarExpr {
                 sequence.collect_parameters(parameters);
                 predicate.collect_parameters(parameters);
             }
-            ScalarExpr::SequenceItem(_) => {}
+            ScalarExpr::SequenceItem(_) | ScalarExpr::SequencePosition(_) => {}
         }
     }
 }
@@ -469,9 +470,10 @@ impl ScalarExpr {
     fn requires_inlining(&self) -> bool {
         match self {
             Self::DefaultedParameter { .. } => true,
-            Self::SequenceItemAt { .. } | Self::SequenceExists { .. } | Self::SequenceItem(_) => {
-                true
-            }
+            Self::SequenceItemAt { .. }
+            | Self::SequenceExists { .. }
+            | Self::SequenceItem(_)
+            | Self::SequencePosition(_) => true,
             Self::Call { args, .. } => args.iter().any(Self::requires_inlining),
             Self::If {
                 condition,
@@ -528,7 +530,8 @@ fn instantiate_function_body(
         },
         ScalarExpr::SequenceItemAt { .. }
         | ScalarExpr::SequenceExists { .. }
-        | ScalarExpr::SequenceItem(_) => return None,
+        | ScalarExpr::SequenceItem(_)
+        | ScalarExpr::SequencePosition(_) => return None,
     };
     Some(alloc_node(graph, next_id, node))
 }
@@ -1355,6 +1358,23 @@ fn instantiate_with_sequence_items(
             .rev()
             .find_map(|(candidate, item)| (*candidate == *feed).then_some(*item))
             .unwrap_or_else(|| alloc_node(graph, next_id, Node::Const { value: Value::Null })),
+        ScalarExpr::SequencePosition(feed) => {
+            if sequence_items
+                .iter()
+                .rev()
+                .any(|(candidate, _)| candidate == feed)
+            {
+                alloc_node(
+                    graph,
+                    next_id,
+                    Node::Position {
+                        collection: Vec::new(),
+                    },
+                )
+            } else {
+                alloc_node(graph, next_id, Node::Const { value: Value::Null })
+            }
+        }
     }
 }
 

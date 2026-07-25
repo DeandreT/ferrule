@@ -202,7 +202,8 @@ fn convert_scalar_expression(
         }),
         super::udf::ScalarExpr::SequenceItemAt { .. }
         | super::udf::ScalarExpr::SequenceExists { .. }
-        | super::udf::ScalarExpr::SequenceItem(_) => None,
+        | super::udf::ScalarExpr::SequenceItem(_)
+        | super::udf::ScalarExpr::SequencePosition(_) => None,
     }
 }
 

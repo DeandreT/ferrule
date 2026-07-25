@@ -492,21 +492,24 @@ fn execute_generated_item_at(
 fn execute_generated_exists(
     sequence: GeneratedSequence,
     arguments: Vec<Literal>,
+    compare_position: bool,
     context: ScalarContext,
     style: ConnectionStyle,
     reverse_components: bool,
     key_offset: u32,
 ) -> TestResult<(Value, mapping::Project)> {
-    let fixture = ScalarMfdBuilder::generated_exists(
-        format!("generated_exists_{sequence:?}_{context:?}"),
-        sequence,
-        arguments,
-    )
-    .context(context)
-    .connection_style(style)
-    .reverse_components(reverse_components)
-    .key_offset(key_offset)
-    .write()?;
+    let tag = format!("generated_exists_{sequence:?}_{context:?}");
+    let builder = if compare_position {
+        ScalarMfdBuilder::generated_exists_at_position(tag, sequence, arguments)
+    } else {
+        ScalarMfdBuilder::generated_exists(tag, sequence, arguments)
+    };
+    let fixture = builder
+        .context(context)
+        .connection_style(style)
+        .reverse_components(reverse_components)
+        .key_offset(key_offset)
+        .write()?;
     let imported = mfd::import(fixture.design())?;
     assert!(
         imported.warnings.is_empty(),
@@ -730,6 +733,7 @@ fn generated_exists_executes_in_scalar_and_nested_udfs() -> TestResult {
             let (actual, project) = execute_generated_exists(
                 sequence,
                 arguments.clone(),
+                false,
                 context,
                 ConnectionStyle::Graph,
                 false,
@@ -761,6 +765,81 @@ fn generated_exists_is_invariant_under_ids_order_and_connection_encoding() -> Te
         let (actual, _) = execute_generated_exists(
             GeneratedSequence::TokenizeRegex,
             vec![text("one  TWO three"), text(r"\s+"), text("i"), text("TWO")],
+            false,
+            ScalarContext::NestedUserDefined,
+            style,
+            reverse_components,
+            key_offset,
+        )?;
+        assert_eq!(
+            actual,
+            Value::Bool(true),
+            "{style:?}, reverse={reverse_components}, offset={key_offset}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_position_exists_executes_in_scalar_and_nested_udfs() -> TestResult {
+    let cases = [
+        (
+            GeneratedSequence::Tokenize,
+            vec![text("alpha|beta|gamma"), text("|"), int(2)],
+            true,
+        ),
+        (
+            GeneratedSequence::TokenizeByLength,
+            vec![text("abcdef"), int(2), int(4)],
+            false,
+        ),
+        (
+            GeneratedSequence::TokenizeRegex,
+            vec![text("alpha--beta::gamma"), text("[-:]+"), text(""), int(3)],
+            true,
+        ),
+        (
+            GeneratedSequence::Generate,
+            vec![int(4), int(7), int(4)],
+            true,
+        ),
+    ];
+    for (sequence, arguments, expected) in cases {
+        for context in [ScalarContext::UserDefined, ScalarContext::NestedUserDefined] {
+            let (actual, project) = execute_generated_exists(
+                sequence,
+                arguments.clone(),
+                true,
+                context,
+                ConnectionStyle::Graph,
+                false,
+                0,
+            )?;
+            assert_eq!(actual, Value::Bool(expected), "{sequence:?} in {context:?}");
+            assert!(
+                project.graph.nodes.values().any(
+                    |node| matches!(node, mapping::Node::Position { collection } if collection.is_empty())
+                ),
+                "{sequence:?} in {context:?} was not lowered to generated-item Position"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn generated_position_exists_is_invariant_under_graph_encoding() -> TestResult {
+    let variants = [
+        (ConnectionStyle::Graph, false, 0),
+        (ConnectionStyle::Graph, true, 3_000),
+        (ConnectionStyle::Legacy, false, 6_000),
+        (ConnectionStyle::Legacy, true, 9_000),
+    ];
+    for (style, reverse_components, key_offset) in variants {
+        let (actual, _) = execute_generated_exists(
+            GeneratedSequence::TokenizeRegex,
+            vec![text("one  two three"), text(r"\s+"), text(""), int(2)],
+            true,
             ScalarContext::NestedUserDefined,
             style,
             reverse_components,
