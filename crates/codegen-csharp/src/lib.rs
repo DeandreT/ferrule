@@ -1075,7 +1075,15 @@ mod tests {
                         item: 12,
                     },
                     predicate: Some(15),
+                    expression: Some(17),
                     arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 17,
+                expression: Expression::Call {
+                    function: ScalarFunction::Multiply,
+                    args: vec![12, 14],
                 },
             },
         ]);
@@ -1094,7 +1102,7 @@ mod tests {
             .expect("aggregate method");
         assert!(aggregate.contains("context.EnumerateGenerated(sequence_values_node_16)"));
         assert!(aggregate.contains("Node_15(sequence_context_node_16)"));
-        assert!(aggregate.contains("Node_12(sequence_context_node_16)"));
+        assert!(aggregate.contains("Node_17(sequence_context_node_16)"));
         assert!(aggregate.contains("FerruleAggregateOperation.Sum"));
     }
 

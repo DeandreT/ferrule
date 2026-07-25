@@ -1,9 +1,9 @@
 use mapping::{NodeId, Scope, SequenceExpr};
 
-pub(super) struct SequenceExistsPins {
-    pub(super) predicate: NodeId,
+pub(super) struct SequenceContextPins {
+    pub(super) predicate: Option<(NodeId, u32)>,
+    pub(super) expression: Option<NodeId>,
     pub(super) sequence_output: u32,
-    pub(super) filter_predicate: u32,
 }
 
 pub(super) fn collect_scope_sequences<'a>(scope: &'a Scope, sequences: &mut Vec<&'a SequenceExpr>) {

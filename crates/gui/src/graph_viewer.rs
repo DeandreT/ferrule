@@ -555,6 +555,30 @@ impl GraphViewer<'_> {
                     *index = from_id;
                 }
             }
+            Node::SequenceAggregate {
+                sequence,
+                predicate,
+                expression,
+                arg,
+                ..
+            } => {
+                let sequence_inputs = sequence.inputs().len();
+                if idx < sequence_inputs {
+                    graph_sequence::set_input(sequence, idx, from_id);
+                } else {
+                    let mut optional_index = idx - sequence_inputs;
+                    for slot in [predicate, expression, arg] {
+                        if slot.is_some() {
+                            if optional_index == 0 {
+                                *slot = Some(from_id);
+                                return true;
+                            }
+                            optional_index -= 1;
+                        }
+                    }
+                    return false;
+                }
+            }
             Node::Aggregate {
                 expression, arg, ..
             }
@@ -615,11 +639,13 @@ impl GraphViewer<'_> {
             Node::SequenceAggregate {
                 sequence,
                 predicate,
+                expression,
                 arg,
                 ..
             } => graph_sequence::input_at(sequence, idx).or_else(|| {
                 predicate
                     .iter()
+                    .chain(expression)
                     .chain(arg)
                     .nth(idx.saturating_sub(sequence.inputs().len()))
                     .copied()
@@ -882,11 +908,13 @@ impl GraphViewer<'_> {
             Node::SequenceAggregate {
                 sequence,
                 predicate,
+                expression,
                 arg,
                 ..
             } => {
                 sequence.inputs().len()
                     + usize::from(predicate.is_some())
+                    + usize::from(expression.is_some())
                     + usize::from(arg.is_some())
             }
             Node::Aggregate {
@@ -1329,6 +1357,28 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                             graph_sequence::pin_label(sequence, idx).to_string()
                         }
                     }
+                    Some(Node::SequenceAggregate {
+                        sequence,
+                        predicate,
+                        expression,
+                        arg,
+                        ..
+                    }) => {
+                        if idx < sequence.inputs().len() {
+                            graph_sequence::pin_label(sequence, idx).to_string()
+                        } else {
+                            [
+                                predicate.as_ref().map(|_| "filter"),
+                                expression.as_ref().map(|_| "values"),
+                                arg.as_ref().map(|_| "arg"),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .nth(idx - sequence.inputs().len())
+                            .unwrap_or_default()
+                            .to_string()
+                        }
+                    }
                     Some(
                         Node::Aggregate { expression, .. } | Node::JoinAggregate { expression, .. },
                     ) if expression.is_some() && idx == 0 => "values".to_string(),
@@ -1686,17 +1736,19 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     function,
                     sequence,
                     predicate,
+                    expression,
                     ..
                 } => {
                     let op = format!("{function:?}").to_lowercase();
                     ui.label(format!(
                         "{op} {} {}",
                         graph_sequence::label(sequence),
-                        if predicate.is_some() {
-                            "filtered items"
-                        } else {
-                            "items"
-                        }
+                        match (predicate.is_some(), expression.is_some()) {
+                            (true, true) => "filtered computed values",
+                            (true, false) => "filtered items",
+                            (false, true) => "computed values",
+                            (false, false) => "items",
+                        },
                     ));
                 }
                 Node::Aggregate {

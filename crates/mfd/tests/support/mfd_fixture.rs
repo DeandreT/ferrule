@@ -57,7 +57,9 @@ enum GeneratedReduction {
     Exists(GeneratedSequence),
     ExistsAtPosition(GeneratedSequence),
     Aggregate(GeneratedSequence, GeneratedAggregate),
+    ComputedAggregate(GeneratedSequence, GeneratedAggregate),
     FilteredAggregate(GeneratedSequence, GeneratedAggregate),
+    FilteredComputedAggregate(GeneratedSequence, GeneratedAggregate),
 }
 
 impl GeneratedSequence {
@@ -262,6 +264,50 @@ impl ScalarMfdBuilder {
         }
     }
 
+    pub fn generated_computed_aggregate(
+        tag: impl Into<String>,
+        sequence: GeneratedSequence,
+        operation: GeneratedAggregate,
+        arguments: Vec<ScalarLiteral>,
+        output_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            tag: tag.into(),
+            function_name: operation.component_name().to_string(),
+            function_library: "core".to_string(),
+            arguments,
+            output_type: output_type.into(),
+            context: ScalarContext::UserDefined,
+            connection_style: ConnectionStyle::Graph,
+            reverse_components: false,
+            key_offset: 0,
+            generated_reduction: Some(GeneratedReduction::ComputedAggregate(sequence, operation)),
+        }
+    }
+
+    pub fn generated_filtered_computed_aggregate(
+        tag: impl Into<String>,
+        sequence: GeneratedSequence,
+        operation: GeneratedAggregate,
+        arguments: Vec<ScalarLiteral>,
+        output_type: impl Into<String>,
+    ) -> Self {
+        Self {
+            tag: tag.into(),
+            function_name: operation.component_name().to_string(),
+            function_library: "core".to_string(),
+            arguments,
+            output_type: output_type.into(),
+            context: ScalarContext::UserDefined,
+            connection_style: ConnectionStyle::Graph,
+            reverse_components: false,
+            key_offset: 0,
+            generated_reduction: Some(GeneratedReduction::FilteredComputedAggregate(
+                sequence, operation,
+            )),
+        }
+    }
+
     pub fn context(mut self, context: ScalarContext) -> Self {
         self.context = context;
         self
@@ -295,7 +341,9 @@ impl ScalarMfdBuilder {
                 | GeneratedReduction::Exists(sequence)
                 | GeneratedReduction::ExistsAtPosition(sequence)
                 | GeneratedReduction::Aggregate(sequence, _)
-                | GeneratedReduction::FilteredAggregate(sequence, _) => sequence,
+                | GeneratedReduction::ComputedAggregate(sequence, _)
+                | GeneratedReduction::FilteredAggregate(sequence, _)
+                | GeneratedReduction::FilteredComputedAggregate(sequence, _) => sequence,
             };
             let (extra_arguments, scalar_role) = match reduction {
                 GeneratedReduction::ItemAt(_) => (1, "index"),
@@ -304,9 +352,17 @@ impl ScalarMfdBuilder {
                 GeneratedReduction::Aggregate(_, operation) => {
                     (usize::from(operation.has_arg()), "aggregate argument")
                 }
+                GeneratedReduction::ComputedAggregate(_, operation) => (
+                    1 + usize::from(operation.has_arg()),
+                    "value/aggregate arguments",
+                ),
                 GeneratedReduction::FilteredAggregate(_, operation) => (
                     1 + usize::from(operation.has_arg()),
                     "comparison/aggregate arguments",
+                ),
+                GeneratedReduction::FilteredComputedAggregate(_, operation) => (
+                    2 + usize::from(operation.has_arg()),
+                    "value/comparison/aggregate arguments",
                 ),
             };
             let reduction_name = match reduction {
@@ -314,7 +370,11 @@ impl ScalarMfdBuilder {
                 GeneratedReduction::Exists(_) => "filtered exists",
                 GeneratedReduction::ExistsAtPosition(_) => "position-filtered exists",
                 GeneratedReduction::Aggregate(_, operation) => operation.component_name(),
+                GeneratedReduction::ComputedAggregate(_, operation) => operation.component_name(),
                 GeneratedReduction::FilteredAggregate(_, operation) => operation.component_name(),
+                GeneratedReduction::FilteredComputedAggregate(_, operation) => {
+                    operation.component_name()
+                }
             };
             if self.arguments.len() != sequence.input_count() + extra_arguments {
                 return Err(std::io::Error::new(
@@ -540,9 +600,31 @@ impl ScalarMfdBuilder {
             | GeneratedReduction::Exists(sequence)
             | GeneratedReduction::ExistsAtPosition(sequence)
             | GeneratedReduction::Aggregate(sequence, _)
-            | GeneratedReduction::FilteredAggregate(sequence, _) => sequence,
+            | GeneratedReduction::ComputedAggregate(sequence, _)
+            | GeneratedReduction::FilteredAggregate(sequence, _)
+            | GeneratedReduction::FilteredComputedAggregate(sequence, _) => sequence,
         };
         let sequence_inputs = sequence.input_count();
+        if let GeneratedReduction::FilteredComputedAggregate(_, operation) = reduction {
+            return self.render_generated_filtered_computed_aggregate(
+                function_uid,
+                function_inputs,
+                function_output,
+                argument_outputs,
+                sequence,
+                operation,
+            );
+        }
+        if let GeneratedReduction::ComputedAggregate(_, operation) = reduction {
+            return self.render_generated_computed_aggregate(
+                function_uid,
+                function_inputs,
+                function_output,
+                argument_outputs,
+                sequence,
+                operation,
+            );
+        }
         if let GeneratedReduction::FilteredAggregate(_, operation) = reduction {
             return self.render_generated_filtered_aggregate(
                 function_uid,
@@ -799,6 +881,149 @@ impl ScalarMfdBuilder {
                 ),
                 aggregate_component(
                     function_uid + 1,
+                    operation,
+                    aggregate_sequence_input,
+                    operation.has_arg().then_some(aggregate_arg_input),
+                    aggregate_output,
+                ),
+            ],
+            edges,
+            output: aggregate_output,
+        }
+    }
+
+    fn render_generated_computed_aggregate(
+        &self,
+        function_uid: u32,
+        function_inputs: &[u32],
+        function_output: u32,
+        argument_outputs: &[u32],
+        sequence: GeneratedSequence,
+        operation: GeneratedAggregate,
+    ) -> RenderedBody {
+        let sequence_inputs = sequence.input_count();
+        let multiply_item_input = function_output + 1;
+        let multiply_factor_input = function_output + 2;
+        let multiply_output = function_output + 3;
+        let aggregate_sequence_input = function_output + 4;
+        let aggregate_arg_input = function_output + 5;
+        let aggregate_output = function_output + 6;
+        let mut edges = argument_outputs
+            .iter()
+            .take(sequence_inputs)
+            .copied()
+            .zip(function_inputs.iter().take(sequence_inputs).copied())
+            .collect::<Vec<_>>();
+        edges.extend([
+            (function_output, multiply_item_input),
+            (argument_outputs[sequence_inputs], multiply_factor_input),
+            (multiply_output, aggregate_sequence_input),
+        ]);
+        if operation.has_arg() {
+            edges.push((argument_outputs[sequence_inputs + 1], aggregate_arg_input));
+        }
+        RenderedBody {
+            components: vec![
+                function_component(
+                    sequence.component_name(),
+                    "core",
+                    function_uid,
+                    &function_inputs[..sequence_inputs],
+                    function_output,
+                ),
+                function_component(
+                    "multiply",
+                    "core",
+                    function_uid + 1,
+                    &[multiply_item_input, multiply_factor_input],
+                    multiply_output,
+                ),
+                aggregate_component(
+                    function_uid + 2,
+                    operation,
+                    aggregate_sequence_input,
+                    operation.has_arg().then_some(aggregate_arg_input),
+                    aggregate_output,
+                ),
+            ],
+            edges,
+            output: aggregate_output,
+        }
+    }
+
+    fn render_generated_filtered_computed_aggregate(
+        &self,
+        function_uid: u32,
+        function_inputs: &[u32],
+        function_output: u32,
+        argument_outputs: &[u32],
+        sequence: GeneratedSequence,
+        operation: GeneratedAggregate,
+    ) -> RenderedBody {
+        let sequence_inputs = sequence.input_count();
+        let multiply_item_input = function_output + 1;
+        let multiply_factor_input = function_output + 2;
+        let multiply_output = function_output + 3;
+        let equal_item_input = function_output + 4;
+        let equal_expected_input = function_output + 5;
+        let equal_output = function_output + 6;
+        let filter_sequence_input = function_output + 7;
+        let filter_predicate_input = function_output + 8;
+        let filter_true_output = function_output + 9;
+        let filter_false_output = function_output + 10;
+        let aggregate_sequence_input = function_output + 11;
+        let aggregate_arg_input = function_output + 12;
+        let aggregate_output = function_output + 13;
+        let mut edges = argument_outputs
+            .iter()
+            .take(sequence_inputs)
+            .copied()
+            .zip(function_inputs.iter().take(sequence_inputs).copied())
+            .collect::<Vec<_>>();
+        edges.extend([
+            (function_output, multiply_item_input),
+            (argument_outputs[sequence_inputs], multiply_factor_input),
+            (function_output, equal_item_input),
+            (argument_outputs[sequence_inputs + 1], equal_expected_input),
+            (multiply_output, filter_sequence_input),
+            (equal_output, filter_predicate_input),
+            (filter_true_output, aggregate_sequence_input),
+        ]);
+        if operation.has_arg() {
+            edges.push((argument_outputs[sequence_inputs + 2], aggregate_arg_input));
+        }
+        RenderedBody {
+            components: vec![
+                function_component(
+                    sequence.component_name(),
+                    "core",
+                    function_uid,
+                    &function_inputs[..sequence_inputs],
+                    function_output,
+                ),
+                function_component(
+                    "multiply",
+                    "core",
+                    function_uid + 1,
+                    &[multiply_item_input, multiply_factor_input],
+                    multiply_output,
+                ),
+                function_component(
+                    "equal",
+                    "core",
+                    function_uid + 2,
+                    &[equal_item_input, equal_expected_input],
+                    equal_output,
+                ),
+                filter_component(
+                    function_uid + 3,
+                    filter_sequence_input,
+                    filter_predicate_input,
+                    filter_true_output,
+                    filter_false_output,
+                ),
+                aggregate_component(
+                    function_uid + 4,
                     operation,
                     aggregate_sequence_input,
                     operation.has_arg().then_some(aggregate_arg_input),

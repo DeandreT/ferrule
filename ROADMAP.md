@@ -23,8 +23,8 @@ clean-room interoperability, and extensible adapters.
 - Mapping semantics: nested iteration and broadcast, filters, grouping,
   stable distinct-value iteration, literal/length/regex tokenizer and integer-range sequences,
   bounded existential reduction, 1-based scalar selection, and
-  count/sum/average/minimum/maximum/string-join reduction over raw or filtered
-  generated sequences,
+  count/sum/average/minimum/maximum/string-join reduction over raw, filtered,
+  or per-item computed generated sequences,
   stable sorting, ordered skip/first/from/range/last sequence windows,
   conditionals, value maps, lookups,
   duplicate-preserving multi-source inner equijoins, positions, seven
@@ -103,10 +103,10 @@ or generated XML occurrence sequences lower exactly. `group-starting-with`
 partitions filtered rows into contiguous groups and round-trips through `.mfd`.
 Scalar and nested scalar UDFs can compose bounded tokenization or inclusive
 integer generation with 1-based `item-at`, a filtered existential test, or
-count/sum/average/minimum/maximum/string-join over raw or filtered values; those
-definitions inline to the same native reducers used by ordinary mappings and
-generated Rust/C# libraries. Generated-sequence predicates can read both the
-generated item and its 1-based position.
+count/sum/average/minimum/maximum/string-join over raw, filtered, or per-item
+computed values; those definitions inline to the same native reducers used by
+ordinary mappings and generated Rust/C# libraries. Generated-sequence predicates
+and value expressions can read both the generated item and its 1-based position.
 Repeating copy-all groups retain their scalar descendants, `xsi:nil` remains
 distinct from absent values, and inclusive ranges accept exact integral decimal
 inputs.

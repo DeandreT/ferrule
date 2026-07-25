@@ -45,11 +45,13 @@ pub(super) fn of(expression: &Expression) -> Vec<NodeId> {
         Expression::SequenceAggregate {
             sequence,
             predicate,
+            expression,
             arg,
             ..
         } => sequence
             .inputs()
             .chain(predicate.iter().copied())
+            .chain(expression.iter().copied())
             .chain(arg.iter().copied())
             .collect(),
     }

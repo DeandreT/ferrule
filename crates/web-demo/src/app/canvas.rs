@@ -123,13 +123,14 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
         Node::SequenceAggregate {
             sequence,
             predicate,
+            expression,
             arg,
             ..
         } => sequence
             .inputs()
             .into_iter()
             .map(Some)
-            .chain([*predicate, *arg])
+            .chain([*predicate, *expression, *arg])
             .collect(),
         Node::Aggregate {
             expression, arg, ..

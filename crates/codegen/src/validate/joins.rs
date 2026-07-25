@@ -270,6 +270,7 @@ pub(super) fn validate_expression(
             Expression::SequenceAggregate {
                 sequence,
                 predicate,
+                expression,
                 arg,
                 ..
             } => {
@@ -286,6 +287,16 @@ pub(super) fn validate_expression(
                 if let Some(predicate) = predicate {
                     validate_expression(
                         *predicate,
+                        expressions,
+                        sources,
+                        None,
+                        active_joins,
+                        false,
+                    )?;
+                }
+                if let Some(expression) = expression {
+                    validate_expression(
+                        *expression,
                         expressions,
                         sources,
                         None,

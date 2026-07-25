@@ -759,11 +759,13 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             function,
             sequence,
             predicate,
+            expression,
             arg,
         } => Expression::SequenceAggregate {
             function: (*function).into(),
             sequence: lower_generated_sequence(sequence),
             predicate: *predicate,
+            expression: *expression,
             arg: *arg,
         },
         node => {

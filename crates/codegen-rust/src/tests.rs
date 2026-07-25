@@ -1077,7 +1077,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             vec![
                 SchemaNode::scalar("Selected", ScalarType::String),
                 SchemaNode::scalar("Exists", ScalarType::Bool),
-                SchemaNode::scalar("Count", ScalarType::Int),
+                SchemaNode::scalar("LengthSum", ScalarType::Int),
                 SchemaNode::group(
                     "Rows",
                     vec![
@@ -1233,7 +1233,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
             ExpressionNode {
                 id: 20,
                 expression: Expression::SequenceAggregate {
-                    function: AggregateFunction::Count,
+                    function: AggregateFunction::Sum,
                     sequence: GeneratedSequence::TokenizeRegex {
                         input: 1,
                         pattern: 2,
@@ -1241,7 +1241,15 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                         item: 19,
                     },
                     predicate: None,
+                    expression: Some(21),
                     arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 21,
+                expression: Expression::Call {
+                    function: ScalarFunction::Length,
+                    args: vec![19],
                 },
             },
         ],
@@ -1266,7 +1274,7 @@ fn generated_sequence_reducers_build_run_and_preserve_evaluation_order() {
                     repeating: false,
                 },
                 Binding {
-                    target_field: "Count".into(),
+                    target_field: "LengthSum".into(),
                     expression: 20,
                     target_type: ScalarType::Int,
                     repeating: false,
@@ -1334,7 +1342,7 @@ fn main() {
         group([
             field("Selected", scalar(Value::String("bad".into()))),
             field("Exists", scalar(Value::Bool(true))),
-            field("Count", scalar(Value::Int(2))),
+            field("LengthSum", scalar(Value::Int(6))),
             field("Rows", repeated([
                 group([
                     field("Value", scalar(Value::String("hit".into()))),
@@ -1354,7 +1362,7 @@ fn main() {
         group([
             field("Selected", scalar(Value::Null)),
             field("Exists", scalar(Value::Bool(false))),
-            field("Count", scalar(Value::Int(0))),
+            field("LengthSum", scalar(Value::Int(0))),
             field("Rows", repeated([])),
         ]),
     );
@@ -1365,7 +1373,7 @@ fn main() {
         group([
             field("Selected", scalar(Value::Null)),
             field("Exists", scalar(Value::Bool(true))),
-            field("Count", scalar(Value::Int(2))),
+            field("LengthSum", scalar(Value::Int(6))),
             field("Rows", repeated([
                 group([
                     field("Value", scalar(Value::String("hit".into()))),

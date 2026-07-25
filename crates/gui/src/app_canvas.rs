@@ -46,12 +46,14 @@ fn node_inputs(node: &Node) -> Vec<NodeId> {
         Node::SequenceAggregate {
             sequence,
             predicate,
+            expression,
             arg,
             ..
         } => sequence
             .inputs()
             .into_iter()
             .chain(predicate.iter().copied())
+            .chain(expression.iter().copied())
             .chain(arg.iter().copied())
             .collect(),
         Node::Aggregate {

@@ -197,8 +197,8 @@ The current portable model includes:
   recursive depth-first collection
 - ordinary scope iteration, failure rules, existential predicates, 1-based
   scalar `item-at`, and count/sum/average/minimum/maximum/string-join reductions
-  over raw or filtered generated values; predicates execute in a private
-  generated-item and position context
+  over raw, filtered, or per-item computed generated values; predicates and
+  value expressions execute in a private generated-item and position context
 - active collection identity, outward source-field fallback, and compacted
   output positions
 

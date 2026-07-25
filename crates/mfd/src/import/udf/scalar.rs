@@ -745,7 +745,7 @@ impl DefinitionContext<'_> {
             return Ok(None);
         };
 
-        let mut sequence_feed = aggregate_feed;
+        let mut value_feed = aggregate_feed;
         let mut predicate_feed = None;
         let mut invert_predicate = false;
         if let Some(Producer::Function(filter_index)) = self.by_output.get(&aggregate_feed).copied()
@@ -758,7 +758,7 @@ impl DefinitionContext<'_> {
                 .position(|output| *output == Some(aggregate_feed))
             && output_position <= 1
         {
-            sequence_feed = self.connected_input(filter, 0).ok_or_else(|| {
+            value_feed = self.connected_input(filter, 0).ok_or_else(|| {
                 "definition sequence aggregate filter input is not connected".to_string()
             })?;
             predicate_feed = Some(self.connected_input(filter, 1).ok_or_else(|| {
@@ -766,32 +766,33 @@ impl DefinitionContext<'_> {
             })?);
             invert_predicate = output_position == 1;
         }
-        if !self.is_generated_sequence_output(sequence_feed) {
+        let Some(sequence_feed) = self.generated_sequence_dependency(value_feed) else {
             return Ok(None);
-        }
+        };
 
         let sequence = self.sequence_expression(sequence_feed, active, budget, sequence_items)?;
+        let mut item_context = sequence_items.to_vec();
+        item_context.push(sequence_feed);
         let predicate = predicate_feed
             .map(|predicate_feed| {
-                let mut predicate_items = sequence_items.to_vec();
-                predicate_items.push(sequence_feed);
-                self.expression_with_sequence_items(
-                    predicate_feed,
-                    active,
-                    budget,
-                    &predicate_items,
-                )
-                .map(|predicate| {
-                    if invert_predicate {
-                        ScalarExpr::Call {
-                            function: "not".to_string(),
-                            args: vec![predicate],
+                self.expression_with_sequence_items(predicate_feed, active, budget, &item_context)
+                    .map(|predicate| {
+                        if invert_predicate {
+                            ScalarExpr::Call {
+                                function: "not".to_string(),
+                                args: vec![predicate],
+                            }
+                        } else {
+                            predicate
                         }
-                    } else {
-                        predicate
-                    }
-                })
-                .map(Box::new)
+                    })
+                    .map(Box::new)
+            })
+            .transpose()?;
+        let expression = (value_feed != sequence_feed)
+            .then(|| {
+                self.expression_with_sequence_items(value_feed, active, budget, &item_context)
+                    .map(Box::new)
             })
             .transpose()?;
         let arg = self
@@ -806,8 +807,48 @@ impl DefinitionContext<'_> {
             sequence,
             item_feed: sequence_feed,
             predicate,
+            expression,
             arg,
         }))
+    }
+
+    fn generated_sequence_dependency(&self, feed: u32) -> Option<u32> {
+        let mut matches = self.functions.iter().filter_map(|function| {
+            let output = function.output_pins.first().copied().flatten()?;
+            (self.is_generated_sequence_output(output)
+                && self.feed_depends_on(feed, output, &mut BTreeSet::new()))
+            .then_some(output)
+        });
+        let found = matches.next()?;
+        matches.next().is_none().then_some(found)
+    }
+
+    fn feed_depends_on(&self, feed: u32, wanted: u32, active: &mut BTreeSet<u32>) -> bool {
+        if feed == wanted {
+            return true;
+        }
+        if !active.insert(feed) {
+            return false;
+        }
+        let result = match self.by_output.get(&feed).copied() {
+            Some(Producer::Function(index)) => self.functions.get(index).is_some_and(|function| {
+                function
+                    .inputs
+                    .iter()
+                    .flatten()
+                    .filter_map(|input| self.edge_from.get(input))
+                    .any(|upstream| self.feed_depends_on(*upstream, wanted, active))
+            }),
+            Some(Producer::Nested(index)) => self.nested_calls.get(index).is_some_and(|call| {
+                call.inputs
+                    .values()
+                    .filter_map(|input| self.edge_from.get(input))
+                    .any(|upstream| self.feed_depends_on(*upstream, wanted, active))
+            }),
+            None => false,
+        };
+        active.remove(&feed);
+        result
     }
 
     fn is_generated_sequence_output(&self, feed: u32) -> bool {
@@ -1155,6 +1196,7 @@ fn substitute(
             sequence,
             item_feed,
             predicate,
+            expression,
             arg,
         } => {
             budget.claim(depth)?;
@@ -1166,6 +1208,12 @@ fn substitute(
                     .as_ref()
                     .map(|predicate| {
                         substitute(predicate, parameters, budget, depth + 1).map(Box::new)
+                    })
+                    .transpose()?,
+                expression: expression
+                    .as_ref()
+                    .map(|expression| {
+                        substitute(expression, parameters, budget, depth + 1).map(Box::new)
                     })
                     .transpose()?,
                 arg: arg
@@ -1280,6 +1328,7 @@ fn clone_with_budget(
             sequence,
             item_feed,
             predicate,
+            expression,
             arg,
         } => Ok(ScalarExpr::SequenceAggregate {
             function: *function,
@@ -1288,6 +1337,10 @@ fn clone_with_budget(
             predicate: predicate
                 .as_ref()
                 .map(|predicate| clone_with_budget(predicate, budget, depth + 1).map(Box::new))
+                .transpose()?,
+            expression: expression
+                .as_ref()
+                .map(|expression| clone_with_budget(expression, budget, depth + 1).map(Box::new))
                 .transpose()?,
             arg: arg
                 .as_ref()

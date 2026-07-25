@@ -366,6 +366,7 @@ pub(super) fn eval_sequence_aggregate(
     function: mapping::AggregateOp,
     sequence: &SequenceExpr,
     predicate: Option<NodeId>,
+    expression: Option<NodeId>,
     arg: Option<NodeId>,
     context: &[&Instance],
     positions: &[PositionFrame],
@@ -405,7 +406,16 @@ pub(super) fn eval_sequence_aggregate(
             None => true,
         };
         if keep {
-            values.push(value);
+            values.push(match expression {
+                Some(expression) => eval_expr(
+                    program,
+                    expression,
+                    &item_context,
+                    &item_positions,
+                    in_progress,
+                )?,
+                None => value,
+            });
         }
     }
     let arg = arg

@@ -13,7 +13,7 @@ use super::function::{
 use super::join::JoinExports;
 use super::position::render_component;
 use super::schema::{GeneratedSibling, KeyAlloc, PortMatch, PortPairMatch, PortTree, xml_escape};
-use super::sequence::{SequenceExistsPins, collect_scope_sequences};
+use super::sequence::{SequenceContextPins, collect_scope_sequences};
 use super::source::SourceExports;
 use super::udf::Exports as UserFunctionExports;
 
@@ -35,7 +35,7 @@ pub(super) struct RenderArgs<'a> {
 
 pub(super) struct RenderedNodes {
     pub(super) position_inputs: BTreeMap<NodeId, u32>,
-    pub(super) sequence_exists_pins: Vec<SequenceExistsPins>,
+    pub(super) sequence_context_pins: Vec<SequenceContextPins>,
     pub(super) siblings: Vec<GeneratedSibling>,
 }
 
@@ -199,7 +199,8 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut auto_number_inputs = Vec::new();
     let mut json_serializer_inputs = Vec::new();
     let mut position_inputs = BTreeMap::new();
-    let mut sequence_exists_pins = Vec::new();
+    let mut sequence_context_pins = Vec::new();
+    let mut generated_sequence_value_inputs = Vec::new();
     let mut siblings = Vec::new();
     let excluded_native_parsers = project
         .graph
@@ -641,10 +642,10 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 );
                 edges.push((sequence_output, filter_nodes));
                 edges.push((filter_output, exists_input));
-                sequence_exists_pins.push(SequenceExistsPins {
-                    predicate: *predicate,
+                sequence_context_pins.push(SequenceContextPins {
+                    predicate: Some((*predicate, filter_predicate)),
+                    expression: None,
                     sequence_output,
-                    filter_predicate,
                 });
             }
             Node::SequenceItemAt { sequence, .. } => {
@@ -674,6 +675,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 function,
                 sequence,
                 predicate,
+                expression,
                 arg,
             } => {
                 let Some(&sequence_output) = node_out_key.get(&sequence.item()) else {
@@ -695,14 +697,25 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                          \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
                          \t\t\t\t</component>\n"
                     );
-                    edges.push((sequence_output, filter_nodes));
-                    sequence_exists_pins.push(SequenceExistsPins {
-                        predicate: *predicate,
+                    if let Some(expression) = expression {
+                        generated_sequence_value_inputs.push((*expression, filter_nodes));
+                    } else {
+                        edges.push((sequence_output, filter_nodes));
+                    }
+                    sequence_context_pins.push(SequenceContextPins {
+                        predicate: Some((*predicate, filter_predicate)),
+                        expression: *expression,
                         sequence_output,
-                        filter_predicate,
                     });
                     filter_output
                 } else {
+                    if expression.is_some() {
+                        sequence_context_pins.push(SequenceContextPins {
+                            predicate: None,
+                            expression: *expression,
+                            sequence_output,
+                        });
+                    }
                     sequence_output
                 };
 
@@ -710,7 +723,11 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                 let output = keys.next();
                 let mut pins =
                     format!("<datapoint/><datapoint pos=\"1\" key=\"{aggregate_input}\"/>");
-                edges.push((aggregate_sequence, aggregate_input));
+                if predicate.is_some() || expression.is_none() {
+                    edges.push((aggregate_sequence, aggregate_input));
+                } else if let Some(expression) = expression {
+                    generated_sequence_value_inputs.push((*expression, aggregate_input));
+                }
                 if arg.is_some() {
                     let arg_input = keys.next();
                     fn_inputs.insert(id, vec![arg_input]);
@@ -1070,6 +1087,13 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
         warnings,
     );
     connect_deferred_inputs(
+        "generated-sequence aggregate value",
+        &generated_sequence_value_inputs,
+        node_out_key,
+        edges,
+        warnings,
+    );
+    connect_deferred_inputs(
         "JSON string parser",
         &json_parsers.inputs,
         node_out_key,
@@ -1105,7 +1129,7 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
 
     RenderedNodes {
         position_inputs,
-        sequence_exists_pins,
+        sequence_context_pins,
         siblings,
     }
 }

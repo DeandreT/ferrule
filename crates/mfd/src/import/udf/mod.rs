@@ -58,6 +58,7 @@ pub(super) enum ScalarExpr {
         sequence: ScalarSequenceExpr,
         item_feed: u32,
         predicate: Option<Box<ScalarExpr>>,
+        expression: Option<Box<ScalarExpr>>,
         arg: Option<Box<ScalarExpr>>,
     },
 }
@@ -163,12 +164,16 @@ impl ScalarExpr {
             ScalarExpr::SequenceAggregate {
                 sequence,
                 predicate,
+                expression,
                 arg,
                 ..
             } => {
                 sequence.collect_parameters(parameters);
                 if let Some(predicate) = predicate {
                     predicate.collect_parameters(parameters);
+                }
+                if let Some(expression) = expression {
+                    expression.collect_parameters(parameters);
                 }
                 if let Some(arg) = arg {
                     arg.collect_parameters(parameters);
@@ -1403,6 +1408,7 @@ fn instantiate_with_sequence_items(
             sequence,
             item_feed,
             predicate,
+            expression,
             arg,
         } => {
             let item = alloc_node(
@@ -1425,6 +1431,15 @@ fn instantiate_with_sequence_items(
                     next_id,
                 )
             });
+            let expression = expression.as_ref().map(|expression| {
+                instantiate_with_sequence_items(
+                    expression,
+                    parameters,
+                    &nested_items,
+                    graph,
+                    next_id,
+                )
+            });
             let arg = arg.as_ref().map(|arg| {
                 instantiate_with_sequence_items(arg, parameters, sequence_items, graph, next_id)
             });
@@ -1435,6 +1450,7 @@ fn instantiate_with_sequence_items(
                     function: *function,
                     sequence,
                     predicate,
+                    expression,
                     arg,
                 },
             )

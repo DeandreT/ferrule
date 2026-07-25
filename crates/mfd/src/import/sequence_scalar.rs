@@ -15,7 +15,7 @@ impl GraphBuilder<'_> {
         aggregate_feed: u32,
         arg: Option<NodeId>,
     ) -> Option<Node> {
-        let mut sequence_feed = aggregate_feed;
+        let mut value_feed = aggregate_feed;
         let mut predicate_feed = None;
         let mut invert_predicate = false;
         if let Some(&filter_index) = self.fn_by_output.get(&aggregate_feed)
@@ -27,29 +27,19 @@ impl GraphBuilder<'_> {
                 .position(|output| *output == Some(aggregate_feed))
             && output_position <= 1
         {
-            sequence_feed = self.input_feed(filter_index, 0)?;
+            value_feed = self.input_feed(filter_index, 0)?;
             predicate_feed = Some(self.input_feed(filter_index, 1)?);
             invert_predicate = output_position == 1;
         }
 
-        let sequence_index = *self.fn_by_output.get(&sequence_feed)?;
-        if !self
-            .fn_components
-            .get(sequence_index)
-            .is_some_and(|component| {
-                is_sequence_producer(component)
-                    && component.output_pins.first().copied().flatten() == Some(sequence_feed)
-            })
-        {
-            return None;
-        }
+        let (sequence_index, sequence_feed) = self.generated_sequence_dependency(value_feed)?;
 
         let item = self.alloc(Node::SourceField {
             path: Vec::new(),
             frame: None,
         });
         let previous_item = self.sequence_items.insert(sequence_index, item);
-        if predicate_feed.is_some() {
+        if predicate_feed.is_some() || value_feed != sequence_feed {
             self.sequence_predicate_components.insert(sequence_index);
         }
         let result = self.sequence_expr(sequence_index).and_then(|sequence| {
@@ -62,12 +52,19 @@ impl GraphBuilder<'_> {
                     })
                 });
             }
-            (predicate_feed.is_none() || predicate.is_some()).then_some(Node::SequenceAggregate {
-                function,
-                sequence,
-                predicate,
-                arg,
-            })
+            let expression = (value_feed != sequence_feed)
+                .then(|| self.value_node(value_feed))
+                .flatten();
+            (predicate_feed.is_none() || predicate.is_some())
+                .then_some(())
+                .filter(|_| value_feed == sequence_feed || expression.is_some())
+                .map(|()| Node::SequenceAggregate {
+                    function,
+                    sequence,
+                    predicate,
+                    expression,
+                    arg,
+                })
         });
         self.sequence_predicate_components.remove(&sequence_index);
         if let Some(previous_item) = previous_item {
@@ -79,6 +76,21 @@ impl GraphBuilder<'_> {
             self.graph.nodes.remove(&item);
         }
         result
+    }
+
+    fn generated_sequence_dependency(&self, feed: u32) -> Option<(usize, u32)> {
+        let mut matches = self
+            .fn_components
+            .iter()
+            .enumerate()
+            .filter_map(|(index, component)| {
+                let output = component.output_pins.first().copied().flatten()?;
+                (is_sequence_producer(component)
+                    && self.scalar_feed_depends_on(feed, output, &mut BTreeSet::new()))
+                .then_some((index, output))
+            });
+        let found = matches.next()?;
+        matches.next().is_none().then_some(found)
     }
 
     pub(super) fn sequence_exists_node(&mut self, exists_index: usize) -> Option<Node> {

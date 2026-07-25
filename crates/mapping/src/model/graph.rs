@@ -170,14 +170,17 @@ pub enum Node {
         sequence: SequenceExpr,
         index: NodeId,
     },
-    /// Reduces the scalar values from one generated sequence. An optional
-    /// predicate executes in the generated item's private item/position
-    /// context; `arg` executes once in the enclosing parent context.
+    /// Reduces values from one generated sequence. Optional predicate and
+    /// value expressions execute in the generated item's private
+    /// item/position context; `arg` executes once in the enclosing parent
+    /// context.
     SequenceAggregate {
         function: AggregateOp,
         sequence: SequenceExpr,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         predicate: Option<NodeId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expression: Option<NodeId>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         arg: Option<NodeId>,
     },
@@ -264,13 +267,14 @@ impl Node {
             Self::SequenceAggregate {
                 sequence,
                 predicate,
+                expression,
                 arg,
                 ..
             } => sequence
                 .inputs()
                 .into_iter()
                 .chain(
-                    [Some(sequence.item()), *predicate, *arg]
+                    [Some(sequence.item()), *predicate, *expression, *arg]
                         .into_iter()
                         .flatten(),
                 )

@@ -1028,7 +1028,8 @@ fn sequence_aggregate_roundtrips() {
             item: 4,
         },
         predicate: Some(5),
-        arg: Some(6),
+        expression: Some(6),
+        arg: Some(7),
     };
     let encoded = serde_json::to_string(&node).unwrap();
     assert!(encoded.contains(r#""kind":"sequence_aggregate""#));
@@ -1044,7 +1045,8 @@ fn sequence_aggregate_roundtrips() {
                 item: 4
             },
             predicate: Some(5),
-            arg: Some(6)
+            expression: Some(6),
+            arg: Some(7)
         }
     ));
 }

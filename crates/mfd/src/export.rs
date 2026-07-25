@@ -267,7 +267,7 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
     recursive::seed_context_fields(project, &sources, &mut node_out_key);
     let node::RenderedNodes {
         position_inputs,
-        sequence_exists_pins,
+        sequence_context_pins,
         siblings: node_siblings,
     } = node::render(node::RenderArgs {
         project,
@@ -320,16 +320,20 @@ pub fn export(project: &Project, path: &Path) -> Result<Vec<String>, MfdError> {
 
     let mut scope_components = String::new();
     let mut position_contexts: BTreeMap<NodeId, Option<u32>> = BTreeMap::new();
-    for pins in sequence_exists_pins {
-        match node_out_key.get(&pins.predicate) {
-            Some(&predicate_output) => edges.push((predicate_output, pins.filter_predicate)),
-            None => warnings.push(format!(
-                "sequence-exists predicate references unexported node {}; connection skipped",
-                pins.predicate
-            )),
+    for pins in sequence_context_pins {
+        if let Some((predicate, input)) = pins.predicate {
+            match node_out_key.get(&predicate) {
+                Some(&predicate_output) => edges.push((predicate_output, input)),
+                None => warnings.push(format!(
+                    "generated-sequence predicate references unexported node {predicate}; connection skipped"
+                )),
+            }
         }
         connect_position_roots(
-            [pins.predicate],
+            pins.predicate
+                .iter()
+                .map(|(predicate, _)| *predicate)
+                .chain(pins.expression),
             None,
             true,
             pins.sequence_output,

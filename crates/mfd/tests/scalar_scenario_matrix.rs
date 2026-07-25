@@ -1044,6 +1044,163 @@ fn generated_aggregate_is_invariant_under_graph_encoding() -> TestResult {
 }
 
 #[test]
+fn computed_generated_aggregate_executes_and_roundtrips() -> TestResult {
+    let fixture = ScalarMfdBuilder::generated_computed_aggregate(
+        "computed_generated_sum",
+        GeneratedSequence::Generate,
+        GeneratedAggregate::Sum,
+        vec![int(1), int(4), int(3)],
+        "integer",
+    )
+    .context(ScalarContext::NestedUserDefined)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+    codegen::lower(&imported.project)
+        .map_err(|diagnostics| format!("computed aggregate did not lower: {diagnostics:?}"))?;
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            mapping::Node::SequenceAggregate {
+                expression: Some(_),
+                ..
+            }
+        )
+    }));
+
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    assert_eq!(
+        output.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::Int(30))
+    );
+
+    let roundtrip = fixture.design().with_file_name("roundtrip.mfd");
+    let export_warnings = mfd::export(&imported.project, &roundtrip)?;
+    assert!(export_warnings.is_empty(), "{export_warnings:?}");
+    let reimported = mfd::import(&roundtrip)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    assert!(reimported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            mapping::Node::SequenceAggregate {
+                expression: Some(_),
+                ..
+            }
+        )
+    }));
+    let rerun = engine::run(&reimported.project, &source)?;
+    assert_eq!(
+        rerun.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::Int(30))
+    );
+    Ok(())
+}
+
+#[test]
+fn computed_generated_aggregate_imports_in_main_mapping() -> TestResult {
+    let fixture = ScalarMfdBuilder::generated_computed_aggregate(
+        "main_computed_generated_sum",
+        GeneratedSequence::Generate,
+        GeneratedAggregate::Sum,
+        vec![int(1), int(4), int(3)],
+        "integer",
+    )
+    .context(ScalarContext::Main)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            mapping::Node::SequenceAggregate {
+                expression: Some(_),
+                ..
+            }
+        )
+    }));
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    assert_eq!(
+        output.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::Int(30))
+    );
+    Ok(())
+}
+
+#[test]
+fn filtered_computed_generated_aggregate_executes_and_roundtrips() -> TestResult {
+    let fixture = ScalarMfdBuilder::generated_filtered_computed_aggregate(
+        "filtered_computed_generated_sum",
+        GeneratedSequence::Generate,
+        GeneratedAggregate::Sum,
+        vec![int(1), int(4), int(3), int(2)],
+        "integer",
+    )
+    .context(ScalarContext::NestedUserDefined)
+    .write()?;
+    let imported = mfd::import(fixture.design())?;
+    assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    assert!(
+        engine::validate(&imported.project).is_empty(),
+        "{:?}",
+        engine::validate(&imported.project)
+    );
+    codegen::lower(&imported.project)
+        .map_err(|diagnostics| format!("filtered computed aggregate: {diagnostics:?}"))?;
+    assert!(imported.project.graph.nodes.values().any(|node| {
+        matches!(
+            node,
+            mapping::Node::SequenceAggregate {
+                predicate: Some(_),
+                expression: Some(_),
+                ..
+            }
+        )
+    }));
+
+    let source = format_xml::from_str(
+        "<Source><Seed>fixture</Seed></Source>",
+        &imported.project.source,
+    )?;
+    let output = engine::run(&imported.project, &source)?;
+    assert_eq!(
+        output.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::Int(6))
+    );
+
+    let roundtrip = fixture.design().with_file_name("roundtrip.mfd");
+    assert!(
+        mfd::export(&imported.project, &roundtrip)?.is_empty(),
+        "filtered computed aggregate export warned"
+    );
+    let reimported = mfd::import(&roundtrip)?;
+    assert!(reimported.warnings.is_empty(), "{:?}", reimported.warnings);
+    let rerun = engine::run(&reimported.project, &source)?;
+    assert_eq!(
+        rerun.field("Result").and_then(Instance::as_scalar),
+        Some(&Value::Int(6))
+    );
+    Ok(())
+}
+
+#[test]
 fn filtered_generated_aggregate_executes_and_roundtrips() -> TestResult {
     let fixture = ScalarMfdBuilder::generated_filtered_aggregate(
         "filtered_generated_join",
