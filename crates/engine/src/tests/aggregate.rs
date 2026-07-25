@@ -1,5 +1,53 @@
 use super::*;
+use crate::aggregate::sort_value_ordering;
 use mapping::AggregateOp;
+
+#[test]
+fn scalar_sort_order_is_antisymmetric_and_transitive() {
+    let values = [
+        Value::Null,
+        Value::json_null(),
+        Value::Bool(false),
+        Value::Bool(true),
+        Value::Int(i64::MIN),
+        Value::Float(f64::NEG_INFINITY),
+        Value::Float(-1.5),
+        Value::Int(-1),
+        Value::Float(-0.0),
+        Value::Int(0),
+        Value::Float(0.0),
+        Value::Float(1.5),
+        Value::Int(2),
+        Value::Int(i64::MAX),
+        Value::Float(f64::INFINITY),
+        Value::Float(f64::NAN),
+        Value::String(String::new()),
+        Value::String("value".into()),
+        Value::xml_nil(),
+    ];
+
+    for left in &values {
+        for right in &values {
+            let ordering = sort_value_ordering(left, right);
+            assert_eq!(
+                ordering,
+                sort_value_ordering(right, left).reverse(),
+                "{left:?} versus {right:?}"
+            );
+            for last in &values {
+                if ordering != std::cmp::Ordering::Greater
+                    && sort_value_ordering(right, last) != std::cmp::Ordering::Greater
+                {
+                    assert_ne!(
+                        sort_value_ordering(left, last),
+                        std::cmp::Ordering::Greater,
+                        "{left:?} <= {right:?} <= {last:?}"
+                    );
+                }
+            }
+        }
+    }
+}
 
 #[test]
 fn integer_sum_is_exact_above_f64_integer_precision() {

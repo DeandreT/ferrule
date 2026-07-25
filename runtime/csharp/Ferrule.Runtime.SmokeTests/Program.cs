@@ -806,6 +806,22 @@ internal static partial class Program
             });
         Equal("A,B,C", string.Join(',', incomparable.Select(candidate => candidate.Name)));
         Equal(0, FerruleSequences.StableSort(candidates, Array.Empty<FerruleSortKey<SortCandidate>>()).Count - candidates.Length);
+
+        var cyclic = Enumerable.Range(0, 10)
+            .SelectMany(index => new[]
+            {
+                new SortCandidate($"two-{index}", FerruleValue.FromInt64(2), FerruleValue.Null),
+                new SortCandidate($"string-{index}", Text("incomparable"), FerruleValue.Null),
+                new SortCandidate($"one-{index}", FerruleValue.FromInt64(1), FerruleValue.Null),
+                new SortCandidate($"nan-{index}", FerruleValue.FromDouble(double.NaN), FerruleValue.Null),
+            })
+            .ToArray();
+        var total = FerruleSequences.StableSort(
+            cyclic,
+            new[] { new FerruleSortKey<SortCandidate>(candidate => candidate.Score) });
+        var expected = new[] { "one", "two", "nan", "string" }
+            .SelectMany(prefix => Enumerable.Range(0, 10).Select(index => $"{prefix}-{index}"));
+        Equal(string.Join(',', expected), string.Join(',', total.Select(candidate => candidate.Name)));
     }
 
     private static void TypedItemCounts()

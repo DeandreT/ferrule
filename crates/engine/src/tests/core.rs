@@ -1249,14 +1249,89 @@ fn scope_can_filter_in_source_order_before_sorting_survivors() {
 #[test]
 fn sort_order_places_null_first_for_ascending_and_last_when_reversed() {
     assert_eq!(
-        value_ordering(&Value::Null, &Value::String("value".into())),
-        Some(std::cmp::Ordering::Less)
+        crate::aggregate::sort_value_ordering(&Value::Null, &Value::String("value".into())),
+        std::cmp::Ordering::Less
     );
     assert_eq!(
-        value_ordering(&Value::String("value".into()), &Value::Null)
-            .map(std::cmp::Ordering::reverse),
-        Some(std::cmp::Ordering::Less)
+        crate::aggregate::sort_value_ordering(&Value::String("value".into()), &Value::Null)
+            .reverse(),
+        std::cmp::Ordering::Less
     );
+}
+
+#[test]
+fn scope_sort_totally_orders_mixed_and_non_finite_keys() {
+    let graph = graph_from(vec![
+        (
+            0,
+            Node::SourceField {
+                frame: None,
+                path: vec!["score".into()],
+            },
+        ),
+        (
+            1,
+            Node::SourceField {
+                frame: None,
+                path: vec!["name".into()],
+            },
+        ),
+    ]);
+    let project = Project {
+        source: dummy_schema(),
+        target: dummy_schema(),
+        source_path: None,
+        target_path: None,
+        source_options: Default::default(),
+        target_options: Default::default(),
+        extra_sources: Vec::new(),
+        extra_targets: Vec::new(),
+        failure_rules: Vec::new(),
+        user_functions: Default::default(),
+        graph,
+        root: Scope {
+            iteration: mapping::ScopeIteration::Source(Vec::new()),
+            sort_by: Some(0),
+            bindings: vec![Binding {
+                target_field: "name".into(),
+                node: 1,
+            }],
+            ..Scope::default()
+        },
+    };
+    let row = |name: String, score: Value| {
+        Instance::Group(vec![
+            ("name".into(), Instance::Scalar(Value::String(name))),
+            ("score".into(), Instance::Scalar(score)),
+        ])
+    };
+    let mut source = Vec::new();
+    for index in 0..10 {
+        source.push(row(format!("two-{index}"), Value::Int(2)));
+        source.push(row(
+            format!("string-{index}"),
+            Value::String("incomparable".into()),
+        ));
+        source.push(row(format!("one-{index}"), Value::Int(1)));
+        source.push(row(format!("nan-{index}"), Value::Float(f64::NAN)));
+    }
+
+    let output = run(&project, &Instance::Repeated(source)).unwrap();
+    let names = output
+        .as_repeated()
+        .unwrap()
+        .iter()
+        .filter_map(|row| row.field("name").and_then(Instance::as_scalar))
+        .filter_map(|value| match value {
+            Value::String(value) => Some(value.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let expected = ["one", "two", "nan", "string"]
+        .into_iter()
+        .flat_map(|prefix| (0..10).map(move |index| format!("{prefix}-{index}")))
+        .collect::<Vec<_>>();
+    assert_eq!(names, expected);
 }
 
 /// A field path crossing a repeating element that no scope iterates
