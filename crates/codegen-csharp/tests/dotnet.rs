@@ -127,7 +127,7 @@ fn fixture() -> Program {
                 SchemaNode::scalar("RootInt", ScalarType::Int),
                 SchemaNode::scalar("Exists", ScalarType::Bool),
                 SchemaNode::scalar("Selected", ScalarType::String),
-                SchemaNode::scalar("Count", ScalarType::Int),
+                SchemaNode::scalar("LengthSum", ScalarType::Int),
                 SchemaNode::group(
                     "Nested",
                     vec![
@@ -495,7 +495,7 @@ fn fixture() -> Program {
             ExpressionNode {
                 id: 51,
                 expression: Expression::SequenceAggregate {
-                    function: AggregateFunction::Count,
+                    function: AggregateFunction::Sum,
                     sequence: GeneratedSequence::TokenizeRegex {
                         input: 20,
                         pattern: 21,
@@ -503,7 +503,15 @@ fn fixture() -> Program {
                         item: 50,
                     },
                     predicate: None,
+                    expression: Some(52),
                     arg: None,
+                },
+            },
+            ExpressionNode {
+                id: 52,
+                expression: Expression::Call {
+                    function: ScalarFunction::Length,
+                    args: vec![50],
                 },
             },
         ],
@@ -644,7 +652,7 @@ fn fixture() -> Program {
                 binding("RootInt", 2, ScalarType::Int, false),
                 binding("Exists", 24, ScalarType::Bool, false),
                 binding("Selected", 28, ScalarType::String, false),
-                binding("Count", 51, ScalarType::Int, false),
+                binding("LengthSum", 51, ScalarType::Int, false),
             ],
             children: vec![TargetScope {
                 target_field: "Nested".into(),
@@ -746,11 +754,11 @@ var extraSources = ExtraSources();
 var outputRows = (FerruleRepeated)GeneratedMapping.ExecuteWithSources(source, extraSources);
 Assert(outputRows.Items.Count == 1);
 var output = (FerruleGroup)outputRows.Items[0];
-Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "Count", "Nested" }));
+Assert(output.Fields.Select(field => field.Name).SequenceEqual(new[] { "RootInt", "Exists", "Selected", "LengthSum", "Nested" }));
 Assert(((FerruleScalar)output.Fields[0].Value).Value == FerruleValue.FromInt64(7));
 Assert(((FerruleScalar)output.Fields[1].Value).Value == FerruleValue.FromBoolean(true));
 Assert(((FerruleScalar)output.Fields[2].Value).Value == FerruleValue.FromString("beta"));
-Assert(((FerruleScalar)output.Fields[3].Value).Value == FerruleValue.FromInt64(3));
+Assert(((FerruleScalar)output.Fields[3].Value).Value == FerruleValue.FromInt64(14));
 
 var nestedRows = (FerruleRepeated)output.Fields[4].Value;
 Assert(nestedRows.Items.Count == 3);

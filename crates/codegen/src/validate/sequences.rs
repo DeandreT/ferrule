@@ -153,6 +153,7 @@ fn visit_context(
         Expression::SequenceAggregate {
             sequence,
             predicate,
+            expression,
             arg,
             ..
         } => {
@@ -169,13 +170,25 @@ fn visit_context(
                 )?;
             }
             if let Some(predicate) = predicate {
-                let predicate_items = [sequence.item()];
+                let item_context = [sequence.item()];
                 visit_context(
                     *predicate,
                     root,
                     expressions,
                     sequence_items,
-                    &predicate_items,
+                    &item_context,
+                    &reducer,
+                    visited,
+                )?;
+            }
+            if let Some(expression) = expression {
+                let item_context = [sequence.item()];
+                visit_context(
+                    *expression,
+                    root,
+                    expressions,
+                    sequence_items,
+                    &item_context,
                     &reducer,
                     visited,
                 )?;

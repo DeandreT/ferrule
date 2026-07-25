@@ -599,12 +599,14 @@ pub enum Expression {
         sequence: GeneratedSequence,
         index: NodeId,
     },
-    /// Reduces raw generated scalar values after an optional item-scoped
-    /// predicate. The aggregate argument executes in the parent context.
+    /// Reduces raw or computed generated scalar values after an optional
+    /// item-scoped predicate. The aggregate argument executes in the parent
+    /// context.
     SequenceAggregate {
         function: AggregateFunction,
         sequence: GeneratedSequence,
         predicate: Option<NodeId>,
+        expression: Option<NodeId>,
         arg: Option<NodeId>,
     },
 }

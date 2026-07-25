@@ -903,6 +903,7 @@ fn render_expression(
             function,
             sequence,
             predicate,
+            expression,
             arg,
         } => {
             let mut body = String::from("{\n");
@@ -920,7 +921,7 @@ fn render_expression(
             }
             body.push_str(&format!(
                 "            aggregate_values.push(expression_{}(&item_context)?);\n        }}\n",
-                sequence.item()
+                expression.unwrap_or(sequence.item())
             ));
             match arg {
                 Some(arg) => body.push_str(&format!(

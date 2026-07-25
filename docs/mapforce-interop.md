@@ -62,11 +62,12 @@ and record-producing filter lookup UDFs accept typed XML, EDI, or database
 inputs. Scalar and nested scalar UDFs can also tokenize text, split by fixed
 length or bounded regular expressions, or generate an inclusive integer range,
 then select one 1-based item, test a filtered sequence for a match, or apply
-count, sum, average, minimum, maximum, or string-join to raw or filtered
-generated values. Import lowers those compositions to ferrule's native
-generated-sequence reducers, so interpreter execution, Rust/C# generation, and
-export/re-import share one bounded implementation. Filtered UDF predicates can
-use the generated item's 1-based `position()` as well as the item value.
+count, sum, average, minimum, maximum, or string-join to raw, filtered, or
+per-item computed generated values. Import lowers those compositions to
+ferrule's native generated-sequence reducers, so interpreter execution,
+Rust/C# generation, and export/re-import share one bounded implementation.
+Filtered predicates and computed values can use the generated item's 1-based
+`position()` as well as the item value.
 
 Import is deliberately resilient: unsupported constructs are skipped with one
 actionable warning where possible. A design is rejected only when no usable
