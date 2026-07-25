@@ -1,5 +1,110 @@
 # Mapping Model and Workspace Architecture
 
+## System Architecture
+
+Solid arrows show runtime data flow. Dotted arrows show crate dependencies or
+design-time relationships.
+
+```mermaid
+flowchart TB
+    subgraph interfaces["Interfaces"]
+        direction TB
+        gui["Native GUI<br/>gui + editor-ui"]
+        web["Web demo<br/>WASM + real engine"]
+        cli["CLI and host API<br/>filesystem or payload execution"]
+        host["Embedding application"]
+    end
+
+    subgraph design["Mapping design"]
+        direction TB
+        projectFile["Ferrule project JSON"]
+        mfdFile["MapForce .mfd"]
+        mfd["mfd importer/exporter<br/>confined resource resolution<br/>and actionable warnings"]
+        project["mapping::Project<br/>schemas, expression graph, scopes,<br/>endpoints, options, UDFs, and failures"]
+    end
+
+    subgraph model["Shared typed model"]
+        direction TB
+        schema["SchemaNode<br/>format-independent document shape"]
+        instance["Instance and Value<br/>scalar, group, repetition,<br/>mapped sequence, and document set"]
+        functions["functions<br/>typed scalar built-ins"]
+    end
+
+    subgraph boundary["Format boundaries"]
+        direction TB
+        inputs["Primary and named inputs<br/>paths, URLs, or bounded payloads"]
+        readers["Readers and schema importers<br/>XML, JSON, CSV, XLSX, SQLite,<br/>EDI, FlexText, Protobuf, PDF, and XBRL"]
+        writers["Writers and validators<br/>all supported output formats<br/>except input-only PDF"]
+        artifacts["Serialized artifacts<br/>filesystem paths or host-owned bytes"]
+    end
+
+    subgraph runtime["engine interpreter"]
+        direction TB
+        validate["Validate project<br/>before execution"]
+        context["Build execution context<br/>sources, parameters, paths,<br/>stable time, and tracing"]
+        iterate["Evaluate scope pipeline<br/>iterate, join, filter, group,<br/>sort, and window"]
+        evaluate["Evaluate graph<br/>fields, calls, branches,<br/>UDFs, lookups, and aggregates"]
+        construct["Construct ordered targets<br/>primary plus named outputs"]
+    end
+
+    subgraph generation["Static code generation"]
+        direction TB
+        lower["codegen<br/>validate and lower the<br/>reachable portable subset"]
+        rust["codegen-rust<br/>generated Rust library"]
+        csharp["codegen-csharp<br/>generated .NET library"]
+        runtimes["Generated runtimes<br/>Rust crate or vendored C# sources"]
+    end
+
+    projectFile --> project
+    mfdFile --> mfd --> project
+
+    gui -.-> project
+    web -.-> project
+    cli -.-> project
+    host --> cli
+
+    project -.-> schema
+    project -.-> instance
+    readers -.-> schema
+    readers -.-> instance
+    inputs --> readers
+
+    project --> validate
+    readers --> context
+    validate --> context --> iterate --> evaluate --> construct
+    functions -.-> evaluate
+
+    construct -.-> instance
+    construct --> writers --> artifacts
+
+    project --> lower
+    lower --> rust
+    lower --> csharp
+    runtimes --> rust
+    runtimes --> csharp
+
+    gui -.-> cli
+    web -.-> validate
+    cli -.-> readers
+    cli -.-> writers
+    cli -.-> validate
+    mfd -.-> readers
+
+    classDef interface fill:#dbeafe,stroke:#2563eb,color:#172554
+    classDef design fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef format fill:#fef3c7,stroke:#d97706,color:#451a03
+    classDef engine fill:#fee2e2,stroke:#dc2626,color:#450a0a
+    classDef generated fill:#f3e8ff,stroke:#9333ea,color:#3b0764
+    classDef artifact fill:#ccfbf1,stroke:#0f766e,color:#042f2e
+
+    class gui,web,cli,host interface
+    class projectFile,mfdFile,mfd,project,schema,instance,functions design
+    class inputs,readers,writers format
+    class validate,context,iterate,evaluate,construct engine
+    class lower,rust,csharp,runtimes generated
+    class artifacts artifact
+```
+
 ## Project Model
 
 A ferrule project is plain JSON built from four main concepts:
