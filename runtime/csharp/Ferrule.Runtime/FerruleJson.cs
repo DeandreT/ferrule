@@ -54,6 +54,13 @@ public static class FerruleJson
         }
     }
 
+    internal static void ValidateSchema(string schemaJson)
+    {
+        ArgumentNullException.ThrowIfNull(schemaJson);
+        RequireUtf8Limit(schemaJson, MaximumSchemaBytes, "embedded JSON schema");
+        _ = ParseSchema(schemaJson);
+    }
+
     public static string Serialize(string schemaJson, FerruleInstance instance)
     {
         ArgumentNullException.ThrowIfNull(schemaJson);
