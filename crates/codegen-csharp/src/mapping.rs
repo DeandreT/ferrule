@@ -385,6 +385,40 @@ pub(crate) fn render(program: &Program) -> Result<String, EmitError> {
                     "        var sequence_index_{identifier} = Node_{index}(context);\n        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.ItemAt, sequence_values_{identifier}, sequence_index_{identifier});\n    }}\n"
                 ));
             }
+            Expression::SequenceAggregate {
+                function,
+                sequence,
+                predicate,
+                arg,
+            } => {
+                output.push_str("\n    {\n");
+                let identifier = format!("node_{node}");
+                render_generated_values(&identifier, sequence, &mut output);
+                output.push_str(&format!(
+                    "        var aggregate_values_{identifier} = new global::System.Collections.Generic.List<global::Ferrule.Runtime.FerruleValue>();\n        foreach (var sequence_context_{identifier} in context.EnumerateGenerated(sequence_values_{identifier}))\n        {{\n"
+                ));
+                if let Some(predicate) = predicate {
+                    output.push_str(&format!(
+                        "            var sequence_predicate_{identifier} = Node_{predicate}(sequence_context_{identifier});\n            if (!global::Ferrule.Runtime.FerruleFunctions.RequireBoolean(sequence_predicate_{identifier}, {predicate}U))\n            {{\n                continue;\n            }}\n"
+                    ));
+                }
+                output.push_str(&format!(
+                    "            aggregate_values_{identifier}.Add(Node_{}(sequence_context_{identifier}));\n        }}\n",
+                    sequence.item()
+                ));
+                match arg {
+                    Some(arg) => output.push_str(&format!(
+                        "        global::Ferrule.Runtime.FerruleValue? aggregate_argument_{identifier} = Node_{arg}(context);\n"
+                    )),
+                    None => output.push_str(&format!(
+                        "        global::Ferrule.Runtime.FerruleValue? aggregate_argument_{identifier} = null;\n"
+                    )),
+                }
+                output.push_str(&format!(
+                    "        return global::Ferrule.Runtime.FerruleAggregates.Apply(\n            global::Ferrule.Runtime.FerruleAggregateOperation.{}, aggregate_values_{identifier}, aggregate_argument_{identifier});\n    }}\n",
+                    aggregate_function_name(*function)
+                ));
+            }
         }
     }
 

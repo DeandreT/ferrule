@@ -755,6 +755,17 @@ fn lower_expression(id: NodeId, node: &Node) -> Result<ExpressionNode, Diagnosti
             sequence: lower_generated_sequence(sequence),
             index: *index,
         },
+        Node::SequenceAggregate {
+            function,
+            sequence,
+            predicate,
+            arg,
+        } => Expression::SequenceAggregate {
+            function: (*function).into(),
+            sequence: lower_generated_sequence(sequence),
+            predicate: *predicate,
+            arg: *arg,
+        },
         node => {
             return Err(Diagnostic::UnsupportedNode {
                 node: id,
@@ -788,6 +799,7 @@ fn unsupported_node_kind(node: &Node) -> UnsupportedNodeKind {
         | Node::CollectionFind { .. }
         | Node::SequenceExists { .. }
         | Node::SequenceItemAt { .. }
+        | Node::SequenceAggregate { .. }
         | Node::Aggregate { .. }
         | Node::JoinAggregate { .. } => {
             unreachable!("portable expressions are handled above")

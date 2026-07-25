@@ -60,7 +60,9 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
     let mut sequences = Vec::new();
     collect_scope_sequences(&project.root, &mut sequences);
     for node in project.graph.nodes.values() {
-        if let Node::SequenceExists { sequence, .. } | Node::SequenceItemAt { sequence, .. } = node
+        if let Node::SequenceExists { sequence, .. }
+        | Node::SequenceItemAt { sequence, .. }
+        | Node::SequenceAggregate { sequence, .. } = node
         {
             sequences.push(sequence);
         }
@@ -668,6 +670,64 @@ pub(super) fn render(args: RenderArgs<'_>) -> RenderedNodes {
                     components,
                 );
             }
+            Node::SequenceAggregate {
+                function,
+                sequence,
+                predicate,
+                arg,
+            } => {
+                let Some(&sequence_output) = node_out_key.get(&sequence.item()) else {
+                    warnings.push(format!(
+                        "sequence aggregate node {id} references an unexported sequence item; skipped"
+                    ));
+                    continue;
+                };
+                let aggregate_sequence = if let Some(predicate) = predicate {
+                    let filter_nodes = keys.next();
+                    let filter_predicate = keys.next();
+                    let filter_output = keys.next();
+                    *uid += 1;
+                    let _ = write!(
+                        components,
+                        "\t\t\t\t<component name=\"filter\" library=\"core\" uid=\"{uid}\" kind=\"3\">\n\
+                         \t\t\t\t\t<sources><datapoint pos=\"0\" key=\"{filter_nodes}\"/><datapoint pos=\"1\" key=\"{filter_predicate}\"/></sources>\n\
+                         \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{filter_output}\"/><datapoint/></targets>\n\
+                         \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                         \t\t\t\t</component>\n"
+                    );
+                    edges.push((sequence_output, filter_nodes));
+                    sequence_exists_pins.push(SequenceExistsPins {
+                        predicate: *predicate,
+                        sequence_output,
+                        filter_predicate,
+                    });
+                    filter_output
+                } else {
+                    sequence_output
+                };
+
+                let aggregate_input = keys.next();
+                let output = keys.next();
+                let mut pins =
+                    format!("<datapoint/><datapoint pos=\"1\" key=\"{aggregate_input}\"/>");
+                edges.push((aggregate_sequence, aggregate_input));
+                if arg.is_some() {
+                    let arg_input = keys.next();
+                    fn_inputs.insert(id, vec![arg_input]);
+                    let _ = write!(pins, "<datapoint pos=\"2\" key=\"{arg_input}\"/>");
+                }
+                node_out_key.insert(id, output);
+                *uid += 1;
+                let _ = write!(
+                    components,
+                    "\t\t\t\t<component name=\"{}\" library=\"core\" uid=\"{uid}\" kind=\"5\">\n\
+                     \t\t\t\t\t<sources>{pins}</sources>\n\
+                     \t\t\t\t\t<targets><datapoint pos=\"0\" key=\"{output}\"/></targets>\n\
+                     \t\t\t\t\t<view ltx=\"20\" lty=\"20\" rbx=\"120\" rby=\"60\"/>\n\
+                     \t\t\t\t</component>\n",
+                    aggregate_component_name(*function)
+                );
+            }
             Node::Aggregate {
                 function,
                 collection,
@@ -1180,6 +1240,7 @@ fn connect_inputs(
             } => expression.iter().chain(arg).copied().collect(),
             Node::SequenceExists { .. } => continue,
             Node::SequenceItemAt { index, .. } => vec![*index],
+            Node::SequenceAggregate { arg, .. } => arg.iter().copied().collect(),
             _ => continue,
         };
         for (index, arg) in args.iter().enumerate() {

@@ -120,6 +120,17 @@ fn node_inputs(node: &Node) -> Vec<Option<NodeId>> {
             .map(Some)
             .chain([Some(*index)])
             .collect(),
+        Node::SequenceAggregate {
+            sequence,
+            predicate,
+            arg,
+            ..
+        } => sequence
+            .inputs()
+            .into_iter()
+            .map(Some)
+            .chain([*predicate, *arg])
+            .collect(),
         Node::Aggregate {
             expression, arg, ..
         }
@@ -175,6 +186,12 @@ fn node_title(node: &Node) -> String {
         }
         Node::SequenceItemAt { sequence, .. } => {
             format!("item-at · {}", sequence_label(sequence))
+        }
+        Node::SequenceAggregate {
+            function, sequence, ..
+        } => {
+            let op = format!("{function:?}").to_lowercase();
+            format!("{op} · {}", sequence_label(sequence))
         }
         Node::Aggregate {
             function,
