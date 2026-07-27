@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::appearance::EditorAppearance;
 use crate::appearance_editor::AppearanceTab;
 use crate::canvas::{CanvasNode, source_blocks, target_blocks};
-use crate::canvas_layout::arrange_snarl;
+use crate::canvas_layout::{ArrangeMode, arrange_snarl_with_mode};
 use crate::diagnostics::{Diagnostic, DiagnosticLevel, Diagnostics};
 use crate::document::DocumentLocation;
 use crate::extra_sources::{ExtraSourceDraft, remove_extra_source};
@@ -63,12 +63,19 @@ struct CanvasDocumentState {
     endpoint_scroll: crate::canvas_endpoints::EndpointScrollState,
     search: crate::canvas_search::CanvasSearchState,
     view_generation: u64,
+    viewport_width: f32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum MappingDocument {
     Main,
     Function(FunctionId),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ValueMapEditorTarget {
+    document: MappingDocument,
+    node: NodeId,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -81,6 +88,7 @@ enum SplitOrientation {
 struct MappingWorkspace {
     tabs: Vec<MappingDocument>,
     active: MappingDocument,
+    focused: MappingDocument,
     split: Option<MappingDocument>,
     split_orientation: SplitOrientation,
     floating: std::collections::BTreeSet<FunctionId>,
@@ -92,6 +100,7 @@ impl Default for MappingWorkspace {
         Self {
             tabs: vec![MappingDocument::Main],
             active: MappingDocument::Main,
+            focused: MappingDocument::Main,
             split: None,
             split_orientation: SplitOrientation::Horizontal,
             floating: std::collections::BTreeSet::new(),
@@ -117,6 +126,9 @@ impl MappingWorkspace {
         if !exists(&self.active) {
             self.active = MappingDocument::Main;
         }
+        if !exists(&self.focused) {
+            self.focused = self.active;
+        }
         if self.split.is_some_and(|document| !exists(&document)) {
             self.split = None;
         }
@@ -141,6 +153,7 @@ impl MappingWorkspace {
                 .contains(&MappingDocument::Function(function))
         {
             workspace.active = MappingDocument::Function(function);
+            workspace.focused = workspace.active;
         }
         for (&function, nodes) in &layout.function_nodes {
             let Some(definition) = project.user_functions.get(&function) else {
@@ -168,6 +181,7 @@ impl CanvasDocumentState {
             endpoint_scroll: crate::canvas_endpoints::EndpointScrollState::default(),
             search: crate::canvas_search::CanvasSearchState::default(),
             view_generation: 0,
+            viewport_width: 1_200.0,
         }
     }
 
@@ -249,6 +263,7 @@ pub struct FerruleApp {
     project: Project,
     main_canvas: CanvasDocumentState,
     mapping_workspace: MappingWorkspace,
+    value_map_editor: Option<ValueMapEditorTarget>,
     show_function_navigator: bool,
     function_search: String,
     new_function_draft: Option<function_workspace::NewFunctionDraft>,
@@ -332,6 +347,7 @@ impl Default for FerruleApp {
             project,
             main_canvas,
             mapping_workspace,
+            value_map_editor: None,
             show_function_navigator: false,
             function_search: String::new(),
             new_function_draft: None,
@@ -692,6 +708,7 @@ impl FerruleApp {
                 self.clear_run_report();
                 self.project = blank_project();
                 self.mapping_workspace.reset();
+                self.value_map_editor = None;
                 self.main_canvas = CanvasDocumentState::main(&self.project);
                 self.reset_canvas_view();
                 self.document = DocumentLocation::untitled("project.json");
@@ -772,6 +789,7 @@ impl FerruleApp {
                 self.clear_run_report();
                 self.project = project;
                 self.mapping_workspace = mapping_workspace;
+                self.value_map_editor = None;
                 self.document = DocumentLocation::saved(path);
                 self.selected_scope.clear();
                 self.mark_clean();
@@ -947,6 +965,7 @@ impl FerruleApp {
                     self.reset_canvas_view();
                     self.project = imported.project;
                     self.mapping_workspace.reset();
+                    self.value_map_editor = None;
                     self.history.mark_unsaved();
                     self.selected_scope.clear();
                     self.rebase_history();
@@ -1158,6 +1177,7 @@ impl eframe::App for FerruleApp {
         self.show_new_function_dialog(ui.ctx());
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);
+        self.show_value_map_editor_window(ui.ctx());
         if let Some(repaint_after) =
             self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {

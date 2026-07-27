@@ -22,7 +22,7 @@ use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
 use crate::canvas_endpoints::EndpointDisplayPin;
 use crate::path_picker::SourcePathCatalog;
-use crate::value_editor::{show_value_editor, show_value_map_editor};
+use crate::value_editor::{show_value_editor, show_value_map_preview};
 use crate::wire_colors::WireEmphasis;
 
 #[path = "graph_references.rs"]
@@ -199,6 +199,7 @@ pub struct GraphViewer<'a> {
     pub parameter_names: std::collections::BTreeMap<FunctionParameterId, String>,
     pub protected_output: Option<NodeId>,
     pub requested_function_open: Option<FunctionId>,
+    pub requested_value_map_editor: Option<NodeId>,
     pub colors: SemanticThemeColors,
     pub wire_color_mode: WireColorMode,
     pub endpoint_scroll: &'a mut crate::canvas_endpoints::EndpointScrollState,
@@ -936,9 +937,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         _outputs: &[OutPin],
         snarl: &Snarl<CanvasNode>,
     ) -> NodeLayout {
-        if Self::mapping_id(snarl[node])
-            .is_some_and(|id| matches!(self.graph.nodes.get(&id), Some(Node::Lookup { .. })))
-        {
+        if Self::mapping_id(snarl[node]).is_some_and(|id| {
+            matches!(
+                self.graph.nodes.get(&id),
+                Some(Node::Lookup { .. } | Node::ValueMap { .. })
+            )
+        }) {
             NodeLayout::sandwich()
         } else {
             default
@@ -1288,8 +1292,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
     }
 
     fn has_body(&mut self, node: &CanvasNode) -> bool {
-        Self::mapping_id(*node)
-            .is_some_and(|id| matches!(self.graph.nodes.get(&id), Some(Node::Lookup { .. })))
+        Self::mapping_id(*node).is_some_and(|id| {
+            matches!(
+                self.graph.nodes.get(&id),
+                Some(Node::Lookup { .. } | Node::ValueMap { .. })
+            )
+        })
     }
 
     fn show_body(
@@ -1304,14 +1312,20 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
             return;
         };
         let source_paths = self.source_paths;
-        if let Some(Node::Lookup {
-            collection,
-            key,
-            value,
-            ..
-        }) = self.graph.nodes.get_mut(&node_id)
-        {
-            show_lookup_editor(ui, source_paths, collection, key, value);
+        match self.graph.nodes.get_mut(&node_id) {
+            Some(Node::Lookup {
+                collection,
+                key,
+                value,
+                ..
+            }) => show_lookup_editor(ui, source_paths, collection, key, value),
+            Some(Node::ValueMap { table, default, .. })
+                if show_value_map_preview(ui, table, default.as_ref()) =>
+            {
+                self.requested_value_map_editor = Some(node_id);
+            }
+            Some(Node::ValueMap { .. }) => {}
+            _ => {}
         }
     }
 
@@ -1662,7 +1676,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Node::If { .. } => {
                     ui.label("condition ? then : else");
                 }
-                Node::ValueMap { table, default, .. } => show_value_map_editor(ui, table, default),
+                Node::ValueMap { .. } => {
+                    ui.label("mapped value");
+                }
                 Node::Lookup { .. } => {
                     ui.label("result");
                 }
