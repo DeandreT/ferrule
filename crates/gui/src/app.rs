@@ -72,12 +72,6 @@ enum MappingDocument {
     Function(FunctionId),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ValueMapEditorTarget {
-    document: MappingDocument,
-    node: NodeId,
-}
-
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum SplitOrientation {
     #[default]
@@ -263,7 +257,6 @@ pub struct FerruleApp {
     project: Project,
     main_canvas: CanvasDocumentState,
     mapping_workspace: MappingWorkspace,
-    value_map_editor: Option<ValueMapEditorTarget>,
     show_function_navigator: bool,
     function_search: String,
     new_function_draft: Option<function_workspace::NewFunctionDraft>,
@@ -347,7 +340,6 @@ impl Default for FerruleApp {
             project,
             main_canvas,
             mapping_workspace,
-            value_map_editor: None,
             show_function_navigator: false,
             function_search: String::new(),
             new_function_draft: None,
@@ -708,7 +700,6 @@ impl FerruleApp {
                 self.clear_run_report();
                 self.project = blank_project();
                 self.mapping_workspace.reset();
-                self.value_map_editor = None;
                 self.main_canvas = CanvasDocumentState::main(&self.project);
                 self.reset_canvas_view();
                 self.document = DocumentLocation::untitled("project.json");
@@ -789,7 +780,6 @@ impl FerruleApp {
                 self.clear_run_report();
                 self.project = project;
                 self.mapping_workspace = mapping_workspace;
-                self.value_map_editor = None;
                 self.document = DocumentLocation::saved(path);
                 self.selected_scope.clear();
                 self.mark_clean();
@@ -965,7 +955,6 @@ impl FerruleApp {
                     self.reset_canvas_view();
                     self.project = imported.project;
                     self.mapping_workspace.reset();
-                    self.value_map_editor = None;
                     self.history.mark_unsaved();
                     self.selected_scope.clear();
                     self.rebase_history();
@@ -1177,7 +1166,6 @@ impl eframe::App for FerruleApp {
         self.show_new_function_dialog(ui.ctx());
         self.show_function_navigator(ui.ctx(), project_editing_enabled);
         self.show_floating_function_windows(ui.ctx(), project_editing_enabled);
-        self.show_value_map_editor_window(ui.ctx());
         if let Some(repaint_after) =
             self.observe_editor_history(std::time::Instant::now(), coalesce_history_change)
         {

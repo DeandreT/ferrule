@@ -331,7 +331,6 @@ impl FerruleApp {
         let target_blocks = Vec::new();
         let mut root = Scope::default();
         let mut requested = None;
-        let mut requested_value_map = None;
         let mut error = None;
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (functions, canvases) = (
@@ -358,10 +357,10 @@ impl FerruleApp {
                 parameter_names: parameter_names.clone(),
                 protected_output: Some(output),
                 requested_function_open: None,
-                requested_value_map_editor: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
                 endpoint_scroll: &mut canvas.endpoint_scroll,
+                value_map_wheel: None,
                 endpoint_search_match: None,
                 node_sizes: Some(&mut canvas.node_sizes),
                 hovered_node: None,
@@ -389,7 +388,6 @@ impl FerruleApp {
                 self.mapping_workspace.focused = MappingDocument::Function(function_id);
             }
             requested = viewer.requested_function_open;
-            requested_value_map = viewer.requested_value_map_editor;
             error = viewer.error;
         });
         if let Some(error) = error {
@@ -398,12 +396,6 @@ impl FerruleApp {
         }
         if let Some(function) = requested {
             self.open_function_tab(function);
-        }
-        if let Some(node) = requested_value_map {
-            self.value_map_editor = Some(ValueMapEditorTarget {
-                document: MappingDocument::Function(function_id),
-                node,
-            });
         }
     }
 
