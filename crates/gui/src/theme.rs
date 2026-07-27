@@ -35,6 +35,18 @@ pub const METRICS: InteractionMetrics = InteractionMetrics {
     node_row_height: 28.0,
 };
 
+pub fn top_bar_row(ui: &mut egui::Ui, height: f32, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::NONE
+        .inner_margin(Margin::symmetric(0, 3))
+        .show(ui, |ui| {
+            ui.allocate_ui_with_layout(
+                vec2(ui.available_width(), height),
+                egui::Layout::left_to_right(egui::Align::Center),
+                add,
+            );
+        });
+}
+
 /// User-facing theme choice. High contrast intentionally uses a dark base so
 /// it remains deterministic instead of changing meaning with the system theme.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

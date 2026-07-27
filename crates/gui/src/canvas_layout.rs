@@ -14,6 +14,16 @@ const ENDPOINT_PIN_PITCH: f32 = 22.0;
 const NODE_GAP: f32 = 24.0;
 const ENDPOINT_BLOCK_GAP: f32 = 8.0;
 const SWEEP_COUNT: usize = 6;
+const MIN_COMPACT_WIDTH: f32 = 1_200.0;
+const MAX_COMPACT_WIDTH: f32 = 2_400.0;
+const COMPACT_WIDTH_FACTOR: f32 = 1.5;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ArrangeMode {
+    #[default]
+    LeftToRight,
+    Compact,
+}
 
 #[derive(Clone, Copy)]
 struct Edge {
@@ -38,7 +48,23 @@ pub fn arrange_snarl(
     measured_sizes: &BTreeMap<CanvasNode, Vec2>,
     wire: WireAppearance,
 ) {
-    let positions = layout_positions(snarl, measured_sizes, wire);
+    arrange_snarl_with_mode(
+        snarl,
+        measured_sizes,
+        wire,
+        ArrangeMode::LeftToRight,
+        MIN_COMPACT_WIDTH,
+    );
+}
+
+pub fn arrange_snarl_with_mode(
+    snarl: &mut Snarl<CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+    wire: WireAppearance,
+    mode: ArrangeMode,
+    viewport_width: f32,
+) {
+    let positions = layout_positions(snarl, measured_sizes, wire, mode, viewport_width);
     for (node, next) in positions {
         if let Some(info) = snarl.get_node_info_mut(node) {
             info.pos = next;
@@ -50,6 +76,8 @@ fn layout_positions(
     snarl: &Snarl<CanvasNode>,
     measured_sizes: &BTreeMap<CanvasNode, Vec2>,
     wire: WireAppearance,
+    mode: ArrangeMode,
+    viewport_width: f32,
 ) -> BTreeMap<SnarlNodeId, Pos2> {
     let semantics: BTreeMap<_, _> = snarl
         .nodes_pos_ids()
@@ -63,10 +91,6 @@ fn layout_positions(
     });
     let source_extent = endpoint_extent(&source_positions, &semantics, measured_sizes);
     let target_extent = endpoint_extent(&target_positions, &semantics, measured_sizes);
-    let source_nodes = semantics
-        .iter()
-        .filter_map(|(&id, node)| matches!(node, CanvasNode::SourceBlock(_)).then_some(id))
-        .collect::<BTreeSet<_>>();
     let graph_nodes: BTreeSet<_> = semantics
         .iter()
         .filter_map(|(&id, node)| {
@@ -149,8 +173,7 @@ fn layout_positions(
         .values()
         .flat_map(|nodes| pack_column(nodes, &semantics, measured_sizes, &desired))
         .collect();
-    let channel = adaptive_routing_channel(
-        routing_channel(wire),
+    let channels = routing_channels(
         wire,
         &edges,
         &source_positions,
@@ -160,38 +183,167 @@ fn layout_positions(
         measured_sizes,
         &packed_y,
     );
-    let source_width = source_nodes
+    let layout_columns = collect_layout_columns(
+        &semantics,
+        measured_sizes,
+        &columns,
+        &source_positions,
+        &target_positions,
+        &packed_y,
+    );
+    place_layout_columns(
+        &layout_columns,
+        &channels,
+        mode,
+        compact_width(viewport_width),
+    )
+}
+
+struct LayoutColumn {
+    stage: usize,
+    width: f32,
+    height: f32,
+    nodes: Vec<(SnarlNodeId, f32)>,
+}
+
+fn collect_layout_columns(
+    semantics: &BTreeMap<SnarlNodeId, CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+    columns: &BTreeMap<usize, Vec<SnarlNodeId>>,
+    source_positions: &BTreeMap<SnarlNodeId, f32>,
+    target_positions: &BTreeMap<SnarlNodeId, f32>,
+    packed_y: &BTreeMap<SnarlNodeId, f32>,
+) -> Vec<LayoutColumn> {
+    let mut layout = Vec::new();
+    if !source_positions.is_empty() {
+        layout.push(endpoint_layout_column(
+            0,
+            source_positions,
+            semantics,
+            measured_sizes,
+        ));
+    }
+    for (&depth, nodes) in columns {
+        let positioned = nodes
+            .iter()
+            .filter_map(|node| packed_y.get(node).map(|y| (*node, *y)))
+            .collect::<Vec<_>>();
+        layout.push(LayoutColumn {
+            stage: depth + 1,
+            width: column_width(&positioned, semantics, measured_sizes),
+            height: column_height(&positioned, semantics, measured_sizes),
+            nodes: positioned,
+        });
+    }
+    if !target_positions.is_empty() {
+        let target_stage = columns.keys().next_back().copied().unwrap_or(0) + 2;
+        layout.push(endpoint_layout_column(
+            target_stage,
+            target_positions,
+            semantics,
+            measured_sizes,
+        ));
+    }
+    layout
+}
+
+fn endpoint_layout_column(
+    stage: usize,
+    positions: &BTreeMap<SnarlNodeId, f32>,
+    semantics: &BTreeMap<SnarlNodeId, CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+) -> LayoutColumn {
+    let nodes = positions
         .iter()
-        .filter_map(|id| semantics.get(id))
+        .map(|(&node, &y)| (node, y))
+        .collect::<Vec<_>>();
+    LayoutColumn {
+        stage,
+        width: column_width(&nodes, semantics, measured_sizes),
+        height: column_height(&nodes, semantics, measured_sizes),
+        nodes,
+    }
+}
+
+fn column_width(
+    nodes: &[(SnarlNodeId, f32)],
+    semantics: &BTreeMap<SnarlNodeId, CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+) -> f32 {
+    nodes
+        .iter()
+        .filter_map(|(node, _)| semantics.get(node))
         .map(|node| node_size(*node, measured_sizes).x)
         .fold(0.0, f32::max)
-        .max(240.0);
-    let mut column_x = BTreeMap::new();
-    let mut next_x = source_width + channel;
-    for (&column, nodes) in &columns {
-        column_x.insert(column, next_x);
-        let width = nodes
-            .iter()
-            .filter_map(|node| semantics.get(node))
-            .map(|node| node_size(*node, measured_sizes).x)
-            .fold(0.0, f32::max);
-        next_x += width + channel;
-    }
+}
 
-    let mut out = BTreeMap::new();
-    for (&source, &y) in &source_positions {
-        out.insert(source, pos2(0.0, y));
-    }
-    for (&target, &y) in &target_positions {
-        out.insert(target, pos2(next_x, y));
-    }
-    for (&column, nodes) in &columns {
-        let x = column_x[&column];
-        for node in nodes {
-            out.insert(*node, pos2(x, packed_y[node]));
+fn column_height(
+    nodes: &[(SnarlNodeId, f32)],
+    semantics: &BTreeMap<SnarlNodeId, CanvasNode>,
+    measured_sizes: &BTreeMap<CanvasNode, Vec2>,
+) -> f32 {
+    nodes
+        .iter()
+        .filter_map(|(node, y)| {
+            semantics
+                .get(node)
+                .map(|semantic| y + node_size(*semantic, measured_sizes).y)
+        })
+        .fold(0.0, f32::max)
+}
+
+fn place_layout_columns(
+    columns: &[LayoutColumn],
+    channels: &BTreeMap<usize, f32>,
+    mode: ArrangeMode,
+    compact_width: f32,
+) -> BTreeMap<SnarlNodeId, Pos2> {
+    let mut positions = BTreeMap::new();
+    let mut x = 0.0;
+    let mut row_y = 0.0;
+    let mut row_height = 0.0;
+    let mut previous_stage = None;
+    let turnaround_gutter = channels.values().copied().fold(96.0, f32::max) + NODE_GAP;
+
+    for column in columns {
+        let gap =
+            previous_stage.map_or(0.0, |stage| channel_between(stage, column.stage, channels));
+        let needed = if previous_stage.is_some() {
+            gap + column.width
+        } else {
+            column.width
+        };
+        if mode == ArrangeMode::Compact && x > 0.0 && x + needed > compact_width {
+            row_y += row_height + turnaround_gutter;
+            x = 0.0;
+            row_height = 0.0;
+        } else if previous_stage.is_some() {
+            x += gap;
         }
+
+        for &(node, y) in &column.nodes {
+            positions.insert(node, pos2(x, row_y + y));
+        }
+        x += column.width;
+        row_height = row_height.max(column.height);
+        previous_stage = Some(column.stage);
     }
-    out
+    positions
+}
+
+fn compact_width(viewport_width: f32) -> f32 {
+    if viewport_width.is_finite() {
+        (viewport_width * COMPACT_WIDTH_FACTOR).clamp(MIN_COMPACT_WIDTH, MAX_COMPACT_WIDTH)
+    } else {
+        MIN_COMPACT_WIDTH
+    }
+}
+
+fn channel_between(from: usize, to: usize, channels: &BTreeMap<usize, f32>) -> f32 {
+    (from..to)
+        .filter_map(|boundary| channels.get(&boundary))
+        .copied()
+        .fold(0.0, f32::max)
 }
 
 fn stacked_endpoint_positions(
@@ -487,8 +639,7 @@ fn routing_channel(wire: WireAppearance) -> f32 {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn adaptive_routing_channel(
-    base: f32,
+fn routing_channels(
     wire: WireAppearance,
     edges: &[Edge],
     source_positions: &BTreeMap<SnarlNodeId, f32>,
@@ -497,43 +648,60 @@ fn adaptive_routing_channel(
     semantics: &BTreeMap<SnarlNodeId, CanvasNode>,
     measured_sizes: &BTreeMap<CanvasNode, Vec2>,
     packed_y: &BTreeMap<SnarlNodeId, f32>,
-) -> f32 {
+) -> BTreeMap<usize, f32> {
+    let base = routing_channel(wire);
+    let target_stage = depths.values().copied().max().unwrap_or(0) + 2;
+    let mut channels = (0..target_stage)
+        .map(|boundary| (boundary, base))
+        .collect::<BTreeMap<_, _>>();
     if matches!(wire.geometry(), WireGeometry::Straight)
         || !matches!(
             wire.frame_adjustment(),
             WireFrameAdjustment::UpscaleDistant | WireFrameAdjustment::Adaptive
         )
     {
-        return base;
+        return channels;
     }
-    let target_stage = depths.values().copied().max().unwrap_or(0) + 2;
-    edges
-        .iter()
-        .filter_map(|edge| {
-            let from_y = if let Some(y) = source_positions.get(&edge.from) {
-                y + pin_center(edge.output)
-            } else {
-                node_center(edge.from, semantics, measured_sizes, packed_y)?
-            };
-            let to_y = if let Some(y) = target_positions.get(&edge.to) {
-                y + pin_center(edge.input)
-            } else {
-                node_center(edge.to, semantics, measured_sizes, packed_y)?
-            };
-            let from_stage = if source_positions.contains_key(&edge.from) {
-                0
-            } else {
-                depths.get(&edge.from).copied()? + 1
-            };
-            let to_stage = if target_positions.contains_key(&edge.to) {
-                target_stage
-            } else {
-                depths.get(&edge.to).copied()? + 1
-            };
-            let span = to_stage.saturating_sub(from_stage).max(1) as f32;
-            Some((to_y - from_y).abs() / 8.0_f32.sqrt() / span + 32.0)
-        })
-        .fold(base, f32::max)
+    let maximum = (base * 3.0).min(320.0);
+    for edge in edges {
+        let from_y = if let Some(y) = source_positions.get(&edge.from) {
+            y + pin_center(edge.output)
+        } else if let Some(center) = node_center(edge.from, semantics, measured_sizes, packed_y) {
+            center
+        } else {
+            continue;
+        };
+        let to_y = if let Some(y) = target_positions.get(&edge.to) {
+            y + pin_center(edge.input)
+        } else if let Some(center) = node_center(edge.to, semantics, measured_sizes, packed_y) {
+            center
+        } else {
+            continue;
+        };
+        let from_stage = if source_positions.contains_key(&edge.from) {
+            0
+        } else if let Some(depth) = depths.get(&edge.from) {
+            depth + 1
+        } else {
+            continue;
+        };
+        let to_stage = if target_positions.contains_key(&edge.to) {
+            target_stage
+        } else if let Some(depth) = depths.get(&edge.to) {
+            depth + 1
+        } else {
+            continue;
+        };
+        let span = to_stage.saturating_sub(from_stage).max(1) as f32;
+        let required = ((to_y - from_y).abs() / 8.0_f32.sqrt() / span + 32.0).clamp(base, maximum);
+        for boundary in from_stage..to_stage {
+            channels
+                .entry(boundary)
+                .and_modify(|channel| *channel = channel.max(required))
+                .or_insert(required);
+        }
+    }
+    channels
 }
 
 fn node_center(
@@ -799,6 +967,87 @@ mod tests {
         };
         assert!(matches!((target_x(&fixed), target_x(&adaptive)),
             (Some(fixed), Some(adaptive)) if adaptive > fixed));
+    }
+
+    #[test]
+    fn adaptive_spacing_is_local_to_crossed_boundaries() {
+        let mut snarl = Snarl::new();
+        let first = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(1));
+        let second = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(2));
+        let third = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(3));
+        let semantics = BTreeMap::from([
+            (first, CanvasNode::Graph(1)),
+            (second, CanvasNode::Graph(2)),
+            (third, CanvasNode::Graph(3)),
+        ]);
+        let depths = BTreeMap::from([(first, 0), (second, 1), (third, 2)]);
+        let packed_y = BTreeMap::from([(first, 0.0), (second, 1_200.0), (third, 0.0)]);
+        let edges = [Edge {
+            from: first,
+            to: second,
+            output: 0,
+            input: 0,
+        }];
+        let wire = WireAppearance::new(
+            WireGeometry::Bezier5,
+            2.0,
+            80.0,
+            WireFrameAdjustment::Adaptive,
+        )
+        .expect("adaptive appearance is valid");
+        let base = routing_channel(wire);
+
+        let channels = routing_channels(
+            wire,
+            &edges,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            &depths,
+            &semantics,
+            &BTreeMap::new(),
+            &packed_y,
+        );
+
+        assert!(channels[&1] > base);
+        assert_eq!(channels[&2], base);
+        assert!(channels[&1] <= (base * 3.0).min(320.0));
+    }
+
+    #[test]
+    fn compact_arrange_wraps_a_long_pipeline_without_changing_wires() {
+        let mut snarl = Snarl::new();
+        let mut previous = None;
+        for node in 0..30 {
+            let current = snarl.insert_node(pos2(0.0, 0.0), CanvasNode::Graph(node));
+            if let Some(previous) = previous {
+                connect(&mut snarl, previous, 0, current, 0);
+            }
+            previous = Some(current);
+        }
+        let wires = snarl.wires().collect::<Vec<_>>();
+        let sizes = (0..30)
+            .map(|node| (CanvasNode::Graph(node), vec2(180.0, 88.0)))
+            .collect::<BTreeMap<_, _>>();
+
+        arrange_snarl_with_mode(
+            &mut snarl,
+            &sizes,
+            WireAppearance::default(),
+            ArrangeMode::Compact,
+            800.0,
+        );
+
+        let positions = snarl
+            .nodes_pos()
+            .map(|(position, _)| position)
+            .collect::<Vec<_>>();
+        assert!(positions.iter().any(|position| position.y > 0.0));
+        assert!(
+            positions
+                .iter()
+                .all(|position| position.x + 180.0 <= MIN_COMPACT_WIDTH)
+        );
+        assert_eq!(snarl.wires().collect::<Vec<_>>(), wires);
     }
 
     #[test]

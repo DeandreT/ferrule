@@ -84,6 +84,7 @@ impl FerruleApp {
             self.mapping_workspace.tabs.push(document);
         }
         self.mapping_workspace.active = document;
+        self.mapping_workspace.focused = document;
     }
 
     fn open_function_split(&mut self, function: FunctionId) {
@@ -98,6 +99,7 @@ impl FerruleApp {
             self.mapping_workspace.active = MappingDocument::Main;
         }
         self.mapping_workspace.split = Some(MappingDocument::Function(function));
+        self.mapping_workspace.focused = MappingDocument::Function(function);
     }
 
     fn float_function(&mut self, function: FunctionId) {
@@ -114,6 +116,7 @@ impl FerruleApp {
             self.mapping_workspace.split = None;
         }
         self.mapping_workspace.floating.insert(function);
+        self.mapping_workspace.focused = MappingDocument::Function(function);
     }
 
     fn close_function_view(&mut self, function: FunctionId) {
@@ -124,6 +127,9 @@ impl FerruleApp {
         if self.mapping_workspace.active == document {
             self.mapping_workspace.active = MappingDocument::Main;
         }
+        if self.mapping_workspace.focused == document {
+            self.mapping_workspace.focused = self.mapping_workspace.active;
+        }
         if self.mapping_workspace.split == Some(document) {
             self.mapping_workspace.split = None;
         }
@@ -133,67 +139,76 @@ impl FerruleApp {
     pub(super) fn show_mapping_tabs(&mut self, ui: &mut egui::Ui, editing_enabled: bool) {
         self.mapping_workspace
             .reconcile(&self.project.user_functions);
-        ui.separator();
         let labels = self.function_names();
         let tabs = self.mapping_workspace.tabs.clone();
         let mut action = None;
-        ui.horizontal_wrapped(|ui| {
-            for document in tabs {
-                let label = match document {
-                    MappingDocument::Main => "Main Mapping",
-                    MappingDocument::Function(id) => labels
-                        .get(&id)
-                        .map(String::as_str)
-                        .unwrap_or("Missing function"),
-                };
-                let response =
-                    ui.selectable_label(self.mapping_workspace.active == document, label);
-                if response.clicked() {
-                    action = Some(TabAction::Activate(document));
-                }
-                if let MappingDocument::Function(id) = document {
-                    response.context_menu(|ui| {
-                        if ui.button("Open to side").clicked() {
-                            action = Some(TabAction::Split(id));
-                            ui.close();
-                        }
-                        if ui.button("Float").clicked() {
-                            action = Some(TabAction::Float(id));
-                            ui.close();
-                        }
-                        if ui.button("Close view").clicked() {
+        crate::theme::top_bar_row(ui, 28.0, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for document in tabs {
+                    let label = match document {
+                        MappingDocument::Main => "Main Mapping",
+                        MappingDocument::Function(id) => labels
+                            .get(&id)
+                            .map(String::as_str)
+                            .unwrap_or("Missing function"),
+                    };
+                    let response =
+                        ui.selectable_label(self.mapping_workspace.active == document, label);
+                    if response.clicked() {
+                        action = Some(TabAction::Activate(document));
+                    }
+                    if let MappingDocument::Function(id) = document {
+                        response.context_menu(|ui| {
+                            if ui.button("Open to side").clicked() {
+                                action = Some(TabAction::Split(id));
+                                ui.close();
+                            }
+                            if ui.button("Float").clicked() {
+                                action = Some(TabAction::Float(id));
+                                ui.close();
+                            }
+                            if ui.button("Close view").clicked() {
+                                action = Some(TabAction::Close(id));
+                                ui.close();
+                            }
+                        });
+                        if ui
+                            .add(egui::Button::new(crate::icons::text(
+                                lucide_icons::Icon::X,
+                                11.0,
+                            )))
+                            .on_hover_text("Close function view")
+                            .clicked()
+                        {
                             action = Some(TabAction::Close(id));
-                            ui.close();
                         }
-                    });
-                    if ui
-                        .add(egui::Button::new(crate::icons::text(
-                            lucide_icons::Icon::X,
-                            11.0,
-                        )))
-                        .on_hover_text("Close function view")
-                        .clicked()
-                    {
-                        action = Some(TabAction::Close(id));
                     }
                 }
-            }
-            ui.separator();
-            ui.add_enabled_ui(editing_enabled, |ui| {
-                if crate::icons::button(ui, true, lucide_icons::Icon::Library, "Function navigator")
+                ui.separator();
+                ui.add_enabled_ui(editing_enabled, |ui| {
+                    if crate::icons::button(
+                        ui,
+                        true,
+                        lucide_icons::Icon::Library,
+                        "Function navigator",
+                    )
                     .clicked()
-                {
-                    self.show_function_navigator = true;
-                }
-                if crate::icons::button(ui, true, lucide_icons::Icon::Plus, "New function")
-                    .clicked()
-                {
-                    self.new_function_draft = Some(NewFunctionDraft::default());
-                }
+                    {
+                        self.show_function_navigator = true;
+                    }
+                    if crate::icons::button(ui, true, lucide_icons::Icon::Plus, "New function")
+                        .clicked()
+                    {
+                        self.new_function_draft = Some(NewFunctionDraft::default());
+                    }
+                });
             });
         });
         match action {
-            Some(TabAction::Activate(document)) => self.mapping_workspace.active = document,
+            Some(TabAction::Activate(document)) => {
+                self.mapping_workspace.active = document;
+                self.mapping_workspace.focused = document;
+            }
             Some(TabAction::Close(function)) => self.close_function_view(function),
             Some(TabAction::Split(function)) => self.open_function_split(function),
             Some(TabAction::Float(function)) => self.float_function(function),
@@ -265,7 +280,7 @@ impl FerruleApp {
         }
     }
 
-    fn ensure_function_canvas(&mut self, function: FunctionId) -> bool {
+    pub(super) fn ensure_function_canvas(&mut self, function: FunctionId) -> bool {
         if self
             .mapping_workspace
             .function_canvases
@@ -316,6 +331,7 @@ impl FerruleApp {
         let target_blocks = Vec::new();
         let mut root = Scope::default();
         let mut requested = None;
+        let mut requested_value_map = None;
         let mut error = None;
         ui.add_enabled_ui(editing_enabled, |ui| {
             let (functions, canvases) = (
@@ -342,6 +358,7 @@ impl FerruleApp {
                 parameter_names: parameter_names.clone(),
                 protected_output: Some(output),
                 requested_function_open: None,
+                requested_value_map_editor: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
                 endpoint_scroll: &mut canvas.endpoint_scroll,
@@ -355,16 +372,24 @@ impl FerruleApp {
                 pin_interaction_ids: Vec::new(),
                 error: None,
             };
-            crate::canvas_keyboard::show(
+            let interaction = crate::canvas_keyboard::show(
                 &mut canvas.snarl,
                 &mut viewer,
                 &mut canvas.search,
-                self.show_minimap,
-                canvas.view_generation,
-                self.appearance.to_snarl_style_with_palette(self.palette),
+                crate::canvas_keyboard::CanvasOptions {
+                    id_salt: egui::Id::new(("function_mapping_canvas", function_id.get())),
+                    show_minimap: self.show_minimap,
+                    view_generation: canvas.view_generation,
+                    style: self.appearance.to_snarl_style_with_palette(self.palette),
+                },
                 ui,
             );
+            canvas.viewport_width = interaction.viewport_width;
+            if interaction.focused {
+                self.mapping_workspace.focused = MappingDocument::Function(function_id);
+            }
             requested = viewer.requested_function_open;
+            requested_value_map = viewer.requested_value_map_editor;
             error = viewer.error;
         });
         if let Some(error) = error {
@@ -373,6 +398,12 @@ impl FerruleApp {
         }
         if let Some(function) = requested {
             self.open_function_tab(function);
+        }
+        if let Some(node) = requested_value_map {
+            self.value_map_editor = Some(ValueMapEditorTarget {
+                document: MappingDocument::Function(function_id),
+                node,
+            });
         }
     }
 
@@ -406,6 +437,24 @@ impl FerruleApp {
                     close = ui.ctx().input(|input| input.viewport().close_requested());
                     ui.horizontal(|ui| {
                         ui.strong(&title);
+                        if ui.button("Arrange").clicked() {
+                            self.mapping_workspace.focused = MappingDocument::Function(function);
+                            self.arrange_document(
+                                MappingDocument::Function(function),
+                                ArrangeMode::LeftToRight,
+                            );
+                        }
+                        if ui.button("Arrange compact").clicked() {
+                            self.mapping_workspace.focused = MappingDocument::Function(function);
+                            self.arrange_document(
+                                MappingDocument::Function(function),
+                                ArrangeMode::Compact,
+                            );
+                        }
+                        if ui.button("Fit").clicked() {
+                            self.mapping_workspace.focused = MappingDocument::Function(function);
+                            self.fit_document(MappingDocument::Function(function));
+                        }
                         if ui.button("Dock").clicked() {
                             dock = true;
                         }
@@ -890,6 +939,61 @@ mod tests {
                 .snarl
                 .nodes()
                 .all(|node| matches!(node, CanvasNode::Graph(_)))
+        );
+    }
+
+    #[test]
+    fn focused_function_arrange_and_fit_leave_main_canvas_untouched() {
+        let mut app = FerruleApp::default();
+        let id = app.create_function(&draft()).expect("valid function");
+        app.open_function_tab(id);
+        assert!(app.ensure_function_canvas(id));
+        let main_position = egui::pos2(777.0, 555.0);
+        let main_node = app
+            .main_canvas
+            .snarl
+            .node_ids()
+            .next()
+            .map(|(node, _)| node)
+            .expect("main node");
+        app.main_canvas
+            .snarl
+            .get_node_info_mut(main_node)
+            .expect("main node info")
+            .pos = main_position;
+        let main_generation = app.main_canvas.view_generation;
+        let function_generation = app
+            .mapping_workspace
+            .function_canvases
+            .get(&id)
+            .map(|canvas| canvas.view_generation)
+            .expect("function canvas");
+
+        assert!(app.arrange_document(MappingDocument::Function(id), ArrangeMode::LeftToRight));
+        assert_eq!(
+            app.main_canvas
+                .snarl
+                .get_node_info(main_node)
+                .map(|node| node.pos),
+            Some(main_position)
+        );
+        assert_eq!(app.main_canvas.view_generation, main_generation);
+        assert_eq!(
+            app.mapping_workspace
+                .function_canvases
+                .get(&id)
+                .map(|canvas| canvas.view_generation),
+            Some(function_generation + 1)
+        );
+
+        assert!(app.fit_document(MappingDocument::Function(id)));
+        assert_eq!(app.main_canvas.view_generation, main_generation);
+        assert_eq!(
+            app.mapping_workspace
+                .function_canvases
+                .get(&id)
+                .map(|canvas| canvas.view_generation),
+            Some(function_generation + 2)
         );
     }
 

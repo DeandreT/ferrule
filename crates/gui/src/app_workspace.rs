@@ -9,6 +9,8 @@ impl FerruleApp {
         undo_shortcut: &egui::KeyboardShortcut,
         redo_shortcut: &egui::KeyboardShortcut,
     ) {
+        let item_spacing_y = ui.spacing().item_spacing.y;
+        ui.spacing_mut().item_spacing.y = 0.0;
         let open_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::O);
         let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
         let run_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::R);
@@ -47,274 +49,311 @@ impl FerruleApp {
             self.validate_now();
         }
 
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.add_enabled_ui(editing_enabled, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new("Open...")
-                                .shortcut_text(ui.ctx().format_shortcut(&open_shortcut)),
-                        )
-                        .clicked()
-                    {
-                        if let Some(action) =
-                            self.request_destructive_action(DestructiveAction::OpenProject)
+        crate::theme::top_bar_row(ui, 22.0, |ui| {
+            egui::MenuBar::new().ui(ui, |ui| {
+                ui.add_enabled_ui(editing_enabled, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new("Open...")
+                                    .shortcut_text(ui.ctx().format_shortcut(&open_shortcut)),
+                            )
+                            .clicked()
                         {
-                            self.perform_destructive_action(action, ui.ctx());
+                            if let Some(action) =
+                                self.request_destructive_action(DestructiveAction::OpenProject)
+                            {
+                                self.perform_destructive_action(action, ui.ctx());
+                            }
+                            ui.close();
                         }
-                        ui.close();
-                    }
-                    if ui
-                        .add(
-                            egui::Button::new("Save")
-                                .shortcut_text(ui.ctx().format_shortcut(&save_shortcut)),
-                        )
-                        .clicked()
-                    {
-                        self.save_with_continuation(None, ui.ctx());
-                        ui.close();
-                    }
-                    if ui.button("Save As...").clicked() {
-                        self.start_save_as(None);
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui.button("New").clicked() {
-                        if let Some(action) =
-                            self.request_destructive_action(DestructiveAction::NewProject)
+                        if ui
+                            .add(
+                                egui::Button::new("Save")
+                                    .shortcut_text(ui.ctx().format_shortcut(&save_shortcut)),
+                            )
+                            .clicked()
                         {
-                            self.perform_destructive_action(action, ui.ctx());
+                            self.save_with_continuation(None, ui.ctx());
+                            ui.close();
                         }
-                        ui.close();
-                    }
-                    if ui.button("Import MFD...").clicked() {
-                        if let Some(action) =
-                            self.request_destructive_action(DestructiveAction::ImportMfd)
+                        if ui.button("Save As...").clicked() {
+                            self.start_save_as(None);
+                            ui.close();
+                        }
+                        ui.separator();
+                        if ui.button("New").clicked() {
+                            if let Some(action) =
+                                self.request_destructive_action(DestructiveAction::NewProject)
+                            {
+                                self.perform_destructive_action(action, ui.ctx());
+                            }
+                            ui.close();
+                        }
+                        if ui.button("Import MFD...").clicked() {
+                            if let Some(action) =
+                                self.request_destructive_action(DestructiveAction::ImportMfd)
+                            {
+                                self.perform_destructive_action(action, ui.ctx());
+                            }
+                            ui.close();
+                        }
+                        if ui.button("Export MFD...").clicked() {
+                            self.pending_dialog = Some((
+                                DialogKind::ExportMfd,
+                                save_file(
+                                    "MapForce design",
+                                    &["mfd"],
+                                    &self.document.display_path(),
+                                ),
+                            ));
+                            ui.close();
+                        }
+                    });
+                    ui.menu_button("Edit", |ui| {
+                        if ui
+                            .add_enabled(
+                                self.can_undo(),
+                                egui::Button::new("Undo")
+                                    .shortcut_text(ui.ctx().format_shortcut(undo_shortcut)),
+                            )
+                            .clicked()
                         {
-                            self.perform_destructive_action(action, ui.ctx());
+                            self.undo_project();
+                            ui.close();
                         }
-                        ui.close();
-                    }
-                    if ui.button("Export MFD...").clicked() {
-                        self.pending_dialog = Some((
-                            DialogKind::ExportMfd,
-                            save_file("MapForce design", &["mfd"], &self.document.display_path()),
-                        ));
-                        ui.close();
-                    }
+                        if ui
+                            .add_enabled(
+                                self.history.can_redo(),
+                                egui::Button::new("Redo")
+                                    .shortcut_text(ui.ctx().format_shortcut(redo_shortcut)),
+                            )
+                            .clicked()
+                        {
+                            self.redo_project();
+                            ui.close();
+                        }
+                    });
+                    ui.menu_button("Mapping", |ui| {
+                        if ui
+                            .add(
+                                egui::Button::new("Validate")
+                                    .shortcut_text(ui.ctx().format_shortcut(&validate_shortcut)),
+                            )
+                            .clicked()
+                        {
+                            self.validate_now();
+                            ui.close();
+                        }
+                        if ui
+                            .add(
+                                egui::Button::new("Run")
+                                    .shortcut_text(ui.ctx().format_shortcut(&run_shortcut)),
+                            )
+                            .clicked()
+                        {
+                            self.run(ui.ctx());
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.run_report.is_some(),
+                                egui::Button::new("Run results"),
+                            )
+                            .clicked()
+                        {
+                            self.show_run_report = true;
+                            ui.close();
+                        }
+                        if ui.button("Arrange left to right").clicked() {
+                            self.arrange_focused_canvas(ArrangeMode::LeftToRight);
+                            ui.close();
+                        }
+                        if ui.button("Arrange compact").clicked() {
+                            self.arrange_focused_canvas(ArrangeMode::Compact);
+                            ui.close();
+                        }
+                        if ui.button("Fit canvas").clicked() {
+                            self.fit_focused_canvas();
+                            ui.close();
+                        }
+                        ui.separator();
+                        if ui.button("Add extra source...").clicked() {
+                            self.begin_extra_source();
+                            ui.close();
+                        }
+                    });
+                    ui.menu_button("View", |ui| {
+                        ui.checkbox(&mut self.show_source_panel, "Source schema");
+                        ui.checkbox(&mut self.show_inspector_panel, "Inspector");
+                        ui.checkbox(&mut self.show_minimap, "Canvas minimap");
+                        ui.separator();
+                        if ui.button("Appearance...").clicked() {
+                            self.show_appearance_editor = true;
+                            ui.close();
+                        }
+                    });
                 });
-                ui.menu_button("Edit", |ui| {
-                    if ui
-                        .add_enabled(
-                            self.can_undo(),
-                            egui::Button::new("Undo")
-                                .shortcut_text(ui.ctx().format_shortcut(undo_shortcut)),
-                        )
-                        .clicked()
-                    {
-                        self.undo_project();
-                        ui.close();
-                    }
-                    if ui
-                        .add_enabled(
-                            self.history.can_redo(),
-                            egui::Button::new("Redo")
-                                .shortcut_text(ui.ctx().format_shortcut(redo_shortcut)),
-                        )
-                        .clicked()
-                    {
-                        self.redo_project();
-                        ui.close();
-                    }
-                });
-                ui.menu_button("Mapping", |ui| {
-                    if ui
-                        .add(
-                            egui::Button::new("Validate")
-                                .shortcut_text(ui.ctx().format_shortcut(&validate_shortcut)),
-                        )
-                        .clicked()
-                    {
-                        self.validate_now();
-                        ui.close();
-                    }
-                    if ui
-                        .add(
-                            egui::Button::new("Run")
-                                .shortcut_text(ui.ctx().format_shortcut(&run_shortcut)),
-                        )
-                        .clicked()
-                    {
-                        self.run(ui.ctx());
-                        ui.close();
-                    }
-                    if ui
-                        .add_enabled(self.run_report.is_some(), egui::Button::new("Run results"))
-                        .clicked()
-                    {
-                        self.show_run_report = true;
-                        ui.close();
-                    }
-                    if ui.button("Arrange canvas").clicked() {
-                        self.arrange_canvas();
-                        ui.close();
-                    }
-                    if ui.button("Fit canvas").clicked() {
-                        self.fit_canvas();
-                        ui.close();
-                    }
-                    ui.separator();
-                    if ui.button("Add extra source...").clicked() {
-                        self.begin_extra_source();
-                        ui.close();
-                    }
-                });
-                ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.show_source_panel, "Source schema");
-                    ui.checkbox(&mut self.show_inspector_panel, "Inspector");
-                    ui.checkbox(&mut self.show_minimap, "Canvas minimap");
-                    ui.separator();
-                    if ui.button("Appearance...").clicked() {
-                        self.show_appearance_editor = true;
-                        ui.close();
-                    }
-                });
+                ui.separator();
+                let path = self.document.display_path();
+                ui.add(egui::Label::new(&path).truncate())
+                    .on_hover_text(path);
             });
-            ui.separator();
-            ui.label(self.document.display_path());
         });
 
         if self.pending_dialog.is_some() {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label("Waiting for file dialog");
-                if ui.button("Cancel").clicked() {
-                    self.pending_dialog = None;
-                    self.pending_save_continuation = None;
-                    self.status = "file dialog cancelled".to_string();
-                }
+            crate::theme::top_bar_row(ui, crate::theme::METRICS.toolbar_height, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label("Waiting for file dialog");
+                    if ui.button("Cancel").clicked() {
+                        self.pending_dialog = None;
+                        self.pending_save_continuation = None;
+                        self.status = "file dialog cancelled".to_string();
+                    }
+                });
             });
+            ui.spacing_mut().item_spacing.y = item_spacing_y;
             return;
         }
 
-        ui.horizontal_wrapped(|ui| {
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::FolderOpen,
-                format!("Open ({})", ui.ctx().format_shortcut(&open_shortcut)),
-            )
-            .clicked()
-                && let Some(action) =
-                    self.request_destructive_action(DestructiveAction::OpenProject)
-            {
-                self.perform_destructive_action(action, ui.ctx());
-            }
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::Save,
-                format!("Save ({})", ui.ctx().format_shortcut(&save_shortcut)),
-            )
-            .clicked()
-            {
-                self.save_with_continuation(None, ui.ctx());
-            }
-            if crate::icons::button(ui, true, lucide_icons::Icon::Palette, "Appearance").clicked() {
-                self.show_appearance_editor = true;
-            }
-            ui.separator();
-            if crate::icons::button(
-                ui,
-                editing_enabled && self.can_undo(),
-                lucide_icons::Icon::Undo2,
-                format!("Undo ({})", ui.ctx().format_shortcut(undo_shortcut)),
-            )
-            .clicked()
-            {
-                self.undo_project();
-            }
-            if crate::icons::button(
-                ui,
-                editing_enabled && self.history.can_redo(),
-                lucide_icons::Icon::Redo2,
-                format!("Redo ({})", ui.ctx().format_shortcut(redo_shortcut)),
-            )
-            .clicked()
-            {
-                self.redo_project();
-            }
-            ui.separator();
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::CheckCircle2,
-                format!(
-                    "Validate ({})",
-                    ui.ctx().format_shortcut(&validate_shortcut)
-                ),
-            )
-            .clicked()
-            {
-                self.validate_now();
-            }
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::Play,
-                format!("Run ({})", ui.ctx().format_shortcut(&run_shortcut)),
-            )
-            .clicked()
-            {
-                self.run(ui.ctx());
-            }
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::Settings2,
-                "Run settings",
-            )
-            .clicked()
-            {
-                self.show_run_setup = !self.show_run_setup;
-            }
-            if crate::icons::button(
-                ui,
-                self.run_report.is_some(),
-                lucide_icons::Icon::FileOutput,
-                "Show last run results",
-            )
-            .clicked()
-            {
-                self.show_run_report = true;
-            }
-            ui.separator();
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::LayoutGrid,
-                "Arrange canvas",
-            )
-            .clicked()
-            {
-                self.arrange_canvas();
-            }
-            if crate::icons::button(
-                ui,
-                editing_enabled,
-                lucide_icons::Icon::Maximize2,
-                "Fit canvas",
-            )
-            .clicked()
-            {
-                self.fit_canvas();
-            }
+        crate::theme::top_bar_row(ui, crate::theme::METRICS.toolbar_height, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::FolderOpen,
+                    format!("Open ({})", ui.ctx().format_shortcut(&open_shortcut)),
+                )
+                .clicked()
+                    && let Some(action) =
+                        self.request_destructive_action(DestructiveAction::OpenProject)
+                {
+                    self.perform_destructive_action(action, ui.ctx());
+                }
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::Save,
+                    format!("Save ({})", ui.ctx().format_shortcut(&save_shortcut)),
+                )
+                .clicked()
+                {
+                    self.save_with_continuation(None, ui.ctx());
+                }
+                if crate::icons::button(ui, true, lucide_icons::Icon::Palette, "Appearance")
+                    .clicked()
+                {
+                    self.show_appearance_editor = true;
+                }
+                ui.separator();
+                if crate::icons::button(
+                    ui,
+                    editing_enabled && self.can_undo(),
+                    lucide_icons::Icon::Undo2,
+                    format!("Undo ({})", ui.ctx().format_shortcut(undo_shortcut)),
+                )
+                .clicked()
+                {
+                    self.undo_project();
+                }
+                if crate::icons::button(
+                    ui,
+                    editing_enabled && self.history.can_redo(),
+                    lucide_icons::Icon::Redo2,
+                    format!("Redo ({})", ui.ctx().format_shortcut(redo_shortcut)),
+                )
+                .clicked()
+                {
+                    self.redo_project();
+                }
+                ui.separator();
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::CheckCircle2,
+                    format!(
+                        "Validate ({})",
+                        ui.ctx().format_shortcut(&validate_shortcut)
+                    ),
+                )
+                .clicked()
+                {
+                    self.validate_now();
+                }
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::Play,
+                    format!("Run ({})", ui.ctx().format_shortcut(&run_shortcut)),
+                )
+                .clicked()
+                {
+                    self.run(ui.ctx());
+                }
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::Settings2,
+                    "Run settings",
+                )
+                .clicked()
+                {
+                    self.show_run_setup = !self.show_run_setup;
+                }
+                if crate::icons::button(
+                    ui,
+                    self.run_report.is_some(),
+                    lucide_icons::Icon::FileOutput,
+                    "Show last run results",
+                )
+                .clicked()
+                {
+                    self.show_run_report = true;
+                }
+                ui.separator();
+                ui.add_enabled_ui(editing_enabled, |ui| {
+                    let button = egui::Button::new(crate::icons::text(
+                        lucide_icons::Icon::LayoutGrid,
+                        crate::theme::METRICS.icon_size,
+                    ))
+                    .min_size(egui::vec2(
+                        crate::theme::METRICS.icon_button_size,
+                        crate::theme::METRICS.icon_button_size,
+                    ));
+                    let (response, _) =
+                        egui::containers::menu::MenuButton::from_button(button).ui(ui, |ui| {
+                            if ui.button("Arrange left to right").clicked() {
+                                self.arrange_focused_canvas(ArrangeMode::LeftToRight);
+                                ui.close();
+                            }
+                            if ui.button("Arrange compact").clicked() {
+                                self.arrange_focused_canvas(ArrangeMode::Compact);
+                                ui.close();
+                            }
+                        });
+                    response.on_hover_text("Arrange canvas");
+                });
+                if crate::icons::button(
+                    ui,
+                    editing_enabled,
+                    lucide_icons::Icon::Maximize2,
+                    "Fit canvas",
+                )
+                .clicked()
+                {
+                    self.fit_focused_canvas();
+                }
+            });
         });
         if self.show_run_setup {
+            ui.spacing_mut().item_spacing.y = item_spacing_y;
             ui.separator();
             ui.horizontal_wrapped(|ui| self.show_runtime_paths(ui));
+            ui.spacing_mut().item_spacing.y = 0.0;
         }
         self.show_mapping_tabs(ui, editing_enabled);
+        ui.spacing_mut().item_spacing.y = item_spacing_y;
         self.show_workspace_tabs(ui, layout_class);
     }
 
@@ -352,19 +391,70 @@ impl FerruleApp {
         });
     }
 
-    fn arrange_canvas(&mut self) {
-        arrange_snarl(
-            &mut self.main_canvas.snarl,
-            &self.main_canvas.node_sizes,
-            *self.appearance.wire(),
-        );
-        self.reset_canvas_view();
-        self.status = "canvas arranged with wire-aware spacing".to_string();
+    fn arrange_focused_canvas(&mut self, mode: ArrangeMode) {
+        let document = self.mapping_workspace.focused;
+        if self.arrange_document(document, mode) {
+            self.status = match mode {
+                ArrangeMode::LeftToRight => "canvas arranged left to right",
+                ArrangeMode::Compact => "canvas arranged in compact lanes",
+            }
+            .to_string();
+        }
     }
 
-    fn fit_canvas(&mut self) {
-        self.reset_canvas_view();
-        self.status = "canvas fitted".to_string();
+    pub(super) fn arrange_document(
+        &mut self,
+        document: MappingDocument,
+        mode: ArrangeMode,
+    ) -> bool {
+        let wire = *self.appearance.wire();
+        let canvas = match document {
+            MappingDocument::Main => &mut self.main_canvas,
+            MappingDocument::Function(function) => {
+                if !self.ensure_function_canvas(function) {
+                    return false;
+                }
+                let Some(canvas) = self.mapping_workspace.function_canvases.get_mut(&function)
+                else {
+                    return false;
+                };
+                canvas
+            }
+        };
+        arrange_snarl_with_mode(
+            &mut canvas.snarl,
+            &canvas.node_sizes,
+            wire,
+            mode,
+            canvas.viewport_width,
+        );
+        canvas.reset_view();
+        true
+    }
+
+    fn fit_focused_canvas(&mut self) {
+        let document = self.mapping_workspace.focused;
+        if self.fit_document(document) {
+            self.status = "canvas fitted".to_string();
+        }
+    }
+
+    pub(super) fn fit_document(&mut self, document: MappingDocument) -> bool {
+        let canvas = match document {
+            MappingDocument::Main => &mut self.main_canvas,
+            MappingDocument::Function(function) => {
+                if !self.ensure_function_canvas(function) {
+                    return false;
+                }
+                let Some(canvas) = self.mapping_workspace.function_canvases.get_mut(&function)
+                else {
+                    return false;
+                };
+                canvas
+            }
+        };
+        canvas.reset_view();
+        true
     }
 
     pub(super) fn reset_canvas_view(&mut self) {
@@ -430,58 +520,60 @@ impl FerruleApp {
             source_fields,
         );
         let mut remove = None;
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            if source_matches == 0 && self.source_schema_explorer.is_filtering() {
-                ui.weak("No matching fields or groups");
-            } else {
-                let mut section_shown = show_schema_tree(
-                    ui,
-                    &self.project.source,
-                    &self.source_schema_explorer,
-                    "primary_source_schema",
-                    source_x12,
-                );
-                for (index, extra) in self.project.extra_sources.iter().enumerate() {
-                    if self.source_schema_explorer.is_filtering()
-                        && self.source_schema_explorer.match_count(&extra.schema) == 0
-                    {
-                        continue;
-                    }
-                    if section_shown {
-                        ui.separator();
-                    }
-                    ui.horizontal(|ui| {
-                        ui.strong(format!("Extra: {}", extra.name));
-                        if ui
-                            .add_enabled(
-                                editing_enabled,
-                                egui::Button::new(crate::icons::text(
-                                    lucide_icons::Icon::Trash2,
-                                    crate::theme::METRICS.icon_size,
-                                ))
-                                .small(),
-                            )
-                            .on_hover_text("Remove source")
-                            .clicked()
-                        {
-                            remove = Some(index);
-                        }
-                    });
-                    show_schema_tree(
+        egui::ScrollArea::both()
+            .id_salt("source_schema_scroll")
+            .show(ui, |ui| {
+                if source_matches == 0 && self.source_schema_explorer.is_filtering() {
+                    ui.weak("No matching fields or groups");
+                } else {
+                    let mut section_shown = show_schema_tree(
                         ui,
-                        &extra.schema,
+                        &self.project.source,
                         &self.source_schema_explorer,
-                        ("extra_source_schema", index),
-                        crate::x12_tooltips::boundary_has_x12(
-                            &extra.schema,
-                            Some(&extra.path),
-                            &extra.options,
-                        ),
+                        "primary_source_schema",
+                        source_x12,
                     );
-                    section_shown = true;
+                    for (index, extra) in self.project.extra_sources.iter().enumerate() {
+                        if self.source_schema_explorer.is_filtering()
+                            && self.source_schema_explorer.match_count(&extra.schema) == 0
+                        {
+                            continue;
+                        }
+                        if section_shown {
+                            ui.separator();
+                        }
+                        ui.horizontal(|ui| {
+                            ui.strong(format!("Extra: {}", extra.name));
+                            if ui
+                                .add_enabled(
+                                    editing_enabled,
+                                    egui::Button::new(crate::icons::text(
+                                        lucide_icons::Icon::Trash2,
+                                        crate::theme::METRICS.icon_size,
+                                    ))
+                                    .small(),
+                                )
+                                .on_hover_text("Remove source")
+                                .clicked()
+                            {
+                                remove = Some(index);
+                            }
+                        });
+                        show_schema_tree(
+                            ui,
+                            &extra.schema,
+                            &self.source_schema_explorer,
+                            ("extra_source_schema", index),
+                            crate::x12_tooltips::boundary_has_x12(
+                                &extra.schema,
+                                Some(&extra.path),
+                                &extra.options,
+                            ),
+                        );
+                        section_shown = true;
+                    }
                 }
-            }
-        });
+            });
         if let Some(index) = remove {
             self.pending_extra_source_removal = Some(index);
         }
@@ -507,7 +599,8 @@ impl FerruleApp {
                 target_matches,
                 schema_field_count(&self.project.target),
             );
-            egui::ScrollArea::vertical()
+            egui::ScrollArea::both()
+                .id_salt("target_schema_scroll")
                 .max_height(200.0)
                 .show(ui, |ui| {
                     if target_matches == 0 && self.target_schema_explorer.is_filtering() {
@@ -525,7 +618,7 @@ impl FerruleApp {
 
             ui.separator();
             ui.strong("Scopes");
-            egui::ScrollArea::vertical()
+            egui::ScrollArea::both()
                 .id_salt("scope_tree_scroll")
                 .max_height(200.0)
                 .show(ui, |ui| {
@@ -538,7 +631,7 @@ impl FerruleApp {
             self.show_scope_controls(ui);
 
             ui.separator();
-            egui::ScrollArea::vertical()
+            egui::ScrollArea::both()
                 .id_salt("scope_editor_scroll")
                 .show(ui, |ui| {
                     let nested = !self.selected_scope.is_empty();
@@ -562,6 +655,7 @@ impl FerruleApp {
         let function_inputs = self.function_inputs();
         let parameter_names = std::collections::BTreeMap::new();
         let mut requested_function = None;
+        let mut requested_value_map = None;
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         let source_x12 = crate::x12_tooltips::boundary_has_x12(
@@ -599,6 +693,7 @@ impl FerruleApp {
                 parameter_names,
                 protected_output: None,
                 requested_function_open: None,
+                requested_value_map_editor: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
                 endpoint_scroll: &mut self.main_canvas.endpoint_scroll,
@@ -612,23 +707,37 @@ impl FerruleApp {
                 pin_interaction_ids: Vec::new(),
                 error: None,
             };
-            crate::canvas_keyboard::show(
+            let interaction = crate::canvas_keyboard::show(
                 &mut self.main_canvas.snarl,
                 &mut viewer,
                 &mut self.main_canvas.search,
-                self.show_minimap,
-                self.main_canvas.view_generation,
-                self.appearance.to_snarl_style_with_palette(self.palette),
+                crate::canvas_keyboard::CanvasOptions {
+                    id_salt: egui::Id::new("main_mapping_canvas"),
+                    show_minimap: self.show_minimap,
+                    view_generation: self.main_canvas.view_generation,
+                    style: self.appearance.to_snarl_style_with_palette(self.palette),
+                },
                 ui,
             );
+            self.main_canvas.viewport_width = interaction.viewport_width;
+            if interaction.focused {
+                self.mapping_workspace.focused = MappingDocument::Main;
+            }
             if let Some(error) = viewer.error {
                 self.status = "graph edit failed".to_string();
                 self.diagnostics.error("Graph edit failed", error);
             }
             requested_function = viewer.requested_function_open;
+            requested_value_map = viewer.requested_value_map_editor;
         });
         if let Some(function) = requested_function {
             self.open_function_tab(function);
+        }
+        if let Some(node) = requested_value_map {
+            self.value_map_editor = Some(ValueMapEditorTarget {
+                document: MappingDocument::Main,
+                node,
+            });
         }
     }
 
@@ -678,6 +787,47 @@ impl FerruleApp {
                 });
             }
         });
+    }
+
+    pub(super) fn show_value_map_editor_window(&mut self, ctx: &egui::Context) {
+        let Some(target) = self.value_map_editor else {
+            return;
+        };
+        let mut open = true;
+        let mut found = false;
+        egui::Window::new("Value Map")
+            .id(egui::Id::new((
+                "value_map_editor",
+                target.document,
+                target.node,
+            )))
+            .default_size([680.0, 520.0])
+            .min_width(420.0)
+            .min_height(260.0)
+            .collapsible(false)
+            .resizable(true)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                let graph = match target.document {
+                    MappingDocument::Main => Some(&mut self.project.graph),
+                    MappingDocument::Function(function) => self
+                        .project
+                        .user_functions
+                        .get_mut(&function)
+                        .map(|definition| &mut definition.body),
+                };
+                if let Some(mapping::Node::ValueMap { table, default, .. }) =
+                    graph.and_then(|graph| graph.nodes.get_mut(&target.node))
+                {
+                    found = true;
+                    crate::value_editor::show_value_map_editor(ui, table, default);
+                } else {
+                    ui.weak("This value map no longer exists.");
+                }
+            });
+        if !open || !found {
+            self.value_map_editor = None;
+        }
     }
 }
 
