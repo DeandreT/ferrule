@@ -655,7 +655,6 @@ impl FerruleApp {
         let function_inputs = self.function_inputs();
         let parameter_names = std::collections::BTreeMap::new();
         let mut requested_function = None;
-        let mut requested_value_map = None;
         let source_paths =
             SourcePathCatalog::new(&self.project.source, &self.project.extra_sources);
         let source_x12 = crate::x12_tooltips::boundary_has_x12(
@@ -693,10 +692,10 @@ impl FerruleApp {
                 parameter_names,
                 protected_output: None,
                 requested_function_open: None,
-                requested_value_map_editor: None,
                 colors: self.appearance.resolved_colors(self.palette),
                 wire_color_mode: self.appearance.wire().color_mode(),
                 endpoint_scroll: &mut self.main_canvas.endpoint_scroll,
+                value_map_wheel: None,
                 endpoint_search_match: None,
                 node_sizes: Some(&mut self.main_canvas.node_sizes),
                 hovered_node: None,
@@ -728,16 +727,9 @@ impl FerruleApp {
                 self.diagnostics.error("Graph edit failed", error);
             }
             requested_function = viewer.requested_function_open;
-            requested_value_map = viewer.requested_value_map_editor;
         });
         if let Some(function) = requested_function {
             self.open_function_tab(function);
-        }
-        if let Some(node) = requested_value_map {
-            self.value_map_editor = Some(ValueMapEditorTarget {
-                document: MappingDocument::Main,
-                node,
-            });
         }
     }
 
@@ -787,47 +779,6 @@ impl FerruleApp {
                 });
             }
         });
-    }
-
-    pub(super) fn show_value_map_editor_window(&mut self, ctx: &egui::Context) {
-        let Some(target) = self.value_map_editor else {
-            return;
-        };
-        let mut open = true;
-        let mut found = false;
-        egui::Window::new("Value Map")
-            .id(egui::Id::new((
-                "value_map_editor",
-                target.document,
-                target.node,
-            )))
-            .default_size([680.0, 520.0])
-            .min_width(420.0)
-            .min_height(260.0)
-            .collapsible(false)
-            .resizable(true)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                let graph = match target.document {
-                    MappingDocument::Main => Some(&mut self.project.graph),
-                    MappingDocument::Function(function) => self
-                        .project
-                        .user_functions
-                        .get_mut(&function)
-                        .map(|definition| &mut definition.body),
-                };
-                if let Some(mapping::Node::ValueMap { table, default, .. }) =
-                    graph.and_then(|graph| graph.nodes.get_mut(&target.node))
-                {
-                    found = true;
-                    crate::value_editor::show_value_map_editor(ui, table, default);
-                } else {
-                    ui.weak("This value map no longer exists.");
-                }
-            });
-        if !open || !found {
-            self.value_map_editor = None;
-        }
     }
 }
 

@@ -103,7 +103,7 @@ pub fn show(
     let previous_transform = ui
         .ctx()
         .data(|data| data.get_temp::<CanvasTransform>(transform_marker));
-    let endpoint_wheel = (!wire_dragging)
+    let node_wheel = (!wire_dragging)
         .then(|| {
             let delta_y = ui.ctx().input(|input| input.smooth_scroll_delta().y);
             pointer
@@ -112,8 +112,9 @@ pub fn show(
         })
         .flatten()
         .filter(|(_, delta_y)| *delta_y != 0.0);
-    if let Some((graph_position, delta_y)) = endpoint_wheel
-        && viewer.scroll_endpoint_at(graph_position, delta_y, snarl)
+    if let Some((graph_position, delta_y)) = node_wheel
+        && (viewer.scroll_endpoint_at(graph_position, delta_y, snarl)
+            || viewer.queue_value_map_wheel_at(graph_position, delta_y, snarl))
     {
         // Consume the vertical component before egui::Scene can interpret it
         // as canvas panning. Horizontal trackpad motion remains available.

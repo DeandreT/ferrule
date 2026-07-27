@@ -137,7 +137,6 @@ impl FerruleApp {
             root: Scope::default(),
         };
         self.mapping_workspace.reset();
-        self.value_map_editor = None;
         self.main_canvas = CanvasDocumentState::main(&self.project);
         self.reset_canvas_view();
         self.document = DocumentLocation::untitled("mapping.json");

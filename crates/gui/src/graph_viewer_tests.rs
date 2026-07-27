@@ -73,10 +73,10 @@ impl Fixture {
             parameter_names: Default::default(),
             protected_output: None,
             requested_function_open: None,
-            requested_value_map_editor: None,
             colors: crate::appearance::SemanticThemeColors::default(),
             wire_color_mode: crate::appearance::WireColorMode::Theme,
             endpoint_scroll: &mut self.endpoint_scroll,
+            value_map_wheel: None,
             endpoint_search_match: None,
             node_sizes: None,
             hovered_node: None,
@@ -125,6 +125,24 @@ fn minimap_focus_sets_zoom_and_centers_the_requested_graph_point() {
 
     assert_eq!(transform.scaling, 1.0);
     assert!((transform * graph_point - screen_point).length() < 0.001);
+}
+
+#[test]
+fn long_constant_values_do_not_expand_node_titles() {
+    let mut fx = fixture();
+    let value = "transactionId followed by a long structured runtime payload".repeat(4);
+    fx.graph.nodes.insert(
+        7,
+        Node::Const {
+            value: ir::Value::String(value.clone()),
+        },
+    );
+
+    let title = fx.viewer().title(&CanvasNode::Graph(7));
+
+    assert!(!title.contains(&value));
+    assert!(title.ends_with("..."));
+    assert!(title.chars().count() <= 7 + 28);
 }
 
 #[test]
@@ -231,10 +249,10 @@ fn long_endpoint_paths_do_not_expand_the_source_node() {
             parameter_names: Default::default(),
             protected_output: None,
             requested_function_open: None,
-            requested_value_map_editor: None,
             colors: crate::appearance::SemanticThemeColors::default(),
             wire_color_mode: crate::appearance::WireColorMode::Theme,
             endpoint_scroll: &mut endpoint_scroll,
+            value_map_wheel: None,
             endpoint_search_match: None,
             node_sizes: Some(&mut node_sizes),
             hovered_node: None,
@@ -347,10 +365,10 @@ fn lookup_node_width_stabilizes_across_repaints() {
                     parameter_names: Default::default(),
                     protected_output: None,
                     requested_function_open: None,
-                    requested_value_map_editor: None,
                     colors: crate::appearance::SemanticThemeColors::default(),
                     wire_color_mode: crate::appearance::WireColorMode::Theme,
                     endpoint_scroll: &mut endpoint_scroll,
+                    value_map_wheel: None,
                     endpoint_search_match: None,
                     node_sizes: Some(&mut node_sizes),
                     hovered_node: None,
@@ -510,10 +528,10 @@ fn sibling_repeating_source_pins_create_distinct_framed_fields() {
         parameter_names: Default::default(),
         protected_output: None,
         requested_function_open: None,
-        requested_value_map_editor: None,
         colors: crate::appearance::SemanticThemeColors::default(),
         wire_color_mode: crate::appearance::WireColorMode::Theme,
         endpoint_scroll: &mut endpoint_scroll,
+        value_map_wheel: None,
         endpoint_search_match: None,
         node_sizes: None,
         hovered_node: None,
