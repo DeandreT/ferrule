@@ -22,7 +22,7 @@ use crate::appearance::{SemanticThemeColors, WireColorMode};
 use crate::canvas::{CanvasNode, SourceBlock, SourceLeaf, TargetBlock, TargetLeaf};
 use crate::canvas_endpoints::EndpointDisplayPin;
 use crate::path_picker::SourcePathCatalog;
-use crate::value_editor::{show_value_editor, show_value_map_preview};
+use crate::value_editor::{show_value_editor, show_value_map_editor};
 use crate::wire_colors::WireEmphasis;
 
 #[path = "graph_references.rs"]
@@ -199,10 +199,10 @@ pub struct GraphViewer<'a> {
     pub parameter_names: std::collections::BTreeMap<FunctionParameterId, String>,
     pub protected_output: Option<NodeId>,
     pub requested_function_open: Option<FunctionId>,
-    pub requested_value_map_editor: Option<NodeId>,
     pub colors: SemanticThemeColors,
     pub wire_color_mode: WireColorMode,
     pub endpoint_scroll: &'a mut crate::canvas_endpoints::EndpointScrollState,
+    pub value_map_wheel: Option<(NodeId, f32)>,
     pub endpoint_search_match: Option<(CanvasNode, usize)>,
     pub node_sizes: Option<&'a mut std::collections::BTreeMap<CanvasNode, egui::Vec2>>,
     pub hovered_node: Option<SnarlNodeId>,
@@ -273,6 +273,46 @@ impl GraphViewer<'_> {
                     .then_some((node, total))
             })
             .last()
+    }
+
+    fn value_map_at(
+        &self,
+        graph_position: egui::Pos2,
+        snarl: &Snarl<CanvasNode>,
+    ) -> Option<NodeId> {
+        let sizes = self.node_sizes.as_deref()?;
+        snarl
+            .nodes_pos_ids()
+            .filter_map(|(_, position, &node)| {
+                let CanvasNode::Graph(id) = node else {
+                    return None;
+                };
+                if !matches!(self.graph.nodes.get(&id), Some(Node::ValueMap { .. })) {
+                    return None;
+                }
+                let size = sizes.get(&node)?;
+                egui::Rect::from_min_size(position, *size)
+                    .expand(4.0)
+                    .contains(graph_position)
+                    .then_some(id)
+            })
+            .last()
+    }
+
+    pub fn queue_value_map_wheel_at(
+        &mut self,
+        graph_position: egui::Pos2,
+        delta_y: f32,
+        snarl: &Snarl<CanvasNode>,
+    ) -> bool {
+        if delta_y == 0.0 || self.camera_focus.is_some() {
+            return false;
+        }
+        let Some(node) = self.value_map_at(graph_position, snarl) else {
+            return false;
+        };
+        self.value_map_wheel = Some((node, delta_y));
+        true
     }
 
     pub fn scroll_endpoint_at(
@@ -1002,7 +1042,12 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                     }
                     Some(Node::Unconnected) => "Unconnected".to_string(),
                     Some(Node::Const { value }) => {
-                        format!("Const: {}", crate::value_editor::display_string(value))
+                        let preview = crate::value_editor::title_preview(value);
+                        if preview.is_empty() {
+                            "Const".to_string()
+                        } else {
+                            format!("Const: {preview}")
+                        }
                     }
                     Some(Node::FunctionParameter { parameter }) => {
                         self.parameter_names.get(parameter).map_or_else(
@@ -1164,6 +1209,21 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 Node::UserFunctionCall { function, .. } => Some(*function),
                 _ => None,
             });
+        let header_hint = endpoint_hint.or_else(|| {
+            Self::mapping_id(canvas_node)
+                .and_then(|id| self.graph.nodes.get(&id))
+                .and_then(|node| match node {
+                    Node::Const { value } => {
+                        let full_value = crate::value_editor::display_string(value);
+                        Some(if full_value.is_empty() {
+                            "<empty constant>".to_string()
+                        } else {
+                            full_value
+                        })
+                    }
+                    _ => None,
+                })
+        });
         let response = if let Some(function) = function_call {
             ui.horizontal(|ui| {
                 let response = ui.label(self.title(&canvas_node));
@@ -1182,7 +1242,7 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         } else {
             ui.label(self.title(&canvas_node))
         };
-        if let Some(hint) = endpoint_hint {
+        if let Some(hint) = header_hint {
             response.on_hover_text(hint);
         }
     }
@@ -1311,6 +1371,13 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
         let Some(node_id) = Self::mapping_id(snarl[node]) else {
             return;
         };
+        let value_map_wheel = match self.value_map_wheel {
+            Some((id, delta_y)) if id == node_id => {
+                self.value_map_wheel = None;
+                Some(delta_y)
+            }
+            _ => None,
+        };
         let source_paths = self.source_paths;
         match self.graph.nodes.get_mut(&node_id) {
             Some(Node::Lookup {
@@ -1319,12 +1386,9 @@ impl SnarlViewer<CanvasNode> for GraphViewer<'_> {
                 value,
                 ..
             }) => show_lookup_editor(ui, source_paths, collection, key, value),
-            Some(Node::ValueMap { table, default, .. })
-                if show_value_map_preview(ui, table, default.as_ref()) =>
-            {
-                self.requested_value_map_editor = Some(node_id);
+            Some(Node::ValueMap { table, default, .. }) => {
+                show_value_map_editor(ui, table, default, value_map_wheel);
             }
-            Some(Node::ValueMap { .. }) => {}
             _ => {}
         }
     }
