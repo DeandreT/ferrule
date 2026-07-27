@@ -1,4 +1,5 @@
 use super::*;
+use crate::canvas_layout::arrange_snarl;
 use crate::layout_store::layout_path;
 use ir::{ScalarType, SchemaNode};
 use mapping::Binding;

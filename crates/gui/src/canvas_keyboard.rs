@@ -10,6 +10,19 @@ const TARGET_FIT_EXTENT: f32 = 150.0;
 const EDGE_PAN_ZONE: f32 = 72.0;
 const EDGE_PAN_SPEED: f32 = 900.0;
 
+#[derive(Clone, Copy, Debug)]
+pub struct CanvasInteraction {
+    pub viewport_width: f32,
+    pub focused: bool,
+}
+
+pub struct CanvasOptions {
+    pub id_salt: egui::Id,
+    pub show_minimap: bool,
+    pub view_generation: u64,
+    pub style: SnarlStyle,
+}
+
 #[derive(Clone, Default)]
 struct PinInteractionIds(Vec<egui::Id>);
 
@@ -28,13 +41,19 @@ pub fn show(
     snarl: &mut Snarl<CanvasNode>,
     viewer: &mut GraphViewer<'_>,
     search: &mut CanvasSearchState,
-    show_minimap: bool,
-    view_generation: u64,
-    style: SnarlStyle,
+    options: CanvasOptions,
     ui: &mut egui::Ui,
-) {
-    let canvas_id = egui::Id::new((CANVAS_ID, view_generation));
+) -> CanvasInteraction {
+    let canvas_id = egui::Id::new((CANVAS_ID, options.id_salt, options.view_generation));
+    let style = options.style;
     let viewport = ui.available_rect_before_wrap().intersect(ui.clip_rect());
+    let focused = ui.ctx().input(|input| {
+        input.pointer.any_pressed()
+            && input
+                .pointer
+                .interact_pos()
+                .is_some_and(|position| viewport.contains(position))
+    });
     let dragged_id = ui.ctx().dragged_id();
     let (pointer, primary_down, frame_seconds) = ui.ctx().input(|input| {
         (
@@ -130,7 +149,7 @@ pub fn show(
         viewer.target_blocks,
         viewer.endpoint_scroll,
     );
-    if show_minimap
+    if options.show_minimap
         && let (Some(transform), Some(node_sizes)) =
             (viewer.canvas_transform, viewer.node_sizes.as_deref())
         && let Some(navigation) = crate::canvas_minimap::show(
@@ -176,6 +195,10 @@ pub fn show(
     }
     if initialize_fit {
         ui.ctx().data_mut(|data| data.insert_temp(fit_marker, true));
+    }
+    CanvasInteraction {
+        viewport_width: viewport.width(),
+        focused,
     }
 }
 
