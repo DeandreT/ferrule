@@ -112,6 +112,24 @@ enum JsonPosition {
     Opaque,
 }
 
+#[derive(Clone, Copy)]
+struct RewriteContext {
+    document_index: usize,
+    reference_depth: usize,
+    json_depth: usize,
+    ignore_ref_siblings: bool,
+    dialect: ValidationDialect,
+}
+
+impl RewriteContext {
+    fn deeper(self) -> Self {
+        Self {
+            json_depth: self.json_depth + 1,
+            ..self
+        }
+    }
+}
+
 pub(super) fn load(path: &Path, package_root: &Path) -> Result<serde_json::Value, JsonFormatError> {
     let package_root =
         std::fs::canonicalize(package_root).map_err(|error| JsonFormatError::SchemaResource {
@@ -197,15 +215,14 @@ impl Loader {
             path: path.to_path_buf(),
             value: serde_json::Value::Null,
         });
-        self.rewrite_references(
-            &mut value,
-            index,
+        let context = RewriteContext {
+            document_index: index,
             reference_depth,
-            0,
+            json_depth: 0,
             ignore_ref_siblings,
             dialect,
-            JsonPosition::Schema,
-        )?;
+        };
+        self.rewrite_references(&mut value, context, JsonPosition::Schema)?;
         self.documents[index].value = value;
         Ok(index)
     }
@@ -213,52 +230,20 @@ impl Loader {
     fn rewrite_references(
         &mut self,
         value: &mut serde_json::Value,
-        document_index: usize,
-        reference_depth: usize,
-        json_depth: usize,
-        ignore_ref_siblings: bool,
-        dialect: ValidationDialect,
+        context: RewriteContext,
         position: JsonPosition,
     ) -> Result<(), JsonFormatError> {
-        if json_depth > MAX_JSON_DEPTH {
+        if context.json_depth > MAX_JSON_DEPTH {
             return Err(JsonFormatError::SchemaResourceLimit {
                 kind: "JSON nesting depth",
                 limit: MAX_JSON_DEPTH,
             });
         }
         match position {
-            JsonPosition::Schema => self.rewrite_schema(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            ),
-            JsonPosition::SchemaMap => self.rewrite_schema_map(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            ),
-            JsonPosition::SchemaArray => self.rewrite_schema_array(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            ),
-            JsonPosition::LegacyDependenciesMap => self.rewrite_legacy_dependencies(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            ),
+            JsonPosition::Schema => self.rewrite_schema(value, context),
+            JsonPosition::SchemaMap => self.rewrite_schema_map(value, context),
+            JsonPosition::SchemaArray => self.rewrite_schema_array(value, context),
+            JsonPosition::LegacyDependenciesMap => self.rewrite_legacy_dependencies(value, context),
             JsonPosition::Items => {
                 let position = if value.is_array() {
                     JsonPosition::SchemaArray
@@ -267,48 +252,29 @@ impl Loader {
                 } else {
                     JsonPosition::Opaque
                 };
-                self.rewrite_references(
-                    value,
-                    document_index,
-                    reference_depth,
-                    json_depth,
-                    ignore_ref_siblings,
-                    dialect,
-                    position,
-                )
+                self.rewrite_references(value, context, position)
             }
-            JsonPosition::Opaque => self.rewrite_opaque(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            ),
+            JsonPosition::Opaque => self.rewrite_opaque(value, context),
         }
     }
 
     fn rewrite_schema(
         &mut self,
         value: &mut serde_json::Value,
-        document_index: usize,
-        reference_depth: usize,
-        json_depth: usize,
-        ignore_ref_siblings: bool,
-        dialect: ValidationDialect,
+        context: RewriteContext,
     ) -> Result<(), JsonFormatError> {
         match value {
             serde_json::Value::Object(object) => {
                 if object.contains_key(IGNORE_REF_SIBLINGS_KEY) {
                     return self.resource_error(
-                        document_index,
+                        context.document_index,
                         IGNORE_REF_SIBLINGS_KEY,
                         "a schema object uses ferrule's reserved `$ref` policy key",
                     );
                 }
                 if object.contains_key(VALIDATION_DIALECT_KEY) {
                     return self.resource_error(
-                        document_index,
+                        context.document_index,
                         VALIDATION_DIALECT_KEY,
                         "a schema object uses ferrule's reserved dialect-policy key",
                     );
@@ -325,10 +291,13 @@ impl Loader {
                             limit: MAX_REFERENCES,
                         });
                     }
-                    let rewritten =
-                        self.resolve_reference(document_index, &reference, reference_depth)?;
+                    let rewritten = self.resolve_reference(
+                        context.document_index,
+                        &reference,
+                        context.reference_depth,
+                    )?;
                     object.insert("$ref".to_string(), serde_json::Value::String(rewritten));
-                    if ignore_ref_siblings {
+                    if context.ignore_ref_siblings {
                         object.insert(
                             IGNORE_REF_SIBLINGS_KEY.to_string(),
                             serde_json::Value::Bool(true),
@@ -360,29 +329,18 @@ impl Loader {
                 {
                     object.insert(
                         VALIDATION_DIALECT_KEY.to_string(),
-                        serde_json::Value::String(dialect.marker().to_string()),
+                        serde_json::Value::String(context.dialect.marker().to_string()),
                     );
                 }
                 for (keyword, child) in object {
                     self.rewrite_references(
                         child,
-                        document_index,
-                        reference_depth,
-                        json_depth + 1,
-                        ignore_ref_siblings,
-                        dialect,
+                        context.deeper(),
                         schema_keyword_position(keyword),
                     )?;
                 }
             }
-            _ => self.rewrite_opaque(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            )?,
+            _ => self.rewrite_opaque(value, context)?,
         }
         Ok(())
     }
@@ -390,32 +348,13 @@ impl Loader {
     fn rewrite_schema_map(
         &mut self,
         value: &mut serde_json::Value,
-        document_index: usize,
-        reference_depth: usize,
-        json_depth: usize,
-        ignore_ref_siblings: bool,
-        dialect: ValidationDialect,
+        context: RewriteContext,
     ) -> Result<(), JsonFormatError> {
         let serde_json::Value::Object(entries) = value else {
-            return self.rewrite_opaque(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            );
+            return self.rewrite_opaque(value, context);
         };
         for schema in entries.values_mut() {
-            self.rewrite_references(
-                schema,
-                document_index,
-                reference_depth,
-                json_depth + 1,
-                ignore_ref_siblings,
-                dialect,
-                JsonPosition::Schema,
-            )?;
+            self.rewrite_references(schema, context.deeper(), JsonPosition::Schema)?;
         }
         Ok(())
     }
@@ -423,32 +362,13 @@ impl Loader {
     fn rewrite_schema_array(
         &mut self,
         value: &mut serde_json::Value,
-        document_index: usize,
-        reference_depth: usize,
-        json_depth: usize,
-        ignore_ref_siblings: bool,
-        dialect: ValidationDialect,
+        context: RewriteContext,
     ) -> Result<(), JsonFormatError> {
         let serde_json::Value::Array(items) = value else {
-            return self.rewrite_opaque(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            );
+            return self.rewrite_opaque(value, context);
         };
         for schema in items {
-            self.rewrite_references(
-                schema,
-                document_index,
-                reference_depth,
-                json_depth + 1,
-                ignore_ref_siblings,
-                dialect,
-                JsonPosition::Schema,
-            )?;
+            self.rewrite_references(schema, context.deeper(), JsonPosition::Schema)?;
         }
         Ok(())
     }
@@ -456,21 +376,10 @@ impl Loader {
     fn rewrite_legacy_dependencies(
         &mut self,
         value: &mut serde_json::Value,
-        document_index: usize,
-        reference_depth: usize,
-        json_depth: usize,
-        ignore_ref_siblings: bool,
-        dialect: ValidationDialect,
+        context: RewriteContext,
     ) -> Result<(), JsonFormatError> {
         let serde_json::Value::Object(entries) = value else {
-            return self.rewrite_opaque(
-                value,
-                document_index,
-                reference_depth,
-                json_depth,
-                ignore_ref_siblings,
-                dialect,
-            );
+            return self.rewrite_opaque(value, context);
         };
         for dependency in entries.values_mut() {
             let position = if dependency.is_object() || dependency.is_boolean() {
@@ -478,15 +387,7 @@ impl Loader {
             } else {
                 JsonPosition::Opaque
             };
-            self.rewrite_references(
-                dependency,
-                document_index,
-                reference_depth,
-                json_depth + 1,
-                ignore_ref_siblings,
-                dialect,
-                position,
-            )?;
+            self.rewrite_references(dependency, context.deeper(), position)?;
         }
         Ok(())
     }
@@ -494,37 +395,17 @@ impl Loader {
     fn rewrite_opaque(
         &mut self,
         value: &mut serde_json::Value,
-        document_index: usize,
-        reference_depth: usize,
-        json_depth: usize,
-        ignore_ref_siblings: bool,
-        dialect: ValidationDialect,
+        context: RewriteContext,
     ) -> Result<(), JsonFormatError> {
         match value {
             serde_json::Value::Object(object) => {
                 for child in object.values_mut() {
-                    self.rewrite_references(
-                        child,
-                        document_index,
-                        reference_depth,
-                        json_depth + 1,
-                        ignore_ref_siblings,
-                        dialect,
-                        JsonPosition::Opaque,
-                    )?;
+                    self.rewrite_references(child, context.deeper(), JsonPosition::Opaque)?;
                 }
             }
             serde_json::Value::Array(items) => {
                 for child in items {
-                    self.rewrite_references(
-                        child,
-                        document_index,
-                        reference_depth,
-                        json_depth + 1,
-                        ignore_ref_siblings,
-                        dialect,
-                        JsonPosition::Opaque,
-                    )?;
+                    self.rewrite_references(child, context.deeper(), JsonPosition::Opaque)?;
                 }
             }
             _ => {}
