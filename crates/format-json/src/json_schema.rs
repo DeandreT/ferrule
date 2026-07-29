@@ -9,8 +9,8 @@
 //! `oneOf` / `anyOf` and nullable type arrays retain explicit nullability,
 //! including scalar array items. Exact heterogeneous scalar `anyOf`, pairwise-
 //! disjoint scalar `oneOf`, and type arrays preserve every allowed runtime
-//! type; homogeneous array `anyOf` branches canonicalize to their shared
-//! runtime shape. Unconstrained
+//! type; array `anyOf` branches canonicalize when they are identical or one
+//! scalar item domain contains all the others. Unconstrained
 //! `additionalProperties` values are retained as canonical JSON text in the
 //! graph's string domain. An omitted or false `additionalProperties` is
 //! treated as closed. General composition remains outside this subset;
@@ -25,9 +25,9 @@ mod alternatives;
 mod render;
 
 use alternatives::{
-    parse_homogeneous_array_any_of, parse_inferred_const_scalar,
-    parse_nullable_container_alternatives, parse_nullable_scalar_alternatives,
-    parse_object_alternatives, parse_scalar_any_of, parse_scalar_one_of,
+    parse_inferred_const_scalar, parse_nullable_container_alternatives,
+    parse_nullable_scalar_alternatives, parse_object_alternatives, parse_scalar_any_of,
+    parse_scalar_domain_array_any_of, parse_scalar_one_of,
 };
 
 enum ImportedSchemaType<'a> {
@@ -139,10 +139,10 @@ fn parse(
         if let Some(scalar) = parse_scalar_any_of(name, schema, alternatives, doc, active_refs)? {
             return Ok(scalar);
         }
-        if let Some(homogeneous) =
-            parse_homogeneous_array_any_of(name, schema, alternatives, doc, active_refs)?
+        if let Some(array) =
+            parse_scalar_domain_array_any_of(name, schema, alternatives, doc, active_refs)?
         {
-            return Ok(homogeneous);
+            return Ok(array);
         }
         return parse_object_alternatives(
             name,

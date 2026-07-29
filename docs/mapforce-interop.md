@@ -99,13 +99,14 @@ expected to re-import and validate as ferrule projects.
 ## Current Boundaries
 
 The main remaining gaps are some XML derived-type input shapes,
-namespace-dependent wildcards, validation-bearing scalar unions and heterogeneous array,
+namespace-dependent wildcards, validation-bearing scalar unions and general heterogeneous arrays,
 overlapping cross-mode, and incompatible typed-wrapper JSON union composition,
 first-class sequence composition, general SQL and database mutation, broader
 XLSX/PDF/FlexText configuration shapes, taxonomy-level XBRL execution, and
 direct execution of unrecognized or external-service user components. Bounded
 cross-namespace substitution groups, heterogeneous scalar type arrays,
-pairwise-disjoint scalar `oneOf`, and exact scalar `anyOf` unions are preserved,
+pairwise-disjoint scalar `oneOf`, exact scalar `anyOf` unions, and array `anyOf`
+branches whose scalar item domain subsumes every narrower branch are preserved,
 including required or optional typed
 `const` discriminators and JSON-null discriminators. Expanded-name identity for ordinary elements and attributes is
 preserved; foreign declarations export as an atomic graph of local XSD siblings.
