@@ -233,3 +233,45 @@ fn invalid_edi_values_report_all_issues_before_output_is_replaced()
     std::fs::remove_dir_all(directory)?;
     Ok(())
 }
+
+#[test]
+fn unresolved_edi_configuration_blocks_output_before_replacing_it()
+-> Result<(), Box<dyn std::error::Error>> {
+    let target = SchemaNode::group(
+        "Message",
+        vec![SchemaNode::group(
+            "PID",
+            vec![SchemaNode::scalar("PID-1", ScalarType::String)],
+        )],
+    );
+    let root = Scope {
+        children: vec![Scope {
+            target_field: "PID".into(),
+            bindings: vec![binding("PID-1", 0)],
+            ..Scope::default()
+        }],
+        ..Scope::default()
+    };
+    let mut project = project(target, EdiBoundaryKind::Hl7, constant_graph(&["1"]), root);
+    project.target_options.edi_config_reference = Some("HL7/Envelope.Config".into());
+
+    let directory = test_dir("unresolved-config")?;
+    let project_path = write_project(&directory, &project)?;
+    let input = directory.join("input.capture");
+    let output = directory.join("output.capture");
+    std::fs::write(&input, "{}")?;
+    std::fs::write(&output, "preserved")?;
+
+    let error = cli::run_project(&project_path, &input, &output)
+        .expect_err("an unresolved EDI configuration must block output");
+    let message = format!("{error:#}");
+    assert!(
+        message.contains(
+            "output requires unresolved external EDI configuration `HL7/Envelope.Config`"
+        ),
+        "{message}"
+    );
+    assert_eq!(std::fs::read_to_string(&output)?, "preserved");
+    std::fs::remove_dir_all(directory)?;
+    Ok(())
+}
