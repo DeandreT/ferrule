@@ -195,7 +195,6 @@ fn unsupported_sequence_member(sequence: &Node<'_, '_>) -> Option<&'static str> 
             "choice" | "all" => {
                 return Some("nested xs:choice and xs:all compositors are not supported");
             }
-            "any" => return Some("xs:any particles are not supported"),
             "sequence" => {
                 if is_repeating(&child) {
                     return Some(
@@ -207,7 +206,7 @@ fn unsupported_sequence_member(sequence: &Node<'_, '_>) -> Option<&'static str> 
                 }
             }
             // Element-local complex types own a separate particle tree.
-            "element" | "group" | "annotation" => {}
+            "element" | "group" | "any" | "annotation" => {}
             _ => {
                 return Some(
                     "only elements, sequences, and nonrepeating group references are supported",
