@@ -14,20 +14,21 @@ mod schema;
 
 pub use schema::{
     IntegerRange, ItemCountRange, JsonAllowedValue, JsonAllowedValues, JsonAllowedValuesError,
-    JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate, JsonFormatAnnotations,
+    JsonContainsConstraint, JsonContainsConstraints, JsonContainsPredicate,
+    JsonDependentSchemaConstraint, JsonDependentSchemaConstraints, JsonFormatAnnotations,
     JsonFormatAnnotationsError, JsonMultipleOf, JsonMultipleOfConstraints,
     JsonMultipleOfConstraintsError, JsonPatternConstraints, JsonPatternConstraintsError,
     JsonPropertyDependencies, JsonPropertyDependenciesError, JsonPropertyNameConstraints,
-    JsonPropertyNameSet, JsonPropertyNameSetError, MAX_DISTINCT_JSON_PATTERNS,
+    JsonPropertyNameSet, JsonPropertyNameSetError, JsonSchemaPredicate, MAX_DISTINCT_JSON_PATTERNS,
     MAX_JSON_ALLOWED_VALUE_STRING_BYTES, MAX_JSON_ALLOWED_VALUE_TOTAL_STRING_BYTES,
-    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_FORMAT_ANNOTATION_BYTES,
-    MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES, MAX_JSON_FORMAT_ANNOTATIONS,
-    MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS, MAX_JSON_PATTERN_ALTERNATIVES,
-    MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES, MAX_JSON_PATTERN_TERMS,
-    MAX_JSON_PROPERTY_DEPENDENCY_EDGES, MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES,
-    MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS, MAX_JSON_PROPERTY_NAME_BYTES,
-    MAX_JSON_PROPERTY_NAME_TOTAL_BYTES, MAX_JSON_PROPERTY_NAMES, NumberBound, NumberRange,
-    NumericRange, PropertyCountRange, StringLengthRange,
+    MAX_JSON_ALLOWED_VALUES, MAX_JSON_CONTAINS_CONSTRAINTS, MAX_JSON_DEPENDENT_SCHEMA_CONSTRAINTS,
+    MAX_JSON_FORMAT_ANNOTATION_BYTES, MAX_JSON_FORMAT_ANNOTATION_TOTAL_BYTES,
+    MAX_JSON_FORMAT_ANNOTATIONS, MAX_JSON_MULTIPLE_OF_ALTERNATIVES, MAX_JSON_MULTIPLE_OF_TERMS,
+    MAX_JSON_PATTERN_ALTERNATIVES, MAX_JSON_PATTERN_INSTRUCTIONS, MAX_JSON_PATTERN_SOURCE_BYTES,
+    MAX_JSON_PATTERN_TERMS, MAX_JSON_PROPERTY_DEPENDENCY_EDGES,
+    MAX_JSON_PROPERTY_DEPENDENCY_NAME_BYTES, MAX_JSON_PROPERTY_DEPENDENCY_TRIGGERS,
+    MAX_JSON_PROPERTY_NAME_BYTES, MAX_JSON_PROPERTY_NAME_TOTAL_BYTES, MAX_JSON_PROPERTY_NAMES,
+    NumberBound, NumberRange, NumericRange, PropertyCountRange, StringLengthRange,
 };
 
 /// Instance-field name used for an XML element's simple text content.
@@ -550,6 +551,12 @@ pub struct SchemaNode {
     /// this array wrapper.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub json_contains: Option<JsonContainsConstraints>,
+    /// Exact conditional whole-object JSON Schema assertions.
+    ///
+    /// Each predicate applies to this complete object when its trigger
+    /// property is present. Repeated triggers form a conjunction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub json_dependent_schemas: Option<JsonDependentSchemaConstraints>,
     /// Exact cardinality bounds for the properties of a JSON object node.
     ///
     /// On a repeating group these bounds apply to each object item, while
@@ -665,6 +672,8 @@ impl<'de> Deserialize<'de> for SchemaNode {
             #[serde(default)]
             json_contains: Option<JsonContainsConstraints>,
             #[serde(default)]
+            json_dependent_schemas: Option<JsonDependentSchemaConstraints>,
+            #[serde(default)]
             property_count_range: Option<PropertyCountRange>,
             #[serde(default)]
             json_property_dependencies: Option<JsonPropertyDependencies>,
@@ -716,6 +725,7 @@ impl<'de> Deserialize<'de> for SchemaNode {
             json_multiple_of: repr.json_multiple_of,
             item_count_range: repr.item_count_range,
             json_contains: repr.json_contains,
+            json_dependent_schemas: repr.json_dependent_schemas,
             property_count_range: repr.property_count_range,
             json_property_dependencies: repr.json_property_dependencies,
             json_property_names: repr.json_property_names,
@@ -962,6 +972,7 @@ impl SchemaNode {
             && self.json_multiple_of_is_valid()
             && self.item_count_range_is_valid()
             && self.json_contains_are_valid()
+            && self.json_dependent_schemas_are_valid()
             && self.property_count_range_is_valid()
             && self.json_property_dependencies_are_valid()
             && self.json_property_names_are_valid()
@@ -1004,6 +1015,7 @@ impl SchemaNode {
             json_multiple_of: None,
             item_count_range: None,
             json_contains: None,
+            json_dependent_schemas: None,
             property_count_range: None,
             json_property_dependencies: None,
             json_property_names: None,
@@ -1049,6 +1061,7 @@ impl SchemaNode {
             json_multiple_of: None,
             item_count_range: None,
             json_contains: None,
+            json_dependent_schemas: None,
             property_count_range: None,
             json_property_dependencies: None,
             json_property_names: None,
@@ -1103,6 +1116,7 @@ impl SchemaNode {
             json_multiple_of: None,
             item_count_range: None,
             json_contains: None,
+            json_dependent_schemas: None,
             property_count_range: None,
             json_property_dependencies: None,
             json_property_names: None,
@@ -1409,10 +1423,9 @@ impl SchemaNode {
         self.repeating
             && constraints.is_canonical()
             && constraints.as_slice().iter().all(|constraint| {
-                constraint
-                    .predicate()
-                    .as_schema()
-                    .is_none_or(SchemaNode::metadata_tree_is_valid)
+                constraint.predicate().as_schema().is_none_or(|schema| {
+                    schema.metadata_tree_is_valid() && schema.private_unique_items_are_exact()
+                })
             })
     }
 
@@ -1440,8 +1453,98 @@ impl SchemaNode {
             }
     }
 
+    /// Checks that every dependent-schema assertion belongs to an object and
+    /// retains canonical, structurally valid predicate metadata.
+    pub fn json_dependent_schemas_are_valid(&self) -> bool {
+        let Some(constraints) = &self.json_dependent_schemas else {
+            return true;
+        };
+        matches!(self.kind, SchemaKind::Group { .. })
+            && constraints.is_canonical()
+            && constraints.as_slice().iter().all(|constraint| {
+                constraint.predicate().as_schema().is_none_or(|schema| {
+                    schema.metadata_tree_is_valid() && schema.private_unique_items_are_exact()
+                })
+            })
+    }
+
+    fn private_unique_items_are_exact(&self) -> bool {
+        if self.json_unique_items && self.item_shape_admits_lossy_json_number() {
+            return false;
+        }
+        let predicates_are_exact = self.json_contains.as_ref().is_none_or(|constraints| {
+            constraints.as_slice().iter().all(|constraint| {
+                constraint
+                    .predicate()
+                    .as_schema()
+                    .is_none_or(SchemaNode::private_unique_items_are_exact)
+            })
+        }) && self.json_dependent_schemas.as_ref().is_none_or(
+            |constraints| {
+                constraints.as_slice().iter().all(|constraint| {
+                    constraint
+                        .predicate()
+                        .as_schema()
+                        .is_none_or(SchemaNode::private_unique_items_are_exact)
+                })
+            },
+        );
+        predicates_are_exact
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::private_unique_items_are_exact)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::private_unique_items_are_exact)
+                }
+            }
+    }
+
+    fn item_shape_admits_lossy_json_number(&self) -> bool {
+        if self.json_any {
+            return true;
+        }
+        match &self.kind {
+            SchemaKind::Scalar { ty } => *ty == ScalarType::Float,
+            SchemaKind::ScalarUnion { types } => types.contains(ScalarType::Float),
+            SchemaKind::Group {
+                children, dynamic, ..
+            } => {
+                children
+                    .iter()
+                    .any(SchemaNode::item_shape_admits_lossy_json_number)
+                    || dynamic
+                        .as_deref()
+                        .is_some_and(SchemaNode::item_shape_admits_lossy_json_number)
+            }
+        }
+    }
+
+    /// Recursively checks dependent-schema placement and predicate schemas.
+    pub fn json_dependent_schemas_tree_is_valid(&self) -> bool {
+        self.json_dependent_schemas_are_valid()
+            && match &self.kind {
+                SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
+                SchemaKind::Group {
+                    children, dynamic, ..
+                } => {
+                    children
+                        .iter()
+                        .all(SchemaNode::json_dependent_schemas_tree_is_valid)
+                        && dynamic
+                            .as_deref()
+                            .is_none_or(SchemaNode::json_dependent_schemas_tree_is_valid)
+                }
+            }
+    }
+
     /// Recursively checks all local metadata invariants, including private
-    /// `contains` predicate schema trees.
+    /// JSON predicate schema trees.
     pub fn metadata_tree_is_valid(&self) -> bool {
         self.metadata_is_valid()
             && match &self.kind {
@@ -1765,6 +1868,7 @@ impl SchemaNode {
         if !self.json_patterns_are_valid()
             || !self.json_property_names_are_valid()
             || !self.json_contains_are_valid()
+            || !self.json_dependent_schemas_are_valid()
         {
             return false;
         }
@@ -1805,7 +1909,23 @@ impl SchemaNode {
                 })
             })
         });
+        let dependent_schemas_are_valid =
+            self.json_dependent_schemas
+                .as_ref()
+                .is_none_or(|constraints| {
+                    constraints.as_slice().iter().all(|constraint| {
+                        constraint.predicate().as_schema().is_none_or(|schema| {
+                            schema.accumulate_json_pattern_budget(
+                                programs,
+                                source_bytes,
+                                instructions,
+                                fixed_work,
+                            )
+                        })
+                    })
+                });
         contains_are_valid
+            && dependent_schemas_are_valid
             && match &self.kind {
                 SchemaKind::Scalar { .. } | SchemaKind::ScalarUnion { .. } => true,
                 SchemaKind::Group {
@@ -2419,6 +2539,15 @@ impl SchemaNode {
     pub fn with_json_contains(mut self, constraints: JsonContainsConstraints) -> Option<Self> {
         self.json_contains = Some(constraints);
         (self.json_contains_are_valid() && self.json_pattern_budget_is_valid()).then_some(self)
+    }
+
+    pub fn with_json_dependent_schemas(
+        mut self,
+        constraints: JsonDependentSchemaConstraints,
+    ) -> Option<Self> {
+        self.json_dependent_schemas = Some(constraints);
+        (self.json_dependent_schemas_are_valid() && self.json_pattern_budget_is_valid())
+            .then_some(self)
     }
 
     pub fn with_property_count_range(mut self, range: PropertyCountRange) -> Option<Self> {

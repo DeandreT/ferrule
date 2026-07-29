@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ir::{JsonPropertyDependencies, SchemaKind, SchemaNode};
 
+use super::files;
 use crate::JsonFormatError;
 
 pub(super) fn has_keywords(schema: &serde_json::Value) -> bool {
@@ -21,17 +22,16 @@ pub(super) fn selected(
     name: &str,
     schema: &serde_json::Value,
 ) -> Result<Option<JsonPropertyDependencies>, JsonFormatError> {
-    if schema.get("dependentSchemas").is_some() {
-        return Err(unsupported(
-            name,
-            "`dependentSchemas` conditionally applies schemas and is not supported",
-        ));
-    }
     let mut rules = BTreeMap::<String, Vec<String>>::new();
-    if let Some(value) = schema.get("dependencies") {
+    let dialect = files::validation_dialect(schema);
+    if dialect.supports_legacy_schema_dependencies()
+        && let Some(value) = schema.get("dependencies")
+    {
         parse_rules(name, "dependencies", value, &mut rules, true)?;
     }
-    if let Some(value) = schema.get("dependentRequired") {
+    if dialect.supports_dependent_schemas()
+        && let Some(value) = schema.get("dependentRequired")
+    {
         parse_rules(name, "dependentRequired", value, &mut rules, false)?;
     }
     rules.retain(|_, requirements| !requirements.is_empty());
@@ -209,12 +209,17 @@ fn parse_rules(
     })?;
     for (trigger, value) in object {
         let Some(values) = value.as_array() else {
-            let reason = if allow_schema_values {
-                "schema-valued `dependencies` are not supported"
-            } else {
-                "`dependentRequired` values must be arrays of unique property names"
-            };
-            return Err(unsupported(object_name, reason));
+            if allow_schema_values && (value.is_object() || value.is_boolean()) {
+                continue;
+            }
+            return Err(unsupported(
+                object_name,
+                if allow_schema_values {
+                    "`dependencies` values must be property-name arrays or schemas"
+                } else {
+                    "`dependentRequired` values must be arrays of unique property names"
+                },
+            ));
         };
         let mut parsed = Vec::with_capacity(values.len());
         for value in values {

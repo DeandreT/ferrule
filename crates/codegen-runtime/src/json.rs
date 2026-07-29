@@ -10,6 +10,8 @@ use crate::RuntimeError;
 mod allowed_values;
 #[cfg(test)]
 mod contains;
+#[cfg(test)]
+mod dependent_schemas;
 mod multiple_of;
 #[cfg(test)]
 mod property_names;

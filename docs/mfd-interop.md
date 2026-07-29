@@ -180,8 +180,20 @@ its trigger is present, counting explicit JSON null as input presence and
 checking normalized output after absent fields are omitted. Nullable object
 null bypasses the rule, compatible `allOf` branches unite rules, and alternatives
 must share one identical effective relation. Schema-valued legacy dependencies
-and `dependentSchemas` trigger the existing actionable schema-fallback
-diagnostic rather than being silently discarded.
+and modern `dependentSchemas` are executable when their whole-object predicate
+fits Ferrule's retained JSON subset. Required-only predicates lower to the
+property-dependency relation; nontrivial predicates retain nested ordinary
+object/array constraints and export canonically as `dependentSchemas`.
+Repeated rules for a trigger remain conjunctive through export and re-import;
+ordered outer `allOf` branches preserve interleaved trigger declaration order.
+Nested dependent schemas retain the same recursively bounded behavior. Active
+conditional schemas, pattern/unevaluated property keywords, and tuple/prefix
+array schemas still produce the existing actionable schema-fallback diagnostic
+rather than being widened or discarded. Declared Draft 4/6/7 resources use
+legacy schema-valued `dependencies`; declared 2019-09/2020-12 resources use
+modern `dependentSchemas`. Schemas without `$schema` intentionally accept both
+spellings while retaining modern reference-sibling behavior, which preserves
+older MFD schema packages without weakening explicitly declared dialects.
 Referenced JSON objects retain supported `propertyNames` schemas as well.
 Exact false, finite `const`/`enum` names, Unicode-scalar length intervals,
 bounded portable pattern conjunctions/disjunctions, and nonasserting `format`

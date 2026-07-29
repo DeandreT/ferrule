@@ -60,7 +60,7 @@ clean-room interoperability, and extensible adapters.
 | Area | Ferrule now | Workflow-parity target |
 | --- | --- | --- |
 | XML | XSD subset, local include/import graphs, named model/attribute groups, typed element/simple-content/attribute defaults, expanded-name identity for elements and attributes including compatible same-local strict-wildcard alternatives, simple and ordered mixed content, `xsi:nil`, namespace-constrained skip element wildcards, lax element and attribute wildcards with typed known declarations plus nonduplicating generic fallback, closed strict wildcards resolved to exact singular or repeating typed choices, strict known-attribute projection, direct or named-group attribute wildcards, bounded cross-namespace substitution groups, and compatible transitive element-only or mixed `complexContent` plus scalar-text/attribute-only `simpleContent` extension/restriction alternatives | Remaining derived-type input shapes, XSD 1.1 wildcard exclusions, unordered wildcard compositors, and unresolved strict wildcard declaration sets |
-| JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies, property-name constraints, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, schema-valued dependencies, `dependentSchemas`, general correlated property-name unions and `not`, `patternProperties`, `unevaluatedProperties`, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
+| JSON | JSON Schema subset, confined external and local refs, compatible structural `allOf` intersections across objects, scalar domains, and matching arrays, bounded exact scalar `const`/`enum` value sets including finite `anyOf`/`oneOf` composition, exact numeric ranges including contiguous same-type `anyOf` unions, exact decimal `multipleOf` constraints, exact array-count, `contains` match-count, object-property-count, and Unicode string-length intervals, exact structural `uniqueItems`, bounded portable string `pattern` assertions, exact object-property presence, property dependencies and whole-object dependent-schema predicates, property-name constraints, and open/closed object semantics, exact nullable scalar/object/array wrappers including flat multi-branch nullable compositions, heterogeneous scalar type arrays, exact scalar `anyOf`, pairwise-disjoint scalar `oneOf`, identical or scalar-domain-subsumed array `anyOf` branches, compatible object `oneOf`/`anyOf` with required or optional string, boolean, signed-integer, finite-number, or JSON-null discriminators, same-mode and provably disjoint cross-mode nested object unions with compatible wrapper constraints, typed and unconstrained dynamic properties, and bounded ordered `format` annotation preservation without vocabulary assertion | Incompatible or correlated validation composition, general correlated property-name unions and `not`, `patternProperties`, `unevaluatedProperties`, active conditional schemas, tuple/prefix array schemas, heterogeneous or correlated numeric-range scalar unions, heterogeneous array composition, overlapping cross-mode or incompatible typed-wrapper union composition, structured discriminator values, mixed arrays, and remaining validation-keyword enforcement |
 | Flat files | Delimited CSV, fixed length, reusable FlexText layouts, and bounded string-fed parsing | Additional FlexText commands and parser variants |
 | Database | Relational SQLite reads and full-replace writes, imported WHERE/ORDER controls, static/correlated queries, and deterministic generated keys | General query model, insert/update/delete, PostgreSQL |
 | EDI | Bounded X12/EDIFACT/HL7/TRADACOMS runtime plus embedded IDoc/SWIFT layouts and executable `.mfd` configurations | Validation reports, additional configuration commands, and pluggable release packs |
@@ -108,16 +108,23 @@ boundaries count distinct parsed input properties before object decoding and
 normalized output members after absent values are omitted. Inconsistent
 required/closed-object counts and correlated alternative intervals reject
 rather than widen.
-Object property dependencies are executable on native and generated Rust/C#
-boundaries. Modern `dependentRequired` and legacy property-array
-`dependencies` normalize to one bounded trigger-to-required-property relation:
-when a trigger is present, every dependent name must also be present. Explicit
-JSON null counts as presence on input, while output checks the normalized object
-after absent Ferrule values are omitted. Compatible `allOf` branches unite
-their relations; nullable object null bypasses them; object alternatives retain
-only one identical effective relation. Schema-valued legacy dependencies and
-`dependentSchemas` remain outside the executable subset rather than being
-silently ignored.
+Object property dependencies and whole-object dependent predicates are
+executable on native and generated Rust/C# boundaries. Modern
+`dependentRequired` and legacy property-array `dependencies` normalize to one
+bounded trigger-to-required-property relation. A required-only
+`dependentSchemas` or schema-valued legacy `dependencies` entry lowers to that
+same relation; other exactly representable entries retain their complete
+whole-object predicate. When a trigger is present, explicit JSON null included,
+the predicate sees the complete containing object. Input validates parsed
+members, while output validates the normalized object after absent Ferrule
+values are omitted. Compatible `allOf` branches append conjunctive predicates;
+canonical export preserves their retained declaration order, including
+interleaved repeated triggers. Nullable object null bypasses them; object
+alternatives retain only one identical effective constraint set. Retained
+predicates may use the executable JSON subset recursively, including
+independently bounded nested dependent schemas. Active `if`/`then`/`else`,
+`patternProperties`, unevaluated keywords, and tuple/prefix array schemas
+remain explicit rejections rather than approximations.
 Object `propertyNames` assertions validate every actual key, including declared,
 runtime-named, and empty-string properties. Exact `false`, finite
 `const`/`enum` name sets, Unicode-scalar length intervals, bounded portable

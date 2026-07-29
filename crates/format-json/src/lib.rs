@@ -62,6 +62,10 @@ pub enum JsonFormatError {
         trigger: String,
         property: String,
     },
+    #[error(
+        "object `{object}` contains trigger property `{trigger}` but does not satisfy its dependent schema"
+    )]
+    DependentSchemaMismatch { object: String, trigger: String },
     #[error("object `{object}` contains property name `{property}` rejected by its schema")]
     InvalidPropertyName { object: String, property: String },
     #[error("closed object `{object}` does not declare property `{property}`")]
@@ -140,6 +144,8 @@ pub enum JsonFormatError {
     InvalidPropertyCountMetadata { reason: String },
     #[error("JSON property-dependency metadata is invalid: {reason}")]
     InvalidPropertyDependenciesMetadata { reason: String },
+    #[error("JSON dependent-schema metadata is invalid: {reason}")]
+    InvalidDependentSchemasMetadata { reason: String },
     #[error("JSON property-name metadata is invalid: {reason}")]
     InvalidPropertyNameMetadata { reason: String },
     #[error("JSON contains metadata is invalid: {reason}")]
@@ -335,6 +341,12 @@ fn read_node_with_patterns(
             json_schema::property_dependencies::validate_properties(
                 schema,
                 fields.keys().map(String::as_str),
+            )?;
+            json_schema::dependent_schemas::validate_object(
+                schema,
+                value,
+                fields.keys(),
+                patterns,
             )?;
             validate_alternative_fields(schema, alternatives, fields)?;
             if dynamic.is_some() && !alternatives.is_empty() {
@@ -716,7 +728,17 @@ fn write_single_node_with_patterns(
                     out.keys().map(String::as_str),
                 )?;
                 json_schema::property_counts::validate_len(schema, out.len())?;
-                return Ok(serde_json::Value::Object(out));
+                let value = serde_json::Value::Object(out);
+                json_schema::dependent_schemas::validate_object(
+                    schema,
+                    &value,
+                    value
+                        .as_object()
+                        .into_iter()
+                        .flat_map(serde_json::Map::keys),
+                    patterns,
+                )?;
+                return Ok(value);
             }
             for child_schema in children {
                 if let Some((_, child_instance)) =
@@ -743,7 +765,17 @@ fn write_single_node_with_patterns(
             )?;
             validate_alternative_fields(schema, alternatives, &out)?;
             json_schema::property_counts::validate_len(schema, out.len())?;
-            Ok(serde_json::Value::Object(out))
+            let value = serde_json::Value::Object(out);
+            json_schema::dependent_schemas::validate_object(
+                schema,
+                &value,
+                value
+                    .as_object()
+                    .into_iter()
+                    .flat_map(serde_json::Map::keys),
+                patterns,
+            )?;
+            Ok(value)
         }
         (SchemaKind::Scalar { ty }, other) => Err(write_shape_error(
             schema,

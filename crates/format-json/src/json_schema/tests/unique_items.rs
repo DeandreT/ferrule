@@ -1,4 +1,7 @@
-use ir::{Instance, ScalarType, SchemaNode, Value};
+use ir::{
+    Instance, JsonDependentSchemaConstraint, JsonDependentSchemaConstraints, JsonSchemaPredicate,
+    ScalarType, SchemaNode, Value,
+};
 
 use super::{export, import_str, import_str_result};
 use crate::JsonFormatError;
@@ -263,6 +266,152 @@ fn canonical_validator_is_exact_and_bounded() -> Result<(), serde_json::Error> {
         })
     ));
     Ok(())
+}
+
+#[test]
+fn private_predicate_unique_items_rejects_lossy_number_domains() {
+    for schema in [
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Arrays",
+  "type":"array",
+  "items":{},
+  "contains":{
+    "type":"array",
+    "uniqueItems":true,
+    "items":{"type":"number"}
+  }
+}"#,
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Root",
+  "type":"object",
+  "properties":{
+    "Trigger":{"type":"boolean"},
+    "Values":{"type":"array","items":{}}
+  },
+  "dependentSchemas":{
+    "Trigger":{
+      "properties":{
+        "Values":{
+          "type":"array",
+          "uniqueItems":true,
+          "items":{
+            "type":"object",
+            "properties":{"Amount":{"type":"number"}},
+            "additionalProperties":false
+          }
+        }
+      }
+    }
+  }
+}"#,
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Arrays",
+  "type":"array",
+  "items":{},
+  "contains":{
+    "type":"array",
+    "uniqueItems":true,
+    "items":{}
+    }
+}"#,
+    ] {
+        let result = import_str_result(schema);
+        assert!(
+            matches!(
+                &result,
+                Err(JsonFormatError::UnsupportedSchemaUnion { reason, .. })
+                    if reason.contains("arbitrary-precision JSON numbers")
+            ),
+            "{result:?}"
+        );
+    }
+}
+
+#[test]
+fn private_predicate_unique_items_retains_exact_closed_integer_objects() {
+    let schema = import_str(
+        r#"{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Root",
+  "type":"object",
+  "properties":{
+    "Trigger":{"type":"boolean"},
+    "Values":{
+      "type":"array",
+      "items":{
+        "type":"object",
+        "properties":{"Count":{"type":"integer"}},
+        "required":["Count"],
+        "additionalProperties":false
+      }
+    }
+  },
+  "required":["Trigger","Values"],
+  "dependentSchemas":{
+    "Trigger":{
+      "properties":{
+        "Values":{
+          "type":"array",
+          "uniqueItems":true,
+          "items":{
+            "type":"object",
+            "properties":{"Count":{"type":"integer"}},
+            "required":["Count"],
+            "additionalProperties":false
+          }
+        }
+      }
+    }
+  }
+}"#,
+    );
+    assert!(
+        crate::from_str(
+            r#"{"Trigger":true,"Values":[{"Count":9007199254740992},{"Count":9007199254740993}]}"#,
+            &schema,
+        )
+        .is_ok()
+    );
+    assert!(matches!(
+        crate::from_str(
+            r#"{"Trigger":true,"Values":[{"Count":7},{"Count":7}]}"#,
+            &schema,
+        ),
+        Err(JsonFormatError::DependentSchemaMismatch { .. })
+    ));
+}
+
+#[test]
+fn native_boundaries_reject_programmatically_bypassed_private_unique_items() {
+    let unique_numbers = SchemaNode::scalar("Values", ScalarType::Float)
+        .repeating()
+        .with_json_unique_items()
+        .unwrap_or_else(|| panic!("ordinary number arrays support uniqueItems"));
+    let predicate = SchemaNode::group("predicate", vec![unique_numbers]);
+    let constraints = JsonDependentSchemaConstraints::new([JsonDependentSchemaConstraint::new(
+        "Trigger",
+        JsonSchemaPredicate::schema(predicate),
+    )])
+    .unwrap_or_else(|| panic!("test dependent schema is locally canonical"));
+    let mut schema = SchemaNode::group(
+        "Root",
+        vec![SchemaNode::scalar("Trigger", ScalarType::Bool)],
+    );
+    schema.json_dependent_schemas = Some(constraints);
+
+    for result in [
+        crate::from_str("{}", &schema).map(|_| ()),
+        crate::to_string(&schema, &Instance::Group(Vec::new())).map(|_| ()),
+    ] {
+        assert!(matches!(
+            result,
+            Err(JsonFormatError::UnsupportedSchemaUnion { ref reason, .. })
+                if reason.contains("arbitrary-precision JSON numbers")
+        ));
+    }
 }
 
 #[test]

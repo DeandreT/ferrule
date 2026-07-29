@@ -38,11 +38,13 @@ pub(crate) mod allowed_values;
 mod alternatives;
 pub(crate) mod constraints;
 pub(crate) mod contains;
+pub(crate) mod dependent_schemas;
 mod files;
 mod formats;
 pub(crate) mod item_counts;
 pub(crate) mod multiples;
 mod patterns;
+pub(crate) mod predicate;
 pub(crate) mod property_counts;
 pub(crate) mod property_dependencies;
 pub(crate) mod property_names;
@@ -81,6 +83,7 @@ pub fn import_with_root(
     let value = files::load(path, package_root)?;
     let name = schema_title(&value, &value, &mut Vec::new()).unwrap_or("root");
     let schema = parse(name, &value, &value, &mut Vec::new())?;
+    predicate::validate_private_unique_items(&schema)?;
     if !schema.json_pattern_budget_is_valid() {
         return Err(unsupported_union(
             name,
@@ -134,6 +137,7 @@ fn parse(
             "the false schema accepts no JSON value",
         ));
     }
+    reject_unsupported_dynamic_references(name, schema)?;
     if let Some(r) = schema.get("$ref").and_then(|r| r.as_str()) {
         let apply_siblings = files::ref_siblings_apply(schema);
         if apply_siblings {
@@ -199,6 +203,7 @@ fn parse(
             item_counts::validate_ignored(name, schema)?;
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
+            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -217,6 +222,7 @@ fn parse(
             multiples::apply(name, schema, &mut scalar, false)?;
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
+            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
@@ -236,6 +242,7 @@ fn parse(
         patterns::validate_ignored(name, schema)?;
         property_counts::apply(name, schema, &mut node, false)?;
         property_dependencies::apply(name, schema, &mut node, false)?;
+        dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
         unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -261,6 +268,7 @@ fn parse(
             item_counts::validate_ignored(name, schema)?;
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
+            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut nullable, false)?;
             patterns::apply(name, schema, &mut nullable, false)?;
@@ -279,6 +287,7 @@ fn parse(
             multiples::apply(name, schema, &mut scalar, false)?;
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
+            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
             unique_items::validate_ignored(name, schema)?;
             string_lengths::apply(name, schema, &mut scalar, false)?;
             patterns::apply(name, schema, &mut scalar, false)?;
@@ -294,6 +303,7 @@ fn parse(
             patterns::validate_ignored(name, schema)?;
             property_counts::validate_ignored(name, schema)?;
             property_dependencies::validate_ignored(name, schema)?;
+            dependent_schemas::validate_ignored(name, schema, doc, active_refs)?;
             unique_items::apply(name, schema, &mut array, false)?;
             formats::apply(name, schema, &mut array)?;
             return Ok(array);
@@ -311,6 +321,7 @@ fn parse(
         patterns::validate_ignored(name, schema)?;
         property_counts::apply(name, schema, &mut node, false)?;
         property_dependencies::apply(name, schema, &mut node, false)?;
+        dependent_schemas::apply(name, schema, &mut node, doc, active_refs, false)?;
         unique_items::validate_ignored(name, schema)?;
         formats::apply(name, schema, &mut node)?;
         return Ok(node);
@@ -489,6 +500,14 @@ fn parse(
         &mut node,
         type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
     )?;
+    dependent_schemas::apply(
+        name,
+        schema,
+        &mut node,
+        doc,
+        active_refs,
+        type_was_absent && !narrowed_by_allowed_values && schema.get("properties").is_none(),
+    )?;
     property_names::apply(
         name,
         schema,
@@ -539,6 +558,7 @@ fn apply_known_shape_constraints(
     allowed_values::apply(name, schema, node)?;
     property_counts::apply(name, schema, node, false)?;
     property_dependencies::apply(name, schema, node, false)?;
+    dependent_schemas::apply(name, schema, node, doc, active_refs, false)?;
     property_names::apply(name, schema, node, doc, active_refs, false)?;
     if node.repeating {
         ranges::validate_ignored(name, schema)?;
@@ -572,6 +592,7 @@ fn reject_unresolved_ref_constraints(
             && property_counts::is_effectively_constrained(name, schema)?
         || property_dependencies::has_keywords(schema)
             && property_dependencies::is_effectively_constrained(name, schema)?
+        || dependent_schemas::has_effective_keyword(schema)
         || property_names::has_keyword(schema)
         || unique_items::selected(name, schema)?
         || formats::has_keyword(schema)
@@ -619,14 +640,11 @@ pub(super) fn reject_unsupported_ref_siblings(
 fn unsupported_ref_sibling(keyword: &str) -> bool {
     matches!(
         keyword,
-        "$dynamicRef"
-            | "$recursiveRef"
-            | "type"
+        "type"
             | "required"
             | "properties"
             | "patternProperties"
             | "additionalProperties"
-            | "dependentSchemas"
             | "unevaluatedProperties"
             | "items"
             | "prefixItems"
@@ -797,20 +815,83 @@ fn reject_unsupported_object_keywords(
     let Some(object) = schema.as_object() else {
         return Ok(());
     };
-    if let Some(keyword) = [
-        "patternProperties",
-        "dependentSchemas",
-        "unevaluatedProperties",
-    ]
-    .into_iter()
-    .find(|keyword| object.contains_key(*keyword))
+    let dialect = files::validation_dialect(schema);
+    if let Some(keyword) = ["patternProperties"]
+        .into_iter()
+        .find(|keyword| object.contains_key(*keyword))
     {
         return Err(unsupported_object(
             name,
             &format!("`{keyword}` object validation is not supported"),
         ));
     }
+    if dialect.supports_unevaluated_items() && object.contains_key("unevaluatedProperties") {
+        return Err(unsupported_object(
+            name,
+            "`unevaluatedProperties` object validation is not supported",
+        ));
+    }
+    if dialect.supports_prefix_items() && object.contains_key("prefixItems") {
+        return Err(unsupported_union(
+            name,
+            "`prefixItems` tuple validation is not supported",
+        ));
+    }
+    if dialect.supports_unevaluated_items() && object.contains_key("unevaluatedItems") {
+        return Err(unsupported_union(
+            name,
+            "`unevaluatedItems` annotation-dependent validation is not supported",
+        ));
+    }
+    if object.get("items").is_some_and(serde_json::Value::is_array) {
+        return Err(unsupported_union(
+            name,
+            "tuple-form array `items` and its `additionalItems` tail are not supported",
+        ));
+    }
+    if dialect.supports_conditionals()
+        && object.contains_key("if")
+        && (object.contains_key("then") || object.contains_key("else"))
+    {
+        return Err(unsupported_union(
+            name,
+            "active `if`/`then`/`else` conditional validation is not supported",
+        ));
+    }
+    if object.contains_key("not") {
+        return Err(unsupported_union(name, "`not` validation is not supported"));
+    }
     Ok(())
+}
+
+fn reject_unsupported_dynamic_references(
+    name: &str,
+    schema: &serde_json::Value,
+) -> Result<(), JsonFormatError> {
+    let dialect = files::validation_dialect(schema);
+    let keyword = [
+        ("$recursiveRef", dialect.supports_recursive_ref()),
+        ("$dynamicRef", dialect.supports_dynamic_ref()),
+    ]
+    .into_iter()
+    .find_map(|(keyword, effective)| {
+        (effective && schema.get(keyword).is_some()).then_some(keyword)
+    });
+    let Some(keyword) = keyword else {
+        return Ok(());
+    };
+    if schema.get("$ref").is_some() {
+        return Err(unsupported_union(
+            name,
+            &format!(
+                "modern `$ref` sibling `{keyword}` requires an unsupported intersection and cannot be ignored"
+            ),
+        ));
+    }
+    Err(unsupported_union(
+        name,
+        &format!("active `{keyword}` dynamic reference validation is not supported"),
+    ))
 }
 
 fn parse_required_fields(
@@ -936,6 +1017,13 @@ pub fn export(schema: &SchemaNode) -> Result<String, JsonFormatError> {
         return Err(JsonFormatError::InvalidContainsMetadata {
             reason:
                 "contains constraints must be canonical, bounded, and belong to repeating array nodes"
+                    .to_string(),
+        });
+    }
+    if !schema.json_dependent_schemas_tree_is_valid() {
+        return Err(JsonFormatError::InvalidDependentSchemasMetadata {
+            reason:
+                "dependent schema constraints must be canonical, bounded, and belong to object nodes"
                     .to_string(),
         });
     }
