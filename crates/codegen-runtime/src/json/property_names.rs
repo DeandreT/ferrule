@@ -30,6 +30,20 @@ fn constrained_names() -> Result<JsonPropertyNameConstraints, &'static str> {
         .ok_or("test property-name schema is constrained")
 }
 
+fn names_excluding_pattern(source: &str) -> Result<JsonPropertyNameConstraints, &'static str> {
+    let excluded_patterns = JsonPatternConstraints::new([[source]])
+        .map_err(|_| "test excluded property-name pattern is portable")?;
+    JsonPropertyNameConstraints::schema_with_exclusions(
+        None,
+        None,
+        None,
+        None,
+        Some(excluded_patterns),
+        JsonFormatAnnotations::default(),
+    )
+    .ok_or("test excluded property-name pattern is constrained")
+}
+
 #[test]
 fn boundaries_validate_actual_input_and_normalized_output_property_names()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -92,17 +106,40 @@ fn exact_false_accepts_only_empty_objects() -> Result<(), Box<dyn std::error::Er
 }
 
 #[test]
-fn property_name_patterns_share_a_bounded_document_work_budget()
+fn boundaries_validate_excluded_property_name_patterns() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = serde_json::to_string(&open_object(names_excluding_pattern("^private$")?)?)?;
+    assert!(parse_json(&schema, r#"{"public":1}"#).is_ok());
+    assert!(matches!(
+        parse_json(&schema, r#"{"private":1}"#),
+        Err(JsonBoundaryError::InvalidInput { message })
+            if message.contains("private") && message.contains("property name"),
+    ));
+    assert_eq!(
+        serialize_json(
+            &schema,
+            &Instance::Group(vec![("public".into(), Instance::Scalar(Value::Int(1)),)]),
+        )
+        .as_deref(),
+        Ok("{\n  \"public\": 1\n}\n"),
+    );
+    assert!(matches!(
+        serialize_json(
+            &schema,
+            &Instance::Group(vec![(
+                "private".into(),
+                Instance::Scalar(Value::Int(1)),
+            )]),
+        ),
+        Err(JsonBoundaryError::InvalidOutput { message })
+            if message.contains("private") && message.contains("property name"),
+    ));
+    Ok(())
+}
+
+#[test]
+fn excluded_property_name_patterns_share_a_bounded_document_work_budget()
 -> Result<(), Box<dyn std::error::Error>> {
-    let patterns = JsonPatternConstraints::new([["^(a?){8000}$"]])
-        .map_err(|_| "test high-work property-name pattern remains structurally bounded")?;
-    let constraints = JsonPropertyNameConstraints::schema(
-        None,
-        None,
-        Some(patterns),
-        JsonFormatAnnotations::default(),
-    )
-    .ok_or("test property-name pattern is constrained")?;
+    let constraints = names_excluding_pattern("^(a?){8000}$")?;
     let schema = serde_json::to_string(&open_object(constraints)?)?;
     let key = "a".repeat(8_000);
     let document = format!("{{{key:?}:1}}");

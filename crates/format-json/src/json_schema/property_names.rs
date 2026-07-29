@@ -120,9 +120,19 @@ pub(super) fn intersect(
         (left, right) => left.or(right),
     };
     let patterns = patterns::intersect(name, left.patterns().cloned(), right.patterns().cloned())?;
+    let excluded_patterns = union_excluded_patterns(
+        name,
+        left.excluded_patterns().cloned(),
+        right.excluded_patterns().cloned(),
+    )?;
     let formats = merge_formats(name, [&left, &right])?;
-    Ok(JsonPropertyNameConstraints::schema_excluding(
-        allowed, excluded, length, patterns, formats,
+    Ok(JsonPropertyNameConstraints::schema_with_exclusions(
+        allowed,
+        excluded,
+        length,
+        patterns,
+        excluded_patterns,
+        formats,
     ))
 }
 
@@ -150,7 +160,7 @@ pub(super) fn render(node: &ir::SchemaNode, out: &mut serde_json::Map<String, se
                     [value] => serde_json::json!({"const":value}),
                     values => serde_json::json!({"enum":values}),
                 };
-                schema.insert("not".into(), excluded);
+                append_all_of(&mut schema, serde_json::json!({"not":excluded}));
             }
             if let Some(length) = constraints.length() {
                 if length.minimum() > 0 {
@@ -162,6 +172,14 @@ pub(super) fn render(node: &ir::SchemaNode, out: &mut serde_json::Map<String, se
             }
             if let Some(patterns) = constraints.patterns() {
                 render_patterns(patterns, &mut schema);
+            }
+            if let Some(patterns) = constraints.excluded_patterns() {
+                let mut excluded = serde_json::Map::new();
+                render_patterns(patterns, &mut excluded);
+                append_all_of(
+                    &mut schema,
+                    serde_json::json!({"not":serde_json::Value::Object(excluded)}),
+                );
             }
             if let Some(formats) = constraints.formats() {
                 render_formats(formats, &mut schema);
@@ -412,13 +430,17 @@ fn union_any_of(
     let patterns_equal = branches
         .iter()
         .all(|branch| branch.patterns() == first.patterns());
+    let excluded_patterns_equal = branches
+        .iter()
+        .all(|branch| branch.excluded_patterns() == first.excluded_patterns());
     let excluded_equal = branches
         .iter()
         .all(|branch| branch.excluded() == first.excluded());
     let differences = usize::from(!allowed_equal)
         + usize::from(!excluded_equal)
         + usize::from(!length_equal)
-        + usize::from(!patterns_equal);
+        + usize::from(!patterns_equal)
+        + usize::from(!excluded_patterns_equal);
     if differences > 1 {
         return Err(unsupported(
             name,
@@ -480,8 +502,28 @@ fn union_any_of(
             branches.iter().map(|branch| branch.patterns().cloned()),
         )?
     };
-    Ok(JsonPropertyNameConstraints::schema_excluding(
-        allowed, excluded, length, patterns, formats,
+    let excluded_patterns = if excluded_patterns_equal {
+        first.excluded_patterns().cloned()
+    } else if branches
+        .iter()
+        .all(|branch| branch.excluded_patterns().is_some())
+    {
+        let mut intersection = branches[0].excluded_patterns().cloned();
+        for branch in &branches[1..] {
+            intersection =
+                patterns::intersect(name, intersection, branch.excluded_patterns().cloned())?;
+        }
+        intersection
+    } else {
+        None
+    };
+    Ok(JsonPropertyNameConstraints::schema_with_exclusions(
+        allowed,
+        excluded,
+        length,
+        patterns,
+        excluded_patterns,
+        formats,
     ))
 }
 
@@ -515,10 +557,10 @@ fn union_one_of(
         if matches!(branch, JsonPropertyNameConstraints::Never) {
             continue;
         }
-        if branch.excluded().is_some() {
+        if branch.excluded().is_some() || branch.excluded_patterns().is_some() {
             return Err(unsupported(
                 name,
-                "propertyNames oneOf cannot represent complements of finite name sets",
+                "propertyNames oneOf cannot represent complemented name predicates",
             ));
         }
         let Some(allowed) = branch.allowed() else {
@@ -573,6 +615,7 @@ fn complement(
     if let Some(excluded) = constraints.excluded()
         && constraints.length().is_none()
         && constraints.patterns().is_none()
+        && constraints.excluded_patterns().is_none()
     {
         return Ok(JsonPropertyNameConstraints::schema(
             Some(excluded.clone()),
@@ -581,16 +624,45 @@ fn complement(
             JsonFormatAnnotations::default(),
         ));
     }
+    if let Some(patterns) = constraints.patterns()
+        && constraints.allowed().is_none()
+        && constraints.excluded().is_none()
+        && constraints.length().is_none()
+        && constraints.excluded_patterns().is_none()
+    {
+        return Ok(JsonPropertyNameConstraints::schema_with_exclusions(
+            None,
+            None,
+            None,
+            None,
+            Some(patterns.clone()),
+            JsonFormatAnnotations::default(),
+        ));
+    }
+    if let Some(excluded_patterns) = constraints.excluded_patterns()
+        && constraints.allowed().is_none()
+        && constraints.excluded().is_none()
+        && constraints.length().is_none()
+        && constraints.patterns().is_none()
+    {
+        return Ok(JsonPropertyNameConstraints::schema(
+            None,
+            None,
+            Some(excluded_patterns.clone()),
+            JsonFormatAnnotations::default(),
+        ));
+    }
     if constraints.allowed().is_none()
         && constraints.excluded().is_none()
         && constraints.length().is_none()
         && constraints.patterns().is_none()
+        && constraints.excluded_patterns().is_none()
     {
         return Ok(Some(JsonPropertyNameConstraints::never()));
     }
     Err(unsupported(
         name,
-        "propertyNames `not` must complement a finite const or enum name set",
+        "propertyNames `not` must complement one finite name set or pattern predicate",
     ))
 }
 
@@ -607,6 +679,20 @@ fn merge_formats<'a>(
         }
     }
     Ok(merged)
+}
+
+fn union_excluded_patterns(
+    name: &str,
+    left: Option<ir::JsonPatternConstraints>,
+    right: Option<ir::JsonPatternConstraints>,
+) -> Result<Option<ir::JsonPatternConstraints>, JsonFormatError> {
+    match (left, right) {
+        (None, patterns) | (patterns, None) => Ok(patterns),
+        (Some(left), Some(right)) => left
+            .union(&right)
+            .map(Some)
+            .map_err(|error| unsupported(name, &error.to_string())),
+    }
 }
 
 fn render_patterns(

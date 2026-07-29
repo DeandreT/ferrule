@@ -22,6 +22,7 @@ fn property_names(
     excluded: Option<&[&str]>,
     length: Option<(u64, Option<u64>)>,
     patterns: Option<&[&[&str]]>,
+    excluded_patterns: Option<&[&[&str]]>,
     formats: &[&str],
 ) -> Result<JsonPropertyNameConstraints, &'static str> {
     let allowed = allowed
@@ -48,10 +49,27 @@ fn property_names(
         })
         .transpose()
         .map_err(|_| "test property-name patterns are bounded")?;
+    let excluded_patterns = excluded_patterns
+        .map(|alternatives| {
+            JsonPatternConstraints::new(
+                alternatives
+                    .iter()
+                    .map(|terms| terms.iter().copied().map(str::to_string)),
+            )
+        })
+        .transpose()
+        .map_err(|_| "test excluded property-name patterns are bounded")?;
     let formats = JsonFormatAnnotations::new(formats.iter().map(|format| (*format).to_string()))
         .map_err(|_| "test property-name formats are bounded")?;
-    JsonPropertyNameConstraints::schema_excluding(allowed, excluded, length, patterns, formats)
-        .ok_or("test property-name constraints are not tautological")
+    JsonPropertyNameConstraints::schema_with_exclusions(
+        allowed,
+        excluded,
+        length,
+        patterns,
+        excluded_patterns,
+        formats,
+    )
+    .ok_or("test property-name constraints are not tautological")
 }
 
 fn constrained_group(
@@ -72,6 +90,7 @@ fn property_name_program() -> Result<Program, &'static str> {
         None,
         Some((0, Some(8))),
         Some(&[&["^$|^[a-z]+$"]]),
+        Some(&[&["^blocked[a-z]*$"]]),
         &[],
     )?;
     let root_names = property_names(
@@ -89,13 +108,15 @@ fn property_name_program() -> Result<Program, &'static str> {
         None,
         Some((0, Some(16))),
         Some(&[&["^$|^[A-Z][A-Za-z]*$"]]),
+        None,
         &["ferrule-property-name"],
     )?;
     let named_names = property_names(
-        Some(&["", "extra", "named"]),
+        None,
         None,
         None,
         Some(&[&["^$|^[a-z]+$"]]),
+        Some(&[&["^blocked[a-z]*$"]]),
         &["named-property"],
     )?;
     let output_names = property_names(
@@ -103,9 +124,10 @@ fn property_name_program() -> Result<Program, &'static str> {
         Some(&["forbidden"]),
         Some((0, Some(8))),
         Some(&[&["^$|^[a-z]+$"]]),
+        Some(&[&["^secret[a-z]*$"]]),
         &["output-property"],
     )?;
-    let expensive_names = property_names(None, None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
+    let expensive_names = property_names(None, None, None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
 
     let mut maybe = constrained_group(
         "Maybe",
@@ -226,6 +248,7 @@ fn emitted_package_enforces_property_names_on_all_json_boundaries()
     assert!(generated.contains(r#"\"json_property_names\":{\"kind\":\"schema\""#));
     assert!(generated.contains(r#"\"formats\":[\"ferrule-property-name\"]"#));
     assert!(generated.contains(r#"\"excluded\":[\"forbidden\"]"#));
+    assert!(generated.contains(r#"\"excluded_patterns\":{\"any_of\":[[\"^secret[a-z]*$\"]]}"#));
     assert!(generated.contains(r#"\"json_property_names\":{\"kind\":\"never\"}"#));
 
     let directory = TempDirectory::new()?;
@@ -330,6 +353,11 @@ PropertyNameError(
     "bad-key");
 PropertyNameError(
     () => GeneratedMapping.ExecuteJsonWithSources(
+        valid.Replace("\"extra\":3", "\"blockedname\":3", StringComparison.Ordinal),
+        named),
+    "blockedname");
+PropertyNameError(
+    () => GeneratedMapping.ExecuteJsonWithSources(
         valid.Replace("\"other\":2", "\"bad-key\":2", StringComparison.Ordinal),
         named),
     "bad-key");
@@ -353,6 +381,11 @@ PropertyNameError(
     "bad-key");
 PropertyNameError(
     () => GeneratedMapping.ExecuteJsonWithSources(
+        valid,
+        new[] { new NamedJsonInput("Named", """{"named":1,"blockedname":2}""") }),
+    "blockedname");
+PropertyNameError(
+    () => GeneratedMapping.ExecuteJsonWithSources(
         valid.Replace("\"valid\"", "\"bad-key\"", StringComparison.Ordinal),
         named),
     "bad-key");
@@ -361,6 +394,11 @@ PropertyNameError(
         valid.Replace("\"valid\"", "\"forbidden\"", StringComparison.Ordinal),
         named),
     "forbidden");
+PropertyNameError(
+    () => GeneratedMapping.ExecuteJsonWithSources(
+        valid.Replace("\"valid\"", "\"secretname\"", StringComparison.Ordinal),
+        named),
+    "secretname");
 Equal(
     "{}\n",
     GeneratedMapping.ExecuteJsonWithSources(

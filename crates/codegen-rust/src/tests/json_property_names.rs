@@ -16,6 +16,7 @@ fn property_names(
     excluded: Option<&[&str]>,
     length: Option<(u64, Option<u64>)>,
     patterns: Option<&[&[&str]]>,
+    excluded_patterns: Option<&[&[&str]]>,
     formats: &[&str],
 ) -> Result<JsonPropertyNameConstraints, &'static str> {
     let allowed = allowed
@@ -43,10 +44,27 @@ fn property_names(
         })
         .transpose()
         .map_err(|_| "test property-name patterns are portable and bounded")?;
+    let excluded_patterns = excluded_patterns
+        .map(|alternatives| {
+            JsonPatternConstraints::new(
+                alternatives
+                    .iter()
+                    .map(|terms| terms.iter().copied().map(str::to_string)),
+            )
+        })
+        .transpose()
+        .map_err(|_| "test excluded property-name patterns are portable and bounded")?;
     let formats = JsonFormatAnnotations::new(formats.iter().map(|format| (*format).to_string()))
         .map_err(|_| "test property-name formats are bounded")?;
-    JsonPropertyNameConstraints::schema_excluding(allowed, excluded, length, patterns, formats)
-        .ok_or("test property-name constraints are not tautological")
+    JsonPropertyNameConstraints::schema_with_exclusions(
+        allowed,
+        excluded,
+        length,
+        patterns,
+        excluded_patterns,
+        formats,
+    )
+    .ok_or("test property-name constraints are not tautological")
 }
 
 fn constrained_group(
@@ -80,6 +98,7 @@ fn property_name_program() -> Result<Program, &'static str> {
         None,
         Some((0, Some(16))),
         Some(&[&["^$|^[A-Z][A-Za-z]*$"]]),
+        None,
         &["ferrule-property-name"],
     )?;
     let nested_names = property_names(
@@ -87,13 +106,15 @@ fn property_name_program() -> Result<Program, &'static str> {
         None,
         Some((0, Some(8))),
         Some(&[&["^$|^[a-z]+$"]]),
+        Some(&[&["^private$"]]),
         &[],
     )?;
     let named_names = property_names(
-        Some(&["", "extra", "named"]),
         None,
         None,
+        Some((0, Some(8))),
         Some(&[&["^$|^[a-z]+$"]]),
+        Some(&[&["^private$"]]),
         &["named-property"],
     )?;
     let output_names = property_names(
@@ -101,6 +122,7 @@ fn property_name_program() -> Result<Program, &'static str> {
         Some(&["forbidden"]),
         Some((0, Some(8))),
         Some(&[&["^$|^[a-z]+$"]]),
+        Some(&[&["^private$"]]),
         &["output-property"],
     )?;
 
@@ -200,7 +222,7 @@ fn property_name_program() -> Result<Program, &'static str> {
 }
 
 fn pattern_budget_program() -> Result<Program, &'static str> {
-    let expensive = property_names(None, None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
+    let expensive = property_names(None, None, None, None, Some(&[&["^(a?){8000}$"]]), &[])?;
     Ok(Program {
         source: constrained_group("Source", Vec::new(), arbitrary_json("*")?, expensive)?,
         extra_sources: Vec::new(),
@@ -243,6 +265,8 @@ fn generated_json_boundaries_enforce_property_names_on_actual_keys()
     assert!(generated_source.contains(r#"\"json_property_names\":{\"kind\":\"schema\""#));
     assert!(generated_source.contains(r#"\"formats\":[\"ferrule-property-name\"]"#));
     assert!(generated_source.contains(r#"\"excluded\":[\"forbidden\"]"#));
+    assert!(generated_source.contains(r#"\"excluded_patterns\":"#));
+    assert!(generated_source.contains(r#"\"^private$\""#));
     assert!(generated_source.contains(r#"\"json_property_names\":{\"kind\":\"never\"}"#));
 
     let output = TempDir::new("rust_json_property_names_codegen");
@@ -295,6 +319,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     assert!(matches!(
         generated_property_names::execute_json_with_sources(
+            &valid.replace(r#""extra":3"#, r#""private":3"#),
+            &named,
+        ),
+        Err(JsonBoundaryError::InvalidInput { message })
+            if message.contains("private") && message.contains("property name"),
+    ));
+    assert!(matches!(
+        generated_property_names::execute_json_with_sources(
             &valid.replace(r#""other":2"#, r#""bad-key":2"#),
             &named,
         ),
@@ -327,6 +359,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(JsonBoundaryError::InvalidInput { message })
             if message.contains("bad-key") && message.contains("property name"),
     ));
+    let excluded_named = [NamedJsonInput {
+        name: "Named",
+        document: r#"{"named":1,"private":2}"#,
+    }];
+    assert!(matches!(
+        generated_property_names::execute_json_with_sources(valid, &excluded_named),
+        Err(JsonBoundaryError::InvalidInput { message })
+            if message.contains("private") && message.contains("property name"),
+    ));
 
     assert!(matches!(
         generated_property_names::execute_json_with_sources(
@@ -343,6 +384,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         Err(JsonBoundaryError::InvalidOutput { message })
             if message.contains("forbidden") && message.contains("property name"),
+    ));
+    assert!(matches!(
+        generated_property_names::execute_json_with_sources(
+            &valid.replace(r#""valid""#, r#""private""#),
+            &named,
+        ),
+        Err(JsonBoundaryError::InvalidOutput { message })
+            if message.contains("private") && message.contains("property name"),
     ));
     assert_eq!(
         generated_property_names::execute_json_with_sources(
@@ -374,6 +423,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         Err(JsonBoundaryError::InvalidInput { message })
             if message.contains("bad-key") && message.contains("property name"),
+    ));
+    assert!(matches!(
+        generated_property_names::execute_json_bytes_with_sources(
+            valid.replace(r#""extra":3"#, r#""private":3"#).as_bytes(),
+            &named_bytes,
+        ),
+        Err(JsonBoundaryError::InvalidInput { message })
+            if message.contains("private") && message.contains("property name"),
     ));
     let invalid_named_bytes = [NamedJsonBytesInput {
         name: "Named",
