@@ -49,6 +49,9 @@ fn render_shape(node: &SchemaNode, out: &mut serde_json::Map<String, serde_json:
                 name.into()
             };
             out.insert("type".into(), ty);
+            if let Some(value) = super::constraints::rendered_fixed(node) {
+                out.insert("const".into(), value);
+            }
         }
         SchemaKind::ScalarUnion { types } => {
             let mut types = types

@@ -55,13 +55,14 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         {"type":"number","minimum":0},
         {"type":"null"}
       ]
-    }
+    },
+    "Status":{"type":"string","const":"ready"}
   }
 }"#,
     )?;
     std::fs::write(
         directory.0.join("input.json"),
-        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[],"Amount":12.5}"#,
+        r#"{"MaybeObject":{"Code":"A","nested":{"enabled":true}},"MaybeArray":[],"Amount":12.5,"Status":"ready"}"#,
     )?;
     let design = directory.0.join("mapping.mfd");
     std::fs::write(
@@ -108,6 +109,14 @@ fn imports_nullable_and_open_json_schema_without_fallback_warnings()
         .ok_or("missing nullable amount")?;
     assert!(amount.nullable);
     assert!(matches!(amount.kind, SchemaKind::Scalar { .. }));
+    assert_eq!(
+        imported
+            .project
+            .source
+            .child("Status")
+            .and_then(|status| status.fixed.as_deref()),
+        Some("ready")
+    );
 
     let input = format_json::read(&directory.0.join("input.json"), &imported.project.source)?;
     assert!(matches!(input, Instance::Group(_)));
